@@ -38,6 +38,12 @@ export const MAX_FEED_EVENTS = 200;
  */
 const HISTORY_RETRY_BASE_MS = 1_000;
 const HISTORY_RETRY_MAX_MS = SESSION_EVENT_WINDOW_CAPABILITY_RETRY_MS;
+/**
+ * How long the live stream must stay down after a failure before the hook
+ * reports it interrupted. A phone resuming from the background drops and
+ * reopens the stream within a second or two; that blip is not an outage.
+ */
+export const LIVE_STREAM_INTERRUPTION_GRACE_MS = 3_000;
 
 /**
  * Only a credential failure is terminal for the history window: a 401/403
@@ -187,6 +193,14 @@ export interface SessionEventStream {
    */
   liveStreamStoppedTerminal: boolean;
   /**
+   * The live stream failed (`onError`) and has not reopened for
+   * `LIVE_STREAM_INTERRUPTION_GRACE_MS`. Distinct from `connected === false`,
+   * which is also true before the first open: a stream that is still
+   * connecting has not failed, and must not read as "Station isn't
+   * responding". A terminal stop sets this at once.
+   */
+  liveStreamInterrupted: boolean;
+  /**
    * archive#3426: the `/event-window` history read's own retry ladder hit a
    * terminal (401/403) failure and stopped — same `isTerminalHistoryFailure`
    * branch that clears `historyRetrying`, so the two together tell "history
@@ -262,6 +276,7 @@ export function useSessionEventStream(
   const [recoveryRevision, setRecoveryRevision] = useState(0);
   const [liveStreamStoppedTerminal, setLiveStreamStoppedTerminal] =
     useState(false);
+  const [liveStreamInterrupted, setLiveStreamInterrupted] = useState(false);
   const [historyStoppedTerminal, setHistoryStoppedTerminal] = useState(false);
   const [capabilityRecoveryExhausted, setCapabilityRecoveryExhausted] =
     useState(false);
@@ -417,6 +432,7 @@ export function useSessionEventStream(
     setHistoryRetrying(false);
     setElidedHistory(NO_ELIDED_HISTORY);
     setLiveStreamStoppedTerminal(false);
+    setLiveStreamInterrupted(false);
     setHistoryStoppedTerminal(false);
     setCapabilityRecoveryExhausted(false);
     persistedKeys.current = new Set();
@@ -458,6 +474,12 @@ export function useSessionEventStream(
     const bufferedLive: Array<{ id: string; event: OrchestrationEvent }> = [];
     let historyRetryDelay = HISTORY_RETRY_BASE_MS;
     let historyRetryScheduled = false;
+    let interruptionTimer: ReturnType<typeof setTimeout> | undefined;
+    const clearInterruption = () => {
+      if (interruptionTimer !== undefined) clearTimeout(interruptionTimer);
+      interruptionTimer = undefined;
+      setLiveStreamInterrupted(false);
+    };
     let historyRetryTimer: ReturnType<typeof setTimeout> | undefined;
     // archive#3445: a retry scheduled under "this failure was transient" must
     // not be left to fire after a LATER attempt has already established
@@ -795,6 +817,7 @@ export function useSessionEventStream(
         onOpen: () => {
           setConnected(true);
           setLiveStreamStoppedTerminal(false);
+          clearInterruption();
           hostResponded = true;
           if (!initialHydrationStarted) {
             startInitialHydration();
@@ -825,13 +848,23 @@ export function useSessionEventStream(
           initialHydrationStarted = false;
           negotiateWindow();
           setConnected(false);
+          // The first failure starts the grace window; later failures in the
+          // same outage leave it running rather than restarting it.
+          if (interruptionTimer === undefined)
+            interruptionTimer = setTimeout(() => {
+              if (active) setLiveStreamInterrupted(true);
+            }, LIVE_STREAM_INTERRUPTION_GRACE_MS);
         },
         // Fires once alongside `onError` for the SAME failure, only when
         // `fetchSSE` classified it `terminal` (401/403) and gave up
         // automatic reconnection — the additive signal `connected === false`
         // alone cannot give (archive#3426): that is equally true while the
         // ladder is mid-backoff and about to retry on its own.
-        onTerminal: () => setLiveStreamStoppedTerminal(true),
+        onTerminal: () => {
+          setLiveStreamStoppedTerminal(true);
+          if (interruptionTimer !== undefined) clearTimeout(interruptionTimer);
+          setLiveStreamInterrupted(true);
+        },
         // archive#3437: `onOpen` was the only clearing path,
         // but the transport's terminal state ends at the WAKE (`retry` or
         // `notifyCredentialChanged`), not at a successful open — a resumed
@@ -957,6 +990,7 @@ export function useSessionEventStream(
       discardPendingLiveEvents();
       for (const recoveryTimer of recoveryTimers) clearTimeout(recoveryTimer);
       recoveryTimers.clear();
+      if (interruptionTimer !== undefined) clearTimeout(interruptionTimer);
       authenticatedStream?.close();
     };
   }, [
@@ -985,6 +1019,7 @@ export function useSessionEventStream(
     historyRetrying,
     elidedHistory,
     liveStreamStoppedTerminal,
+    liveStreamInterrupted,
     historyStoppedTerminal,
     capabilityRecoveryExhausted,
     retryCapabilityRecovery,

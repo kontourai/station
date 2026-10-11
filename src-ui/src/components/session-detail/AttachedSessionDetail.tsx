@@ -29,7 +29,6 @@ import { displayProvider, sessionTitle } from '../../utils/sessionDisplay';
 import { isStationTransportFailure } from '../../utils/stationTransportFailure';
 import { sessionProjectKeys } from '../../views/sessions/sessions-lane-model';
 import { Button } from '../Button';
-import { PermissionPostureBadge } from '../badges/PermissionPostureBadge';
 import { MessageBubble } from '../chat/MessageBubble';
 import { MessageContent } from '../chat/message-bubble/MessageContent';
 import {
@@ -99,6 +98,7 @@ export function AttachedSessionDetail({
   upgradeRequired,
   streamError,
   liveStreamStoppedTerminal,
+  liveStreamInterrupted,
   historyStoppedTerminal,
   capabilityRecoveryExhausted,
   onRetryCapabilityRecovery,
@@ -133,6 +133,12 @@ export function AttachedSessionDetail({
    * behavior.
    */
   liveStreamStoppedTerminal?: boolean;
+  /**
+   * The live stream failed and stayed down past the hook's grace window.
+   * `connected === false` alone is also true while the stream is still
+   * opening, which is not an outage and must not be narrated as one.
+   */
+  liveStreamInterrupted?: boolean;
   historyStoppedTerminal?: boolean;
   capabilityRecoveryExhausted?: boolean;
   onRetryCapabilityRecovery?: () => void;
@@ -180,6 +186,10 @@ export function AttachedSessionDetail({
     events.filter(hasCanonicalEventId),
   );
   const [replyRequested, setReplyRequested] = useState(false);
+  // The inspector's floating action carries no prose of its own, so a choice
+  // that needs explaining (#3386: a No project chat in its own folder) is
+  // confirmed in a dialog before anything is requested.
+  const [confirmingContinuation, setConfirmingContinuation] = useState(false);
   const continuationDescriptionId = useId();
   const [draft, setDraft] = useState('');
   const confirmedDraft = useRef('');
@@ -328,7 +338,13 @@ export function AttachedSessionDetail({
     // the disclosure keeps that raw diagnostic, not just the plain copy.
     adoptionCause,
   ].filter((message): message is string => Boolean(message));
-  const disconnected = !connected || Boolean(streamError);
+  const disconnected = Boolean(
+    liveStreamInterrupted ||
+      streamError ||
+      liveStreamStoppedTerminal ||
+      historyStoppedTerminal ||
+      capabilityRecoveryExhausted,
+  );
   // archive#3426: derive the claim from the mechanism that is actually
   // active, instead of one copy folding three recovery mechanisms with
   // different behaviours. `stoppedTerminal` takes precedence — a credential
@@ -370,30 +386,29 @@ export function AttachedSessionDetail({
   // "Worker task · <id>" in the list it was opened from.
   const title = sessionTitle(session);
 
+  const startContinuation = () => {
+    if (
+      !continuationSupported ||
+      adoption.isPending ||
+      serverRejectedRetryRef.current
+    )
+      return;
+    if (presentation === 'chat') confirmedDraft.current = draft;
+    adoption.mutate(getSelectionIntent());
+  };
+  const continuationLabel =
+    adoption.isPending || openingContinuation
+      ? 'Continuing…'
+      : presentation === 'chat'
+        ? 'Continue and send'
+        : 'Continue in Station';
   const continuationAction = (
     <Button
       variant="primary"
       disabled={adoptionDisabled}
-      onClick={() => {
-        if (
-          !continuationSupported ||
-          adoption.isPending ||
-          serverRejectedRetryRef.current
-        )
-          return;
-        if (presentation === 'inspector' && onOpenInChat) {
-          onOpenInChat();
-          return;
-        }
-        if (presentation === 'chat') confirmedDraft.current = draft;
-        adoption.mutate(getSelectionIntent());
-      }}
+      onClick={startContinuation}
     >
-      {adoption.isPending || openingContinuation
-        ? 'Continuing…'
-        : presentation === 'chat'
-          ? 'Continue and send'
-          : 'Continue in Station'}
+      {continuationLabel}
     </Button>
   );
   const continuationFeedback = (
@@ -415,7 +430,7 @@ export function AttachedSessionDetail({
                       adoptionOutcomeUncertain ||
                       adoptionTransportFailed
                     ? "Couldn't start the continuation — Station isn't responding right now."
-                    : "Couldn't start the continuation. Technical detail is under Details below."}
+                    : "Couldn't start the continuation. Technical detail is under Details."}
         </p>
       )}
       {adoptionOutcomeUncertain && !serverRejectedRetry && (
@@ -425,26 +440,62 @@ export function AttachedSessionDetail({
       )}
     </>
   );
-  const continuationControls = (
-    <div className="sessions-detail__adoption">
-      <div>
-        <strong>Continue independently</strong>
-        <p id={continuationDescriptionId}>
-          {continuationSupported
-            ? `Continue from this history. The original conversation in ${displayProvider(session)} stays available.`
-            : continuationSupport.reason}
+  const continuationExplanation = (
+    <>
+      <p>
+        {`Station continues from this history. The original conversation in ${displayProvider(session)} stays available.`}
+      </p>
+      {outsideProjects && (
+        <p
+          className="sessions-detail__adoption-folder"
+          data-testid="attached-continuation-no-project"
+        >
+          {noProjectExplanation}
         </p>
-        {continuationSupported && outsideProjects && (
-          <p
-            className="sessions-detail__adoption-folder"
-            data-testid="attached-continuation-no-project"
-          >
-            {noProjectExplanation}
-          </p>
-        )}
-      </div>
-      {continuationAction}
-      {continuationFeedback}
+      )}
+    </>
+  );
+  // The inspector's one action floats over the conversation instead of
+  // sitting in the reading flow. Only what blocks or answers it (the reason it
+  // is unavailable, a failed attempt) is said beside it.
+  const showDockFeedback = Boolean(adoption.error) && !confirmingContinuation;
+  const continuationDock = (
+    <div className="sessions-detail__continue-dock">
+      {(!continuationSupported || showDockFeedback) && (
+        <div className="sessions-detail__continue-note">
+          {!continuationSupported && (
+            <p id={continuationDescriptionId}>{continuationSupport.reason}</p>
+          )}
+          {showDockFeedback && continuationFeedback}
+        </div>
+      )}
+      <Button
+        variant="primary"
+        className="sessions-detail__continue-fab"
+        disabled={adoptionDisabled}
+        aria-describedby={
+          continuationSupported ? undefined : continuationDescriptionId
+        }
+        onClick={() => {
+          if (
+            !continuationSupported ||
+            adoption.isPending ||
+            serverRejectedRetryRef.current
+          )
+            return;
+          if (onOpenInChat) {
+            onOpenInChat();
+            return;
+          }
+          if (outsideProjects) {
+            setConfirmingContinuation(true);
+            return;
+          }
+          startContinuation();
+        }}
+      >
+        {continuationLabel}
+      </Button>
     </div>
   );
   const requestSend = () => {
@@ -461,18 +512,10 @@ export function AttachedSessionDetail({
       {presentation !== 'chat' && (
         <header className="sessions-detail__header">
           <div>
-            <p className="sessions-detail__eyebrow">
-              Started in {displayProvider(session)}
-            </p>
             <h2>{title}</h2>
-            <p className="sessions-detail__meta">
-              <span>{displayProvider(session)}</span>
-              {session.model && <span>{session.model}</span>}
-              <span>
-                {messages.length === 0
-                  ? 'No messages yet'
-                  : `${messages.length} message${messages.length === 1 ? '' : 's'}`}
-              </span>
+            <p className="sessions-detail__meta-line">
+              <span>Started in {displayProvider(session)} · Read only</span>
+              {session.model && <span> · {session.model}</span>}
             </p>
           </div>
         </header>
@@ -503,12 +546,6 @@ export function AttachedSessionDetail({
             </Button>
           </div>
         )}
-        {presentation !== 'chat' && (
-          <p className="sessions-detail__readonly-label">
-            Started in {displayProvider(session)} · Read only
-          </p>
-        )}
-
         {upgradeRequired ? (
           <div className="sessions-detail__connection-state" role="status">
             <strong>
@@ -527,7 +564,6 @@ export function AttachedSessionDetail({
                 Station stopped reconnecting — it rejected this session's
                 credentials.
               </strong>
-              <p>This transcript is read-only and safe.</p>
             </div>
           ) : stoppedRecoverable ? (
             <div className="sessions-detail__connection-state" role="status">
@@ -535,7 +571,6 @@ export function AttachedSessionDetail({
                 Station stopped checking for this session's history and live
                 updates automatically.
               </strong>
-              <p>This transcript is read-only and safe.</p>
               {onRetryCapabilityRecovery && (
                 <Button variant="secondary" onClick={onRetryCapabilityRecovery}>
                   Retry now
@@ -547,24 +582,8 @@ export function AttachedSessionDetail({
               <strong>
                 Station isn't responding right now — retrying automatically.
               </strong>
-              <p>This transcript is read-only and safe.</p>
             </div>
           ))
-        )}
-
-        {presentation !== 'chat' && continuationControls}
-        {presentation !== 'chat' && (
-          <details className="sessions-detail__details">
-            <summary>Details</summary>
-            <p>
-              <strong>Session ID:</strong> <code>{session.threadId}</code>
-            </p>
-            {technicalErrors.map((message) => (
-              <p key={message}>
-                <strong>Technical detail:</strong> <code>{message}</code>
-              </p>
-            ))}
-          </details>
         )}
 
         {presentation === 'chat' && onLoadOlder && (
@@ -589,7 +608,9 @@ export function AttachedSessionDetail({
         >
           {messages.length === 0 ? (
             <p className="sessions-detail__feed-empty">
-              Waiting for transcript events from this terminal session…
+              {connected || disconnected
+                ? 'No messages yet.'
+                : 'Connecting to Station…'}
             </p>
           ) : (
             messages.map((message, index) => {
@@ -644,17 +665,10 @@ export function AttachedSessionDetail({
                   className={`sessions-detail__transcript-message sessions-detail__transcript-message--${message.role}`}
                   key={message.id}
                 >
+                  {/* archive#1424's read-only posture is stated once, in the
+                      header, rather than badged onto every assistant row. */}
                   <p className="sessions-detail__transcript-role">
                     {message.role === 'assistant' ? 'Assistant' : 'You'}
-                    {/* archive#1424: this view exists only for a session
-                      Station is following read-only (see the doc comment
-                      above) — every assistant row it renders is genuinely
-                      read-only-attached, so the badge is unconditional here
-                      rather than re-derived from a posture the component
-                      doesn't otherwise carry. */}
-                    {message.role === 'assistant' && (
-                      <PermissionPostureBadge posture="read-only-attached" />
-                    )}
                   </p>
                   <MessageContent
                     contentParts={contentParts as ChatMessage['contentParts']}
@@ -669,7 +683,46 @@ export function AttachedSessionDetail({
             })
           )}
         </div>
+        {presentation !== 'chat' && (
+          <details className="sessions-detail__details">
+            <summary>Details</summary>
+            <p>
+              <strong>Session ID:</strong> <code>{session.threadId}</code>
+            </p>
+            {technicalErrors.map((message) => (
+              <p key={message}>
+                <strong>Technical detail:</strong> <code>{message}</code>
+              </p>
+            ))}
+          </details>
+        )}
       </div>
+      {presentation !== 'chat' && continuationDock}
+      {presentation !== 'chat' && confirmingContinuation && (
+        <Dialog
+          title="Continue in Station?"
+          closeLabel="Cancel continuation"
+          size="sm"
+          dismissible={!adoption.isPending}
+          onClose={() => {
+            if (!adoption.isPending) setConfirmingContinuation(false);
+          }}
+          footer={
+            <>
+              <Button
+                disabled={adoption.isPending}
+                onClick={() => setConfirmingContinuation(false)}
+              >
+                Cancel
+              </Button>
+              {continuationAction}
+            </>
+          }
+        >
+          {continuationExplanation}
+          {continuationFeedback}
+        </Dialog>
+      )}
       {presentation === 'chat' && (
         <fieldset
           className="external-chat-composer chat-input"

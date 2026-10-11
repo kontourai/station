@@ -146,6 +146,9 @@ const PINNED_CHILD_CLASSES = [
   'sessions-detail__request',
   'sessions-detail__compose',
   'sessions-detail__note',
+  // The read-only inspector's continuation floats over the conversation:
+  // pinned on purpose, so it is reachable at any scroll position.
+  'sessions-detail__continue-dock',
 ];
 
 function unpinnedChildrenOutsideScroll(detail: Element): string[] {
@@ -284,13 +287,16 @@ describe('session detail scroll structure (station#3305)', () => {
 
     const transcript = screen.getByTestId('attached-session-transcript');
     expect(transcript.closest('.sessions-detail__scroll')).toBe(scroll);
-    // The adoption controls scroll with the transcript rather than being
-    // positionally clipped (the concrete "details don't show" defect).
+    // The continuation floats in a dock pinned to the pane, never inside a
+    // region where it could be clipped (the concrete "details don't show"
+    // defect): a direct child of the detail, outside the scroll region.
+    const continueButton = screen.getByRole('button', {
+      name: 'Continue in Station',
+    });
+    expect(continueButton.closest('.sessions-detail__scroll')).toBeNull();
     expect(
-      screen
-        .getByRole('button', { name: 'Continue in Station' })
-        .closest('.sessions-detail__scroll'),
-    ).toBe(scroll);
+      continueButton.closest('.sessions-detail__continue-dock')?.parentElement,
+    ).toBe(detail);
     // The identity header stays pinned outside the scroll region.
     expect(
       detail

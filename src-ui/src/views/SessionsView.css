@@ -483,57 +483,76 @@
   flex: 1 0 auto;
 }
 
-.sessions-detail__readonly-label {
-  margin: 0;
+.sessions-detail--read-only:not(.sessions-detail--chat)
+  .sessions-detail__transcript {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+/* The read-only inspector's single action floats over the conversation, so
+   the reading flow is the transcript and nothing else. The scroll region
+   keeps room at its end so the last message can scroll clear of it. */
+.sessions-detail--read-only:not(.sessions-detail--chat) {
+  position: relative;
+}
+
+.sessions-detail--read-only:not(.sessions-detail--chat)
+  .sessions-detail__scroll {
+  padding-bottom: calc(44px + var(--space-6));
+}
+
+.sessions-detail__continue-dock {
+  position: absolute;
+  right: var(--space-4);
+  bottom: calc(var(--space-4) + var(--safe-bottom, 0px));
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+  max-width: min(22rem, calc(100% - 2 * var(--space-4)));
+  pointer-events: none;
+}
+
+.sessions-detail__continue-dock > * {
+  pointer-events: auto;
+}
+
+.sessions-detail__continue-note {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-md);
   color: var(--text-secondary);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   line-height: 1.4;
 }
 
-.sessions-detail__adoption {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.75rem;
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  background: var(--bg-secondary);
+.sessions-detail__continue-note p {
+  margin: 0;
 }
 
-.sessions-detail__adoption p {
-  margin: 0.2rem 0 0;
-  color: var(--text-secondary);
-  font-size: 0.8rem;
+.sessions-detail__continue-note p + p {
+  margin-top: var(--space-1);
 }
 
-/* #3386: the No project explanation names a folder path, which has no break
-   points of its own; let it wrap and let the action drop below it rather than
-   push the panel wider than its pane. */
-.sessions-detail__adoption {
-  flex-wrap: wrap;
-}
-
-.sessions-detail__adoption > div {
-  flex: 1 1 12rem;
-  min-width: 0;
+.button.sessions-detail__continue-fab {
+  min-height: 44px;
+  padding-inline: var(--space-5);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-lg);
 }
 
 .sessions-detail__adoption-folder {
   overflow-wrap: anywhere;
 }
 
-.sessions-detail__adoption .button {
-  min-height: 44px;
-  flex: 0 0 auto;
-}
-
-.sessions-detail__connection-state,
-.sessions-detail__details {
+.sessions-detail__connection-state {
   margin: 0;
-  padding: 0.75rem;
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
   background: var(--bg-secondary);
   color: var(--text-secondary);
   font-size: 0.82rem;
@@ -542,16 +561,30 @@
 
 .sessions-detail__connection-state strong {
   color: var(--text-primary);
+  font-weight: 600;
 }
 
-.sessions-detail__connection-state p,
-.sessions-detail__details p,
-.sessions-detail__adoption-reason {
-  margin: 0.3rem 0 0;
+.sessions-detail__connection-state .button {
+  margin-top: var(--space-2);
+}
+
+.sessions-detail__details {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.sessions-detail__details p {
+  margin: var(--space-1) 0 0;
 }
 
 .sessions-detail__details summary {
   cursor: pointer;
+  width: fit-content;
+}
+
+.sessions-detail__details summary:hover {
   color: var(--text-primary);
 }
 
@@ -560,20 +593,9 @@
 }
 
 .sessions-detail__adoption-reason {
-  flex-basis: 100%;
+  margin: 0;
   color: var(--text-secondary);
   font-size: 0.8rem;
-}
-
-@media (max-width: 480px) {
-  .sessions-detail__adoption {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .sessions-detail__adoption .button {
-    width: 100%;
-  }
 }
 
 .sessions-detail__transcript {

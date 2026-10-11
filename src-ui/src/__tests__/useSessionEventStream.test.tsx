@@ -84,6 +84,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 import {
+  LIVE_STREAM_INTERRUPTION_GRACE_MS,
   MAX_FEED_EVENTS,
   mergeSessionEvents,
   useSessionEventStream,
@@ -279,6 +280,79 @@ describe('useSessionEventStream', () => {
       // duration — every other test here settles quickly and its leftover
       // mount goes idle, but this one specifically drives the case where it
       // might not.
+      unmount();
+    }
+  });
+
+  test('a stream that has not opened yet is not interrupted; one that failed is, only after the grace window, until it reopens', async () => {
+    vi.useFakeTimers();
+    fetchSession.mockResolvedValue({ session: {}, events: [] });
+    fetchSSE.mockImplementationOnce(
+      (_url: string, options: typeof streamOptions) => {
+        streamOptions = options;
+        return { close };
+      },
+    );
+    const { result, unmount } = renderHook(() =>
+      useSessionEventStream('http://station.test', 'task:1'),
+    );
+    try {
+      // Still connecting: `connected` is false, and that is not an outage.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(
+          LIVE_STREAM_INTERRUPTION_GRACE_MS * 2,
+        );
+      });
+      expect(result.current.connected).toBe(false);
+      expect(result.current.liveStreamInterrupted).toBe(false);
+
+      // A blip that reopens inside the grace window is never reported.
+      act(() => streamOptions.onError?.(new TypeError('Failed to fetch')));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(
+          LIVE_STREAM_INTERRUPTION_GRACE_MS - 1,
+        );
+      });
+      expect(result.current.liveStreamInterrupted).toBe(false);
+      act(() => streamOptions.onOpen?.());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(LIVE_STREAM_INTERRUPTION_GRACE_MS);
+      });
+      expect(result.current.liveStreamInterrupted).toBe(false);
+
+      // A failure that outlasts the window is.
+      act(() => streamOptions.onError?.(new TypeError('Failed to fetch')));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(LIVE_STREAM_INTERRUPTION_GRACE_MS);
+      });
+      expect(result.current.liveStreamInterrupted).toBe(true);
+
+      act(() => streamOptions.onOpen?.());
+      expect(result.current.liveStreamInterrupted).toBe(false);
+    } finally {
+      unmount();
+    }
+  });
+
+  test('a terminal stop is reported as interrupted at once', () => {
+    fetchSSE.mockImplementationOnce(
+      (_url: string, options: typeof streamOptions) => {
+        streamOptions = options;
+        return { close };
+      },
+    );
+    const { result, unmount } = renderHook(() =>
+      useSessionEventStream('http://station.test', 'task:1'),
+    );
+    try {
+      act(() => {
+        streamOptions.onError?.(new sdk.StationHttpError(401, 'Unauthorized'));
+        streamOptions.onTerminal?.(
+          new sdk.StationHttpError(401, 'Unauthorized'),
+        );
+      });
+      expect(result.current.liveStreamInterrupted).toBe(true);
+    } finally {
       unmount();
     }
   });

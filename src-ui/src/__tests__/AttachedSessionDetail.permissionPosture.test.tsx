@@ -2,7 +2,13 @@
 
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 vi.mock('../components/icons/UserIcon', () => ({ UserIcon: () => null }));
@@ -86,6 +92,7 @@ function renderAttached({
   upgradeRequired,
   streamError,
   liveStreamStoppedTerminal,
+  liveStreamInterrupted,
   historyStoppedTerminal,
   capabilityRecoveryExhausted,
   onRetryCapabilityRecovery,
@@ -98,6 +105,7 @@ function renderAttached({
   upgradeRequired?: boolean;
   streamError?: Error;
   liveStreamStoppedTerminal?: boolean;
+  liveStreamInterrupted?: boolean;
   historyStoppedTerminal?: boolean;
   capabilityRecoveryExhausted?: boolean;
   onRetryCapabilityRecovery?: () => void;
@@ -162,6 +170,7 @@ function renderAttached({
           upgradeRequired={upgradeRequired}
           streamError={streamError}
           liveStreamStoppedTerminal={liveStreamStoppedTerminal}
+          liveStreamInterrupted={liveStreamInterrupted}
           historyStoppedTerminal={historyStoppedTerminal}
           capabilityRecoveryExhausted={capabilityRecoveryExhausted}
           onRetryCapabilityRecovery={onRetryCapabilityRecovery}
@@ -303,15 +312,29 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     },
   );
 
-  test('every assistant row is annotated "Read only" — this view only ever shows a read-only-attached session', () => {
+  test('the read-only posture is stated once in the header, not badged onto every row', () => {
     renderAttached();
-    // The user turn (from the prompt) never gets the badge.
-    const userRole = screen.getByText('You');
-    expect(userRole.textContent).toBe('You');
-    // The assistant turn does.
-    const assistantRole = screen.getByText('Assistant', { exact: false });
-    expect(assistantRole.textContent).toContain('Assistant');
-    expect(assistantRole.textContent).toContain('Read only');
+    const header = document.querySelector('.sessions-detail__header');
+    expect(header?.textContent).toContain('Started in Claude Code · Read only');
+    expect(screen.getByText('You').textContent).toBe('You');
+    expect(screen.getByText('Assistant').textContent).toBe('Assistant');
+    expect(screen.getAllByText(/Read only/)).toHaveLength(1);
+  });
+
+  test('a stream that has not opened yet is connecting, not unresponsive', () => {
+    renderAttached({ connected: false, events: [] });
+    expect(screen.getByText('Connecting to Station…')).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.queryByText(/isn't responding/)).toBeNull();
+  });
+
+  test('a live stream interrupted past its grace window says so', () => {
+    renderAttached({ connected: false, liveStreamInterrupted: true });
+    expect(
+      screen.getByText(
+        "Station isn't responding right now — retrying automatically.",
+      ),
+    ).toBeTruthy();
   });
 
   test('uses an engine session fallback and keeps the raw id in Details', () => {
@@ -367,9 +390,6 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
       screen.getByText(
         "Station isn't responding right now — retrying automatically.",
       ),
-    ).toBeTruthy();
-    expect(
-      screen.getByText('This transcript is read-only and safe.'),
     ).toBeTruthy();
     // The stream's SSE state says nothing about the REST adoption channel
     // (archive#2630) — the recovery action stays enabled.
@@ -498,7 +518,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     await waitFor(() =>
       expect(
         screen.getByText(
-          "Couldn't start the continuation. Technical detail is under Details below.",
+          "Couldn't start the continuation. Technical detail is under Details.",
         ),
       ).toBeTruthy(),
     );
@@ -699,14 +719,23 @@ describe('a conversation no project claims (#3386)', () => {
   });
 
   test('the inspector explains the No project chat in the conversation folder before Continue', () => {
+    adoptOrchestrationSession.mockClear();
     renderAttached({
       session: { projectSlug: undefined, cwd: '/work/scratch/app' },
     });
-    expect(
+    // The floating action carries no prose; the choice is explained in a
+    // confirmation, and nothing is requested before it.
+    expect(screen.queryByTestId('attached-continuation-no-project')).toBeNull();
+    fireEvent.click(
       screen.getByRole('button', { name: 'Continue in Station' }),
-    ).toBeTruthy();
+    );
+    const dialog = screen.getByRole('dialog', {
+      name: 'Continue in Station?',
+    });
+    expect(adoptOrchestrationSession).not.toHaveBeenCalled();
     expect(
-      screen.getByTestId('attached-continuation-no-project').textContent,
+      within(dialog).getByTestId('attached-continuation-no-project')
+        .textContent,
     ).toBe(
       'This conversation belongs to no project. Station will continue it as a No project chat that works only in /work/scratch/app. To continue it in a project instead, add a project for that folder or its repository first.',
     );
