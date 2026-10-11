@@ -1141,6 +1141,16 @@ async function runVitest(
       execution.infrastructureError = Boolean(
         child.error || child.status === null || child.signal,
       );
+      if (execution.infrastructureError) {
+        execution.error = boundedRedactedText(
+          child.error instanceof Error
+            ? child.error.message
+            : child.signal
+              ? `Vitest child terminated by signal ${child.signal}`
+              : 'Vitest child ended without an exit status',
+          FAILURE_EXCERPT_LIMIT,
+        );
+      }
       if (!execution.infrastructureError) {
         try {
           Object.assign(
@@ -1180,7 +1190,9 @@ function countsFor(executions, preparation) {
   const infrastructureErrors =
     executions.filter((entry) => entry.infrastructureError).length +
     (preparation?.infrastructureError === true ? 1 : 0);
-  const parserErrors = executions.filter((entry) => entry.error).length;
+  const parserErrors = executions.filter(
+    (entry) => entry.error && !entry.infrastructureError,
+  ).length;
   const testCounts = executions.flatMap((entry) =>
     entry.counts ? [entry.counts] : [],
   );

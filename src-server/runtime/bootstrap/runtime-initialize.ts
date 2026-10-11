@@ -121,7 +121,7 @@ import {
 import type { RuntimeEventLog } from '../conversation/runtime-event-log.js';
 import { safeSanitizeUIBlockEventProvenance } from '../conversation/ui-block-provenance.js';
 import { withPrivateOrchestrationAdapter } from '../frameworks/orchestration-adapter-registry.js';
-import { StrandsFramework } from '../frameworks/strands-adapter.js';
+import type { StrandsFramework } from '../frameworks/strands-adapter.js';
 import { VoltAgentFramework } from '../frameworks/voltagent-adapter.js';
 import {
   type HonoServerConfig,
@@ -425,7 +425,11 @@ export async function initializeRuntime(
 
   const runtime = appConfig.runtime || 'voltagent';
   const framework: RuntimeFramework =
-    runtime === 'strands' ? new StrandsFramework() : new VoltAgentFramework();
+    runtime === 'strands'
+      ? new (
+          await import('../frameworks/strands-adapter.js')
+        ).StrandsFramework()
+      : new VoltAgentFramework();
 
   logger.info('App config loaded', {
     region: appConfig.region,

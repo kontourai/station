@@ -796,11 +796,11 @@ export class StrandsFramework {
 
     return {
       model: dispatchModel
-        ? createStrandsAiSdkModel(dispatchModel, {
+        ? await createStrandsAiSdkModel(dispatchModel, {
             spec,
             appConfig: config.appConfig,
           })
-        : createStrandsManagedModel({
+        : await createStrandsManagedModel({
             providerConnection: binding.providerConnection,
             modelId: binding.modelId,
             spec,

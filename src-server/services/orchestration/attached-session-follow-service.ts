@@ -486,6 +486,7 @@ export class AttachedSessionFollowService {
         projectRoots,
       );
       let followedSessions = 0;
+      let lastFollowYieldAt = performance.now();
       for (const observed of discovered.sessions) {
         if (
           observed.provider !== source.provider ||
@@ -550,8 +551,12 @@ export class AttachedSessionFollowService {
         // source calls can resolve immediately, which otherwise chains every
         // following session through Promise microtasks and prevents HTTP/timer
         // work from running on a large persisted attached-session set.
-        if (followedSessions % FOLLOW_YIELD_EVERY === 0) {
+        if (
+          followedSessions % FOLLOW_YIELD_EVERY === 0 ||
+          performance.now() - lastFollowYieldAt >= FOLLOW_WORK_SLICE_MS
+        ) {
           await yieldEventLoop();
+          lastFollowYieldAt = performance.now();
         }
       }
     }
@@ -615,6 +620,7 @@ export class AttachedSessionFollowService {
       return;
     if (state.storedAttribution !== fingerprint && !keepsStoredAttribution) {
       let envelopeWrites = 0;
+      let lastEnvelopeYieldAt = performance.now();
       for (const event of attachedSessionEnvelope(
         descriptor,
         attribution,
@@ -625,8 +631,12 @@ export class AttachedSessionFollowService {
         if (!state.seen.has(event.eventId)) {
           this.appendIngestibleEvent(state, event);
           envelopeWrites += 1;
-          if (envelopeWrites % APPEND_YIELD_EVERY === 0) {
+          if (
+            envelopeWrites % APPEND_YIELD_EVERY === 0 ||
+            performance.now() - lastEnvelopeYieldAt >= FOLLOW_WORK_SLICE_MS
+          ) {
             await yieldEventLoop();
+            lastEnvelopeYieldAt = performance.now();
           }
         }
       }
@@ -717,6 +727,7 @@ export class AttachedSessionFollowService {
       read.events.map((event) => event.eventId),
     );
     let imported = 0;
+    let lastAppendYieldAt = performance.now();
     for (const event of read.events) {
       if (
         event.threadId !== descriptor.threadId ||
@@ -736,8 +747,12 @@ export class AttachedSessionFollowService {
       imported += 1;
       // Keep identity/readiness probes responsive during Claude transcript
       // backfill (dogfood hang: 20k+ sync INSERT OR IGNORE starved the loop).
-      if (imported % APPEND_YIELD_EVERY === 0) {
+      if (
+        imported % APPEND_YIELD_EVERY === 0 ||
+        performance.now() - lastAppendYieldAt >= FOLLOW_WORK_SLICE_MS
+      ) {
         await yieldEventLoop();
+        lastAppendYieldAt = performance.now();
       }
     }
     this.persistAttachedSession(source, descriptor, snapshot, read.cursor);
@@ -1546,6 +1561,7 @@ function persistedEnvelopeFacts(
  */
 const ATTRIBUTION_LOOKBACK_EVENTS = 64;
 
+const FOLLOW_WORK_SLICE_MS = 16;
 const APPEND_YIELD_EVERY = 32;
 const FOLLOW_YIELD_EVERY = 32;
 

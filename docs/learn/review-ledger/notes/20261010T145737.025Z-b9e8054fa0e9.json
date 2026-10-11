@@ -1,0 +1,7 @@
+{
+  "revision": "3885ca8e2b583cd1978198469e93017b24bd036f",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed the inherited nightly-npm ledger append at base 8b594ee4: the generated Markdown is byte-identical to renderLedgerMarkdown of the 202 JSON entries, including the new recorded package version/source and unknown artifactBuiltAt caveat. This confirms projection fidelity only; no live publication or release qualification verified.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

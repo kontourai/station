@@ -465,22 +465,25 @@ export function instructionGateErrors({
   for (const file of instructionLike)
     if (!REQUIRED_INSTRUCTION_FILES.includes(file))
       errors.push(`unsupported instruction file: ${file}`);
-  for (const marker of MARKERS)
-    for (const file of [
-      ...new Set([
-        ...tracked.filter((path) => path.endsWith('.md')),
-        ...instructionLike,
-      ]),
-    ]) {
-      if (file === GENERATED_BLOCK_OWNERS[marker.name]) continue;
-      try {
-        const text = safeRead(root, file, readFile, stat, realpath);
-        if (text.includes(marker.start) || text.includes(marker.end))
-          errors.push(`${file} must not copy generated ${marker.name} policy`);
-      } catch {
-        /* tracked unreadable docs fail their own documentation gates */
-      }
+  for (const file of [
+    ...new Set([
+      ...tracked.filter((path) => path.endsWith('.md')),
+      ...instructionLike,
+    ]),
+  ]) {
+    let text;
+    try {
+      text = safeRead(root, file, readFile, stat, realpath);
+    } catch {
+      /* tracked unreadable docs fail their own documentation gates */
+      continue;
     }
+    for (const marker of MARKERS) {
+      if (file === GENERATED_BLOCK_OWNERS[marker.name]) continue;
+      if (text.includes(marker.start) || text.includes(marker.end))
+        errors.push(`${file} must not copy generated ${marker.name} policy`);
+    }
+  }
   encoder.free?.();
   return errors;
 }

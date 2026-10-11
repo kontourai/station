@@ -132,8 +132,8 @@ describe('framework-model-factory — Bedrock auth threading across execution pa
   });
 
   describe('createStrandsManagedModel (Strands BedrockModel path)', () => {
-    test('chain mode (default) constructs BedrockModel with no credential override', () => {
-      createStrandsManagedModel(bedrockOptions({ region: 'us-east-1' }));
+    test('chain mode (default) constructs BedrockModel with no credential override', async () => {
+      await createStrandsManagedModel(bedrockOptions({ region: 'us-east-1' }));
 
       expect(bedrockModelCtor).toHaveBeenCalledWith(
         expect.objectContaining({ modelId: 'anthropic.claude-3' }),
@@ -143,8 +143,8 @@ describe('framework-model-factory — Bedrock auth threading across execution pa
       expect(options).not.toHaveProperty('clientConfig');
     });
 
-    test('profile mode threads clientConfig.credentials into the real BedrockModel constructor', () => {
-      createStrandsManagedModel(
+    test('profile mode threads clientConfig.credentials into the real BedrockModel constructor', async () => {
+      await createStrandsManagedModel(
         bedrockOptions({
           region: 'us-east-1',
           authMode: 'profile',
@@ -159,8 +159,8 @@ describe('framework-model-factory — Bedrock auth threading across execution pa
       );
     });
 
-    test('api-key mode threads the bearer apiKey into the real BedrockModel constructor', () => {
-      createStrandsManagedModel(
+    test('api-key mode threads the bearer apiKey into the real BedrockModel constructor', async () => {
+      await createStrandsManagedModel(
         bedrockOptions({
           region: 'us-east-1',
           authMode: 'api-key',
@@ -173,12 +173,12 @@ describe('framework-model-factory — Bedrock auth threading across execution pa
       );
     });
 
-    test('fail-closed: a misconfigured connection throws before BedrockModel is ever constructed', () => {
-      expect(() =>
+    test('fail-closed: a misconfigured connection throws before BedrockModel is ever constructed', async () => {
+      await expect(
         createStrandsManagedModel(
           bedrockOptions({ region: 'us-east-1', authMode: 'api-key' }),
         ),
-      ).toThrow(/no API key/i);
+      ).rejects.toThrow(/no API key/i);
       expect(bedrockModelCtor).not.toHaveBeenCalled();
     });
   });

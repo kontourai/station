@@ -1,0 +1,7 @@
+{
+  "revision": "246cde8cddf8aab76cd4ad7f303a35f5493f5891",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the deferred Chat boundary correction: Suspense alone lets import and renderer failures reach WorkspacePaneFrame/WorkspacePaneHost, preserving named-conversation details, Try again, Close this chat and Minimize. Shipped RegionShells-path regression passes and fails when the generic catch-all lazy boundary is restored. Region registration, occupied collapsed mounting, center-owned exclusions and forwarding remain unchanged. Four real browser region/phone scenarios passed on the prior loading revision; final browser rerun follows this correction.","inputs":["docs/design/placement.md","src-ui/src/app-shell/RegionShells.tsx"]}
+  ]
+}

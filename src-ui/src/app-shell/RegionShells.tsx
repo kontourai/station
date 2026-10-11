@@ -2,14 +2,13 @@ import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspa
 import {
   type ComponentType,
   createContext,
+  lazy,
   type ReactNode,
+  Suspense,
   useContext,
   useEffect,
+  useMemo,
 } from 'react';
-import {
-  ChatDock,
-  renderAmbientChatPane,
-} from '../components/chat-dock/ChatDock';
 import { ambientChatPaneFailureContext } from '../components/chat-dock/chatPaneFailureContext';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { SkeletonBlock } from '../components/Skeleton';
@@ -29,6 +28,54 @@ import {
   CENTER_OWNED_SURFACES,
   useLayoutChatPlacement,
 } from './chat-placement';
+
+interface AmbientChatPaneProps {
+  instance: WorkspacePaneInstance;
+  onRequestAuth: (() => Promise<boolean> | undefined) | undefined;
+  shellChrome: DockShellChrome;
+}
+
+const loadAmbientChatPane = () =>
+  import('../components/chat-dock/ChatDock').then(
+    ({ renderAmbientChatPane }) => ({
+      default: ({
+        instance,
+        onRequestAuth,
+        shellChrome,
+      }: AmbientChatPaneProps) =>
+        renderAmbientChatPane(instance, onRequestAuth, shellChrome),
+    }),
+  );
+
+const loadLegacyChatDock = () =>
+  import('../components/chat-dock/ChatDock').then(({ ChatDock }) => ({
+    default: ChatDock,
+  }));
+
+function renderAmbientChatPane(
+  instance: WorkspacePaneInstance,
+  onRequestAuth: (() => Promise<boolean> | undefined) | undefined,
+  shellChrome: DockShellChrome,
+) {
+  return (
+    <AmbientChatPane
+      instance={instance}
+      onRequestAuth={onRequestAuth}
+      shellChrome={shellChrome}
+    />
+  );
+}
+
+function AmbientChatPane(props: AmbientChatPaneProps) {
+  const ChatPane = useMemo(() => lazy(loadAmbientChatPane), []);
+  // The pane owner's boundary retains named-conversation recovery for both
+  // renderer failures and rejected imports.
+  return (
+    <Suspense fallback={<SkeletonBlock count={1} label="Loading Chat" />}>
+      <ChatPane {...props} />
+    </Suspense>
+  );
+}
 
 const loadActivityRegionShell = () =>
   import('./ActivityRegionShell').then(({ ActivityRegionShell }) => ({
@@ -108,13 +155,17 @@ export function MainRegionSurface({
  * `import()` free. Memoizing it froze the tab on the dock's second mount
  * (kontourai/station#1301: React's `lazy` livelocks on a promise it has
  * already settled), and App.tsx's `showAmbientChatDock` remounts the host on
- * ordinary navigation. `ChatDock.tsx` pre-warms the same chunk at module
- * load, so the boundary here resolves without a visible gap.
+ * ordinary navigation. The eager region shell warms the host independently
+ * of the chat implementation so its chrome can mount first.
  */
 const loadRegionPaneHost = () =>
   import('../workspace-panes/RegionPaneHost').then((module) => ({
     default: module.RegionPaneHost,
   }));
+
+void loadRegionPaneHost().catch(() => {
+  // The mounted boundary owns import failures and retry.
+});
 
 const loadActivityDockPane = () =>
   import('./ActivityRegionShell').then(({ ActivityDockPane }) => ({
@@ -205,7 +256,14 @@ function RegionShellHosts({ centerOwnsChat }: { centerOwnsChat: boolean }) {
   useEffect(() => registerRegionSurfaceHost?.(), [registerRegionSurfaceHost]);
   // The model-less mount IS Chat's dock, so it has nothing to show while the
   // centre owns Chat.
-  if (!model) return centerOwnsChat ? null : <ChatDock />;
+  if (!model)
+    return centerOwnsChat ? null : (
+      <LazyBoundary
+        load={loadLegacyChatDock}
+        componentProps={{}}
+        pending={null}
+      />
+    );
   return (
     <>
       {DOCK_REGION_IDS.filter((id) => {

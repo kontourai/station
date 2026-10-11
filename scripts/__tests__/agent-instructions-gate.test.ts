@@ -202,6 +202,35 @@ describe('agent instruction topology', () => {
     );
   });
 
+  test('reads a tracked policy document once and observes edits on the next invocation', () => {
+    const path = resolve(root, 'docs/policy-copy.md');
+    let text = '# ordinary document\n';
+    let reads = 0;
+    const data = fixture();
+    const options = {
+      ...data,
+      trackedFiles: ['docs/policy-copy.md'],
+      instructionFiles: [...REQUIRED_INSTRUCTION_FILES],
+      readFile: (file: string) => {
+        if (file !== path) return data.readFile(file);
+        reads++;
+        return text;
+      },
+      stat: (file: string) => ({
+        isFile: () => file === path || data.stat(file).isFile(),
+      }),
+    };
+    expect(instructionGateErrors(options)).not.toContain(
+      'docs/policy-copy.md must not copy generated verification-policy policy',
+    );
+    expect(reads).toBe(1);
+    text = '<!-- station:verification-policy:start -->\n';
+    expect(instructionGateErrors(options)).toContain(
+      'docs/policy-copy.md must not copy generated verification-policy policy',
+    );
+    expect(reads).toBe(2);
+  });
+
   test('rejects undeclared instructions and generated-policy copies outside the owner', () => {
     const data = fixture();
     expect(

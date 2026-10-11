@@ -6,8 +6,8 @@ import type { LanguageModelV3 } from '@ai-sdk/provider';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { ProviderConnectionConfig } from '@kontourai/station-contracts/tool';
-import { BedrockModel } from '@strands-agents/sdk';
-import { VercelModel } from '@strands-agents/sdk/models/vercel';
+import type { BedrockModel } from '@strands-agents/sdk';
+import type { VercelModel } from '@strands-agents/sdk/models/vercel';
 import { DEFAULT_OLLAMA_BASE_URL } from '../../constants.js';
 import { createBedrockProvider } from '../../providers/llm/bedrock.js';
 import type {
@@ -260,11 +260,14 @@ export function createVoltAgentManagedModel(
   return createManagedLanguageModel(options);
 }
 
-export function createStrandsManagedModel(options: FrameworkModelOptions): any {
+export async function createStrandsManagedModel(
+  options: FrameworkModelOptions,
+): Promise<BedrockModel | VercelModel> {
   if (
     !options.providerConnection ||
     options.providerConnection.type === 'bedrock'
   ) {
+    const { BedrockModel } = await import('@strands-agents/sdk');
     return new BedrockModel({
       modelId: options.modelId,
       region: bedrockRegionFor(options),
@@ -277,6 +280,7 @@ export function createStrandsManagedModel(options: FrameworkModelOptions): any {
     });
   }
 
+  const { VercelModel } = await import('@strands-agents/sdk/models/vercel');
   return new VercelModel({
     provider: createManagedLanguageModel(options),
     maxTokens:
@@ -336,10 +340,11 @@ export function createAiSdkManagedModel(
 }
 
 /** Adapt an already-composed AI SDK model to Strands without rebuilding it. */
-export function createStrandsAiSdkModel(
+export async function createStrandsAiSdkModel(
   provider: LanguageModelV3,
   options: Pick<FrameworkModelOptions, 'spec' | 'appConfig'>,
-): VercelModel {
+): Promise<VercelModel> {
+  const { VercelModel } = await import('@strands-agents/sdk/models/vercel');
   return new VercelModel({
     provider,
     maxTokens:
