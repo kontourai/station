@@ -9717,14 +9717,10 @@ export class OrchestrationService {
         if (!this.quarantinedThreads.has(normalized.threadId)) {
           this.sessionAdapters.set(normalized.threadId, adapter);
         }
-        // `projectAndPublishEvent`, split so that a transient store failure
-        // retries only the publish half, holding this event until it is
-        // appended before the next one is consumed (#3560).
-        const admitted = this.admitEventForPublication(normalized);
-        if (
-          admitted &&
-          !(await this.publishObservedEvent(admitted, adapter, controller))
-        )
+        // `projectAndPublishEvent` with a bounded retry of its publish half,
+        // holding this event until it is appended before the next one is
+        // consumed (#3560).
+        if (!(await this.publishObservedEvent(normalized, adapter, controller)))
           continue;
         this.cooperativeStop.applyPendingTurnInterrupt(adapter, normalized);
         if (normalized.method === 'session.exited') {
@@ -9839,8 +9835,9 @@ export class OrchestrationService {
   }
 
   /**
-   * #3560: publish one observed event, retrying the SAME event (same
-   * `eventId`) while the failure is store contention. The adapter queue has
+   * #3560: `projectAndPublishEvent` for one observed event, retrying the SAME
+   * event (same `eventId`) while the failure is store contention. Admission
+   * runs once, and only the publish half is retried. The adapter queue has
    * already handed the event over, so giving up here is what loses it: a
    * dropped `turn.completed` folds the thread as running and boot recovery
    * banners a turn that completed.
@@ -9862,21 +9859,23 @@ export class OrchestrationService {
     adapter: ProviderAdapterShape,
     controller: AbortController,
   ): Promise<boolean> {
+    const admitted = this.admitEventForPublication(event);
+    if (!admitted) return true;
     for (const delayMs of [...OBSERVED_EVENT_RETRY_DELAYS_MS, undefined]) {
       try {
-        return this.offerOrPublishEvent(event);
+        return this.offerOrPublishEvent(admitted);
       } catch (error) {
         if (
           delayMs === undefined ||
-          !this.isRetryablePublishFailure(event, error)
+          !this.isRetryablePublishFailure(admitted, error)
         )
           throw error;
         this.options.logger.debug(
           'Retrying an observed event after event store contention',
           {
             provider: adapter.provider,
-            threadId: event.threadId,
-            method: event.method,
+            threadId: admitted.threadId,
+            method: admitted.method,
             error: errorMessage(error),
           },
         );
