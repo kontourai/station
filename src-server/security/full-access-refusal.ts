@@ -42,6 +42,12 @@ export interface FullAccessRefusalIdentitySource {
    * be an older CLI without the command.
    */
   hostCli?(): string | undefined;
+  /**
+   * #3557: set when the device is tied to a person whose Station group does
+   * not allow full access, so granting the device alone cannot help.
+   * `hasGrant` says whether the device's own grant already carries it.
+   */
+  groupLimit?(deviceId: string): { hasGrant: boolean } | undefined;
 }
 
 const identitySources = new WeakMap<Request, FullAccessRefusalIdentitySource>();
@@ -77,6 +83,26 @@ const FULL_ACCESS_GRANT_UI_STEPS: readonly string[] = [
   'Select the device by its name, then Change access.',
   'Turn on Skip approval prompts, then Apply.',
 ];
+
+/**
+ * #3557: the path when the person's group stops full access. Their group
+ * must allow it first; the device's own grant still has to carry it.
+ */
+const GROUP_GRANT_UI_STEPS: readonly string[] = [
+  'Open Settings, then Devices, then People.',
+  'Find the person this device is tied to and set their group to Admin.',
+];
+
+function groupLimitOf(
+  request: Request,
+  deviceId: string,
+): { hasGrant: boolean } | undefined {
+  try {
+    return identitySources.get(request)?.groupLimit?.(deviceId);
+  } catch {
+    return undefined;
+  }
+}
 
 /** The operator command, run on the Station's own host. */
 function fullAccessGrantCommand(deviceId: string, cli: string): string {
@@ -135,6 +161,13 @@ function detailsFor(
     requester.kind === 'device'
       ? getRuntimeAuthenticatedRequestPrincipal(request)?.deviceId
       : undefined;
+  const limit = fullDeviceId ? groupLimitOf(request, fullDeviceId) : undefined;
+  const uiSteps = limit
+    ? limit.hasGrant
+      ? GROUP_GRANT_UI_STEPS
+      : [...GROUP_GRANT_UI_STEPS, ...FULL_ACCESS_GRANT_UI_STEPS]
+    : FULL_ACCESS_GRANT_UI_STEPS;
+  const needsDeviceGrant = !limit || !limit.hasGrant;
   return {
     requested: 'never',
     requester,
@@ -145,8 +178,8 @@ function detailsFor(
         : {
             by: 'operator',
             scope: 'approval:full-access',
-            uiSteps: FULL_ACCESS_GRANT_UI_STEPS,
-            ...(fullDeviceId
+            uiSteps,
+            ...(fullDeviceId && needsDeviceGrant
               ? {
                   cli: fullAccessGrantCommand(
                     fullDeviceId,
@@ -158,7 +191,10 @@ function detailsFor(
   };
 }
 
-function messageFor(details: ApprovalFullAccessRefusalDetails): string {
+function messageFor(
+  details: ApprovalFullAccessRefusalDetails,
+  groupLimited: boolean,
+): string {
   const { requester, grant } = details;
   if (requester.kind === 'agent' || !grant)
     return 'Full access was not applied. An agent can never put itself, or any session, at full access. A person must choose it in Station, from a device the operator has allowed full access.';
@@ -166,6 +202,11 @@ function messageFor(details: ApprovalFullAccessRefusalDetails): string {
     requester.kind === 'device'
       ? `this device (id ${requester.deviceId})`
       : 'the device you are using';
+  if (groupLimited)
+    return (
+      `Full access was not applied. ${who.charAt(0).toUpperCase()}${who.slice(1)} belongs to a person in the Member group, which does not allow full access. The operator can make them Admin under Settings, Devices, People` +
+      (grant.cli ? `, then on the Station's host run: ${grant.cli}` : '.')
+    );
   return (
     `Full access was not applied. Only this Station's operator can allow full access, for ${who}.` +
     (grant.cli
@@ -181,11 +222,19 @@ export function fullAccessRefusalBody(request: Request): {
   error: string;
   details: ApprovalFullAccessRefusalDetails;
 } {
-  const details = detailsFor(request, requesterOf(request));
+  const requester = requesterOf(request);
+  const details = detailsFor(request, requester);
+  const deviceId =
+    requester.kind === 'device'
+      ? getRuntimeAuthenticatedRequestPrincipal(request)?.deviceId
+      : undefined;
   return {
     success: false,
     code: APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
-    error: messageFor(details),
+    error: messageFor(
+      details,
+      deviceId !== undefined && groupLimitOf(request, deviceId) !== undefined,
+    ),
     details,
   };
 }

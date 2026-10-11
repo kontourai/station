@@ -98,9 +98,11 @@ use `coding:exec`, `approval:full-access`, `access:approve` and
 back to Admin restores it. Moving a person to Member re-authenticates their
 devices' live terminal and voice connections and takes back any full access
 they had given, as removing the scope does. The operator changes a group
-with `PUT /api/pairing/people/:principalId/group`; there is no CLI command or
-desktop control for it yet, and a full-access refusal's command (`--add
-approval:full-access`) does not lift a Member cap.
+on the People page (Settings, then Devices) or with
+`PUT /api/pairing/people/:principalId/group`; there is no CLI command for it
+yet. When a Member's device asks for full access, the refusal says the group
+is what stops it and points the operator at People, adding the device's own
+`--add approval:full-access` command only if its grant lacks it too.
 
 **Full access** (`approval:full-access`) is the scope that lets a device put a
 chat, or an Agent's default, at approval mode `never`: the agent runs with no
