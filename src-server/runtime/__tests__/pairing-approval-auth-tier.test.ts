@@ -1299,7 +1299,10 @@ describe('#3557 personal access tokens at the HTTP boundary', () => {
     const casey = await pairPerson(harness, 'casey', STANDARD);
     const minted = await harness.request(
       '/api/access/tokens',
-      bearer(casey.credential, { name: 'CI', scope: 'orchestration:read' }),
+      bearer(casey.credential, {
+        name: 'CI',
+        scope: 'orchestration:read orchestration:operate',
+      }),
     );
     expect(minted.status).toBe(201);
     const { secret, token } = (await minted.json()) as {
