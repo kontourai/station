@@ -95,7 +95,7 @@ function committedReceipt(
   };
 }
 async function acceptProductBatch(
-  _input: RequestInfo | URL,
+  _input: Parameters<typeof globalThis.fetch>[0],
   init?: RequestInit,
 ) {
   const batch = JSON.parse(String(init?.body)) as ProductTelemetryBatch;

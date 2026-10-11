@@ -5062,7 +5062,7 @@ export class EventStore {
           options.tenantId ?? null,
           options.tenantId ?? null,
           options.limit + 1,
-        );
+        ) as Array<Record<string, unknown>>;
       const selected = rows.slice(0, options.limit);
       const cumulativeThreads = selected
         .filter(

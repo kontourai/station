@@ -581,8 +581,8 @@ describe('persisted telemetry configuration during Agent activation', () => {
         expect(pendingSignal?.aborted).toBe(false);
         expect((await live.deliveryStatus()).queued).toBe(1);
         let saveSettled = false;
-        saving = app
-          .request(
+        saving = Promise.resolve(
+          app.request(
             '/config/app',
             {
               method: 'PUT',
@@ -590,11 +590,11 @@ describe('persisted telemetry configuration during Agent activation', () => {
               body: JSON.stringify({ ...writableConfig(initial), ...update }),
             },
             loopbackEnv(),
-          )
-          .then((response) => {
-            saveSettled = true;
-            return response;
-          });
+          ),
+        ).then((response) => {
+          saveSettled = true;
+          return response;
+        });
         await vi.waitFor(() =>
           expect(runtime.reloadAgentsFromDisk).toHaveBeenCalledTimes(1),
         );
@@ -951,18 +951,21 @@ describe('product telemetry constructed after a persisted startup edit', () => {
         initializing = runtime.initializeUsageTelemetry();
         await vi.waitFor(() => expect(disclosureLoading).toBe(true));
       }
-      saving = app.request(
-        '/config/app',
-        {
-          method: 'PUT',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            ...writableConfig(initial),
-            ...scenario.update,
-          }),
-        },
-        loopbackEnv(),
+      const saveResponse = Promise.resolve(
+        app.request(
+          '/config/app',
+          {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              ...writableConfig(initial),
+              ...scenario.update,
+            }),
+          },
+          loopbackEnv(),
+        ),
       );
+      saving = saveResponse;
       await vi.waitFor(() =>
         expect(runtime.reloadAgentsFromDisk).toHaveBeenCalledTimes(1),
       );
@@ -986,7 +989,7 @@ describe('product telemetry constructed after a persisted startup edit', () => {
         expect(runtime.usageTelemetry).toBeUndefined();
         expect(fetch).not.toHaveBeenCalled();
         releaseActivation();
-        expect((await saving).status).toBe(202);
+        expect((await saveResponse).status).toBe(202);
         return;
       }
       await initializing;
@@ -1016,7 +1019,7 @@ describe('product telemetry constructed after a persisted startup edit', () => {
       }
       expect(runtime.appConfig).toBe(initial);
       releaseActivation();
-      expect((await saving).status).toBe(202);
+      expect((await saveResponse).status).toBe(202);
     } finally {
       runtime.agentConfigurationMutationsClosed = true;
       releaseActivation();

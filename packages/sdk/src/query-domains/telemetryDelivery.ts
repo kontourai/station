@@ -130,12 +130,14 @@ const delivery = z.object({
     ),
 });
 
-const queryKey = (apiBase: string, options?: ClientRequestOptions) =>
-  [
-    'telemetry-delivery',
-    options?.requestScope?.apiBase ?? apiBase,
-    options?.requestScope?.authorityKey ?? 'default',
-  ] as const;
+const queryKey = (
+  apiBase: string,
+  options?: ClientRequestOptions,
+): string[] => [
+  'telemetry-delivery',
+  options?.requestScope?.apiBase ?? apiBase,
+  options?.requestScope?.authorityKey ?? 'default',
+];
 
 async function responseData(response: Response): Promise<unknown> {
   const body: unknown = await response.json().catch(unlessDeadline(() => null));
@@ -204,7 +206,7 @@ export function useTelemetryDeliveryStatusQuery(
     requestScope?: ClientRequestOptions['requestScope'];
   },
 ) {
-  return useApiQuery(
+  return useApiQuery<TelemetryDeliveryStatus>(
     queryKey(apiBase, config),
     (signal) =>
       fetchTelemetryDeliveryStatus(apiBase, {

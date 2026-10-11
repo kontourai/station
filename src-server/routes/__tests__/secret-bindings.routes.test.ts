@@ -1,7 +1,9 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { SecretBindingView } from '@kontourai/station-contracts/secret-binding';
 import { expect, test } from 'vitest';
 import { withOperatorPrincipal } from '../../__test-utils__/operator-principal.js';
+import { readJson } from '../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   FileSecretBindingAdministration,
@@ -56,7 +58,9 @@ test('telemetry bind/unbind persists only exact instance destination authority t
     expectedRevision: 1,
   });
   expect(accepted.status).toBe(200);
-  const view = await accepted.json();
+  const view = await readJson<{ success: boolean; data: SecretBindingView }>(
+    accepted,
+  );
   expect(view.data.telemetryDestinationGrants).toEqual([grant]);
   expect(view.data.grants).toEqual([]);
   expect(JSON.stringify(view)).not.toContain('private-product-material');
