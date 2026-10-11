@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { connect, createServer as createTcpServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -154,6 +154,8 @@ async function qualifyEntrypoint(
     await writeFile(operatorFile, operatorKey, { mode: 0o400 });
     await writeFile(databaseFile, databaseUrl, { mode: 0o400 });
     await writeFile(publicFile, databaseUrl, { mode: 0o644 });
+    await chmod(publicFile, 0o644);
+    assert.equal((await stat(publicFile)).mode & 0o077, 0o044);
     await writeFile(oversizedFile, 'x'.repeat(4097), { mode: 0o400 });
     await writeFile(malformedFile, privateSentinel, { mode: 0o400 });
     await symlink(databaseFile, symlinkFile);
