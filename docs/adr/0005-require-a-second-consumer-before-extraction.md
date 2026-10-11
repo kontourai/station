@@ -71,9 +71,10 @@ The same decision names a probe,
 [#3574](https://github.com/kontourai/station/issues/3574), that expresses the
 `@kontourai/flow-agents` continuation driver against the kernel API without
 importing Station. The maintainer set that probe as the qualification rule for
-this one case: if it passes, the kernel qualifies for Tier 2. A probe written
-by Station is not itself a consumer, and it does not change the general rule
-above. The additional Tier 2 criteria in [CONTEXT.md](../../CONTEXT.md#codebase-design-and-verification)
+this one case: if it passes, the kernel qualifies for Tier 2. A passing probe
+stands in place of the second-consumer requirement, for this case only. A
+probe written by Station is not itself a consumer, and it does not change the
+general rule above. The additional Tier 2 criteria in [CONTEXT.md](../../CONTEXT.md#codebase-design-and-verification)
 still apply: a public contract, verification the new product owns, and a
 measurable reduction in Station-owned code.
 
