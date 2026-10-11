@@ -8,4 +8,3 @@ Add current-process product and OTel delivery status contracts, validated SDK qu
 Add revision-bound SDK management of explicit instance SecretBinding grants for one product or OTel destination. These grants confer no MCP, ACP, person, Project or execution authority. Older strict binding readers reject the new stored grant property; rollback requires a compatible backup and must not delete grants to make old code accept the document.
 
 Saved product changes fence queued observations and attempts immediately after persistence, independently of Agent activation. Late startup uses a validated current configuration snapshot before restoring disclosure. Saved collector changes fence the old exporter and require a Station restart to activate the replacement.
-
