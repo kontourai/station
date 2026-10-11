@@ -1554,6 +1554,16 @@ settlement; a revoked grant cannot report an accepted export. Saved collector
 changes require restart and fence the old owner immediately. Standard
 environment-header inheritance is refused for saved destinations/references.
 
+The mounted config writer applies the validated persisted telemetry settings
+before unrelated Agent activation. External/default-Agent reconciliation also
+applies them after its validated read, without publishing an Agent generation
+early. Since HTTP starts before the product service is constructed, late
+construction captures a current ConfigLoader snapshot, checks its revision and
+assigns the service before awaiting disclosure restoration. Three superseded
+captures reject before sender construction. These source boundaries need
+executed interleaving controls; they do not establish generic embedded-runtime
+service cleanup after a late startup failure.
+
 The v1 document retains legacy records unchanged and adds optional
 `telemetryDestinationGrants` only when a telemetry grant is written. Older
 strict readers reject that new property; an upgrade/rollback must preserve and
