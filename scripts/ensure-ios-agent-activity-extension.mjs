@@ -114,7 +114,7 @@ function notificationServiceExtensionTarget(appBundleId) {
   return {
     type: 'app-extension',
     platform: 'iOS',
-    deploymentTarget: '14.0',
+    deploymentTarget: '16.4',
     sources: [
       {
         path: '../../ios/StationNotificationService',

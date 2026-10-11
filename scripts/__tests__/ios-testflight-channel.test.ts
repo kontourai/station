@@ -6,6 +6,14 @@ import {
   IOS_TESTFLIGHT_CHANNELS,
 } from '../ios-testflight-channel.mjs';
 
+/** The app's declared iOS floor, read from the file that sets it. */
+const IOS_APP_MINIMUM = JSON.parse(
+  readFileSync(
+    resolve(import.meta.dirname, '../../src-desktop/tauri.ios.conf.json'),
+    'utf8',
+  ),
+).bundle.iOS.minimumSystemVersion;
+
 describe('iOS TestFlight channel config', () => {
   test('binds TestFlight package, receipt, and What-to-Test to one artifact timestamp', () => {
     const workflow = readFileSync(
@@ -64,11 +72,13 @@ describe('iOS TestFlight channel config', () => {
         productName: expected.productName,
         version: '0.1.4',
         bundle: {
-          iOS: { minimumSystemVersion: '15.0', bundleVersion: '243201' },
+          iOS: { minimumSystemVersion: '16.4', bundleVersion: '243201' },
           icon: [expected.icon],
         },
         plugins: { 'deep-link': { mobile: [{ scheme: [expected.scheme] }] } },
       });
+      // A delivery build never declares less than the app's own floor.
+      expect(config.bundle.iOS.minimumSystemVersion).toBe(IOS_APP_MINIMUM);
       expect(expected.appStoreName).toBe(
         `Station${channel === 'stable' ? '' : ` ${channel[0].toUpperCase()}${channel.slice(1)}`} by Kontour AI`,
       );

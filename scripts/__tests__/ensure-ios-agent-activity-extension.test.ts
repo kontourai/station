@@ -41,6 +41,11 @@ targets:
 
 const makeTempDir = trackTempDirs();
 
+/** The app's declared iOS floor, read from the file that sets it. */
+const IOS_APP_MINIMUM = JSON.parse(
+  readFileSync('src-desktop/tauri.ios.conf.json', 'utf8'),
+).bundle.iOS.minimumSystemVersion;
+
 const committedSpec = 'src-desktop/gen/apple/project.yml';
 const committedXcodeProject =
   'src-desktop/gen/apple/station.xcodeproj/project.pbxproj';
@@ -336,7 +341,8 @@ describe('iOS agent-activity extension project spec', () => {
     expect(extension.type).toBe('app-extension');
     expect(extension.platform).toBe('iOS');
     // Where the app deploys, so an alert opens on every iOS the app runs on.
-    expect(extension.deploymentTarget).toBe('14.0');
+    expect(extension.deploymentTarget).toBe('16.4');
+    expect(extension.deploymentTarget).toBe(IOS_APP_MINIMUM);
     expect(extension.settings.base.STATION_APP_BUNDLE_IDENTIFIER).toBe(
       'io.kontourai.station.beta',
     );
