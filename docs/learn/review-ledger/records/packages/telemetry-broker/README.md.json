@@ -36,7 +36,9 @@
 
     "packages/telemetry-broker/src/index.ts",
 
-    "src-server/domain/telemetry-configuration.ts"
+    "src-server/domain/telemetry-configuration.ts",
+
+    "packages/telemetry-broker/artifact-manifest.mjs"
   ],
 
   "checks": [

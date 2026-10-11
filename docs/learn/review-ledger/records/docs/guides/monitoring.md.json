@@ -124,7 +124,9 @@
 
     "src-server/telemetry-delivery-state.ts",
 
-    "src-ui/src/views/settings/TelemetryDelivery.tsx"
+    "src-ui/src/views/settings/TelemetryDelivery.tsx",
+
+    "packages/telemetry-broker/artifact-manifest.mjs"
   ],
 
   "checks": [
