@@ -270,8 +270,8 @@ test('a waiting page caller cannot receive a replacement selection while both va
     expect(view.result.current.moving.data?.window.from).toBe('2026-10-01');
     held = true;
     const waiting = view.result.current.moving.refetch();
-    const refused = expect(waiting).rejects.toBeInstanceOf(
-      StationRequestAuthorityError,
+    const refused = expect(waiting).rejects.toThrow(
+      'Usage export selection changed while waiting',
     );
     await settle();
     input = { ...input, from: '2026-10-02' };
