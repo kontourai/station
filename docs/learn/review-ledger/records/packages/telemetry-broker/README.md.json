@@ -22,8 +22,6 @@
 
     "packages/telemetry-broker/src/__tests__/broker.test.ts",
 
-    "scripts/qualify-telemetry-broker.mjs",
-
     "packages/contracts/src/product-telemetry.ts",
 
     "packages/shared/src/product-telemetry.ts",
@@ -32,7 +30,11 @@
 
     "package.json#/scripts/build:telemetry-broker",
 
-    "package.json#/scripts/qualify:telemetry-broker"
+    "package.json#/scripts/qualify:telemetry-broker",
+
+    "packages/telemetry-broker/qualify.mjs",
+
+    "packages/telemetry-broker/src/index.ts"
   ],
 
   "checks": [
