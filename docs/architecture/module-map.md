@@ -905,14 +905,19 @@ recovery once, but never restarts or signals the sidecar. An overdue epoch
 still admits the exact late ticket, identity proof and mount, which reveal the
 window without user action. The renderer's
 [bundled-profile bootstrap](../../src-ui/src/platform/native/bundledLocalProfileBootstrap.ts)
-likewise has no wall-clock limit while the owned sidecar is `starting` or
-`restarting` (the supervisor's attempt cap ends that in `failed`), so a fresh
-home still gets the profile its identity proof requires after a long boot. A
-`failed`, `stopping` or `stopped` sidecar releases the loader at once so the
-shell can render its recovery UI (behind the native cover until readiness
-admits the window); when an explicit Restart later brings that sidecar to
-`running`, the page reloads once so first paint re-runs the bootstrap with its
-normal error surface. On macOS the cover switches
+likewise has no wall-clock limit while the owned sidecar is `starting`,
+`restarting` (the supervisor's attempt cap ends that in `failed`) or
+`stopping` (set only by a manual restart, which always respawns), so a fresh
+home still gets the profile its identity proof requires after a long boot. For
+a `failed` or `stopped` sidecar it asks the host whether its WebView is
+already shown (`startup_window_admitted`: a non-main window, or the main window
+once readiness is Ready or bypassed). A covered main window keeps waiting in
+place, behind a cover that offers Restart/Quit after the deadline, and an
+explicit Restart lets the same bootstrap author and authorize on its normal
+path; a shown window releases the loader at once to the in-app recovery UI and
+stops polling. Identity commit plus renderer mount can reveal the window
+before the bootstrap finishes authorizing (the mount commit sits outside
+`PlatformBootstrap`), exactly as before this change. On macOS the cover switches
 in place to a "taking longer than usual" message with **Restart** (the default
 button) and **Quit**; a background (tray-only) launch defers it until
 activation. Hosts without a cover (Windows, Linux, a macOS cover dispatcher
