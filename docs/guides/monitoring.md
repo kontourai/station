@@ -41,9 +41,7 @@ remain untouched. This repairs
 deployed collector, storage backend or dashboard. The tables below remain
 declarations and recording call sites, not proof of those destinations.
 
-## Developer diagnostics
-
-### Canonical usage export source
+## Canonical usage export source
 
 The authored `GET /api/analytics/usage-export` path selects retained canonical
 usage observations in committed global order. It reuses the EventStore receipt
@@ -73,6 +71,8 @@ refuses cumulative-cost projection when selected threads exceed a combined
 1,000-event sequence budget, before hydrating their history; its evidence read
 also has a row bound. It reports unavailable rather than truncate cost segments.
 Durable cost-segment indexing and measured larger-history budgets remain open.
+
+## Developer diagnostics
 
 Developer → Monitoring provides five views over existing Station measurements:
 
