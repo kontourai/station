@@ -1120,6 +1120,28 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
     }
   }
 
+  async isStartupWindowAdmitted(): Promise<NativeCommandResult<boolean>> {
+    try {
+      const admitted = await this.bridge.invoke<unknown>(
+        'startup_window_admitted',
+      );
+      if (typeof admitted !== 'boolean') {
+        return {
+          status: 'error',
+          command: 'startup-window-admitted',
+          message: 'The native host returned an invalid window admission.',
+        };
+      }
+      return { status: 'ok', value: admitted };
+    } catch (error) {
+      return {
+        status: 'error',
+        command: 'startup-window-admitted',
+        message: errorMessage(error),
+      };
+    }
+  }
+
   async commitRendererMount(): Promise<NativeCommandResult<void>> {
     try {
       await this.bridge.invoke<unknown>('commit_renderer_mount');
