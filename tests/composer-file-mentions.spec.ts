@@ -154,3 +154,24 @@ test('the mention picker opens above a phone composer without being clipped', as
     expect(reachable).toBe(true);
   }
 });
+
+test('pressing inside the mention list keeps it open, and refocusing reopens it after blur', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mount(page);
+  const composer = page.getByRole('textbox');
+  const list = page.getByRole('listbox', { name: 'Files and folders' });
+  await composer.click();
+  await composer.pressSequentially('Review @src');
+  await expect(list).toBeVisible();
+  // The list's own padding, not an option: focus must stay in the composer.
+  const box = await list.boundingBox();
+  await page.mouse.click(box!.x + 3, box!.y + 3);
+  await expect(composer).toBeFocused();
+  await expect(list).toBeVisible();
+  await page.getByRole('button', { name: 'First chat' }).focus();
+  await expect(list).toHaveCount(0);
+  await composer.focus();
+  await expect(list).toBeVisible();
+});

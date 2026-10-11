@@ -2424,7 +2424,9 @@
   background: var(--k-action);
   color: var(--k-action-contrast);
 }
-.chat-input .chat-input__send-mode:hover,
+/* :not(:disabled) lifts this past the shared `.chat-input button` hover dim
+   (index.css), which would otherwise leave this half at 0.8 opacity. */
+.chat-input .chat-input__send-mode:hover:not(:disabled),
 .chat-input .chat-input__send-mode[aria-expanded="true"] {
   opacity: 1;
   filter: brightness(1.08);

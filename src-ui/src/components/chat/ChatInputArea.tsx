@@ -642,6 +642,12 @@ export function ChatInputArea({
   const mentionAutocompleteAvailable = Boolean(
     mentionLocation && mentionRequestScope,
   );
+  const syncMentionQuery = (value: string, cursor: number) => {
+    const trigger = mentionAutocompleteAvailable
+      ? mentionQueryAt(value, cursor)
+      : null;
+    setMentionQuery(trigger ? { ...trigger, end: cursor } : null);
+  };
   const mentionAutocompleteOpen = Boolean(
     mentionQuery && mentionAutocompleteAvailable,
   );
@@ -1170,9 +1176,15 @@ export function ChatInputArea({
             value={displayInput}
             disabled={disabled && !allowDraftWhileDisabled}
             tabIndex={0}
-            onFocus={() => {
+            onFocus={(e) => {
               setShortcutContext('composerFocused', true);
               updateFromInput(input);
+              // Blur closes the file picker; refocusing inside an `@` query
+              // brings it back, as it does for the other pickers.
+              syncMentionQuery(
+                input,
+                e.target.selectionStart ?? e.target.value.length,
+              );
             }}
             onBlur={() => {
               setShortcutContext('composerFocused', false);
@@ -1185,12 +1197,10 @@ export function ChatInputArea({
               const next = reconcileComposerDisplay(input, e.target.value);
               onInputChange(next);
               updateFromInput(next);
-              const cursor = e.target.selectionStart ?? e.target.value.length;
-              const trigger =
-                mentionLocation && mentionRequestScope
-                  ? mentionQueryAt(next, cursor)
-                  : null;
-              setMentionQuery(trigger ? { ...trigger, end: cursor } : null);
+              syncMentionQuery(
+                next,
+                e.target.selectionStart ?? e.target.value.length,
+              );
             }}
             onPaste={(event) => {
               const files = filesFromDataTransfer(event.clipboardData);

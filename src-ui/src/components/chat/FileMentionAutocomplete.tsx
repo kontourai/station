@@ -127,6 +127,9 @@ export function FileMentionAutocomplete({
       role="listbox"
       aria-label="Files and folders"
       style={popupStyle}
+      // Pressing anywhere in the list (padding, a status row, the scrollbar)
+      // must not move focus out of the composer, which closes the list.
+      onPointerDown={(event) => event.preventDefault()}
     >
       {isLoading || querySettling ? (
         <div className="file-mention-picker__status">Finding files…</div>
