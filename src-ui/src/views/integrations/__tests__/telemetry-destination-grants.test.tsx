@@ -1,6 +1,10 @@
 /** @vitest-environment jsdom */
 import type { SecretBindingView } from '@kontourai/station-contracts/secret-binding';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
+import {
+  observeClientProtocolSupport,
+  resetClientProtocolObservations,
+} from '@kontourai/station-shared/client-protocol';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -26,6 +30,7 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
 }));
 const clients: QueryClient[] = [];
 beforeEach(() => {
+  resetClientProtocolObservations();
   host.available = true;
   host.authorityKey = 'operator-one';
   setClientCredentialResolver(() => {
@@ -44,6 +49,7 @@ afterEach(() => {
   cleanup();
   for (const client of clients.splice(0)) client.clear();
   setClientCredentialResolver(undefined);
+  resetClientProtocolObservations();
   vi.unstubAllGlobals();
 });
 function binding(): SecretBindingView {
@@ -78,59 +84,77 @@ const envelope = (data: unknown) =>
     headers: { 'content-type': 'application/json' },
   });
 
-test('grants and removes exact collector authority through the real SDK using current revisions', async () => {
-  const initial = binding();
-  const grant = {
-    kind: 'instance-telemetry-destination' as const,
-    transport: 'otel' as const,
-    destination: 'https://collector.example.test',
-  };
-  const granted = {
-    ...initial,
-    revision: 5,
-    telemetryDestinationGrants: [grant],
-  };
-  const removed = { ...initial, revision: 6 };
-  const fetch = vi
-    .fn()
-    .mockResolvedValueOnce(envelope([initial]))
-    .mockResolvedValueOnce(envelope(granted))
-    .mockResolvedValueOnce(envelope([granted]))
-    .mockResolvedValueOnce(envelope(removed))
-    .mockResolvedValueOnce(envelope([removed]));
-  vi.stubGlobal('fetch', fetch);
-  mount();
-  await screen.findByRole('option', { name: 'Collector key (collector-key)' });
-  fireEvent.change(screen.getByLabelText('Key reference'), {
-    target: { value: 'collector-key' },
-  });
-  fireEvent.change(screen.getByLabelText('Destination type'), {
-    target: { value: 'otel' },
-  });
-  fireEvent.change(screen.getByLabelText('Exact destination address'), {
-    target: { value: grant.destination },
-  });
-  fireEvent.click(screen.getByRole('button', { name: 'Grant destination' }));
-  await screen.findByText('Telemetry destination granted.');
-  expect(fetch.mock.calls[1][0]).toBe(
-    'https://station.example.test/api/secret-bindings/collector-key/bind',
-  );
-  expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({
-    ...grant,
-    expectedRevision: 4,
-  });
-  expect(fetch.mock.calls[1][1].headers['X-Station-Client-Protocol']).toBe('2');
-  fireEvent.click(screen.getByRole('button', { name: 'Remove grant' }));
-  await screen.findByText('Telemetry destination grant removed.');
-  expect(fetch.mock.calls[3][0]).toBe(
-    'https://station.example.test/api/secret-bindings/collector-key/unbind',
-  );
-  expect(JSON.parse(fetch.mock.calls[3][1].body)).toEqual({
-    ...grant,
-    expectedRevision: 5,
-  });
-  expect(screen.queryByRole('button', { name: 'Remove grant' })).toBeNull();
-});
+test.each([false, true])(
+  'grants and removes exact collector authority through the real SDK using current revisions (header advertised: %s)',
+  async (advertised) => {
+    if (advertised)
+      observeClientProtocolSupport(host.apiBase, {
+        capabilities: { clientProtocolHeader: 1 },
+      });
+    const initial = binding();
+    const grant = {
+      kind: 'instance-telemetry-destination' as const,
+      transport: 'otel' as const,
+      destination: 'https://collector.example.test',
+    };
+    const granted = {
+      ...initial,
+      revision: 5,
+      telemetryDestinationGrants: [grant],
+    };
+    const removed = { ...initial, revision: 6 };
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(envelope([initial]))
+      .mockResolvedValueOnce(envelope(granted))
+      .mockResolvedValueOnce(envelope([granted]))
+      .mockResolvedValueOnce(envelope(removed))
+      .mockResolvedValueOnce(envelope([removed]));
+    vi.stubGlobal('fetch', fetch);
+    mount();
+    await screen.findByRole('option', {
+      name: 'Collector key (collector-key)',
+    });
+    fireEvent.change(screen.getByLabelText('Key reference'), {
+      target: { value: 'collector-key' },
+    });
+    fireEvent.change(screen.getByLabelText('Destination type'), {
+      target: { value: 'otel' },
+    });
+    fireEvent.change(screen.getByLabelText('Exact destination address'), {
+      target: { value: grant.destination },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Grant destination' }));
+    await screen.findByText('Telemetry destination granted.');
+    expect(fetch.mock.calls[1][0]).toBe(
+      'https://station.example.test/api/secret-bindings/collector-key/bind',
+    );
+    expect(JSON.parse(fetch.mock.calls[1][1].body)).toEqual({
+      ...grant,
+      expectedRevision: 4,
+    });
+    expect(
+      new Headers(fetch.mock.calls[1][1].headers).get(
+        'X-Station-Client-Protocol',
+      ),
+    ).toBe(advertised ? '2' : null);
+    fireEvent.click(screen.getByRole('button', { name: 'Remove grant' }));
+    await screen.findByText('Telemetry destination grant removed.');
+    expect(fetch.mock.calls[3][0]).toBe(
+      'https://station.example.test/api/secret-bindings/collector-key/unbind',
+    );
+    expect(JSON.parse(fetch.mock.calls[3][1].body)).toEqual({
+      ...grant,
+      expectedRevision: 5,
+    });
+    expect(
+      new Headers(fetch.mock.calls[3][1].headers).get(
+        'X-Station-Client-Protocol',
+      ),
+    ).toBe(advertised ? '2' : null);
+    expect(screen.queryByRole('button', { name: 'Remove grant' })).toBeNull();
+  },
+);
 
 test('omits person-owned and revoked references from destination grant choices', async () => {
   const instance = binding();

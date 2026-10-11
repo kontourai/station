@@ -596,9 +596,9 @@ quota reads nor account creation or manual enrolment metadata. Activity uses the
 reads; its engine filter does not lower that floor, grant access to another
 principal's receipts or make them per-account billing.
 
-### Authored canonical usage export
+### Canonical usage export
 
-`GET /api/analytics/usage-export` inherits the analytics read family and adds
+`GET /api/analytics/usage-export` has an exact `orchestration:read` leaf and adds
 its canonical verified-person/read-authority checks. Unbound Device attribution
 and the shared local operator are refused as individual people. Explicit
 personal-account selection requires the existing current membership owner set;
@@ -609,9 +609,11 @@ fields and request-supplied identifiers confer no authority.
 This source path is not a companion analytics grant. It does not reuse a peer,
 provider, product or OTel credential for private sync. Grants and person-scoped
 destination custody, deletion/restore invalidation and receiver indexing remain
-open under #3459/#3460. Authored scope/queued-revocation controls and query bounds
-are still unexecuted; no runtime, deployment or new person-identity assurance
-is established by this section. See [the API reference](../reference/api.md#export-retained-canonical-usage-observations).
+open under #3459/#3460. Focused mounted-route and runtime-composition controls
+have exercised scope, queued revocation and cumulative-history refusal with
+controlled identity fixtures. They do not establish live enrollment, deployment,
+measured query performance or new person-identity assurance. See
+[the API reference](../reference/api.md#export-retained-canonical-usage-observations).
 
 ### Coding routes: command execution and client paths (#2412)
 

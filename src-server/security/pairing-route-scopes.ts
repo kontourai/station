@@ -1057,6 +1057,15 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // Local canonical facts only; runtime also enforces verified person and owner/tenant scope.
+  {
+    id: '/api/analytics/usage-export:person-read',
+    method: 'GET',
+    prefix: '/api/analytics/usage-export',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
   // The usage rollup normally reads this Station's own receipts, but its
   // default path also queries configured peer Stations with their stored
   // bearer credentials and returns their environment identities, models, and
