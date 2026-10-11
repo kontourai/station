@@ -5,7 +5,7 @@ import {
   tenantId,
 } from '@kontourai/station-contracts/tenancy';
 import type { UsageExportPage } from '@kontourai/station-contracts/usage-export';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { readAuthorizedUsageExport } from '../../../analytics/usage-export-reader.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
@@ -15,6 +15,7 @@ const makeHome = trackTempDirs();
 const stores: EventStore[] = [];
 afterEach(() => {
   for (const store of stores.splice(0)) store.close();
+  vi.useRealTimers();
 });
 
 function fixture() {
@@ -23,7 +24,7 @@ function fixture() {
   );
   stores.push(store);
   const day = new Date().toISOString().slice(0, 10);
-  let owners = ['reader', 'account-member'];
+  let owners: string[] | undefined = ['reader', 'account-member'];
   let authority = sessionReadAuthorityFromRequest(
     'reader',
     undefined,
@@ -54,18 +55,25 @@ function fixture() {
     },
   );
   let index = 0;
-  const start = (thread: string, owner: string, tenant?: string) => {
+  const providers = new Map<string, 'codex' | 'claude'>();
+  const start = (
+    thread: string,
+    owner: string,
+    tenant?: string,
+    provider: 'codex' | 'claude' = 'codex',
+  ) => {
+    providers.set(thread, provider);
     const time = new Date().toISOString();
     store.upsertSession({
       threadId: thread,
-      provider: 'codex',
+      provider,
       status: 'ready',
       createdAt: time,
       updatedAt: time,
     });
     store.appendEvent({
       eventId: `start-${thread}`,
-      provider: 'codex',
+      provider,
       threadId: thread,
       sessionId: thread,
       method: 'session.started',
@@ -76,7 +84,7 @@ function fixture() {
     if (tenant)
       store.upsertSession({
         threadId: thread,
-        provider: 'codex',
+        provider,
         status: 'ready',
         createdAt: time,
         updatedAt: time,
@@ -93,7 +101,7 @@ function fixture() {
     const id = `usage-${++index}`;
     store.appendEvent({
       eventId: id,
-      provider: 'codex',
+      provider: providers.get(thread) ?? 'codex',
       threadId: thread,
       method: 'token-usage.updated',
       createdAt,
@@ -110,7 +118,7 @@ function fixture() {
     start,
     observation,
     url,
-    setOwners: (value: string[]) => {
+    setOwners: (value: string[] | undefined) => {
       owners = value;
     },
     setAuthority: (value: typeof authority) => {
@@ -123,6 +131,8 @@ function fixture() {
 }
 
 test('mounted export walks more than 500 committed facts and excludes later appends from its fixed head', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-11T12:00:00.000Z'));
   const f = fixture();
   f.start('own', 'reader');
   const expected = Array.from({ length: 503 }, (_, index) =>
@@ -155,6 +165,28 @@ test('mounted export walks more than 500 committed facts and excludes later appe
     );
   }
   expect(received).toEqual(expected);
+});
+
+test('personal nonmembers refuse account scope while retaining individual reads', async () => {
+  const f = fixture();
+  f.start('own', 'reader');
+  f.observation();
+  f.setOwners(undefined);
+  expect((await f.app.request(f.url('&scope=personal-account'))).status).toBe(
+    403,
+  );
+  expect((await f.app.request(f.url())).status).toBe(200);
+});
+
+test('a single-row page refuses over-budget cumulative history before hydration', async () => {
+  const f = fixture();
+  f.start('own', 'reader', undefined, 'claude');
+  for (let index = 0; index < 1001; index++) f.observation();
+  const response = await f.app.request(f.url('&pageSize=1'));
+  expect(response.status).toBe(503);
+  expect(await response.json()).toEqual({
+    error: { code: 'usage_export_unavailable' },
+  });
 });
 
 test('scope choice and tenant predicates do not turn account membership into individual or foreign-tenant access', async () => {

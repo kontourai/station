@@ -2072,7 +2072,7 @@ export function configureRuntimeRoutes(
   );
   context.app.on(
     'GET',
-    '/api/analytics/usage-rollup',
+    ['/api/analytics/usage-rollup', '/api/analytics/usage-export'],
     bindConversationReadAuthority,
   );
   context.app.on(
@@ -2710,7 +2710,9 @@ export function configureRuntimeRoutes(
           resolveRequestPrincipal: resolveOrchestrationRequestPrincipal,
         });
         if (
-          captured.envelope.principal.kind !== 'human' ||
+          connectedAccountOwnerId(
+            resolveOrchestrationRequestPrincipal(requestContext),
+          ) === undefined ||
           captured.envelope.principal.id === LOCAL_OPERATOR_PRINCIPAL_ID
         ) {
           const { UsageExportRejected } = await import(

@@ -92,7 +92,7 @@ export function readAuthorizedUsageExport(input: {
   stationId: string;
   request: UsageExportRequest;
   /** The existing SessionAuthorization owner policy, re-read at release. */
-  personalOwnerIds: () => readonly string[];
+  personalOwnerIds: () => readonly string[] | undefined;
 }): { page: UsageExportPage; assertCurrent(): void } {
   const { store, authority, stationId, request } = input;
   if (
@@ -113,14 +113,13 @@ export function readAuthorizedUsageExport(input: {
     (authority.mode === 'hosted' && request.scope === 'personal-account')
   )
     throw new UsageExportRejected('invalid_usage_export', 400);
-  const owners = () =>
-    [
-      ...new Set(
-        request.scope === 'individual'
-          ? [authority.userId]
-          : input.personalOwnerIds(),
-      ),
-    ].sort();
+  const owners = () => {
+    if (request.scope === 'individual') return [authority.userId];
+    const members = input.personalOwnerIds();
+    if (!members?.includes(authority.userId))
+      throw new UsageExportRejected('usage_export_authority_changed', 403);
+    return [...new Set(members)].sort();
+  };
   const ownerIds = owners();
   if (!ownerIds.includes(authority.userId))
     throw new UsageExportRejected('usage_export_authority_changed', 403);

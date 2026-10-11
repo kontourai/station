@@ -5075,7 +5075,7 @@ export class EventStore {
             throw new Error('Invalid usage export thread');
           return row.thread_id;
         });
-      const segments = this.cumulativeCostSegmentsFor(cumulativeThreads);
+      const segments = this.cumulativeCostSegmentsFor(cumulativeThreads, 1000);
       const page = selected.map((row) => {
         if (
           typeof row.global_sequence !== 'number' ||
@@ -5270,8 +5270,28 @@ export class EventStore {
    */
   private cumulativeCostSegmentsFor(
     threadIds: readonly string[],
+    maximumSequenceBudget?: number,
   ): Map<string, string> {
     const segments = new Map<string, string>();
+    let remainingEvidenceRows = maximumSequenceBudget;
+    if (maximumSequenceBudget !== undefined) {
+      let sequences = 0;
+      for (const threadId of new Set(threadIds)) {
+        const latest = this.db
+          .prepare(
+            'SELECT sequence FROM orchestration_events WHERE thread_id = ? ORDER BY sequence DESC LIMIT 1',
+          )
+          .get(threadId) as { sequence: number } | undefined;
+        const sequence = latest?.sequence ?? 0;
+        if (!Number.isSafeInteger(sequence) || sequence < 0)
+          throw new Error('Invalid cumulative usage sequence');
+        sequences += sequence;
+        if (sequences > maximumSequenceBudget)
+          throw new Error(
+            'Cumulative usage projection exceeds its sequence budget',
+          );
+      }
+    }
     // Chunks partition by THREAD, never inside one, so every thread's whole
     // history still replays through one segmenter in sequence order.
     for (const chunk of this.chunkArray(
@@ -5292,9 +5312,14 @@ export class EventStore {
               AND json_valid(payload)
               AND (method = 'session.started'
                 OR json_type(payload, '$.reportedCostUsd') IN ('integer', 'real'))
-            ORDER BY thread_id, sequence`,
+            ORDER BY thread_id, sequence ${remainingEvidenceRows === undefined ? '' : 'LIMIT ?'}`,
         )
-        .all(...chunk) as Array<{
+        .all(
+          ...chunk,
+          ...(remainingEvidenceRows === undefined
+            ? []
+            : [remainingEvidenceRows + 1]),
+        ) as Array<{
         id: string;
         thread_id: string;
         provider: string;
@@ -5302,6 +5327,13 @@ export class EventStore {
         resumed: number;
         cost: unknown;
       }>;
+      if (remainingEvidenceRows !== undefined) {
+        if (evidence.length > remainingEvidenceRows)
+          throw new Error(
+            'Cumulative usage projection exceeds its evidence budget',
+          );
+        remainingEvidenceRows -= evidence.length;
+      }
       let thread: string | undefined;
       let segmenter = new CumulativeCostSegments();
       for (const row of evidence) {

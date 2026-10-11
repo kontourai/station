@@ -68,7 +68,11 @@ generation fencing, index/checkpoint transactions and clone/mirror policy are
 still pending under #3459/#3460. Stream epoch is copied by backups; it is not
 a restore-generation fence. The authored >500-row, scope and queued-release
 controls remain unexecuted on current source, as do runtime authentication,
-query budgets, full gates and deployment qualification.
+query budgets, full gates and deployment qualification. The authored source
+refuses cumulative-cost projection when selected threads exceed a combined
+1,000-event sequence budget, before hydrating their history; its evidence read
+also has a row bound. It reports unavailable rather than truncate cost segments.
+Durable cost-segment indexing and measured larger-history budgets remain open.
 
 Developer → Monitoring provides five views over existing Station measurements:
 

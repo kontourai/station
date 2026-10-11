@@ -5473,7 +5473,8 @@ export class OrchestrationService {
       authority,
       stationId,
       request,
-      personalOwnerIds: () => this.readableSessionOwnerIds(authority),
+      personalOwnerIds: () =>
+        this.options.personalConversationAccess?.ownerIds(authority.userId),
     });
   }
 
