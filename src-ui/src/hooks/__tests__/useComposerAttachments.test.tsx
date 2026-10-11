@@ -187,6 +187,7 @@ describe('useComposerAttachments', () => {
           state: 'failed',
           progress: 0,
           error: unresolved.message,
+          callerUnresolved: true,
         });
         throw aggregate;
       },
@@ -219,10 +220,17 @@ describe('useComposerAttachments', () => {
       ]),
     );
     hook.rerender();
-    expect(hook.result.current.error).toBeNull();
-    expect(stages[0]?.error).toBe(
-      'Unable to resolve a principal: no paired device',
+    // The reason is on screen, not only in the chip's tooltip, and it names
+    // the action that helps; removing the attachment is what unblocks Send.
+    expect(hook.result.current.sendBlockedReason).toMatch(
+      /couldn't confirm who is uploading/,
     );
+    expect(hook.result.current.removalUnblocksSend).toBe(true);
+    expect(hook.result.current.error).toBeNull();
+    expect(stages[0]).toMatchObject({
+      callerUnresolved: true,
+      error: 'Unable to resolve a principal: no paired device',
+    });
   });
 
   test('late upload progress stays with its original chat after the selected composer changes', async () => {

@@ -158,6 +158,7 @@ describe('stageComposerAttachments', () => {
     expect(updates.at(-1)).toMatchObject({
       clientAttachmentId: 'unknown-caller',
       state: 'failed',
+      callerUnresolved: true,
     });
     expect(updates.at(-1)).not.toHaveProperty('capacityFull');
   });

@@ -37,6 +37,8 @@ export type ComposerAttachmentStageUpdate = {
   error?: string;
   /** The server refused a new stage: this login already holds its maximum. */
   capacityFull?: boolean;
+  /** The server could not tell who is uploading (#545); retrying cannot help. */
+  callerUnresolved?: boolean;
 };
 
 function inputFor(
@@ -167,7 +169,8 @@ export async function stageComposerAttachments(
         const capacityFull = code === 'stage_capacity';
         // `principal_unresolved` (#545) is not transient either: the Station
         // could not tell who is asking, and asking again does not change that.
-        const permanent = capacityFull || code === 'principal_unresolved';
+        const callerUnresolved = code === 'principal_unresolved';
+        const permanent = capacityFull || callerUnresolved;
         observer?.({
           clientAttachmentId: input.clientAttachmentId,
           state: signal?.aborted
@@ -178,6 +181,7 @@ export async function stageComposerAttachments(
           progress: 0,
           error: signal?.aborted ? undefined : failure.message,
           ...(capacityFull ? { capacityFull: true } : {}),
+          ...(callerUnresolved ? { callerUnresolved: true } : {}),
         });
       }
     }

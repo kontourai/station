@@ -56,6 +56,7 @@ function applyUpdate(
       error: _error,
       expired: _expired,
       capacityFull: _capacityFull,
+      callerUnresolved: _callerUnresolved,
       ...withoutError
     } = snapshot;
     return {
@@ -67,6 +68,7 @@ function applyUpdate(
       ...(update.delivery ? { delivery: update.delivery } : {}),
       ...(update.error ? { error: update.error } : {}),
       ...(update.capacityFull ? { capacityFull: true } : {}),
+      ...(update.callerUnresolved ? { callerUnresolved: true } : {}),
       needsFile: false,
     };
   });
@@ -631,17 +633,19 @@ export function useComposerAttachments(options: {
         ? 'An attachment was accepted with its prior message. Wait for that turn before sending again.'
         : options.stages.some((stage) => stage.capacityFull)
           ? 'Upload limit reached: 5 unsent uploads at a time. Remove some (here or in another chat) or wait up to 10 minutes.'
-          : hasRetryableStage
-            ? options.stages.some(
-                (stage) => stage.state === 'retryable' && stage.expired,
-              )
-              ? 'An upload expired before it was sent. Upload it again or remove it.'
-              : 'An upload did not finish. Retry it or remove it before sending.'
-            : hasUnavailableStage
-              ? 'Choose the file again or remove it before sending.'
-              : hasInFlightStage
-                ? 'Wait until every selected file finishes staging before sending.'
-                : undefined;
+          : options.stages.some((stage) => stage.callerUnresolved)
+            ? "This Station couldn't confirm who is uploading. Remove the attachment, then reconnect or pair this device again."
+            : hasRetryableStage
+              ? options.stages.some(
+                  (stage) => stage.state === 'retryable' && stage.expired,
+                )
+                ? 'An upload expired before it was sent. Upload it again or remove it.'
+                : 'An upload did not finish. Retry it or remove it before sending.'
+              : hasUnavailableStage
+                ? 'Choose the file again or remove it before sending.'
+                : hasInFlightStage
+                  ? 'Wait until every selected file finishes staging before sending.'
+                  : undefined;
 
   return {
     error,
@@ -657,6 +661,9 @@ export function useComposerAttachments(options: {
     /** Removing the attachments is what unblocks this send. */
     removalUnblocksSend:
       imagesRefused ||
-      options.stages.some((stage) => stage.capacityFull === true),
+      options.stages.some(
+        (stage) =>
+          stage.capacityFull === true || stage.callerUnresolved === true,
+      ),
   };
 }
