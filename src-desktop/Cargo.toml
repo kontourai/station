@@ -159,6 +159,20 @@ tempfile = "3"
 # tray code without adding test machinery to release artifacts.
 tauri = { version = "=2.12.1", features = ["test"] }
 
+# Release builds ship one native library per platform, and the Android APK is
+# almost entirely that library. With the default profile the nightly carried a
+# 32.7 MB unstripped libstation_ai_lib.so (9.1 MB of it symbol tables).
+# Measured on the aarch64 nightly build: strip alone 23.6 MB; strip, fat LTO
+# and one codegen unit 20.9 MB; adding opt-level "s" saved only 0.5 MB more,
+# so speed-oriented optimization stays. panic stays "unwind": abort would
+# change panic handling everywhere for about 2 MB of unwind tables.
+# scripts/check-android-native-size.mjs enforces the stripped invariant and a
+# size ceiling on staged Android APKs.
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+
 [patch.crates-io]
 # Audited Station patch over android-native-keyring-store 1.0.0. Upstream's
 # SharedPreferences wrapper returned `Ok(false)` from Editor.commit(), while

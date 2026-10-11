@@ -227,6 +227,18 @@ export function modelSourceLabel(source: EffectiveModelSource): string {
   }
 }
 
+/**
+ * What a Model reset button names after "Use": the source of the default it
+ * restores, in lower case. A source with no user-facing label ('unknown', or
+ * none reported) reads "default model", never an empty "Use ".
+ */
+export function modelResetSourceLabel(
+  source?: EffectiveModelSource,
+  fallback = 'default model',
+): string {
+  return (source && modelSourceLabel(source).toLowerCase()) || fallback;
+}
+
 export type EffectiveModel = {
   id: string | null;
   label: string;
