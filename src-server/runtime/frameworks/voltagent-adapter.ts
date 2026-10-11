@@ -1125,8 +1125,8 @@ export class VoltAgentFramework {
       const topP = spec.guardrails?.topP;
       if (topP !== undefined && spec.guardrails?.temperature !== undefined) {
         opts.logger?.warn?.(
-          { agent: slug },
           'guardrails.topP is ignored because guardrails.temperature is also set',
+          { agent: slug },
         );
       } else {
         bindDefaultTopP(agent, topP);

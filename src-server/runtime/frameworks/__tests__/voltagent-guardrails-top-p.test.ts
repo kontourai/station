@@ -49,7 +49,10 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-async function build(guardrails: AgentSpec['guardrails']) {
+async function build(
+  guardrails: AgentSpec['guardrails'],
+  logger?: { warn: (msg: string, context?: unknown) => void },
+) {
   const framework = new VoltAgentFramework();
   const model = recordingModel();
   vi.spyOn(framework, 'createModel').mockResolvedValue(model);
@@ -62,6 +65,7 @@ async function build(guardrails: AgentSpec['guardrails']) {
     {
       processedPrompt: 'Answer briefly.',
       memoryAdapter: new FileMemoryAdapter({ projectHomeDir }),
+      logger,
     } as any,
   );
   return { model, bundle };
@@ -118,11 +122,20 @@ test('no guardrail topP leaves the model call unset', async () => {
 
 test('temperature wins over topP when both guardrails are set', async () => {
   // Bedrock forwards both, and newer Claude models reject that combination.
-  const { model, bundle } = await build({ temperature: 0.7, topP: 0.9 });
+  const warn = vi.fn();
+  const { model, bundle } = await build(
+    { temperature: 0.7, topP: 0.9 },
+    { warn },
+  );
   await (bundle.agent as any).raw.generateText('Hi', {
     userId: 'owner',
     conversationId: 'c6',
   });
   expect(model.doGenerateCalls[0]!.temperature).toBe(0.7);
   expect(model.doGenerateCalls[0]!.topP).toBeUndefined();
+  // Station's Logger takes the message first, then the context.
+  expect(warn).toHaveBeenCalledWith(
+    'guardrails.topP is ignored because guardrails.temperature is also set',
+    { agent: 'assistant' },
+  );
 });
