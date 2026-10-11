@@ -6,6 +6,7 @@ packages:
   - packages/shared
   - packages/cli
   - packages/connect
+  - packages/telemetry-broker
   - examples/builder-delivery-viewer
   - examples/fieldwork-review
 linkWorkspacePackages: true

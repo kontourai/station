@@ -210,6 +210,7 @@
         "docs/guides/monitoring.md",
         "docs/guides/web-push-notifications.md",
         "docs/reference/usage-telemetry.md",
+        "packages/telemetry-broker/README.md",
         "docs/architecture/module-map.md#voiceturnruns-and-correlated-s2s-v1",
         "docs/learn/walkthroughs.md#inspect-an-approval"
       ],
@@ -221,6 +222,7 @@
         "SchedulerLedger and BuiltinScheduler",
         "NativeInvocationRuns",
         "Monitoring history and Agent catalog reads",
+        "ProductTelemetryReceiver",
         "Native notification feed"
       ],
       "questions": [
