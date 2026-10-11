@@ -57,12 +57,16 @@ updater payloads; it is not the Android upload key.
 
 1. **Setup** — the Node version in `.nvmrc`, Rust with Android targets, and the Java/SDK/NDK versions pinned in the workflow
 2. **Build frontend** — `npm run dependencies:ci`, then the SDK, Connect, and desktop resources
-3. **Tauri Android Init** — runs from `src-desktop` with the base and Dev
-   overlays, `--ci` and `--skip-targets-install`. Running discovery from the
-   repository root can select an experimental Tauri app instead.
+3. **Tauri Android Init** — `node scripts/reset-android-generated-project.mjs`
+   first removes the tracked seed, as the Nightly and beta lanes do, so the
+   project comes entirely from the pinned CLI's templates. Init then runs from
+   `src-desktop` with the base and Dev overlays, `--ci` and
+   `--skip-targets-install`. Running discovery from the repository root can
+   select an experimental Tauri app instead.
 4. **Apply native bootstrap** — `node scripts/apply-android-native-bootstrap.mjs`
-   restores credential initialization and the window-inset bridge in the
-   generated namespace. The channel icon and network-policy helpers also run
+   keeps the activity's `onCreate` hook and the window-inset bridge in the
+   generated namespace. It never initializes `ndk_context`: tao owns that
+   initialization, and a second one aborts the app at launch. The channel icon and network-policy helpers also run
    before compilation. See the workflow for their exact ordering.
 5. **Stage build provenance** — `node scripts/write-android-build-manifest.mjs`
    writes `station-build.json` into the generated project's asset source set,
