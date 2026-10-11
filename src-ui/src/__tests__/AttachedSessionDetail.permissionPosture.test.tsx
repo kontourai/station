@@ -558,7 +558,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toBe(
-        "Couldn't start the continuation. source session is already being continued",
+        "Couldn't start the continuation. Technical detail is under Details.",
       ),
     );
     expect(screen.queryByText(/isn't responding right now/)).toBeNull();

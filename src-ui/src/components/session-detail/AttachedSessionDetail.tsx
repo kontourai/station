@@ -431,7 +431,9 @@ export function AttachedSessionDetail({
                       adoptionOutcomeUncertain ||
                       adoptionTransportFailed
                     ? "Couldn't start the continuation — Station isn't responding right now."
-                    : `Couldn't start the continuation. ${technicalErrors.at(-1) ?? ''}`.trim()}
+                    : showHeader
+                      ? "Couldn't start the continuation. Technical detail is under Details."
+                      : "Couldn't start the continuation. Try again."}
         </p>
       )}
       {adoptionOutcomeUncertain && !serverRejectedRetry && (

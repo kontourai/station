@@ -814,8 +814,17 @@
 .external-chat-composer {
   flex: 0 0 auto;
   margin: 0;
-  padding: 0;
+  padding: 0 var(--chat-message-gutter, 0) var(--k-space-2);
   border: 0;
+}
+
+/* Continuing is unavailable: the composer reads as off, not just its Send. */
+.external-chat-composer:has(textarea:disabled) .chat-input__capsule {
+  opacity: 0.55;
+}
+
+.external-chat-composer textarea:disabled {
+  cursor: not-allowed;
 }
 .sessions-detail--chat .sessions-detail__transcript {
   display: flex;
@@ -826,6 +835,10 @@
   border-radius: 0;
   background: none;
   overflow: visible;
+  /* Grow with the messages: a message that renders taller after mounting
+     must grow this container, which the follow-latest scroll observes. */
+  flex-shrink: 0;
+  min-height: auto;
 }
 
 .imported-conversation-send-row {
