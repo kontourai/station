@@ -85,6 +85,49 @@ async function service(
 }
 
 describe('UsageTelemetryService', () => {
+  test.each(['empty', 'generic', 'wrong-events', 'partial-count'] as const)(
+    'an unverified %s 202 retains its observations for retry',
+    async (kind) => {
+      const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(
+        async (_input, init) => {
+          const sent = JSON.parse(String(init?.body)) as ProductTelemetryBatch;
+          const receipt = {
+            protocol: 'station-product-commit/v1',
+            receiptId: '11111111-2222-4333-8444-555555555555',
+            sourceId: '22222222-2222-4333-8444-555555555555',
+            eventIds: sent.events.map((event) => event.event_id),
+            inserted: sent.events.length,
+            alreadyPresent: 0,
+            storedAt: '2026-10-10T12:00:02.000Z',
+          };
+          if (kind === 'empty') return new Response(null, { status: 202 });
+          if (kind === 'generic')
+            return Response.json({ accepted: true }, { status: 202 });
+          if (kind === 'wrong-events')
+            receipt.eventIds = ['33333333-2222-4333-8444-555555555555'];
+          if (kind === 'partial-count') receipt.inserted = 0;
+          return Response.json({ receipt }, { status: 202 });
+        },
+      );
+      const subject = await service({
+        env: { STATION_TELEMETRY_ENDPOINT: 'https://ingest.test' },
+        fetch,
+      });
+      try {
+        await subject.track('engine_turn', {
+          engine: 'codex',
+          outcome: 'completed',
+        });
+        await subject.flush();
+        expect(subject.bufferedCount).toBe(1);
+        expect(fetch).toHaveBeenCalledTimes(1);
+      } finally {
+        subject.reconfigure({ telemetryEnabled: false });
+        await subject.shutdown();
+      }
+    },
+  );
+
   test('stale displayed inventory cannot publish a current consent receipt', async () => {
     const subject = await service();
     await expect(
