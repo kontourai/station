@@ -16,6 +16,27 @@ export function createProductBroker(
     throw new Error('A private product operator credential is required');
   const operatorHash = createHash('sha256').update(operatorKey).digest();
   const app = new Hono();
+  let active = 0;
+  let tokens = 60;
+  let replenishedAt = performance.now();
+  app.use('*', async (c, next) => {
+    if (c.req.method === 'GET' && c.req.path === '/health/live') return next();
+    const now = performance.now();
+    tokens = Math.min(60, tokens + (now - replenishedAt) / 1000);
+    replenishedAt = now;
+    if (tokens < 1) {
+      c.header('Retry-After', '1');
+      return c.json({ error: 'receiver_rate_limit' }, 429);
+    }
+    if (active >= 8) return c.json({ error: 'receiver_busy' }, 503);
+    tokens--;
+    active++;
+    try {
+      await next();
+    } finally {
+      active--;
+    }
+  });
   app.use(
     '*',
     bodyLimit({

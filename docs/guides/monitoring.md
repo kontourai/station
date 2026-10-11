@@ -10,8 +10,11 @@ Station has three separate measurement paths:
 
 Product observations use the disclosed v1 envelope: stable retry IDs, producer
 times, inventory revision and allowlisted immutable build attribution on every
-event. Source authentication/durable deduplication remain receiver work; these
-observations are separate from canonical personal receipts. Acknowledgements
+event. The optional [product receiver](../../packages/telemetry-broker/README.md)
+authenticates separate product source keys, durably commits PostgreSQL observations,
+and deduplicates retained source/event UUIDs. Its operator queries describe received
+observations with unknown delivery coverage; these observations are separate from
+canonical personal receipts. Acknowledgements
 must name the displayed inventory revision, so stale/older UIs cannot silently
 approve newly exported fields. See the [usage inventory](../reference/usage-telemetry.md).
 

@@ -169,3 +169,40 @@ describe('product receiver HTTP admission and acknowledgement boundary', () => {
     expect(await response.json()).toEqual({ error: 'storage_unavailable' });
   });
 });
+
+describe('bounded receiver admission', () => {
+  test('rejects excess concurrent work without entering storage and releases slots after settlement', async () => {
+    let settle: (() => void) | undefined;
+    const pending = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    store.ready.mockImplementation(() => pending);
+    const app = createProductBroker(store, operatorKey);
+    const init = { headers: { authorization: `Bearer ${operatorKey}` } };
+    const inFlight = Array.from({ length: 8 }, () =>
+      app.request('/v1/operator/storage', init),
+    );
+    const busy = await app.request('/v1/operator/storage', init);
+    expect(busy.status).toBe(503);
+    expect(await busy.json()).toEqual({ error: 'receiver_busy' });
+    expect(store.ready).toHaveBeenCalledTimes(8);
+    settle?.();
+    const responses = await Promise.all(inFlight);
+    expect(responses.every((response) => response.status === 200)).toBe(true);
+    expect((await app.request('/v1/operator/storage', init)).status).toBe(200);
+  });
+
+  test('bounds unauthenticated request floods before storage while preserving process liveness', async () => {
+    const app = createProductBroker(store, operatorKey);
+    for (let i = 0; i < 60; i++)
+      expect(
+        (await app.request('/v1/product/events', post(batch(), 'invalid')))
+          .status,
+      ).toBe(401);
+    const limited = await app.request('/v1/product/events', post(batch()));
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get('retry-after')).toBe('1');
+    expect(store.ingest).not.toHaveBeenCalled();
+    expect((await app.request('/health/live')).status).toBe(200);
+  });
+});

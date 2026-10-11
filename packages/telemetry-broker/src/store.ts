@@ -14,7 +14,10 @@ export class BrokerError extends Error {
       | 'invalid_source'
       | 'storage_not_durable'
       | 'query_limit'
-      | 'source_conflict',
+      | 'source_conflict'
+      | 'storage_busy'
+      | 'storage_timeout'
+      | 'schema_incompatible',
   ) {
     super(code);
   }
@@ -109,6 +112,7 @@ interface EventRow extends QueryResultRow {
   content_digest: Buffer;
 }
 export class PgProductRepository implements ProductRepository {
+  private activeTransactions = 0;
   constructor(
     readonly pool: Pool,
     private readonly maxEvents = 1_000_000,
@@ -126,18 +130,40 @@ export class PgProductRepository implements ProductRepository {
   private async transaction<T>(
     operation: (client: PoolClient) => Promise<T>,
   ): Promise<T> {
-    const client = await this.pool.connect();
+    if (this.activeTransactions >= 4) throw new BrokerError('storage_busy');
+    this.activeTransactions++;
+    let client: PoolClient | undefined;
+    let released = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      await client.query('BEGIN');
-      await this.durable(client);
-      const value = await operation(client);
-      await client.query('COMMIT');
-      return value;
+      client = await this.pool.connect();
+      const connection = client;
+      const deadline = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          released = true;
+          connection.release(true);
+          reject(new BrokerError('storage_timeout'));
+        }, 5000);
+      });
+      const execute = async () => {
+        await connection.query('BEGIN');
+        await this.durable(connection);
+        const value = await operation(connection);
+        await connection.query('COMMIT');
+        return value;
+      };
+      return await Promise.race([execute(), deadline]);
     } catch (error) {
-      await client.query('ROLLBACK').catch(() => undefined);
+      if (client && !released) {
+        released = true;
+        // Destroying an uncertain connection rolls back without waiting for a stalled transport.
+        client.release(true);
+      }
       throw error;
     } finally {
-      client.release();
+      clearTimeout(timer);
+      if (client && !released) client.release();
+      this.activeTransactions--;
     }
   }
   async migrate(): Promise<void> {
@@ -157,7 +183,8 @@ export class PgProductRepository implements ProductRepository {
           rows[0].version !== 1 ||
           rows[0].digest !== SCHEMA_DIGEST
         )
-          throw new Error('Unsupported telemetry storage migration');
+          throw new BrokerError('schema_incompatible');
+        await this.assertSchema(client);
         return;
       }
       await client.query(SCHEMA);
@@ -165,9 +192,104 @@ export class PgProductRepository implements ProductRepository {
         'INSERT INTO station_telemetry.migrations VALUES(1,$1)',
         [SCHEMA_DIGEST],
       );
+      await this.assertSchema(client);
     });
   }
   private async assertSchema(client: PoolClient): Promise<void> {
+    // Hold DDL locks through the operation, so validated keys cannot disappear before commit.
+    await client.query(
+      'LOCK TABLE station_telemetry.migrations,station_telemetry.sources,station_telemetry.events,station_telemetry.commits IN ACCESS SHARE MODE',
+    );
+    const columns = await client.query<{
+      name: string;
+      column: string;
+      type: string;
+      required: boolean;
+      default: string | null;
+      relkind: string;
+    }>(
+      `SELECT c.relname AS name,c.relkind,a.attname AS column,format_type(a.atttypid,a.atttypmod) AS type,a.attnotnull AS required,pg_get_expr(d.adbin,d.adrelid) AS default FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_attribute a ON a.attrelid=c.oid LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum WHERE n.nspname='station_telemetry' AND c.relname=ANY($1) AND a.attnum>0 AND NOT a.attisdropped ORDER BY c.relname,a.attnum`,
+      [['migrations', 'sources', 'events', 'commits']],
+    );
+    const expectedColumns = [
+      'commits|id|uuid|true|',
+      'commits|source_id|uuid|true|',
+      'commits|body|jsonb|true|',
+      'commits|stored_at|timestamp with time zone|true|clock_timestamp()',
+      'events|source_id|uuid|true|',
+      'events|event_id|uuid|true|',
+      'events|content_digest|bytea|true|',
+      'events|distinct_id|text|true|',
+      'events|event|text|true|',
+      'events|occurred_at|timestamp with time zone|true|',
+      'events|received_at|timestamp with time zone|true|clock_timestamp()',
+      'events|observation|jsonb|true|',
+      'migrations|version|integer|true|',
+      'migrations|digest|text|true|',
+      'sources|id|uuid|true|',
+      'sources|namespace|text|true|',
+      'sources|label|text|true|',
+      'sources|credential_hash|bytea|true|',
+      'sources|created_at|timestamp with time zone|true|clock_timestamp()',
+      'sources|revoked_at|timestamp with time zone|false|',
+    ];
+    const actualColumns = columns.rows.map(
+      (row) =>
+        `${row.name}|${row.column}|${row.type}|${row.required}|${row.default ?? ''}`,
+    );
+    if (
+      columns.rows.some((row) => row.relkind !== 'r') ||
+      JSON.stringify(actualColumns) !== JSON.stringify(expectedColumns)
+    )
+      throw new BrokerError('schema_incompatible');
+    const constraints = await client.query<{
+      name: string;
+      type: string;
+      valid: boolean;
+      deferred: boolean;
+      definition: string;
+      key_valid: boolean;
+    }>(
+      `SELECT c.relname AS name,co.contype AS type,co.convalidated AS valid,co.condeferrable AS deferred,pg_get_constraintdef(co.oid) AS definition,COALESCE(i.indisvalid AND i.indisready,true) AS key_valid FROM pg_constraint co JOIN pg_class c ON c.oid=co.conrelid JOIN pg_namespace n ON n.oid=c.relnamespace LEFT JOIN pg_index i ON i.indexrelid=co.conindid WHERE n.nspname='station_telemetry' AND c.relname=ANY($1) ORDER BY c.relname,definition`,
+      [['migrations', 'sources', 'events', 'commits']],
+    );
+    const expectedConstraints = [
+      'commits|f|FOREIGN KEY (source_id) REFERENCES station_telemetry.sources(id)',
+      'commits|p|PRIMARY KEY (id)',
+      'events|f|FOREIGN KEY (source_id) REFERENCES station_telemetry.sources(id)',
+      'events|p|PRIMARY KEY (source_id, event_id)',
+      'migrations|p|PRIMARY KEY (version)',
+      'sources|c|CHECK (((length(label) >= 1) AND (length(label) <= 80)))',
+      "sources|c|CHECK ((namespace = 'product'::text))",
+      'sources|c|CHECK ((octet_length(credential_hash) = 32))',
+      'sources|p|PRIMARY KEY (id)',
+      'sources|u|UNIQUE (credential_hash)',
+    ];
+    const actualConstraints = constraints.rows.map(
+      (row) => `${row.name}|${row.type}|${row.definition}`,
+    );
+    if (
+      constraints.rows.some(
+        (row) => !row.valid || row.deferred || !row.key_valid,
+      ) ||
+      JSON.stringify(actualConstraints) !== JSON.stringify(expectedConstraints)
+    )
+      throw new BrokerError('schema_incompatible');
+    const indexes = await client.query<{
+      definition: string;
+      valid: boolean;
+      ready: boolean;
+    }>(
+      `SELECT pg_get_indexdef(i.indexrelid) AS definition,i.indisvalid AS valid,i.indisready AS ready FROM pg_index i WHERE i.indrelid='station_telemetry.events'::regclass AND i.indexrelid=to_regclass('station_telemetry.event_time')`,
+    );
+    if (
+      indexes.rows.length !== 1 ||
+      !indexes.rows[0].valid ||
+      !indexes.rows[0].ready ||
+      indexes.rows[0].definition !==
+        'CREATE INDEX event_time ON station_telemetry.events USING btree (occurred_at)'
+    )
+      throw new BrokerError('schema_incompatible');
     const { rows } = await client.query<{ version: number; digest: string }>(
       'SELECT version,digest FROM station_telemetry.migrations ORDER BY version',
     );
@@ -176,14 +298,11 @@ export class PgProductRepository implements ProductRepository {
       rows[0].version !== 1 ||
       rows[0].digest !== SCHEMA_DIGEST
     )
-      throw new Error('Unsupported telemetry storage migration');
+      throw new BrokerError('schema_incompatible');
   }
   async ready(): Promise<void> {
     await this.transaction(async (client) => {
       await this.assertSchema(client);
-      await client.query(
-        'SELECT source_id,event_id,content_digest,observation FROM station_telemetry.events LIMIT 0',
-      );
     });
   }
   private async source(client: PoolClient, key: string): Promise<SourceRow> {
@@ -341,40 +460,44 @@ export class PgProductRepository implements ProductRepository {
     });
   }
   async trends(from: string, to: string): Promise<ProductTrends> {
-    const { rows } = await this.pool.query<{
-      day: string;
-      event: string;
-      version: string;
-      sha: string | null;
-      sha_source: string | null;
-      engine: string | null;
-      outcome: string | null;
-      count: string;
-    }>(
-      `SELECT to_char(occurred_at AT TIME ZONE 'UTC','YYYY-MM-DD') AS day,event,observation->'build'->>'version' AS version,observation->'build'->>'sha' AS sha,observation->'build'->>'sha_source' AS sha_source,observation->'properties'->>'engine' AS engine,observation->'properties'->>'outcome' AS outcome,count(*)::text AS count FROM station_telemetry.events WHERE occurred_at >= $1 AND occurred_at < $2 GROUP BY 1,2,3,4,5,6,7 ORDER BY 1,2,3 LIMIT 1001`,
-      [from, to],
-    );
-    if (rows.length > 1000) throw new BrokerError('query_limit');
-    return {
-      scope: 'received-product-observations',
-      window: { from, to },
-      retentionDays: this.retentionDays,
-      eventTime: 'producer-wall-clock',
-      deliveryCoverage: 'unknown',
-      rows: rows.map((row) => ({
-        day: row.day,
-        event: row.event,
-        version: row.version,
-        sha: row.sha,
-        shaSource: row.sha_source,
-        engine: row.engine,
-        outcome: row.outcome,
-        count: Number(row.count),
-      })),
-    };
+    return this.transaction(async (client) => {
+      await this.assertSchema(client);
+      const { rows } = await client.query<{
+        day: string;
+        event: string;
+        version: string;
+        sha: string | null;
+        sha_source: string | null;
+        engine: string | null;
+        outcome: string | null;
+        count: string;
+      }>(
+        `SELECT to_char(occurred_at AT TIME ZONE 'UTC','YYYY-MM-DD') AS day,event,observation->'build'->>'version' AS version,observation->'build'->>'sha' AS sha,observation->'build'->>'sha_source' AS sha_source,observation->'properties'->>'engine' AS engine,observation->'properties'->>'outcome' AS outcome,count(*)::text AS count FROM station_telemetry.events WHERE occurred_at >= $1 AND occurred_at < $2 GROUP BY 1,2,3,4,5,6,7 ORDER BY 1,2,3 LIMIT 1001`,
+        [from, to],
+      );
+      if (rows.length > 1000) throw new BrokerError('query_limit');
+      return {
+        scope: 'received-product-observations',
+        window: { from, to },
+        retentionDays: this.retentionDays,
+        eventTime: 'producer-wall-clock',
+        deliveryCoverage: 'unknown',
+        rows: rows.map((row) => ({
+          day: row.day,
+          event: row.event,
+          version: row.version,
+          sha: row.sha,
+          shaSource: row.sha_source,
+          engine: row.engine,
+          outcome: row.outcome,
+          count: Number(row.count),
+        })),
+      };
+    });
   }
   async retain(): Promise<void> {
     await this.transaction(async (client) => {
+      await this.assertSchema(client);
       await client.query(
         "SELECT pg_advisory_xact_lock(hashtext('station.product.telemetry.admission'))",
       );
