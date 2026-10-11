@@ -322,32 +322,49 @@ describe('the control line and the hand-back', () => {
     expect(release.title).toMatch(/dialog first/);
   });
 
-  test('an agent that drove moments ago still reads as driving with no lease held, with the take-over hint over the page', async () => {
-    const state = control({ tone: 'none' });
-    controlHolder.state = state;
-    renderPane({
-      [SUMMARY]: ok(
-        sessionView({
-          serverNow: '2026-09-22T12:00:03.000Z',
-          activity: {
-            agentDriven: true,
-            lastDriver: { kind: 'agent', sessionId: 'agent-1' },
-            lastAgentInputAt: '2026-09-22T12:00:01.000Z',
-          },
-        }),
-      ),
-    });
-    expect(await screen.findByText('An agent is driving')).toBeTruthy();
-    // One word on the chip, and the page says how to take over.
-    expect(
-      screen.getByText('Click anywhere to take over from the agent'),
-    ).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Take control' })).toBeNull();
-    expect(
-      screen.queryByRole('button', { name: /Control options/ }),
-    ).toBeNull();
-    expect(state.claimControl).not.toHaveBeenCalled();
-  });
+  test.each([
+    { coarse: false, action: 'Click' },
+    { coarse: true, action: 'Tap' },
+  ])(
+    'recent Agent activity shows a $action takeover hint without claiming control',
+    async ({ coarse, action }) => {
+      vi.stubGlobal('matchMedia', (query: string) => ({
+        matches: coarse && query === '(pointer: coarse)',
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }));
+      const state = control({ tone: 'none' });
+      controlHolder.state = state;
+      renderPane({
+        [SUMMARY]: ok(
+          sessionView({
+            serverNow: '2026-09-22T12:00:03.000Z',
+            activity: {
+              agentDriven: true,
+              lastDriver: { kind: 'agent', sessionId: 'agent-1' },
+              lastAgentInputAt: '2026-09-22T12:00:01.000Z',
+            },
+          }),
+        ),
+      });
+      expect(await screen.findByText('An agent is driving')).toBeTruthy();
+      // One word on the chip, and the page says how to take over.
+      expect(
+        screen.getByText(`${action} anywhere to take over from the agent`),
+      ).toBeTruthy();
+      expect(
+        screen.getByTitle(
+          `An agent is driving. ${action} the page to take over.`,
+        ),
+      ).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Take control' })).toBeNull();
+      expect(
+        screen.queryByRole('button', { name: /Control options/ }),
+      ).toBeNull();
+      expect(state.claimControl).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('the console drawer', () => {
