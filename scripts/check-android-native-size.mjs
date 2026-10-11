@@ -10,7 +10,7 @@
 // - Every native library must be stripped: no .symtab and no .debug_*
 //   section. This is an invariant, so it fails on the exact regression
 //   whatever the library's size.
-// - Each budgeted library must stay under its byte ceiling. The ceiling
+// - Each budgeted <abi>/<library> must stay under its byte ceiling. The ceiling
 //   carries headroom over the measured size and fails only on growth past
 //   it; raising it is a reviewed edit to config/android-native-size-budget.json.
 
@@ -23,27 +23,39 @@ const BUDGET_PATH = new URL(
   import.meta.url,
 );
 
+// Little-endian ELF header and section-header field offsets by class. The
+// release APK carries all four Android ABIs, so armeabi-v7a and x86 are 32-bit.
+const ELF_LAYOUT = {
+  1: { shoff: 0x20, shentsize: 0x2e, entry: 40, offset: 0x10, size: 0x14 },
+  2: { shoff: 0x28, shentsize: 0x3a, entry: 64, offset: 0x18, size: 0x20 },
+};
+
 /**
- * Section names of a little-endian 64-bit ELF, or null when the section
- * header table or its string table is malformed. Never a partial list.
+ * Section names of a little-endian 32- or 64-bit ELF, or null when the
+ * section header table or its string table is malformed. Never a partial list.
  * @param {Buffer} buffer
  * @returns {string[] | null}
  */
 export function elfSectionNames(buffer) {
-  if (buffer.length < 64 || buffer.readUInt32BE(0) !== 0x7f454c46) return null;
-  if (buffer[4] !== 2 || buffer[5] !== 1 || buffer[6] !== 1) return null;
-  const shoff = buffer.readBigUInt64LE(0x28);
-  const shentsize = buffer.readUInt16LE(0x3a);
-  const shnum = buffer.readUInt16LE(0x3c);
-  const shstrndx = buffer.readUInt16LE(0x3e);
-  if (shentsize < 64 || shnum === 0 || shstrndx >= shnum) return null;
+  if (buffer.length < 52 || buffer.readUInt32BE(0) !== 0x7f454c46) return null;
+  const layout = ELF_LAYOUT[buffer[4]];
+  if (!layout || buffer[5] !== 1 || buffer[6] !== 1) return null;
+  const is64 = buffer[4] === 2;
+  if (is64 && buffer.length < 64) return null;
+  const word = (offset) =>
+    is64 ? buffer.readBigUInt64LE(offset) : BigInt(buffer.readUInt32LE(offset));
+  const shoff = word(layout.shoff);
+  const shentsize = buffer.readUInt16LE(layout.shentsize);
+  const shnum = buffer.readUInt16LE(layout.shentsize + 2);
+  const shstrndx = buffer.readUInt16LE(layout.shentsize + 4);
+  if (shentsize < layout.entry || shnum === 0 || shstrndx >= shnum) return null;
   const length = BigInt(buffer.length);
   const table = BigInt(shnum) * BigInt(shentsize);
   if (shoff > length || table > length - shoff) return null;
   const header = (index) => Number(shoff) + index * shentsize;
   const strings = header(shstrndx);
-  const stringsOffset = buffer.readBigUInt64LE(strings + 0x18);
-  const stringsSize = buffer.readBigUInt64LE(strings + 0x20);
+  const stringsOffset = word(strings + layout.offset);
+  const stringsSize = word(strings + layout.size);
   if (stringsOffset > length || stringsSize > length - stringsOffset) {
     return null;
   }
@@ -69,7 +81,9 @@ export function evaluateNativeSize(libraries, budget) {
   const report = [];
   const present = new Set();
   for (const { name, bytes } of libraries) {
-    const file = name.slice(name.lastIndexOf('/') + 1);
+    // Ceilings are per ABI: a library's size differs by architecture, and
+    // only the measured ABI may carry one. Every ABI must still be stripped.
+    const file = name.replace(/^lib\//, '');
     present.add(file);
     const sections = elfSectionNames(bytes);
     if (sections === null) {
@@ -113,7 +127,7 @@ export function parseBudget(value) {
     )
   ) {
     throw new Error(
-      'android-native-size-budget.json must map library file names to positive byte ceilings',
+      'android-native-size-budget.json must map <abi>/<library> paths to positive byte ceilings',
     );
   }
   return { libraries: /** @type {Record<string, number>} */ (libraries) };

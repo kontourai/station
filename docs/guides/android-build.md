@@ -96,10 +96,12 @@ follows it closely.
 
 The Nightly and release lanes run `node scripts/check-android-native-size.mjs
 <apk>` beside the 16 KB check. It rejects any native library that still has
-`.symtab` or `.debug_*` sections, and any library over its ceiling in
-`config/android-native-size-budget.json`. The ceiling carries about 15%
-headroom and fails only on growth past it; raise it in a reviewed change that
-names what grew. Debug builds are unstripped by design and are not gated.
+`.symtab` or `.debug_*` sections, for every ABI the APK carries (release
+builds package all four, two of them 32-bit). Ceilings in
+`config/android-native-size-budget.json` are per ABI; only arm64-v8a, the
+measured ABI that phones install, carries one. It has about 15% headroom and
+fails only on growth past it; raise it in a reviewed change that names what
+grew. Debug builds are unstripped by design and are not gated.
 
 ### Triggers
 

@@ -7,10 +7,13 @@ import {
 } from '../check-android-native-size.mjs';
 
 /**
- * A little-endian ELF64 carrying only a section header table: `names`, then a
- * final `.shstrtab` section that holds every name.
+ * A little-endian ELF (64-bit unless `bits` is 32) carrying only a section
+ * header table: `names`, then a final `.shstrtab` section holding every name.
  */
-function elfWithSections(names: string[], padding = 0): Buffer {
+function elfWithSections(names: string[], padding = 0, bits = 64): Buffer {
+  const is64 = bits === 64;
+  const header = is64 ? 64 : 52;
+  const entry = is64 ? 64 : 40;
   const all = [...names, '.shstrtab'];
   const strtab = Buffer.from(`\0${all.map((n) => `${n}\0`).join('')}`);
   const nameOffsets: number[] = [];
@@ -19,27 +22,33 @@ function elfWithSections(names: string[], padding = 0): Buffer {
     nameOffsets.push(cursor);
     cursor += name.length + 1;
   }
-  const strtabOffset = 64 + padding;
+  const strtabOffset = header + padding;
   const shoff = strtabOffset + strtab.length;
   const shnum = names.length + 1;
-  const buffer = Buffer.alloc(shoff + shnum * 64);
+  const buffer = Buffer.alloc(shoff + shnum * entry);
   buffer.writeUInt32BE(0x7f454c46, 0);
-  buffer[4] = 2;
+  buffer[4] = is64 ? 2 : 1;
   buffer[5] = 1;
   buffer[6] = 1;
-  buffer.writeBigUInt64LE(BigInt(shoff), 0x28);
-  buffer.writeUInt16LE(64, 0x3a);
-  buffer.writeUInt16LE(shnum, 0x3c);
+  const fields = is64 ? 0x3a : 0x2e;
+  if (is64) buffer.writeBigUInt64LE(BigInt(shoff), 0x28);
+  else buffer.writeUInt32LE(shoff, 0x20);
+  buffer.writeUInt16LE(entry, fields);
+  buffer.writeUInt16LE(shnum, fields + 2);
   // The last section is .shstrtab itself.
-  buffer.writeUInt16LE(shnum - 1, 0x3e);
+  buffer.writeUInt16LE(shnum - 1, fields + 4);
   strtab.copy(buffer, strtabOffset);
-  names.forEach((_, index) => {
-    buffer.writeUInt32LE(nameOffsets[index], shoff + index * 64);
-  });
-  const own = shoff + (shnum - 1) * 64;
-  buffer.writeUInt32LE(nameOffsets[names.length], own);
-  buffer.writeBigUInt64LE(BigInt(strtabOffset), own + 0x18);
-  buffer.writeBigUInt64LE(BigInt(strtab.length), own + 0x20);
+  for (let index = 0; index < shnum; index += 1) {
+    buffer.writeUInt32LE(nameOffsets[index], shoff + index * entry);
+  }
+  const own = shoff + (shnum - 1) * entry;
+  if (is64) {
+    buffer.writeBigUInt64LE(BigInt(strtabOffset), own + 0x18);
+    buffer.writeBigUInt64LE(BigInt(strtab.length), own + 0x20);
+  } else {
+    buffer.writeUInt32LE(strtabOffset, own + 0x10);
+    buffer.writeUInt32LE(strtab.length, own + 0x14);
+  }
   return buffer;
 }
 
@@ -57,7 +66,7 @@ describe('Android native size gate', () => {
   it('accepts a stripped library under its ceiling', () => {
     const bytes = elfWithSections(STRIPPED, 100);
     const result = evaluateNativeSize([{ name: LIB, bytes }], {
-      libraries: { 'libstation_ai_lib.so': bytes.length },
+      libraries: { 'arm64-v8a/libstation_ai_lib.so': bytes.length },
     });
     expect(result).toMatchObject({ ok: true, failures: [] });
     expect(result.report).toEqual([
@@ -73,7 +82,7 @@ describe('Android native size gate', () => {
       '.debug_info',
     ]);
     const result = evaluateNativeSize([{ name: LIB, bytes }], {
-      libraries: { 'libstation_ai_lib.so': bytes.length * 100 },
+      libraries: { 'arm64-v8a/libstation_ai_lib.so': bytes.length * 100 },
     });
     expect(result.ok).toBe(false);
     expect(result.failures).toEqual([
@@ -85,16 +94,46 @@ describe('Android native size gate', () => {
     const bytes = elfWithSections(STRIPPED);
     expect(
       evaluateNativeSize([{ name: LIB, bytes }], {
-        libraries: { 'libstation_ai_lib.so': bytes.length - 1 },
+        libraries: { 'arm64-v8a/libstation_ai_lib.so': bytes.length - 1 },
       }).failures,
     ).toEqual([
       `${LIB}: ${bytes.length} bytes exceeds the ${bytes.length - 1}-byte ceiling in config/android-native-size-budget.json`,
     ]);
     expect(
       evaluateNativeSize([{ name: LIB, bytes }], {
-        libraries: { 'libother.so': 10 },
+        libraries: { 'arm64-v8a/libother.so': 10 },
       }).failures,
-    ).toEqual(['libother.so: budgeted but not packaged']);
+    ).toEqual(['arm64-v8a/libother.so: budgeted but not packaged']);
+  });
+
+  // The release APK packages all four ABIs; armeabi-v7a and x86 are 32-bit.
+  it('reads 32-bit libraries and budgets only the measured ABI', () => {
+    expect(elfSectionNames(elfWithSections(STRIPPED, 0, 32))).toEqual([
+      ...STRIPPED,
+      '.shstrtab',
+    ]);
+    const arm64 = elfWithSections(STRIPPED, 400);
+    const result = evaluateNativeSize(
+      [
+        { name: LIB, bytes: arm64 },
+        {
+          name: 'lib/armeabi-v7a/libstation_ai_lib.so',
+          bytes: elfWithSections(STRIPPED, 900, 32),
+        },
+        {
+          name: 'lib/x86/libstation_ai_lib.so',
+          bytes: elfWithSections([...STRIPPED, '.symtab'], 0, 32),
+        },
+        {
+          name: 'lib/x86_64/libstation_ai_lib.so',
+          bytes: elfWithSections(STRIPPED, 900),
+        },
+      ],
+      { libraries: { 'arm64-v8a/libstation_ai_lib.so': arm64.length } },
+    );
+    expect(result.failures).toEqual([
+      'lib/x86/libstation_ai_lib.so: not stripped (.symtab); set strip in the release profile',
+    ]);
   });
 
   it('fails closed on a malformed section header table', () => {
@@ -147,7 +186,7 @@ describe('Android native size gate', () => {
       ),
     );
     expect(budget.libraries).toEqual({
-      'libstation_ai_lib.so': 24_000_000,
+      'arm64-v8a/libstation_ai_lib.so': 24_000_000,
     });
   });
 });
