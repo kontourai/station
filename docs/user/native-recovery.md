@@ -118,6 +118,7 @@ Keep shell and service logs separate:
 | What you need | macOS | Linux | Windows |
 | --- | --- | --- | --- |
 | Desktop shell log | `~/Library/Logs/<app-identifier>/station.log` | `$XDG_DATA_HOME/<app-identifier>/logs/station.log`, or `~/.local/share/<app-identifier>/logs/station.log` | `%LOCALAPPDATA%\<app-identifier>\logs\station.log` |
+| Desktop shell panic record | `crash.log` beside `station.log` | `crash.log` beside `station.log` | `crash.log` beside `station.log` |
 | Installed service log | `<STATION_HOME>/logs/<instance>-service.out.log` and `<STATION_HOME>/logs/<instance>-service.err.log` | `journalctl --user -u station-<instance>.service` (no service log file) | `<STATION_HOME>/logs/<instance>-service.log` |
 
 Choose the app identifier for your installed channel (Stable, Beta, or Nightly)
@@ -159,7 +160,7 @@ native harness must not be presented as packaged or physical-device evidence.
 | Hostile plugin IPC denial in a real Tauri WebView | Separate browser and real-WebView harnesses exist; the native lane was not run for this documentation review | **NOT_VERIFIED** here; historical gap recorded in [archive#2495](https://github.com/kontourai/station-archive/issues/2495) |
 | Renderer/WebView death detection and bounded reload | Window recreation exists; no automatic renderer-death recovery or kill-the-WebView proof is established here | **NOT_VERIFIED**; [archive#2006](https://github.com/kontourai/station-archive/issues/2006) |
 | EPIPE/closed-stdio handling | Server stdout guard and focused tests exist; no packaged closed-parent recovery journey was run here | **NOT_VERIFIED** on packaged shells; [archive#2006](https://github.com/kontourai/station-archive/issues/2006) |
-| macOS Finder/Dock Apple Event launch panic diagnosis | The historical abort report does not establish a recoverable panic payload or current trigger | **NOT_VERIFIED**; [archive#3496](https://github.com/kontourai/station-archive/issues/3496) |
+| macOS Finder/Dock Apple Event launch panic diagnosis | The historical abort report does not establish a recoverable panic payload or current trigger. The shell now appends Rust panics to `crash.log`, and that recording is unit-tested, but no packaged abort has been observed producing an entry | **NOT_VERIFIED**; [archive#3496](https://github.com/kontourai/station-archive/issues/3496) |
 | Tray rendering, tray activation, and second-launch behavior on release builds | Pure-state/static routing associated with [archive#3808](https://github.com/kontourai/station-archive/issues/3808) | **NOT_VERIFIED** on packaged macOS, Windows, and Linux |
 | Mobile startup and recovery | Desktop readiness code is desktop-only; no equivalent mobile recovery evidence is supplied here | **NOT_VERIFIED** on Android and iOS; historical documentation scope in [archive#3817](https://github.com/kontourai/station-archive/issues/3817) |
 

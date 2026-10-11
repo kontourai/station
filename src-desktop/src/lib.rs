@@ -40,6 +40,7 @@ mod native_relay_redemption;
 mod native_secure_entry;
 mod native_station_key_custody;
 mod pairing_deep_link_channels_generated;
+mod panic_log;
 mod relay_grant_vault;
 mod service_state;
 #[cfg(not(mobile))]
@@ -13148,6 +13149,15 @@ If a stable instance is running, this launch will focus its window and exit.",
     let updater_configured = desktop_updater_plugin_configured(&context.config().plugins.0);
     #[cfg(mobile)]
     let log_dir_writable = true;
+
+    // #759/#370: a panic in an AppKit callback aborts with no message, and a
+    // bundled app's stderr is discarded. Record it to `crash.log` beside the
+    // desktop log (and through the logger once it exists), installed as soon
+    // as the log directory is known. Mobile records through the logger only.
+    #[cfg(not(mobile))]
+    panic_log::install(app_log_dir_for(&context.config().identifier).filter(|_| log_dir_writable));
+    #[cfg(mobile)]
+    panic_log::install(None);
 
     // Keep file logs for GUI launches without an attached terminal (archive#1899).
     // LogDir uses app_log_dir(); stdout remains for terminal/dev launches.
