@@ -1254,15 +1254,16 @@ function overlayDockProjectMismatchHooks(): Pick<
                 name: 'Status unavailable — repair the connection',
                 exact: true,
               })
-              .evaluate((pill) =>
-                pill
-                  .getAnimations({ subtree: true })
-                  .filter(
-                    (animation) =>
-                      animation.playState === 'running' &&
-                      animation.effect?.getComputedTiming().iterations !==
-                        Infinity,
-                  ).length,
+              .evaluate(
+                (pill) =>
+                  pill
+                    .getAnimations({ subtree: true })
+                    .filter(
+                      (animation) =>
+                        animation.playState === 'running' &&
+                        animation.effect?.getComputedTiming().iterations !==
+                          Infinity,
+                    ).length,
               ),
           )
           .toBe(0);
