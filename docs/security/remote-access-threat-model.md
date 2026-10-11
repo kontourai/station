@@ -150,8 +150,8 @@ observation. Explicit connection checks and secret-binding administration
 require `access:manage`; saving destination/reference fields also refuses
 internal-agent requests. Account-bound collaborator admission remains narrower
 and does not expose these instance-management surfaces merely because a Device
-has a broad scope. Product and collector credentials require separate exact
-instance destination grants, never account, Project or peer inference grants.
+has a broad scope. Saved product and collector key references require separate
+exact instance destination grants, never account, Project or peer inference grants.
 See [usage telemetry](../reference/usage-telemetry.md#delivery-status-and-connection-checks)
 for the status/probe boundary and failure limits.
 
