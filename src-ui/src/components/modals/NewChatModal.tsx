@@ -40,7 +40,7 @@ import type { SkillExperienceDraft } from '../../lib/skill-experience-draft';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import {
   type EffectiveModelSource,
-  modelSourceLabel,
+  modelResetSourceLabel,
 } from '../../utils/execution';
 import {
   type NewChatModelChoice,
@@ -2147,11 +2147,7 @@ export function NewChatModal({
                   modelPickerAgent.slug === mode.preferredAgentSlug &&
                   mode.sourceModel
                     ? 'source turn'
-                    : (modelPickerDefault?.source &&
-                        modelSourceLabel(
-                          modelPickerDefault.source,
-                        ).toLowerCase()) ||
-                      'default model'
+                    : modelResetSourceLabel(modelPickerDefault?.source)
                 }
                 runtimeOptions={
                   pickerChoiceFor(modelPickerAgent)?.providerOptions

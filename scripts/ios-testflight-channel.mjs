@@ -84,9 +84,9 @@ export function createIosTestFlightConfig({
     identifier: identity.bundleId,
     version: marketingVersion,
     bundle: {
-      // Apple will reject iOS 14 uploads after Spring 2027. Pin delivery
-      // candidates now; development/simulator config stays independently set.
-      iOS: { minimumSystemVersion: '15.0', bundleVersion },
+      // The app's floor (tauri.ios.conf.json): WebKit before 16.4 rejects
+      // the regex lookbehind the UI uses (#3399).
+      iOS: { minimumSystemVersion: '16.4', bundleVersion },
       icon: [identity.icon],
     },
     plugins: {
