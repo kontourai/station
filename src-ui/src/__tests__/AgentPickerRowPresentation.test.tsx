@@ -98,7 +98,7 @@ describe('Agent picker row presentation', () => {
     ).toBeTruthy();
   });
 
-  test('a row with no resolvable engine draws no empty engine line', () => {
+  test('a row with no resolvable engine draws no empty engine label', () => {
     // A custom Agent bound to a connection the catalog cannot name has no
     // engine descriptor; its meta line used to render empty and add height.
     const unresolved: AgentData = {
@@ -109,7 +109,7 @@ describe('Agent picker row presentation', () => {
     };
     renderRows([unresolved], () => ({ label: 'Opus', unavailable: false }));
     expect(
-      row(unresolved.slug).querySelector('.new-chat-modal__agent-meta'),
+      row(unresolved.slug).querySelector('.new-chat-modal__agent-engine'),
     ).toBeNull();
   });
 

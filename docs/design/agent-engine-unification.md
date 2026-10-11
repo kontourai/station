@@ -600,6 +600,9 @@ Decisions:
   there is no default case, and the engine is precisely the fact that disambiguates
   the two-identical-OpenCodes problem the badges were built for. Visual weight stays
   quiet (the existing status-badge family); chips are informative, not alarming.
+  The start pickers (the New Chat list and the start composer's Agent menu) carry
+  the same label as quiet text under the row's model rather than as a pill on its
+  own line under the name, and leave it out where it only repeats the Agent's name.
 - **ACP never appears on a chip.** Transport is not identity. The engine's name and
   icon come from its connection/registry entry.
 - The badge components/tests (`AgentTypeBadge.tsx`, `agentTypeBadgeKind`, their four

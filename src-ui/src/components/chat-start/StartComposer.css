@@ -324,6 +324,11 @@
   padding: var(--k-space-1) var(--start-menu-inset) var(--k-space-1)
     var(--k-space-1);
 }
+/* In the menu the model text meets the inset directly (below), so the
+   engine line under it does too. */
+.start-menu__list .new-chat-modal__agent-engine {
+  padding-inline-end: 0;
+}
 /* The model name is the column's text, so its right edge, not its 10px
    button padding, meets the inset the header's close button ends on. */
 .start-menu__list .new-chat-modal__agent-side .new-chat-modal__model-trigger {

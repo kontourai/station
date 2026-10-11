@@ -8,7 +8,7 @@ import {
 import { MODEL_NOT_REPORTED } from '../../utils/modelCapabilities';
 import { type AgentFixRoute, AgentReadinessCell } from '../AgentReadinessCell';
 import { agentRunnability } from '../agent-runnability';
-import { EngineChip, engineChipLabel } from '../badges/EngineChip';
+import { engineChipLabel } from '../badges/EngineChip';
 import { normalizedDisplayLabel } from '../chat/message-bubble/MessageAttribution';
 import { AgentIcon } from '../icons/AgentIcon';
 import { resolveNewChatAgentUnavailability } from '../modals/new-chat-modal-utils';
@@ -80,6 +80,13 @@ function AgentPickerRow({
   const repeatsAgent =
     normalizedDisplayLabel(engineChipLabel(chipEngine)) ===
     normalizedDisplayLabel(agent.name);
+  // What runs this Agent, beside the model it runs, rather than a pill on a
+  // line of its own under the name: that line doubled every such row's
+  // height for one short label. A label that only repeats the name is the
+  // engine word printed twice, so it is left out.
+  const engineLabel =
+    chipEngine && !repeatsAgent ? engineChipLabel(chipEngine) : undefined;
+  const engineId = `agent-${agent.slug}-engine`;
   // A model the engine never reported is not a model, so the row never
   // prints the gap (the Agent chip hides it too). With a catalog there is
   // still one to choose, so the trigger stays and asks for it; without one
@@ -105,7 +112,12 @@ function AgentPickerRow({
         onClick={onSelect}
         disabled={interactionDisabled || !agentRunnability(agent).runnable}
         aria-describedby={
-          unavailability ? `agent-${agent.slug}-unavailable` : undefined
+          [
+            unavailability ? `agent-${agent.slug}-unavailable` : '',
+            engineLabel ? engineId : '',
+          ]
+            .filter(Boolean)
+            .join(' ') || undefined
         }
       >
         <div className="new-chat-modal__agent-header">
@@ -134,19 +146,6 @@ function AgentPickerRow({
               compact badge, so §5's one-wording contract keeps holding. */}
           <AgentReadinessCell agent={agent} part="status" compact />
         </div>
-        {/* One quiet line beneath the name carrying what the row IS: the
-            engine (and model, when the descriptor resolves one) plus the
-            agent's own description. Both were already in the row — the engine
-            chip competed with the name on line one, and the description sat at
-            the name's own rung. */}
-        {/* Y1, in §5 as well as §2: a chip that only repeats the name is the
-            engine word printed twice — every seeded engine row read
-            "Claude Code" with a "Claude Code" chip beneath it. */}
-        {chipEngine && !repeatsAgent && (
-          <div className="new-chat-modal__agent-meta">
-            <EngineChip engine={chipEngine} />
-          </div>
-        )}
         {!agent.engineDefault && agent.description && (
           <div
             className="new-chat-modal__agent-purpose"
@@ -178,32 +177,43 @@ function AgentPickerRow({
           name — the picker's dominant source of height. The row is a two-column
           grid now; neither the chip nor any action changed. */}
       <div className="new-chat-modal__agent-side">
-        {showModel && (
-          <button
-            type="button"
-            className="new-chat-modal__model-trigger"
-            onClick={(event) => onOpenModel(event.currentTarget)}
-            // An Agent whose engine has reported no catalog has no model to
-            // choose — the trigger opened an empty picker. Disabled (not
-            // hidden) while it still names a model, so the tooltip says why.
-            disabled={interactionDisabled || modelUnavailable}
-            aria-label={`Model: ${modelText}`}
-            title={
-              modelUnavailable
-                ? 'This Agent has not reported a model catalog'
-                : modelReported
-                  ? `Choose model: ${modelLabel}`
-                  : 'Choose model'
-            }
-          >
-            {/* The model name alone. The `Model · ` prefix read four times per
+        <div className="new-chat-modal__agent-runs">
+          {showModel && (
+            <button
+              type="button"
+              className="new-chat-modal__model-trigger"
+              onClick={(event) => onOpenModel(event.currentTarget)}
+              // An Agent whose engine has reported no catalog has no model to
+              // choose — the trigger opened an empty picker. Disabled (not
+              // hidden) while it still names a model, so the tooltip says why.
+              disabled={interactionDisabled || modelUnavailable}
+              aria-label={`Model: ${modelText}`}
+              title={
+                modelUnavailable
+                  ? 'This Agent has not reported a model catalog'
+                  : modelReported
+                    ? `Choose model: ${modelLabel}`
+                    : 'Choose model'
+              }
+            >
+              {/* The model name alone. The `Model · ` prefix read four times per
               list and was the first thing the chip's own max-width ellipsized
               — on every seeded row the visible string ended at the model's
               actual name ("Model · Default (r…"), the one part that matters.
               What this control IS stays in the accessible name and tooltip. */}
-            {modelText}
-          </button>
-        )}
+              {modelText}
+            </button>
+          )}
+          {engineLabel && (
+            <span
+              id={engineId}
+              className="new-chat-modal__agent-engine"
+              title={engineLabel}
+            >
+              {engineLabel}
+            </span>
+          )}
+        </div>
         {/*
           DESIGN.md §5: the SAME readiness cell the Agents list row renders.
           The picker used to draw its own chip ("Not set up" behind a warning

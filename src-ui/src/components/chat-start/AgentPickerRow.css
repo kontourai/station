@@ -7,3 +7,23 @@
   border-color: transparent;
   background: transparent;
 }
+
+/* The model and the engine that runs it, stacked at the row's end: the
+   engine is a quiet line under the model, not a pill under the name. */
+.new-chat-modal__agent-runs {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 0;
+}
+.new-chat-modal__agent-engine {
+  max-width: min(40vw, 200px);
+  overflow: hidden;
+  /* Under the model's text, not its button edge (the trigger pads 10px). */
+  padding-inline-end: 10px;
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+  text-align: end;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

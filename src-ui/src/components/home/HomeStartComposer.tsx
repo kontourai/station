@@ -665,11 +665,9 @@ export function HomeStartComposer({
                   route: 'models',
                 })
               }
-              onCheck={() =>
-                void refreshSetup().catch((error) =>
-                  setFeedback(describeReadFailure(error)),
-                )
-              }
+              // A failed check leaves `setupError` saying so (with its own
+              // retry); feedback here would outlive a later success.
+              onCheck={() => void refreshSetup().catch(() => undefined)}
             />
           </React.Suspense>
         )}

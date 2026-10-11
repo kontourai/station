@@ -37,4 +37,19 @@ describe('isStationTransportFailure', () => {
     // Safari's fetch failure phrase is covered.
     expect(isStationTransportFailure(new Error('Load failed'))).toBe(true);
   });
+
+  test('an unresolved caller is a refusal, not an unresolvable host', () => {
+    expect(
+      isStationTransportFailure(
+        new Error('Fork caller identity could not be resolved'),
+      ),
+    ).toBe(false);
+    expect(
+      isStationTransportFailure(
+        new Error(
+          'Native Station request failed: Station host could not be resolved.',
+        ),
+      ),
+    ).toBe(true);
+  });
 });
