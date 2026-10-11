@@ -81,6 +81,12 @@ withdraws queued observations at that boundary. A pending Agent activation
 response does not defer telemetry withdrawal. Unchanged telemetry settings
 preserve requests, queues and delivery health. External reconciliation applies
 telemetry after its validated config read, before preparing Agents.
+The HTTP listener can accept settings before the product service is constructed.
+Late construction uses a validated, revisioned config snapshot and rechecks its
+revision immediately before assigning the service. Three changed snapshots
+refuse initialization; an older Agent boot snapshot cannot restore withdrawn
+product sending. Later PUTs reach the assigned service before disclosure loading
+finishes. This does not publish a new Agent generation.
 External secret backend reads run through a deadline-owned Datum child; raw
 keys never persist in AppConfig or appear in status.
 

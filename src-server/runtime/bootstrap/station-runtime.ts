@@ -3177,6 +3177,32 @@ export class StationRuntime {
     reconfigureOtelTelemetryDelivery(config);
   }
 
+  private async initializeUsageTelemetry(): Promise<void> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const snapshot =
+        await this.configLoader.captureAppConfigLaunchabilitySnapshot();
+      if (this.configLoader.getLaunchabilityRevision() !== snapshot.revision)
+        continue;
+      // HTTP is already listening: a saved withdrawal must survive late construction.
+      const telemetry = new UsageTelemetryService({
+        homeDir: this.configLoader.getProjectHomeDir(),
+        appConfig: snapshot.config,
+        version: packageJson.version,
+        buildProvenance: this.buildProvenanceSnapshot ?? null,
+        logger: this.logger,
+        telemetrySecretResolver: this.secretBindingAdministration,
+      });
+      this.usageTelemetry = telemetry;
+      // Assignment precedes this await so subsequent PUTs reach the live owner.
+      await telemetry.loadDisclosureReceipt();
+      this.orchestrationService.setUsageTelemetry(telemetry);
+      return;
+    }
+    throw new Error(
+      'App configuration changed before product telemetry initialization.',
+    );
+  }
+
   private async reloadDefaultAgentFromConfig(
     appConfig: AppConfig,
     composition?: PluginActivationComposition,
@@ -3857,19 +3883,7 @@ export class StationRuntime {
     await this.startConsentListenerOrReport();
     await this.startTaskRoomAcceptanceControlIfConfigured();
     this.discordGatewayService.start();
-    this.usageTelemetry = new UsageTelemetryService({
-      homeDir: this.configLoader.getProjectHomeDir(),
-      appConfig: this.appConfig,
-      version: packageJson.version,
-      buildProvenance: this.buildProvenanceSnapshot ?? null,
-      logger: this.logger,
-      telemetrySecretResolver: this.secretBindingAdministration,
-    });
-    // A saved, current receipt remains consent after a restart. This read is
-    // fail-closed: loadDisclosureReceipt logs malformed receipts and leaves
-    // telemetry inactive, while a missing receipt stays silent and inactive.
-    await this.usageTelemetry.loadDisclosureReceipt();
-    this.orchestrationService.setUsageTelemetry(this.usageTelemetry);
+    await this.initializeUsageTelemetry();
     this.observeRuntimeConfigurationSources();
     // This is the last awaited startup step. Failed listeners/services above
     // cannot leave an accepted policy decision from an incomplete startup.

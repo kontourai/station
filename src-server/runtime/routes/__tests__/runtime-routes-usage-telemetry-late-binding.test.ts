@@ -31,6 +31,7 @@ import {
   checkOtelTelemetryConnection,
   getOtelTelemetryDeliveryStatus,
 } from '../../../telemetry-delivery-state.js';
+import type { Logger } from '../../../utils/logger.js';
 import { StationRuntime } from '../../bootstrap/station-runtime.js';
 import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../runtime-routes.js';
 
@@ -145,6 +146,36 @@ function runtimeContext(
 
 function loopbackEnv() {
   return { incoming: { socket: { remoteAddress: '127.0.0.1' } } } as never;
+}
+
+function writableConfig(config: AppConfig) {
+  // First-run transitions and revisioned log levels use separate endpoints.
+  const { firstRun: _firstRun, logLevel: _logLevel, ...settings } = config;
+  return settings;
+}
+
+function configurationRuntime(
+  loader: ConfigLoader,
+  logger: Pick<Logger, 'debug' | 'info' | 'warn' | 'error'>,
+  appConfig: AppConfig,
+) {
+  const runtime = Object.create(StationRuntime.prototype);
+  Object.assign(runtime, {
+    configLoader: loader,
+    logger,
+    appConfig,
+    agentConfigurationRevision: 0,
+    agentConfigurationPersistenceRevision: 0,
+    agentConfigurationMutationQueue: Promise.resolve(),
+    agentConfigurationPersistenceQueue: Promise.resolve(),
+    agentConfigurationMutationsClosed: false,
+    agentConfigurationActivationDeadlineMs: 10_000,
+    configurationReconciliationAttempt: 0,
+    configurationReconciliationScheduled: false,
+    timers: [],
+    runtimeConfigurationSourcesAreLoaded: () => false,
+  });
+  return runtime;
 }
 
 const disclosure = {
@@ -354,12 +385,6 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
 });
 
 describe('persisted telemetry configuration during Agent activation', () => {
-  function writableConfig(config: AppConfig) {
-    // First-run transitions and revisioned log levels use separate endpoints.
-    const { firstRun: _firstRun, logLevel: _logLevel, ...settings } = config;
-    return settings;
-  }
-
   const homes: Array<{ homeDir: string; loader: ConfigLoader }> = [];
   afterEach(async () => {
     for (const { homeDir, loader } of homes.splice(0)) {
@@ -434,22 +459,7 @@ describe('persisted telemetry configuration during Agent activation', () => {
         },
       });
 
-      const runtime = Object.create(StationRuntime.prototype);
-      Object.assign(runtime, {
-        configLoader: loader,
-        logger,
-        appConfig: initial,
-        agentConfigurationRevision: 0,
-        agentConfigurationPersistenceRevision: 0,
-        agentConfigurationMutationQueue: Promise.resolve(),
-        agentConfigurationPersistenceQueue: Promise.resolve(),
-        agentConfigurationMutationsClosed: false,
-        agentConfigurationActivationDeadlineMs: 10_000,
-        configurationReconciliationAttempt: 0,
-        configurationReconciliationScheduled: false,
-        timers: [],
-        runtimeConfigurationSourcesAreLoaded: () => false,
-      });
+      const runtime = configurationRuntime(loader, logger, initial);
       let releaseActivation!: () => void;
       const heldActivation = new Promise<void>((resolve) => {
         releaseActivation = resolve;
@@ -703,4 +713,301 @@ describe('persisted telemetry configuration during Agent activation', () => {
       }
     },
   );
+});
+
+describe('product telemetry constructed after a persisted startup edit', () => {
+  const homes: Array<{ homeDir: string; loader: ConfigLoader }> = [];
+  afterEach(async () => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    for (const { homeDir, loader } of homes.splice(0)) {
+      await loader.dispose();
+      await loader.whenWatcherClosed();
+      rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    {
+      label: 'saved disable',
+      update: { telemetryEnabled: false },
+      acknowledged: true,
+      expected: 'disabled',
+    },
+    {
+      label: 'cleared destination',
+      update: { productTelemetryEndpoint: null },
+      acknowledged: true,
+      expected: 'unconfigured',
+    },
+    {
+      label: 'replacement destination',
+      update: {
+        productTelemetryEndpoint: 'https://replacement.test/v1/product/events',
+      },
+      acknowledged: true,
+      expected: 'acknowledged',
+    },
+    {
+      label: 'replacement reference',
+      update: { productTelemetryKeyRef: 'replacement-source' },
+      acknowledged: true,
+      expected: 'acknowledged',
+    },
+    {
+      label: 'cleared reference',
+      update: { productTelemetryKeyRef: null },
+      acknowledged: true,
+      expected: 'acknowledged',
+    },
+    {
+      label: 'unchanged settings',
+      update: {},
+      acknowledged: true,
+      expected: 'acknowledged',
+    },
+    {
+      label: 'no prior disclosure',
+      update: {},
+      acknowledged: false,
+      expected: 'awaiting-disclosure',
+    },
+    {
+      label: 'stale captured snapshot',
+      update: { telemetryEnabled: false },
+      acknowledged: true,
+      expected: 'disabled',
+      staleSnapshot: true,
+    },
+    {
+      label: 'every captured snapshot superseded',
+      update: {},
+      acknowledged: true,
+      expected: 'unavailable',
+      unstableSnapshots: true,
+    },
+  ])('$label survives held and failing Agent activation', async (scenario) => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'station-late-telemetry-'));
+    const loader = new ConfigLoader({
+      projectHomeDir: homeDir,
+      watchFiles: false,
+    });
+    homes.push({ homeDir, loader });
+    const logger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    };
+    const oldDestination = 'https://receiver.test/v1/product/events';
+    const initial = await loader.updateAppConfig({
+      telemetryEnabled: true,
+      productTelemetryEndpoint: oldDestination,
+      productTelemetryKeyRef: 'product-source',
+    });
+    const bindings = new FileSecretBindingAdministration(homeDir, {
+      environment: { OLD_KEY: 'private-old-key', NEW_KEY: 'private-new-key' },
+    });
+    for (const [id, variable] of [
+      ['product-source', 'OLD_KEY'],
+      ['replacement-source', 'NEW_KEY'],
+    ] as const) {
+      await bindings.create({ id, name: id, authRef: { env: variable } });
+      await bindings.grant({
+        id,
+        expectedRevision: 1,
+        grant: {
+          kind: 'instance-telemetry-destination',
+          transport: 'product',
+          destination: oldDestination,
+        },
+      });
+    }
+    await bindings.grant({
+      id: 'product-source',
+      expectedRevision: 2,
+      grant: {
+        kind: 'instance-telemetry-destination',
+        transport: 'product',
+        destination: 'https://replacement.test/v1/product/events',
+      },
+    });
+    if (scenario.acknowledged) {
+      const priorProcess = new UsageTelemetryService({
+        homeDir,
+        appConfig: initial,
+        version: '1.2.3',
+        logger,
+        env: {},
+      });
+      try {
+        await priorProcess.acknowledgeDisclosure(
+          USAGE_TELEMETRY_INVENTORY_REVISION,
+        );
+      } finally {
+        await priorProcess.shutdown();
+      }
+    }
+    for (const key of [
+      'STATION_PRODUCT_TELEMETRY_ENDPOINT',
+      'STATION_TELEMETRY_ENDPOINT',
+      'STATION_PRODUCT_TELEMETRY_KEY',
+      'STATION_USAGE_TELEMETRY_KEY',
+      'STATION_PRODUCT_TELEMETRY_ENABLED',
+      'STATION_TELEMETRY_ENABLED',
+    ]) {
+      vi.stubEnv(key, undefined);
+    }
+    const fetch = vi.fn<typeof globalThis.fetch>(async (_input, init) => {
+      const batch = JSON.parse(String(init?.body)) as ProductTelemetryBatch;
+      return Response.json(
+        {
+          receipt: {
+            protocol: 'station-product-commit/v1',
+            receiptId: '11111111-2222-4333-8444-555555555555',
+            sourceId: '22222222-2222-4333-8444-555555555555',
+            eventIds: batch.events.map((event) => event.event_id),
+            inserted: batch.events.length,
+            alreadyPresent: 0,
+            storedAt: '2026-10-11T06:00:00.000Z',
+          },
+        },
+        { status: 202 },
+      );
+    });
+    vi.stubGlobal('fetch', fetch);
+    const runtime = configurationRuntime(loader, logger, initial);
+    runtime.secretBindingAdministration = bindings;
+    runtime.buildProvenanceSnapshot = null;
+    runtime.orchestrationService = { setUsageTelemetry: vi.fn() };
+    let releaseActivation!: () => void;
+    const activation = new Promise<void>((resolve) => {
+      releaseActivation = resolve;
+    });
+    runtime.reloadAgentsFromDisk = vi.fn(async () => {
+      await activation;
+      throw new Error('injected unrelated Agent activation failure');
+    });
+    const app = new Hono();
+    bindOperatorPrincipal(app);
+    const mounted = configureRuntimeRoutesProduction(
+      runtimeContext(app, homeDir, {
+        configLoader: loader,
+        usageTelemetry: undefined,
+        getUsageTelemetry: () => runtime.usageTelemetry,
+        applyAgentConfigurationMutation:
+          runtime.applyAgentConfigurationMutation.bind(runtime),
+      }),
+    );
+    await mounted.kitLifecycleReady;
+    let releaseSnapshot: (() => void) | undefined;
+    let capturedSnapshot = false;
+    const capture = loader.captureAppConfigLaunchabilitySnapshot.bind(loader);
+    let supersededSnapshots = 0;
+    if ('staleSnapshot' in scenario) {
+      vi.spyOn(
+        loader,
+        'captureAppConfigLaunchabilitySnapshot',
+      ).mockImplementationOnce(async () => {
+        const snapshot = await capture();
+        capturedSnapshot = true;
+        await new Promise<void>((resolve) => {
+          releaseSnapshot = resolve;
+        });
+        return snapshot;
+      });
+    }
+    if ('unstableSnapshots' in scenario) {
+      vi.spyOn(
+        loader,
+        'captureAppConfigLaunchabilitySnapshot',
+      ).mockImplementation(async () => {
+        const snapshot = await capture();
+        await loader.updateAppConfig({
+          defaultMaxTurns: ++supersededSnapshots,
+        });
+        return snapshot;
+      });
+    }
+    let initializing: Promise<void> | undefined;
+    let saving: Promise<Response> | undefined;
+    try {
+      if ('staleSnapshot' in scenario) {
+        initializing = runtime.initializeUsageTelemetry();
+        await vi.waitFor(() => expect(capturedSnapshot).toBe(true));
+      }
+      saving = app.request(
+        '/config/app',
+        {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            ...writableConfig(initial),
+            ...scenario.update,
+          }),
+        },
+        loopbackEnv(),
+      );
+      await vi.waitFor(() =>
+        expect(runtime.reloadAgentsFromDisk).toHaveBeenCalledTimes(1),
+      );
+      expect(runtime.usageTelemetry).toBeUndefined();
+      expect(runtime.appConfig).toBe(initial);
+      const persisted = await loader.loadAppConfig();
+      for (const [key, value] of Object.entries(scenario.update)) {
+        expect(persisted[key as keyof AppConfig]).toBe(
+          value === null ? undefined : value,
+        );
+      }
+      releaseSnapshot?.();
+      initializing ??= runtime.initializeUsageTelemetry();
+      if ('unstableSnapshots' in scenario) {
+        await expect(initializing).rejects.toThrow(
+          'App configuration changed before product telemetry initialization.',
+        );
+        expect(supersededSnapshots).toBe(3);
+        expect(runtime.usageTelemetry).toBeUndefined();
+        expect(fetch).not.toHaveBeenCalled();
+        releaseActivation();
+        expect((await saving).status).toBe(202);
+        return;
+      }
+      await initializing;
+      const telemetry: UsageTelemetryService = runtime.usageTelemetry;
+      await telemetry.stationStarted();
+      await telemetry.flush();
+      const status = await telemetry.deliveryStatus();
+      expect(status.phase).toBe(scenario.expected);
+      expect(status.disclosureAcknowledged).toBe(scenario.acknowledged);
+      if (scenario.expected === 'acknowledged') {
+        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(String(fetch.mock.calls[0][0])).toBe(
+          persisted.productTelemetryEndpoint,
+        );
+        expect(
+          new Headers(fetch.mock.calls[0][1]?.headers).get('x-api-key'),
+        ).toBe(
+          persisted.productTelemetryKeyRef === 'replacement-source'
+            ? 'private-new-key'
+            : persisted.productTelemetryKeyRef
+              ? 'private-old-key'
+              : null,
+        );
+      } else {
+        expect(fetch).not.toHaveBeenCalled();
+        expect(status.queued).toBe(0);
+      }
+      expect(runtime.appConfig).toBe(initial);
+      releaseActivation();
+      expect((await saving).status).toBe(202);
+    } finally {
+      runtime.agentConfigurationMutationsClosed = true;
+      releaseActivation();
+      releaseSnapshot?.();
+      await Promise.allSettled([saving, initializing]);
+      for (const timer of runtime.timers) clearTimeout(timer);
+      await runtime.drainConfigurationQueues();
+      await runtime.usageTelemetry?.shutdown();
+    }
+  });
 });
