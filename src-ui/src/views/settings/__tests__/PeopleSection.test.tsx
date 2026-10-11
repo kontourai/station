@@ -166,6 +166,34 @@ function peopleRoute(people: () => StationPerson[]): Handler {
 }
 
 const writes = () => calls.filter((call) => call.method !== 'GET');
+
+/** One person's list item. */
+function personItem(principalId: string): HTMLElement {
+  const item = document.querySelector(
+    `[data-principal-id="${principalId}"]`,
+  ) as HTMLElement | null;
+  if (!item) throw new Error(`no person ${principalId}`);
+  return item;
+}
+
+/** A person's row toggle, found by their display name. */
+function toggleButton(name: string): HTMLElement {
+  return screen.getByRole('button', { name: new RegExp(`^▸?\\s*${name}`) });
+}
+
+function toggle(name: string) {
+  fireEvent.click(toggleButton(name));
+}
+
+/** Seven people, enough for the filter. */
+function crowd(): StationPerson[] {
+  return ['ada', 'grace', 'lin', 'mei', 'omar', 'priya', 'tomas'].map((login) =>
+    ada({
+      principalId: `human:tailscale-serve:${login}@example.com`,
+      displayName: `${login}@example.com`,
+    }),
+  );
+}
 const NEW_FOR_ADA = 'New token for ada@example.com';
 
 describe('People section', () => {
@@ -427,9 +455,7 @@ describe('People section', () => {
       if (label === 'failing') {
         // A failure that is not a refusal keeps the cached list, marked as
         // not refreshed, with the secret still inside its owner's card.
-        const card = screen
-          .getByText('ada@example.com', { selector: 'h4' })
-          .closest('article') as HTMLElement;
+        const card = personItem('human:tailscale-serve:ada@example.com');
         expect(within(card).getByDisplayValue('stp_keep_me')).toBeTruthy();
         expect(screen.getByRole('alert').textContent).toContain(
           'couldn’t be refreshed',
@@ -477,9 +503,10 @@ describe('People section', () => {
       call.method === 'DELETE' ? json({ revoked: true }) : list(call);
     mount(<PeopleSection />);
 
-    const card = (await screen.findByText('Grace Hopper')).closest(
-      'article',
-    ) as HTMLElement;
+    await screen.findByText('Grace Hopper');
+    toggle('Grace Hopper');
+    toggle('ada@example.com');
+    const card = personItem(`human:deployment:${'a'.repeat(64)}`);
     const scoped = within(card);
     expect(scoped.queryByRole('button', { name: /New token/ })).toBeNull();
     expect(card.textContent).toContain('Tailscale identity');
@@ -514,6 +541,136 @@ describe('People section', () => {
     const dialog = await screen.findByRole('alertdialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Revoke' }));
     await waitFor(() => expect(dialog.textContent).toContain('right now'));
+  });
+
+  test('people start collapsed, summarised, and marked when a device is limited', async () => {
+    handler = peopleRoute(() => [
+      ada(),
+      grace({ tokens: [token({ id: 'tok-g' })] }),
+    ]);
+    mount(<PeopleSection />);
+
+    await screen.findByText('Grace Hopper');
+    const adaToggle = toggleButton('ada@example.com');
+    expect(adaToggle.getAttribute('aria-expanded')).toBe('false');
+    expect(adaToggle.textContent).toContain('1 device · 0 tokens');
+    // Ada's one device is capped by her group; Grace's is not.
+    expect(adaToggle.textContent).toContain('1 limited');
+    expect(toggleButton('Grace Hopper').textContent).toContain(
+      '1 device · 1 token',
+    );
+    expect(toggleButton('Grace Hopper').textContent).not.toContain('limited');
+    // Collapsed: no principal id, no devices, no tokens.
+    expect(screen.queryByText('human:tailscale-serve:ada@example.com')).toBe(
+      null,
+    );
+    expect(screen.queryByRole('list', { name: /Devices for/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /New token/ })).toBeNull();
+  });
+
+  test('a row opens and closes from its native toggle button', async () => {
+    handler = peopleRoute(() => [ada(), grace()]);
+    mount(<PeopleSection />);
+    await screen.findByText('Grace Hopper');
+    const adaToggle = toggleButton('ada@example.com');
+
+    fireEvent.click(adaToggle);
+    expect(adaToggle.getAttribute('aria-expanded')).toBe('true');
+    const bodyId = adaToggle.getAttribute('aria-controls');
+    expect(bodyId).toBeTruthy();
+    expect(document.getElementById(bodyId as string)?.textContent).toContain(
+      'human:tailscale-serve:ada@example.com',
+    );
+    fireEvent.click(adaToggle);
+    expect(adaToggle.getAttribute('aria-expanded')).toBe('false');
+
+    // Keyboard operation is the platform's: the toggle is a native button
+    // (Enter and Space activate it), focusable, and not a div with a handler.
+    // jsdom does not synthesise that activation; the screenshot run drives it.
+    expect(adaToggle.tagName).toBe('BUTTON');
+    expect(adaToggle.getAttribute('type')).toBe('button');
+    adaToggle.focus();
+    expect(document.activeElement).toBe(adaToggle);
+  });
+
+  test('the only person opens by themselves, and can still be closed', async () => {
+    handler = peopleRoute(() => [ada()]);
+    mount(<PeopleSection />);
+    await screen.findByText('human:tailscale-serve:ada@example.com');
+    const adaToggle = toggleButton('ada@example.com');
+    expect(adaToggle.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(adaToggle);
+    expect(adaToggle.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  test('the Group picker does not open or close the row', async () => {
+    handler = peopleRoute(() => [ada(), grace()]);
+    mount(<PeopleSection />);
+    await screen.findByText('Grace Hopper');
+    const select = screen.getByLabelText('Group for ada@example.com');
+    fireEvent.click(select);
+    fireEvent.keyDown(select, { key: 'Enter' });
+    expect(toggleButton('ada@example.com').getAttribute('aria-expanded')).toBe(
+      'false',
+    );
+  });
+
+  test('an open form or an unshown secret keeps its person open', async () => {
+    const list = peopleRoute(() => [ada(), grace()]);
+    handler = (call) =>
+      call.method === 'POST'
+        ? json({ token: token({ name: 'CI' }), secret: 'stp_pinned' }, 201)
+        : list(call);
+    mount(<PeopleSection />);
+    await screen.findByText('Grace Hopper');
+    const adaToggle = toggleButton('ada@example.com');
+    fireEvent.click(adaToggle);
+
+    // With the form open, collapsing is refused.
+    fireEvent.click(screen.getByRole('button', { name: NEW_FOR_ADA }));
+    fireEvent.click(adaToggle);
+    expect(adaToggle.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByLabelText('Name')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'CI' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    expect(await screen.findByDisplayValue('stp_pinned')).toBeTruthy();
+
+    // With the secret showing, too.
+    fireEvent.click(adaToggle);
+    expect(adaToggle.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByDisplayValue('stp_pinned')).toBeTruthy();
+
+    // After Done the row may close again.
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    fireEvent.click(adaToggle);
+    expect(adaToggle.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  test('a filter appears at six people and matches name or principal id', async () => {
+    handler = peopleRoute(() => crowd().slice(0, 5));
+    const first = mount(<PeopleSection />);
+    await screen.findByText('omar@example.com');
+    expect(screen.queryByLabelText('Filter')).toBeNull();
+    first.unmount();
+
+    handler = peopleRoute(crowd);
+    mount(<PeopleSection />);
+    await screen.findByText('tomas@example.com');
+    const filter = screen.getByLabelText('Filter');
+    fireEvent.change(filter, { target: { value: 'PRIYA' } });
+    expect(screen.getAllByRole('button', { expanded: false })).toHaveLength(1);
+    expect(screen.getByText('priya@example.com')).toBeTruthy();
+    expect(screen.queryByText('ada@example.com')).toBeNull();
+
+    fireEvent.change(filter, { target: { value: 'tailscale-serve:mei' } });
+    expect(screen.getByText('mei@example.com')).toBeTruthy();
+    expect(screen.queryByText('priya@example.com')).toBeNull();
+
+    fireEvent.change(filter, { target: { value: 'zzz' } });
+    expect(screen.getByText('Nobody matches that filter.')).toBeTruthy();
   });
 
   test('no one tied to a device shows the empty state', async () => {

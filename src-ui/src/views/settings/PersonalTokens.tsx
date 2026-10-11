@@ -359,6 +359,7 @@ export function PersonalTokens({
   mint,
   onDone,
   revoke,
+  onEditingChange,
 }: {
   heading: string;
   /** One muted line under the header. */
@@ -376,8 +377,13 @@ export function PersonalTokens({
   mint: (input: PersonalTokenInput) => Promise<void>;
   onDone: () => void;
   revoke: (token: PersonalAccessToken) => Promise<void>;
+  /** Told when the New token form opens or closes, so a caller can keep it shown. */
+  onEditingChange?: (editing: boolean) => void;
 }) {
   const [creating, setCreating] = useState(false);
+  useEffect(() => {
+    onEditingChange?.(creating);
+  }, [creating, onEditingChange]);
   const [minting, setMinting] = useState(false);
   const [pendingRevoke, setPendingRevoke] =
     useState<PersonalAccessToken | null>(null);

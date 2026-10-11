@@ -22,7 +22,7 @@ import {
   useStationPeopleQuery,
 } from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
-import { useId, useState } from 'react';
+import { useCallback, useId, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { Empty, ErrorState } from '../../components/state';
@@ -77,12 +77,39 @@ interface HeldSecret {
   minted: MintedPersonalAccessToken;
 }
 
+/** At this many people the list offers a filter. */
+export const PEOPLE_FILTER_THRESHOLD = 6;
+
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? '' : 's'}`;
+}
+
+function limitedDevices(person: StationPerson): number {
+  return person.devices.filter(
+    (device) => !sameScope(device.scope, device.effectiveScope),
+  ).length;
+}
+
+function matchesFilter(person: StationPerson, filter: string): boolean {
+  const needle = filter.trim().toLowerCase();
+  return (
+    !needle ||
+    person.displayName.toLowerCase().includes(needle) ||
+    person.principalId.toLowerCase().includes(needle)
+  );
+}
+
 export function PeopleSection() {
   const people = useStationPeopleQuery();
   const mintMutation = useMintStationPersonTokenMutation();
   // Held HERE, above the list query: a refetch that fails or is refused after
   // the mint must not take the only copy of the secret with it.
   const [held, setHeld] = useState<HeldSecret | null>(null);
+  // Which people the reader opened or closed. Local UI state only: an absent
+  // entry follows the default (open when there is exactly one person).
+  const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  const [filter, setFilter] = useState('');
+  const filterId = useId();
   const refused = isStationAccessUnavailable(people.error);
   if (refused && !held) return null;
   // The heading is a claim that the caller administers people; it waits for
@@ -90,9 +117,18 @@ export function PeopleSection() {
   if (people.isPending && !held) return null;
 
   const list = refused ? undefined : people.data;
+  const filtering = (list?.length ?? 0) >= PEOPLE_FILTER_THRESHOLD;
+  // The person holding an unshown secret is never filtered away.
+  const visible = (list ?? []).filter(
+    (person) =>
+      !filtering ||
+      matchesFilter(person, filter) ||
+      held?.principalId === person.principalId,
+  );
   const heldInList =
     held !== null &&
-    (list ?? []).some((person) => person.principalId === held.principalId);
+    visible.some((person) => person.principalId === held.principalId);
+  const openByDefault = list?.length === 1;
 
   async function mint(person: StationPerson, input: PersonalTokenInput) {
     try {
@@ -165,19 +201,50 @@ export function PeopleSection() {
                 description="When you approve a device with its person’s verified identity or account, that person appears here."
               />
             ) : (
-              list.map((person) => (
-                <PersonCard
-                  key={person.principalId}
-                  person={person}
-                  minted={
-                    held?.principalId === person.principalId
-                      ? held.minted
-                      : null
-                  }
-                  mint={(input) => mint(person, input)}
-                  onDone={() => setHeld(null)}
-                />
-              ))
+              <>
+                {filtering && (
+                  <label className="people__filter" htmlFor={filterId}>
+                    <span className="people__field-label">Filter</span>
+                    <input
+                      id={filterId}
+                      type="search"
+                      className="people__input"
+                      placeholder="Name or principal id"
+                      value={filter}
+                      onChange={(event) => setFilter(event.target.value)}
+                    />
+                  </label>
+                )}
+                {visible.length === 0 ? (
+                  <Empty
+                    className="people__none"
+                    label="Nobody matches that filter."
+                  />
+                ) : (
+                  <ul className="people__people" aria-label="People">
+                    {visible.map((person) => (
+                      <PersonCard
+                        key={person.principalId}
+                        person={person}
+                        open={toggled[person.principalId] ?? openByDefault}
+                        onToggle={(open) =>
+                          setToggled((current) => ({
+                            ...current,
+                            [person.principalId]: open,
+                          }))
+                        }
+                        minted={
+                          held?.principalId === person.principalId
+                            ? held.minted
+                            : null
+                        }
+                        mint={(input) => mint(person, input)}
+                        onDone={() => setHeld(null)}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </>
             )}
           </>
         )}
@@ -216,11 +283,16 @@ function DeviceRow({
 
 function PersonCard({
   person,
+  open: wantsOpen,
+  onToggle,
   minted,
   mint,
   onDone,
 }: {
   person: StationPerson;
+  /** What the reader (or the default) asked for. */
+  open: boolean;
+  onToggle: (open: boolean) => void;
   minted: MintedPersonalAccessToken | null;
   mint: (input: PersonalTokenInput) => Promise<void>;
   onDone: () => void;
@@ -233,8 +305,15 @@ function PersonCard({
   const [pendingDemotion, setPendingDemotion] = useState<StationGroup | null>(
     null,
   );
+  const [editing, setEditing] = useState(false);
+  const onEditingChange = useCallback((next: boolean) => setEditing(next), []);
   const id = useId();
   const groupLabel = STATION_GROUP_LABELS[person.group].label;
+  // A New token form or an unshown secret pins the person open: collapsing
+  // would unmount the form, or hide the only copy of the secret.
+  const pinned = editing || minted !== null;
+  const open = wantsOpen || pinned;
+  const limited = limitedDevices(person);
 
   async function applyGroup(group: StationGroup) {
     setGroupError(null);
@@ -256,9 +335,7 @@ function PersonCard({
       );
       const reset = Object.keys(change.revocations).length;
       if (reset > 0)
-        setGroupNotice(
-          `Full access was reset on ${reset} device${reset === 1 ? '' : 's'}.`,
-        );
+        setGroupNotice(`Full access was reset on ${plural(reset, 'device')}.`);
     } catch (cause) {
       setGroupError(groupChangeMessage(cause));
     } finally {
@@ -277,18 +354,42 @@ function PersonCard({
   }
 
   return (
-    <article
-      className="people__person"
-      aria-labelledby={`${id}-name`}
+    <li
+      className={`people__person${open ? ' people__person--open' : ''}`}
       data-principal-id={person.principalId}
     >
-      <header className="people__person-header">
-        <div className="people__person-id">
-          <h4 className="people__person-name" id={`${id}-name`}>
-            {person.displayName}
-          </h4>
-          <span className="people__principal">{person.principalId}</span>
-        </div>
+      <div className="people__person-row">
+        {/* The toggle and the Group picker are siblings, never nested: a
+            picker inside the button would be invalid and its clicks would
+            toggle the row. */}
+        <button
+          type="button"
+          className="people__toggle"
+          aria-expanded={open}
+          aria-controls={open ? `${id}-body` : undefined}
+          aria-disabled={pinned || undefined}
+          title={pinned ? 'Finish the new token first' : undefined}
+          onClick={() => {
+            if (!pinned) onToggle(!open);
+          }}
+        >
+          <span className="people__chevron" aria-hidden="true">
+            ▸
+          </span>
+          <span className="people__toggle-text">
+            <span className="people__person-name">{person.displayName}</span>
+            <span className="people__meta">
+              {plural(person.devices.length, 'device')} ·{' '}
+              {plural(person.tokens.length, 'token')}
+              {limited > 0 && (
+                <span className="people__attention">
+                  <span className="people__attention-dot" aria-hidden="true" />
+                  {limited} limited
+                </span>
+              )}
+            </span>
+          </span>
+        </button>
         <select
           className="editor-select people__group-select"
           value={person.group}
@@ -303,7 +404,7 @@ function PersonCard({
             </option>
           ))}
         </select>
-      </header>
+      </div>
       {groupError && (
         <p className="people__error" role="alert">
           {groupError}
@@ -313,46 +414,56 @@ function PersonCard({
         {groupNotice ?? ''}
       </p>
 
-      <section className="people__sub" aria-labelledby={`${id}-devices`}>
-        <div className="people__sub-header">
-          <h5 className="people__sub-title" id={`${id}-devices`}>
-            Devices
-          </h5>
-        </div>
-        {person.devices.length === 0 ? (
-          <Empty
-            className="people__none"
-            label="None tied to them right now."
-          />
-        ) : (
-          <ul
-            className="people__rows"
-            aria-label={`Devices for ${person.displayName}`}
-          >
-            {person.devices.map((device) => (
-              <DeviceRow key={device.id} device={device} group={person.group} />
-            ))}
-          </ul>
-        )}
-      </section>
+      {open && (
+        <div className="people__person-body" id={`${id}-body`}>
+          <span className="people__principal">{person.principalId}</span>
+          <section className="people__sub" aria-labelledby={`${id}-devices`}>
+            <div className="people__sub-header">
+              <h5 className="people__sub-title" id={`${id}-devices`}>
+                Devices
+              </h5>
+            </div>
+            {person.devices.length === 0 ? (
+              <Empty
+                className="people__none"
+                label="None tied to them right now."
+              />
+            ) : (
+              <ul
+                className="people__rows"
+                aria-label={`Devices for ${person.displayName}`}
+              >
+                {person.devices.map((device) => (
+                  <DeviceRow
+                    key={device.id}
+                    device={device}
+                    group={person.group}
+                  />
+                ))}
+              </ul>
+            )}
+          </section>
 
-      <PersonalTokens
-        heading="Access tokens"
-        tokens={person.tokens}
-        ownerLabel={person.displayName}
-        limitedBy={groupLabel}
-        canMint={person.canHoldTokens}
-        cannotMintReason="No device ties them by a Tailscale identity, and tokens work only for people tied that way."
-        minted={minted}
-        mint={mint}
-        onDone={onDone}
-        revoke={(token) =>
-          revoke.mutateAsync({
-            principalId: person.principalId,
-            tokenId: token.id,
-          })
-        }
-      />
+          <PersonalTokens
+            heading="Access tokens"
+            tokens={person.tokens}
+            ownerLabel={person.displayName}
+            limitedBy={groupLabel}
+            canMint={person.canHoldTokens}
+            cannotMintReason="No device ties them by a Tailscale identity, and tokens work only for people tied that way."
+            minted={minted}
+            mint={mint}
+            onDone={onDone}
+            onEditingChange={onEditingChange}
+            revoke={(token) =>
+              revoke.mutateAsync({
+                principalId: person.principalId,
+                tokenId: token.id,
+              })
+            }
+          />
+        </div>
+      )}
 
       <ConfirmModal
         isOpen={pendingDemotion !== null}
@@ -369,6 +480,6 @@ function PersonCard({
         }}
         onCancel={() => setPendingDemotion(null)}
       />
-    </article>
+    </li>
   );
 }

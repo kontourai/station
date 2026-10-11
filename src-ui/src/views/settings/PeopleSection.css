@@ -54,26 +54,86 @@
   margin: 0;
 }
 
-/* One person: a card of its own. */
-.people__person {
-  display: flex;
-  flex-direction: column;
-  gap: var(--k-space-3);
-  padding: var(--k-space-4);
-  border: var(--k-border-thin) solid var(--k-line-strong);
+/* People read as one list: tight rows with dividers. An open person gets
+   the card treatment inside it. */
+.people__people {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: var(--k-border-thin) solid var(--k-line);
   border-radius: var(--k-radius-md);
-  background: var(--k-panel-raised);
+  background: var(--k-panel);
+}
+
+.people__person {
   min-width: 0;
 }
 
-.people__person-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--k-space-3);
+.people__person + .people__person {
+  border-top: var(--k-border-thin) solid var(--k-line);
 }
 
-.people__person-id {
+.people__person--open {
+  background: var(--k-panel-raised);
+}
+
+.people__person:first-child {
+  border-top-left-radius: var(--k-radius-md);
+  border-top-right-radius: var(--k-radius-md);
+}
+
+.people__person:last-child {
+  border-bottom-left-radius: var(--k-radius-md);
+  border-bottom-right-radius: var(--k-radius-md);
+}
+
+.people__person-row {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  padding: var(--k-space-1) var(--k-space-3) var(--k-space-1) 0;
+  min-width: 0;
+}
+
+/* The whole row (bar the picker) is the toggle. */
+.people__toggle {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--k-space-1) var(--k-space-2) var(--k-space-1) var(--k-space-3);
+  border: 0;
+  border-radius: var(--k-radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.people__toggle[aria-disabled="true"] {
+  cursor: default;
+}
+
+.people__toggle:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: calc(-1 * var(--k-focus-ring-width));
+}
+
+.people__chevron {
+  flex: 0 0 auto;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  transition: transform var(--k-dur) var(--k-ease);
+}
+
+.people__toggle[aria-expanded="true"] .people__chevron {
+  transform: rotate(90deg);
+}
+
+.people__toggle-text {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -85,7 +145,35 @@
   color: var(--k-text);
   font-size: var(--k-text-md);
   font-weight: 600;
-  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.people__attention {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  margin-left: var(--k-space-2);
+  color: var(--k-text);
+}
+
+.people__attention-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--k-caution);
+}
+
+.people__person > .people__error,
+.people__person > .people__notice {
+  padding: 0 var(--k-space-3) var(--k-space-2);
+}
+
+.people__person-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  padding: 0 var(--k-space-4) var(--k-space-4) var(--k-space-6);
+  min-width: 0;
 }
 
 .people__principal {
@@ -93,6 +181,13 @@
   font-family: var(--k-font-mono);
   font-size: var(--k-text-xs);
   word-break: break-all;
+}
+
+.people__filter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  max-width: 20rem;
 }
 
 /* Compact and on the header line; the picker keeps a 44px tap height. */
