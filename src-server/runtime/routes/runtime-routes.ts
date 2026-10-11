@@ -1326,7 +1326,7 @@ export function configureRuntimeRoutes(
     );
   };
   let pluginDraftService: PluginDraftService | undefined;
-  const projectTaskRoomLifecycleReady: Promise<void> = Promise.resolve();
+  let projectTaskRoomLifecycleReady: Promise<void> = Promise.resolve();
   let liveSurfaceRegistry: LiveSurfaceRegistry | undefined;
   let browserService: BrowserService | undefined;
   let deviceToolchainService: DeviceToolchainService | undefined;
@@ -1918,8 +1918,6 @@ export function configureRuntimeRoutes(
     context.environmentSecurityService,
     () => context.buildProvenanceSnapshot?.channel,
   );
-    },
-  };
   context.app.use('*', async (c, next) => {
     bindFullAccessRefusalIdentity(c.req.raw, fullAccessRefusalIdentity);
     await next();
