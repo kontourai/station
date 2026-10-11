@@ -5,6 +5,7 @@ import { createInterface } from 'node:readline';
 import type {
   InsightsScanCoverage,
   InsightsScanIssue,
+  UsageInsights,
 } from '@kontourai/station-contracts/insights';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import { MS_PER_DAY } from '@kontourai/station-contracts/time';
@@ -225,7 +226,7 @@ export function createInsightsRoutes(
       }
     > = {};
     const hourlyActivity: number[] = new Array(24).fill(0);
-    const agentUsage: Record<string, { chats: number; tokens: number }> = {};
+    const agentUsage: UsageInsights['agentUsage'] = {};
     const modelUsage: Record<string, number> = {};
     const chatTraceIds = new Set<string>();
     const agentChatTraceIds = new Map<string, Set<string>>();
@@ -407,7 +408,7 @@ export function createInsightsRoutes(
               // surfaces again.
               const agent = monitoringAgentName(event);
               if (!agentUsage[agent]) {
-                agentUsage[agent] = { chats: 0, tokens: 0 };
+                agentUsage[agent] = { chats: 0 };
               }
               // Real traces count once per agent even when their start and end
               // spans are both present. `no-session` is a shared sentinel, so

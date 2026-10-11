@@ -70,7 +70,6 @@ describe('monitoring view utils', () => {
         model: 'model-a',
         conversationCount: 1,
         messageCount: 2,
-        cost: 0,
       },
     ];
     const filteredEvents = [
@@ -96,7 +95,6 @@ describe('monitoring view utils', () => {
             activeAgents: 1,
             runningAgents: 1,
             totalMessages: 2,
-            totalCost: 0,
           },
         },
         filteredEvents,
