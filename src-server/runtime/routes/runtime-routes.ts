@@ -9174,10 +9174,11 @@ export function configureDevicePairingHostRoutes(
       left.displayName.localeCompare(right.displayName),
     );
   };
+  // Read like the device list: the pairing family's boundary admits the
+  // operator and the desktop's own local grant. Changing a group is a device
+  // access change, so it needs the operator credential itself.
   app.get('/api/pairing/people', (c) => {
     if (!options.groups) return c.json({ error: 'not_found' }, 404);
-    if (!currentOperator(c, c.req.raw))
-      return c.json({ error: 'authentication_required' }, 401);
     c.header('Cache-Control', 'no-store');
     return c.json({ people: peopleView() });
   });

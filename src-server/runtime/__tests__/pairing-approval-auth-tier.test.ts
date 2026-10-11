@@ -1131,7 +1131,36 @@ describe('#3557 Station groups at the HTTP boundary', () => {
     expect((await confirm()).status).toBe(200);
   });
 
-  test('only the operator lists people or changes a group', async () => {
+  test("the desktop's local grant lists people but cannot change a group: that needs the operator credential", async () => {
+    const harness = await createHarness();
+    const casey = await pairPerson(harness, 'casey', ELEVATED);
+    const mint = await harness.request(
+      '/.well-known/station/v1/pairing/local-grant',
+      harness.json({
+        secret: harness.localGrantSecret(),
+        deviceName: 'Desktop',
+      }),
+      '127.0.0.1',
+    );
+    const desktop = (await mint.json()) as { credential: string };
+    const authorization = { Authorization: `Bearer ${desktop.credential}` };
+    expect(
+      (await harness.request('/api/pairing/people', { headers: authorization }))
+        .status,
+    ).toBe(200);
+    const change = await harness.request(
+      `/api/pairing/people/${encodeURIComponent(casey.principalId)}/group`,
+      {
+        method: 'PUT',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group: 'admin' }),
+      },
+    );
+    expect(change.status).toBe(401);
+    expect(harness.security.groupOf(casey.principalId)).toBe('member');
+  });
+
+  test("a person's own device neither lists people nor changes a group", async () => {
     const harness = await createHarness();
     const casey = await pairPerson(harness, 'casey', ELEVATED);
     await harness.security.assignGroup(casey.principalId, 'admin');
