@@ -113,6 +113,49 @@ describe('Agent picker row presentation', () => {
     ).toBeNull();
   });
 
+  test('a state badge appears only on a blocked row with no fix of its own', () => {
+    const fixable: AgentData = {
+      ...KIRO,
+      slug: agentId('kiro-fixable'),
+      available: false,
+      unavailableReason: 'Kiro CLI connection is broken.',
+      unavailableFix: { kind: 'connection-broken' },
+    };
+    const policy: AgentData = {
+      ...KIRO,
+      slug: agentId('kiro-policy'),
+      available: false,
+      unavailableReason: 'An external policy currently prevents launch.',
+      unavailableFix: { kind: 'policy' },
+    };
+    renderRows([PROXIED_CLAUDE, fixable, policy], () => ({
+      label: 'Opus',
+      unavailable: false,
+    }));
+    const badge = (slug: string) =>
+      row(slug).querySelector('.agent-readiness__status');
+    // Ready: choosable says it; no "Ready" badge.
+    expect(badge(PROXIED_CLAUDE.slug)).toBeNull();
+    expect(within(row(PROXIED_CLAUDE.slug)).queryByText('Ready')).toBeNull();
+    // Blocked with a fix: disabled, with its one button, and no badge.
+    const fixableSelect = row(fixable.slug).querySelector(
+      'button[data-agent-slug]',
+    ) as HTMLButtonElement;
+    expect(fixableSelect.disabled).toBe(true);
+    expect(
+      within(row(fixable.slug)).getByRole('button', { name: /Set up/ }),
+    ).toBeTruthy();
+    expect(badge(fixable.slug)).toBeNull();
+    // Blocked with no fix: the badge is the row's only stated reason.
+    expect(badge(policy.slug)?.textContent).toBe('Not set up');
+    // The engine pill follows the name on its line.
+    expect(
+      row(PROXIED_CLAUDE.slug).querySelector(
+        '.new-chat-modal__agent-header .new-chat-modal__agent-engine .engine-chip__pill',
+      )?.textContent,
+    ).toBe('brian-media proxy');
+  });
+
   test('rows do not repeat the Station every row runs on', () => {
     renderRows([PROXIED_CLAUDE, KIRO], () => ({
       label: 'Opus',

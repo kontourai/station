@@ -6,7 +6,11 @@ import {
   type EngineDescriptor,
 } from '../../utils/engine';
 import { MODEL_NOT_REPORTED } from '../../utils/modelCapabilities';
-import { type AgentFixRoute, AgentReadinessCell } from '../AgentReadinessCell';
+import {
+  type AgentFixRoute,
+  AgentReadinessCell,
+  agentFixLabel,
+} from '../AgentReadinessCell';
 import { agentRunnability } from '../agent-runnability';
 import { engineChipLabel } from '../badges/EngineChip';
 import { normalizedDisplayLabel } from '../chat/message-bubble/MessageAttribution';
@@ -76,6 +80,7 @@ function AgentPickerRow({
   // one surface and not the other would be the exact divergence §5 forbids.
   const devicePresentation = useDevicePresentation();
   const engine = agentEngineDescriptor(agent);
+  const runnable = agentRunnability(agent).runnable;
   const chipEngine = engineQualifiedBy(engine, agent.name);
   const repeatsAgent =
     normalizedDisplayLabel(engineChipLabel(chipEngine)) ===
@@ -109,7 +114,7 @@ function AgentPickerRow({
         className={`new-chat-modal__agent ${isSelected ? 'new-chat-modal__agent--selected' : ''}`}
         onMouseEnter={onHover}
         onClick={onSelect}
-        disabled={interactionDisabled || !agentRunnability(agent).runnable}
+        disabled={interactionDisabled || !runnable}
         aria-describedby={
           unavailability ? `agent-${agent.slug}-unavailable` : undefined
         }
@@ -130,6 +135,12 @@ function AgentPickerRow({
           >
             {agent.name}
           </span>
+          {/* What runs it, as the quiet engine pill, right after the name. */}
+          {engineLabel && (
+            <span className="new-chat-modal__agent-engine" title={engineLabel}>
+              <span className="engine-chip__pill">{engineLabel}</span>
+            </span>
+          )}
           {/* archive#4521's compact rule, at the row that proved why: the
               header badge carries the SHORT state ("Not set up", caution
               tone), never the server's full sentence — that badge label IS a
@@ -138,12 +149,15 @@ function AgentPickerRow({
               below. The complete sentence stays on the row (assistive node +
               title) and at this width the Agents list row reads the same
               compact badge, so §5's one-wording contract keeps holding. */}
-          <AgentReadinessCell agent={agent} part="status" compact />
-          {/* After the state, so the name and its state read together. */}
-          {engineLabel && (
-            <span className="new-chat-modal__agent-engine" title={engineLabel}>
-              {engineLabel}
-            </span>
+          {/* A state only when nothing else on the row says it. "Ready" is
+              what an enabled row says by being choosable, and a row that
+              cannot start is already disabled, dimmed, and carries its one
+              fixing button (Enable, Connect, Set up, Edit agent) at the end.
+              Only a row with no fix of its own (a policy, an unknown reason)
+              keeps the badge, so it is never a dead row with no reason. The
+              wording, when shown, is the cell's own: the Agents list's word. */}
+          {!runnable && !agentFixLabel(agent) && (
+            <AgentReadinessCell agent={agent} part="status" compact />
           )}
         </div>
         {!agent.engineDefault && agent.description && (

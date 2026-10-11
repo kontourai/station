@@ -63,10 +63,11 @@ New chat opens the shared start composer. Home renders it inline, and an
 operator's Project page renders a compact version above its activity with
 the Project fixed. Project and Station controls sit above the text box;
 separate Agent and Engine & model controls sit inside it beside Start and the overflow
-for visual skills. The Agent list retains each Agent's readiness and repair
-action, with a short purpose for custom Agents. The engine that runs an Agent
-reads as quiet text at the end of its name line, after its state, not on a
-line of its own. A row does not repeat what the list already states: the Station every row runs on, an engine name that is only
+for visual skills. The Agent list retains each Agent's repair action: a row that cannot start is
+dimmed and disabled with its one fixing button, and shows a state badge only
+when it has no fix of its own; a ready row shows none. Custom Agents keep a
+short purpose. The engine that runs an Agent
+reads as a quiet pill right after its name, not on a line of its own. A row does not repeat what the list already states: the Station every row runs on, an engine name that is only
 the Agent's name plus a qualifier (the row keeps the qualifier), or "Model not
 reported": a row with a model catalog but no reported model offers **Choose
 model**, and one with neither shows no model control. The Model picker offers search, recent choices, favorites and provider
