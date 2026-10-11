@@ -24,9 +24,9 @@ import {
 
 export const STATION_GROUPS_FILE = 'station-groups.json';
 /**
- * When groups first applied on this Station. Kept apart from the record, so
- * losing the record does not lose it: a reseed then only counts devices
- * issued before groups applied, never a grant the operator has since capped.
+ * Marks that groups have applied on this Station. Kept apart from the
+ * record, so losing the record does not lose it: groups are then never
+ * reseeded, and everyone sits in Member until the operator reassigns them.
  */
 export const STATION_GROUPS_ACTIVATED_FILE = 'station-groups-activated.json';
 const RECORD_VERSION = 1;
@@ -98,25 +98,13 @@ export class StationGroupsService {
     }
   }
 
-  /**
-   * When groups first applied here, or `null` before they ever have. An
-   * unreadable stamp reads as `0`: a reseed then promotes no one.
-   */
-  activatedAt(): number | null {
+  /** Whether groups have ever applied here (see `markActivated`). */
+  activated(): boolean {
     try {
       statSync(this.#activatedPath);
+      return true;
     } catch {
-      return null;
-    }
-    try {
-      const value = readJsonFile<{ activatedAt?: unknown } | null>(
-        this.#activatedPath,
-        null,
-        { maxBytes: 1024, label: 'Station groups activation' },
-      )?.activatedAt;
-      return typeof value === 'number' && Number.isFinite(value) ? value : 0;
-    } catch {
-      return 0;
+      return false;
     }
   }
 

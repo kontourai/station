@@ -223,7 +223,7 @@ describe('Station groups cap a device tied to a person', () => {
     expect(again.groupOf(person('casey@example.test'))).toBe('member');
   });
 
-  test('a lost record never re-promotes anyone from a grant made after groups applied', async () => {
+  test('a lost record is never reseeded: no stored grant re-promotes anyone, everyone sits in Member', async () => {
     const time = clock(Date.UTC(2026, 10, 3));
     const { homeDir, security } = await station(time.now);
     const early = pair(
@@ -254,8 +254,9 @@ describe('Station groups cap a device tied to a person', () => {
     await restarted.initialize();
     expect(restarted.groupOf(person('casey@example.test'))).toBe('member');
     expect(restarted.resolveGrantedScope(casey.credential)).toBe(STANDARD);
-    expect(restarted.groupOf(person('dana@example.test'))).toBe('admin');
-    expect(restarted.resolveGrantedScope(early.credential)).toBe(ADMIN_LIKE);
+    // Even Dana, seeded Admin at first use, waits for the operator again.
+    expect(restarted.groupOf(person('dana@example.test'))).toBe('member');
+    expect(restarted.resolveGrantedScope(early.credential)).toBe(STANDARD);
   });
 
   test("a native request acts with the capped scope, through the runtime's device lookup", async () => {
