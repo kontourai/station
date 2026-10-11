@@ -66,10 +66,7 @@ import packageJson from '../../../package.json' with { type: 'json' };
 import { STATION_CAPABILITY_FLAGS } from '../../capabilities/station-capability-flags.js';
 import { sleep } from '../../utils/sleep.js';
 import { principalForDeviceBinding } from '../access/device-binding-principal.js';
-import {
-  STATION_GROUPS_INTRODUCED_AT,
-  StationGroupsService,
-} from '../access/station-groups-service.js';
+import { StationGroupsService } from '../access/station-groups-service.js';
 import { DevicePairingService } from './device-pairing-service.js';
 
 const SECURITY_DIRECTORY = 'security';
@@ -245,26 +242,31 @@ export class EnvironmentSecurityService {
 
   /**
    * #3557, first use only: people whose tied devices already held a
-   * permission Member would remove before groups existed start as Admin, so
+   * permission Member would remove before groups applied start as Admin, so
    * turning groups on takes nothing away. Afterwards the operator decides.
-   * Only devices issued before groups shipped count, so a lost record never
-   * re-promotes someone from a grant the operator has since capped.
+   * The moment groups first applied is stamped apart from the record; a
+   * reseed after a lost record counts only devices issued before it, so it
+   * never re-promotes someone from a grant the operator has since capped.
    */
   async #seedGroups(pairing: DevicePairingService): Promise<void> {
-    if (this.#groups.exists()) return;
-    const admins = new Set<string>();
-    for (const device of pairing.listDevices()) {
-      if (
-        device.revokedAt !== null ||
-        !device.principalBinding ||
-        device.kind === 'delegation' ||
-        (device.issuedAt ?? device.createdAt) >= STATION_GROUPS_INTRODUCED_AT
-      )
-        continue;
-      if (capScopeToGroup(device.scope, 'member') !== device.scope)
-        admins.add(principalForDeviceBinding(device.principalBinding).id);
+    const activatedAt = this.#groups.activatedAt();
+    if (!this.#groups.exists()) {
+      const admins = new Set<string>();
+      for (const device of pairing.listDevices()) {
+        if (
+          device.revokedAt !== null ||
+          !device.principalBinding ||
+          device.kind === 'delegation' ||
+          (activatedAt !== null &&
+            (device.issuedAt ?? device.createdAt) >= activatedAt)
+        )
+          continue;
+        if (capScopeToGroup(device.scope, 'member') !== device.scope)
+          admins.add(principalForDeviceBinding(device.principalBinding).id);
+      }
+      await this.#groups.seed([...admins]);
     }
-    await this.#groups.seed([...admins]);
+    if (activatedAt === null) await this.#groups.markActivated(this.#now());
   }
 
   /** #3557: the group a person sits in. */

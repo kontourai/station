@@ -33,7 +33,6 @@ export function nativeDeviceProofPilotEnabled(
   throw new Error('STATION_NATIVE_DEVICE_PROOF_PILOT must be 0 or 1.');
 }
 
-/** Trusted runtime composition; configuration never substitutes for private peer provenance. */
 /**
  * The live paired Device a native request acts as, with the scope it may
  * actually use: #3557's Station group cap, never the raw stored grant. The
@@ -60,6 +59,7 @@ export function nativeActiveDevice(
   };
 }
 
+/** Trusted runtime composition; configuration never substitutes for private peer provenance. */
 export function createNativeDeviceProofRuntime(input: {
   flag: string | undefined;
   homeDir: string;

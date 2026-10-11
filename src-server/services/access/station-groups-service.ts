@@ -19,15 +19,16 @@ import {
 import {
   mutateJsonFile,
   readJsonFile,
+  writeJsonFile,
 } from '@kontourai/station-shared/json-file-storage';
 
 export const STATION_GROUPS_FILE = 'station-groups.json';
 /**
- * When Station groups shipped. First-use seeding only considers devices
- * issued before this, so it reproduces the pre-groups state, never a grant
- * made afterwards.
+ * When groups first applied on this Station. Kept apart from the record, so
+ * losing the record does not lose it: a reseed then only counts devices
+ * issued before groups applied, never a grant the operator has since capped.
  */
-export const STATION_GROUPS_INTRODUCED_AT = Date.UTC(2026, 9, 12);
+export const STATION_GROUPS_ACTIVATED_FILE = 'station-groups-activated.json';
 const RECORD_VERSION = 1;
 const MAX_BYTES = 256 * 1024;
 const MAX_PRINCIPAL_ID_LENGTH = 512;
@@ -72,10 +73,15 @@ function isValidPrincipalId(value: string): boolean {
 
 export class StationGroupsService {
   readonly #path: string;
+  readonly #activatedPath: string;
   #cache: { key: string; record: StationGroupsRecord } | undefined;
 
   constructor(options: { securityDir: string }) {
     this.#path = join(options.securityDir, STATION_GROUPS_FILE);
+    this.#activatedPath = join(
+      options.securityDir,
+      STATION_GROUPS_ACTIVATED_FILE,
+    );
   }
 
   get path(): string {
@@ -90,6 +96,36 @@ export class StationGroupsService {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * When groups first applied here, or `null` before they ever have. An
+   * unreadable stamp reads as `0`: a reseed then promotes no one.
+   */
+  activatedAt(): number | null {
+    try {
+      statSync(this.#activatedPath);
+    } catch {
+      return null;
+    }
+    try {
+      const value = readJsonFile<{ activatedAt?: unknown } | null>(
+        this.#activatedPath,
+        null,
+        { maxBytes: 1024, label: 'Station groups activation' },
+      )?.activatedAt;
+      return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  async markActivated(at: number): Promise<void> {
+    await writeJsonFile(
+      this.#activatedPath,
+      { activatedAt: at },
+      { maxBytes: 1024, label: 'Station groups activation' },
+    );
   }
 
   /** The group `principalId` sits in: its assignment, or Member. */

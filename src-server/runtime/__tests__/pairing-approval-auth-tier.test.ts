@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type HttpBindings } from '@hono/node-server';
@@ -300,6 +300,7 @@ async function createHarness(
   return {
     audits,
     deviceAccessRequest,
+    homeDir,
     security,
     operatorCredential,
     localGrantSecret: () =>
@@ -1129,6 +1130,35 @@ describe('#3557 Station groups at the HTTP boundary', () => {
       },
     });
     expect((await confirm()).status).toBe(200);
+  });
+
+  test('a group change the record cannot take is 503, and a non-person is 400; neither changes anyone', async () => {
+    const harness = await createHarness();
+    const casey = await pairPerson(harness, 'casey', ELEVATED);
+    const put = (principalId: string) =>
+      harness.request(
+        `/api/pairing/people/${encodeURIComponent(principalId)}/group`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${harness.operatorCredential}`,
+          },
+          body: JSON.stringify({ group: 'admin' }),
+        },
+      );
+    const invalid = await put('device:not-a-person');
+    expect(invalid.status).toBe(400);
+    expect(await invalid.json()).toEqual({ error: 'invalid_principal' });
+
+    // The record path is unusable (a directory sits there).
+    const recordPath = join(harness.homeDir, 'security', 'station-groups.json');
+    rmSync(recordPath, { force: true });
+    mkdirSync(recordPath);
+    const unavailable = await put(casey.principalId);
+    expect(unavailable.status).toBe(503);
+    expect(await unavailable.json()).toEqual({ error: 'groups_unavailable' });
+    expect(harness.security.groupOf(casey.principalId)).toBe('member');
   });
 
   test("the desktop's local grant lists people but cannot change a group: that needs the operator credential", async () => {

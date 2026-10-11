@@ -11,7 +11,10 @@ import { nativeActiveDevice } from '../../../runtime/bootstrap/native-device-pro
 import { consentDecisionAuthority } from '../../../security/pairing-route-scopes.js';
 import type { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
-import { STATION_GROUPS_FILE } from '../station-groups-service.js';
+import {
+  STATION_GROUPS_ACTIVATED_FILE,
+  STATION_GROUPS_FILE,
+} from '../station-groups-service.js';
 
 // Literal: everything a device can have plus the two moderation grants.
 const ADMIN_LIKE =
@@ -35,9 +38,22 @@ async function station(now?: () => number) {
   return { homeDir, security };
 }
 
-// Literal: the day before groups shipped, and the day after.
-const BEFORE_GROUPS = () => Date.UTC(2026, 9, 1);
-const AFTER_GROUPS = () => Date.UTC(2026, 9, 20);
+/** A Station clock that moves only when told to. */
+function clock(start: number) {
+  let at = start;
+  return {
+    now: () => at,
+    advance: (ms: number) => {
+      at += ms;
+    },
+  };
+}
+
+/** As a Station looked before it ran groups: neither record exists. */
+function forgetGroups(homeDir: string) {
+  for (const file of [STATION_GROUPS_FILE, STATION_GROUPS_ACTIVATED_FILE])
+    rmSync(join(homeDir, 'security', file), { force: true });
+}
 
 function pair(
   pairing: DevicePairingService,
@@ -172,7 +188,9 @@ describe('Station groups cap a device tied to a person', () => {
   });
 
   test('first use seeds Admin for people whose devices already held an elevated grant, so nothing is taken away', async () => {
-    const { homeDir, security } = await station(BEFORE_GROUPS);
+    // Whenever the upgrade lands: a device paired the day before it counts.
+    const time = clock(Date.UTC(2026, 10, 3));
+    const { homeDir, security } = await station(time.now);
     const casey = pair(
       security.devicePairing,
       'Casey phone',
@@ -185,12 +203,12 @@ describe('Station groups cap a device tied to a person', () => {
       STANDARD,
       'dana@example.test',
     );
-    // As before groups shipped: no record yet.
-    rmSync(join(homeDir, 'security', STATION_GROUPS_FILE), { force: true });
+    forgetGroups(homeDir);
+    time.advance(24 * 60 * 60 * 1000);
 
     const restarted = new EnvironmentSecurityService({
       homeDir,
-      now: BEFORE_GROUPS,
+      now: time.now,
     });
     await restarted.initialize();
     expect(restarted.groupOf(person('casey@example.test'))).toBe('admin');
@@ -205,10 +223,25 @@ describe('Station groups cap a device tied to a person', () => {
     expect(again.groupOf(person('casey@example.test'))).toBe('member');
   });
 
-  test('a lost record never re-promotes anyone from a grant made after groups shipped', async () => {
-    const { homeDir, security } = await station(AFTER_GROUPS);
-    const casey = pair(
+  test('a lost record never re-promotes anyone from a grant made after groups applied', async () => {
+    const time = clock(Date.UTC(2026, 10, 3));
+    const { homeDir, security } = await station(time.now);
+    const early = pair(
       security.devicePairing,
+      'Dana laptop',
+      ADMIN_LIKE,
+      'dana@example.test',
+    );
+    forgetGroups(homeDir);
+    time.advance(60_000);
+    // Groups apply here; Dana's earlier grant is honoured.
+    const upgraded = new EnvironmentSecurityService({ homeDir, now: time.now });
+    await upgraded.initialize();
+    expect(upgraded.groupOf(person('dana@example.test'))).toBe('admin');
+
+    time.advance(60_000);
+    const casey = pair(
+      upgraded.devicePairing,
       'Casey phone',
       ADMIN_LIKE,
       'casey@example.test',
@@ -216,11 +249,13 @@ describe('Station groups cap a device tied to a person', () => {
     rmSync(join(homeDir, 'security', STATION_GROUPS_FILE), { force: true });
     const restarted = new EnvironmentSecurityService({
       homeDir,
-      now: AFTER_GROUPS,
+      now: time.now,
     });
     await restarted.initialize();
     expect(restarted.groupOf(person('casey@example.test'))).toBe('member');
     expect(restarted.resolveGrantedScope(casey.credential)).toBe(STANDARD);
+    expect(restarted.groupOf(person('dana@example.test'))).toBe('admin');
+    expect(restarted.resolveGrantedScope(early.credential)).toBe(ADMIN_LIKE);
   });
 
   test("a native request acts with the capped scope, through the runtime's device lookup", async () => {
