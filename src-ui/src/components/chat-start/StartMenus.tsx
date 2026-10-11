@@ -504,11 +504,10 @@ function StationScopedModelPicker(
           currentModel={props.choice?.modelId}
           currentExecutionAgentId={props.choice?.executionAgentId}
           defaultModel={props.defaultModel?.id ?? undefined}
-          defaultSourceLabel={
-            props.defaultModel?.source
-              ? modelSourceLabel(props.defaultModel.source).toLowerCase()
-              : 'Agent defaults'
-          }
+          defaultSourceLabel={modelResetSourceLabel(
+            props.defaultModel?.source,
+            'Agent defaults',
+          )}
           runtimeOptions={props.choice?.providerOptions}
           returnFocusTarget={props.anchor}
           catalogNotice={
