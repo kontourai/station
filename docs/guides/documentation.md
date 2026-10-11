@@ -517,8 +517,10 @@ runtime steps not exercised. New Pages content must be explicitly admitted in
 The root `docs-kit.json` must track `public-docs.json` (same sources, sections
 and order): the Pages workflow publishes its `docs-bundle.json`, which feeds the
 [Kontour docs hub](https://kontourai.github.io/) and the shared `docs-kit mcp`
-server; check it with `npx -y github:kontourai/docs-kit#<sha> docs-kit check`
-before a pull request, because its CI gate runs only after merge.
+server. `PR: Docs kit` runs `docs-kit check` on pull requests, merge-queue
+entries and main as an advisory, non-required check; run
+`npx -y github:kontourai/docs-kit#<sha> docs-kit check` locally for faster
+feedback.
 
 The learning atlas and Station Docs MCP share the concept catalog and module
 map. The [shipped manual](../reference/station-docs.md) owns the MCP's introductory

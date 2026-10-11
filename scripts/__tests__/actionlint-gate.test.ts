@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import {
   classifyActionlintEvaluation,
   compareToBaseline,
+  DOCS_GATE_REUSABLE_WORKFLOW,
   expressionReadsCredential,
   FAST_CHECKS_JOB_TIMEOUT_MINUTES,
   findingKey,
@@ -4623,5 +4624,127 @@ describe('landing policy revision and credential binding', () => {
       message:
         'landing automation must retain its exact reviewed trusted-base credential topology',
     });
+  });
+});
+
+describe('the org docs gate runs on pull requests through one exact reviewed call', () => {
+  const FILE = '.github/workflows/docs-kit.yml';
+  // Literals pinned independently of the gate's constants, so the gate and
+  // this suite cannot drift together.
+  const REVIEWED_CALLEE =
+    'kontourai/.github/.github/workflows/docs-gate.yml@091ffabdaf151f0d873d40ac03a85855deee2a55';
+  const HEAD_REPOSITORY =
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+    "${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}";
+  const HEAD_REF =
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+    "${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}";
+  const CHECKOUT =
+    'base-controlled PR jobs must explicitly check out the pull-request head repository and SHA';
+  const HOSTED =
+    'base-controlled PR workflows must run candidate code only on GitHub-hosted runners';
+  const UNREVIEWED =
+    'pull-request and merge-queue workflows may only use actions and reusable workflows whose cache behavior is reviewed in UNTRUSTED_ACTION_CACHE_POLICY';
+  const PERMISSION =
+    'base-controlled PR job permission overrides must declare only permissions: { contents: read }';
+
+  type GateJob = Record<string, unknown> & {
+    permissions: Record<string, unknown>;
+    with: Record<string, unknown>;
+  };
+  function realDocsKitWorkflow() {
+    const workflow = readWorkflowDocuments().find(({ file }) => file === FILE);
+    if (!workflow)
+      throw new Error('Expected the checked-in docs-kit workflow.');
+    return structuredClone(workflow.document) as {
+      on: Record<string, unknown>;
+      jobs: { gate: GateJob };
+    };
+  }
+  const findingsFor = (file: string, document: unknown) =>
+    persistentRunnerPolicyFindings([{ file, document }]).filter(
+      (finding: { file: string }) => finding.file === file,
+    );
+
+  test('the checked-in workflow is the reviewed call on pull requests and the merge queue', () => {
+    const document = realDocsKitWorkflow();
+    expect(DOCS_GATE_REUSABLE_WORKFLOW).toBe(REVIEWED_CALLEE);
+    expect(Object.keys(document.on)).toEqual(
+      expect.arrayContaining(['pull_request_target', 'merge_group', 'push']),
+    );
+    expect(document.on).not.toHaveProperty('pull_request');
+    expect(document.jobs.gate.uses).toBe(REVIEWED_CALLEE);
+    expect(document.jobs.gate.with.repository).toBe(HEAD_REPOSITORY);
+    expect(document.jobs.gate.with.ref).toBe(HEAD_REF);
+    expect(document.jobs.gate.permissions).toEqual({ contents: 'read' });
+    expect(document.jobs.gate).not.toHaveProperty('secrets');
+    expect(findingsFor(FILE, document)).toEqual([]);
+  });
+
+  test.each([
+    [
+      'checks out the base branch instead of the head SHA',
+      (job: GateJob) => {
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        job.with.ref = '${{ github.sha }}';
+      },
+      [CHECKOUT, HOSTED],
+    ],
+    [
+      'checks out the base repository for a fork',
+      (job: GateJob) => {
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        job.with.repository = '${{ github.repository }}';
+      },
+      [CHECKOUT, HOSTED],
+    ],
+    [
+      'omits the head inputs, so the callee checks out the base',
+      (job: GateJob) => {
+        delete job.with.repository;
+        delete job.with.ref;
+      },
+      [CHECKOUT, HOSTED],
+    ],
+    [
+      'calls an unreviewed revision of the callee',
+      (job: GateJob) => {
+        job.uses =
+          'kontourai/.github/.github/workflows/docs-gate.yml@f9ed64bc32b905451ed81d458d770ff09da2ed96';
+      },
+      [CHECKOUT, HOSTED, UNREVIEWED],
+    ],
+    [
+      'passes secrets to the callee',
+      (job: GateJob) => {
+        job.secrets = 'inherit';
+      },
+      [CHECKOUT, HOSTED],
+    ],
+    [
+      'widens the job token',
+      (job: GateJob) => {
+        job.permissions.contents = 'write';
+      },
+      [CHECKOUT, HOSTED, PERMISSION],
+    ],
+  ])('refuses a call that %s', (_name, mutate, expected) => {
+    const document = realDocsKitWorkflow();
+    mutate(document.jobs.gate);
+    const messages = findingsFor(FILE, document).map(
+      (finding: { message: string }) => finding.message,
+    );
+    expect(messages).toEqual(expect.arrayContaining(expected));
+  });
+
+  test('admits the exact call only in docs-kit.yml', () => {
+    const file = '.github/workflows/docs-kit-copy.yml';
+    expect(
+      findingsFor(file, realDocsKitWorkflow()).map(
+        (finding: { message: string }) => finding.message,
+      ),
+    ).toContain(
+      'pull_request_target is reserved for reviewed base-controlled PR workflows',
+    );
   });
 });

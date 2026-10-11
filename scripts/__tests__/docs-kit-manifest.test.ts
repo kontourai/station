@@ -5,8 +5,8 @@ import { loadPublicDocs } from '../build-github-pages.mjs';
 // docs-kit.json feeds the docs-bundle.json that pages.yml publishes beside
 // Station's own Pages site, so its documents must be exactly the pages that
 // site renders: the bundle's docs/<path>.html URLs point at them. Its own
-// docs-kit gate runs only after merge (.github/workflows/docs-kit.yml), so
-// this is the pull-request check that the two manifests have not drifted.
+// docs-kit gate (.github/workflows/docs-kit.yml) is advisory, so this is the
+// blocking check that the two manifests have not drifted.
 describe('docs-kit manifest', () => {
   it('publishes exactly the admitted public docs, in order and section', async () => {
     const manifest = JSON.parse(readFileSync('docs-kit.json', 'utf8'));
