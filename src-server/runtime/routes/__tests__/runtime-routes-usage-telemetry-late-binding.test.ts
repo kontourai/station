@@ -720,6 +720,7 @@ describe('product telemetry constructed after a persisted startup edit', () => {
   afterEach(async () => {
     vi.unstubAllGlobals();
     vi.unstubAllEnvs();
+    vi.restoreAllMocks();
     for (const { homeDir, loader } of homes.splice(0)) {
       await loader.dispose();
       await loader.whenWatcherClosed();
@@ -785,6 +786,13 @@ describe('product telemetry constructed after a persisted startup edit', () => {
       acknowledged: true,
       expected: 'unavailable',
       unstableSnapshots: true,
+    },
+    {
+      label: 'disable while prior disclosure is loading',
+      update: { telemetryEnabled: false },
+      acknowledged: true,
+      expected: 'disabled',
+      heldDisclosure: true,
     },
   ])('$label survives held and failing Agent activation', async (scenario) => {
     const homeDir = mkdtempSync(join(tmpdir(), 'station-late-telemetry-'));
@@ -901,6 +909,8 @@ describe('product telemetry constructed after a persisted startup edit', () => {
     );
     await mounted.kitLifecycleReady;
     let releaseSnapshot: (() => void) | undefined;
+    let releaseDisclosure: (() => void) | undefined;
+    let disclosureLoading = false;
     let capturedSnapshot = false;
     const capture = loader.captureAppConfigLaunchabilitySnapshot.bind(loader);
     let supersededSnapshots = 0;
@@ -929,12 +939,30 @@ describe('product telemetry constructed after a persisted startup edit', () => {
         return snapshot;
       });
     }
+    if ('heldDisclosure' in scenario) {
+      const loadDisclosure =
+        UsageTelemetryService.prototype.loadDisclosureReceipt;
+      vi.spyOn(
+        UsageTelemetryService.prototype,
+        'loadDisclosureReceipt',
+      ).mockImplementationOnce(async function (this: UsageTelemetryService) {
+        disclosureLoading = true;
+        await new Promise<void>((resolve) => {
+          releaseDisclosure = resolve;
+        });
+        return loadDisclosure.call(this);
+      });
+    }
     let initializing: Promise<void> | undefined;
     let saving: Promise<Response> | undefined;
     try {
       if ('staleSnapshot' in scenario) {
         initializing = runtime.initializeUsageTelemetry();
         await vi.waitFor(() => expect(capturedSnapshot).toBe(true));
+      }
+      if ('heldDisclosure' in scenario) {
+        initializing = runtime.initializeUsageTelemetry();
+        await vi.waitFor(() => expect(disclosureLoading).toBe(true));
       }
       saving = app.request(
         '/config/app',
@@ -951,7 +979,8 @@ describe('product telemetry constructed after a persisted startup edit', () => {
       await vi.waitFor(() =>
         expect(runtime.reloadAgentsFromDisk).toHaveBeenCalledTimes(1),
       );
-      expect(runtime.usageTelemetry).toBeUndefined();
+      if (!('heldDisclosure' in scenario))
+        expect(runtime.usageTelemetry).toBeUndefined();
       expect(runtime.appConfig).toBe(initial);
       const persisted = await loader.loadAppConfig();
       for (const [key, value] of Object.entries(scenario.update)) {
@@ -960,6 +989,7 @@ describe('product telemetry constructed after a persisted startup edit', () => {
         );
       }
       releaseSnapshot?.();
+      releaseDisclosure?.();
       initializing ??= runtime.initializeUsageTelemetry();
       if ('unstableSnapshots' in scenario) {
         await expect(initializing).rejects.toThrow(
@@ -1004,6 +1034,7 @@ describe('product telemetry constructed after a persisted startup edit', () => {
       runtime.agentConfigurationMutationsClosed = true;
       releaseActivation();
       releaseSnapshot?.();
+      releaseDisclosure?.();
       await Promise.allSettled([saving, initializing]);
       for (const timer of runtime.timers) clearTimeout(timer);
       await runtime.drainConfigurationQueues();
