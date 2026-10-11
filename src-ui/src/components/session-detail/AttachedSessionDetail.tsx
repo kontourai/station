@@ -767,7 +767,7 @@ export function AttachedSessionDetail({
               (addProjectForFolder ? (
                 <div className="sessions-detail__confirm-alternative">
                   <Button
-                    variant="secondary"
+                    variant="link"
                     disabled={adoption.isPending}
                     onClick={() => {
                       setReplyRequested(false);

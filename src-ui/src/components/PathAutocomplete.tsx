@@ -208,6 +208,18 @@ export function PathAutocomplete({
     if (autoFocus) inputRef.current?.focus();
   }, [autoFocus]);
 
+  // A path set from outside the field (a link that names a folder, a picked
+  // suggestion) is identified by its end, so show that end; a path being
+  // typed keeps the caret where the person put it.
+  const typedValueRef = useRef(value);
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input || value === typedValueRef.current) return;
+    typedValueRef.current = value;
+    input.setSelectionRange(value.length, value.length);
+    input.scrollLeft = input.scrollWidth;
+  }, [value]);
+
   const shouldSuggest = isBrowsablePathValue(value);
   const endsWithSlash = /[\\/]$/.test(value);
   const browsePath = resolveBrowsePath(value);
@@ -519,6 +531,7 @@ export function PathAutocomplete({
           value={value}
           onChange={(e) => {
             cancelBlurTimer();
+            typedValueRef.current = e.target.value;
             onChange(e.target.value);
             setUserDismissed(false);
             setActive(true);

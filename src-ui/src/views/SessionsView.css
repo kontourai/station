@@ -608,6 +608,12 @@
   display: flex;
 }
 
+/* Link-styled, but a full touch target that starts on the text's edge. */
+.sessions-detail__confirm-alternative .button {
+  min-height: 44px;
+  padding-inline: 0;
+}
+
 /* Spacing for the continuation confirmation's paragraphs. */
 .sessions-detail__confirm {
   display: grid;
