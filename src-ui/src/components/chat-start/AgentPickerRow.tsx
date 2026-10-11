@@ -25,7 +25,8 @@ function engineQualifiedBy(
   agentName: string,
 ): EngineDescriptor | null {
   if (!engine) return engine;
-  // One trailing group only: "Claude Code (a) (b)" is not a qualifier.
+  // One trailing group only: under "Claude Code", "Claude Code (a) (b)" stays
+  // whole rather than splitting into "a) (b".
   const match = /^(.+?)\s*\(([^()]+)\)$/.exec(engine.name);
   if (
     !match ||

@@ -391,6 +391,10 @@
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .composer-popover-overlay.start-menu__overlay {
     background: var(--overlay-modal);
+    /* The shared phone popover overlay zeroes the surface's safe-area
+       padding; a landscape notch or home indicator would cover the menu. */
+    padding: max(8px, var(--safe-top, 0px)) max(8px, var(--safe-right, 0px))
+      max(8px, var(--safe-bottom, 0px)) max(8px, var(--safe-left, 0px));
   }
 }
 /* A portrait phone docks the sheet to the bottom and side edges like a native
@@ -404,6 +408,9 @@
   }
   .composer-popover-panel.start-menu__panel {
     --start-menu-inset: var(--k-space-4);
+    /* Docked means edge to edge: the shared phone panel caps at 720px, which
+       left a strip of page beside a borderless edge from 721px to 768px. */
+    width: 100% !important;
     border-width: 1px 0 0;
     border-radius: var(--k-radius-overlay) var(--k-radius-overlay) 0 0;
   }
