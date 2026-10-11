@@ -132,6 +132,17 @@ fixture's authenticated contexts before proceeding. The collaboration fixture dr
 leave/join/announce and cursor controls from the peer while the owner records
 server-identity-bound participant and cursor layout commits.
 
+The fixture runs its workload only on the reference platform (`win32`). On any
+other host it decides that before provisioning anything: the workload test is
+skipped with a named `REFERENCE_OS_MISMATCH` reason, no Station or browser is
+started, and a separate test emits the NOT_VERIFIED receipt (and writes it to
+`STATION_PERFORMANCE_REPORT_OUTPUT` when set). Hardware is still judged from
+the adapter's runtime metadata. Setting
+`STATION_PERFORMANCE_NON_REFERENCE_DIAGNOSTIC=1` runs the workload anyway, to
+debug the bridge; its verdict stays NOT_VERIFIED. Nested Station daemons and
+the evaluator's process tree are owned by a Playwright fixture, so an
+interrupted or timed-out run stops them in fixture teardown.
+
 The [provisioning browser owner](../../tests/helpers/reference-browser-lifecycle.ts)
 releases its page handlers and closes its context after target preparation and
 credential-state capture, before the adapter starts. Final cleanup reuses that

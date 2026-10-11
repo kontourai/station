@@ -1695,7 +1695,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Workflow-owned isolated diagnostic Station proof with independent paired browser contexts, exact 100k-line corpus/FilePreview/scroll/Diff marks, canonical 10k retained replay versus beyond-window fallback, and Work Board fixture dispatch. Until the pane registers the stable restore/resolution/pointer bridge, Work Board observations remain explicitly NOT_VERIFIED; its scheduled lane cannot turn a short smoke into one-hour evidence.',
+      'Workflow-owned isolated diagnostic Station proof with independent paired browser contexts, exact 100k-line corpus/FilePreview/scroll/Diff marks, canonical 10k retained replay versus beyond-window fallback, and Work Board fixture dispatch. Until the pane registers the stable restore/resolution/pointer bridge, Work Board observations remain explicitly NOT_VERIFIED; its scheduled lane cannot turn a short smoke into one-hour evidence. Off the win32 reference platform the workload is skipped up front (REFERENCE_OS_MISMATCH) and only a NOT_VERIFIED receipt is emitted, so this bucket launches no browser or Station there (#577).',
     exceptions: [],
   },
   {
