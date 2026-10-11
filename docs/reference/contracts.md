@@ -152,6 +152,17 @@ updates liveness without advancing the event replay cursor.
 running set. A missing `children` view still means the server made no
 child-work report for that row; clients retain their existing state.
 
+## Product telemetry observations
+
+`@kontourai/station-contracts/product-telemetry` declares the content-free event
+inventory and version1 batch, observation and build shapes. Stable event IDs,
+producer occurrence/admission time, inventory revision and allowlisted build
+provenance support reliability comparisons; they do not identify people or
+replace canonical personal usage receipts. Runtime validation and disclosure
+fingerprinting belong to the [shared helper](shared.md#product-telemetry).
+Legacy payloads have no v1 guarantees and the strict parser rejects them.
+See [Usage telemetry](usage-telemetry.md) for consent, retry and privacy limits.
+
 ## Import examples
 
 The [package export map](../../packages/contracts/package.json) is the available

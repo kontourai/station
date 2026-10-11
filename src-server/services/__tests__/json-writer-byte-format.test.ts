@@ -18,6 +18,7 @@ import { HashChainedReceiptLog } from '../../runtime/conversation/receipt-chain.
 import { DiscordGatewayConfigurationStore } from '../discord/discord-gateway-config-store.js';
 import { DiscordTurnRelayStore } from '../discord/discord-turn-relay-store.js';
 import { DistributionProfileService } from '../plugins/distribution-profile-service.js';
+import { USAGE_TELEMETRY_INVENTORY_REVISION } from '../usage-telemetry-inventory.js';
 import { UsageTelemetryService } from '../usage-telemetry-service.js';
 import { InboundWebhookConfigurationStore } from '../webhooks/inbound-webhook-store.js';
 
@@ -131,7 +132,7 @@ describe('published JSON document formats', () => {
       } as never,
     });
 
-    await service.acknowledgeDisclosure();
+    await service.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
 
     const text = readFileSync(
       join(root, 'config', 'usage-telemetry-disclosure.json'),

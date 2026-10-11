@@ -7,8 +7,11 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ProductTelemetryBatch } from '@kontourai/station-contracts/product-telemetry';
+import { parseProductTelemetryBatch } from '@kontourai/station-shared/product-telemetry';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { usageTelemetryOutcomes } from '../../telemetry/metrics.js';
 import {
@@ -77,11 +80,104 @@ async function service(
   // Existing transport tests exercise post-disclosure behavior; receipt-gate
   // tests below deliberately construct a service without this acknowledgement.
   if (options.env?.STATION_TELEMETRY_ENDPOINT)
-    await subject.acknowledgeDisclosure();
+    await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
   return subject;
 }
 
 describe('UsageTelemetryService', () => {
+  test('stale displayed inventory cannot publish a current consent receipt', async () => {
+    const subject = await service();
+    await expect(
+      subject.acknowledgeDisclosure('stale-revision'),
+    ).rejects.toThrow('disclosure changed');
+    expect((await subject.disclosure()).acknowledged).toBe(false);
+  });
+
+  test('non-full checkout hashes remain missing on terminal events', async () => {
+    const fetch = vi.fn().mockResolvedValue({ ok: true, status: 202 });
+    const subject = await service({
+      env: {
+        STATION_TELEMETRY_ENDPOINT: 'https://ingest.test',
+        STATION_BUILD_SHA: 'a'.repeat(50),
+      },
+      fetch,
+      setInterval: vi.fn() as typeof setInterval,
+    });
+    await subject.track('engine_turn', {
+      engine: 'codex',
+      outcome: 'completed',
+    });
+    await subject.shutdown();
+    const sent = parseProductTelemetryBatch(
+      JSON.parse(fetch.mock.calls[0][1].body),
+    );
+    expect(sent.events[0].build.sha).toBeUndefined();
+    expect(sent.events[0].build.sha_source).toBeUndefined();
+  });
+
+  test('lost response retry preserves observation IDs, time and build on real delivery', async () => {
+    const bodies: ProductTelemetryBatch[] = [];
+    const receiver = createServer(async (request, response) => {
+      let raw = '';
+      for await (const chunk of request) raw += chunk;
+      bodies.push(parseProductTelemetryBatch(JSON.parse(raw)));
+      if (bodies.length === 1) request.socket.destroy();
+      else response.writeHead(202).end();
+    });
+    await new Promise<void>((resolve) =>
+      receiver.listen(0, '127.0.0.1', resolve),
+    );
+    const address = receiver.address();
+    if (!address || typeof address === 'string')
+      throw new Error('receiver did not listen');
+    const subject = await service({
+      env: {
+        STATION_TELEMETRY_ENDPOINT: `http://127.0.0.1:${address.port}`,
+        STATION_BUILD_SHA: 'a'.repeat(40),
+        STATION_BUILD_BRANCH: 'private-project-branch',
+        STATION_INSTANCE_ID: 'private-host-label',
+        STATION_CHANNEL: 'nightly',
+      },
+      setInterval: vi.fn() as typeof setInterval,
+    });
+    try {
+      await subject.track('engine_turn', {
+        engine: 'codex',
+        outcome: 'completed',
+      });
+      await subject.flush();
+      expect(subject.bufferedCount).toBe(1);
+      await subject.flush();
+      expect(subject.bufferedCount).toBe(0);
+      expect(bodies).toHaveLength(2);
+      expect((await subject.disclosure()).envelope).toContain('event_id');
+      expect(bodies[1]).toEqual(bodies[0]);
+      expect(bodies[0].events[0]).toMatchObject({
+        event: 'engine_turn',
+        build: {
+          version: '1.2.3',
+          sha: 'a'.repeat(40),
+          sha_source: 'checkout',
+          channel: 'nightly',
+        },
+      });
+      expect(bodies[0].events[0].event_id).toMatch(/^[0-9a-f-]{36}$/);
+      expect(Number.isFinite(Date.parse(bodies[0].events[0].occurred_at))).toBe(
+        true,
+      );
+      expect(Number.isFinite(Date.parse(bodies[0].events[0].observed_at))).toBe(
+        true,
+      );
+      expect(JSON.stringify(bodies)).not.toContain('private-project-branch');
+      expect(JSON.stringify(bodies)).not.toContain('private-host-label');
+    } finally {
+      await subject.shutdown();
+      await new Promise<void>((resolve, reject) =>
+        receiver.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
+
   /**
    * #1582 A3: the first-run disclosure says "none is configured here, so
    * nothing is sent" and offers to keep telemetry on or turn it off. Both
@@ -249,7 +345,7 @@ describe('UsageTelemetryService', () => {
       fetch,
       setInterval: vi.fn() as any,
     });
-    await subject.acknowledgeDisclosure();
+    await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
     await subject.stationStarted();
     await subject.shutdown();
     expect(
@@ -264,7 +360,9 @@ describe('UsageTelemetryService', () => {
       join(root, 'config', 'usage-telemetry-disclosure.json'),
       JSON.stringify({
         acknowledgedAt: new Date().toISOString(),
-        inventoryRevision: 'old-revision',
+        // Frozen event-only inventory revision from main 558d3a91; it never disclosed envelope metadata.
+        inventoryRevision:
+          'bf90377e754031d83bd38266066a33c8a323255043fa43acd03d30ef0096952b',
       }),
     );
     const fetch = vi.fn();
@@ -282,6 +380,8 @@ describe('UsageTelemetryService', () => {
       fetch,
       'stale disclosure receipt permitted telemetry emission',
     ).not.toHaveBeenCalled();
+    expect((await subject.disclosure()).acknowledged).toBe(false);
+    expect(subject.bufferedCount).toBe(0);
   });
   test('RESTART DISCLOSURE DEFECT: bootstrap receipt load activates an existing valid receipt without an HTTP request', async () => {
     const root = await home();
@@ -818,7 +918,7 @@ describe('UsageTelemetryService', () => {
       setInterval: vi.fn() as any,
     };
     const first = new UsageTelemetryService(opts);
-    await first.acknowledgeDisclosure();
+    await first.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
     await first.stationStarted();
     await first.shutdown();
     const raw = (
@@ -1005,7 +1105,7 @@ describe('UsageTelemetryService', () => {
       fetch,
       setInterval: vi.fn() as any,
     });
-    await subject.acknowledgeDisclosure();
+    await subject.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
     await subject.stationStarted();
     await subject.shutdown();
     expect(
@@ -1039,7 +1139,7 @@ describe('UsageTelemetryService', () => {
       new UsageTelemetryService(options),
       new UsageTelemetryService(options),
     ];
-    await one.acknowledgeDisclosure();
+    await one.acknowledgeDisclosure(USAGE_TELEMETRY_INVENTORY_REVISION);
     await Promise.all([one.stationStarted(), two.stationStarted()]);
     await Promise.all([one.shutdown(), two.shutdown()]);
     const persisted = (

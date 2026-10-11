@@ -159,15 +159,20 @@ describe('client API protocol admission (#2962)', () => {
     ).toBe(true);
   });
 
-  it('enforces exactly what the handshake advertises, which today admits every client', async () => {
+  it('advertises protocol 2 while retaining core protocol 1 admission', async () => {
     // Pinned beside the constants so a bump is a deliberate edit here too.
-    expect(STATION_COMPAT_PROTOCOL_VERSION).toBe(1);
+    expect(STATION_COMPAT_PROTOCOL_VERSION).toBe(2);
     expect(STATION_COMPAT_MIN_CLIENT_PROTOCOL).toBe(1);
     const { request } = createHarness();
     const handshake = await (
       await request(PUBLIC_STATION_HANDSHAKE_PATH)
     ).json();
     expect(handshake).toHaveProperty('compatibility.minClientProtocol', 1);
+    expect(handshake).toHaveProperty('compatibility.protocolVersion', 2);
+    expect(handshake).toHaveProperty(
+      'compatibility.capabilities.productTelemetryAcknowledgement',
+      2,
+    );
     expect((await request('/api/projects', api())).status).toBe(200);
     expect((await request('/api/projects', api('1'))).status).toBe(200);
   });

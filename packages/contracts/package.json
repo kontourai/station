@@ -25,6 +25,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./product-telemetry": "./src/product-telemetry.ts",
     "./relay-management": "./src/relay-management.ts",
     "./usage-stats": "./src/usage-stats.ts",
     "./insights": "./src/insights.ts",

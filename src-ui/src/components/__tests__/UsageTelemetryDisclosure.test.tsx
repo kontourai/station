@@ -81,6 +81,8 @@ test('DISCLOSURE CONTENT DRIFT DEFECT: Settings renders the server inventory and
         data: {
           acknowledged: false,
           inventoryRevision: 'rev',
+          envelope:
+            'Every event carries an observation ID, producer times and allowlisted build metadata.',
           events: {
             station_started: {
               description: 'Station completed startup.',
@@ -122,6 +124,11 @@ test('DISCLOSURE CONTENT DRIFT DEFECT: Settings renders the server inventory and
     screen.getByText('platform'),
     'Settings disclosure did not render the published property',
   ).toBeTruthy();
+  expect(
+    screen.getByText(
+      'Every event carries an observation ID, producer times and allowlisted build metadata.',
+    ),
+  ).toBeTruthy();
   // #1600: the action names the decision it makes, here and in the modal, and
   // keeping the state the host is already in writes only the receipt.
   fireEvent.click(
@@ -133,7 +140,14 @@ test('DISCLOSURE CONTENT DRIFT DEFECT: Settings renders the server inventory and
       'Settings disclosure acknowledgement did not call the receipt endpoint',
     ).toHaveBeenLastCalledWith(
       'http://station.test/api/usage-telemetry/disclosure/acknowledgements',
-      { method: 'POST' },
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          acknowledgementProtocol: 2,
+          inventoryRevision: 'rev',
+        }),
+      },
     ),
   );
 });
@@ -195,72 +209,79 @@ test('a cold-boot 503 is a "not yet", not a cached terminal error', async () => 
   ).toBeTruthy();
 });
 
-test('a persistently failing acknowledgement does not trap the user behind the first-run dialog', async () => {
-  // The first-run disclosure covers the whole app, including the
-  // connection-recovery UI. Its acknowledgement can fail persistently — a
-  // revoked session, a 403, an unwritable receipt path — so the acknowledgement
-  // must not be the only way out, or the app becomes unusable with no recourse
-  //Dismissal is for this page only; the receipt is still
-  // what stops the disclosure coming back.
-  resetUsageTelemetryDisclosureDismissal();
-  authenticatedFetch.mockReset();
-  authenticatedFetch.mockImplementation(async (url: string) =>
-    String(url).endsWith('/acknowledgements')
-      ? new Response('{"success":false}', { status: 500 })
-      : new Response(
-          JSON.stringify({
-            data: {
-              acknowledged: false,
-              inventoryRevision: 'rev',
-              events: {
-                station_started: {
-                  description: 'Station completed startup.',
-                  properties: { platform: { domain: ['linux'] } },
+test.each([500, 426])(
+  'an acknowledgement failure %s does not trap the user behind the first-run dialog',
+  async (status) => {
+    // The first-run disclosure covers the whole app, including the
+    // connection-recovery UI. Its acknowledgement can fail persistently — a
+    // revoked session, a 403, an unwritable receipt path — so the acknowledgement
+    // must not be the only way out, or the app becomes unusable with no recourse
+    //Dismissal is for this page only; the receipt is still
+    // what stops the disclosure coming back.
+    resetUsageTelemetryDisclosureDismissal();
+    authenticatedFetch.mockReset();
+    authenticatedFetch.mockImplementation(async (url: string) =>
+      String(url).endsWith('/acknowledgements')
+        ? new Response('{"success":false}', { status })
+        : new Response(
+            JSON.stringify({
+              data: {
+                acknowledged: false,
+                inventoryRevision: 'rev',
+                events: {
+                  station_started: {
+                    description: 'Station completed startup.',
+                    properties: { platform: { domain: ['linux'] } },
+                  },
                 },
               },
-            },
-          }),
-          { status: 200 },
-        ),
-  );
+            }),
+            { status: 200 },
+          ),
+    );
 
-  render(
-    <QueryClientProvider client={new QueryClient()}>
-      <UsageTelemetryDisclosure firstRun />
-      <div>App behind the dialog</div>
-    </QueryClientProvider>,
-  );
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <UsageTelemetryDisclosure firstRun />
+        <div>App behind the dialog</div>
+      </QueryClientProvider>,
+    );
 
-  // Pin that there IS a dialog to be trapped by, so the dismissal assertion
-  // below cannot pass by the dialog never having rendered.
-  expect(await screen.findByRole('dialog')).toBeTruthy();
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Keep usage telemetry on' }),
-  );
+    // Pin that there IS a dialog to be trapped by, so the dismissal assertion
+    // below cannot pass by the dialog never having rendered.
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Keep usage telemetry on' }),
+    );
 
-  // The failure is disclosed and the action stays available as a retry.
-  expect(
-    await screen.findByRole('alert'),
-    'a failed acknowledgement was not disclosed',
-  ).toBeTruthy();
-  expect(
-    screen.getByRole('button', { name: 'Try again' }),
-    'the retry affordance disappeared with the failure',
-  ).toBeTruthy();
-
-  // And there is a way out that does not depend on the write succeeding.
-  fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
-
-  await waitFor(() =>
+    // The failure is disclosed and the action stays available as a retry.
     expect(
-      screen.queryByRole('dialog'),
-      'the dialog survived an explicit dismissal, trapping the user',
-    ).toBeNull(),
-  );
-  expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
-  expect(screen.getByText('App behind the dialog')).toBeTruthy();
-  resetUsageTelemetryDisclosureDismissal();
-});
+      await screen.findByRole('alert'),
+      'a failed acknowledgement was not disclosed',
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Try again' }),
+      'the retry affordance disappeared with the failure',
+    ).toBeTruthy();
+    if (status === 426)
+      expect(screen.getByRole('alert').textContent).toContain(
+        'Update this app',
+      );
+
+    // And there is a way out that does not depend on the write succeeding.
+    fireEvent.click(screen.getByRole('button', { name: 'Not now' }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog'),
+        'the dialog survived an explicit dismissal, trapping the user',
+      ).toBeNull(),
+    );
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.getByText('App behind the dialog')).toBeTruthy();
+    resetUsageTelemetryDisclosureDismissal();
+  },
+);
 
 /** The inventory the first-run step renders, answered from the server. */
 function inventoryResponse(
@@ -346,6 +367,11 @@ test('the first-run STEP acknowledges through the same endpoint, then advances',
   await waitFor(() =>
     expect(authenticatedFetch).toHaveBeenLastCalledWith(ACKNOWLEDGEMENTS_URL, {
       method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        acknowledgementProtocol: 2,
+        inventoryRevision: 'rev',
+      }),
     }),
   );
   // And only AFTER the receipt landed: advancing on the click would leave a
@@ -430,6 +456,11 @@ test('#1582 A3: "Turn it off" writes the setting Settings reads, then acknowledg
   await waitFor(() =>
     expect(authenticatedFetch).toHaveBeenLastCalledWith(ACKNOWLEDGEMENTS_URL, {
       method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        acknowledgementProtocol: 2,
+        inventoryRevision: 'rev',
+      }),
     }),
   );
   await waitFor(() => expect(advance).toHaveBeenCalledTimes(1));
@@ -658,6 +689,11 @@ test('#1600: the modal offers the turn-it-off decision, and writes it', async ()
   await waitFor(() =>
     expect(authenticatedFetch).toHaveBeenLastCalledWith(ACKNOWLEDGEMENTS_URL, {
       method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        acknowledgementProtocol: 2,
+        inventoryRevision: 'rev',
+      }),
     }),
   );
   view.unmount();

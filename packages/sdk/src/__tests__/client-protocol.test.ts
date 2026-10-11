@@ -37,8 +37,8 @@ function servePageFrom(origin: string): void {
 
 describe('SDK client protocol header (#2962)', () => {
   it('declares the protocol this build speaks on every central request path', async () => {
-    // Pinned beside the constant it is derived from.
-    expect(STATION_COMPAT_PROTOCOL_VERSION).toBe(1);
+    // Independent wire-generation pin; capability versions and legacy minima stay separate.
+    expect(STATION_COMPAT_PROTOCOL_VERSION).toBe(2);
     const fetch = vi.fn(async () => new Response('{}'));
     vi.stubGlobal('fetch', fetch);
     setClientCredentialResolver(() => ({
@@ -59,11 +59,11 @@ describe('SDK client protocol header (#2962)', () => {
     stream.close();
 
     expect(fetch.mock.calls.map((call) => sentProtocol(call))).toEqual([
-      '1',
-      '1',
-      '1',
-      '1',
-      '1',
+      '2',
+      '2',
+      '2',
+      '2',
+      '2',
     ]);
   });
 
@@ -74,7 +74,7 @@ describe('SDK client protocol header (#2962)', () => {
       authentication: 'omit',
       headers: { 'x-station-client-protocol': '7' },
     });
-    expect(sentProtocol(fetch.mock.calls[0])).toBe('1');
+    expect(sentProtocol(fetch.mock.calls[0])).toBe('2');
   });
 
   it('never makes a browser preflight it to another origin over plain fetch', async () => {
@@ -93,8 +93,8 @@ describe('SDK client protocol header (#2962)', () => {
     expect(fetch.mock.calls.map((call) => sentProtocol(call))).toEqual([
       null,
       null,
-      '1',
-      '1',
+      '2',
+      '2',
     ]);
   });
 
@@ -113,9 +113,9 @@ describe('SDK client protocol header (#2962)', () => {
 
     expect(fetch).not.toHaveBeenCalled();
     expect(transport.mock.calls.map((call) => sentProtocol(call))).toEqual([
-      '1',
-      '1',
-      '1',
+      '2',
+      '2',
+      '2',
     ]);
   });
 
@@ -151,7 +151,7 @@ describe('SDK client protocol header (#2962)', () => {
 
     expect(fetch.mock.calls.map((call) => sentProtocol(call))).toEqual([
       null,
-      '1',
+      '2',
       null,
       null,
     ]);

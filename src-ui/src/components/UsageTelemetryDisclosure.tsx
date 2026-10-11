@@ -1,3 +1,4 @@
+import { PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL } from '@kontourai/station-contracts/product-telemetry';
 import {
   authenticatedFetch,
   getJson,
@@ -31,6 +32,9 @@ import { SkeletonBlock } from './state';
 type Disclosure = {
   acknowledged: boolean;
   inventoryRevision: string;
+  /** Versioned envelope disclosure; older servers omit it. */
+  envelope?: string;
+  acknowledgementProtocol?: number;
   events: Record<
     string,
     {
@@ -205,7 +209,13 @@ class UsageTelemetryNotReadyError extends Error {
 const NOT_READY_RETRY_LIMIT = 20;
 const NOT_READY_RETRY_DELAY_MS = 500;
 
+class UsageTelemetryProtocolUpdateRequiredError extends Error {}
+
 async function responseData(response: Response): Promise<Disclosure> {
+  if (response.status === 426)
+    throw new UsageTelemetryProtocolUpdateRequiredError(
+      'Update this app to acknowledge the current usage telemetry inventory.',
+    );
   if (response.status === 503) throw new UsageTelemetryNotReadyError();
   if (!response.ok)
     throw new Error('Usage telemetry disclosure could not be loaded.');
@@ -310,15 +320,26 @@ function useAcknowledgeDisclosure(onAcknowledged?: () => void) {
   const { apiBase } = useApiBase();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () =>
+    mutationFn: (inventoryRevision: string) =>
       authenticatedFetch(
         `${apiBase}/api/usage-telemetry/disclosure/acknowledgements`,
-        { method: 'POST' },
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            acknowledgementProtocol: PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
+            inventoryRevision,
+          }),
+        },
       ).then(responseData),
     onSuccess: (data) => {
       queryClient.setQueryData(['usage-telemetry-disclosure', apiBase], data);
       onAcknowledged?.();
     },
+    onError: () =>
+      queryClient.invalidateQueries({
+        queryKey: ['usage-telemetry-disclosure', apiBase],
+      }),
   });
 }
 
@@ -332,6 +353,9 @@ function DisclosureInventory({ data }: { data: Disclosure }) {
         filesystem paths, repository names, hostnames, branches, account
         identities, or other free text.
       </p>
+      {data.envelope && (
+        <p className="usage-telemetry-disclosure__lede">{data.envelope}</p>
+      )}
       {Object.entries(data.events).map(([event, definition]) => (
         <div className="usage-telemetry-disclosure__event" key={event}>
           <strong>{event}</strong>
@@ -352,10 +376,18 @@ function DisclosureInventory({ data }: { data: Disclosure }) {
   );
 }
 
-function acknowledgeErrorNotice(isError: boolean): ReactNode {
+function acknowledgeErrorNotice(isError: boolean, error: unknown): ReactNode {
+  const updateRequired =
+    error instanceof UsageTelemetryProtocolUpdateRequiredError ||
+    (typeof error === 'object' &&
+      error !== null &&
+      'status' in error &&
+      error.status === 426);
   return isError ? (
     <p className="usage-telemetry-disclosure__error" role="alert">
-      The disclosure acknowledgement could not be saved.
+      {updateRequired
+        ? 'Update this app to acknowledge the current usage telemetry inventory. You can dismiss this disclosure or turn telemetry off.'
+        : 'The disclosure acknowledgement could not be saved.'}
     </p>
   ) : null;
 }
@@ -612,13 +644,19 @@ function useUsageTelemetryDecision(
     },
   });
   const acknowledgeRecovery = useMutation({
-    mutationFn: async (target: RecoveryDecisionTarget) => {
+    mutationFn: async (
+      target: RecoveryDecisionTarget & { inventoryRevision: string },
+    ) => {
       const response = await mutateJson(
         `${target.apiBase}/api/usage-telemetry/disclosure/acknowledgements`,
         'POST',
         {
           timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
           ...(target.requestScope ? { requestScope: target.requestScope } : {}),
+        },
+        {
+          acknowledgementProtocol: PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
+          inventoryRevision: target.inventoryRevision,
         },
       );
       return responseData(response);
@@ -630,6 +668,10 @@ function useUsageTelemetryDecision(
       );
       onDecided?.();
     },
+    onError: (_error, target) =>
+      queryClient.invalidateQueries({
+        queryKey: recoveryDisclosureKey(target.apiBase, target.identityKey),
+      }),
   });
   const [settingError, setSettingError] = useState(false);
 
@@ -671,7 +713,10 @@ function useUsageTelemetryDecision(
       if (next === enabled && !keepMustRecord) {
         // Nothing to write: the choice is the state the host is already
         // in, and something durable already says so.
-        acknowledgeRecovery.mutate(target);
+        acknowledgeRecovery.mutate({
+          ...target,
+          inventoryRevision: data.inventoryRevision,
+        });
         return;
       }
       recoveryConfigWrite.mutate(
@@ -693,7 +738,10 @@ function useUsageTelemetryDecision(
             queryClient.invalidateQueries({
               queryKey: recoveryConfigKey(target.apiBase, target.identityKey),
             });
-            acknowledgeRecovery.mutate(target);
+            acknowledgeRecovery.mutate({
+              ...target,
+              inventoryRevision: data.inventoryRevision,
+            });
           },
           onError: () => setSettingError(true),
         },
@@ -703,7 +751,7 @@ function useUsageTelemetryDecision(
     if (next === enabled && !keepMustRecord) {
       // Nothing to write: the choice is the state the host is already in, and
       // something durable already says so.
-      acknowledgeProtected.mutate();
+      acknowledgeProtected.mutate(data.inventoryRevision);
       return;
     }
     updateProtected.mutate(
@@ -722,7 +770,7 @@ function useUsageTelemetryDecision(
             setSettingError(true);
             return;
           }
-          acknowledgeProtected.mutate();
+          acknowledgeProtected.mutate(data.inventoryRevision);
         },
         onError: () => setSettingError(true),
       },
@@ -742,7 +790,10 @@ function useUsageTelemetryDecision(
         The usage telemetry setting could not be saved.
       </p>
     ) : (
-      acknowledgeErrorNotice(acknowledgeError)
+      acknowledgeErrorNotice(
+        acknowledgeError,
+        scoped ? acknowledgeRecovery.error : acknowledgeProtected.error,
+      )
     ),
     retry: acknowledgeError,
   };

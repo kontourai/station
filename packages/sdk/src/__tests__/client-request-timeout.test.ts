@@ -61,7 +61,7 @@ describe('client request deadlines', () => {
     // Outside a browser page the client protocol header is the only init a
     // bare call gains (#2962); it is never a deadline signal.
     expect(fetchMock).toHaveBeenCalledWith(URL_UNDER_TEST, {
-      headers: { 'X-Station-Client-Protocol': '1' },
+      headers: { 'X-Station-Client-Protocol': '2' },
     });
   });
 

@@ -451,7 +451,7 @@ describe('configGet', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       `http://127.0.0.1:${DEFAULT_SERVER_PORT}/config/app`,
-      { headers: { 'X-Station-Client-Protocol': '1' } },
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(consoleLog).toHaveBeenCalledWith('us-west-2');
