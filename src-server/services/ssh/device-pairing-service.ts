@@ -61,6 +61,7 @@ import { renameFileSyncRetrying } from '@kontourai/station-shared/fs-windows-com
 import { RelayManagementApproval } from '../../security/relay-management-authority.js';
 import {
   PersonalTokenStore,
+  PersonalTokenUnavailableError,
   type StoredPersonalToken,
 } from '../access/personal-token-store.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
@@ -477,6 +478,7 @@ export class DevicePairingError extends Error {
       | 'identity_credential_quota_reached'
       | 'unattributed_credential_quota_reached'
       | 'invalid_request'
+      | 'account_bound_person'
       | 'request_not_found'
       | 'request_not_confirmed'
       | 'request_denied'
@@ -3046,13 +3048,25 @@ export class DevicePairingService {
       token.lastUsedAt === null ||
       now - token.lastUsedAt >= LAST_USED_WRITE_INTERVAL_MS
     ) {
-      try {
-        this.#tokens.touch(token.id, now);
-      } catch {
-        // Bookkeeping only, as for devices: never refuse over a timestamp.
+      // Bookkeeping only, as for devices: never refuse over a timestamp,
+      // and never wait on the file lock to answer a request.
+      if (!this.#touching.has(token.id)) {
+        this.#touching.add(token.id);
+        void this.#tokens
+          .touch(token.id, now)
+          .catch(() => undefined)
+          .finally(() => this.#touching.delete(token.id));
       }
     }
     return token;
+  }
+
+  /** #3557: tokens whose last-use write is in flight. */
+  readonly #touching = new Set<string>();
+
+  /** #3557: revokes every personal access token (an environment reset). */
+  async clearPersonalTokens(): Promise<void> {
+    await this.#tokens.clear();
   }
 
   /**
@@ -3060,15 +3074,20 @@ export class DevicePairingService {
    * The caller has already decided the scope is within that person's own
    * access; this checks only that it is a scope a token may carry.
    */
-  mintPersonalToken(input: {
+  async mintPersonalToken(input: {
     name: string;
     binding: DevicePrincipalBinding;
     ownerPrincipalId: string;
     scope: string;
     expiresAt: number | null;
-  }): MintedPersonalAccessToken {
+  }): Promise<MintedPersonalAccessToken> {
     const name = input.name.trim();
     const now = this.#now();
+    // v1 tokens are for people tied by a Tailscale identity. An account's
+    // devices act only alongside its account session, which a script does
+    // not hold, so a token tied to an account would never work.
+    if ('kind' in input.binding && input.binding.kind === 'account')
+      throw new DevicePairingError('account_bound_person');
     if (
       name.length === 0 ||
       name.length > 64 ||
@@ -3080,31 +3099,23 @@ export class DevicePairingService {
           input.expiresAt > now + MAX_PERSONAL_TOKEN_LIFETIME_MS))
     )
       throw new DevicePairingError('invalid_request');
-    const active = this.#tokens
-      .list()
-      .filter(
-        (token) =>
-          token.ownerPrincipalId === input.ownerPrincipalId &&
-          token.revokedAt === null &&
-          (token.expiresAt === null || token.expiresAt > now),
-      );
-    if (active.length >= MAX_PERSONAL_TOKENS_PER_PERSON)
+    const minted = await this.#tokens.mint(
+      { ...input, name },
+      MAX_PERSONAL_TOKENS_PER_PERSON,
+    );
+    if (!minted)
       throw new DevicePairingError('identity_credential_quota_reached');
-    const { token, secret } = this.#tokens.mint({ ...input, name });
-    return { token: this.#tokenView(token), secret };
+    return { token: this.#tokenView(minted.token), secret: minted.secret };
   }
 
   /** #3557: a person's tokens (or everyone's), newest first; never secrets. */
   listPersonalTokens(ownerPrincipalId?: string): PersonalAccessToken[] {
-    const now = this.#now();
     return this.#tokens
       .list()
       .filter(
         (token) =>
-          token.revokedAt === null &&
-          (token.expiresAt === null || token.expiresAt > now) &&
-          (ownerPrincipalId === undefined ||
-            token.ownerPrincipalId === ownerPrincipalId),
+          ownerPrincipalId === undefined ||
+          token.ownerPrincipalId === ownerPrincipalId,
       )
       .sort((left, right) => right.createdAt - left.createdAt)
       .map((token) => this.#tokenView(token));
@@ -3114,7 +3125,11 @@ export class DevicePairingService {
    * #3557: revokes a token. With `ownerPrincipalId`, only that person's own:
    * nobody revokes someone else's token by guessing its id.
    */
-  revokePersonalToken(id: string, ownerPrincipalId?: string): boolean {
+  async revokePersonalToken(
+    id: string,
+    ownerPrincipalId?: string,
+  ): Promise<boolean> {
+    if (!this.#tokens.usable()) throw new PersonalTokenUnavailableError();
     const target = this.#tokens
       .list()
       .find(
@@ -3123,7 +3138,7 @@ export class DevicePairingService {
           (ownerPrincipalId === undefined ||
             token.ownerPrincipalId === ownerPrincipalId),
       );
-    return target ? this.#tokens.revoke(id) : false;
+    return target ? await this.#tokens.revoke(id) : false;
   }
 
   #tokenView(token: StoredPersonalToken): PersonalAccessToken {

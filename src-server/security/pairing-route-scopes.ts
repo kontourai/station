@@ -240,6 +240,12 @@ export interface PairingScopeRouteRule {
    * {@link PAIRING_SCOPE_FAMILY_INHERITED_LEAVES}.
    */
   readonly origin: 'family' | 'explicit';
+  /**
+   * #3557: `'refused'` when a personal access token may never use this
+   * route whatever its scope: a leaked script credential must not, say,
+   * hand a Project to someone. The person uses a device instead.
+   */
+  readonly personalTokens?: 'refused';
 }
 
 /**
@@ -456,7 +462,8 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     method: 'DELETE',
     prefix: '/api/access/tokens/:tokenId',
     exact: true,
-    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    // Revoking only ever reduces access: Read suffices.
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
   {
@@ -497,6 +504,7 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       exact: true,
       scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
       origin: 'explicit',
+      personalTokens: 'refused',
     }),
   ),
   ...[

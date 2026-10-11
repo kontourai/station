@@ -502,20 +502,36 @@ only the operator credential changes a group, as for a device's access.
 
 **Personal access tokens act as their person, never as more (#3557).** A
 person mints a token for a script from their own paired device tied to them
-(`/api/access/tokens`); the operator may mint or revoke one for anyone known
-by such a device. A token carries `orchestration:read`, optionally
+(`/api/access/tokens`); it carries `orchestration:read`, optionally
 `orchestration:operate`, and never more than the minting device may use at
-that moment; it resolves as a headless device of its person, so request
-resolution, Project membership and the person's Station group apply to it as
-to their phone. It is not a device: it cannot manage tokens, reach
-`/api/pairing/**`, decide a pairing request or consent, or open a terminal.
-Secrets carry an `stp_` prefix, are shown once, and are stored only as a
-sha256 hash in `<home>/security/personal-tokens.json` (owner-only, apart from
-the device registry so an older Station that ignores the file loses only the
-tokens). A token may expire (at most a year), is refused the moment it is
-revoked or expired, and each person holds at most 20 active tokens. A token
-file Station finds unsafe (not owner-only, or a link) or unreadable when it
-starts authenticates no one.
+that moment. The operator may mint or revoke one for anyone known by such a
+device; that token is bounded by the person's Station group, not by what
+their devices happen to hold. A token resolves as a headless device of its
+person, so request resolution, Project membership and the person's Station
+group apply to it as to their phone, and a token tied to a Tailscale
+identity is refused through any other tailnet identity, as their devices
+are. It is not a device: it cannot manage tokens, reach `/api/pairing/**`,
+decide a pairing request or consent, open a terminal, receive push
+notifications, or administer a Project's members (invite, change a role,
+transfer: the route table marks those leaves refused to tokens, so the
+boundary answers `403` whatever the token's scope), which the person does
+from a device. Tokens are for people tied by a Tailscale identity: an
+account's devices act only alongside its account session, which a script
+does not hold. Secrets carry an `stp_` prefix, are shown once, and are stored only
+as a sha256 hash in `<home>/security/personal-tokens.json` (owner-only, apart
+from the device registry so an older Station that ignores the file loses only
+the tokens). Writes are made under a cross-process lock from a fresh read,
+and every lookup follows the file, so a revocation holds for every Station
+process on the home. A token may expire (at most a year) and is refused once
+revoked or expired; dead records are dropped, and each person holds at most
+20 active tokens. A token outlives its person's devices, so the people list
+keeps showing its owner for the operator to revoke. An unsafe (not
+owner-only, or a link) or unreadable token file authenticates no one, and
+Station refuses to mint or revoke over it (`503 tokens_unavailable`). The
+20-token limit is decided under the lock, so it holds across processes. An
+environment reset revokes every token first, and fails without changing
+anything if it cannot; it revokes them again once done, so a token minted
+while it ran does not survive it.
 
 The pairing UI offers two presets when creating an offer: **Read-only**
 (`orchestration:read` alone) and **Standard** (`orchestration:read
@@ -1698,7 +1714,8 @@ required without an interactive terminal.
 
 `./station environment reset` rotates both identity and credential. It does not
 print the credential; use the explicit credential show command afterward.
-Reset also clears every paired-device credential. Use it only for identity
+Reset also clears every paired-device credential and personal access token.
+Use it only for identity
 compromise or intentional re-provisioning: clients see a new environment and
 must be bootstrapped again. Keep local shell access until remote recovery
 succeeds to avoid lockout.

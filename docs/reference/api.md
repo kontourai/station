@@ -3547,16 +3547,25 @@ person_device_required`:
   secret }`. The secret is shown only here. A scope the calling device may not
   use now is `400 scope_exceeds_access`; a malformed body is `400
   invalid_request`; a person already holding 20 active tokens gets `409
-  token_limit_reached`.
-- `DELETE /api/access/tokens/:tokenId` (`orchestration:operate`) revokes one
-  of the caller's person's tokens; anything else is `404 not_found`.
+  token_limit_reached`; a token record Station cannot trust is `503
+  tokens_unavailable`; a person tied by an account rather than a Tailscale
+  identity is `400 account_bound_person`.
+- `DELETE /api/access/tokens/:tokenId` (`orchestration:read`: revoking only
+  reduces access) revokes one of the caller's person's tokens; anything else
+  is `404 not_found`, and an untrusted token record `503
+  tokens_unavailable`.
 
 Present the secret as `Authorization: Bearer stp_…`. The operator credential
 manages anyone's tokens: `GET /api/pairing/people` lists each person's
-`tokens`, `POST /api/pairing/people/:principalId/tokens` (same body; `404
+`tokens` and whether a token can be made for them (`canHoldTokens`), `POST /api/pairing/people/:principalId/tokens` (same body; `404
 person_not_found` unless a live device is tied to the person) mints one, and
-`DELETE /api/pairing/people/:principalId/tokens/:tokenId` revokes one. The
-desktop's local grant lists them but cannot mint or revoke.
+`DELETE /api/pairing/people/:principalId/tokens/:tokenId` revokes one. An
+operator-minted token is bounded by the person's Station group rather than
+by their devices. The desktop's local grant lists them but cannot mint or
+revoke. A token is refused (`403`) on a Project's member-administration
+routes (`POST /api/projects/:slug/access/**`). Only a person tied by a
+Tailscale identity can hold a token; minting for an account-bound person is
+`400 account_bound_person`.
 
 ## Decide a pending paired-device request
 

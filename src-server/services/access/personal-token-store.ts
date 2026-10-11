@@ -6,8 +6,12 @@
  * working, nothing else does).
  *
  * Secrets are never stored: each record keeps the sha256 of its secret,
- * compared in constant time. Writes are atomic (temp file, fsync, rename)
- * and owner-only.
+ * compared in constant time. Writes are atomic (temp file, fsync, rename),
+ * owner-only, and made under a cross-process lock from a fresh read, so a
+ * second Station process on the same home never writes a stale view back
+ * (which could resurrect a revoked token). Reads follow the file: a change
+ * another process made is seen on the next lookup. Revoked and expired
+ * records are dropped on every write.
  */
 import {
   createHash,
@@ -24,10 +28,12 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import type { DevicePrincipalBinding } from '@kontourai/station-contracts/environment-security';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 
 export const PERSONAL_TOKENS_FILE = 'personal-tokens.json';
 const RECORD_VERSION = 1;
@@ -75,49 +81,71 @@ function isRecord(value: unknown): value is StoredPersonalToken {
   );
 }
 
+export class PersonalTokenUnavailableError extends Error {
+  constructor() {
+    super('The personal token record is unsafe or unreadable.');
+    this.name = 'PersonalTokenUnavailableError';
+  }
+}
+
+interface LoadedTokens {
+  /** False when the file is unsafe or unreadable: nothing authenticates. */
+  usable: boolean;
+  tokens: StoredPersonalToken[];
+}
+
 export class PersonalTokenStore {
   readonly #path: string;
   readonly #now: () => number;
-  #tokens: StoredPersonalToken[];
+  #cache: { key: string; loaded: LoadedTokens } | undefined;
 
   constructor(options: { securityDir: string; now?: () => number }) {
     this.#path = join(options.securityDir, PERSONAL_TOKENS_FILE);
     this.#now = options.now ?? Date.now;
-    this.#tokens = this.#load();
   }
 
   /** The active token whose secret is `candidate`, compared in constant time. */
   find(candidate: string): StoredPersonalToken | undefined {
     const candidateHash = digest(candidate);
-    const now = this.#now();
     let match: StoredPersonalToken | undefined;
-    for (const token of this.#tokens) {
+    for (const token of this.#active(this.#current().tokens)) {
       const stored = Buffer.from(token.credentialHash, 'base64url');
-      const matches =
-        stored.length === candidateHash.length &&
-        timingSafeEqual(candidateHash, stored);
       if (
-        matches &&
-        token.revokedAt === null &&
-        (token.expiresAt === null || token.expiresAt > now)
+        stored.length === candidateHash.length &&
+        timingSafeEqual(candidateHash, stored)
       )
         match = token;
     }
     return match;
   }
 
+  /** Every active token (not revoked, not expired). */
   list(): StoredPersonalToken[] {
-    return this.#tokens.map((token) => structuredClone(token));
+    return this.#active(this.#current().tokens).map((token) =>
+      structuredClone(token),
+    );
   }
 
-  /** Records a new token and returns its secret, the only time it exists. */
-  mint(input: {
-    name: string;
-    ownerPrincipalId: string;
-    binding: DevicePrincipalBinding;
-    scope: string;
-    expiresAt: number | null;
-  }): { token: StoredPersonalToken; secret: string } {
+  /** Whether the file can be trusted (a mint or revoke would be refused). */
+  usable(): boolean {
+    return this.#current().usable;
+  }
+
+  /**
+   * Records a new token and returns its secret, the only time it exists;
+   * `undefined` when its owner already holds `maxPerOwner` active tokens
+   * (decided under the lock, so two processes cannot both pass it).
+   */
+  async mint(
+    input: {
+      name: string;
+      ownerPrincipalId: string;
+      binding: DevicePrincipalBinding;
+      scope: string;
+      expiresAt: number | null;
+    },
+    maxPerOwner: number,
+  ): Promise<{ token: StoredPersonalToken; secret: string } | undefined> {
     const secret = `stp_${randomBytes(32).toString('base64url')}`;
     const token: StoredPersonalToken = {
       id: randomUUID(),
@@ -131,54 +159,123 @@ export class PersonalTokenStore {
       lastUsedAt: null,
       revokedAt: null,
     };
-    this.#write([...this.#tokens, token]);
-    return { token: structuredClone(token), secret };
+    let full = false;
+    await this.#mutate((tokens) => {
+      full =
+        this.#active(tokens).filter(
+          (held) => held.ownerPrincipalId === input.ownerPrincipalId,
+        ).length >= maxPerOwner;
+      return full ? tokens : [...tokens, token];
+    });
+    return full ? undefined : { token: structuredClone(token), secret };
   }
 
-  /** Revokes one token; `false` when it is unknown or already revoked. */
-  revoke(id: string): boolean {
-    const target = this.#tokens.find(
-      (token) => token.id === id && token.revokedAt === null,
+  /** Revokes one token; `false` when it is unknown or no longer active. */
+  async revoke(id: string): Promise<boolean> {
+    let found = false;
+    await this.#mutate((tokens) =>
+      tokens.filter((token) => {
+        if (token.id !== id) return true;
+        found = true;
+        return false;
+      }),
     );
-    if (!target) return false;
-    this.#write(
-      this.#tokens.map((token) =>
-        token.id === id ? { ...token, revokedAt: this.#now() } : token,
-      ),
-    );
-    return true;
+    return found;
   }
 
-  /** Bookkeeping on use; a failed write keeps serving (see the caller). */
-  touch(id: string, at: number): void {
-    this.#write(
-      this.#tokens.map((token) =>
+  /**
+   * Revokes every token (an environment reset), including whatever an
+   * untrusted file held: a reset discards it rather than refusing.
+   */
+  async clear(): Promise<void> {
+    const release = await acquireFileMutationLockAsync(
+      `${this.#path}.mutation`,
+    );
+    try {
+      if (existsSync(this.#path)) this.#write([]);
+    } finally {
+      await release();
+      this.#cache = undefined;
+    }
+  }
+
+  /**
+   * Bookkeeping on use; touches only that token's record. Never awaited on
+   * the request path: a contended lock must not hold up authentication.
+   */
+  async touch(id: string, at: number): Promise<void> {
+    await this.#mutate((tokens) =>
+      tokens.map((token) =>
         token.id === id ? { ...token, lastUsedAt: at } : token,
       ),
     );
   }
 
-  #load(): StoredPersonalToken[] {
-    if (!existsSync(this.#path)) return [];
-    const status = lstatSync(this.#path);
-    if (
-      !status.isFile() ||
-      status.isSymbolicLink() ||
-      (process.platform !== 'win32' &&
-        (status.mode & 0o777) !== PRIVATE_FILE_MODE)
-    )
-      // Fail closed: an unsafe file authenticates nobody.
-      return [];
+  #active(tokens: readonly StoredPersonalToken[]): StoredPersonalToken[] {
+    const now = this.#now();
+    return tokens.filter(
+      (token) =>
+        token.revokedAt === null &&
+        (token.expiresAt === null || token.expiresAt > now),
+    );
+  }
+
+  /** The file as it is now, re-read whenever it changed. */
+  #current(): LoadedTokens {
+    let key: string;
     try {
+      const status = statSync(this.#path);
+      key = `${status.ino}:${status.size}:${status.mtimeMs}:${status.ctimeMs}`;
+    } catch {
+      return { usable: !existsSync(this.#path), tokens: [] };
+    }
+    if (this.#cache?.key === key) return this.#cache.loaded;
+    const loaded = this.#load();
+    this.#cache = { key, loaded };
+    return loaded;
+  }
+
+  #load(): LoadedTokens {
+    if (!existsSync(this.#path)) return { usable: true, tokens: [] };
+    try {
+      const status = lstatSync(this.#path);
+      if (
+        !status.isFile() ||
+        status.isSymbolicLink() ||
+        (process.platform !== 'win32' &&
+          (status.mode & 0o777) !== PRIVATE_FILE_MODE)
+      )
+        // Fail closed: an unsafe file authenticates nobody.
+        return { usable: false, tokens: [] };
       const parsed = JSON.parse(readFileSync(this.#path, 'utf8')) as {
         version?: unknown;
         tokens?: unknown;
       };
       if (parsed.version !== RECORD_VERSION || !Array.isArray(parsed.tokens))
-        return [];
-      return parsed.tokens.filter(isRecord);
+        return { usable: false, tokens: [] };
+      return { usable: true, tokens: parsed.tokens.filter(isRecord) };
     } catch {
-      return [];
+      return { usable: false, tokens: [] };
+    }
+  }
+
+  /**
+   * Applies `update` to a fresh read under the cross-process lock. Refuses
+   * to write over a file it cannot trust, which would discard its records.
+   */
+  async #mutate(
+    update: (tokens: StoredPersonalToken[]) => StoredPersonalToken[],
+  ): Promise<void> {
+    const release = await acquireFileMutationLockAsync(
+      `${this.#path}.mutation`,
+    );
+    try {
+      const loaded = this.#load();
+      if (!loaded.usable) throw new PersonalTokenUnavailableError();
+      this.#write(this.#active(update(loaded.tokens)));
+    } finally {
+      await release();
+      this.#cache = undefined;
     }
   }
 
@@ -197,6 +294,5 @@ export class PersonalTokenStore {
       if (descriptor !== undefined) closeSync(descriptor);
       rmSync(candidate, { force: true });
     }
-    this.#tokens = tokens;
   }
 }
