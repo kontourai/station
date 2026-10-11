@@ -41,7 +41,7 @@ function token(overrides: Partial<PersonalAccessToken> = {}) {
   return {
     id: 'tok-1',
     name: 'Release script',
-    ownerPrincipalId: 'human:tailscale:ada',
+    ownerPrincipalId: 'human:tailscale-serve:ada@example.com',
     scope: 'orchestration:read',
     effectiveScope: 'orchestration:read',
     createdAt: Date.now() - 86_400_000,
@@ -53,8 +53,8 @@ function token(overrides: Partial<PersonalAccessToken> = {}) {
 
 function ada(overrides: Partial<StationPerson> = {}): StationPerson {
   return {
-    principalId: 'human:tailscale:ada',
-    displayName: 'Ada',
+    principalId: 'human:tailscale-serve:ada@example.com',
+    displayName: 'ada@example.com',
     group: 'member',
     assigned: false,
     devices: [
@@ -66,6 +66,28 @@ function ada(overrides: Partial<StationPerson> = {}): StationPerson {
       },
     ],
     tokens: [],
+    canHoldTokens: true,
+    ...overrides,
+  };
+}
+
+/** An account-bound person: their id is the deployment account principal. */
+function grace(overrides: Partial<StationPerson> = {}): StationPerson {
+  return {
+    principalId: `human:deployment:${'a'.repeat(64)}`,
+    displayName: 'Grace Hopper',
+    group: 'member',
+    assigned: false,
+    devices: [
+      {
+        id: 'dev-grace',
+        name: 'Grace’s browser',
+        scope: 'orchestration:read',
+        effectiveScope: 'orchestration:read',
+      },
+    ],
+    tokens: [],
+    canHoldTokens: false,
     ...overrides,
   };
 }
@@ -122,7 +144,8 @@ describe('People section', () => {
     handler = (call) => {
       if (
         call.method === 'PUT' &&
-        call.path === '/api/pairing/people/human%3Atailscale%3Aada/group'
+        call.path ===
+          '/api/pairing/people/human%3Atailscale-serve%3Aada%40example.com/group'
       ) {
         current = ada({ group: 'admin', assigned: true });
         return json({ person: current, revocations: {} });
@@ -132,7 +155,7 @@ describe('People section', () => {
     mount(<PeopleSection />);
 
     const select = (await screen.findByLabelText(
-      'Group for Ada',
+      'Group for ada@example.com',
     )) as HTMLSelectElement;
     expect(select.value).toBe('member');
     fireEvent.change(select, { target: { value: 'admin' } });
@@ -141,7 +164,7 @@ describe('People section', () => {
     expect(writes()).toEqual([
       {
         method: 'PUT',
-        path: '/api/pairing/people/human%3Atailscale%3Aada/group',
+        path: '/api/pairing/people/human%3Atailscale-serve%3Aada%40example.com/group',
         body: { group: 'admin' },
       },
     ]);
@@ -157,7 +180,7 @@ describe('People section', () => {
     mount(<PeopleSection />);
 
     const select = (await screen.findByLabelText(
-      'Group for Ada',
+      'Group for ada@example.com',
     )) as HTMLSelectElement;
     fireEvent.change(select, { target: { value: 'admin' } });
 
@@ -190,7 +213,7 @@ describe('People section', () => {
     mount(<PeopleSection />);
 
     const devices = await screen.findByRole('list', {
-      name: 'Devices for Ada',
+      name: 'Devices for ada@example.com',
     });
     const [capped, plain] = within(devices).getAllByRole('listitem');
     expect(capped?.textContent).toContain('Limited by Member group');
@@ -203,7 +226,8 @@ describe('People section', () => {
     handler = (call) => {
       if (
         call.method === 'POST' &&
-        call.path === '/api/pairing/people/human%3Atailscale%3Aada/tokens'
+        call.path ===
+          '/api/pairing/people/human%3Atailscale-serve%3Aada%40example.com/tokens'
       ) {
         const minted = token({
           name: 'CI',
@@ -232,7 +256,7 @@ describe('People section', () => {
     expect(writes()).toEqual([
       {
         method: 'POST',
-        path: '/api/pairing/people/human%3Atailscale%3Aada/tokens',
+        path: '/api/pairing/people/human%3Atailscale-serve%3Aada%40example.com/tokens',
         // "Never" sends no expiry; the name is trimmed.
         body: { name: 'CI', scope: 'orchestration:read orchestration:operate' },
       },
@@ -245,7 +269,9 @@ describe('People section', () => {
     );
     expect(document.body.textContent).not.toContain('stp_secret_value');
     // The list now carries the token, without its secret.
-    const listed = await screen.findByRole('list', { name: 'Tokens for Ada' });
+    const listed = await screen.findByRole('list', {
+      name: 'Tokens for ada@example.com',
+    });
     expect(listed.textContent).toContain('CI');
     expect(listed.textContent).toContain('Read & operate');
   });
@@ -269,11 +295,66 @@ describe('People section', () => {
       expect(writes()).toEqual([
         {
           method: 'DELETE',
-          path: '/api/pairing/people/human%3Atailscale%3Aada/tokens/tok-1',
+          path: '/api/pairing/people/human%3Atailscale-serve%3Aada%40example.com/tokens/tok-1',
           body: undefined,
         },
       ]),
     );
+  });
+
+  test('a person who cannot hold tokens gets no New token, says why, and can still lose one', async () => {
+    const list = peopleRoute(() => [
+      ada(),
+      grace({ tokens: [token({ id: 'tok-g', name: 'Old script' })] }),
+    ]);
+    handler = (call) =>
+      call.method === 'DELETE' ? json({ revoked: true }) : list(call);
+    mount(<PeopleSection />);
+
+    const card = (await screen.findByText('Grace Hopper')).closest('article');
+    expect(card).toBeTruthy();
+    const scoped = within(card as HTMLElement);
+    expect(scoped.queryByRole('button', { name: 'New token' })).toBeNull();
+    expect(card?.textContent).toContain('Tailscale identity');
+    // Ada, who can, still gets the button.
+    const adaCard = screen
+      .getByText('ada@example.com', {
+        selector: 'h4',
+      })
+      .closest('article') as HTMLElement;
+    expect(
+      within(adaCard).getByRole('button', { name: 'New token' }),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      scoped.getByRole('button', { name: 'Revoke token Old script' }),
+    );
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Revoke',
+      }),
+    );
+    await waitFor(() =>
+      expect(writes().map((call) => call.method)).toEqual(['DELETE']),
+    );
+  });
+
+  test('a revoke the token store cannot take says so and keeps the dialog', async () => {
+    const list = peopleRoute(() => [ada({ tokens: [token()] })]);
+    handler = (call) =>
+      call.method === 'DELETE'
+        ? json({ error: 'tokens_unavailable' }, 503)
+        : list(call);
+    mount(<PeopleSection />);
+
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Revoke token Release script',
+      }),
+    );
+    const dialog = await screen.findByRole('alertdialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Revoke' }));
+    await waitFor(() => expect(dialog.textContent).toContain('right now'));
   });
 
   test('no one tied to a device shows the empty state', async () => {
@@ -335,6 +416,42 @@ describe('Your access tokens', () => {
         },
       },
     ]);
+  });
+
+  test('an account-bound person minting their own token is told why not', async () => {
+    handler = (call) =>
+      call.method === 'GET'
+        ? json({ tokens: [] })
+        : json({ error: { code: 'account_bound_person' } }, 400);
+    mount(<OwnAccessTokensPanel />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'New token' }));
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Script' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create token' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Tailscale identity',
+    );
+  });
+
+  test('a mint the token store cannot take says so', async () => {
+    handler = (call) =>
+      call.method === 'GET'
+        ? json({ tokens: [] })
+        : json({ error: { code: 'tokens_unavailable' } }, 503);
+    mount(<OwnAccessTokensPanel />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'New token' }));
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Script' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create token' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'right now',
+    );
   });
 
   test('a mint the device may not make says why', async () => {

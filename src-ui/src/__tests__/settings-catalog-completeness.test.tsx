@@ -136,8 +136,8 @@ vi.mock('@kontourai/station-sdk', async () => {
     useStationPeopleQuery: () => ({
       data: [
         {
-          principalId: 'human:tailscale:ada',
-          displayName: 'Ada',
+          principalId: 'human:tailscale-serve:ada@example.com',
+          displayName: 'ada@example.com',
           group: 'member',
           assigned: false,
           devices: [
@@ -149,6 +149,7 @@ vi.mock('@kontourai/station-sdk', async () => {
             },
           ],
           tokens: [],
+          canHoldTokens: true,
         },
       ],
       isPending: false,

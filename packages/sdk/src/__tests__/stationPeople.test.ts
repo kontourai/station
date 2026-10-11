@@ -29,14 +29,14 @@ describe('Station people and token refusals (#3557)', () => {
       Response.json({ error: 'token_limit_reached' }, { status: 409 }),
     );
     const failure = await mintStationPersonToken(
-      'human:tailscale:ada',
+      'human:tailscale-serve:ada@example.com',
       { name: 'CI', scope: 'orchestration:read' },
       'http://station.test',
     ).catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(StationAccessError);
     expect(failure).toMatchObject({ status: 409, code: 'token_limit_reached' });
     expect(authenticatedFetchMock).toHaveBeenCalledWith(
-      'http://station.test/api/pairing/people/human%3Atailscale%3Aada/tokens',
+      'http://station.test/api/pairing/people/human%3Atailscale-serve%3Aada%40example.com/tokens',
       expect.objectContaining({ method: 'POST' }),
     );
   });

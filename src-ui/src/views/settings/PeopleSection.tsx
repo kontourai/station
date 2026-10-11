@@ -82,6 +82,11 @@ export function PeopleSection() {
   );
 }
 
+/** `describeDeviceGrant` is phrased for a sentence; here it stands alone. */
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 function DeviceRow({
   device,
   group,
@@ -97,7 +102,7 @@ function DeviceRow({
         <span className="people__item-name">{device.name}</span>
         <span className="people__meta">
           {effective.length > 0
-            ? describeDeviceGrant(effective)
+            ? capitalize(describeDeviceGrant(effective))
             : 'No access its group allows'}
         </span>
         {limited && (
@@ -202,8 +207,8 @@ function PersonCard({ person }: { person: StationPerson }) {
         tokens={person.tokens}
         ownerLabel={person.displayName}
         limitedBy={groupLabel}
-        canMint={person.devices.length > 0}
-        cannotMintReason="A token needs a device tied to them first."
+        canMint={person.canHoldTokens}
+        cannotMintReason="No device ties them by a Tailscale identity, and tokens work only for people tied that way."
         mint={(input) =>
           mint.mutateAsync({ principalId: person.principalId, ...input })
         }

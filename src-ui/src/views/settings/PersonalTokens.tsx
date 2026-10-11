@@ -81,6 +81,10 @@ export function tokenActionMessage(error: unknown): string {
         return 'This device can’t give a token more access than it has. Choose Read, then try again.';
       case 'insufficient_scope':
         return 'This device’s access doesn’t allow managing tokens.';
+      case 'account_bound_person':
+        return 'Tokens work only for a person tied by a Tailscale identity. A device tied by an account needs its sign-in session, which a script doesn’t have.';
+      case 'tokens_unavailable':
+        return 'Tokens can’t be changed on this Station right now. Try again in a moment.';
       case 'person_not_found':
         return 'This person has no device tied to them any more, so a token can’t be made for them.';
       case 'not_found':
