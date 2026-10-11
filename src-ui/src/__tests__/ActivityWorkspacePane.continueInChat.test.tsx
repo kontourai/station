@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 
-import { WORKSPACE_ACTIVITY_PANE_INSTANCE } from '@kontourai/station-contracts/workspace-activity-pane';
+import {
+  WORKSPACE_ACTIVITY_PANE_DESCRIPTOR,
+  WORKSPACE_ACTIVITY_PANE_INSTANCE,
+} from '@kontourai/station-contracts/workspace-activity-pane';
 import { render } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
 
@@ -34,8 +37,8 @@ import { ActivityWorkspacePane } from '../views/activity/ActivityWorkspacePane';
 test('Activity hands an external conversation’s draft to the chat dock and opens it there', () => {
   render(
     <ActivityWorkspacePane
-      instance={WORKSPACE_ACTIVITY_PANE_INSTANCE as never}
-      {...({} as never)}
+      descriptor={WORKSPACE_ACTIVITY_PANE_DESCRIPTOR}
+      instance={WORKSPACE_ACTIVITY_PANE_INSTANCE}
     />,
   );
   const handOff = sessionsViewProps.current?.onContinueInChat;
