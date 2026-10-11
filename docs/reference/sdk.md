@@ -471,6 +471,19 @@ Returns a query whose data is the current inbound paired-device registry from
 copy them into session or event records. An authorization or response failure
 is a query error, not an empty device list.
 
+#### `useStationPeopleQuery(apiBase?)` and personal access tokens
+
+`useStationPeopleQuery` reads `GET /api/pairing/people` (#3557);
+`useSetStationPersonGroupMutation`, `useMintStationPersonTokenMutation` and
+`useRevokeStationPersonTokenMutation` make the operator's changes. A person's
+own tokens use `useOwnAccessTokensQuery`, `useMintOwnAccessTokenMutation` and
+`useRevokeOwnAccessTokenMutation` on `/api/access/tokens`. Refusals throw
+`StationAccessError` with the HTTP `status` and the server's `code`:
+`isOperatorCredentialRequired` is the 401 a change without the operator
+credential gets, and `isStationAccessUnavailable` is a read refused as not for
+this caller (401, 403 or 404), which a surface hides rather than shows. A mint
+answers the secret once; its settled mutation is not retained.
+
 #### `useConnectionsQuery()`
 
 Returns the merged Connections list used by the Connections hub. The result includes both model and runtime rows from `GET /api/connections`.

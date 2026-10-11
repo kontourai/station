@@ -612,6 +612,28 @@ export {
   useRemoveSshEnvironmentMutation,
   useSshEnvironmentsQuery,
 } from './query-domains/sshEnvironments';
+export {
+  fetchOwnAccessTokens,
+  fetchStationPeople,
+  isOperatorCredentialRequired,
+  isStationAccessUnavailable,
+  mintOwnAccessToken,
+  mintStationPersonToken,
+  OWN_ACCESS_TOKENS_QUERY_KEY,
+  type PersonalTokenInput,
+  revokeOwnAccessToken,
+  revokeStationPersonToken,
+  STATION_PEOPLE_QUERY_KEY,
+  StationAccessError,
+  setStationPersonGroup,
+  useMintOwnAccessTokenMutation,
+  useMintStationPersonTokenMutation,
+  useOwnAccessTokensQuery,
+  useRevokeOwnAccessTokenMutation,
+  useRevokeStationPersonTokenMutation,
+  useSetStationPersonGroupMutation,
+  useStationPeopleQuery,
+} from './query-domains/stationPeople';
 export { useStationUsageQuery } from './query-domains/stationUsage';
 export {
   type AuthStatusData,

@@ -1,0 +1,230 @@
+/* Settings › People and "Your access tokens" (#3557). Shared by the operator's
+   People section and a person's own token panel, which render the same token
+   list. */
+
+.people__intro {
+  margin: 0 0 var(--k-space-3);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.people__person {
+  padding: var(--k-space-4) 0;
+  border-top: var(--k-border-thin) solid var(--k-line);
+  min-width: 0;
+}
+
+.people__person-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--k-space-2) var(--k-space-4);
+}
+
+.people__person-name {
+  margin: 0;
+  color: var(--k-text);
+  font-size: var(--k-text-md);
+  word-break: break-word;
+}
+
+.people__principal {
+  font-family: var(--k-font-mono);
+}
+
+.people__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  min-width: 10rem;
+}
+
+.people__group select {
+  min-height: 44px;
+}
+
+.people__group-summary {
+  margin: var(--k-space-2) 0 0;
+}
+
+.people__subheading {
+  margin: var(--k-space-4) 0 var(--k-space-2);
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+}
+
+.people__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.people__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2) var(--k-space-3);
+  padding: var(--k-space-2) var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  min-width: 0;
+}
+
+.people__item .button {
+  min-height: 44px;
+}
+
+.people__item-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  min-width: 0;
+  flex: 1 1 12rem;
+}
+
+.people__item-name {
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  word-break: break-word;
+}
+
+.people__meta {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  word-break: break-word;
+}
+
+.people__limited {
+  align-self: flex-start;
+  padding: 0 var(--k-space-2);
+  border: var(--k-border-thin) solid var(--k-caution);
+  border-radius: var(--k-radius-sm);
+  color: var(--k-text);
+  font-size: var(--k-text-xs);
+}
+
+.people__error {
+  margin: var(--k-space-2) 0 0;
+  color: var(--k-negative);
+  font-size: var(--k-text-sm);
+}
+
+.people__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  margin-top: var(--k-space-3);
+}
+
+.people__actions .button {
+  min-height: 44px;
+}
+
+.people__form,
+.people__secret {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+  margin-top: var(--k-space-3);
+  padding: var(--k-space-4);
+  border: var(--k-border-thin) solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel-raised);
+}
+
+.people__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.people__field-label {
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+  padding: 0;
+}
+
+.people__input,
+.people__secret-value {
+  min-height: 44px;
+  padding: 0 var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line-strong);
+  border-radius: var(--k-radius-control);
+  background: var(--k-bg);
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  min-width: 0;
+}
+
+.people__input:focus-visible,
+.people__secret-value:focus-visible,
+.people__choice input:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.people__choices {
+  gap: var(--k-space-1);
+}
+
+.people__choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--k-space-2);
+  min-height: 44px;
+  padding-top: var(--k-space-2);
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+}
+
+.people__choice > span {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+}
+
+.people__secret-label {
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+}
+
+.people__secret-warning {
+  margin: 0;
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+}
+
+.people__secret-row {
+  display: flex;
+  gap: var(--k-space-2);
+  align-items: center;
+}
+
+.people__secret-row .button {
+  min-height: 44px;
+}
+
+.people__secret-value {
+  flex: 1 1 auto;
+  font-family: var(--k-font-mono);
+}
+
+.people__own {
+  margin-top: var(--k-space-4);
+  padding-top: var(--k-space-4);
+  border-top: var(--k-border-thin) solid var(--k-line);
+}

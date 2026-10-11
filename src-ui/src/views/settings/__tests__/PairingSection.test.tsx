@@ -9,6 +9,12 @@ vi.mock('../../../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({ isMobile: nativePhone, isTauri: nativePhone }),
 }));
 
+// #3557: the person's own token panel has its own tests (PeopleSection.test);
+// here it is a marker, so these stay about pairing and still prove it mounts.
+vi.mock('../OwnAccessTokensPanel', () => ({
+  OwnAccessTokensPanel: () => <div data-testid="own-access-tokens" />,
+}));
+
 import { PairingSection } from '../PairingSection';
 
 describe('Settings device pairing', () => {
@@ -26,6 +32,11 @@ describe('Settings device pairing', () => {
     expect(
       screen.queryByRole('switch', { name: /mobile pairing/i }),
     ).toBeNull();
+  });
+
+  test('a person’s own access tokens sit in the Pairing section', () => {
+    render(<PairingSection />);
+    expect(screen.getByTestId('own-access-tokens')).toBeTruthy();
   });
 
   test('a native phone opens the joining-device scan flow rather than promising a host invitation', () => {

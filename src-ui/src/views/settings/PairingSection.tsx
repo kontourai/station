@@ -8,6 +8,7 @@ import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { SettingsToggle } from './feature-toggle';
+import { OwnAccessTokensPanel } from './OwnAccessTokensPanel';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
 
@@ -71,6 +72,9 @@ export function PairingSection() {
           </Button>
         }
       />
+      {/* #3557: a person's own tokens, beside the device they act from. It
+          renders nothing unless this device is tied to a person. */}
+      <OwnAccessTokensPanel />
     </SettingsSection>
   );
 }
