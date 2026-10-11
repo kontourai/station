@@ -1,15 +1,8 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 
 /**
@@ -40,15 +33,10 @@ const PLAYWRIGHT_CLI = join(
 const PLAYWRIGHT_TIMEOUT_MS = 120_000;
 const TEST_TIMEOUT_MS = PLAYWRIGHT_TIMEOUT_MS + 30_000;
 
-const roots: string[] = [];
-afterEach(() => {
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 function runSpec(extraEnv: Record<string, string> = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'station-iw-host-gate-'));
-  roots.push(root);
+  const root = makeTempDir('station-iw-host-gate-');
   const browsers = join(root, 'browsers');
   mkdirSync(browsers);
   const report = join(root, 'report', 'interactive-workspace.json');
