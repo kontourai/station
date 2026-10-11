@@ -26,6 +26,7 @@ import {
   validateReleaseInventory,
   verifyTauriUpdaterSignature,
 } from '../lib/release-artifacts.mjs';
+import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import { generateReleaseSboms } from '../lib/release-sbom-generation.mjs';
 
 const roots: string[] = [];
@@ -250,26 +251,26 @@ function fixture() {
     fragments.container,
     '{"components":[{"name":"bash","purl":"pkg:deb/debian/bash@5.2","version":"5.2"},{"name":"runtime-native","purl":"pkg:npm/runtime-native@1.0.0","version":"1.0.0"}],"predicate":"image","source":"container"}',
   );
-  generateReleaseSboms({
-    assetsDir,
-    fragmentsDir,
-    context: {
-      tag: TAG,
-      version: '1.2.3',
-      sourceSha: SHA,
-      generatedAt: GENERATED_AT,
-      channel: 'stable',
-      dependencyLifecycle: DEPENDENCY_LIFECYCLE,
-      container,
-      subjectsByScope,
-    },
-    fragments,
-  });
-  return { assetsDir, containerDescriptor, updaterPublicKey };
+  const context = {
+    tag: TAG,
+    version: '1.2.3',
+    sourceSha: SHA,
+    generatedAt: GENERATED_AT,
+    channel: 'stable',
+    dependencyLifecycle: DEPENDENCY_LIFECYCLE,
+    container,
+    subjectsByScope,
+  };
+  // release.yml hands this same file to both generate-release-sboms.mjs and
+  // `release-artifacts.mjs assemble --sbom-context`.
+  const sbomContext = join(fragmentsDir, 'context.json');
+  writeFileSync(sbomContext, `${JSON.stringify(context)}\n`);
+  generateReleaseSboms({ assetsDir, fragmentsDir, context, fragments });
+  return { assetsDir, containerDescriptor, updaterPublicKey, sbomContext };
 }
 
 function createFixtureInventory() {
-  const files = fixture();
+  const { sbomContext: _sbomContext, ...files } = fixture();
   return {
     ...files,
     inventory: createReleaseInventory({
@@ -399,6 +400,57 @@ describe('release artifact inventory', () => {
     expect(() =>
       validateReleaseInventory(inventory, { assetsDir, updaterPublicKey }),
     ).toThrow('Invalid release artifact inventory');
+  });
+
+  it('assembles and validates through the CLI exactly as release.yml invokes it (#2783)', () => {
+    const { assetsDir, containerDescriptor, sbomContext } = fixture();
+    const updaterKeyFile = join(assetsDir, 'station-updater-public-key.txt');
+    const output = join(assetsDir, 'station-release-inventory.json');
+    const cli = resolve(import.meta.dirname, '../release-artifacts.mjs');
+    const run = (args: string[]) =>
+      spawnSyncBounded(process.execPath, [cli, ...args], {
+        encoding: 'utf8',
+        windowsHide: true,
+        env: { ...process.env, TAURI_SIGNING_PUBLIC_KEY: '' },
+      });
+
+    const assemble = run([
+      'assemble',
+      '--assets-dir',
+      assetsDir,
+      '--output',
+      output,
+      '--tag',
+      TAG,
+      '--sha',
+      SHA,
+      '--generated-at',
+      GENERATED_AT,
+      '--sbom-context',
+      sbomContext,
+      '--container-descriptor',
+      containerDescriptor,
+      '--updater-public-key',
+      updaterKeyFile,
+    ]);
+    expect(assemble.stderr).toBe('');
+    expect(assemble.status).toBe(0);
+    const inventory = JSON.parse(readFileSync(output, 'utf8'));
+    expect(inventory.dependencyLifecycle).toEqual(DEPENDENCY_LIFECYCLE);
+
+    const validate = run([
+      'validate',
+      '--assets-dir',
+      assetsDir,
+      '--inventory',
+      output,
+      '--container-descriptor',
+      containerDescriptor,
+      '--updater-public-key',
+      updaterKeyFile,
+    ]);
+    expect(validate.stderr).toBe('');
+    expect(validate.status).toBe(0);
   });
 
   it('fails when uploaded bytes differ from the assembled checksum', () => {

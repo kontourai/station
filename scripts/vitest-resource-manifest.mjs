@@ -772,6 +772,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // single-shot spawn.
   'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
   'scripts/__tests__/release-workflow.test.ts',
+  // #2783: runs release-artifacts.mjs assemble and validate as real child
+  // processes with release.yml's arguments. Single-shot spawns, no wall-clock
+  // assertion.
+  'scripts/__tests__/release-artifacts.test.ts',
   // #2977: runs release.yml's assemble-draft admission step as a real bash
   // child against a download-artifact-shaped fixture root.
   'scripts/__tests__/release-admit-producer-assets.test.ts',
