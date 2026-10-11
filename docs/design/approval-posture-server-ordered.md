@@ -471,8 +471,8 @@ A session spawned before this change has nothing recorded.
   the refusing Station's environment id, and the operator's grant path
   (`grant.cli`, the exact host command
   `station environment access scope <short-id> --add approval:full-access`,
-  named with the launcher the running release installed on its host, such
-  as `station-nightly` on a nightly host, and `grant.uiSteps`, the desktop app steps through **Paired devices** →
+  run through the published package for the Station's channel, such as
+  `npx @kontourai/station-cli@nightly` for a nightly Station, and `grant.uiSteps`, the desktop app steps through **Paired devices** →
   the device → **Change access**). An Agent's refusal has `grant: null`: no
   scope lets an Agent choose full access. The requester chooses its pairing
   name, so the name is sanitized (control, format and separator characters

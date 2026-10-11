@@ -183,7 +183,7 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { isStationNativeShellOrigin } from '@kontourai/station-shared/native-shell-origin';
-import { releaseRingLauncher } from '@kontourai/station-shared/ports';
+import { operatorCliCommand } from '@kontourai/station-shared/ports';
 
 function isAccountDeviceBinding(
   binding: DevicePrincipalBinding,
@@ -1928,8 +1928,7 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService.devicePairing
         .listDevices()
         .find((device) => device.id === deviceId)?.name,
-    hostLauncher: () =>
-      releaseRingLauncher(context.buildProvenanceSnapshot?.channel),
+    hostCli: () => operatorCliCommand(context.buildProvenanceSnapshot?.channel),
   };
   context.app.use('*', async (c, next) => {
     bindFullAccessRefusalIdentity(c.req.raw, fullAccessRefusalIdentity);

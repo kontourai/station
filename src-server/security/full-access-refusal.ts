@@ -36,11 +36,12 @@ export interface FullAccessRefusalIdentitySource {
   /** A paired device's display name, by its id. */
   deviceName(deviceId: string): string | undefined;
   /**
-   * The CLI launcher on this Station's host (`station-nightly` for a nightly
-   * install). Only stable installs `station`; a host command naming the
-   * wrong one fails, or runs an unrelated checkout's older CLI.
+   * The operator CLI command for this Station's channel
+   * (`npx @kontourai/station-cli@nightly` for a nightly). A bare `station`
+   * is on no PATH for a nightly or desktop install, and in a checkout it can
+   * be an older CLI without the command.
    */
-  hostLauncher?(): string | undefined;
+  hostCli?(): string | undefined;
 }
 
 const identitySources = new WeakMap<Request, FullAccessRefusalIdentitySource>();
@@ -78,13 +79,13 @@ const FULL_ACCESS_GRANT_UI_STEPS: readonly string[] = [
 ];
 
 /** The operator command, run on the Station's own host. */
-function fullAccessGrantCommand(deviceId: string, launcher: string): string {
-  return `${launcher} environment access scope ${shortDeviceId(deviceId)} --add approval:full-access`;
+function fullAccessGrantCommand(deviceId: string, cli: string): string {
+  return `${cli} environment access scope ${shortDeviceId(deviceId)} --add approval:full-access`;
 }
 
-function hostLauncherOf(request: Request): string {
+function hostCliOf(request: Request): string {
   try {
-    return identitySources.get(request)?.hostLauncher?.() || 'station';
+    return identitySources.get(request)?.hostCli?.() || 'station';
   } catch {
     return 'station';
   }
@@ -137,10 +138,7 @@ function detailsFor(
             uiSteps: FULL_ACCESS_GRANT_UI_STEPS,
             ...(fullDeviceId
               ? {
-                  cli: fullAccessGrantCommand(
-                    fullDeviceId,
-                    hostLauncherOf(request),
-                  ),
+                  cli: fullAccessGrantCommand(fullDeviceId, hostCliOf(request)),
                 }
               : {}),
           },

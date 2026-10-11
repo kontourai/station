@@ -63,7 +63,7 @@ describe('fullAccessRefusalBody', () => {
     expect(JSON.stringify(body)).not.toContain('0123456789abcdef');
   });
 
-  test("the host command names this Station's own launcher (a nightly host has no `station`)", () => {
+  test("the host command names this Station's channel CLI (a nightly host has no `station`)", () => {
     const req = request({
       kind: 'credential',
       credential: 'c',
@@ -74,16 +74,16 @@ describe('fullAccessRefusalBody', () => {
     bindFullAccessRefusalIdentity(req, {
       environmentId: () => 'env-1',
       deviceName: () => 'Phone',
-      hostLauncher: () => 'station-nightly',
+      hostCli: () => 'npx @kontourai/station-cli@nightly',
     });
     const body = fullAccessRefusalBody(req);
     const cli =
-      'station-nightly environment access scope ca0dd4f2 --add approval:full-access';
+      'npx @kontourai/station-cli@nightly environment access scope ca0dd4f2 --add approval:full-access';
     expect(body.details.grant).toMatchObject({ cli });
     expect(body.error).toContain(`the operator can run: ${cli}`);
   });
 
-  test('a launcher lookup that throws still refuses, naming station', () => {
+  test('a CLI lookup that throws still refuses, naming station', () => {
     const req = request({
       kind: 'credential',
       credential: 'c',
@@ -94,7 +94,7 @@ describe('fullAccessRefusalBody', () => {
     bindFullAccessRefusalIdentity(req, {
       environmentId: () => 'env-1',
       deviceName: () => 'Phone',
-      hostLauncher: () => {
+      hostCli: () => {
         throw new Error('no build identity');
       },
     });

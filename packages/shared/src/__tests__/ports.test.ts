@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   DEFAULT_STATION_CHANNEL,
-  releaseRingLauncher,
+  operatorCliCommand,
   resolveStationChannel,
   STATION_CHANNEL_PORTS,
   stationChannelPorts,
@@ -54,16 +54,23 @@ describe('Station channel port allocation', () => {
   });
 });
 
-describe('releaseRingLauncher', () => {
-  test('names the launcher each installed runtime channel puts on PATH', () => {
-    // Literals, not read from the rings table under test.
-    expect(releaseRingLauncher('stable')).toBe('station');
-    expect(releaseRingLauncher('beta')).toBe('station-beta');
-    expect(releaseRingLauncher('nightly')).toBe('station-nightly');
+describe('operatorCliCommand', () => {
+  test('a nightly Station gets the nightly npm package', () => {
+    expect(operatorCliCommand('nightly')).toBe(
+      'npx @kontourai/station-cli@nightly',
+    );
   });
 
-  test('a development build, source checkout, or unknown channel gets station', () => {
-    for (const channel of [undefined, 'development', 'source-checkout', 'x'])
-      expect(releaseRingLauncher(channel)).toBe('station');
+  test('every channel without its own published dist-tag gets latest', () => {
+    for (const channel of [
+      'stable',
+      'beta',
+      'development',
+      'source-checkout',
+      undefined,
+    ])
+      expect(operatorCliCommand(channel)).toBe(
+        'npx @kontourai/station-cli@latest',
+      );
   });
 });

@@ -16,15 +16,15 @@ export type StationReleaseRing = keyof typeof STATION_RELEASE_RINGS;
 export const DEFAULT_STATION_CHANNEL: StationChannel = 'development';
 
 /**
- * The CLI launcher an installed release puts on PATH for a runtime channel
- * (`nightly` -> `station-nightly`). A development build or source checkout has
- * no installed launcher, so it, like an unknown channel, gets `station`.
+ * The operator CLI command for a Station on a runtime channel, as
+ * docs/reference/cli.md names it: the published package through `npx`, which
+ * needs no global install. Only the `nightly` and `latest` npm dist-tags are
+ * published (nightly.yml, publish-packages.yml), so every other channel gets
+ * `latest`.
  */
-export function releaseRingLauncher(runtimeChannel?: string): string {
-  for (const ring of Object.values(STATION_RELEASE_RINGS)) {
-    if (ring.runtimeChannel === runtimeChannel) return ring.launcher;
-  }
-  return 'station';
+export function operatorCliCommand(runtimeChannel?: string): string {
+  const tag = runtimeChannel === 'nightly' ? 'nightly' : 'latest';
+  return `npx @kontourai/station-cli@${tag}`;
 }
 
 export function resolveStationChannel(raw?: string): StationChannel {
