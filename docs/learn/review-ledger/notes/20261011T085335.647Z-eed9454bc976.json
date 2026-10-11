@@ -1,0 +1,19 @@
+{
+  "revision": "eb1b4e38d69ecced24454020cabf2c8863029e4f",
+
+  "notes": [
+    {"path":"docs/pages/README.md","note":"Added the fail-open sentence; checked against pages.yml: the bundle build step has continue-on-error: true, the copy step copies only if docs-bundle.json exists and otherwise warns, and keep_files: true leaves the previous gh-pages bundle. Exercised the copy script with the bundle missing (warns, exit 0) and present (copies).","inputs":["docs/pages/README.md",".github/workflows/pages.yml"]},
+
+    {"path":"docs/guides/testing.md","note":"Inventory row for docs-kit.yml now names its real workflow name (Main: Docs kit) instead of (new); checked against the workflow file.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Upstream testing.md change only fills the Main: Docs kit row's previous-name column with the workflow's real name; this file does not restate the inventory. No prose change.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Upstream testing.md change only fills the Main: Docs kit row's previous-name column with the workflow's real name; this file does not restate the inventory. No prose change.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Upstream testing.md change only fills the Main: Docs kit row's previous-name column with the workflow's real name; this file does not restate the inventory. No prose change.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Upstream testing.md change only fills the Main: Docs kit row's previous-name column with the workflow's real name; this file does not restate the inventory. No prose change.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Upstream testing.md change only fills the Main: Docs kit row's previous-name column with the workflow's real name; this file does not restate the inventory. No prose change.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}
