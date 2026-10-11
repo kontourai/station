@@ -98,7 +98,10 @@ export class StationGroupsService {
     }
   }
 
-  /** Whether groups have ever applied here (see `markActivated`). */
+  /**
+   * Whether groups have ever applied here. Only the file's presence counts,
+   * so an unreadable marker still reads as applied (fail closed).
+   */
   activated(): boolean {
     try {
       statSync(this.#activatedPath);
@@ -108,6 +111,7 @@ export class StationGroupsService {
     }
   }
 
+  /** Marks groups as applied; the time is kept only for the operator. */
   async markActivated(at: number): Promise<void> {
     await writeJsonFile(
       this.#activatedPath,
@@ -151,12 +155,23 @@ export class StationGroupsService {
    */
   async seed(admins: readonly string[]): Promise<void> {
     if (this.exists()) return;
-    await this.#mutate((record) => {
-      for (const principalId of admins)
-        if (isValidPrincipalId(principalId))
-          record.assignments[principalId] = 'admin';
-      return record;
-    });
+    // Decided again under the record's lock: another Station process
+    // starting on this home may have seeded, and the operator assigned
+    // someone, since the check above.
+    await mutateJsonFile<unknown>(
+      this.#path,
+      null,
+      (current) => {
+        if (current !== null) return current;
+        const record = emptyRecord();
+        for (const principalId of admins)
+          if (isValidPrincipalId(principalId))
+            record.assignments[principalId] = 'admin';
+        return record;
+      },
+      { maxBytes: MAX_BYTES, label: 'Station groups record' },
+    );
+    this.#cache = undefined;
   }
 
   async #mutate(
