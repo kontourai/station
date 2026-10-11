@@ -4,6 +4,12 @@
 //! host owns this small state machine; the renderer may only commit a ticket
 //! that exactly matches the sidecar generation and identity advertised by the
 //! native supervisor.
+//!
+//! A readiness deadline is a user-experience threshold, not a liveness
+//! verdict. A cold sidecar boot can legitimately outlast it, so an elapsed
+//! deadline only marks the epoch overdue and asks the host to offer recovery.
+//! It never restarts a sidecar by itself, and an overdue epoch keeps accepting
+//! the exact current proof so a late boot still reveals the window.
 
 use serde::{Deserialize, Serialize};
 
@@ -20,7 +26,6 @@ pub struct StartupTicket {
 pub enum ReadinessPhase {
     Waiting,
     Ready,
-    Failed,
     Bypassed,
 }
 
@@ -43,8 +48,10 @@ pub struct StartupReadiness {
     /// before the next deadline, the next explicit retry clears it and takes
     /// the ordinary owned-sidecar restart path.
     pub reprobe_attempted: bool,
-    pub activation_pending: bool,
-    pub diagnostic_shown: bool,
+    /// This epoch's deadline elapsed while still waiting, and the host was
+    /// asked (once) to offer the slow-start recovery choice. The phase stays
+    /// `Waiting`: exact late proof is still admitted and reveals normally.
+    pub overdue: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -72,7 +79,10 @@ pub enum ReadinessInput {
         epoch: u64,
         now_ms: u64,
     },
+    /// An explicit user choice from the slow-start recovery surface shown for
+    /// `epoch`. Only an overdue epoch accepts it.
     Retry {
+        epoch: u64,
         now_ms: u64,
         timeout_ms: u64,
     },
@@ -91,15 +101,45 @@ pub enum ReadinessEffect {
     PresentStartupRecoverySurface,
     RevealMainWindow,
     DeferActivation,
-    ShowDiagnostic {
+    /// Offer the user Restart/Quit for this overdue epoch. Emitted at most
+    /// once per epoch; it carries no process effect of its own.
+    ShowSlowStartRecovery {
         epoch: u64,
     },
     /// The existing exact ticket is still current. Ask the renderer to prove
     /// it before disrupting a sidecar that may already be healthy.
     ReprobeCurrentTicket,
+    /// Emitted only for an explicit user retry. A deadline alone must never
+    /// kill an owned sidecar that may still be booting.
     RestartOwnedSidecar,
     RecommitRecoverySurface,
     Exit,
+}
+
+/// What the native startup cover should show for a readiness state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StartupCoverContent {
+    Waiting,
+    Overdue { epoch: u64 },
+}
+
+/// The cover content for the current state, or `None` once the window has
+/// been admitted (startup readiness never re-covers a ready window).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn startup_cover_content(state: &StartupReadiness) -> Option<StartupCoverContent> {
+    match state.phase {
+        ReadinessPhase::Waiting if state.overdue => {
+            Some(StartupCoverContent::Overdue { epoch: state.epoch })
+        }
+        ReadinessPhase::Waiting => Some(StartupCoverContent::Waiting),
+        ReadinessPhase::Ready | ReadinessPhase::Bypassed => None,
+    }
+}
+
+/// Whether a Quit/Exit chosen on the recovery surface for `epoch` still
+/// applies. A late reveal or a newer epoch makes that earlier choice inert.
+pub fn overdue_for_epoch(state: &StartupReadiness, epoch: u64) -> bool {
+    state.phase == ReadinessPhase::Waiting && state.overdue && state.epoch == epoch
 }
 
 impl Default for StartupReadiness {
@@ -115,8 +155,7 @@ impl Default for StartupReadiness {
             identity_committed: false,
             renderer_mounted: false,
             reprobe_attempted: false,
-            activation_pending: false,
-            diagnostic_shown: false,
+            overdue: false,
         }
     }
 }
@@ -126,8 +165,7 @@ fn restart_readiness(next: &mut StartupReadiness, now_ms: u64, timeout_ms: u64) 
     next.phase = ReadinessPhase::Waiting;
     next.timeout_ms = timeout_ms;
     next.deadline_ms = now_ms.saturating_add(timeout_ms);
-    next.activation_pending = false;
-    next.diagnostic_shown = false;
+    next.overdue = false;
     next.identity_committed = false;
     if next.owned_sidecar && next.ticket.is_some() && !next.reprobe_attempted {
         next.reprobe_attempted = true;
@@ -143,11 +181,11 @@ fn restart_readiness(next: &mut StartupReadiness, now_ms: u64, timeout_ms: u64) 
 }
 
 fn maybe_reveal(next: &mut StartupReadiness, effects: &mut Vec<ReadinessEffect>) {
-    let phase_admits = matches!(next.phase, ReadinessPhase::Waiting)
-        || (!next.owned_sidecar && matches!(next.phase, ReadinessPhase::Failed));
+    let phase_admits = matches!(next.phase, ReadinessPhase::Waiting);
     if phase_admits && next.identity_committed && next.renderer_mounted {
         next.phase = ReadinessPhase::Ready;
         effects.push(ReadinessEffect::RevealMainWindow);
+        next.overdue = false;
     }
 }
 
@@ -174,8 +212,7 @@ pub fn transition(
             next.reprobe_attempted = false;
             next.current_generation = None;
             next.owned_sidecar = owned_sidecar;
-            next.activation_pending = false;
-            next.diagnostic_shown = false;
+            next.overdue = false;
             next.phase = if dev_bypass {
                 ReadinessPhase::Bypassed
             } else {
@@ -186,6 +223,8 @@ pub fn transition(
             }
         }
         ReadinessInput::ServerTicket(ticket) => {
+            // Overdue is still Waiting: a sidecar that outlived the deadline
+            // can publish its ticket and reveal without user action.
             if matches!(next.phase, ReadinessPhase::Waiting)
                 && next
                     .current_generation
@@ -207,17 +246,13 @@ pub fn transition(
             }
         }
         ReadinessInput::NativeRecoveryCommitted => {
-            if matches!(next.phase, ReadinessPhase::Waiting | ReadinessPhase::Failed)
-                && !next.owned_sidecar
-            {
+            if matches!(next.phase, ReadinessPhase::Waiting) && !next.owned_sidecar {
                 next.identity_committed = true;
                 maybe_reveal(&mut next, &mut effects);
             }
         }
         ReadinessInput::RecoveryUiCommitted => {
-            if matches!(next.phase, ReadinessPhase::Waiting | ReadinessPhase::Failed)
-                && !next.owned_sidecar
-            {
+            if matches!(next.phase, ReadinessPhase::Waiting) && !next.owned_sidecar {
                 next.identity_committed = true;
                 next.renderer_mounted = true;
                 maybe_reveal(&mut next, &mut effects);
@@ -235,7 +270,7 @@ pub fn transition(
             maybe_reveal(&mut next, &mut effects);
         }
         ReadinessInput::ServerLost { generation } => {
-            if matches!(next.phase, ReadinessPhase::Waiting | ReadinessPhase::Failed)
+            if matches!(next.phase, ReadinessPhase::Waiting)
                 && next.current_generation == Some(generation)
             {
                 next.ticket = None;
@@ -247,27 +282,23 @@ pub fn transition(
                 && epoch == next.epoch
                 && now_ms >= next.deadline_ms =>
         {
-            // An activation is an explicit user request to recover an
-            // initially-hidden window. Do not strand it behind a timeout
-            // dialog: begin a new authenticated readiness epoch and let the
-            // renderer reprobe the current exact ticket (or restart only the
-            // owned sidecar when no ticket exists). No effect reveals a
-            // window until a matching renderer commit arrives.
-            if next.activation_pending {
-                let timeout_ms = next.timeout_ms;
-                // Native deadline timers measure each epoch from zero; the
-                // replacement epoch must do the same or its next 30-second
-                // callback would look stale before it can recover.
-                effects.push(restart_readiness(&mut next, 0, timeout_ms));
-            } else {
-                next.phase = ReadinessPhase::Failed;
-                if !next.diagnostic_shown {
-                    next.diagnostic_shown = true;
-                    effects.push(ReadinessEffect::ShowDiagnostic { epoch: next.epoch });
-                }
+            // The deadline only measures how long the user has waited. It is
+            // not evidence that the sidecar is unhealthy: a cold boot can take
+            // longer, and killing it here restarts the same slow boot forever
+            // (observed on a 30-40 s host). Mark the epoch overdue, offer the
+            // recovery choice once, and keep admitting the exact late proof.
+            if !next.overdue {
+                next.overdue = true;
+                effects.push(ReadinessEffect::ShowSlowStartRecovery { epoch: next.epoch });
             }
         }
-        ReadinessInput::Retry { now_ms, timeout_ms } if next.phase == ReadinessPhase::Failed => {
+        ReadinessInput::Retry {
+            epoch,
+            now_ms,
+            timeout_ms,
+        } if overdue_for_epoch(&next, epoch) => {
+            // Explicit user choice: reprobe a current ticket first, otherwise
+            // restart only the owned sidecar (never a durable service).
             effects.push(restart_readiness(&mut next, now_ms, timeout_ms));
         }
         ReadinessInput::MainWindowRecreated {
@@ -286,17 +317,14 @@ pub fn transition(
             next.identity_committed = false;
             next.renderer_mounted = false;
             next.reprobe_attempted = false;
-            next.activation_pending = false;
-            next.diagnostic_shown = false;
+            next.overdue = false;
         }
         ReadinessInput::ActivationRequested if next.phase == ReadinessPhase::Waiting => {
-            next.activation_pending = true;
+            // Activation is a request to see the app, not to restart it. The
+            // cover shows waiting or overdue recovery content; proof still
+            // owns the reveal.
             effects.push(ReadinessEffect::PresentStartupRecoverySurface);
             effects.push(ReadinessEffect::DeferActivation);
-        }
-        ReadinessInput::ActivationRequested if next.phase == ReadinessPhase::Failed => {
-            effects.push(ReadinessEffect::PresentStartupRecoverySurface);
-            effects.push(restart_readiness(&mut next, 0, 30_000));
         }
         ReadinessInput::ActivationRequested => effects.push(ReadinessEffect::RevealMainWindow),
         _ => {}
@@ -337,17 +365,29 @@ mod tests {
         effects.extend(mount_effects);
         (state, effects)
     }
+    fn deadline(state: &StartupReadiness, epoch: u64) -> (StartupReadiness, Vec<ReadinessEffect>) {
+        transition(state, ReadinessInput::DeadlineElapsed { epoch, now_ms: 11 })
+    }
+    fn retry(state: &StartupReadiness, epoch: u64) -> (StartupReadiness, Vec<ReadinessEffect>) {
+        transition(
+            state,
+            ReadinessInput::Retry {
+                epoch,
+                now_ms: 20,
+                timeout_ms: 10,
+            },
+        )
+    }
+    fn is_process_effect(effect: &ReadinessEffect) -> bool {
+        matches!(
+            effect,
+            ReadinessEffect::RestartOwnedSidecar | ReadinessEffect::ReprobeCurrentTicket
+        )
+    }
+
     #[test]
     fn commits_only_the_exact_ticket() {
-        let (s, _) = transition(
-            &StartupReadiness::default(),
-            ReadinessInput::Begin {
-                now_ms: 1,
-                timeout_ms: 10,
-                dev_bypass: false,
-                owned_sidecar: true,
-            },
-        );
+        let s = begin(true);
         let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
         let (s, effects) = commit(&s, ticket(2));
         assert_eq!(s.phase, ReadinessPhase::Waiting);
@@ -424,160 +464,203 @@ mod tests {
         assert_eq!(s.phase, ReadinessPhase::Ready);
         assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
     }
+
+    /// A1. The observed defect: a 30-40 s cold boot was killed at every 30 s
+    /// deadline, so startup looped forever. The deadline must not restart a
+    /// sidecar that has not published a ticket, with or without a pending
+    /// activation.
     #[test]
-    fn timeout_is_once_per_epoch_and_retry_restarts_owned_sidecar_without_a_ticket() {
-        let (s, _) = transition(
-            &StartupReadiness::default(),
-            ReadinessInput::Begin {
-                now_ms: 1,
-                timeout_ms: 10,
-                dev_bypass: false,
-                owned_sidecar: true,
-            },
-        );
-        let (s, effects) = transition(
-            &s,
-            ReadinessInput::DeadlineElapsed {
-                epoch: 1,
-                now_ms: 11,
-            },
-        );
-        assert_eq!(effects, vec![ReadinessEffect::ShowDiagnostic { epoch: 1 }]);
-        let (_, effects) = transition(
-            &s,
-            ReadinessInput::DeadlineElapsed {
-                epoch: 1,
-                now_ms: 12,
-            },
-        );
-        assert!(effects.is_empty());
-        let (s, effects) = transition(
-            &s,
-            ReadinessInput::Retry {
-                now_ms: 20,
-                timeout_ms: 10,
-            },
-        );
-        assert_eq!(s.epoch, 2);
-        assert_eq!(effects, vec![ReadinessEffect::RestartOwnedSidecar]);
+    fn deadline_without_a_ticket_never_restarts_the_owned_sidecar() {
+        for activation_requested in [false, true] {
+            let mut s = begin(true);
+            if activation_requested {
+                let (next, effects) = transition(&s, ReadinessInput::ActivationRequested);
+                assert_eq!(
+                    effects,
+                    vec![
+                        ReadinessEffect::PresentStartupRecoverySurface,
+                        ReadinessEffect::DeferActivation,
+                    ]
+                );
+                s = next;
+            }
+            let (s, effects) = deadline(&s, 1);
+            assert_eq!(
+                effects,
+                vec![ReadinessEffect::ShowSlowStartRecovery { epoch: 1 }],
+                "activation_requested={activation_requested}: a deadline only offers recovery"
+            );
+            assert!(
+                !effects.iter().any(is_process_effect),
+                "activation_requested={activation_requested}: a deadline must never restart or reprobe"
+            );
+            assert_eq!(s.epoch, 1, "a deadline does not start a replacement epoch");
+            assert_eq!(s.phase, ReadinessPhase::Waiting);
+            assert!(s.overdue);
+            assert_eq!(
+                startup_cover_content(&s),
+                Some(StartupCoverContent::Overdue { epoch: 1 })
+            );
+
+            // Activating an overdue launch re-presents the recovery surface;
+            // it is not a restart request either.
+            let (s, effects) = transition(&s, ReadinessInput::ActivationRequested);
+            assert_eq!(
+                effects,
+                vec![
+                    ReadinessEffect::PresentStartupRecoverySurface,
+                    ReadinessEffect::DeferActivation,
+                ]
+            );
+            let (_, repeated) = deadline(&s, 1);
+            assert!(repeated.is_empty(), "one recovery offer per epoch");
+        }
     }
+
+    /// A2. A sidecar that publishes after the deadline still reveals the
+    /// window without user action, and the recovery surface goes away.
+    #[test]
+    fn late_ticket_after_the_deadline_reveals_after_identity_and_mount() {
+        let s = begin(true);
+        let (s, _) = transition(&s, ReadinessInput::ActivationRequested);
+        let (s, _) = transition(&s, ReadinessInput::RendererPageStarted);
+        let (s, _) = transition(&s, ReadinessInput::RendererMounted);
+        let (s, effects) = deadline(&s, 1);
+        assert_eq!(
+            effects,
+            vec![ReadinessEffect::ShowSlowStartRecovery { epoch: 1 }]
+        );
+        assert!(overdue_for_epoch(&s, 1));
+
+        let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
+        assert_eq!(
+            s.ticket,
+            Some(ticket(1)),
+            "an overdue epoch admits the late ticket"
+        );
+        let (s, effects) = transition(&s, ReadinessInput::NativeIdentityCommitted(ticket(1)));
+        assert_eq!(s.phase, ReadinessPhase::Ready);
+        assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
+        assert_eq!(
+            startup_cover_content(&s),
+            None,
+            "a ready window is never re-covered"
+        );
+        assert!(
+            !overdue_for_epoch(&s, 1),
+            "a Quit chosen on the stale recovery surface must not exit a revealed app"
+        );
+        let (_, retry_effects) = retry(&s, 1);
+        assert!(retry_effects.is_empty(), "Restart after reveal is inert");
+
+        // The same holds when the mount arrives last.
+        let s = begin(true);
+        let (s, _) = deadline(&s, 1);
+        let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
+        let (s, effects) = commit(&s, ticket(1));
+        assert_eq!(s.phase, ReadinessPhase::Ready);
+        assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
+    }
+
+    /// A3. An explicit user Restart with no ticket restarts only the owned
+    /// sidecar; one recovery offer per epoch.
+    #[test]
+    fn retry_without_a_ticket_restarts_the_owned_sidecar_once_per_overdue_epoch() {
+        let s = begin(true);
+        let (_, early) = retry(&s, 1);
+        assert!(
+            early.is_empty(),
+            "Restart is accepted only from an overdue epoch"
+        );
+        let (s, effects) = deadline(&s, 1);
+        assert_eq!(
+            effects,
+            vec![ReadinessEffect::ShowSlowStartRecovery { epoch: 1 }]
+        );
+        let (_, stale) = retry(&s, 0);
+        assert!(stale.is_empty(), "a choice for another epoch is inert");
+        let (s, effects) = retry(&s, 1);
+        assert_eq!(s.epoch, 2);
+        assert_eq!(s.phase, ReadinessPhase::Waiting);
+        assert!(!s.overdue);
+        assert_eq!(effects, vec![ReadinessEffect::RestartOwnedSidecar]);
+        assert_eq!(
+            startup_cover_content(&s),
+            Some(StartupCoverContent::Waiting)
+        );
+        let (_, doubled) = retry(&s, 1);
+        assert!(
+            doubled.is_empty(),
+            "a second click for the old epoch is inert"
+        );
+    }
+
+    /// A3. With a current ticket, an explicit retry reprobes first.
     #[test]
     fn retry_reprobes_a_current_ticket_before_restarting_an_owned_sidecar() {
-        let (s, _) = transition(
-            &StartupReadiness::default(),
-            ReadinessInput::Begin {
-                now_ms: 1,
-                timeout_ms: 10,
-                dev_bypass: false,
-                owned_sidecar: true,
-            },
-        );
+        let s = begin(true);
         let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
-        let (s, _) = transition(
-            &s,
-            ReadinessInput::DeadlineElapsed {
-                epoch: 1,
-                now_ms: 11,
-            },
-        );
-        let (s, effects) = transition(
-            &s,
-            ReadinessInput::Retry {
-                now_ms: 20,
-                timeout_ms: 10,
-            },
-        );
+        let (s, _) = deadline(&s, 1);
+        let (s, effects) = retry(&s, 1);
         assert_eq!(effects, vec![ReadinessEffect::ReprobeCurrentTicket]);
         assert_eq!(s.ticket, Some(ticket(1)));
         let (s, effects) = commit(&s, ticket(1));
         assert_eq!(s.phase, ReadinessPhase::Ready);
         assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
     }
+
     #[test]
     fn unsuccessful_reprobe_escalates_to_an_owned_sidecar_restart_on_the_next_retry() {
-        let (s, _) = transition(
-            &StartupReadiness::default(),
-            ReadinessInput::Begin {
-                now_ms: 1,
-                timeout_ms: 10,
-                dev_bypass: false,
-                owned_sidecar: true,
-            },
-        );
+        let s = begin(true);
         let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
-        let (s, _) = transition(
-            &s,
-            ReadinessInput::DeadlineElapsed {
-                epoch: 1,
-                now_ms: 11,
-            },
-        );
-        let (s, effects) = transition(
-            &s,
-            ReadinessInput::Retry {
-                now_ms: 20,
-                timeout_ms: 10,
-            },
-        );
+        let (s, _) = deadline(&s, 1);
+        let (s, effects) = retry(&s, 1);
         assert_eq!(effects, vec![ReadinessEffect::ReprobeCurrentTicket]);
-        let (s, _) = transition(
+        let (s, effects) = transition(
             &s,
             ReadinessInput::DeadlineElapsed {
                 epoch: 2,
                 now_ms: 30,
             },
         );
-        let (s, effects) = transition(
-            &s,
-            ReadinessInput::Retry {
-                now_ms: 40,
-                timeout_ms: 10,
-            },
+        assert_eq!(
+            effects,
+            vec![ReadinessEffect::ShowSlowStartRecovery { epoch: 2 }],
+            "the reprobe deadline also only offers recovery"
         );
+        let (s, effects) = retry(&s, 2);
         assert_eq!(effects, vec![ReadinessEffect::RestartOwnedSidecar]);
         assert!(s.ticket.is_none());
     }
+
     #[test]
-    fn loss_after_the_deadline_clears_the_ticket_before_retry() {
-        let (s, _) = transition(
-            &StartupReadiness::default(),
-            ReadinessInput::Begin {
-                now_ms: 1,
-                timeout_ms: 10,
-                dev_bypass: false,
-                owned_sidecar: true,
-            },
-        );
+    fn loss_after_the_deadline_clears_the_ticket_and_blocks_its_late_commit() {
+        let s = begin(true);
         let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
-        let (s, _) = transition(
-            &s,
-            ReadinessInput::DeadlineElapsed {
-                epoch: 1,
-                now_ms: 11,
-            },
-        );
+        let (s, _) = transition(&s, ReadinessInput::RendererMounted);
+        let (s, _) = deadline(&s, 1);
         let (s, _) = transition(&s, ReadinessInput::ServerLost { generation: 1 });
         assert!(s.ticket.is_none());
-        let (_, effects) = transition(
-            &s,
-            ReadinessInput::Retry {
-                now_ms: 20,
-                timeout_ms: 10,
-            },
+        assert!(!s.identity_committed);
+        let (lost, effects) = transition(&s, ReadinessInput::NativeIdentityCommitted(ticket(1)));
+        assert!(
+            effects.is_empty(),
+            "a lost ticket cannot reveal after the deadline"
         );
+        assert_eq!(lost.phase, ReadinessPhase::Waiting);
+        let (_, effects) = retry(&s, 1);
         assert_eq!(effects, vec![ReadinessEffect::RestartOwnedSidecar]);
+
+        // A supervised respawn's newer ticket still reveals the overdue epoch.
+        let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(2)));
+        let (s, effects) = transition(&s, ReadinessInput::NativeIdentityCommitted(ticket(2)));
+        assert_eq!(s.phase, ReadinessPhase::Ready);
+        assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
     }
+
     #[test]
     fn loss_invalidates_pending_ticket_and_activation_defers_but_post_ready_does_not_rehide() {
-        let (s, _) = transition(
-            &StartupReadiness::default(),
-            ReadinessInput::Begin {
-                now_ms: 1,
-                timeout_ms: 10,
-                dev_bypass: false,
-                owned_sidecar: true,
-            },
-        );
+        let s = begin(true);
         let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
         let (s, _) = transition(&s, ReadinessInput::ServerLost { generation: 1 });
         assert!(s.ticket.is_none());
@@ -594,87 +677,29 @@ mod tests {
         let (_, effects) = transition(&s, ReadinessInput::ActivationRequested);
         assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
     }
+
     #[test]
-    fn pending_activation_through_timeout_reprobes_without_revealing_unready_content() {
-        let (s, _) = transition(
-            &StartupReadiness::default(),
-            ReadinessInput::Begin {
-                now_ms: 1,
-                timeout_ms: 10,
-                dev_bypass: false,
-                owned_sidecar: true,
-            },
-        );
+    fn activation_after_timeout_presents_recovery_and_rejects_stale_epoch_or_ticket() {
+        let s = begin(true);
         let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
+        let (s, effects) = deadline(&s, 1);
+        assert_eq!(
+            effects,
+            vec![ReadinessEffect::ShowSlowStartRecovery { epoch: 1 }]
+        );
         let (s, effects) = transition(&s, ReadinessInput::ActivationRequested);
+        assert_eq!(s.epoch, 1);
         assert_eq!(
             effects,
             vec![
                 ReadinessEffect::PresentStartupRecoverySurface,
                 ReadinessEffect::DeferActivation,
-            ]
-        );
-        let (s, effects) = transition(
-            &s,
-            ReadinessInput::DeadlineElapsed {
-                epoch: 1,
-                now_ms: 11,
-            },
-        );
-        assert_eq!(s.phase, ReadinessPhase::Waiting);
-        assert_eq!(s.epoch, 2);
-        assert_eq!(
-            s.deadline_ms, 10,
-            "the replacement epoch gets a full timeout"
-        );
-        assert_eq!(effects, vec![ReadinessEffect::ReprobeCurrentTicket]);
-        assert!(
-            !effects.contains(&ReadinessEffect::RevealMainWindow),
-            "a timeout recovery may only ask the renderer to prove the exact ticket"
-        );
-        let (_, effects) = commit(&s, ticket(1));
-        assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
-    }
-    #[test]
-    fn activation_after_timeout_restarts_readiness_and_rejects_stale_epoch_or_ticket() {
-        let (s, _) = transition(
-            &StartupReadiness::default(),
-            ReadinessInput::Begin {
-                now_ms: 1,
-                timeout_ms: 10,
-                dev_bypass: false,
-                owned_sidecar: true,
-            },
-        );
-        let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
-        let (s, effects) = transition(
-            &s,
-            ReadinessInput::DeadlineElapsed {
-                epoch: 1,
-                now_ms: 11,
-            },
-        );
-        assert_eq!(effects, vec![ReadinessEffect::ShowDiagnostic { epoch: 1 }]);
-        let (s, effects) = transition(&s, ReadinessInput::ActivationRequested);
-        assert_eq!(s.phase, ReadinessPhase::Waiting);
-        assert_eq!(s.epoch, 2);
-        assert_eq!(
-            effects,
-            vec![
-                ReadinessEffect::PresentStartupRecoverySurface,
-                ReadinessEffect::ReprobeCurrentTicket,
             ]
         );
         assert!(!effects.contains(&ReadinessEffect::RevealMainWindow));
 
-        let (s, repeated) = transition(&s, ReadinessInput::ActivationRequested);
-        assert_eq!(
-            repeated,
-            vec![
-                ReadinessEffect::PresentStartupRecoverySurface,
-                ReadinessEffect::DeferActivation,
-            ]
-        );
+        let (s, _) = retry(&s, 1);
+        assert_eq!(s.epoch, 2);
         let (s, stale_deadline) = transition(
             &s,
             ReadinessInput::DeadlineElapsed {
@@ -683,6 +708,7 @@ mod tests {
             },
         );
         assert!(stale_deadline.is_empty());
+        assert!(!s.overdue);
         let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(2)));
         let (s, stale_ticket) = commit(&s, ticket(1));
         assert!(stale_ticket.is_empty());
@@ -690,73 +716,65 @@ mod tests {
         let (_, effects) = commit(&s, ticket(2));
         assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
     }
+
     #[test]
     fn stale_generation_and_old_epoch_are_inert() {
-        let (s, _) = transition(
-            &StartupReadiness::default(),
-            ReadinessInput::Begin {
-                now_ms: 1,
-                timeout_ms: 10,
-                dev_bypass: false,
-                owned_sidecar: true,
-            },
-        );
+        let s = begin(true);
         let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(2)));
         let (s, _) = transition(&s, ReadinessInput::ServerTicket(ticket(1)));
         assert_eq!(s.ticket, Some(ticket(2)));
         let (s, _) = transition(&s, ReadinessInput::ServerLost { generation: 1 });
         assert_eq!(s.ticket, Some(ticket(2)));
-        let (s, _) = transition(
+        let (s, early) = transition(
             &s,
             ReadinessInput::DeadlineElapsed {
                 epoch: 1,
-                now_ms: 11,
+                now_ms: 10,
             },
         );
-        let (s, effects) = transition(
-            &s,
-            ReadinessInput::Retry {
-                now_ms: 20,
-                timeout_ms: 10,
-            },
-        );
+        assert!(early.is_empty(), "a deadline before its instant is inert");
+        let (s, _) = deadline(&s, 1);
+        let (s, effects) = retry(&s, 1);
         assert_eq!(effects, vec![ReadinessEffect::ReprobeCurrentTicket]);
-        let (_, effects) = transition(
+        let (s, effects) = transition(
             &s,
             ReadinessInput::DeadlineElapsed {
                 epoch: 1,
                 now_ms: 30,
             },
         );
-        assert!(effects.is_empty());
+        assert!(
+            effects.is_empty(),
+            "the superseded epoch's deadline is ignored"
+        );
+        assert!(!s.overdue);
     }
+
     #[test]
     fn service_retry_recommits_recovery_instead_of_restarting_it() {
-        let (s, _) = transition(
-            &StartupReadiness::default(),
-            ReadinessInput::Begin {
-                now_ms: 1,
-                timeout_ms: 10,
-                dev_bypass: false,
-                owned_sidecar: false,
-            },
+        let s = begin(false);
+        let (s, effects) = deadline(&s, 1);
+        assert_eq!(
+            effects,
+            vec![ReadinessEffect::ShowSlowStartRecovery { epoch: 1 }]
         );
+        let (s, effects) = retry(&s, 1);
+        assert_eq!(effects, vec![ReadinessEffect::RecommitRecoverySurface]);
+
+        // An overdue non-owned launch still admits its recovery surface.
         let (s, _) = transition(
             &s,
             ReadinessInput::DeadlineElapsed {
-                epoch: 1,
-                now_ms: 11,
+                epoch: 2,
+                now_ms: 30,
             },
         );
-        let (_, effects) = transition(
-            &s,
-            ReadinessInput::Retry {
-                now_ms: 20,
-                timeout_ms: 10,
-            },
-        );
-        assert_eq!(effects, vec![ReadinessEffect::RecommitRecoverySurface]);
+        assert!(overdue_for_epoch(&s, 2));
+        let (s, _) = transition(&s, ReadinessInput::NativeRecoveryCommitted);
+        let (_, effects) = transition(&s, ReadinessInput::RendererMounted);
+        assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
     }
+
     #[test]
     fn dev_bypass_reveals_immediately() {
         let (s, effects) = transition(
@@ -770,7 +788,14 @@ mod tests {
         );
         assert_eq!(s.phase, ReadinessPhase::Bypassed);
         assert_eq!(effects, vec![ReadinessEffect::RevealMainWindow]);
+        assert_eq!(startup_cover_content(&s), None);
+        let (_, effects) = deadline(&s, 1);
+        assert!(
+            effects.is_empty(),
+            "the dev bypass never reaches slow-start recovery"
+        );
     }
+
     #[test]
     fn recreated_main_window_must_reprove_identity_and_renderer_mount() {
         let s = begin(true);
@@ -797,6 +822,7 @@ mod tests {
         let (_, reveal) = commit(&s, ticket(1));
         assert_eq!(reveal, vec![ReadinessEffect::RevealMainWindow]);
     }
+
     #[test]
     fn concurrent_ticket_loss_activation_and_deadline_keep_a_newer_epoch_intact() {
         use std::sync::{Arc, Barrier, Mutex};
@@ -825,21 +851,9 @@ mod tests {
         let (next, _) = transition(&guard, ReadinessInput::ServerLost { generation: 1 });
         *guard = next;
         assert_eq!(guard.ticket, Some(ticket(2)));
-        let (next, _) = transition(
-            &guard,
-            ReadinessInput::DeadlineElapsed {
-                epoch: 1,
-                now_ms: 11,
-            },
-        );
+        let (next, _) = deadline(&guard, 1);
         *guard = next;
-        let (next, _) = transition(
-            &guard,
-            ReadinessInput::Retry {
-                now_ms: 20,
-                timeout_ms: 10,
-            },
-        );
+        let (next, _) = retry(&guard, 1);
         *guard = next;
         let (next, effects) = transition(
             &guard,

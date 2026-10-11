@@ -594,7 +594,9 @@
 
     "packages/sdk/src/__tests__/publicBarrel.test.ts",
 
-    "src-ui/src/views/integrations/TelemetryDestinationGrants.tsx"
+    "src-ui/src/views/integrations/TelemetryDestinationGrants.tsx",
+
+    "packages/sdk/src/query-domains/insightsResponse.ts"
   ],
 
   "checks": [
