@@ -1,0 +1,7 @@
+{
+  "revision": "fef804a0411ea6f19e99f0975d1dbdc707d7d9e5",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"path-read-pin-boundary.test.ts only added the #577 host-gate test to its reviewed list of suites whose temp-output reads the scanner cannot pin. Searched the testing guide for path-read pin and exemption-list claims; it makes none, so no prose change.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
+  ]
+}
