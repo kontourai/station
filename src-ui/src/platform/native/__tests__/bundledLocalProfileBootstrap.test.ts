@@ -154,6 +154,60 @@ describe('bundled local profile bootstrap', () => {
     expectAuthoredInPlace(run);
   });
 
+  test('a shown window waits on a progressing sidecar for the bounded budget, then releases to the recovery UI', async () => {
+    const run = await bootstrapOnVirtualClock(
+      () => 'starting',
+      55_000,
+      () => true,
+    );
+    expect(run.settled()).toBe(false);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(run.settled()).toBe(true);
+    await expect(run.result).resolves.toEqual({});
+    const pollsAtRelease = run.getBundledServerStatus.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(run.getBundledServerStatus).toHaveBeenCalledTimes(pollsAtRelease);
+    expectNothingAuthored(run);
+  });
+
+  test('a covered window has no wall-clock limit on a progressing sidecar', async () => {
+    const run = await bootstrapOnVirtualClock(
+      () => 'restarting',
+      600_000,
+      () => false,
+    );
+    expect(run.settled()).toBe(false);
+    expect(run.isStartupWindowAdmitted).toHaveBeenCalled();
+    expectNothingAuthored(run);
+  });
+
+  test('a failed admission read releases at once instead of waiting', async () => {
+    vi.useFakeTimers();
+    const getBundledServerStatus = vi.fn(async () => ({
+      status: 'ok',
+      value: { phase: 'failed', ownership: 'sidecar' },
+    }));
+    let settled = false;
+    const result = bootstrapBundledLocalProfile({
+      adapter: {
+        getBundledServerStatus,
+        isStartupWindowAdmitted: vi.fn(async () => ({
+          status: 'error',
+          command: 'startup-window-admitted',
+          message: 'bridge unavailable',
+        })),
+      } as never,
+      repository: {} as never,
+      invoke: vi.fn(),
+    }).finally(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(true);
+    await expect(result).resolves.toEqual({});
+    expect(getBundledServerStatus).toHaveBeenCalledTimes(1);
+  });
+
   test('an adapter without native readiness releases rather than hang a visible window', async () => {
     vi.useFakeTimers();
     const getBundledServerStatus = vi.fn(async () => ({

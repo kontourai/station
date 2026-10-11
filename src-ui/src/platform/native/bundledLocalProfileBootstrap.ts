@@ -5,20 +5,23 @@ import type { NativePlatformAdapter } from './types';
 
 // Large migrated homes, or a slow host, can spend tens of seconds (sometimes
 // more than a minute) loading agents, plugins, and event indexes before the
-// native-owned sidecar publishes its handshake. While that owned sidecar is
-// progressing (`starting`; `restarting`, which the supervisor bounds with its
-// own attempt cap before reporting `failed`; or `stopping`, which only a
-// manual restart sets and which always respawns) there is no wall-clock limit:
-// giving up would leave a fresh home without the profile its native identity
-// proof requires.
+// native-owned sidecar publishes its handshake. Progressing phases are
+// `starting`, `restarting` (the supervisor bounds it with its own attempt cap
+// before reporting `failed`) and `stopping` (only a manual restart sets it,
+// and it always respawns).
 //
-// A terminal owned sidecar (`failed`, `stopped`) is waited for only while the
-// main window is still covered by native startup readiness, whose cover offers
-// Restart/Quit once its deadline passes; an explicit Restart then lets this
-// same bootstrap continue in place on its normal path. A window already shown
-// to the user (a reload of the revealed main window, the dev bypass, or a
-// workspace pop-out) releases the loader at once to the in-app recovery UI,
-// with no background polling.
+// While the main window is still covered by native startup readiness there is
+// no wall-clock limit, even for a terminal owned sidecar (`failed`,
+// `stopped`): the cover offers Restart/Quit once its deadline passes, and an
+// explicit Restart lets this same bootstrap author and authorize in place.
+// Giving up there would leave a fresh home without the profile its native
+// identity proof requires.
+//
+// A window already shown to the user (a reload of the revealed main window,
+// the dev bypass, or a workspace pop-out) has only the in-app recovery UI, so
+// it releases the loader at once for a terminal sidecar and after the
+// fast-poll budget (about a minute) for a progressing one, with no background
+// polling afterwards.
 const STATUS_RETRY_MS = 100;
 const STATUS_RETRY_SLOW_MS = 1_000;
 const STATUS_FAST_ATTEMPTS = 600;
@@ -70,8 +73,10 @@ export async function bootstrapBundledLocalProfile(
     if (status.status !== 'ok') return {};
     const ownsSidecar = status.value.ownership === 'sidecar';
     if (ownsSidecar && status.value.phase !== 'running') {
+      const terminal = !PROGRESSING_PHASES.has(status.value.phase);
+      const pastShownWindowBudget = attempt >= STATUS_FAST_ATTEMPTS;
       if (
-        !PROGRESSING_PHASES.has(status.value.phase) &&
+        (terminal || pastShownWindowBudget) &&
         (await windowAlreadyShown(adapter))
       ) {
         return {};
