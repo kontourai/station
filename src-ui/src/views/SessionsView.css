@@ -599,8 +599,8 @@
 
 .sessions-detail__details {
   margin: 0;
-  color: var(--k-text-faint);
-  font-size: var(--k-text-xs);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
   line-height: var(--k-leading-normal);
 }
 
@@ -610,10 +610,12 @@
 
 /* A 44px tap target for a quiet, one-word disclosure. */
 .sessions-detail__details summary {
+  box-sizing: border-box;
   cursor: pointer;
   width: fit-content;
   min-width: 44px;
-  padding-block: 13px;
+  min-height: 44px;
+  padding-block: 14px;
   padding-inline-end: var(--k-space-3);
 }
 
@@ -654,6 +656,12 @@
   border-radius: 8px;
   background: var(--bg-primary);
   overflow-wrap: anywhere;
+}
+
+/* Keep list markers inside the message: the scroll region clips anything
+   that hangs past its edge. */
+.sessions-detail__transcript-message :is(ol, ul) {
+  padding-inline-start: 1.5em;
 }
 
 .sessions-detail__transcript-message--user {
