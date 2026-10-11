@@ -1,5 +1,34 @@
 [
   {
+    "timestampUtc": "2026-10-11T10:26:06Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2475.38129794582",
+    "sha": "5cb1c6b57f2ed893fff22a8cd8e7777d1ec7485d",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38129794582",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2475.38129794582 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "971eba67b2241079de8629f27275b445cedfa033",
+      "groups": {
+        "feat": [],
+        "fix": [],
+        "ci": [],
+        "docs": [
+          "[#3550](https://github.com/kontourai/station/pull/3550) docs(pages): publish a docs-kit bundle for the Kontour docs hub and shared MCP"
+        ],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-10-11T09:12:02Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2475.38124986486",
