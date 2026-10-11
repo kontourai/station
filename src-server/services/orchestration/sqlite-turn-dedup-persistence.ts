@@ -160,7 +160,11 @@ function serializeTurnClaimOwner(record: TurnIdempotencyRecord): string | null {
   );
 }
 
-/** Unknown invocation values read as absent: never reclaimed from a dead owner. */
+/**
+ * Unknown invocation values read as absent. On a thread key that means a dead
+ * owner's claim is never reclaimed; a `chat:` key falls back to `untracked`
+ * in `read` and keeps the dead-owner reclaim rule.
+ */
 function parseTurnClaimInvocation(
   raw: unknown,
 ): TurnClaimInvocation | undefined {

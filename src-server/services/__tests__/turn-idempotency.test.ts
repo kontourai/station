@@ -185,9 +185,17 @@ describe('TurnIdempotencyStore (station#1224 offline slice 2 — shared idempote
       const owner = new TurnIdempotencyStore(persistence, alive);
       owner.claim('k', 0, 'tracked');
       owner.beginInvocation('k');
+      const before = persistence.read('k');
       expect(
         new TurnIdempotencyStore(persistence, alive).claim('k', 1, 'tracked'),
       ).toEqual({ claimed: false });
+      // A contended claim must not rewrite the live owner's row: losing
+      // `begun` here would make the turn reclaimable once that owner dies.
+      expect(persistence.read('k')).toEqual(before);
+      expect(persistence.read('k')?.invocation).toBe('begun');
+      expect(
+        new TurnIdempotencyStore(persistence, dead).claim('k', 2, 'tracked'),
+      ).toEqual({ claimed: false, indeterminate: true });
     });
 
     test('a dead owner row with no invocation record is indeterminate', () => {
