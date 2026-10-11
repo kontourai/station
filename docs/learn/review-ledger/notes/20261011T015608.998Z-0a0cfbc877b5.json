@@ -1,0 +1,7 @@
+{
+  "revision": "f45f4206f541eeba91933a69baccd2aca7e2089a",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed mismatch-screen capture: it now asserts finite status-pill animations have settled after the final real picker interaction and visible failed-status marker, before generic screenshot animation disabling. No screen, mask, threshold, volatility, baseline, fixture API response, product deadline or test retry policy changes. E2E typecheck/fixture checks and selected local capture passed. Three queue artifact pixels are localized to the warning glyph; exact raster cause is not proven and new-head hosted recapture must validate parity.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
+  ]
+}

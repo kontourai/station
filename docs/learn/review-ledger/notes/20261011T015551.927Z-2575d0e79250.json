@@ -1,0 +1,7 @@
+{
+  "revision": "f45f4206f541eeba91933a69baccd2aca7e2089a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed SDK-free Strands client-pool cleanup extraction in 7a1a6ffb1c against 663a. Runtime statically imports retirement without Strands SDK; tool loader shares the same pool. Both broker lifecycle keepers reproduced status1/esbuild shutdown failures before repair and pass afterward; combined loader and keeper suite29PASS, server-test typecheck/lint passed, independent report-only review has no findings. Custody scoping, invalidation, replacement fencing and error propagation are unchanged. This is local boundary proof, not hosted/queue or native/provider qualification.","inputs":["docs/architecture/module-map.md","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}
