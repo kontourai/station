@@ -600,7 +600,17 @@
 
     "packages/contracts/src/usage-export.ts",
 
-    "src-server/analytics/usage-export-reader.ts"
+    "src-server/analytics/usage-export-reader.ts",
+
+    "packages/sdk/src/client/usage-export.ts",
+
+    "packages/sdk/src/query-domains/usageExport.ts",
+
+    "packages/sdk/src/__tests__/usage-export-client.test.ts",
+
+    "packages/sdk/src/__tests__/usage-export-query.test.tsx",
+
+    "packages/sdk/src/__tests__/usage-export.fixture.ts"
   ],
 
   "checks": [
