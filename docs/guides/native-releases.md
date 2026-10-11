@@ -15,13 +15,11 @@ attests the complete public release again, derives a bounded same-channel
 previous-public-release range, and advances only the implicated issue labels.
 It has no release, package, or image mutation permission.
 
-**Current implementation blocker:** the `assemble` CLI in
-[`release-artifacts.mjs`](../../scripts/release-artifacts.mjs) calls
-`readFileSync` without importing it. A bounded synthetic CLI invocation fails
-before inventory output. The workflow contract below describes the intended
-stage/publish sequence; it is not a claim that this checkout can currently
-complete draft assembly. [#2783](https://github.com/kontourai/station/issues/2783)
-tracks the import repair and a regression through the actual CLI entry point.
+The `assemble` and `validate` commands in
+[`release-artifacts.mjs`](../../scripts/release-artifacts.mjs) are exercised
+as real child processes with the same arguments `release.yml` passes, against
+a synthetic asset set ([#2783](https://github.com/kontourai/station/issues/2783)).
+That proves the command entry points, not a hosted tagged release.
 
 ## Supported inventory
 

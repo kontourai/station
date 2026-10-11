@@ -302,12 +302,15 @@ install a plugin or run a live Agent.
 
 ### Library tests can miss a broken release command
 
-The release workflow calls an assembly CLI whose `sbomContext` function uses
-an unimported filesystem reader. The actual command exits before producing an
-inventory, while nearby tests exercise its library or scan the workflow text.
-[#2783](https://github.com/kontourai/station/issues/2783) records the reproduction
-and requires a regression through both real assembly and validation commands.
-This is a local caller failure, not an observed hosted release attempt.
+The release workflow's assembly CLI used an unimported filesystem reader, and
+its validation step compared the sorted-key inventory against the
+writer-ordered container descriptor byte for byte. Both commands would have
+failed on every release while the nearby tests exercised only the library or
+scanned the workflow text.
+[#2783](https://github.com/kontourai/station/issues/2783) fixed both and added a
+regression that runs the real assemble and validate commands with
+`release.yml`'s arguments. That evidence is local; no hosted tagged release
+has exercised it yet.
 
 ### Public configuration and runtime enforcement must agree
 
