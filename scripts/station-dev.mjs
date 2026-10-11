@@ -38,6 +38,7 @@ import {
   realpathSync,
   statSync,
 } from 'node:fs';
+import { constants as osConstants } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -192,7 +193,7 @@ export function identificationLine(root) {
  * Deliberately narrower than `child_process.spawnSync`'s real type: this is
  * the whole shape `resolveNodeExecutable` and `run` read off a result, so a
  * test can inject a minimal stub instead of a full `SpawnSyncReturns`.
- * @typedef {(command: string, args?: string[], options?: object) => {status?: number | null, stdout?: string, error?: Error}} SpawnLike
+ * @typedef {(command: string, args?: string[], options?: object) => {status?: number | null, signal?: NodeJS.Signals | null, stdout?: string, error?: Error}} SpawnLike
  */
 
 /**
@@ -267,7 +268,14 @@ export function run(
     );
     return 1;
   }
-  return typeof result.status === 'number' ? result.status : 1;
+  if (typeof result.status === 'number') return result.status;
+  // A child killed by a signal has no status. Report it the way a shell
+  // does, 128 + the signal number (SIGTERM is 143), so a caller can tell a
+  // killed CLI from one that exited 1 (#554).
+  const signalNumber = result.signal
+    ? osConstants.signals[result.signal]
+    : undefined;
+  return typeof signalNumber === 'number' ? 128 + signalNumber : 1;
 }
 
 /**
