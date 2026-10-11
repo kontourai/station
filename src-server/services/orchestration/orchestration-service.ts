@@ -9438,16 +9438,14 @@ export class OrchestrationService {
   }
 
   /**
-   * Ownership is checked from Station's own read model before any provider
-   * adapter lookup. Attached sessions are not adapter-owned and must never
-   * trigger discovery or a provider mutation while rejecting a command.
+   * Attached transcripts are observed rather than run by Station. Commands
+   * and notification producers check this ownership before looking up an
+   * adapter or interrupting the user.
    */
-  private isReadOnlyAttachedSession(threadId: string): boolean {
+  isReadOnlyAttachedSession(threadId: string): boolean {
     const session =
       this.sessionReadModel.get(threadId) ??
-      this.options.eventStore
-        ?.readSessions()
-        .find((candidate) => candidate.threadId === threadId);
+      this.options.eventStore?.readSessionByThread(threadId);
     return session?.controlMode === 'read-only-attached';
   }
 
