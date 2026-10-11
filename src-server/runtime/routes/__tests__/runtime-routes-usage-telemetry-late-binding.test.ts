@@ -354,6 +354,12 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
 });
 
 describe('persisted telemetry configuration during Agent activation', () => {
+  function writableConfig(config: AppConfig) {
+    // First-run transitions and revisioned log levels use separate endpoints.
+    const { firstRun: _firstRun, logLevel: _logLevel, ...settings } = config;
+    return settings;
+  }
+
   const homes: Array<{ homeDir: string; loader: ConfigLoader }> = [];
   afterEach(async () => {
     for (const { homeDir, loader } of homes.splice(0)) {
@@ -385,7 +391,7 @@ describe('persisted telemetry configuration during Agent activation', () => {
       label: 'clear collector reference',
       update: { otelTelemetryKeyRef: null },
     },
-    { label: 'unchanged full settings round-trip', update: {} },
+    { label: 'unchanged writable config round-trip', update: {} },
   ])(
     '$label fences only changed telemetry before held/failing activation',
     async ({ update }) => {
@@ -583,7 +589,7 @@ describe('persisted telemetry configuration during Agent activation', () => {
             {
               method: 'PUT',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ ...initial, ...update }),
+              body: JSON.stringify({ ...writableConfig(initial), ...update }),
             },
             loopbackEnv(),
           )
@@ -659,7 +665,9 @@ describe('persisted telemetry configuration during Agent activation', () => {
             {
               method: 'PUT',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify(await loader.loadAppConfig()),
+              body: JSON.stringify(
+                writableConfig(await loader.loadAppConfig()),
+              ),
             },
             loopbackEnv(),
           );
@@ -671,7 +679,7 @@ describe('persisted telemetry configuration during Agent activation', () => {
             {
               method: 'PUT',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify(initial),
+              body: JSON.stringify(writableConfig(initial)),
             },
             loopbackEnv(),
           );
