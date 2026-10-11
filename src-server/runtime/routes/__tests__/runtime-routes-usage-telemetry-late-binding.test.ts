@@ -13,7 +13,6 @@
  * envelope proof; receipt persistence and revision idempotence belong to
  * usage-telemetry-service.test.ts.
  */
-import { join } from 'node:path';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { ProductTelemetryBatch } from '@kontourai/station-contracts/product-telemetry';
 import { Hono } from 'hono';
