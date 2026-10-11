@@ -1,5 +1,34 @@
 # @kontourai/station-cli
 
+## 0.8.0
+
+### Minor Changes
+
+- 19aff2a: Add local Skill library inspection and revision-bound experience author review commands. Include a Station-curated attributed Matt Pocock engineering Agent Plugin example with portable dependency materialization and explicit workflow stops.
+
+### Patch Changes
+
+- db816d2: Desktop sidecars and installed services now share one atomic host-owner claim. `claimHostOwner` replaces
+  `claimDesktopSidecar` and refuses any other live Desktop sidecar or durable
+  service on the home under one registry lock, reaping provably stale sidecar
+  records and returning the winning owner. `station service install` reserves the home and records policy before backend
+  startup, restoring the prior entry on backend failure. The service supervisor
+  refuses missing policy or a live conflicting owner with a readable remedy,
+  and stops Station if readiness publication fails. It takes the installer's
+  reservation before starting Station. Desktop publishes its spawned child's
+  PID/birth before Listening, retaining the fence while a live orphan shuts down.
+  Direct server entrypoints remain unfenced; bare container `service run` now
+  refuses missing policy and needs an explicit policy-registration lifecycle.
+  `removeOwnedInstance` gains `removeWhenOwnerGone`.
+- c6c7d4d: A request left open by an aborted turn is settled instead of staying pending.
+  `@kontourai/station-shared/request-settlement` exports
+  `requestIdsSettledByTurnAbort`, the fold the server and the CLI both apply.
+  `station approvals list` and `station operate` no longer offer such a request,
+  `approvals list` rows carry `requestEventId`, and `approvals respond` and
+  `operate` bind a decision to the request event they showed. The contracts
+  change is documentation of `request.opened.turnId` and of what a
+  `request.resolved` with status `cancelled` or `expired` means.
+
 ## 0.7.0
 
 ### Minor Changes

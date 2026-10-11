@@ -1,5 +1,205 @@
 # @kontourai/station-sdk
 
+## 0.9.0
+
+### Minor Changes
+
+- 300a272: A child-work settle now replaces usage that is still the child's last
+  running-time figure. When the first terminal settle carries no usage (Claude
+  Code's `task_updated`), the child keeps its last progress figure, marked with
+  the new optional `ChildWorkItem.usageProvisional: true`, and the later settle
+  that reports usage (its `task_notification`) replaces it. The flag stays until
+  every field of the running figure has been replaced, so a duration-only settle
+  does not make a running token count final. Usage a settle reported stays sticky
+  against stale duplicates, and identity and result remain fill-only. A settle
+  delta can carry `usageProvisional: true` to restate a running figure, and the
+  new `childWorkSettleFromItem` turns a stored settled item back into such a
+  settle, so history seeding and reconnect snapshots keep the flag.
+- c95a288: A child-work usage field that a settle reported now stays sticky even while
+  other fields are still running-time figures (#3337). The reducer records the
+  still-running fields on a provisional item as the new optional
+  `ChildWorkItem.usageRunningFields` (absent while provisional means every field
+  is running), and `childWorkSettleFromItem` carries it on the settle delta, so a
+  replay keeps the split. A stale duration-only settle no longer overwrites the
+  duration an earlier settle reported.
+- f98bffd: Clients now state their client API protocol in `X-Station-Client-Protocol`
+  (`CLIENT_PROTOCOL_HEADER`, parsed by `readClientProtocolHeader`). A host
+  refuses a protocol below its advertised `minClientProtocol` with HTTP 426
+  `client_protocol_unsupported` and a malformed header with 400
+  `client_protocol_invalid`; an absent header reads as protocol 1. The SDK
+  request seam sends the header where no CORS preflight can refuse it
+  (`@kontourai/station-shared/client-protocol`).
+- 306ebf4: Add optional `clientInputId` to turn steering and an explicit indeterminate
+  result so acknowledgement retries preserve one engine invocation. Add a
+  per-device Return preference. Preserve nonterminal retry errors in the runtime
+  transcript projection instead of treating them as failed turns.
+- b586e3c: Add exact native resume and same-binding return capabilities, conversation history
+  attribution and continuity provenance, and the SDK readConversation client.
+- ee12b92: Add the `delegatedInputAnswers` Station capability flag. A Station that
+  advertises it accepts an optional `expectedInputRequest` on
+  `POST /api/orchestration/delegations/:taskId/continue` and delivers the
+  follow-up only as the answer to that exact open input request, refusing with
+  `input_request_changed` when it is gone or replaced. Senders must gate the
+  field on the flag; an older Station would drop it and deliver an unbound turn.
+  The delegated-task snapshot's `pendingRequest` gains optional `eventId`,
+  `body` (the presented question text) and `callerCanRespond` (the serving
+  Station's own check for the reading caller). The orchestration contract's
+  `OrchestrationPeerPendingRequest` and the attention contract's
+  `AttentionPeerRequestReference` carry the matching optional fields.
+- 22171b1: Expose host memory and Station-process resource snapshots alongside CPU
+  diagnostics, and allow developer log queries to opt into periodic refresh.
+- fc181b4: Expose bounded allowance observation history and optional credential-profile activity filters. Older usage without an account observation remains unattributed.
+- fc181b4: Expose optional provider account/credit metadata, actual quota window durations,
+  model availability and a bounded response-shape audit. Preserve metadata when
+  quota percentages are unavailable.
+- a91c50d: Add strict engine-account, quota and login contracts and authority-scoped hooks.
+  Engine activity queries can select a provider and local Station receipts while
+  preserving coverage and separating reported costs from estimates.
+- 3b001e5: Add minimal engine sign-in profile contracts and an authority-scoped profile query.
+  Clients with an explicit engine sign-in grant can list existing profiles without
+  reading credential-management metadata or manual enrolment commands.
+- e7fb9b3: The File Preview's Changes view: one previewed file's diff against HEAD.
+  `workspace-file-preview` gains `WorkspaceFileChanges` (`changed`, `unchanged`,
+  `untracked`, `no-commits`, `not-a-repository`, `oversized` or `refused` with
+  a reason), `WorkspaceFileChangesRequest` and
+  `WORKSPACE_FILE_CHANGES_MAX_BYTES`. The SDK's `workspace-file-preview`
+  subpath adds `readProjectWorkspaceFileChanges` (`POST
+  /api/projects/:slug/file-preview/changes`, the preview's path and session
+  rules), `useProjectWorkspaceFileChangesQuery`, which asks again after a `503
+  repository-busy` answer when the server's `Retry-After` says to, and
+  `isRepositoryBusyError`, which names that answer. The read runs on the
+  Project's own repository through the same confined read as the coding diff;
+  a repository that is being written answers busy, not a refusal.
+- 9def13d: Add immutable-version human output reviews to ordered Task room history, with current-authority duplicate receipts and connection-bound SDK hooks. Room readers accept v2 and v3 records; the first review adopts v3 for that room and persistently fences older writers. Reviewer acceptance does not change Task or workflow status.
+- eee7f74: Expose source-qualified marketplace selections, persisted source management, provider catalog boundaries and SDK query/mutation hooks. Installed skills retain source and package digest provenance.
+- 91ec8af: Validate plugin command declarations in both manifest formats and publish them in the installed-plugin inventory. A ready installation's record now carries `commands` and an opaque `installationGeneration` that a command request echoes back; install previews list each command as a `command` component. Declarations that fail validation are dropped and reported as `commandsRejected`; the plugin still loads.
+- d3e3396: Expose optional pull-request context `pushTargetOwner` and branch mergeability `sourceOwner` so conflict indicators can distinguish forks with the same branch name.
+- 3accc1b: Support explicit receiver-owned engine overrides while preserving the authored Agent profile. Retain execution binding and definition expectations in handoff and reopen projections, expose bounded capability compatibility, and include engine/model/options intent in durable task-room request identity.
+- 301fc96: Add explicitly granted remote-access management, typed relay invitation controls, and bounded native account proof support for IAM-authorized access changes.
+  
+  Publish the native relay link codec through Shared, preserving the Connect compatibility export.
+- 4bbc4ce: The remaining `@kontourai/station-sdk/client` fetchers throw typed refusals
+  (#2708). The account, application-session, authority-observation,
+  checkpoint-restore, conversation pull-request link, fleet-routing receipt,
+  learning-source, personal Board and Project layout delete, pull-request
+  review, quote-source, runs and setup-import fetchers throw a
+  `StationHttpError` with the observed `status`, `code`, `details` and
+  `retryAfterMs`; several threw a plain `Error` before. `BoardResponseError`,
+  `DelegationApiError`, `AnswerSupportRequestError`,
+  `ActionOperationProtocolError`, `LiveActivityProtocolError`,
+  `AnswerBasisRequestError`, `AnswerNarrativeBindingRequestError` and
+  `FlowGateEvaluationRequestError` keep their constructors and gain those
+  fields. A validation refusal's message now names each field
+  (`Validation failed: name Required`); read `details` for the bare reasons. A
+  refusal whose body is not JSON keeps its status instead of surfacing a parse
+  error.
+- cf099c6: Add versioned Task room agent request records and clients, with explicit agent selection, incarnation checks, authority-bound reads, readiness checks, and stable retries after lost acknowledgements.
+- 4bbc4ce: Station's own answers are identified by a response header instead of by body
+  shape alone. `@kontourai/station-contracts/http` exports
+  `STATION_ENVELOPE_HEADER` (`x-station-envelope`) and
+  `STATION_ENVELOPE_HEADER_VALUE`; a current Station sends the header on every
+  JSON response it writes itself and never on one relayed from another Station.
+  `ChatHttpError.stationEnvelope` now requires the header from an origin that
+  has sent it before, so gateway JSON in Station's shape is no longer read as
+  Station's refusal. A Station that does not send the header is still read by
+  shape.
+- 21f4fbc: A `ChildWorkItem` can carry the subagent's own `model` (`{ id, source }`),
+  reported by its engine: a Claude subagent's own reply, a Codex `spawnAgent`
+  result, or a Codex child thread. When the engine reports none, the field is
+  absent and the Agents pane shows "model not reported", never the parent's
+  model. Codex's spawn model moved from `kindLabel` to `model`. A Claude
+  subagent also carries a `transcript` reference, and the new
+  `GET /api/orchestration/sessions/:threadId/child-work/:childId/transcript`
+  route and `useChildWorkTranscriptQuery` hook serve its transcript read-only,
+  paged by message (`ChildWorkTranscriptPage`).
+- 8f66f37: Add optional versioned Task brief references and saved snapshots to room agent requests. The SDK negotiates support, sends only the selected reference and verifies its acknowledgement; retries preserve the original brief. Context-free callers retain the public v1 protocol.
+- fac321f: Add validated visual skill inventory/session clients and React Query hooks, plus source-bound foreground start preflight and shared inert input parsers. Validate with the canonical wire reader only after a successful feature response. `sendExecutionMessageWithInventory` runs the start preflight with a caller-supplied inventory reader. Provide the opt-in workspace-pane producer for host-bound reads, canonical question answers and unsent stage preparation with pinned invocation preconditions.
+
+### Patch Changes
+
+- 2451a89: Preserve HTTP status on orchestration command failures, including responses without a machine code, and accept a per-request approval deadline.
+- ca905de: `KnowledgeRecordDetail` offers line breaks in a record title at identifier
+  word boundaries (a lower-to-upper case change, or after `.`, `_`, `/` or `-`),
+  so a narrow heading wraps `KnowledgeStoreProvider` as `KnowledgeStore` /
+  `Provider` instead of at whichever letter overflows. The title text is
+  unchanged.
+- ebf24b4: Depends on `@kontourai/ui` `^1.18.0` (was `^1.16.0`), so the workspace resolves
+  one version of the design kit. The SDK's own use of it (`Empty`) is unchanged.
+  
+  Behaviour change for white-label branding providers, in the Station app that
+  ships with this release: `@kontourai/ui` 1.18 rates `--k-brand` as text at
+  4.5:1 on the raised panel as well as on the page and the panel. A dark-mode
+  brand that cleared the page and the panel but is under 4.5:1 on the dark
+  raised panel `#16202d` (relative luminance from about 0.2155 up to 0.2377, for
+  example `#9364ff` or `#007efa`) was accepted before and is now rejected.
+  Acceptance is all or nothing, so such a theme falls back to the default
+  colours in both modes until the dark brand is lightened. Each rejection is
+  logged in the browser console with a `[branding-theme]` prefix, naming the
+  value, the surface and the ratio it needs. Light-mode brands are unaffected.
+- 1aecbf3: Refresh invalidated Trust readers on remount and cancel retired reads before
+  they can reach another Station.
+- 2d235b6: Publish retained-source statistics and measurement coverage types, conservative observation allocation, and authority-scoped station operator usage queries. Keep unknown attribution and measurements explicit.
+  
+  Expose separate station-usage-query and usage-rollup-query entries so lazy usage views can avoid startup analytics coupling while preserving existing root exports.
+- Updated dependencies [31cac46]
+- Updated dependencies [c2c67c2]
+- Updated dependencies [2451a89]
+- Updated dependencies [53f9482]
+- Updated dependencies [7899c97]
+- Updated dependencies [31cac46]
+- Updated dependencies [300a272]
+- Updated dependencies [c95a288]
+- Updated dependencies [d48225d]
+- Updated dependencies [c7a394e]
+- Updated dependencies [f98bffd]
+- Updated dependencies [bda5e88]
+- Updated dependencies [306ebf4]
+- Updated dependencies [b406f8d]
+- Updated dependencies [b586e3c]
+- Updated dependencies [fa8ac09]
+- Updated dependencies [ee12b92]
+- Updated dependencies [22171b1]
+- Updated dependencies [fc181b4]
+- Updated dependencies [fc181b4]
+- Updated dependencies [a91c50d]
+- Updated dependencies [3b001e5]
+- Updated dependencies [e7fb9b3]
+- Updated dependencies [d4fbcaf]
+- Updated dependencies [ee12b92]
+- Updated dependencies [9def13d]
+- Updated dependencies [c965c37]
+- Updated dependencies [eee7f74]
+- Updated dependencies [db816d2]
+- Updated dependencies [8396b7b]
+- Updated dependencies [91ec8af]
+- Updated dependencies [91ec8af]
+- Updated dependencies [24205de]
+- Updated dependencies [d3e3396]
+- Updated dependencies [84fb656]
+- Updated dependencies [3accc1b]
+- Updated dependencies [1d17ddf]
+- Updated dependencies [35e8916]
+- Updated dependencies [301fc96]
+- Updated dependencies [8e17752]
+- Updated dependencies [1aecbf3]
+- Updated dependencies [c6c7d4d]
+- Updated dependencies [cf099c6]
+- Updated dependencies [4bbc4ce]
+- Updated dependencies [2d235b6]
+- Updated dependencies [21f4fbc]
+- Updated dependencies [8f66f37]
+- Updated dependencies [f75829f]
+- Updated dependencies [a097632]
+- Updated dependencies [112beed]
+- Updated dependencies [67f8927]
+- Updated dependencies [fac321f]
+- Updated dependencies [fac321f]
+- Updated dependencies [6601a65]
+- Updated dependencies [19aff2a]
+- Updated dependencies [fac321f]
+  - @kontourai/station-contracts@0.9.0
+  - @kontourai/station-shared@0.9.0
+
 ## 0.8.0
 
 ### Minor Changes

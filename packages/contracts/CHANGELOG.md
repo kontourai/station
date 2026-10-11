@@ -1,5 +1,285 @@
 # @kontourai/station-contracts
 
+## 0.9.0
+
+### Minor Changes
+
+- 31cac46: `tool.started` and `tool.completed` carry an optional `toolKind`
+  (`EngineToolKind`, the Agent Client Protocol `ToolKind` vocabulary) when the
+  engine reported one, and the shared transcript projection copies it onto the
+  tool part as `MessagePart.toolKind`. A tool part bound to a pending approval
+  also carries `approvalToolName`, the tool name the request itself reported.
+  `toolRequestGrantLabel` now reads "Allow for this session" when the request
+  reported no tool name: what such a grant covers is decided per adapter or
+  engine, so the label claims only the session scope.
+- c2c67c2: Add optional Agent MCP composition and loading preferences, with exact per-server tool selections for external-engine delivery. Existing declarations retain their prior defaults.
+  
+  Expose the existing connection-quota contract through its public package subpath for CLI and shared consumer resolution.
+- 7899c97: Add the `@kontourai/station-contracts/automation` subpath for Station
+  Automations: GitHub poll and webhook sources with an API-safe projection that
+  omits the webhook secret, source grants, exact-equality matchers, rules,
+  episode policies, the closed `AutomationDeliveryOutcome` union,
+  `AUTOMATION_EXECUTION_LIMITS`, `GITHUB_AUTOMATION_EVENT_ALLOWLIST` (initially
+  `workflow_run` `completed`) and the `AUTOMATION_OPERATOR_SURFACE` parity table.
+  Mutating operator verbs have no station-control MCP name, so an agent cannot
+  create or widen its own triggers. The types are published ahead of any route,
+  intake or dispatch that consumes them.
+- 31cac46: Add `ATTACHMENT_INPUT_UNSUPPORTED_CODE` for a send refused because the engine
+  cannot take its attachments, `ComposerImageSupport.caveat` for an attach-time
+  note when image support is unconfirmed (with the `modelSupportVaries` input),
+  and `TurnStartedEvent.steerInterruptedRun` for a steer delivered by stopping the
+  running step. The runtime event projection now splits a turn at a steer.
+- 300a272: A child-work settle now replaces usage that is still the child's last
+  running-time figure. When the first terminal settle carries no usage (Claude
+  Code's `task_updated`), the child keeps its last progress figure, marked with
+  the new optional `ChildWorkItem.usageProvisional: true`, and the later settle
+  that reports usage (its `task_notification`) replaces it. The flag stays until
+  every field of the running figure has been replaced, so a duration-only settle
+  does not make a running token count final. Usage a settle reported stays sticky
+  against stale duplicates, and identity and result remain fill-only. A settle
+  delta can carry `usageProvisional: true` to restate a running figure, and the
+  new `childWorkSettleFromItem` turns a stored settled item back into such a
+  settle, so history seeding and reconnect snapshots keep the flag.
+- c95a288: A child-work usage field that a settle reported now stays sticky even while
+  other fields are still running-time figures (#3337). The reducer records the
+  still-running fields on a provisional item as the new optional
+  `ChildWorkItem.usageRunningFields` (absent while provisional means every field
+  is running), and `childWorkSettleFromItem` carries it on the settle delta, so a
+  replay keeps the split. A stale duration-only settle no longer overwrites the
+  duration an earlier settle reported.
+- f98bffd: Clients now state their client API protocol in `X-Station-Client-Protocol`
+  (`CLIENT_PROTOCOL_HEADER`, parsed by `readClientProtocolHeader`). A host
+  refuses a protocol below its advertised `minClientProtocol` with HTTP 426
+  `client_protocol_unsupported` and a malformed header with 400
+  `client_protocol_invalid`; an absent header reads as protocol 1. The SDK
+  request seam sends the header where no CORS preflight can refuse it
+  (`@kontourai/station-shared/client-protocol`).
+- 306ebf4: Add optional `clientInputId` to turn steering and an explicit indeterminate
+  result so acknowledgement retries preserve one engine invocation. Add a
+  per-device Return preference. Preserve nonterminal retry errors in the runtime
+  transcript projection instead of treating them as failed turns.
+- b406f8d: Add an optional project default Agent for new chats. A create or update request
+  can explicitly clear it; stored project records retain only a selected Agent ID.
+- b586e3c: Add exact native resume and same-binding return capabilities, conversation history
+  attribution and continuity provenance, and the SDK readConversation client.
+- fa8ac09: `TaskRecord` gains an optional `closeOnMerge` flag: a person's opt-in to move the Task to `done` once every pull request kept on it is merged at its provider. A pull request closed without merging does not complete the Task. The flag is set with `PUT /api/tasks/:taskId/close-on-merge` by a person, never by an agent tool. A Task closes only from a status that may reach `done` (never from todo, ready, triage or blocked), the check runs when an operate-tier viewer refreshes the Conversation's pull request links (nothing polls), and un-keeping an unmerged pull request lets the merged rest close it. Older Station builds refuse a Task store that carries the flag, so clear it before a rollback.
+  
+  The Station Control `declare_pull_request` tool lets an agent on any engine (Claude Code, Codex, ACP) declare a pull request it opened, in the exact identity shape the conversation link routes accept. It writes the same declared-output record Station's own engine writes with `declare_output`, in the caller's own session and running turn: it is held for as long as the turn runs and lands when the turn completes. It is dropped if the turn aborts, is interrupted or ends in an error, or if Station restarts before the turn completes. A person still keeps a declared pull request onto a Task.
+- ee12b92: Add the `delegatedInputAnswers` Station capability flag. A Station that
+  advertises it accepts an optional `expectedInputRequest` on
+  `POST /api/orchestration/delegations/:taskId/continue` and delivers the
+  follow-up only as the answer to that exact open input request, refusing with
+  `input_request_changed` when it is gone or replaced. Senders must gate the
+  field on the flag; an older Station would drop it and deliver an unbound turn.
+  The delegated-task snapshot's `pendingRequest` gains optional `eventId`,
+  `body` (the presented question text) and `callerCanRespond` (the serving
+  Station's own check for the reading caller). The orchestration contract's
+  `OrchestrationPeerPendingRequest` and the attention contract's
+  `AttentionPeerRequestReference` carry the matching optional fields.
+- 22171b1: Expose host memory and Station-process resource snapshots alongside CPU
+  diagnostics, and allow developer log queries to opt into periodic refresh.
+- fc181b4: Expose bounded allowance observation history and optional credential-profile activity filters. Older usage without an account observation remains unattributed.
+- fc181b4: Expose optional provider account/credit metadata, actual quota window durations,
+  model availability and a bounded response-shape audit. Preserve metadata when
+  quota percentages are unavailable.
+- a91c50d: Add strict engine-account, quota and login contracts and authority-scoped hooks.
+  Engine activity queries can select a provider and local Station receipts while
+  preserving coverage and separating reported costs from estimates.
+- 3b001e5: Add minimal engine sign-in profile contracts and an authority-scoped profile query.
+  Clients with an explicit engine sign-in grant can list existing profiles without
+  reading credential-management metadata or manual enrolment commands.
+- e7fb9b3: The File Preview's Changes view: one previewed file's diff against HEAD.
+  `workspace-file-preview` gains `WorkspaceFileChanges` (`changed`, `unchanged`,
+  `untracked`, `no-commits`, `not-a-repository`, `oversized` or `refused` with
+  a reason), `WorkspaceFileChangesRequest` and
+  `WORKSPACE_FILE_CHANGES_MAX_BYTES`. The SDK's `workspace-file-preview`
+  subpath adds `readProjectWorkspaceFileChanges` (`POST
+  /api/projects/:slug/file-preview/changes`, the preview's path and session
+  rules), `useProjectWorkspaceFileChangesQuery`, which asks again after a `503
+  repository-busy` answer when the server's `Retry-After` says to, and
+  `isRepositoryBusyError`, which names that answer. The read runs on the
+  Project's own repository through the same confined read as the coding diff;
+  a repository that is being written answers busy, not a refusal.
+- ee12b92: The workspace Home projection names one more field,
+  `delegationEnvironmentKind`: whether a work item is this Station's record of a
+  delegated task running on a paired Station. Home uses it to open such an item
+  in Activity rather than as a local chat. Because the projection widened, an
+  existing Home role grant no longer covers it, and Home shows its fallback
+  until the grant is approved again.
+- 9def13d: Add immutable-version human output reviews to ordered Task room history, with current-authority duplicate receipts and connection-bound SDK hooks. Room readers accept v2 and v3 records; the first review adopts v3 for that room and persistently fences older writers. Reviewer acceptance does not change Task or workflow status.
+- c965c37: Add Station Knowledge to the built-in Station role alongside Control and Docs.
+  Knowledge exposes scoped read/capture tools; platform index controls remain in Control.
+- eee7f74: Expose source-qualified marketplace selections, persisted source management, provider catalog boundaries and SDK query/mutation hooks. Installed skills retain source and package digest provenance.
+- 8396b7b: `ModelOptionCapabilities` gains an optional `imageInput`: whether the engine
+  reports that a model accepts image input. Absent means the runtime did not
+  say. Station fills it for OpenCode models from OpenCode's own model listing, so
+  the chat composer can refuse an image for a model that cannot read one, and
+  stop warning for a model that can.
+- 91ec8af: Add `@kontourai/station-contracts/plugin-command-effect`: the wire shapes for admitting a plugin command effect, settling it from a browser document, and the withdrawal summary lifecycle responses carry, plus the registered `station.plugin-command.execution/v1` operational event type.
+- 91ec8af: Validate plugin command declarations in both manifest formats and publish them in the installed-plugin inventory. A ready installation's record now carries `commands` and an opaque `installationGeneration` that a command request echoes back; install previews list each command as a `command` component. Declarations that fail validation are dropped and reported as `commandsRejected`; the plugin still loads.
+- d3e3396: Expose optional pull-request context `pushTargetOwner` and branch mergeability `sourceOwner` so conflict indicators can distinguish forks with the same branch name.
+- 84fb656: The pull-request review snapshot (`pull-request-provider`) gains two optional
+  observations from the forge. `checks` is a `PullRequestChecksObservation`:
+  `available` with `PullRequestCheck[]` (`name`, `state` of
+  `PullRequestCheckState`, optional `group` and `url`) and `partial`, or
+  `unavailable` with a reason; GitHub's check runs and commit statuses and
+  GitLab's head pipeline are its sources, and a gh that cannot report the
+  field answers `unavailable`. `reviewComments` is a
+  `PullRequestReviewCommentsObservation`: `available` with
+  `PullRequestReviewComment[]` (`id`, `author`, `body`, `createdAt`, `path`,
+  `side` of `additions` or `deletions`, `subject` of `line` or `file`, `line`
+  null once the forge no longer maps the comment or when the subject is the
+  file, optional `inReplyTo` and `url`) and `partial`, or
+  `unavailable` with a reason. Either field absent means the server did not
+  observe it; neither is an empty list standing in for none. The existing
+  `mergeability` on the pull request is what the review pane now states beside
+  them.
+- 3accc1b: Support explicit receiver-owned engine overrides while preserving the authored Agent profile. Retain execution binding and definition expectations in handoff and reopen projections, expose bounded capability compatibility, and include engine/model/options intent in durable task-room request identity.
+- 1d17ddf: `@kontourai/station-contracts/session-attention` now also owns the session
+  state fold the UI words its rows from: `orchestrationLifecycleLabel`,
+  `sessionAttentionKind` and `SessionStateLabel` moved here from the UI (which
+  re-exports them), plus `SESSION_STATUS_WORDS`, the status ladder's words, and
+  `sessionLadderWord(session)`, the ladder's word for a session summary alone.
+  
+  Station Control gains two read-only tools for an agent working in a Project
+  (station#3413). `list_project_activity` lists the Sessions in the caller's own
+  Project (or the global space), newest activity first, with each Session's
+  status word (the one the UI shows), whether a turn is running, last activity,
+  engine and agent, and the worktree and branch Station recorded; a page is at
+  most 50 Sessions and a larger limit is refused. `get_session_digest` summarizes
+  one Session from recorded events only, with no model summarizing: its title,
+  Project, engine, status and turn count, and per turn (newest first) the
+  request's first line, how it ended, tool calls by name, files an engine
+  reported editing, pull requests declared, and Sessions Station launched from it that started within its window. A turn that called tools none of which carried an engine tool kind (Claude Code and Codex report none) says `filesReported: false`, so a missing `files` there means unknown, not none. A
+  page holds at most 25 turns and 8 KiB, and a cursor pages to older turns; more is
+  refused. Both read as the calling Session's owner, and a caller that is not a
+  bound operator sees only its own Project (or the global space): another
+  Project's, another person's, another Station's and an unconfined Session read as
+  not found. The list never widens for a bound operator: it is the caller's own
+  Project for every caller. Only a digest does, for a bound operator, as
+  `read_conversation` does. The list narrows to the caller's Project before it
+  folds, so its cost follows that Project and not the Station.
+  
+  `read_conversation` gains `aroundMessageId`: pass a `search_sessions` hit's
+  `messageId` to read the page that contains that message, with `prevCursor` and
+  `nextCursor` to walk either way, under the same 50-message, 64 KB and 16 KB
+  limits. A message id that is not in the conversation is refused with
+  `conversation_read_anchor_not_found`. User messages now carry the stable id a
+  search hit names (`<turn start event>:user`) instead of a positional `proj-<n>`.
+- 35e8916: Add Project MCP tool defaults and an opt-out for automatic Knowledge tools when a registered Project store exists. Agent tool restrictions and approval policies remain authoritative.
+- 301fc96: Add explicitly granted remote-access management, typed relay invitation controls, and bounded native account proof support for IAM-authorized access changes.
+  
+  Publish the native relay link codec through Shared, preserving the Connect compatibility export.
+- 8e17752: `ConversationListItem.titleSource` gains `'agent'`: the provenance of a title a
+  station-control agent set with the new `rename_session` tool (#176). An agent
+  title is not a person's, so a UI replaces it without asking, as it does a
+  `generated` one; a title with `titleSource: 'user'` is still never replaced by
+  an agent.
+  
+  Station Control gains two tools. `search_sessions` searches the calling
+  session owner's own transcripts through the unified search behind
+  `POST /api/search` (session and message hits only, query of 2 to 256
+  characters, refused outside that range) and, for every caller including a
+  bound operator, sees only the transcripts of the person the calling session
+  acts for. Its hits are message hits, mostly from
+  native Claude and Codex session transcripts. `rename_session` renames a
+  Station-stored conversation through its own route,
+  `POST /api/conversations/:id/agent-title`, and refuses with `person_title` over
+  a person's title (decided atomically with the write) and with
+  `runtime_title_unsupported` for a native Claude or Codex conversation, whose
+  title the runtime owns, so a search hit is usually not renameable. A title is
+  refused, not truncated, when over 80 characters, empty, or containing control,
+  line-separator or bidirectional-control characters (leading and trailing
+  spaces are trimmed). `rename_session` reaches only a conversation the calling
+  session's owner owns, except that a bound operator caller is not limited to one
+  owner's conversations; a caller that is not bound also stays in its own
+  session's Project scope.
+- cf099c6: Add versioned Task room agent request records and clients, with explicit agent selection, incarnation checks, authority-bound reads, readiness checks, and stable retries after lost acknowledgements.
+- 4bbc4ce: Station's own answers are identified by a response header instead of by body
+  shape alone. `@kontourai/station-contracts/http` exports
+  `STATION_ENVELOPE_HEADER` (`x-station-envelope`) and
+  `STATION_ENVELOPE_HEADER_VALUE`; a current Station sends the header on every
+  JSON response it writes itself and never on one relayed from another Station.
+  `ChatHttpError.stationEnvelope` now requires the header from an origin that
+  has sent it before, so gateway JSON in Station's shape is no longer read as
+  Station's refusal. A Station that does not send the header is still read by
+  shape.
+- 21f4fbc: A `ChildWorkItem` can carry the subagent's own `model` (`{ id, source }`),
+  reported by its engine: a Claude subagent's own reply, a Codex `spawnAgent`
+  result, or a Codex child thread. When the engine reports none, the field is
+  absent and the Agents pane shows "model not reported", never the parent's
+  model. Codex's spawn model moved from `kindLabel` to `model`. A Claude
+  subagent also carries a `transcript` reference, and the new
+  `GET /api/orchestration/sessions/:threadId/child-work/:childId/transcript`
+  route and `useChildWorkTranscriptQuery` hook serve its transcript read-only,
+  paged by message (`ChildWorkTranscriptPage`).
+- 8f66f37: Add optional versioned Task brief references and saved snapshots to room agent requests. The SDK negotiates support, sends only the selected reference and verifies its acknowledgement; retries preserve the original brief. Context-free callers retain the public v1 protocol.
+- a097632: Claude Code and Codex usage-limit stops now carry the provider's reset time
+  into connection recovery (`UsageLimitFailureDetails`), so a stop with a known
+  reset becomes a `wait-until-reset` intent instead of a manual one. A new
+  `usageLimitAutoResume` setting, off by default, decides whether Station sends
+  the stopped turn again after the reset. The recovery projection gains
+  `outcomeReason`, which says why a waiting resume was left to the user or
+  retired: automatic resume off, a newer turn, an open request, or an ended
+  Session.
+- fac321f: Add host-observed installed visual Skill experience identity and inventory contracts,
+  and export the shared inert definition reader used by author builds and runtime inventory.
+  Inventory availability follows exact package admission and current Skill precedence;
+  this does not authorize execution or render a guided workflow.
+- fac321f: Add optional foreground Skill experience selection, immutable invocation and Session
+  history contracts, authored entry and stage transitions, and a scoped Workspace
+  Pane host for reading and answering canonical questions or staging continuation.
+  Execution remains behind exact installed source and current Session admission.
+- 6601a65: Add inert visual Skill experience declarations and a versioned authoring contract.
+  Portable author builds validate referenced definitions and bundled Skill digests;
+  installed experience execution and rendering use their separate plugin admission
+  and canonical Session owners.
+
+### Patch Changes
+
+- bda5e88: Device settings gain `codingPanels`, the Coding layout's per-session panels
+  (the tool beside Chat and its width, the Terminal's open state and height,
+  the inbox as the reader left it beside a tool), with `CodingSessionPanels`,
+  `CodingSessionPanelsRecord`, `CODING_PANELS_SESSION_BOUND` and
+  `DEFAULT_CODING_PANELS_RECORD`. Additive: the registry gains one
+  direct-manipulation key and no existing field changes.
+- d4fbcaf: `CONVERSATION_HANDOFF_DISCLOSURE_LABELS.authorizedTranscript` now reads
+  "Recent conversation messages, up to a size limit" (was "Conversation
+  transcript"). An Agent/engine handoff, and a continuation that cannot resume a
+  native cursor, now seed the new engine with the most recent whole messages under
+  an estimated-token budget instead of the last 6,000 characters. The seed tells
+  the engine how many earlier user and assistant text messages were left out, how
+  many messages had no text to carry, and that the full conversation remains
+  stored in Station.
+- 1aecbf3: Reject malformed date/time template format options before configuration reaches
+  prompt substitution. Settings, online/offline config writes, and persisted
+  configuration reads use the same validation semantics.
+- c6c7d4d: A request left open by an aborted turn is settled instead of staying pending.
+  `@kontourai/station-shared/request-settlement` exports
+  `requestIdsSettledByTurnAbort`, the fold the server and the CLI both apply.
+  `station approvals list` and `station operate` no longer offer such a request,
+  `approvals list` rows carry `requestEventId`, and `approvals respond` and
+  `operate` bind a decision to the request event they showed. The contracts
+  change is documentation of `request.opened.turnId` and of what a
+  `request.resolved` with status `cancelled` or `expired` means.
+- 2d235b6: Publish retained-source statistics and measurement coverage types, conservative observation allocation, and authority-scoped station operator usage queries. Keep unknown attribution and measurements explicit.
+  
+  Expose separate station-usage-query and usage-rollup-query entries so lazy usage views can avoid startup analytics coupling while preserving existing root exports.
+- f75829f: A conversation that stopped on a provider usage limit now shows a banner above
+  the composer: "Usage limit reached · Resets <local time>", or plain manual
+  wording when the provider gave no reset. It offers Resume now, which starts
+  sending the stopped turn again at once, and Cancel auto-resume while an
+  automatic resume waits. With the setting off it says so, and Resume now is
+  still offered, with a note that the limit may not have reset yet. A stop that
+  settles (a newer message, an open request, an ended Session, Cancel, or a
+  resume that failed) says why, briefly, and never offers a stale action. A
+  resume the provider refuses again keeps the wait for the reset, when that reset
+  is at least a minute away, up to three times in a row. The recovery projection gains the `user-canceled`
+  reason, and Sessions gain
+  `GET /api/orchestration/sessions/:threadId/usage-limit` plus person-owned
+  `POST .../usage-limit/resume` and `.../usage-limit/cancel`.
+- 112beed: Add optional durable source sequence to usage receipts. Reconcile sparse cumulative observations in source order and transfer deduplicated logical receipts within the aggregate bound.
+
 ## 0.8.0
 
 ### Minor Changes
