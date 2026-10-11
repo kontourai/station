@@ -477,116 +477,105 @@
   font-size: 0.72rem;
 }
 
-/* Read-only pane: no pinned composer, so the transcript grows to fill the
-   scroll region when short and rides the single scroll region when long. */
-.sessions-detail--read-only .sessions-detail__transcript {
-  flex: 1 0 auto;
+/* #3552: an external conversation reads as the ordinary chat in Activity and
+   in the dock. Everything above and below the messages sits on the chat's
+   own gutter, so its edges line up with the messages. */
+.sessions-detail--chat {
+  --chat-message-gutter: clamp(12px, 4vw, 20px);
 }
 
-/* No box around the conversation, and no clipping either: the scroll region
-   already scrolls, and an ordered list's markers hang outside its message. */
-.sessions-detail--read-only:not(.sessions-detail--chat)
-.sessions-detail__transcript {
-  padding: 0;
-  border: 0;
-  background: none;
-  overflow: visible;
-}
-
-/* The read-only inspector's single action floats over the conversation, so
-   the reading flow is the transcript and nothing else. The scroll region
-   keeps room at its end, sized from the dock itself (it grows when it carries
-   a note), so the end of the conversation can scroll clear of it. */
-.sessions-detail--read-only:not(.sessions-detail--chat) {
+.sessions-detail__chat-header {
   position: relative;
-}
-
-.sessions-detail--read-only:not(.sessions-detail--chat)
-  .sessions-detail__scroll {
-  padding-bottom: calc(
-    var(--continue-dock-height, 44px) +
-    var(--k-space-4) +
-    var(--k-space-3)
-  );
-}
-
-/* The pane's own padding already clears the safe area and the app shell's
-   dock, so the inset here is only the visual gap. */
-.sessions-detail__continue-dock {
-  position: absolute;
-  right: var(--k-space-4);
-  bottom: var(--k-space-4);
-  z-index: 2;
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: var(--k-space-2);
-  max-width: min(22rem, calc(100% - 2 * var(--k-space-4)));
-  pointer-events: none;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-3);
+  padding: var(--k-space-2) var(--chat-message-gutter);
+  border-bottom: var(--k-border-thin) solid var(--k-line);
 }
 
-.sessions-detail__continue-dock[hidden] {
-  display: none;
+.sessions-detail__chat-heading {
+  min-width: 0;
 }
 
-.sessions-detail__continue-dock > * {
-  pointer-events: auto;
+.sessions-detail__chat-heading h2 {
+  margin: 0;
+  overflow: hidden;
+  color: var(--k-text);
+  font-size: var(--k-text-md);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.sessions-detail__continue-note {
-  padding: var(--k-space-2) var(--k-space-3);
-  border: var(--k-border-thin) solid var(--k-line);
-  border-radius: var(--k-radius-md);
-  background: var(--k-panel-raised);
-  box-shadow: var(--k-shadow);
+.sessions-detail__chat-heading .sessions-detail__meta-line {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.sessions-detail__details {
+  flex: 0 0 auto;
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
   line-height: var(--k-leading-normal);
 }
 
-.sessions-detail__continue-note p {
-  margin: 0;
-}
-
-.sessions-detail__continue-note p + p {
-  margin-top: var(--k-space-1);
-}
-
-.button.sessions-detail__continue-fab {
+/* A 44px tap target for a quiet, one-word disclosure. */
+.sessions-detail__details summary {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  min-width: 44px;
   min-height: 44px;
-  padding-inline: var(--k-space-5);
-  border-radius: var(--radius-pill);
+  cursor: pointer;
+  list-style: none;
+}
+
+.sessions-detail__details summary::-webkit-details-marker {
+  display: none;
+}
+
+.sessions-detail__details summary:hover,
+.sessions-detail__details[open] summary {
+  color: var(--k-text);
+}
+
+/* Opens over the conversation rather than pushing it down. */
+.sessions-detail__details-body {
+  position: absolute;
+  top: 100%;
+  right: var(--chat-message-gutter);
+  left: var(--chat-message-gutter);
+  z-index: 3;
+  padding: var(--k-space-2) var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel-raised);
   box-shadow: var(--k-shadow);
 }
 
-.sessions-detail__adoption-folder {
-  overflow-wrap: anywhere;
-}
-
-/* Spacing for the continuation confirmation's paragraphs. */
-.sessions-detail__confirm {
-  display: grid;
-  gap: var(--k-space-3);
-}
-
-.sessions-detail__confirm p {
+.sessions-detail__details-body p {
   margin: 0;
+}
+
+.sessions-detail__details-body p + p {
+  margin-top: var(--k-space-1);
+}
+
+.sessions-detail__details code {
+  overflow-wrap: anywhere;
 }
 
 .sessions-detail__connection-state {
   flex: 0 0 auto;
-  margin: 0;
+  margin: var(--k-space-2) var(--chat-message-gutter) 0;
   padding: var(--k-space-2) var(--k-space-3);
   border-radius: var(--k-radius-md);
   background: var(--k-caution-soft);
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
   line-height: var(--k-leading-normal);
-}
-
-/* The chat pane has no padding of its own. */
-.sessions-detail--chat > .sessions-detail__connection-state {
-  margin: var(--k-space-2) var(--k-space-3);
 }
 
 .sessions-detail__connection-state strong {
@@ -602,34 +591,24 @@
   margin-top: var(--k-space-2);
 }
 
-.sessions-detail__details {
-  margin: 0;
+.external-chat-composer__note {
+  margin: 0 var(--chat-message-gutter) var(--k-space-2);
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
-  line-height: var(--k-leading-normal);
 }
 
-.sessions-detail__details p {
-  margin: var(--k-space-1) 0 0;
-}
-
-/* A 44px tap target for a quiet, one-word disclosure. */
-.sessions-detail__details summary {
-  box-sizing: border-box;
-  cursor: pointer;
-  width: fit-content;
-  min-width: 44px;
-  min-height: 44px;
-  padding-block: 14px;
-  padding-inline-end: var(--k-space-3);
-}
-
-.sessions-detail__details summary:hover {
-  color: var(--k-text);
-}
-
-.sessions-detail__details code {
+.sessions-detail__adoption-folder {
   overflow-wrap: anywhere;
+}
+
+/* Spacing for the continuation confirmation's paragraphs. */
+.sessions-detail__confirm {
+  display: grid;
+  gap: var(--k-space-3);
+}
+
+.sessions-detail__confirm p {
+  margin: 0;
 }
 
 .sessions-detail__adoption-reason {
@@ -652,35 +631,6 @@
   border: 1px solid var(--border-primary);
   border-radius: 8px;
   background: var(--bg-secondary);
-}
-
-.sessions-detail__transcript-message {
-  min-width: 0;
-  padding: 0.7rem;
-  border: 1px solid var(--border-primary);
-  border-radius: 8px;
-  background: var(--bg-primary);
-  overflow-wrap: anywhere;
-}
-
-/* Keep list markers inside the message: the scroll region clips anything
-   that hangs past its edge. */
-.sessions-detail__transcript-message :is(ol, ul) {
-  padding-inline-start: 1.5em;
-}
-
-.sessions-detail__transcript-message--user {
-  background: var(--bg-secondary);
-}
-
-.sessions-detail__transcript-role {
-  margin: 0 0 0.35rem;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
@@ -871,6 +821,11 @@
   display: flex;
   flex-direction: column;
   gap: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  overflow: visible;
 }
 
 .imported-conversation-send-row {
