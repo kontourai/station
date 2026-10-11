@@ -163,13 +163,16 @@ export async function stageComposerAttachments(
         // `stage_capacity` is not a transient failure: retrying asks for yet
         // another stage from a login that already holds its maximum, and
         // fails the same way until one is sent, removed or expires.
-        const capacityFull =
-          (failure as { code?: unknown }).code === 'stage_capacity';
+        const code = (failure as { code?: unknown }).code;
+        const capacityFull = code === 'stage_capacity';
+        // `principal_unresolved` (#545) is not transient either: the Station
+        // could not tell who is asking, and asking again does not change that.
+        const permanent = capacityFull || code === 'principal_unresolved';
         observer?.({
           clientAttachmentId: input.clientAttachmentId,
           state: signal?.aborted
             ? 'cancelled'
-            : capacityFull
+            : permanent
               ? 'failed'
               : 'retryable',
           progress: 0,
