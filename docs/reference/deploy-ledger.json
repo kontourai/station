@@ -1,5 +1,36 @@
 [
   {
+    "timestampUtc": "2026-10-11T19:30:09Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2475.38165997894",
+    "sha": "f5e21369361e6edf855dc9a2671f68aa3473556f",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38165997894",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2475.38165997894 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "5cb1c6b57f2ed893fff22a8cd8e7777d1ec7485d",
+      "groups": {
+        "feat": [
+          "[#3541](https://github.com/kontourai/station/pull/3541) feat(telemetry): add a durable scoped product receiver"
+        ],
+        "fix": [
+          "[#3554](https://github.com/kontourai/station/pull/3554) fix(chat): unclip the mobile @ file picker and join Send with its mode segment"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
     "timestampUtc": "2026-10-11T11:06:16Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2475.3",
