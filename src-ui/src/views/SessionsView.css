@@ -586,7 +586,7 @@
 
 /* The chat pane has no padding of its own. */
 .sessions-detail--chat > .sessions-detail__connection-state {
-  margin: var(--k-space-2) var(--k-space-3) 0;
+  margin: var(--k-space-2) var(--k-space-3);
 }
 
 .sessions-detail__connection-state strong {
