@@ -695,6 +695,14 @@ const IDLE_SESSION_SWEEP_MS = 5 * 60_000;
 const PARKED_EXIT_WAIT_MS = 10_000;
 /** #2312: most discarded ids the late-event gate remembers at once. */
 const DISCARDED_DRAFT_GATE_MAX = 256;
+/**
+ * #3560: the wait before each retry of an observed event whose publish hit
+ * store contention. Two retries, so three attempts in all. Each attempt may
+ * already have waited out SQLite's busy_timeout, so the bound is what keeps a
+ * second Station process from stalling the adapter stream indefinitely before
+ * the interruption warning names it.
+ */
+const OBSERVED_EVENT_RETRY_DELAYS_MS = [25, 100] as const;
 
 /**
  * #2312 verifier M3: a Session in the Draft's conversation is one the caller
@@ -1984,6 +1992,10 @@ export class OrchestrationService {
       logger: {
         warn: (message, meta) => this.options.logger.warn(message, meta),
       },
+      // #3560: text flushed ahead of an observed event is kept for that
+      // event's retry exactly when the event itself would be retried.
+      retainFailedFlush: (event, error) =>
+        this.isRetryablePublishFailure(event, error),
     },
   );
   /** Threads whose missing configuration has already been logged for monitoring. */
@@ -9705,7 +9717,15 @@ export class OrchestrationService {
         if (!this.quarantinedThreads.has(normalized.threadId)) {
           this.sessionAdapters.set(normalized.threadId, adapter);
         }
-        if (!this.projectAndPublishEvent(normalized)) continue;
+        // `projectAndPublishEvent`, split so that a transient store failure
+        // retries only the publish half, holding this event until it is
+        // appended before the next one is consumed (#3560).
+        const admitted = this.admitEventForPublication(normalized);
+        if (
+          admitted &&
+          !(await this.publishObservedEvent(admitted, adapter, controller))
+        )
+          continue;
         this.cooperativeStop.applyPendingTurnInterrupt(adapter, normalized);
         if (normalized.method === 'session.exited') {
           this.sessionAdapters.delete(normalized.threadId);
@@ -9815,6 +9835,79 @@ export class OrchestrationService {
         this.consumedAdapterEventStreams.delete(adapter);
         queueMicrotask(() => this.consumeCurrentAdapterEvents());
       }
+    }
+  }
+
+  /**
+   * #3560: publish one observed event, retrying the SAME event (same
+   * `eventId`) while the failure is store contention. The adapter queue has
+   * already handed the event over, so giving up here is what loses it: a
+   * dropped `turn.completed` folds the thread as running and boot recovery
+   * banners a turn that completed.
+   *
+   * Exhausted retries and every other failure rethrow into the loop's catch
+   * unchanged. That path is observation loss, not a provider terminal: it
+   * surfaces `adapter-event-stream-interrupted` and restarts, and it never
+   * permits retrying the turn.
+   *
+   * A retry repeats the publish body's pre-append steps. They are idempotent
+   * for a replay of the same event, with two exceptions. A provider-started
+   * turn can record a second accepted boundary row, which that turn's
+   * terminal retires along with the first (they share its provider turn id).
+   * And an activity notification is counted twice in `sessionActivityEvents`.
+   * Pre-append state that outlives an append which never succeeds is #3561.
+   */
+  private async publishObservedEvent(
+    event: CanonicalRuntimeEvent,
+    adapter: ProviderAdapterShape,
+    controller: AbortController,
+  ): Promise<boolean> {
+    for (const delayMs of [...OBSERVED_EVENT_RETRY_DELAYS_MS, undefined]) {
+      try {
+        return this.offerOrPublishEvent(event);
+      } catch (error) {
+        if (
+          delayMs === undefined ||
+          !this.isRetryablePublishFailure(event, error)
+        )
+          throw error;
+        this.options.logger.debug(
+          'Retrying an observed event after event store contention',
+          {
+            provider: adapter.provider,
+            threadId: event.threadId,
+            method: event.method,
+            error: errorMessage(error),
+          },
+        );
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        if (controller.signal.aborted || !this.isAdapterCurrent(adapter))
+          throw error;
+      }
+    }
+    throw new Error('unreachable: the final attempt returns or throws');
+  }
+
+  /**
+   * Retry only SQLITE_BUSY/locked contention: a peer holding the write lock
+   * can let go. A constraint or programming error repeats identically.
+   *
+   * And never retry an event that is already stored. The append rolls back
+   * its savepoint on any throw inside it, but a throw from a step AFTER the
+   * commit reaches the caller too, and a replay of a committed plain-INSERT
+   * event would fail its primary key. If the probe itself fails, nothing
+   * proves the event committed, so the retry goes ahead; a replay that does
+   * hit the key then fails as a non-retryable error.
+   */
+  private isRetryablePublishFailure(
+    event: CanonicalRuntimeEvent,
+    error: unknown,
+  ): boolean {
+    if (!isSqliteContentionError(error)) return false;
+    try {
+      return !this.options.eventStore?.hasEventId(event.eventId);
+    } catch {
+      return true;
     }
   }
 
@@ -10996,8 +11089,22 @@ export class OrchestrationService {
    * it.
    */
   private projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean {
+    const admitted = this.admitEventForPublication(event);
+    return admitted ? this.offerOrPublishEvent(admitted) : true;
+  }
+
+  /**
+   * The once-per-event half of {@link projectAndPublishEvent}: client-origin
+   * attribution, which CONSUMES a send's accepted attribution, and the raw
+   * delta observation the turn-stall watchdog must see exactly once. Returns
+   * undefined for a turn start held for an in-flight send. The observed-event
+   * loop retries only the other half (#3560), so neither step runs twice.
+   */
+  private admitEventForPublication(
+    event: CanonicalRuntimeEvent,
+  ): CanonicalRuntimeEvent | undefined {
     const originEvent = this.clientOriginTurns.apply(event);
-    if (!originEvent) return true;
+    if (!originEvent) return undefined;
     event = originEvent;
     // Progress is a fact about the ENGINE producing output, not about what we
     // chose to publish. The turn-stall watchdog (archive#2959) observes here,
@@ -11017,6 +11124,11 @@ export class OrchestrationService {
       this.sessionExecutionCoordinator.observe(event);
       this.turnProgress.observe(event);
     }
+    return event;
+  }
+
+  /** The retryable half of {@link projectAndPublishEvent}. */
+  private offerOrPublishEvent(event: CanonicalRuntimeEvent): boolean {
     // NOTE the changed meaning of `true` here: it says the coalescer TOOK the
     // event, not that it was published. A taken delta is published later —
     // through `publishCanonicalEvent`, which may itself decline it (a
@@ -11024,8 +11136,8 @@ export class OrchestrationService {
     // never published at all.
     //
     // That matters because the caller does more with `false` than decide
-    // whether to publish again. `consumeAdapterEvents`' `if
-    // (!this.projectAndPublishEvent(normalized)) continue;` also gates the
+    // whether to publish again. In `consumeAdapterEvents`, a `false` from
+    // `publishObservedEvent` (which returns this) `continue`s, and so also gates the
     // `session.exited` adapter cleanup, `applyPostHocToolPolicies`,
     // `spoolCommandEvidence` and the state-transition telemetry below it, so
     // taking a quarantined thread's delta stops short-circuiting those. That

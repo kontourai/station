@@ -78,6 +78,15 @@ interface DeltaCoalescerOptions {
    * deliberately propagate instead.
    */
   logger?: CoalescerLogger;
+  /**
+   * #3560: asked when a flush made AHEAD OF another event fails on the
+   * synchronous `offer` path. Returning true puts the buffered text back, so
+   * the caller's retry of that event delivers it first and the event cannot
+   * overtake it. The owner decides, because only it knows whether the failure
+   * is transient and whether the delivery committed before it threw.
+   * Omitted, the buffer is dropped as before.
+   */
+  retainFailedFlush?: (event: CanonicalRuntimeEvent, error: unknown) => boolean;
 }
 
 /**
@@ -140,6 +149,10 @@ export class DeltaCoalescer {
   private readonly setTimer: (fn: () => void, ms: number) => unknown;
   private readonly clearTimer: (handle: unknown) => void;
   private readonly logger: CoalescerLogger;
+  private readonly retainFailedFlush: (
+    event: CanonicalRuntimeEvent,
+    error: unknown,
+  ) => boolean;
   private lastDeliveryWarningAt = 0;
   private suppressedDeliveryFailures = 0;
 
@@ -165,6 +178,7 @@ export class DeltaCoalescer {
       // this must not have.
       warn: (message, meta) => logger.warn(message, meta),
     };
+    this.retainFailedFlush = options.retainFailedFlush ?? (() => false);
   }
 
   /**
@@ -178,7 +192,7 @@ export class DeltaCoalescer {
 
     if (text === undefined) {
       // Not coalescable: whatever is buffered for this thread happened first.
-      this.flushPending(event.threadId, 'propagate');
+      this.flushPending(event.threadId, 'propagate', true);
       // A tool call, an approval or a turn boundary ends the current run of
       // text, so whatever text comes next is a fresh paint, not a
       // continuation of what this event interrupted — UNLESS the flush above
@@ -190,7 +204,7 @@ export class DeltaCoalescer {
     const current = this.pending.get(event.threadId);
     if (current && !mergeable(current.event, event)) {
       // A different turn, item or kind of delta: not the same text.
-      this.flushPending(event.threadId, 'propagate');
+      this.flushPending(event.threadId, 'propagate', true);
     }
 
     // The FIRST delta of a run of text is never held. Batching starts with
@@ -266,15 +280,46 @@ export class DeltaCoalescer {
     if (!this.pending.has(threadId)) this.streamStarts.delete(threadId);
   }
 
-  private flushPending(threadId: string, onFailure: DeliveryFailureMode): void {
+  /**
+   * `aheadOfEvent` marks the two `offer` flushes made because a DIFFERENT
+   * event is about to be published. Only those may retain on failure: the
+   * caller retries that event, and the retry must flush this text first. The
+   * size-cap flush is not one of them. Its buffer already holds the delta
+   * being offered, so retaining it would duplicate that delta's text on retry.
+   */
+  private flushPending(
+    threadId: string,
+    onFailure: DeliveryFailureMode,
+    aheadOfEvent = false,
+  ): void {
     const held = this.pending.get(threadId);
     if (!held) return;
     this.pending.delete(threadId);
     this.clearTimer(held.timer);
-    this.deliver(
-      { ...held.event, delta: held.text } as CanonicalRuntimeEvent,
-      onFailure,
-    );
+    const merged = { ...held.event, delta: held.text } as CanonicalRuntimeEvent;
+    if (!aheadOfEvent || onFailure !== 'propagate') {
+      this.deliver(merged, onFailure);
+      return;
+    }
+    try {
+      this.emit(merged);
+    } catch (error) {
+      // The publish body throws before its bus fan-out, so normally nothing
+      // has re-buffered this thread. If something did, that buffer holds
+      // LATER text and must not be overwritten by this earlier text; the
+      // earlier text is then dropped, as it always was.
+      if (
+        !this.pending.has(threadId) &&
+        this.retainFailedFlush(merged, error)
+      ) {
+        this.pending.set(threadId, {
+          event: held.event,
+          text: held.text,
+          timer: this.setTimer(() => this.flushThread(threadId), this.windowMs),
+        });
+      }
+      throw error;
+    }
   }
 
   /**
@@ -363,7 +408,9 @@ export class DeltaCoalescer {
    *
    * What a propagating throw leaves behind is `pending`-clean only: the buffer
    * is dropped before the delivery is attempted, so no thread is left holding
-   * stale text. The first-paint MARKER is a different matter — the first-delta
+   * stale text. The exception is a flush ahead of another event that the
+   * owner's `retainFailedFlush` keeps for that event's retry (#3560); see
+   * `flushPending`. The first-paint MARKER is a different matter — the first-delta
    * pass-through sets it before delivering, so a throw there leaves a marker
    * saying "painted" for text that never painted, and a throw out of the
    * non-coalescable flush skips the delete that would have retired one. Both
