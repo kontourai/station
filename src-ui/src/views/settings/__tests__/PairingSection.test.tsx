@@ -25,13 +25,24 @@ describe('Settings device pairing', () => {
 
   test('opens the canonical invitation flow instead of advertising a bare address QR', () => {
     render(<PairingSection />);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Pair another device' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: '+ Pair device' }));
     expect(consumePendingConnectionsModal()).toEqual({ mode: 'pair-host' });
     expect(
       screen.queryByRole('switch', { name: /mobile pairing/i }),
     ).toBeNull();
+  });
+
+  test('the pairing action is the section header’s compact action and opens the pairing flow', () => {
+    render(<PairingSection />);
+    const action = screen.getByRole('button', { name: '+ Pair device' });
+    // On the header line, not a row of its own in the body.
+    expect(action.closest('.page-section__header')).toBeTruthy();
+    expect(action.closest('.page-section__body')).toBeNull();
+    // It carries the catalog row, so a Settings deep link lands on it.
+    expect(action.getAttribute('data-catalog-id')).toBe('mobile-pairing');
+    expect(action.id).toBe('mobile-pairing');
+    fireEvent.click(action);
+    expect(consumePendingConnectionsModal()).toEqual({ mode: 'pair-host' });
   });
 
   test('a person’s own access tokens sit in the Pairing section', () => {
@@ -42,10 +53,8 @@ describe('Settings device pairing', () => {
   test('a native phone opens the joining-device scan flow rather than promising a host invitation', () => {
     nativePhone = true;
     render(<PairingSection />);
-    fireEvent.click(screen.getByRole('button', { name: 'Connect this phone' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connect phone' }));
     expect(consumePendingConnectionsModal()).toEqual({ mode: 'pair-device' });
-    expect(
-      screen.queryByRole('button', { name: 'Pair another device' }),
-    ).toBeNull();
+    expect(screen.queryByRole('button', { name: '+ Pair device' })).toBeNull();
   });
 });

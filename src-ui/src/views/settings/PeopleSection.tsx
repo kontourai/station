@@ -377,7 +377,9 @@ function PersonCard({
             ▸
           </span>
           <span className="people__toggle-text">
-            <span className="people__person-name">{person.displayName}</span>
+            <span className="people__person-name" title={person.displayName}>
+              {person.displayName}
+            </span>
             <span className="people__meta">
               {plural(person.devices.length, 'device')} ·{' '}
               {plural(person.tokens.length, 'token')}
