@@ -3766,8 +3766,12 @@ const DELEGATED_USAGE_FIELD_PROJECTORS: {
   cacheWriteTokens: optionalNumber,
   cacheWriteTokens5m: optionalNumber,
   cacheWriteTokens1h: optionalNumber,
-  // Opaque provider text: bounded, never enumerated.
-  serviceTier: (value) => optionalString(value, 64),
+  // Opaque provider text, never enumerated. Over-long text is omitted, not
+  // cut: a truncated tier would read as a different, plausible tier.
+  serviceTier: (value) => {
+    const tier = optionalString(value, 65);
+    return tier && tier.length <= 64 ? tier : undefined;
+  },
   contextTokens: optionalNumber,
   contextWindowTokens: optionalNumber,
 };
