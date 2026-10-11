@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - README.md
+      - docs-kit.json
       - docs/**
       - scripts/build-github-pages.mjs
       - package.json
@@ -37,6 +38,30 @@ jobs:
 
       - name: Build Pages site
         run: npm run docs:pages:build
+
+      # The org hub and the shared docs MCP read
+      # https://kontourai.github.io/station/docs-bundle.json. docs-kit renders
+      # its own site from docs-kit.json; only the bundle is published, beside
+      # Station's own pages, whose docs/<path>.html URLs the bundle points at.
+      # The bundle is an add-on, so it fails open: if this step fails, the
+      # Station site still publishes, and keep_files leaves the previous
+      # docs-bundle.json on gh-pages (stale, shown as behind on the hub).
+      - name: Build docs-kit bundle
+        continue-on-error: true
+        run: >-
+          npx -y github:kontourai/docs-kit#efe0bfe4ad247861ef661c907f6354d6167fa3be
+          docs-kit build
+          --out "$RUNNER_TEMP/docs-kit-site"
+          --base-url https://kontourai.github.io/station/
+
+      - name: Add docs-kit bundle to the Pages site
+        run: |
+          bundle="$RUNNER_TEMP/docs-kit-site/docs-bundle.json"
+          if [ -f "$bundle" ]; then
+            cp "$bundle" ./dist-pages/docs-bundle.json
+          else
+            echo "::warning::docs-kit bundle was not built; gh-pages keeps the previous docs-bundle.json"
+          fi
 
       - name: Publish Pages site
         uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
