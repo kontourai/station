@@ -134,7 +134,9 @@
 
     "src-ui/src/components/ModelSelector.tsx",
 
-    "src-ui/src/components/AutocompleteSelector.tsx"
+    "src-ui/src/components/AutocompleteSelector.tsx",
+
+    "src-ui/src/hooks/useAnchoredPopup.tsx"
   ],
 
   "checks": [
