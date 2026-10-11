@@ -22,7 +22,13 @@
 
     "src-server/services/usage-telemetry-service.ts",
 
-    "src-ui/src/components/UsageTelemetryDisclosure.tsx"
+    "src-ui/src/components/UsageTelemetryDisclosure.tsx",
+
+    "src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts",
+
+    "packages/contracts/src/product-telemetry.ts",
+
+    "packages/shared/src/product-telemetry.ts"
   ],
 
   "checks": [

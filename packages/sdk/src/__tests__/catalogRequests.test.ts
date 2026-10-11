@@ -36,7 +36,7 @@ describe('catalogRequests', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/registry/integrations/installed',
-      { headers: { 'X-Station-Client-Protocol': '1' } },
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -62,7 +62,7 @@ describe('catalogRequests', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/registry/kits',
-      { headers: { 'X-Station-Client-Protocol': '1' } },
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
 
@@ -76,7 +76,7 @@ describe('catalogRequests', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       2,
       'http://example.test/api/registry/kits/knowledge%2Fkit/layout',
-      { headers: { 'X-Station-Client-Protocol': '1' } },
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
     expect(fetch).toHaveBeenCalledTimes(2);
   });
@@ -94,7 +94,7 @@ describe('catalogRequests', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/integrations/integration-1',
-      { method: 'DELETE', headers: { 'X-Station-Client-Protocol': '1' } },
+      { method: 'DELETE', headers: { 'X-Station-Client-Protocol': '2' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -206,7 +206,7 @@ describe('catalogRequests', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/registry/layouts/builtin%3Atasks/enable',
-      { method: 'POST', headers: { 'X-Station-Client-Protocol': '1' } },
+      { method: 'POST', headers: { 'X-Station-Client-Protocol': '2' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });

@@ -152,6 +152,17 @@ updates liveness without advancing the event replay cursor.
 running set. A missing `children` view still means the server made no
 child-work report for that row; clients retain their existing state.
 
+## Product telemetry observations
+
+`@kontourai/station-contracts/product-telemetry` declares the content-free event
+inventory and version1 batch, observation and build shapes. Stable event IDs,
+producer occurrence/admission time, inventory revision and allowlisted build
+provenance support reliability comparisons; they do not identify people or
+replace canonical personal usage receipts. Runtime validation and disclosure
+fingerprinting belong to the [shared helper](shared.md#product-telemetry).
+Legacy payloads have no v1 guarantees and the strict parser rejects them.
+See [Usage telemetry](usage-telemetry.md) for consent, retry and privacy limits.
+
 ## Import examples
 
 The [package export map](../../packages/contracts/package.json) is the available
@@ -160,12 +171,20 @@ does not establish implementation, deployment, access, or a completed live journ
 
 ```ts
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import type { UsageInsights, InsightsScanCoverage } from '@kontourai/station-contracts/insights';
 import type { LearningReviewProjectionOutcome } from '@kontourai/station-contracts/learning-review';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import type { SessionMetadata } from '@kontourai/station-contracts/runtime';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import type { UnifiedSearchResult } from '@kontourai/station-contracts/unified-search';
 ```
+
+`insights` owns the monitoring rollup and optional retained-scan coverage.
+Complete scan integrity does not establish lifetime retention or producer
+delivery. Older servers omit coverage; new consumers treat that omission as
+unknown integrity. Failure classifications carry no file paths or foreign-user
+counts. The [Insights route](../../src-server/routes/operations/insights.ts)
+produces coverage; the SDK and existing dashboard consume it.
 
 `learning-review` is a read-only projection contract. Its available form links
 owner-issued source, candidate, evaluation, decision, activation, effect, and

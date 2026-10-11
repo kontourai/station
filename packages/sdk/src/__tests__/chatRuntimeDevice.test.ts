@@ -32,7 +32,7 @@ describe('chatRuntimeDevice', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/system/vapid-public-key',
-      { headers: { 'X-Station-Client-Protocol': '1' } },
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });
