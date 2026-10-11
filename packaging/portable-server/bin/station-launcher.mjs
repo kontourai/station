@@ -711,7 +711,11 @@ function writeStagedFile(path, text) {
       closeSync(fd);
     }
   } catch (error) {
-    rmSync(path, { force: true });
+    try {
+      rmSync(path, { force: true });
+    } catch {
+      // Report the write's failure, not the cleanup's.
+    }
     throw error;
   }
 }
@@ -730,13 +734,7 @@ function createLock(lock, record) {
   } finally {
     rmSync(staged, { force: true });
   }
-  const fd2 = openSync(lock, 'wx', 0o600);
-  try {
-    writeFileSync(fd2, record);
-    fsyncSync(fd2);
-  } finally {
-    closeSync(fd2);
-  }
+  writeStagedFile(lock, record);
 }
 
 /**

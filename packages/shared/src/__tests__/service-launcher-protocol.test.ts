@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 
 // `existsSync` is wrapped so a test can model a request that another writer
@@ -24,6 +24,8 @@ const {
 } = await import('../service-launcher-protocol.js');
 
 const makeTempDir = trackTempDirs();
+const { writeFileSync: actualWriteFileSync } =
+  await vi.importActual<typeof import('node:fs')>('node:fs');
 
 describe('writeServiceUpdateRequest', () => {
   test('never replaces a request another writer published after the check', () => {
@@ -55,6 +57,12 @@ describe('writeServiceUpdateRequest', () => {
 });
 
 describe('staged writes on a full disk', () => {
+  // A queued failure the code under test never consumed must not leak into
+  // the next test.
+  afterEach(() => {
+    vi.mocked(fs.writeFileSync).mockReset();
+    vi.mocked(fs.writeFileSync).mockImplementation(actualWriteFileSync);
+  });
   /** The real write creates the file empty, then the disk refuses the bytes. */
   function failNextPathWrite() {
     vi.mocked(fs.writeFileSync).mockImplementationOnce((file) => {
@@ -80,5 +88,14 @@ describe('staged writes on a full disk', () => {
       /ENOSPC/,
     );
     expect(fs.readdirSync(dir)).toEqual([]);
+  });
+
+  test('a failed rename leaves no temporary file', () => {
+    const dir = makeTempDir('station-launcher-protocol-');
+    // A non-empty directory where the file should go refuses the rename.
+    const target = join(dir, 'state.json');
+    mkdirSync(join(target, 'occupied'), { recursive: true });
+    expect(() => writeJsonAtomically(target, {})).toThrow();
+    expect(fs.readdirSync(dir)).toEqual(['state.json']);
   });
 });

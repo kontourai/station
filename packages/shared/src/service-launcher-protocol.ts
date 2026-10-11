@@ -107,9 +107,17 @@ function writeTemporaryFile(temp: string, text: string): void {
   try {
     writeFileSync(temp, text, { mode: 0o600, flag: 'wx' });
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST')
-      rmSync(temp, { force: true });
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') removeQuietly(temp);
     throw error;
+  }
+}
+
+/** Cleanup that never replaces the error being reported. */
+function removeQuietly(path: string): void {
+  try {
+    rmSync(path, { force: true });
+  } catch {
+    // The caller rethrows the original failure.
   }
 }
 
@@ -120,7 +128,7 @@ export function writeJsonAtomically(path: string, value: unknown): void {
   try {
     renameSync(temp, path);
   } catch (error) {
-    rmSync(temp, { force: true });
+    removeQuietly(temp);
     throw error;
   }
 }
