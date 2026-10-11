@@ -69,7 +69,9 @@ A paired device holds scopes: `orchestration:read`, `orchestration:operate`,
 `terminal:operate`, and the elevated ones the operator adds to an
 already-paired device (`station environment access scopes` lists them all with
 their meanings). The operator changes them per device on the Station's own
-host:
+host. These examples use the stable launcher, `station`. A beta or nightly
+install puts `station-beta` or `station-nightly` on PATH instead, and a
+full-access refusal's command names whichever one that host has:
 
 ```bash
 station environment access devices
