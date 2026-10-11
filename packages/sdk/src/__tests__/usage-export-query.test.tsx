@@ -240,6 +240,73 @@ test('missing captured authority disables dispatch, hides prior pages and refuse
   }
 });
 
+test('a waiting page caller cannot receive a replacement selection while both valid pages remain cached', async () => {
+  const client = new QueryClient();
+  let input = { ...initialInput };
+  let held = false;
+  let release!: (response: Response) => void;
+  fetch.mockImplementation(async (url) => {
+    const from = new URL(String(url)).searchParams.get('from');
+    if (held && from === initialInput.from)
+      return new Promise((resolve) => {
+        release = resolve;
+      });
+    const data = usageExportFixture();
+    if (from === '2026-10-02') {
+      data.window.from = '2026-10-02';
+      data.observations = [data.observations[1]];
+    }
+    return Response.json({ success: true, data });
+  });
+  const view = renderHook(
+    () => ({
+      moving: useUsageExportQuery(scope, input),
+      keeper: useUsageExportQuery(scope, initialInput),
+    }),
+    { wrapper: wrapperFor(client) },
+  );
+  try {
+    await settle();
+    expect(view.result.current.moving.data?.window.from).toBe('2026-10-01');
+    held = true;
+    const waiting = view.result.current.moving.refetch();
+    const refused = expect(waiting).rejects.toBeInstanceOf(
+      StationRequestAuthorityError,
+    );
+    await settle();
+    input = { ...input, from: '2026-10-02' };
+    view.rerender();
+    await settle();
+    expect(view.result.current.moving.data?.window.from).toBe('2026-10-02');
+    await act(async () => {
+      release(Response.json({ success: true, data: usageExportFixture() }));
+      await refused;
+    });
+    await settle();
+    expect(view.result.current.keeper.data?.window.from).toBe('2026-10-01');
+    expect(view.result.current.moving.data?.window.from).toBe('2026-10-02');
+    const cached = client
+      .getQueryCache()
+      .getAll()
+      .map((entry) => entry.state);
+    expect(cached).toHaveLength(2);
+    expect(cached.every((state) => state.status === 'success')).toBe(true);
+    expect(cached.map((state) => state.data)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          window: expect.objectContaining({ from: '2026-10-01' }),
+        }),
+        expect.objectContaining({
+          window: expect.objectContaining({ from: '2026-10-02' }),
+        }),
+      ]),
+    );
+  } finally {
+    view.unmount();
+    client.clear();
+  }
+});
+
 test('a late old-authority response fails its waiting observer without publishing into the cache', async () => {
   const client = new QueryClient();
   let release!: (response: Response) => void;

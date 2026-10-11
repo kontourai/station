@@ -280,6 +280,19 @@ test('lost authority during the real bounded body read rejects the waiting calle
   expect(fetch).toHaveBeenCalledOnce();
 });
 
+test.each([undefined, '2026-09-30T23:59:59.999Z', '2026-10-12T00:00:00.000Z'])(
+  'exported receipts require an observation clock within the selected window: %s',
+  async (observedAt) => {
+    const data = usageExportFixture();
+    data.observations[0].receipts[0].observedAt = observedAt;
+    fetch.mockResolvedValue(Response.json({ success: true, data }));
+    await expect(
+      fetchUsageExport(scope.apiBase, input, { requestScope: scope }),
+    ).rejects.toThrow();
+    expect(fetch).toHaveBeenCalledOnce();
+  },
+);
+
 test('the export body budget rejects oversized data instead of returning a partial page', async () => {
   fetch.mockResolvedValue(new Response(' '.repeat(2 * 1024 * 1024 + 1)));
   await expect(

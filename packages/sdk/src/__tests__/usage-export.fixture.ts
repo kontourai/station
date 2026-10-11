@@ -49,6 +49,7 @@ export function usageExportFixture(): UsageExportPage {
             stationId: 'station-a',
             provider: 'codex',
             model: 'model-a',
+            observedAt: '2026-10-02T00:01:00.000Z',
             inputTokens: 50,
             outputTokens: 0,
             estimatedCost: {
