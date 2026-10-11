@@ -519,9 +519,7 @@ describe('People section', () => {
   test('no one tied to a device shows the empty state', async () => {
     handler = peopleRoute(() => []);
     mount(<PeopleSection />);
-    expect(
-      await screen.findByText('No one else has a device tied to them yet.'),
-    ).toBeTruthy();
+    expect(await screen.findByText('Nothing here yet')).toBeTruthy();
   });
 
   test('a caller the route refuses sees no People section at all', async () => {

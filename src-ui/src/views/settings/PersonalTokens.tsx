@@ -16,6 +16,7 @@ import {
 import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
+import { Empty } from '../../components/state';
 import { copyToClipboard } from '../../lib/clipboard';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { relativeTimeAgo } from '../../utils/relativeTime';
@@ -146,8 +147,8 @@ function TokenRow({
       )}
       <Button
         size="sm"
-        variant="danger-outline"
-        className="people__compact"
+        variant="ghost"
+        className="people__compact people__revoke"
         disabled={busy}
         onClick={onRevoke}
         aria-label={`Revoke token ${token.name}`}
@@ -196,24 +197,26 @@ export function SecretOnce({
           spellCheck={false}
           autoComplete="off"
         />
-        <Button
-          ref={copyRef}
-          size="sm"
-          className="people__compact"
-          onClick={() => {
-            void copyToClipboard(minted.secret).then(setCopied);
-          }}
-        >
-          Copy
-        </Button>
-        <Button
-          size="sm"
-          variant="primary"
-          className="people__compact"
-          onClick={onDone}
-        >
-          Done
-        </Button>
+        <div className="people__secret-actions">
+          <Button
+            ref={copyRef}
+            size="sm"
+            className="people__compact"
+            onClick={() => {
+              void copyToClipboard(minted.secret).then(setCopied);
+            }}
+          >
+            Copy
+          </Button>
+          <Button
+            size="sm"
+            variant="primary"
+            className="people__compact"
+            onClick={onDone}
+          >
+            Done
+          </Button>
+        </div>
       </div>
       <p className="people__meta" role="status">
         {copied === true
@@ -442,7 +445,7 @@ export function PersonalTokens({
       </div>
       {description && <p className="people__meta">{description}</p>}
       {tokens.length === 0 ? (
-        <p className="people__meta people__empty">No tokens.</p>
+        <Empty className="people__none" label="None yet." />
       ) : (
         <ul className="people__rows" aria-label={`Tokens for ${ownerLabel}`}>
           {tokens.map((token) => (
@@ -460,7 +463,7 @@ export function PersonalTokens({
         </ul>
       )}
       {!canMint && cannotMintReason && (
-        <p className="people__meta people__empty">{cannotMintReason}</p>
+        <p className="people__meta">{cannotMintReason}</p>
       )}
       {minted ? (
         <SecretOnce

@@ -83,7 +83,7 @@
 .people__person-name {
   margin: 0;
   color: var(--k-text);
-  font-size: var(--k-text-lg);
+  font-size: var(--k-text-md);
   font-weight: 600;
   word-break: break-word;
 }
@@ -175,10 +175,6 @@
   color: var(--k-text-muted);
   font-size: var(--k-text-xs);
   word-break: break-word;
-}
-
-.people__empty {
-  padding: 0 var(--k-space-1);
 }
 
 .people__badge {
@@ -345,10 +341,58 @@
 }
 
 .people__own {
+  padding-bottom: var(--k-space-2);
   display: flex;
   flex-direction: column;
   gap: var(--k-space-2);
   margin-top: var(--k-space-4);
   padding-top: var(--k-space-3);
   border-top: var(--k-border-thin) solid var(--k-line);
+}
+
+/* Revoke is destructive but quiet: danger-coloured text, no fill, so a list
+   of tokens is not a column of red blocks. */
+.button.people__revoke {
+  color: var(--k-negative);
+}
+
+.button.people__revoke:hover:not(:disabled) {
+  background: var(--k-negative-soft);
+  color: var(--k-negative);
+}
+
+/* Copy and Done travel together; on a narrow card they wrap as a pair below
+   the secret rather than leaving Done alone on a row. */
+.people__secret-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--k-space-2);
+  margin-left: auto;
+}
+
+.people__groups-help summary {
+  list-style: none;
+  gap: var(--k-space-1);
+}
+
+.people__groups-help summary::-webkit-details-marker {
+  display: none;
+}
+
+.people__groups-help summary::before {
+  content: "▸";
+  color: var(--k-text-muted);
+  transition: transform var(--k-dur) var(--k-ease);
+}
+
+.people__groups-help[open] summary::before {
+  transform: rotate(90deg);
+}
+
+/* An empty sub-section is one quiet line, not a framed card. */
+.people__none {
+  margin: 0;
+  padding: 0 var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
 }

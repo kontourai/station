@@ -112,7 +112,7 @@ export function PeopleSection() {
   }
 
   return (
-    <SettingsSection icon="◎" title="People" id="section-people">
+    <SettingsSection icon="◐" title="People" id="section-people">
       <div {...settingsRow('people')} tabIndex={-1} className="people">
         <div className="people__intro">
           <p>
@@ -161,8 +161,8 @@ export function PeopleSection() {
             {list.length === 0 ? (
               <Empty
                 variant="compact"
-                label="No one else has a device tied to them yet."
-                description="A device is tied to its person when you approve it with their verified identity or account."
+                label="Nothing here yet"
+                description="When you approve a device with its person’s verified identity or account, that person appears here."
               />
             ) : (
               list.map((person) => (
@@ -320,9 +320,10 @@ function PersonCard({
           </h5>
         </div>
         {person.devices.length === 0 ? (
-          <p className="people__meta people__empty">
-            No device is tied to them right now.
-          </p>
+          <Empty
+            className="people__none"
+            label="None tied to them right now."
+          />
         ) : (
           <ul
             className="people__rows"
