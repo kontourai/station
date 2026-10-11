@@ -1,0 +1,15 @@
+{
+  "revision": "a90427453f54a28e8545cd6d7cd6c9e7cfd5d31c",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Read the domain-subpath, type-only-new-module and compatibility guidance against the Insights addition. The contract exports only shapes; SDK parsing stays outside contracts. Guidance remains accurate and was followed.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Read SDK public-contract and cache/caller guidance against typed Insights fetch/query. Existing filter cache identity is preserved; malformed transport results reject and mounted failure hides cached totals. Guidance remains accurate.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/contracts/CLAUDE.md","note":"Confirmed this routing file still imports its paired contracts AGENTS. The Insights domain/export addition changes no instruction routing.","inputs":["packages/contracts/CLAUDE.md"]},
+
+    {"path":"packages/sdk/CLAUDE.md","note":"Confirmed this routing file still imports its paired SDK AGENTS. Insights typing and validation change no instruction routing.","inputs":["packages/sdk/CLAUDE.md"]},
+
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Reviewed current integration reading routes for API/SDK/contracts and retained historical package assessments. Insights now reports retained-scan integrity but does not qualify a collector, product broker, private sync or deployed service. Existing historical classification and integration evidence warning remain accurate.","inputs":["docs/strategy/kontour-integration-surface.md"]}
+  ]
+}

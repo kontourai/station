@@ -1,3 +1,4 @@
+import type { UsageInsights } from '@kontourai/station-contracts/insights';
 import { _getApiBase } from '../api';
 
 export type {
@@ -124,19 +125,20 @@ function insightsQuery(days: number, filters: InsightsFilters = {}): string {
 export async function fetchInsights(
   days = 14,
   filters: InsightsFilters = {},
-): Promise<any> {
+): Promise<UsageInsights> {
   const apiBase = await _getApiBase();
   const response = await authenticatedFetch(
     `${apiBase}/api/insights?${insightsQuery(days, filters)}`,
   );
   if (!response.ok) throw new Error('Failed to fetch insights');
-  return (await response.json()).data;
+  const { parseInsightsResponse } = await import('./insightsResponse');
+  return parseInsightsResponse(await response.json());
 }
 
 export function useInsightsQuery(
   days = 14,
   filters: InsightsFilters = {},
-  config?: QueryConfig<any>,
+  config?: QueryConfig<UsageInsights>,
 ) {
   return useApiQuery(
     // Filters belong in the cache key: without them, switching agent would
