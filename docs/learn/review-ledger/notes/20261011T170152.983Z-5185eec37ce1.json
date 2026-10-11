@@ -1,0 +1,7 @@
+{
+  "revision": "1b0a82ad418ed08f89544d2ed2ec6f3e9dea4973",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Re-checked after the fix rounds: chat.css changes touch only composer send controls and the @ picker; no placement, region, pane or tooltip claim depends on them.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

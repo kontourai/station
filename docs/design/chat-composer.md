@@ -35,7 +35,11 @@ reveal controls, but must not change bubble size or the position of later messag
 During an authorized active-turn continuation wait, the composer accepts and
 preserves a draft. Sending and queueing stay blocked until continuation is writable.
 The shared popover shell opens toward the roomier viewport edge, including when
-the dock is maximized. A narrow Activity region shows its list or its selected
+the dock is maximized. Slash commands, `/model` and `@` file results all open
+through one anchored popup outside the composer, so no composer clipping can cut
+them off. The `@` list closes when the input loses focus (pressing inside the
+list does not take focus) and reopens when focus returns with the caret in an
+`@` query. A narrow Activity region shows its list or its selected
 detail, with a Back to list control, instead of squeezing both columns.
 
 ## Starting and resuming work
@@ -333,7 +337,10 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 ### Turn activity and follow-up delivery
 
 On desktop, Send remains available beside a separate Stop action during a turn.
-On mobile, Send is an arrow and its mode picker a chevron. They appear once the
+During a turn the mode picker is the trailing segment of Send, one split
+control that takes Send's accent while Send is ready. With no turn, Send alone
+sits at the row's trailing edge. On mobile, Send is an arrow and its mode
+picker a chevron. They appear once the
 composer holds text, an attachment or quoted context; their geometry stays
 reserved while hidden, so editing does not move Stop or the other toolbar
 controls. Names and the selected mode remain accessible, and the opened picker
