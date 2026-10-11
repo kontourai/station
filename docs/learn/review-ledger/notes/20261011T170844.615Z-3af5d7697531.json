@@ -1,0 +1,35 @@
+{
+  "revision": "4d87f30754376cf5cb982bca4b975f55ef3a6a18",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"#3552 changed src-ui/src/index.css by one mobile rule: .station-dialog__footer.responsive-surface-actions keeps max(16px, safe-bottom) bottom padding instead of the safe area alone. Checked this document: it makes no claim about dialog footer padding or the responsive-actions safe-area rule; no prose change.","inputs":["docs/design/chat-composer.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/collaborative-editor-pane.md","note":"#3552 changed src-ui/src/index.css by one mobile rule: .station-dialog__footer.responsive-surface-actions keeps max(16px, safe-bottom) bottom padding instead of the safe area alone. Checked this document: it makes no claim about dialog footer padding or the responsive-actions safe-area rule; no prose change.","inputs":["docs/design/collaborative-editor-pane.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/placement.md","note":"#3552 changed src-ui/src/index.css by one mobile rule: .station-dialog__footer.responsive-surface-actions keeps max(16px, safe-bottom) bottom padding instead of the safe area alone. Checked this document: it makes no claim about dialog footer padding or the responsive-actions safe-area rule; no prose change.","inputs":["docs/design/placement.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"#3552 changed src-ui/src/index.css by one mobile rule: .station-dialog__footer.responsive-surface-actions keeps max(16px, safe-bottom) bottom padding instead of the safe area alone. Checked this document: it makes no claim about dialog footer padding or the responsive-actions safe-area rule; no prose change.","inputs":["docs/design/session-tape-replay.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/connections.md","note":"#3552 changed src-ui/src/index.css by one mobile rule: .station-dialog__footer.responsive-surface-actions keeps max(16px, safe-bottom) bottom padding instead of the safe area alone. Checked this document: it makes no claim about dialog footer padding or the responsive-actions safe-area rule; no prose change.","inputs":["docs/guides/connections.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/knowledge.md","note":"#3552 changed src-ui/src/index.css by one mobile rule: .station-dialog__footer.responsive-surface-actions keeps max(16px, safe-bottom) bottom padding instead of the safe area alone. Checked this document: it makes no claim about dialog footer padding or the responsive-actions safe-area rule; no prose change.","inputs":["docs/guides/knowledge.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"#3552 changed one mobile rule in src-ui/src/index.css: the Dialog footer keeps max(16px, safe-bottom) bottom padding; the shared ResponsiveSurfaceActions rule still adds bottom safe-area padding. Re-read the footer guidance (Wrap custom footer controls in ResponsiveSurfaceActions; Dialog already does this; shared mobile rules add bottom safe-area padding): still accurate, no prose change.","inputs":["docs/guides/responsive-ui.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/theming.md","note":"#3552 changed src-ui/src/index.css by one mobile rule: .station-dialog__footer.responsive-surface-actions keeps max(16px, safe-bottom) bottom padding instead of the safe area alone. Checked this document: it makes no claim about dialog footer padding or the responsive-actions safe-area rule; no prose change.","inputs":["docs/guides/theming.md","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"#3552 changed src-ui/src/index.css by one mobile rule: .station-dialog__footer.responsive-surface-actions keeps max(16px, safe-bottom) bottom padding instead of the safe area alone. Checked this document: it makes no claim about dialog footer padding or the responsive-actions safe-area rule; no prose change.","inputs":["docs/learn/walkthroughs.md","src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/backend.md","note":"#3552 changed src-ui/src/index.css by one mobile rule: .station-dialog__footer.responsive-surface-actions keeps max(16px, safe-bottom) bottom padding instead of the safe area alone. Checked this document: it makes no claim about dialog footer padding or the responsive-actions safe-area rule; no prose change.","inputs":["docs/patterns/backend.md","src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/frontend.md","note":"#3552 changed one mobile rule in src-ui/src/index.css (Dialog footer keeps max(16px, safe-bottom) bottom padding). This pattern doc only links the responsive guide for safe areas; no claim affected, no prose change.","inputs":["docs/patterns/frontend.md","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"#3552 changed src-ui/src/index.css by one mobile rule: .station-dialog__footer.responsive-surface-actions keeps max(16px, safe-bottom) bottom padding instead of the safe area alone. Checked this document: it makes no claim about dialog footer padding or the responsive-actions safe-area rule; no prose change.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"#3552 changed src-ui/src/index.css by one mobile rule: .station-dialog__footer.responsive-surface-actions keeps max(16px, safe-bottom) bottom padding instead of the safe area alone. Checked this document: it makes no claim about dialog footer padding or the responsive-actions safe-area rule; no prose change.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-ui/src/index.css"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"#3552 changed src-ui/src/index.css by one mobile rule: .station-dialog__footer.responsive-surface-actions keeps max(16px, safe-bottom) bottom padding instead of the safe area alone. Checked this document: it makes no claim about dialog footer padding or the responsive-actions safe-area rule; no prose change.","inputs":["examples/knowledge-library/README.md","src-ui/src/index.css"]},
+
+    {"path":"src-desktop/icons/README.md","note":"#3552 changed src-ui/src/index.css by one mobile rule: .station-dialog__footer.responsive-surface-actions keeps max(16px, safe-bottom) bottom padding instead of the safe area alone. Checked this document: it makes no claim about dialog footer padding or the responsive-actions safe-area rule; no prose change.","inputs":["src-desktop/icons/README.md","src-ui/src/index.css"]}
+  ]
+}
