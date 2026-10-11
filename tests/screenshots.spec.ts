@@ -1247,6 +1247,25 @@ function overlayDockProjectMismatchHooks(): Pick<
             exact: true,
           }),
         ).toBeVisible({ timeout: 10_000 });
+        await expect
+          .poll(() =>
+            page
+              .getByRole('button', {
+                name: 'Status unavailable — repair the connection',
+                exact: true,
+              })
+              .evaluate((pill) =>
+                pill
+                  .getAnimations({ subtree: true })
+                  .filter(
+                    (animation) =>
+                      animation.playState === 'running' &&
+                      animation.effect?.getComputedTiming().iterations !==
+                        Infinity,
+                  ).length,
+              ),
+          )
+          .toBe(0);
       } finally {
         // See `withRoute`'s doc comment: every route registered above must
         // be unregistered again, or its fixture leaks into every screen
