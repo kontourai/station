@@ -3132,7 +3132,7 @@ export class DevicePairingService {
       name: token.name,
       ownerPrincipalId: token.ownerPrincipalId,
       scope: token.scope,
-      effectiveScope: this.#capScope(personalTokenDevice(token), undefined),
+      effectiveScope: this.#capScope(personalTokenDevice(token)),
       createdAt: token.createdAt,
       expiresAt: token.expiresAt,
       lastUsedAt: token.lastUsedAt,
