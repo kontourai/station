@@ -424,7 +424,11 @@
 
     "packages/contracts/src/telemetry-delivery.ts",
 
-    "packages/sdk/src/query-domains/telemetryDelivery.ts"
+    "packages/sdk/src/query-domains/telemetryDelivery.ts",
+
+    "packages/contracts/src/usage-export.ts",
+
+    "src-server/analytics/usage-export-reader.ts"
   ],
 
   "checks": [

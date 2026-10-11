@@ -596,7 +596,11 @@
 
     "src-ui/src/views/integrations/TelemetryDestinationGrants.tsx",
 
-    "packages/sdk/src/query-domains/insightsResponse.ts"
+    "packages/sdk/src/query-domains/insightsResponse.ts",
+
+    "packages/contracts/src/usage-export.ts",
+
+    "src-server/analytics/usage-export-reader.ts"
   ],
 
   "checks": [

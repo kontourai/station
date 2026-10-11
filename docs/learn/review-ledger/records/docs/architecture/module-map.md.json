@@ -984,7 +984,11 @@
 
     "src-ui/src/views/integrations/TelemetryDestinationGrants.tsx",
 
-    "src-ui/src/platform/native/bundledLocalProfileBootstrap.ts"
+    "src-ui/src/platform/native/bundledLocalProfileBootstrap.ts",
+
+    "packages/contracts/src/usage-export.ts",
+
+    "src-server/analytics/usage-export-reader.ts"
   ],
 
   "checks": [
