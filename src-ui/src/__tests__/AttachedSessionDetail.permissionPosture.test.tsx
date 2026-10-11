@@ -93,7 +93,7 @@ function renderAttached({
   streamError,
   liveStreamStoppedTerminal,
   connectionInterrupted,
-  historyRetrying,
+  historyLoaded,
   historyStoppedTerminal,
   capabilityRecoveryExhausted,
   onRetryCapabilityRecovery,
@@ -107,7 +107,7 @@ function renderAttached({
   streamError?: Error;
   liveStreamStoppedTerminal?: boolean;
   connectionInterrupted?: boolean;
-  historyRetrying?: boolean;
+  historyLoaded?: boolean;
   historyStoppedTerminal?: boolean;
   capabilityRecoveryExhausted?: boolean;
   onRetryCapabilityRecovery?: () => void;
@@ -173,7 +173,7 @@ function renderAttached({
           streamError={streamError}
           liveStreamStoppedTerminal={liveStreamStoppedTerminal}
           connectionInterrupted={connectionInterrupted}
-          historyRetrying={historyRetrying}
+          historyLoaded={historyLoaded}
           historyStoppedTerminal={historyStoppedTerminal}
           capabilityRecoveryExhausted={capabilityRecoveryExhausted}
           onRetryCapabilityRecovery={onRetryCapabilityRecovery}
@@ -335,7 +335,6 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     renderAttached({
       connected: true,
       streamError: new Error('Failed to fetch'),
-      historyRetrying: true,
     });
     expect(screen.queryByRole('status')).toBeNull();
     expect(screen.queryByText(/isn't responding/)).toBeNull();
@@ -348,6 +347,10 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     expect(
       screen.getByText('Waiting for this conversation’s messages…'),
     ).toBeTruthy();
+    expect(screen.queryByText('No messages yet.')).toBeNull();
+    // Only a completed history read can say the conversation is empty.
+    renderAttached({ connected: true, events: [], historyLoaded: true });
+    expect(screen.getByText('No messages yet.')).toBeTruthy();
   });
 
   test('a live stream interrupted past its grace window says so', () => {
@@ -405,6 +408,7 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
   test('collapses a disconnected stream into one plain-language state and keeps continuation available', () => {
     renderAttached({
       connected: false,
+      connectionInterrupted: true,
       streamError: new Error('Session history transport failed.'),
     });
 

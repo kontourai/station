@@ -375,6 +375,42 @@ describe('useSessionEventStream', () => {
     }
   });
 
+  test('a stream that fails before it ever opens is interrupted after the grace window, not the connect timeout', async () => {
+    vi.useFakeTimers();
+    fetchSSE.mockImplementationOnce(
+      (_url: string, options: typeof streamOptions) => {
+        streamOptions = options;
+        return { close };
+      },
+    );
+    const { result, unmount } = renderHook(() =>
+      useSessionEventStream('http://station.test', 'task:1'),
+    );
+    try {
+      act(() => streamOptions.onError?.(new TypeError('Failed to fetch')));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(CONNECTION_INTERRUPTION_GRACE_MS - 1);
+      });
+      expect(result.current.connectionInterrupted).toBe(false);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(result.current.connectionInterrupted).toBe(true);
+    } finally {
+      unmount();
+    }
+  });
+
+  test('reports history loaded only after a persisted read succeeds', async () => {
+    fetchSession.mockResolvedValueOnce({ session: {}, events: [] });
+    const { result } = renderHook(() =>
+      useSessionEventStream('http://station.test', 'task:1'),
+    );
+    expect(result.current.historyLoaded).toBe(false);
+    await waitFor(() => expect(result.current.historyLoaded).toBe(true));
+    expect(result.current.events).toHaveLength(0);
+  });
+
   test('a terminal stop is reported as interrupted at once', () => {
     fetchSSE.mockImplementationOnce(
       (_url: string, options: typeof streamOptions) => {
@@ -933,6 +969,35 @@ describe('useSessionEventStream', () => {
     expect(result.current.upgradeRequired).toBe(false);
     expect(close).toHaveBeenCalled();
     expect(fetchSession).not.toHaveBeenCalled();
+  });
+
+  test('an undetermined capability probe is an interruption only once it outlasts the grace window', async () => {
+    vi.useFakeTimers();
+    fetchSessionEventWindowCapability.mockResolvedValueOnce(undefined);
+    fetchSSE.mockImplementationOnce(
+      (_url: string, options: typeof streamOptions) => {
+        streamOptions = options;
+        return { close };
+      },
+    );
+    const { result, unmount } = renderHook(() =>
+      useSessionEventStream('http://station.test', 'task:1'),
+    );
+    try {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.error?.message).toBe(
+        'Session history transport failed.',
+      );
+      expect(result.current.connectionInterrupted).toBe(false);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(CONNECTION_INTERRUPTION_GRACE_MS);
+      });
+      expect(result.current.connectionInterrupted).toBe(true);
+    } finally {
+      unmount();
+    }
   });
 
   test('re-probes a closed mounted stream after cooldown and reopens it when capable', async () => {

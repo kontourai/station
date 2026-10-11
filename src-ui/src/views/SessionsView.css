@@ -584,6 +584,11 @@
   line-height: var(--k-leading-normal);
 }
 
+/* The chat pane has no padding of its own. */
+.sessions-detail--chat > .sessions-detail__connection-state {
+  margin: var(--k-space-2) var(--k-space-3) 0;
+}
+
 .sessions-detail__connection-state strong {
   color: var(--k-text);
   font-weight: 600;

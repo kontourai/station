@@ -105,7 +105,7 @@ export function AttachedSessionDetail({
   streamError,
   liveStreamStoppedTerminal,
   connectionInterrupted,
-  historyRetrying,
+  historyLoaded,
   historyStoppedTerminal,
   capabilityRecoveryExhausted,
   onRetryCapabilityRecovery,
@@ -147,11 +147,8 @@ export function AttachedSessionDetail({
    * narrated as one.
    */
   connectionInterrupted?: boolean;
-  /**
-   * A failed history read is scheduled to retry. Its `streamError` is then a
-   * blip until `connectionInterrupted` says it outlasted the grace window.
-   */
-  historyRetrying?: boolean;
+  /** History has been read, so an empty transcript is genuinely empty. */
+  historyLoaded?: boolean;
   historyStoppedTerminal?: boolean;
   capabilityRecoveryExhausted?: boolean;
   onRetryCapabilityRecovery?: () => void;
@@ -212,9 +209,11 @@ export function AttachedSessionDetail({
   useLayoutEffect(() => {
     const dock = continueDockRef.current;
     if (!dock || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() =>
-      setContinueDockHeight(dock.offsetHeight),
-    );
+    // A hidden dock (while the confirmation is open) measures 0; keep the
+    // last real height so the reserve does not collapse under the reader.
+    const observer = new ResizeObserver(() => {
+      if (dock.offsetHeight > 0) setContinueDockHeight(dock.offsetHeight);
+    });
     observer.observe(dock);
     return () => observer.disconnect();
   }, []);
@@ -368,9 +367,11 @@ export function AttachedSessionDetail({
     // the disclosure keeps that raw diagnostic, not just the plain copy.
     adoptionCause,
   ].filter((message): message is string => Boolean(message));
+  // Only the hook's grace-filtered and stopped states are outages. A single
+  // failed read (`streamError`) is a blip the hook is already retrying, or a
+  // failed older page; its detail stays under Details.
   const disconnected = Boolean(
     connectionInterrupted ||
-      (streamError && !historyRetrying) ||
       liveStreamStoppedTerminal ||
       historyStoppedTerminal ||
       capabilityRecoveryExhausted,
@@ -496,8 +497,8 @@ export function AttachedSessionDetail({
     <div
       className="sessions-detail__continue-dock"
       ref={continueDockRef}
-      // Hidden, not unmounted, while the confirmation is open: one
-      // "Continue in Station" at a time, and the dock keeps its measurement.
+      // Hidden while the confirmation is open: one "Continue in Station" at
+      // a time.
       hidden={confirmingContinuation}
     >
       {(!continuationSupported || showDockFeedback) && (
@@ -659,9 +660,11 @@ export function AttachedSessionDetail({
             // stop is already explained by the status above.
             upgradeRequired || stoppedTerminal ? null : (
               <p className="sessions-detail__feed-empty">
-                {connected || disconnected
-                  ? 'Waiting for this conversation’s messages…'
-                  : 'Connecting to Station…'}
+                {historyLoaded
+                  ? 'No messages yet.'
+                  : connected || disconnected
+                    ? 'Waiting for this conversation’s messages…'
+                    : 'Connecting to Station…'}
               </p>
             )
           ) : (

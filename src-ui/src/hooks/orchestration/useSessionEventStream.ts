@@ -210,6 +210,12 @@ export interface SessionEventStream {
    */
   connectionInterrupted: boolean;
   /**
+   * A persisted history read has succeeded for this session, so an empty
+   * `events` means the conversation has no messages rather than that none
+   * have arrived yet.
+   */
+  historyLoaded: boolean;
+  /**
    * archive#3426: the `/event-window` history read's own retry ladder hit a
    * terminal (401/403) failure and stopped — same `isTerminalHistoryFailure`
    * branch that clears `historyRetrying`, so the two together tell "history
@@ -286,6 +292,7 @@ export function useSessionEventStream(
   const [liveStreamStoppedTerminal, setLiveStreamStoppedTerminal] =
     useState(false);
   const [connectionInterrupted, setConnectionInterrupted] = useState(false);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [historyStoppedTerminal, setHistoryStoppedTerminal] = useState(false);
   const [capabilityRecoveryExhausted, setCapabilityRecoveryExhausted] =
     useState(false);
@@ -442,6 +449,7 @@ export function useSessionEventStream(
     setElidedHistory(NO_ELIDED_HISTORY);
     setLiveStreamStoppedTerminal(false);
     setConnectionInterrupted(false);
+    setHistoryLoaded(false);
     setHistoryStoppedTerminal(false);
     setCapabilityRecoveryExhausted(false);
     persistedKeys.current = new Set();
@@ -654,6 +662,7 @@ export function useSessionEventStream(
           discardPendingLiveEvents();
           apply(restored);
           hydrated = true;
+          setHistoryLoaded(true);
           historyRetryDelay = HISTORY_RETRY_BASE_MS;
           setHistoryRetrying(false);
           clearHistoryInterruption();
@@ -713,8 +722,8 @@ export function useSessionEventStream(
           // feed and nothing left to reopen it.
           cancelHistoryRetry();
           setHistoryRetrying(false);
-          // `historyStoppedTerminal` tells this story; no grace is pending.
-          cancelHistoryInterruptionTimer();
+          // `historyStoppedTerminal` tells this story instead.
+          clearHistoryInterruption();
           setHistoryStoppedTerminal(true);
           return;
         }
@@ -798,6 +807,11 @@ export function useSessionEventStream(
             authenticatedStream?.close();
             capabilityStopped = true;
             const upgradeRequired = capability === false;
+            // The host answered "unsupported", which `upgradeRequired` names;
+            // an undetermined answer leaves the stream closed and re-probing,
+            // which is an outage only once it outlasts the grace window.
+            if (upgradeRequired) cancelLiveInterruptionTimer();
+            else if (!liveInterrupted) armLiveInterruption('grace');
             setUpgradeRequired(upgradeRequired);
             setError(
               new Error(
@@ -940,11 +954,9 @@ export function useSessionEventStream(
         // soon as the transport is actively retrying again; `onOpen` still
         // also clears it for the ordinary (non-terminal-stop) reconnect
         // path.
-        onRetry: () => {
-          setLiveStreamStoppedTerminal(false);
-          // A resumed attempt that hangs must still surface.
-          if (!liveInterrupted) armLiveInterruption('connect');
-        },
+        // `onTerminal` has already marked the live stream interrupted; it
+        // stays so until a resumed attempt opens.
+        onRetry: () => setLiveStreamStoppedTerminal(false),
         onMessage: (raw) => {
           if (raw.event === 'orchestration:snapshot') {
             // archive#1092 fix (defense in depth): a snapshot
@@ -1089,6 +1101,7 @@ export function useSessionEventStream(
     elidedHistory,
     liveStreamStoppedTerminal,
     connectionInterrupted,
+    historyLoaded,
     historyStoppedTerminal,
     capabilityRecoveryExhausted,
     retryCapabilityRecovery,
