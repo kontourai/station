@@ -10011,9 +10011,6 @@ const NATIVE_STARTUP_COVER_IDENTIFIER: &str = "io.kontourai.station.startup-cove
 struct NativeCoverDesired {
     generation: u64,
     cover: Option<startup_readiness::StartupCoverContent>,
-    /// Order the window front. False for a reveal while the user has hidden
-    /// the window (closing it only hides it) since the last activation.
-    front: bool,
 }
 
 #[cfg(target_os = "macos")]
@@ -10027,14 +10024,12 @@ fn update_native_cover_desired(
     desired: &Mutex<NativeCoverDesired>,
     wake: &SyncSender<()>,
     cover: Option<startup_readiness::StartupCoverContent>,
-    front: bool,
 ) {
     let mut target = desired
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     target.generation = target.generation.wrapping_add(1);
     target.cover = cover;
-    target.front = front;
     drop(target);
 
     match wake.try_send(()) {
@@ -10073,7 +10068,6 @@ fn native_cover_dispatcher(app: AppHandle) -> Option<NativeCoverDispatcher> {
     let desired = Arc::new(Mutex::new(NativeCoverDesired {
         generation: 0,
         cover: None,
-        front: true,
     }));
     let (wake, receiver) = sync_channel(1);
     let worker_desired = Arc::clone(&desired);
@@ -10101,7 +10095,6 @@ fn native_cover_dispatcher(app: AppHandle) -> Option<NativeCoverDispatcher> {
                                         &window,
                                         &main_app,
                                         target.cover,
-                                        target.front,
                                     ) {
                                         Ok(()) => true,
                                         Err(error) => {
@@ -10184,13 +10177,12 @@ fn native_cover_failure_dialog_epoch(
 fn request_native_cover(
     app: &AppHandle,
     cover: Option<startup_readiness::StartupCoverContent>,
-    front: bool,
 ) -> bool {
     let Some(dispatcher) = app.try_state::<NativeCoverDispatcher>() else {
         log::error!("native cover dispatcher state is unavailable");
         return false;
     };
-    update_native_cover_desired(&dispatcher.desired, &dispatcher.wake, cover, front);
+    update_native_cover_desired(&dispatcher.desired, &dispatcher.wake, cover);
     true
 }
 
@@ -10477,7 +10469,6 @@ fn with_native_startup_cover(
     window: &tauri::WebviewWindow,
     app: &AppHandle,
     cover_content_request: Option<startup_readiness::StartupCoverContent>,
-    front: bool,
 ) -> Result<(), String> {
     use objc2::{ClassType, MainThreadMarker};
     use objc2_app_kit::{
@@ -10501,6 +10492,10 @@ fn with_native_startup_cover(
             // this callback; nothing escapes or is retained across a window close.
             let webview_view = unsafe { &*webview.inner().cast::<NSView>() };
             let ns_window = unsafe { &*webview.ns_window().cast::<objc2_app_kit::NSWindow>() };
+            // Read on the main thread when the change applies, so a cover or
+            // reveal queued just before the user closed (hid) the window does
+            // not bring it back.
+            let front = native_cover_should_front(main_window_hidden_by_user());
             let Some(content) = ns_window.contentView() else {
                 return;
             };
@@ -10571,8 +10566,10 @@ fn with_native_startup_cover(
                         log::debug!("native startup cover Restart did not take keyboard focus");
                     }
                 }
-                ns_window.deminiaturize(None);
-                ns_window.makeKeyAndOrderFront(None);
+                if front {
+                    ns_window.deminiaturize(None);
+                    ns_window.makeKeyAndOrderFront(None);
+                }
                 unsafe {
                     // Waiting and overdue content replace each other in place.
                     NSAccessibilityPostNotification(
@@ -10604,8 +10601,8 @@ fn with_native_startup_cover(
                     );
                 }
                 ns_window.makeFirstResponder(Some(webview_view));
-                // A window the user closed (hidden) while covered stays hidden
-                // until they activate the app again.
+                // A window the user closed (hidden) stays hidden until they
+                // activate the app again; the content is admitted either way.
                 if front {
                     ns_window.deminiaturize(None);
                     ns_window.makeKeyAndOrderFront(None);
@@ -10786,7 +10783,7 @@ fn present_startup_recovery_surface(
     ) {
         return StartupRecoveryPresentation::Deferred;
     }
-    if request_native_cover(app, Some(content), true) {
+    if request_native_cover(app, Some(content)) {
         StartupRecoveryPresentation::Presented
     } else {
         StartupRecoveryPresentation::Unavailable
@@ -10814,6 +10811,14 @@ fn main_window_hidden_by_user() -> bool {
     MAIN_WINDOW_HIDDEN_BY_USER.load(Ordering::Acquire)
 }
 
+/// Whether a cover change orders the main window front: not while the user
+/// has hidden (closed) it since the last activation.
+#[cfg(not(mobile))]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn native_cover_should_front(hidden_by_user: bool) -> bool {
+    !hidden_by_user
+}
+
 /// Whether startup recovery waits for the next activation instead of
 /// presenting now: a background (tray-only) launch, or a window the user
 /// hid while it was covered.
@@ -10830,9 +10835,8 @@ fn reveal_main_window(app: &AppHandle) {
     }
     #[cfg(target_os = "macos")]
     {
-        // Admit the content either way; only front it if the user has not
-        // hidden the window since the last activation.
-        request_native_cover(app, None, !main_window_hidden_by_user());
+        // The cover task decides on the main thread whether to front it.
+        request_native_cover(app, None);
         return;
     }
     #[cfg(not(target_os = "macos"))]
@@ -11161,10 +11165,12 @@ trait StartupRecoveryHost {
     fn recommit_native_recovery(&self);
     fn arm_deadline(&self, epoch: u64);
     /// Shows the native dialog without blocking any thread; the answer
-    /// arrives through `answer_slow_start_dialog_with`.
-    fn ask_slow_start_choice(&self, epoch: u64);
-    /// Offers the dialog again for `epoch` after another deadline period.
-    fn arm_slow_start_reoffer(&self, epoch: u64);
+    /// arrives through `answer_slow_start_dialog_with`. `attempt` counts
+    /// re-offers for this epoch (0 for the first offer).
+    fn ask_slow_start_choice(&self, epoch: u64, attempt: u32);
+    /// Schedules `run_slow_start_reoffer` for `epoch`. Production only builds
+    /// the host on a timer thread; the decision lives in that function.
+    fn arm_slow_start_reoffer(&self, epoch: u64, attempt: u32);
     fn exit(&self);
 }
 
@@ -11229,7 +11235,7 @@ impl StartupRecoveryHost for AppStartupRecoveryHost<'_> {
         arm_startup_deadline(self.app.clone(), epoch);
     }
 
-    fn ask_slow_start_choice(&self, epoch: u64) {
+    fn ask_slow_start_choice(&self, epoch: u64, attempt: u32) {
         use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
         // Non-blocking: a blocking alert scheduled on the main thread would
         // queue later cover tasks, including a late reveal, behind it.
@@ -11254,26 +11260,28 @@ impl StartupRecoveryHost for AppStartupRecoveryHost<'_> {
                         state: state.inner(),
                     },
                     epoch,
+                    attempt,
                     slow_start_dialog_choice(&result),
                 );
             });
     }
 
-    fn arm_slow_start_reoffer(&self, epoch: u64) {
+    fn arm_slow_start_reoffer(&self, epoch: u64, attempt: u32) {
         let app = self.app.clone();
         let _ = thread::Builder::new()
             .name(format!("station-startup-recovery-reoffer-{epoch}"))
             .spawn(move || {
-                thread::sleep(Duration::from_secs(30));
                 let Some(state) = app.try_state::<DesktopServerState>() else {
                     return;
                 };
-                offer_slow_start_dialog_with(
+                run_slow_start_reoffer(
                     &AppStartupRecoveryHost {
                         app: &app,
                         state: state.inner(),
                     },
                     epoch,
+                    attempt,
+                    thread::sleep,
                 );
             });
     }
@@ -11366,10 +11374,30 @@ fn resolve_slow_startup(app: &AppHandle, epoch: u64, choice: SlowStartupChoice) 
 /// Offers the native dialog for `epoch` while it is still overdue. Used
 /// where no cover can carry the recovery choice.
 #[cfg(not(mobile))]
-fn offer_slow_start_dialog_with(host: &impl StartupRecoveryHost, epoch: u64) {
+fn offer_slow_start_dialog_with(host: &impl StartupRecoveryHost, epoch: u64, attempt: u32) {
     if host.overdue_for_epoch(epoch) {
-        host.ask_slow_start_choice(epoch);
+        host.ask_slow_start_choice(epoch, attempt);
     }
+}
+
+/// Re-offer backoff: 30 s, 60 s, then at most 120 s between offers.
+#[cfg(not(mobile))]
+fn slow_start_reoffer_delay(attempt: u32) -> Duration {
+    let doublings = attempt.saturating_sub(1).min(2);
+    Duration::from_secs(30 << doublings)
+}
+
+/// The re-offer timer: wait the backoff, then offer the same choice again,
+/// only while that epoch is still overdue. It never chooses for the user.
+#[cfg(not(mobile))]
+fn run_slow_start_reoffer(
+    host: &impl StartupRecoveryHost,
+    epoch: u64,
+    attempt: u32,
+    wait: impl FnOnce(Duration),
+) {
+    wait(slow_start_reoffer_delay(attempt));
+    offer_slow_start_dialog_with(host, epoch, attempt);
 }
 
 /// Applies the dialog's answer. Keep Waiting (or dismissal) never quits; it
@@ -11379,13 +11407,14 @@ fn offer_slow_start_dialog_with(host: &impl StartupRecoveryHost, epoch: u64) {
 fn answer_slow_start_dialog_with(
     host: &impl StartupRecoveryHost,
     epoch: u64,
+    attempt: u32,
     choice: Option<SlowStartupChoice>,
 ) {
     match choice {
         Some(choice) => resolve_slow_startup_with(host, epoch, choice),
         None if host.overdue_for_epoch(epoch) => {
             log::info!("desktop startup recovery kept waiting for epoch {epoch}");
-            host.arm_slow_start_reoffer(epoch);
+            host.arm_slow_start_reoffer(epoch, attempt.saturating_add(1));
         }
         None => {}
     }
@@ -11417,7 +11446,7 @@ fn startup_deadline_elapsed_with(host: &impl StartupRecoveryHost, epoch: u64) {
         // Hosts without a native cover (Windows, Linux, or a macOS cover
         // dispatcher that failed to start) keep the native dialog.
         Some(StartupRecoveryPresentation::Unavailable) | None => {
-            offer_slow_start_dialog_with(host, epoch)
+            offer_slow_start_dialog_with(host, epoch, 0)
         }
     }
 }
@@ -11461,6 +11490,7 @@ fn offer_slow_start_dialog_after_cover_failure(app: &AppHandle, epoch: u64) {
                     state: state.inner(),
                 },
                 epoch,
+                0,
             );
         });
 }
@@ -15131,7 +15161,6 @@ mod tests {
         let desired = Mutex::new(NativeCoverDesired {
             generation: 0,
             cover: None,
-            front: true,
         });
         let (wake, receiver) = sync_channel(1);
 
@@ -15139,15 +15168,13 @@ mod tests {
             &desired,
             &wake,
             Some(startup_readiness::StartupCoverContent::Waiting),
-            true,
         );
         update_native_cover_desired(
             &desired,
             &wake,
             Some(startup_readiness::StartupCoverContent::Overdue { epoch: 1 }),
-            true,
         );
-        update_native_cover_desired(&desired, &wake, None, false);
+        update_native_cover_desired(&desired, &wake, None);
 
         assert_eq!(receiver.try_iter().count(), 1, "repeated requests coalesce");
         let mut applied = Vec::new();
@@ -15160,7 +15187,6 @@ mod tests {
             vec![NativeCoverDesired {
                 generation: 3,
                 cover: None,
-                front: false,
             }],
             "an unread cover must be superseded by the newer exact reveal"
         );
@@ -15205,6 +15231,22 @@ mod tests {
             .expect("covering tries to focus Restart");
         assert!(clear_focus < focus_restart);
         assert!(cover.contains("quit.setNextKeyView(Some(&restart))"));
+        // Fronting is decided on the main thread when the change applies, and
+        // every order-front in the cover and reveal branches is gated by it.
+        assert!(
+            cover.contains("let front = native_cover_should_front(main_window_hidden_by_user());")
+        );
+        let fronts = cover.match_indices("makeKeyAndOrderFront(None)").count();
+        assert_eq!(fronts, 2, "one order-front each for cover and reveal");
+        for (at, _) in cover.match_indices("makeKeyAndOrderFront(None)") {
+            let gate = cover[..at]
+                .rfind("if front {")
+                .expect("order-front is gated by the hidden-window decision");
+            assert!(
+                !cover[gate..at].contains('}'),
+                "order-front must sit directly inside `if front {{`"
+            );
+        }
         assert!(cover.contains("applicationIconImage()"));
         assert!(
             cover.contains("setAccessibilityRole: objc2_app_kit::NSAccessibilityStaticTextRole")
@@ -15268,7 +15310,6 @@ mod tests {
         let desired = Mutex::new(NativeCoverDesired {
             generation: 1,
             cover: Some(startup_readiness::StartupCoverContent::Waiting),
-            front: true,
         });
         let (wake, _receiver) = sync_channel(1);
         let mut applied = Vec::new();
@@ -15276,7 +15317,7 @@ mod tests {
         assert!(apply_native_cover_until_current(&desired, |target| {
             applied.push(target.cover.is_some());
             if target.cover.is_some() {
-                update_native_cover_desired(&desired, &wake, None, true);
+                update_native_cover_desired(&desired, &wake, None);
             }
             true
         }));
@@ -15293,7 +15334,6 @@ mod tests {
         let desired = Mutex::new(NativeCoverDesired {
             generation: 1,
             cover: Some(startup_readiness::StartupCoverContent::Waiting),
-            front: true,
         });
         let mut attempts = 0;
         assert!(!apply_native_cover_until_current(&desired, |_| {
@@ -15681,7 +15721,7 @@ mod tests {
         RecommitNativeRecovery,
         ArmDeadline(u64),
         AskSlowStartChoice,
-        ArmReoffer(u64),
+        ArmReoffer(u64, u32),
         Exit,
         Reveal,
     }
@@ -15799,15 +15839,15 @@ mod tests {
             self.record(HostCall::ArmDeadline(epoch));
         }
 
-        fn ask_slow_start_choice(&self, epoch: u64) {
+        fn ask_slow_start_choice(&self, epoch: u64, attempt: u32) {
             // The production dialog answers asynchronously through the same
             // function; the fake answers at once.
             self.record(HostCall::AskSlowStartChoice);
-            answer_slow_start_dialog_with(self, epoch, self.answer);
+            answer_slow_start_dialog_with(self, epoch, attempt, self.answer);
         }
 
-        fn arm_slow_start_reoffer(&self, epoch: u64) {
-            self.record(HostCall::ArmReoffer(epoch));
+        fn arm_slow_start_reoffer(&self, epoch: u64, attempt: u32) {
+            self.record(HostCall::ArmReoffer(epoch, attempt));
         }
 
         fn exit(&self) {
@@ -15848,7 +15888,7 @@ mod tests {
             startup_deadline_elapsed_with(&host, 1);
             assert_eq!(
                 host.take_calls(),
-                vec![HostCall::AskSlowStartChoice, HostCall::ArmReoffer(1)],
+                vec![HostCall::AskSlowStartChoice, HostCall::ArmReoffer(1, 1)],
                 "activation={activation}: dismissing the dialog keeps waiting and re-offers later"
             );
             startup_deadline_elapsed_with(&host, 1);
@@ -15900,16 +15940,30 @@ mod tests {
         startup_deadline_elapsed_with(&host, 1);
         assert_eq!(
             host.take_calls(),
-            vec![HostCall::AskSlowStartChoice, HostCall::ArmReoffer(1)]
+            vec![HostCall::AskSlowStartChoice, HostCall::ArmReoffer(1, 1)]
         );
-        // The re-offer timer fires: the same choice is offered again.
-        offer_slow_start_dialog_with(&host, 1);
+        // The production re-offer timer, run with a recording clock: it waits
+        // the backoff and offers the same choice again. It never restarts,
+        // quits or answers on the user's behalf.
+        let mut waited = Vec::new();
+        for attempt in 1..=4 {
+            run_slow_start_reoffer(&host, 1, attempt, |delay| waited.push(delay));
+            assert_eq!(
+                host.take_calls(),
+                vec![
+                    HostCall::AskSlowStartChoice,
+                    HostCall::ArmReoffer(1, attempt + 1)
+                ],
+                "re-offer {attempt}"
+            );
+        }
         assert_eq!(
-            host.take_calls(),
-            vec![HostCall::AskSlowStartChoice, HostCall::ArmReoffer(1)]
+            waited,
+            [30, 60, 120, 120].map(Duration::from_secs).to_vec(),
+            "re-offers back off to a two-minute cap"
         );
         // A re-offered Quit exits for that epoch.
-        answer_slow_start_dialog_with(&host, 1, Some(SlowStartupChoice::Quit));
+        answer_slow_start_dialog_with(&host, 1, 2, Some(SlowStartupChoice::Quit));
         assert_eq!(host.take_calls(), vec![HostCall::Exit]);
 
         // After a late reveal, a pending re-offer shows nothing.
@@ -15921,9 +15975,16 @@ mod tests {
         ));
         host.apply(startup_readiness::ReadinessInput::RendererMounted);
         assert_eq!(host.take_calls(), vec![HostCall::Reveal]);
-        offer_slow_start_dialog_with(&host, 1);
-        answer_slow_start_dialog_with(&host, 1, None);
+        run_slow_start_reoffer(&host, 1, 3, |_| {});
+        answer_slow_start_dialog_with(&host, 1, 3, None);
         assert_eq!(host.take_calls(), Vec::<HostCall>::new());
+    }
+
+    #[test]
+    #[cfg(not(mobile))]
+    fn a_cover_change_fronts_the_window_only_while_the_user_has_not_hidden_it() {
+        assert!(native_cover_should_front(false));
+        assert!(!native_cover_should_front(true));
     }
 
     /// A late ticket after the routed deadline still reveals with no restart.
@@ -16226,7 +16287,6 @@ mod tests {
         let overdue = NativeCoverDesired {
             generation: 4,
             cover: Some(startup_readiness::StartupCoverContent::Overdue { epoch: 2 }),
-            front: true,
         };
         assert_eq!(native_cover_failure_dialog_epoch(overdue, None), Some(2));
         assert_eq!(native_cover_failure_dialog_epoch(overdue, Some(1)), Some(2));
@@ -16237,7 +16297,6 @@ mod tests {
                     NativeCoverDesired {
                         generation: 4,
                         cover: no_choice,
-                        front: true,
                     },
                     None
                 ),

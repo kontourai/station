@@ -150,12 +150,10 @@ describe('desktop startup readiness static boundary', () => {
     expect(lib).toContain('apply_native_cover_until_current');
     expect(lib).toContain('ack_rx.recv()');
     expect(lib).toMatch(
-      /with_native_startup_cover\(\s*&window,\s*&main_app,\s*target\.cover,\s*target\.front,?\s*\)/,
+      /with_native_startup_cover\(\s*&window,\s*&main_app,\s*target\.cover,?\s*\)/,
     );
-    expect(lib).toContain('request_native_cover(app, Some(content), true)');
-    expect(lib).toMatch(
-      /request_native_cover\(app, None, !main_window_hidden_by_user\(\)\)/,
-    );
+    expect(lib).toContain('request_native_cover(app, Some(content))');
+    expect(lib).toContain('request_native_cover(app, None)');
     expect(lib).toContain('.on_page_load(|webview, payload|');
     expect(lib).toContain(
       'observe_native_startup_page(webview.app_handle(), webview.label(), payload.event())',
@@ -295,7 +293,11 @@ describe('desktop startup readiness static boundary', () => {
     expect(deadlineThread).toContain('startup_deadline_elapsed_with(');
     const deadline = rustBlock(lib, 'fn startup_deadline_elapsed_with(');
     const offer = rustBlock(lib, 'fn offer_slow_start_dialog_with(');
-    for (const body of [deadlineThread, deadline, offer]) {
+    const reoffer = rustBlock(lib, 'fn run_slow_start_reoffer(');
+    expect(reoffer).toContain(
+      'offer_slow_start_dialog_with(host, epoch, attempt)',
+    );
+    for (const body of [deadlineThread, deadline, offer, reoffer]) {
       expect(processRestartPrimitives(body)).toEqual([]);
       for (const forbidden of [
         'continue_startup_readiness',
@@ -312,7 +314,7 @@ describe('desktop startup readiness static boundary', () => {
     );
     expect(presented).toBeGreaterThanOrEqual(0);
     expect(
-      deadline.indexOf('offer_slow_start_dialog_with(host, epoch)'),
+      deadline.indexOf('offer_slow_start_dialog_with(host, epoch, 0)'),
     ).toBeGreaterThan(presented);
 
     const resolve = rustBlock(lib, 'fn resolve_slow_startup_with(');
@@ -350,6 +352,17 @@ describe('desktop startup readiness static boundary', () => {
     for (const [name, body] of Object.entries(hostMethods)) {
       if (name === 'restart_owned_sidecar') continue;
       expect([name, processRestartPrimitives(body)]).toEqual([name, []]);
+    }
+    // The re-offer timer only schedules the tested decision; choosing for the
+    // user there would turn Keep Waiting into a delayed Restart or Quit.
+    const reofferTimer = hostMethods.arm_slow_start_reoffer ?? '';
+    expect(reofferTimer).toContain('run_slow_start_reoffer(');
+    for (const forbidden of [
+      'resolve_slow_startup',
+      'answer_slow_start_dialog',
+      'offer_slow_start_dialog_with',
+    ]) {
+      expect(reofferTimer).not.toContain(forbidden);
     }
     expect(rustBlock(host, 'fn exit')).toContain('self.app.exit(1)');
 
