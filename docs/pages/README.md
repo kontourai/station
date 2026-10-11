@@ -42,7 +42,10 @@ Pages build.
 The root `docs-kit.json` mirrors `public-docs.json` for the shared Kontour docs
 system, with `README.md` as its landing page (this site's own `index.html` stays
 the hand-authored home). Only its `docs-bundle.json` is published here, and its
-document URLs are the same `docs/<path>.html` pages this builder writes. Its
+document URLs are the same `docs/<path>.html` pages this builder writes. The
+bundle step fails open: a failed docs-kit build never blocks this site's
+publish, and the previous `docs-bundle.json` stays on `gh-pages` (stale, shown
+as behind on the hub) until a later build succeeds. Its
 `exclude` globs keep every other `docs/**/*.md` unpublished, as here:
 
 - `docs/*.md`: the docs-root index, architecture overview, glossary, privacy
