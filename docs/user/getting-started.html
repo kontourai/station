@@ -129,7 +129,7 @@ sh -c 'set -eu; file=$(mktemp &quot;${TMPDIR:-/tmp}/station-install.XXXXXX&quot;
 <p>After first-run setup, Home can offer <strong>Start your first task</strong> for a confirmed Project. It uses the ordinary Task form. If the Agent is unavailable, Station shows the setup reason without creating a Task. If a start has an uncertain outcome, inspect that Task rather than creating another to retry it.</p>
 <p>Task status alone does not establish that work passed a gate. Read the run and review evidence. The <a href="https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md">Starter Work guide</a> explains how Station preserves the same work identity through retries and response loss.</p>
 <h2>See Conversations Started Outside Station</h2>
-<p><strong>Activity</strong> also lists Claude Code, Codex, Grok and OpenCode conversations you ran in a terminal or another app on this machine. Station reads them; it never controls them. It looks in four places:</p>
+<p><strong>Activity</strong> also lists Claude Code, Codex, Grok and OpenCode conversations you ran in a terminal or another app on this machine. Station reads them; it never controls them. These conversations do not raise Station sounds, popups, desktop notifications or mobile alerts, and do not appear on mobile activity cards. A new conversation you continue in Station has its ordinary alerts. Station looks in four places:</p>
 <ul>
 <li>Claude Code transcripts under <code>projects</code> in <code>CLAUDE_CONFIG_DIR</code>, or <code>~/.claude</code> when that is not set.
 </li>
