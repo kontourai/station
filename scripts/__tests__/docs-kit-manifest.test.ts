@@ -10,6 +10,16 @@ import { readStationDocsInputs } from '../generate-station-docs.mjs';
 // MCP answers with the same sections the in-app server does. Its own docs-kit
 // gate runs only after merge (.github/workflows/docs-kit.yml), so this is the
 // pull-request check that the manifests have not drifted.
+// The shape generate-station-docs.mjs returns for each shipped topic; the
+// generator is untyped JavaScript, so name the fields this test reads.
+interface ShippedTopic {
+  readonly id: string;
+  readonly title: string;
+  readonly parentId: string;
+  readonly sourcePath: string;
+  readonly sourceAnchor: string;
+}
+
 function readManifest() {
   return JSON.parse(readFileSync('docs-kit.json', 'utf8'));
 }
@@ -20,9 +30,8 @@ async function shippedManualTopics() {
   );
   // The generator's own mapping from each catalog section to its manual
   // anchor; architecture topics come from the atlas and have no manual source.
-  const topics = (await readStationDocsInputs()).filter(
-    (topic) => topic.parentId === 'manual',
-  );
+  const shipped: ShippedTopic[] = await readStationDocsInputs();
+  const topics = shipped.filter((topic) => topic.parentId === 'manual');
   return { catalog, topics };
 }
 
