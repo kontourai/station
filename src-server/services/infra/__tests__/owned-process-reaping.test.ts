@@ -1546,7 +1546,9 @@ describe.skipIf(!groupSurvivorPlatform)(
     test('a member whose identity is unavailable keeps the record and is not signaled', async () => {
       const fixture = await leaderDeadGroupAlive();
       const probeIdentity: ProcessIdentityProbe = (pid) =>
-        pid === fixture.grandchildPid ? { state: 'unavailable' } : realProbe(pid);
+        pid === fixture.grandchildPid
+          ? { state: 'unavailable' }
+          : realProbe(pid);
 
       const result = await sweepOrphanedOwnedProcesses({
         registryDir: fixture.registryDir,

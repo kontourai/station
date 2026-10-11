@@ -115,3 +115,24 @@ export function probeExactProcessIdentityAsync(
   pid: number,
   dependencies?: ProcessIdentityAsyncProbeDependencies,
 ): Promise<ExactProcessIdentityProbe>;
+/**
+ * Order two POSIX birth fingerprints from `lookupProcessBirthFingerprint` on
+ * this host: -1 (a before b), 0 (indistinguishable), 1 (a after b), or null
+ * when they cannot be parsed or ordered (different formats or Linux boots).
+ */
+export function compareProcessBirthFingerprints(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): -1 | 0 | 1 | null;
+/**
+ * True when the fingerprint's process was born before the current boot,
+ * false when within it, null when either side cannot be read.
+ */
+export function processBirthPredatesCurrentBoot(
+  fingerprint: string | null | undefined,
+  dependencies?: {
+    platform?: NodeJS.Platform;
+    exec?: ProcessIdentityDependencies['exec'];
+    readFile?: (path: string, encoding: 'utf8') => string;
+  },
+): boolean | null;

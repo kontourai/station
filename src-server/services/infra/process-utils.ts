@@ -1,5 +1,5 @@
 import type { ChildProcess } from 'node:child_process';
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import {
   mkdirSync,
   readdirSync,
@@ -11,11 +11,17 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  compareProcessBirthFingerprints,
   type ExactProcessIdentityProbe,
   lookupProcessBirthFingerprint,
+  PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
   probeExactProcessIdentity,
+  processBirthPredatesCurrentBoot,
 } from '@kontourai/station-shared/process-identity';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
+import { createLogger } from '../../utils/logger.js';
+
+const logger = createLogger({ name: 'process-utils' });
 
 interface TerminableProcess {
   readonly pid?: number;
@@ -500,11 +506,18 @@ function ownerIsGone(
 }
 
 interface OwnedProcessSweepResult {
-  /** Orphaned children that were group-SIGKILLed. */
+  /**
+   * Orphaned groups that were group-SIGKILLed: a live recorded leader, or a
+   * dead leader whose surviving members were each verified (#561).
+   */
   reaped: number[];
-  /** Records whose child had already exited on its own. */
+  /** Records whose child and its whole process group had already exited. */
   alreadyDead: number;
-  /** Records removed because the child pid was recycled (birth mismatch). */
+  /**
+   * Records removed because their pid or group id no longer names the
+   * recorded child: a birth mismatch, a surviving group member older than
+   * the recorded leader, or a record from an earlier boot.
+   */
   recycled: number;
   /** Records left in place because their owner is still demonstrably alive. */
   retained: number;
@@ -528,6 +541,149 @@ function isKillableEnginePid(pid: unknown): pid is number {
     pid > 1 &&
     pid !== process.pid
   );
+}
+
+/** A live process in a process group, as the process table reports it. */
+export interface ProcessGroupMember {
+  pid: number;
+  ppid: number;
+}
+
+/** Lists the members of process group `pgid`, or null when unreadable. */
+export type ProcessGroupLister = (
+  pgid: number,
+) => Promise<ProcessGroupMember[] | null>;
+
+const PS_PID_PPID_PGID_LINE = /^\s*(\d+)\s+(\d+)\s+(\d+)\s*$/;
+
+/**
+ * Read the members of process group `pgid` from `ps -A -o pid=,ppid=,pgid=`
+ * (macOS and procps). Null when `ps` fails, times out, or prints a line that
+ * is not exactly three integers: a partial table is never read as complete.
+ */
+export const listProcessGroupMembers: ProcessGroupLister = (pgid) =>
+  new Promise((resolve) => {
+    execFile(
+      'ps',
+      ['-A', '-o', 'pid=,ppid=,pgid='],
+      {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
+        killSignal: 'SIGKILL',
+        maxBuffer: 16 * 1024 * 1024,
+        env: { ...process.env, LC_ALL: 'C' },
+      },
+      (error, stdout) => {
+        if (error) {
+          resolve(null);
+          return;
+        }
+        const members: ProcessGroupMember[] = [];
+        for (const line of stdout.split('\n')) {
+          if (line.trim() === '') continue;
+          const match = PS_PID_PPID_PGID_LINE.exec(line);
+          if (!match) {
+            resolve(null);
+            return;
+          }
+          if (Number(match[3]) === pgid) {
+            members.push({ pid: Number(match[1]), ppid: Number(match[2]) });
+          }
+        }
+        resolve(members);
+      },
+    );
+  });
+
+type DeadLeaderGroupOutcome =
+  | { kind: 'empty' }
+  | { kind: 'foreign'; reason: string }
+  | { kind: 'retain'; reason: string }
+  | { kind: 'verified' };
+
+/**
+ * #561: the recorded leader is dead. Decide whether its process group still
+ * holds the recorded child's descendants, which must be reaped before the
+ * record may go.
+ *
+ * A process group id cannot be reused while any member lives, and a detached
+ * child is also a new session, so only its own descendants can join its
+ * group. The remaining risk is that the whole group exited earlier and the id
+ * was later reused by an unrelated group, such as a shell job whose first
+ * process has exited. So every member must prove it can belong to the
+ * recorded group before anything is signaled:
+ *
+ * - The record has a birth, and that birth is in the current boot (a group
+ *   from an earlier boot is gone, whatever now carries its id).
+ * - Each live member's identity is exact (no `unavailable`) and was born no
+ *   earlier than the recorded leader. An older member proves the id names
+ *   another group.
+ * - The group is orphaned: each member's parent is init (1) or another
+ *   member. A member whose parent lives outside the group (a shell holding a
+ *   job) is not ours to prove, so it is retained.
+ *
+ * `foreign` drops the record without signaling. `retain` keeps it for a later
+ * sweep. Only `verified` permits the group kill. Residual risk, disclosed:
+ * within one boot, an unrelated session leader reuses the pid, exits, and
+ * leaves orphaned children all born after the recorded leader.
+ */
+async function settleDeadLeaderGroup(
+  record: OwnedProcessRecord,
+  probeIdentity: ProcessIdentityProbe,
+  listGroup: ProcessGroupLister,
+): Promise<DeadLeaderGroupOutcome> {
+  if (process.platform === 'win32' || !processGroupExists(record.enginePid)) {
+    return { kind: 'empty' };
+  }
+  if (!record.engineBirth) {
+    return { kind: 'retain', reason: 'no recorded engine birth' };
+  }
+  const predatesBoot = processBirthPredatesCurrentBoot(record.engineBirth);
+  if (predatesBoot === null) {
+    return { kind: 'retain', reason: 'boot of the recorded engine unknown' };
+  }
+  if (predatesBoot) {
+    return { kind: 'foreign', reason: 'record is from an earlier boot' };
+  }
+  const members = await listGroup(record.enginePid);
+  if (members === null) {
+    return { kind: 'retain', reason: 'process group listing unavailable' };
+  }
+  const memberPids = new Set(members.map((member) => member.pid));
+  let liveMembers = 0;
+  for (const member of members) {
+    if (!isKillableEnginePid(member.pid)) {
+      return { kind: 'retain', reason: 'group lists a protected pid' };
+    }
+    const probe = probeIdentity(member.pid);
+    if (probe.state === 'dead') continue;
+    if (probe.state === 'unavailable') {
+      return { kind: 'retain', reason: 'member identity unavailable' };
+    }
+    const order = compareProcessBirthFingerprints(
+      probe.identity.start,
+      record.engineBirth,
+    );
+    if (order === null) {
+      return { kind: 'retain', reason: 'member birth not comparable' };
+    }
+    if (order < 0) {
+      return { kind: 'foreign', reason: 'member born before recorded engine' };
+    }
+    if (member.ppid !== 1 && !memberPids.has(member.ppid)) {
+      return { kind: 'retain', reason: 'member parent is outside the group' };
+    }
+    liveMembers += 1;
+  }
+  if (liveMembers === 0) {
+    // Every listed member exited while we looked. Only an empty group may
+    // drop the record; anything else is read again by a later sweep.
+    return processGroupExists(record.enginePid)
+      ? { kind: 'retain', reason: 'group changed during the sweep' }
+      : { kind: 'empty' };
+  }
+  return { kind: 'verified' };
 }
 
 /**
@@ -572,12 +728,15 @@ export async function sweepOrphanedOwnedProcesses(
      * {@link probeExactProcessIdentity}; production callers never pass it.
      */
     probeIdentity?: ProcessIdentityProbe;
+    /** Test seam over {@link listProcessGroupMembers}. */
+    listProcessGroup?: ProcessGroupLister;
   } = {},
 ): Promise<OwnedProcessSweepResult> {
   const registryDir =
     options.registryDir ?? ownedProcessRegistryDir(options.env);
   const log = options.log ?? (() => {});
   const probeIdentity = options.probeIdentity ?? probeExactProcessIdentity;
+  const listGroup = options.listProcessGroup ?? listProcessGroupMembers;
   const result: OwnedProcessSweepResult = {
     reaped: [],
     alreadyDead: 0,
@@ -636,11 +795,43 @@ export async function sweepOrphanedOwnedProcesses(
     // (null birth → skip check → kill) is structurally unwritable.
     const engineProbe = probeIdentity(record.enginePid);
     if (engineProbe.state === 'dead') {
-      result.alreadyDead += 1;
-      rmSync(file, { force: true });
-      continue;
-    }
-    if (engineProbe.state === 'unavailable') {
+      // #561: a dead leader does not mean a dead group. Its descendants keep
+      // the group id alive, and dropping the record would orphan them for good.
+      const group = await settleDeadLeaderGroup(
+        record,
+        probeIdentity,
+        listGroup,
+      );
+      if (group.kind === 'empty') {
+        result.alreadyDead += 1;
+        rmSync(file, { force: true });
+        continue;
+      }
+      if (group.kind === 'foreign') {
+        result.recycled += 1;
+        log(
+          'owned-process sweep: group id no longer names the record; removing',
+          {
+            enginePid: record.enginePid,
+            reason: group.reason,
+          },
+        );
+        rmSync(file, { force: true });
+        continue;
+      }
+      if (group.kind === 'retain') {
+        result.retained += 1;
+        log(
+          'owned-process sweep: leader dead, group alive but unproven; retaining',
+          {
+            enginePid: record.enginePid,
+            reason: group.reason,
+          },
+        );
+        continue;
+      }
+      // Verified: fall through to the same group kill and record removal.
+    } else if (engineProbe.state === 'unavailable') {
       // Alive but the fingerprint cannot be read right now (ENOSPC, high
       // load, transient failure). FAIL CLOSED: retain rather than risk
       // killing a recycled pid we cannot identify.
@@ -650,28 +841,30 @@ export async function sweepOrphanedOwnedProcesses(
         { enginePid: record.enginePid },
       );
       continue;
+    } else {
+      // 'exact': we have a current fingerprint. Compare it against the
+      // recorded birth. No recorded birth ⇒ cannot confirm identity ⇒ retain
+      // (fail closed). Mismatch ⇒ the pid was recycled ⇒ drop the record.
+      if (!record.engineBirth) {
+        result.retained += 1;
+        log(
+          'owned-process sweep: engine pid alive but no recorded birth to confirm; retaining',
+          { enginePid: record.enginePid },
+        );
+        continue;
+      }
+      if (engineProbe.identity.start !== record.engineBirth) {
+        result.recycled += 1;
+        log('owned-process sweep: engine pid recycled; removing stale record', {
+          enginePid: record.enginePid,
+        });
+        rmSync(file, { force: true });
+        continue;
+      }
     }
-    // 'exact': we have a current fingerprint. Compare it against the recorded
-    // birth. No recorded birth ⇒ cannot confirm identity ⇒ retain (fail
-    // closed). Mismatch ⇒ the pid was recycled ⇒ drop the stale record.
-    if (!record.engineBirth) {
-      result.retained += 1;
-      log(
-        'owned-process sweep: engine pid alive but no recorded birth to confirm; retaining',
-        { enginePid: record.enginePid },
-      );
-      continue;
-    }
-    if (engineProbe.identity.start !== record.engineBirth) {
-      result.recycled += 1;
-      log('owned-process sweep: engine pid recycled; removing stale record', {
-        enginePid: record.enginePid,
-      });
-      rmSync(file, { force: true });
-      continue;
-    }
-    // Identity confirmed: same pid, same birth fingerprint. The owner is gone.
-    // Reap the whole process group.
+    // Identity confirmed: the live leader matches its recorded birth, or the
+    // dead leader's surviving members were each verified above. The owner is
+    // gone. Reap the whole process group.
     try {
       // Negative pid => signal the whole process group. A detached child's
       // group id equals its pid, so this reaps the grandchild too. The pid
@@ -750,16 +943,26 @@ export function spawnOwnedChild(
   // Register as soon as a pid exists. If the spawn itself is about to fail
   // (ENOENT), the pid may be undefined — nothing to register, and the caller's
   // own 'error' handling applies. A successfully spawned child gets a record
-  // BEFORE this function returns, so the owner cannot die between spawn and
-  // registration.
+  // before this function returns, so no in-process failure can separate the
+  // two. A SIGKILL of the owner between `spawn` and the write (which includes
+  // a synchronous birth probe) still leaves an unregistered group (#561).
   if (typeof proc.pid === 'number') {
     const registryDir = options.registryDir ?? ownedProcessRegistryDir();
+    const warn = (message: string, data?: unknown) =>
+      logger.warn(message, { command, pid: proc.pid, detail: data });
     try {
-      recordOwnedProcess(proc.pid, owner, command, { registryDir });
-    } catch {
+      recordOwnedProcess(proc.pid, owner, command, { registryDir, log: warn });
+    } catch (error) {
       // A registry write failure must never prevent the spawn from succeeding;
       // the graceful destroy path still works without it. The child is simply
-      // not sweep-protected if the host disk is unwritable.
+      // not sweep-protected if the host disk is unwritable, and says so.
+      warn(
+        'owned-process registry: record write failed; child is not sweep-protected',
+        {
+          registryDir,
+          error: String(error),
+        },
+      );
     }
   }
   const release = () => {
@@ -769,4 +972,36 @@ export function spawnOwnedChild(
     }
   };
   return { proc, release };
+}
+
+/**
+ * Release an owned child's registry record once its whole process group has
+ * exited, not just the leader (#561). A leader that exits while descendants
+ * keep its group alive keeps its record, so the next startup sweep after this
+ * owner is gone can reap them. On Windows there is no group to wait for.
+ */
+export function releaseOwnedChildAfterGroupExit(
+  proc: Pick<ChildProcess, 'pid' | 'once'>,
+  release: () => void,
+  options: { pollMs?: number; maxWaitMs?: number } = {},
+): void {
+  const pollMs = options.pollMs ?? 50;
+  const maxWaitMs = options.maxWaitMs ?? 5_000;
+  proc.once('exit', () => {
+    const pid = proc.pid;
+    if (typeof pid !== 'number' || process.platform === 'win32') {
+      release();
+      return;
+    }
+    const deadline = Date.now() + maxWaitMs;
+    const check = () => {
+      if (!processGroupExists(pid)) {
+        release();
+        return;
+      }
+      if (Date.now() >= deadline) return;
+      setTimeout(check, pollMs).unref();
+    };
+    check();
+  });
 }
