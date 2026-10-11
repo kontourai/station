@@ -175,3 +175,43 @@ test('pressing inside the mention list keeps it open, and refocusing reopens it 
   await composer.focus();
   await expect(list).toBeVisible();
 });
+
+test('a click refocus reopens the mention list only when the caret lands in the query', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mount(page);
+  const composer = page.getByRole('textbox');
+  const list = page.getByRole('listbox', { name: 'Files and folders' });
+  const away = page.getByRole('button', { name: 'First chat' });
+  await composer.click();
+  await composer.pressSequentially('@src');
+  await expect(list).toBeVisible();
+  const box = await composer.boundingBox();
+
+  // Caret left at the start, then a click at the end of the query: reopens.
+  await composer.press('Home');
+  await away.focus();
+  await expect(list).toHaveCount(0);
+  await page.mouse.click(box!.x + box!.width - 12, box!.y + 12);
+  await expect
+    .poll(() => composer.evaluate((t: HTMLTextAreaElement) => t.selectionStart))
+    .toBe(4);
+  await expect(list).toBeVisible();
+
+  // Caret left in the query, then a click at the start: stays closed.
+  await away.focus();
+  await expect(list).toHaveCount(0);
+  await page.mouse.click(box!.x + 4, box!.y + 12);
+  await expect
+    .poll(() => composer.evaluate((t: HTMLTextAreaElement) => t.selectionStart))
+    .toBe(0);
+  // The refocus sync runs one frame after focus; let two frames pass.
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  await expect(list).toHaveCount(0);
+});

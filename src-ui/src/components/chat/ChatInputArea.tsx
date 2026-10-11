@@ -1179,12 +1179,22 @@ export function ChatInputArea({
             onFocus={(e) => {
               setShortcutContext('composerFocused', true);
               updateFromInput(input);
-              // Blur closes the file picker; refocusing inside an `@` query
-              // brings it back, as it does for the other pickers.
-              syncMentionQuery(
-                input,
-                e.target.selectionStart ?? e.target.value.length,
-              );
+              // Blur closes the file picker; refocusing inside an `@` query brings it
+              // back, as it does for the other pickers. Read the caret a frame later: a
+              // click focuses on mousedown, before the caret moves to the click point.
+              const textarea = e.currentTarget;
+              const focusedValue = textarea.value;
+              requestAnimationFrame(() => {
+                if (
+                  document.activeElement !== textarea ||
+                  textarea.value !== focusedValue
+                )
+                  return;
+                syncMentionQuery(
+                  input,
+                  textarea.selectionStart ?? focusedValue.length,
+                );
+              });
             }}
             onBlur={() => {
               setShortcutContext('composerFocused', false);
