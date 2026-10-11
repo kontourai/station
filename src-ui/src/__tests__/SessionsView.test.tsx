@@ -74,6 +74,8 @@ let historyState = {
   historyRetrying: false,
   elidedHistory: { total: 0, byteLimit: 0, outputLimit: 0 },
 };
+/** Connection flags the attached detail reads from the real hook. */
+let streamFlags: { connectionInterrupted?: boolean } = {};
 let attentionItems: Array<Record<string, unknown>> = [];
 let attentionQueryState: {
   isLoading: boolean;
@@ -320,6 +322,7 @@ vi.mock('../hooks/orchestration/useSessionEventStream', () => ({
     connected: true,
     loadOlder,
     ...historyState,
+    ...streamFlags,
   }),
 }));
 
@@ -487,6 +490,7 @@ describe('SessionsView', () => {
       historyRetrying: false,
       elidedHistory: { total: 0, byteLimit: 0, outputLimit: 0 },
     };
+    streamFlags = {};
     attentionItems = [];
     attentionQueryState = { isLoading: false, isError: false, error: null };
     attentionRefetch.mockClear();
@@ -2638,6 +2642,32 @@ describe('SessionsView', () => {
       within(detail).queryByLabelText(/input|follow-up|continue/i),
     ).toBeNull();
     expect(within(detail).queryByTestId('session-request')).toBeNull();
+  });
+
+  test('an attached session says Station is unreachable only once the hook reports an interruption, not for a retrying history blip', () => {
+    sessions[0] = {
+      ...sessions[0],
+      threadId: 'external:claude:terminal-1',
+      controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
+      delegation: undefined,
+    };
+    historyState = {
+      ...historyState,
+      error: new Error('Failed to fetch'),
+      historyRetrying: true,
+    };
+    const view = renderView('external:claude:terminal-1');
+    expect(screen.queryByText(/isn't responding/)).toBeNull();
+    view.unmount();
+
+    streamFlags = { connectionInterrupted: true };
+    renderView('external:claude:terminal-1');
+    expect(
+      screen.getByText(
+        "Station isn't responding right now — retrying automatically.",
+      ),
+    ).toBeTruthy();
   });
 
   test('continues an attached session into the returned Station child and keeps the source read only', async () => {

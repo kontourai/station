@@ -51,7 +51,7 @@ export function SessionDetail({
     historyRetrying,
     elidedHistory,
     liveStreamStoppedTerminal,
-    liveStreamInterrupted,
+    connectionInterrupted,
     historyStoppedTerminal,
     capabilityRecoveryExhausted,
     retryCapabilityRecovery,
@@ -136,7 +136,8 @@ export function SessionDetail({
           upgradeRequired={upgradeRequired}
           streamError={error}
           liveStreamStoppedTerminal={liveStreamStoppedTerminal}
-          liveStreamInterrupted={liveStreamInterrupted}
+          connectionInterrupted={connectionInterrupted}
+          historyRetrying={historyRetrying}
           historyStoppedTerminal={historyStoppedTerminal}
           capabilityRecoveryExhausted={capabilityRecoveryExhausted}
           onRetryCapabilityRecovery={retryCapabilityRecovery}

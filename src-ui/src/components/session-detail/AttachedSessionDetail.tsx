@@ -15,7 +15,13 @@ import {
 } from '@kontourai/station-sdk';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { useMutation } from '@tanstack/react-query';
-import { useId, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { useToast } from '../../contexts/ToastContext';
 import { conversationPartToContentParts } from '../../hooks/orchestration/conversationTranscriptParts';
 import type { OrchestrationEvent } from '../../hooks/orchestration/types';
@@ -98,7 +104,8 @@ export function AttachedSessionDetail({
   upgradeRequired,
   streamError,
   liveStreamStoppedTerminal,
-  liveStreamInterrupted,
+  connectionInterrupted,
+  historyRetrying,
   historyStoppedTerminal,
   capabilityRecoveryExhausted,
   onRetryCapabilityRecovery,
@@ -134,11 +141,17 @@ export function AttachedSessionDetail({
    */
   liveStreamStoppedTerminal?: boolean;
   /**
-   * The live stream failed and stayed down past the hook's grace window.
-   * `connected === false` alone is also true while the stream is still
-   * opening, which is not an outage and must not be narrated as one.
+   * Station stayed unreachable past the hook's grace window (see
+   * `useSessionEventStream`). `connected === false` alone is also true while
+   * the stream is still opening, which is not an outage and must not be
+   * narrated as one.
    */
-  liveStreamInterrupted?: boolean;
+  connectionInterrupted?: boolean;
+  /**
+   * A failed history read is scheduled to retry. Its `streamError` is then a
+   * blip until `connectionInterrupted` says it outlasted the grace window.
+   */
+  historyRetrying?: boolean;
   historyStoppedTerminal?: boolean;
   capabilityRecoveryExhausted?: boolean;
   onRetryCapabilityRecovery?: () => void;
@@ -190,6 +203,21 @@ export function AttachedSessionDetail({
   // that needs explaining (#3386: a No project chat in its own folder) is
   // confirmed in a dialog before anything is requested.
   const [confirmingContinuation, setConfirmingContinuation] = useState(false);
+  // The floating dock grows when it carries a note; the scroll region keeps
+  // that much room at its end so the last of the conversation can clear it.
+  const continueDockRef = useRef<HTMLDivElement>(null);
+  const [continueDockHeight, setContinueDockHeight] = useState<
+    number | undefined
+  >(undefined);
+  useLayoutEffect(() => {
+    const dock = continueDockRef.current;
+    if (!dock || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() =>
+      setContinueDockHeight(dock.offsetHeight),
+    );
+    observer.observe(dock);
+    return () => observer.disconnect();
+  }, []);
   const continuationDescriptionId = useId();
   const [draft, setDraft] = useState('');
   const confirmedDraft = useRef('');
@@ -313,12 +341,14 @@ export function AttachedSessionDetail({
         });
       }
     },
-    onSuccess: (child, intent) =>
+    onSuccess: (child, intent) => {
+      setConfirmingContinuation(false);
       onAdopted(
         child,
         intent,
         presentation === 'chat' ? confirmedDraft.current : undefined,
-      ),
+      );
+    },
     onError: (error) => {
       // Keep the diagnostic available to native/browser developer consoles;
       // the screen deliberately presents a plain-language recovery state.
@@ -339,8 +369,8 @@ export function AttachedSessionDetail({
     adoptionCause,
   ].filter((message): message is string => Boolean(message));
   const disconnected = Boolean(
-    liveStreamInterrupted ||
-      streamError ||
+    connectionInterrupted ||
+      (streamError && !historyRetrying) ||
       liveStreamStoppedTerminal ||
       historyStoppedTerminal ||
       capabilityRecoveryExhausted,
@@ -377,6 +407,9 @@ export function AttachedSessionDetail({
     Boolean(adoptionRefusal) ||
     !continuationSupported ||
     adoption.isPending ||
+    // Continued: the parent swaps this pane for the new conversation, and
+    // until it does a second request could create a duplicate.
+    adoption.isSuccess ||
     openingContinuation ||
     continuationCreated ||
     serverRejectedRetry;
@@ -460,7 +493,13 @@ export function AttachedSessionDetail({
   // is unavailable, a failed attempt) is said beside it.
   const showDockFeedback = Boolean(adoption.error) && !confirmingContinuation;
   const continuationDock = (
-    <div className="sessions-detail__continue-dock">
+    <div
+      className="sessions-detail__continue-dock"
+      ref={continueDockRef}
+      // Hidden, not unmounted, while the confirmation is open: one
+      // "Continue in Station" at a time, and the dock keeps its measurement.
+      hidden={confirmingContinuation}
+    >
       {(!continuationSupported || showDockFeedback) && (
         <div className="sessions-detail__continue-note">
           {!continuationSupported && (
@@ -507,7 +546,14 @@ export function AttachedSessionDetail({
     <section
       className={`sessions-detail sessions-detail--read-only${presentation === 'chat' ? ' sessions-detail--chat' : ''}`}
       data-testid="session-detail"
-      style={visualViewport.style}
+      style={
+        continueDockHeight === undefined
+          ? visualViewport.style
+          : ({
+              ...visualViewport.style,
+              '--continue-dock-height': `${continueDockHeight}px`,
+            } as CSSProperties)
+      }
     >
       {presentation !== 'chat' && (
         <header className="sessions-detail__header">
@@ -519,6 +565,47 @@ export function AttachedSessionDetail({
             </p>
           </div>
         </header>
+      )}
+
+      {/* Pinned above the conversation, not scrolled with it: the view opens
+          at the latest message, where a status at the top of the scroll
+          region would never be seen. */}
+      {upgradeRequired ? (
+        <div className="sessions-detail__connection-state" role="status">
+          <strong>
+            This Station needs an update before it can show this session's
+            history.
+          </strong>
+          <p>Update Station on the host computer, then reopen this session.</p>
+        </div>
+      ) : (
+        disconnected &&
+        (stoppedTerminal ? (
+          <div className="sessions-detail__connection-state" role="status">
+            <strong>
+              Station stopped reconnecting — it rejected this session's
+              credentials.
+            </strong>
+          </div>
+        ) : stoppedRecoverable ? (
+          <div className="sessions-detail__connection-state" role="status">
+            <strong>
+              Station stopped checking for this session's history and live
+              updates automatically.
+            </strong>
+            {onRetryCapabilityRecovery && (
+              <Button variant="secondary" onClick={onRetryCapabilityRecovery}>
+                Retry now
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="sessions-detail__connection-state" role="status">
+            <strong>
+              Station isn't responding right now — retrying automatically.
+            </strong>
+          </div>
+        ))
       )}
 
       {/* archive#3305: one scroll region for everything below the pinned
@@ -546,46 +633,6 @@ export function AttachedSessionDetail({
             </Button>
           </div>
         )}
-        {upgradeRequired ? (
-          <div className="sessions-detail__connection-state" role="status">
-            <strong>
-              This Station needs an update before it can show this session's
-              history.
-            </strong>
-            <p>
-              Update Station on the host computer, then reopen this session.
-            </p>
-          </div>
-        ) : (
-          disconnected &&
-          (stoppedTerminal ? (
-            <div className="sessions-detail__connection-state" role="status">
-              <strong>
-                Station stopped reconnecting — it rejected this session's
-                credentials.
-              </strong>
-            </div>
-          ) : stoppedRecoverable ? (
-            <div className="sessions-detail__connection-state" role="status">
-              <strong>
-                Station stopped checking for this session's history and live
-                updates automatically.
-              </strong>
-              {onRetryCapabilityRecovery && (
-                <Button variant="secondary" onClick={onRetryCapabilityRecovery}>
-                  Retry now
-                </Button>
-              )}
-            </div>
-          ) : (
-            <div className="sessions-detail__connection-state" role="status">
-              <strong>
-                Station isn't responding right now — retrying automatically.
-              </strong>
-            </div>
-          ))
-        )}
-
         {presentation === 'chat' && onLoadOlder && (
           <div className="session-history-controls responsive-surface-actions">
             <Button
@@ -607,11 +654,16 @@ export function AttachedSessionDetail({
           ref={transcriptBodyRef}
         >
           {messages.length === 0 ? (
-            <p className="sessions-detail__feed-empty">
-              {connected || disconnected
-                ? 'No messages yet.'
-                : 'Connecting to Station…'}
-            </p>
+            // Nothing here claims the conversation is empty: the history
+            // read may still be on its way, and an upgrade or a credential
+            // stop is already explained by the status above.
+            upgradeRequired || stoppedTerminal ? null : (
+              <p className="sessions-detail__feed-empty">
+                {connected || disconnected
+                  ? 'Waiting for this conversation’s messages…'
+                  : 'Connecting to Station…'}
+              </p>
+            )
           ) : (
             messages.map((message, index) => {
               // Chat's own mapping, so a runtime error's code (its
@@ -719,8 +771,10 @@ export function AttachedSessionDetail({
             </>
           }
         >
-          {continuationExplanation}
-          {continuationFeedback}
+          <div className="sessions-detail__confirm">
+            {continuationExplanation}
+            {continuationFeedback}
+          </div>
         </Dialog>
       )}
       {presentation === 'chat' && (

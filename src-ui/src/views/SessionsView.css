@@ -82,7 +82,7 @@
   max-width: 100%;
   min-height: 28px;
   padding: 0 var(--space-2);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font: inherit;
   font-size: var(--text-xs);
   cursor: pointer;
@@ -483,36 +483,50 @@
   flex: 1 0 auto;
 }
 
+/* No box around the conversation, and no clipping either: the scroll region
+   already scrolls, and an ordered list's markers hang outside its message. */
 .sessions-detail--read-only:not(.sessions-detail--chat)
-  .sessions-detail__transcript {
+.sessions-detail__transcript {
   padding: 0;
   border: 0;
   background: none;
+  overflow: visible;
 }
 
 /* The read-only inspector's single action floats over the conversation, so
    the reading flow is the transcript and nothing else. The scroll region
-   keeps room at its end so the last message can scroll clear of it. */
+   keeps room at its end, sized from the dock itself (it grows when it carries
+   a note), so the end of the conversation can scroll clear of it. */
 .sessions-detail--read-only:not(.sessions-detail--chat) {
   position: relative;
 }
 
 .sessions-detail--read-only:not(.sessions-detail--chat)
   .sessions-detail__scroll {
-  padding-bottom: calc(44px + var(--space-6));
+  padding-bottom: calc(
+    var(--continue-dock-height, 44px) +
+    var(--k-space-4) +
+    var(--k-space-3)
+  );
 }
 
+/* The pane's own padding already clears the safe area and the app shell's
+   dock, so the inset here is only the visual gap. */
 .sessions-detail__continue-dock {
   position: absolute;
-  right: var(--space-4);
-  bottom: calc(var(--space-4) + var(--safe-bottom, 0px));
+  right: var(--k-space-4);
+  bottom: var(--k-space-4);
   z-index: 2;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: var(--space-2);
-  max-width: min(22rem, calc(100% - 2 * var(--space-4)));
+  gap: var(--k-space-2);
+  max-width: min(22rem, calc(100% - 2 * var(--k-space-4)));
   pointer-events: none;
+}
+
+.sessions-detail__continue-dock[hidden] {
+  display: none;
 }
 
 .sessions-detail__continue-dock > * {
@@ -520,14 +534,14 @@
 }
 
 .sessions-detail__continue-note {
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md);
-  background: var(--bg-secondary);
-  box-shadow: var(--shadow-md);
-  color: var(--text-secondary);
-  font-size: 0.8rem;
-  line-height: 1.4;
+  padding: var(--k-space-2) var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel-raised);
+  box-shadow: var(--k-shadow);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
 }
 
 .sessions-detail__continue-note p {
@@ -535,57 +549,76 @@
 }
 
 .sessions-detail__continue-note p + p {
-  margin-top: var(--space-1);
+  margin-top: var(--k-space-1);
 }
 
 .button.sessions-detail__continue-fab {
   min-height: 44px;
-  padding-inline: var(--space-5);
+  padding-inline: var(--k-space-5);
   border-radius: var(--radius-pill);
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--k-shadow);
 }
 
 .sessions-detail__adoption-folder {
   overflow-wrap: anywhere;
 }
 
-.sessions-detail__connection-state {
+/* Spacing for the continuation confirmation's paragraphs. */
+.sessions-detail__confirm {
+  display: grid;
+  gap: var(--k-space-3);
+}
+
+.sessions-detail__confirm p {
   margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  background: var(--bg-secondary);
-  color: var(--text-secondary);
-  font-size: 0.82rem;
-  line-height: 1.4;
+}
+
+.sessions-detail__connection-state {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: var(--k-space-2) var(--k-space-3);
+  border-radius: var(--k-radius-md);
+  background: var(--k-caution-soft);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  line-height: var(--k-leading-normal);
 }
 
 .sessions-detail__connection-state strong {
-  color: var(--text-primary);
+  color: var(--k-text);
   font-weight: 600;
 }
 
+.sessions-detail__connection-state p {
+  margin: var(--k-space-1) 0 0;
+}
+
 .sessions-detail__connection-state .button {
-  margin-top: var(--space-2);
+  margin-top: var(--k-space-2);
 }
 
 .sessions-detail__details {
   margin: 0;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  line-height: 1.4;
+  color: var(--k-text-faint);
+  font-size: var(--k-text-xs);
+  line-height: var(--k-leading-normal);
 }
 
 .sessions-detail__details p {
-  margin: var(--space-1) 0 0;
+  margin: var(--k-space-1) 0 0;
 }
 
+/* A 44px tap target for a quiet, one-word disclosure. */
 .sessions-detail__details summary {
   cursor: pointer;
   width: fit-content;
+  min-width: 44px;
+  padding-block: 13px;
+  padding-inline-end: var(--k-space-3);
 }
 
 .sessions-detail__details summary:hover {
-  color: var(--text-primary);
+  color: var(--k-text);
 }
 
 .sessions-detail__details code {
@@ -594,8 +627,12 @@
 
 .sessions-detail__adoption-reason {
   margin: 0;
-  color: var(--text-secondary);
-  font-size: 0.8rem;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.sessions-detail__adoption-reason[role="alert"] {
+  color: var(--k-negative);
 }
 
 .sessions-detail__transcript {

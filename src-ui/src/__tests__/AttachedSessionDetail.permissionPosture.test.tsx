@@ -92,7 +92,8 @@ function renderAttached({
   upgradeRequired,
   streamError,
   liveStreamStoppedTerminal,
-  liveStreamInterrupted,
+  connectionInterrupted,
+  historyRetrying,
   historyStoppedTerminal,
   capabilityRecoveryExhausted,
   onRetryCapabilityRecovery,
@@ -105,7 +106,8 @@ function renderAttached({
   upgradeRequired?: boolean;
   streamError?: Error;
   liveStreamStoppedTerminal?: boolean;
-  liveStreamInterrupted?: boolean;
+  connectionInterrupted?: boolean;
+  historyRetrying?: boolean;
   historyStoppedTerminal?: boolean;
   capabilityRecoveryExhausted?: boolean;
   onRetryCapabilityRecovery?: () => void;
@@ -170,7 +172,8 @@ function renderAttached({
           upgradeRequired={upgradeRequired}
           streamError={streamError}
           liveStreamStoppedTerminal={liveStreamStoppedTerminal}
-          liveStreamInterrupted={liveStreamInterrupted}
+          connectionInterrupted={connectionInterrupted}
+          historyRetrying={historyRetrying}
           historyStoppedTerminal={historyStoppedTerminal}
           capabilityRecoveryExhausted={capabilityRecoveryExhausted}
           onRetryCapabilityRecovery={onRetryCapabilityRecovery}
@@ -328,8 +331,27 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     expect(screen.queryByText(/isn't responding/)).toBeNull();
   });
 
+  test('a history read that failed and is retrying is a blip, not an outage, until the hook says otherwise', () => {
+    renderAttached({
+      connected: true,
+      streamError: new Error('Failed to fetch'),
+      historyRetrying: true,
+    });
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.queryByText(/isn't responding/)).toBeNull();
+  });
+
+  test('an empty transcript claims nothing about the conversation while its history is unavailable', () => {
+    renderAttached({ connected: true, events: [], upgradeRequired: true });
+    expect(screen.queryByText(/messages yet|Waiting for/)).toBeNull();
+    renderAttached({ connected: true, events: [] });
+    expect(
+      screen.getByText('Waiting for this conversation’s messages…'),
+    ).toBeTruthy();
+  });
+
   test('a live stream interrupted past its grace window says so', () => {
-    renderAttached({ connected: false, liveStreamInterrupted: true });
+    renderAttached({ connected: false, connectionInterrupted: true });
     expect(
       screen.getByText(
         "Station isn't responding right now — retrying automatically.",
@@ -767,6 +789,38 @@ describe('a conversation no project claims (#3386)', () => {
         target: { kind: 'own-folder' },
       }),
     );
+  });
+
+  test('a confirmed inspector continuation closes its dialog and cannot be requested twice', async () => {
+    adoptOrchestrationSession.mockClear();
+    adoptOrchestrationSession.mockResolvedValue({ threadId: 'continued' });
+    const onAdopted = vi.fn();
+    renderAttached({
+      onAdopted,
+      session: { projectSlug: undefined, cwd: '/work/scratch/app' },
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Continue in Station' }),
+    );
+    const dialog = screen.getByRole('dialog', {
+      name: 'Continue in Station?',
+    });
+    // One action at a time: the floating one is hidden behind the dialog.
+    expect(
+      screen.getAllByRole('button', { name: 'Continue in Station' }),
+    ).toHaveLength(1);
+    fireEvent.click(
+      within(dialog).getByRole('button', { name: 'Continue in Station' }),
+    );
+    await waitFor(() => expect(onAdopted).toHaveBeenCalledTimes(1));
+    expect(adoptOrchestrationSession).toHaveBeenCalledWith(
+      expect.objectContaining({ target: { kind: 'own-folder' } }),
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const again = screen.getByRole('button', { name: 'Continue in Station' });
+    expect(again.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(again);
+    expect(adoptOrchestrationSession).toHaveBeenCalledTimes(1);
   });
 
   test('an ambiguous conversation names its candidates, not No project', () => {

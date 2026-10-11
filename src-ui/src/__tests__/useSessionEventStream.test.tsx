@@ -84,7 +84,8 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 import {
-  LIVE_STREAM_INTERRUPTION_GRACE_MS,
+  CONNECTION_INTERRUPTION_GRACE_MS,
+  LIVE_STREAM_CONNECT_TIMEOUT_MS,
   MAX_FEED_EVENTS,
   mergeSessionEvents,
   useSessionEventStream,
@@ -299,36 +300,76 @@ describe('useSessionEventStream', () => {
     try {
       // Still connecting: `connected` is false, and that is not an outage.
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(
-          LIVE_STREAM_INTERRUPTION_GRACE_MS * 2,
-        );
+        await vi.advanceTimersByTimeAsync(CONNECTION_INTERRUPTION_GRACE_MS * 2);
       });
       expect(result.current.connected).toBe(false);
-      expect(result.current.liveStreamInterrupted).toBe(false);
+      expect(result.current.connectionInterrupted).toBe(false);
+      // …until the connect has hung past its own timeout.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(
+          LIVE_STREAM_CONNECT_TIMEOUT_MS - CONNECTION_INTERRUPTION_GRACE_MS * 2,
+        );
+      });
+      expect(result.current.connectionInterrupted).toBe(true);
+      act(() => streamOptions.onOpen?.());
+      expect(result.current.connectionInterrupted).toBe(false);
 
       // A blip that reopens inside the grace window is never reported.
       act(() => streamOptions.onError?.(new TypeError('Failed to fetch')));
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(
-          LIVE_STREAM_INTERRUPTION_GRACE_MS - 1,
-        );
+        await vi.advanceTimersByTimeAsync(CONNECTION_INTERRUPTION_GRACE_MS - 1);
       });
-      expect(result.current.liveStreamInterrupted).toBe(false);
+      expect(result.current.connectionInterrupted).toBe(false);
       act(() => streamOptions.onOpen?.());
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(LIVE_STREAM_INTERRUPTION_GRACE_MS);
+        await vi.advanceTimersByTimeAsync(CONNECTION_INTERRUPTION_GRACE_MS);
       });
-      expect(result.current.liveStreamInterrupted).toBe(false);
+      expect(result.current.connectionInterrupted).toBe(false);
 
       // A failure that outlasts the window is.
       act(() => streamOptions.onError?.(new TypeError('Failed to fetch')));
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(LIVE_STREAM_INTERRUPTION_GRACE_MS);
+        await vi.advanceTimersByTimeAsync(CONNECTION_INTERRUPTION_GRACE_MS);
       });
-      expect(result.current.liveStreamInterrupted).toBe(true);
+      expect(result.current.connectionInterrupted).toBe(true);
 
       act(() => streamOptions.onOpen?.());
-      expect(result.current.liveStreamInterrupted).toBe(false);
+      expect(result.current.connectionInterrupted).toBe(false);
+    } finally {
+      unmount();
+    }
+  });
+
+  test('a failed history read is a blip inside the grace window and an interruption past it, until a read succeeds', async () => {
+    vi.useFakeTimers();
+    fetchSession
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValue({ session: {}, events: [] });
+    const { result, unmount } = renderHook(() =>
+      useSessionEventStream('http://station.test', 'task:1'),
+    );
+    try {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.connected).toBe(true);
+      expect(result.current.error?.message).toBe('Failed to fetch');
+      expect(result.current.historyRetrying).toBe(true);
+      expect(result.current.connectionInterrupted).toBe(false);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(CONNECTION_INTERRUPTION_GRACE_MS);
+      });
+      expect(fetchSession.mock.calls.length).toBeGreaterThan(1);
+      expect(result.current.connectionInterrupted).toBe(true);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(result.current.error).toBeUndefined();
+      expect(result.current.connectionInterrupted).toBe(false);
     } finally {
       unmount();
     }
@@ -351,7 +392,7 @@ describe('useSessionEventStream', () => {
           new sdk.StationHttpError(401, 'Unauthorized'),
         );
       });
-      expect(result.current.liveStreamInterrupted).toBe(true);
+      expect(result.current.connectionInterrupted).toBe(true);
     } finally {
       unmount();
     }

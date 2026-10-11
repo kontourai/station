@@ -149,6 +149,9 @@ const PINNED_CHILD_CLASSES = [
   // The read-only inspector's continuation floats over the conversation:
   // pinned on purpose, so it is reachable at any scroll position.
   'sessions-detail__continue-dock',
+  // Connection status stays in view above the conversation, which opens at
+  // its latest message.
+  'sessions-detail__connection-state',
 ];
 
 function unpinnedChildrenOutsideScroll(detail: Element): string[] {
