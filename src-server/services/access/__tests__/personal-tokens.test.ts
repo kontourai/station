@@ -13,7 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
 import {
@@ -216,6 +216,30 @@ describe('personal access tokens', () => {
     });
     await security.resetEnvironment();
     expect(security.verifyCredential(minted.secret)).toBe(false);
+  });
+
+  test('a token minted while a reset runs does not survive it', async () => {
+    const { security } = await station();
+    const casey = pairCasey(security.devicePairing);
+    const pairing = security.devicePairing;
+    const clear = pairing.clearPersonalTokens.bind(pairing);
+    let minted: { secret: string } | undefined;
+    // A mint lands right after the reset's first revocation pass.
+    vi.spyOn(pairing, 'clearPersonalTokens').mockImplementationOnce(
+      async () => {
+        await clear();
+        minted = await pairing.mintPersonalToken({
+          name: 'racer',
+          binding: casey.device.principalBinding!,
+          ownerPrincipalId: 'human:tailscale-serve:casey',
+          scope: 'orchestration:read',
+          expiresAt: null,
+        });
+      },
+    );
+    await security.resetEnvironment();
+    expect(minted).toBeDefined();
+    expect(security.verifyCredential(minted!.secret)).toBe(false);
   });
 
   test('a reset that cannot revoke tokens changes nothing', async () => {
