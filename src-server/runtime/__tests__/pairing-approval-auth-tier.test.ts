@@ -540,7 +540,7 @@ describe('a request that asks for an elevated grant', () => {
   const WITH_FULL_ACCESS =
     'orchestration:read orchestration:operate terminal:operate approval:full-access';
 
-  test('lists what it asks for, and an access:approve device may approve it only with the elevated grant unticked', async () => {
+  test('lists what it asks for, and an access:approve device may approve it only with the elevated grant left out', async () => {
     const harness = await createHarness();
     const promoted = await harness.pairDevice('Promoted tablet');
     harness.security.devicePairing.setDeviceApprovalAuthority(

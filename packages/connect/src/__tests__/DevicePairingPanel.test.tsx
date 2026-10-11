@@ -1522,7 +1522,7 @@ describe('device pairing panels', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
     expect(
       await screen.findByText(
-        "Only this Station's operator can grant Run commands or Skip approval prompts. Use Limit access to leave them out of “Casey phone”'s access, or run this on the Station: npx @kontourai/station-cli@nightly environment access approve request-kept --force",
+        "Only this Station's operator can grant Skip approval prompts. Use Limit access to leave it out of “Casey phone”'s access, or run this on the Station: npx @kontourai/station-cli@nightly environment access approve request-kept --force",
       ),
     ).toBeTruthy();
   });

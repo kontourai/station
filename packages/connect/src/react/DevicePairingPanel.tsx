@@ -61,8 +61,8 @@ import { QRDisplay } from './QRDisplay';
 import { QRScanner } from './QRScanner';
 import {
   defaultKeptScope,
+  elevatedLabels,
   FULL_DEVICE_ACCESS_SCOPE,
-  keepsElevatedScope,
   keptScopeForApproval,
   RequestedScopeChecklist,
   requestedScopeTokens,
@@ -1019,15 +1019,16 @@ export function approvalRefusalRemedy(input: {
   operatorCli: string;
   /** The kept scope sent with the approval, when the approver trimmed it. */
   keptScope?: string;
-  keepsElevated: boolean;
+  /** The elevated permissions the refused approval kept, by label. */
+  keptElevated: readonly string[];
   extraFlag?: string;
 }): string {
   const scopeFlag = input.keptScope
     ? ` --scope=${input.keptScope.split(' ').join(',')}`
     : '';
   const command = `${input.operatorCli} environment access approve ${input.requestId}${scopeFlag} --force${input.extraFlag ?? ''}`;
-  return input.keepsElevated
-    ? `Only this Station's operator can grant Run commands or Skip approval prompts. Use Limit access to leave them out of “${input.deviceName}”'s access, or run this on the Station: ${command}`
+  return input.keptElevated.length > 0
+    ? `Only this Station's operator can grant ${input.keptElevated.join(' or ')}. Use Limit access to leave ${input.keptElevated.length > 1 ? 'them' : 'it'} out of “${input.deviceName}”'s access, or run this on the Station: ${command}`
     : `Approving “${input.deviceName}” needs a trusted Station session. Run this on the Station: ${command}`;
 }
 
@@ -1404,11 +1405,10 @@ export function HostDevicePairingPanel({
                       : undefined,
                   // Unticking helps only an ordinary approval; a person or
                   // account binding is refused for its own reason.
-                  keepsElevated:
-                    request.kind !== 'delegation' &&
-                    !bindAccount &&
-                    !bindPerson &&
-                    keepsElevatedScope(keptScopeOf(request)),
+                  keptElevated:
+                    request.kind !== 'delegation' && !bindAccount && !bindPerson
+                      ? elevatedLabels(keptScopeOf(request))
+                      : [],
                   extraFlag: bindPerson
                     ? ' --bind-person'
                     : bindAccount

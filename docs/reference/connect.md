@@ -461,8 +461,8 @@ peer** separately from Device access.
 
 A Device's access request may also name `scope`: exactly one base from
 `DEVICE_REQUESTABLE_BASE_PRESETS` (Read-only or Standard) plus any of
-`DEVICE_REQUESTABLE_EXTRA_SCOPES` (**Run commands**, `coding:exec`, and **Allow
-full access**, `approval:full-access`). Anything else, and any `scope` beside a
+`DEVICE_REQUESTABLE_EXTRA_SCOPES` (**Run commands**, `coding:exec`, and **Skip
+approval prompts**, `approval:full-access`). Anything else, and any `scope` beside a
 delegation, is refused with `invalid_request`. The device-pairing panel asks
 for all of it (`FULL_DEVICE_ACCESS_SCOPE`: Standard, `coding:exec` and
 `approval:full-access`), never the default grant's `access:manage`; an

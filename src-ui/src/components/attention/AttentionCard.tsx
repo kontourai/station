@@ -1,7 +1,7 @@
 import {
   approvalRefusalRemedy,
   defaultKeptScope,
-  keepsElevatedScope,
+  elevatedLabels,
   keptScopeForApproval,
   RequestedScopeChecklist,
   requestedScopeTokens,
@@ -343,6 +343,9 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
             scope === undefined
               ? item.source.requestId
               : { requestId: item.source.requestId, scope },
+            // Decided: close rather than offer the same decision again
+            // until the item refreshes away.
+            { onSuccess: () => setReviewing(false) },
           );
         }}
       >
@@ -352,7 +355,11 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
         type="button"
         className="attention-item__action attention-item__action--danger"
         disabled={busy}
-        onClick={() => denyMutation.mutate(item.source.requestId)}
+        onClick={() =>
+          denyMutation.mutate(item.source.requestId, {
+            onSuccess: () => setReviewing(false),
+          })
+        }
       >
         Deny
       </button>
@@ -373,6 +380,7 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
         <Dialog
           title={`${item.deviceName} is asking to pair`}
           closeLabel="Close pairing request"
+          dismissible={!busy}
           onClose={() => setReviewing(false)}
           footer={decision}
         >
@@ -421,7 +429,8 @@ function pairingApprovalRemedy(
   item: DevicePairingAttentionItem,
   operatorCli: string,
   kept: ReadonlySet<PairingScope>,
-  refusedKeepingElevated = false,
+  /** The elevated permissions a refused approval kept, by label. */
+  keptElevated: readonly string[] = [],
 ): string {
   return approvalRefusalRemedy({
     deviceName: item.deviceName,
@@ -431,7 +440,7 @@ function pairingApprovalRemedy(
     keptScope: item.requestedScope
       ? keptScopeForApproval(item.requestedScope, kept)
       : undefined,
-    keepsElevated: refusedKeepingElevated,
+    keptElevated,
   });
 }
 
@@ -473,7 +482,7 @@ function describePairingActionError(
   }
   if (error.status === 403 && action === 'approve') {
     return new Error(
-      pairingApprovalRemedy(item, operatorCli, kept, keepsElevatedScope(kept)),
+      pairingApprovalRemedy(item, operatorCli, kept, elevatedLabels(kept)),
     );
   }
   if (error.status === 404 || error.status === 410) {

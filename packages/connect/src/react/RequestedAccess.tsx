@@ -7,6 +7,7 @@ import {
   type PairingScope,
   parsePairingScope,
 } from '@kontourai/station-contracts/environment-security';
+import { useState } from 'react';
 
 const REQUESTABLE_EXTRAS: readonly PairingScope[] =
   DEVICE_REQUESTABLE_EXTRA_SCOPES;
@@ -31,11 +32,6 @@ export function defaultKeptScope(scope: string): Set<PairingScope> {
   return new Set(requestedScopeTokens(scope));
 }
 
-/** Whether a kept set includes an elevated permission (the operator's to grant). */
-export function keepsElevatedScope(kept: ReadonlySet<PairingScope>): boolean {
-  return REQUESTABLE_EXTRAS.some((token) => kept.has(token));
-}
-
 /**
  * The scope to send with an approval: `undefined` when everything requested
  * is kept (the route's bodyless approval), otherwise the kept tokens.
@@ -52,16 +48,29 @@ export function keptScopeForApproval(
 }
 
 /**
- * The grant in a few words: "full device access" when it is everything a
- * device can have, otherwise its permissions by name.
+ * The grant in a few words: "full device access" when it is exactly what the
+ * Station app asks for, otherwise every permission by name, so nothing a
+ * broader request carries (an operator offer's `access:manage`, say) hides
+ * behind the phrase.
  */
 export function describeDeviceGrant(tokens: Iterable<PairingScope>): string {
-  const granted = new Set(tokens);
+  const granted = PAIRING_SCOPES.filter((token) => new Set(tokens).has(token));
   const full = requestedScopeTokens(FULL_DEVICE_ACCESS_SCOPE);
-  if (full.every((token) => granted.has(token))) return 'full device access';
-  return PAIRING_SCOPES.filter((token) => granted.has(token))
+  if (
+    granted.length === full.length &&
+    full.every((token) => granted.includes(token))
+  )
+    return 'full device access';
+  return granted
     .map((token) => PAIRING_SCOPE_DESCRIPTIONS[token].label)
     .join(', ');
+}
+
+/** The elevated permissions a kept set includes, by label. */
+export function elevatedLabels(kept: ReadonlySet<PairingScope>): string[] {
+  return REQUESTABLE_EXTRAS.filter((token) => kept.has(token)).map(
+    (token) => PAIRING_SCOPE_DESCRIPTIONS[token].label,
+  );
 }
 
 /**
@@ -83,8 +92,11 @@ export function RequestedScopeChecklist({
   disabled?: boolean;
 }) {
   const tokens = requestedScopeTokens(requestedScope);
-  if (tokens.length === 0) return null;
   const limited = kept.size < tokens.length;
+  // Opened by the person, or already limited when shown; never closed under
+  // them because a tick changed whether it is limited.
+  const [open, setOpen] = useState(limited);
+  if (tokens.length === 0) return null;
   return (
     <div className="requested-access">
       <p className="requested-access__summary">
@@ -96,7 +108,11 @@ export function RequestedScopeChecklist({
           </>
         )}
       </p>
-      <details className="requested-access__limit" open={limited}>
+      <details
+        className="requested-access__limit"
+        open={open}
+        onToggle={(event) => setOpen(event.currentTarget.open)}
+      >
         <summary>Limit access</summary>
         <fieldset
           className="requested-access__list"
