@@ -133,6 +133,13 @@ test('the mention picker opens above a phone composer without being clipped', as
   await composer.pressSequentially('@');
   const options = page.getByRole('option');
   await expect(options).toHaveCount(3);
+  // It opens above the composer capsule, not inside it pushing the input down.
+  const listBox = await page
+    .getByRole('listbox', { name: 'Files and folders' })
+    .boundingBox();
+  const capsuleBox = await page.locator('.chat-input__capsule').boundingBox();
+  expect(listBox && capsuleBox).toBeTruthy();
+  expect(listBox!.y + listBox!.height).toBeLessThanOrEqual(capsuleBox!.y);
   // A clipped option still has a box but is not what the pointer reaches:
   // each option must be the topmost element at its own centre.
   for (const option of await options.all()) {
