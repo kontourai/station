@@ -836,3 +836,4 @@ Scope: this record and S1. S2a, S2b, S3, S4 (and S1b) are follow-ups.
 | # | Decision |
 |---|---|
 | D12 | People sit in a Station group, Admin or Member (the default). A group caps what any device tied to the person may use; it never grants `access:manage`, so a paired device still never becomes an administrator. Devices tied to no person, peer Station delegations and home-possession credentials are not capped. Only the operator changes a group (`PUT /api/pairing/people/:principalId/group`). |
+| D13 | Anyone may mint personal access tokens for themselves, within their own access, from a device tied to them; the operator may mint and revoke them for anyone. v1 tokens carry Read and optionally Operate only. |

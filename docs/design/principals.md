@@ -133,6 +133,11 @@ acts as and the person whose group caps it cannot disagree. Groups never
 grant Project membership; Project roles stay per Project. See the
 [threat model](../security/remote-access-threat-model.md#scope-model).
 
+A personal access token (#3557) carries a copy of the minting person's
+binding, so it resolves to the same principal as their devices and sits
+under the same group. It is a credential of that person, not a principal of
+its own.
+
 ## 3. The four contradictions this resolves
 
 Recorded because each will otherwise be rediscovered by whoever picks up an

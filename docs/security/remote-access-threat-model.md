@@ -496,6 +496,23 @@ never from a later grant. The operator, or the desktop's own local
 grant, lists people (`GET /api/pairing/people`, the pairing family's boundary);
 only the operator credential changes a group, as for a device's access.
 
+**Personal access tokens act as their person, never as more (#3557).** A
+person mints a token for a script from their own paired device tied to them
+(`/api/access/tokens`); the operator may mint or revoke one for anyone known
+by such a device. A token carries `orchestration:read`, optionally
+`orchestration:operate`, and never more than the minting device may use at
+that moment; it resolves as a headless device of its person, so request
+resolution, Project membership and the person's Station group apply to it as
+to their phone. It is not a device: it cannot manage tokens, reach
+`/api/pairing/**`, decide a pairing request or consent, or open a terminal.
+Secrets carry an `stp_` prefix, are shown once, and are stored only as a
+sha256 hash in `<home>/security/personal-tokens.json` (owner-only, apart from
+the device registry so an older Station that ignores the file loses only the
+tokens). A token may expire (at most a year), is refused the moment it is
+revoked or expired, and each person holds at most 20 active tokens. A token
+file Station finds unsafe (not owner-only, or a link) or unreadable when it
+starts authenticates no one.
+
 The pairing UI offers two presets when creating an offer: **Read-only**
 (`orchestration:read` alone) and **Standard** (`orchestration:read
 orchestration:operate terminal:operate`), the default *radio selection* in

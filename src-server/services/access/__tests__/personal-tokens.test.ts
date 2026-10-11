@@ -3,7 +3,7 @@
  * authenticates as a headless device of its person, is stored only as a
  * hash, expires, revokes, and never touches the paired-device registry.
  */
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
@@ -171,4 +171,27 @@ describe('personal access tokens', () => {
       mint('orchestration:read', now() + 400 * 24 * 60 * 60 * 1000),
     ).toThrow();
   });
+
+  test.skipIf(process.platform === 'win32')(
+    'a token file that is not owner-only authenticates no one after a restart',
+    async () => {
+      const { homeDir, security } = await station();
+      const casey = pairCasey(security.devicePairing);
+      const minted = security.devicePairing.mintPersonalToken({
+        name: 'script',
+        binding: casey.device.principalBinding!,
+        ownerPrincipalId: 'human:tailscale-serve:casey',
+        scope: 'orchestration:read',
+        expiresAt: null,
+      });
+      const restart = async () => {
+        const next = new EnvironmentSecurityService({ homeDir });
+        await next.initialize();
+        return next;
+      };
+      expect((await restart()).verifyCredential(minted.secret)).toBe(true);
+      chmodSync(join(homeDir, 'security', PERSONAL_TOKENS_FILE), 0o644);
+      expect((await restart()).verifyCredential(minted.secret)).toBe(false);
+    },
+  );
 });

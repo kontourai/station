@@ -9287,6 +9287,10 @@ export function configureDevicePairingHostRoutes(
     } | null;
     if (!currentOperator(c, request))
       return c.json({ error: 'authentication_required' }, 401);
+    observeOperatorCredentialUse(
+      c,
+      'POST /api/pairing/people/:principalId/tokens',
+    );
     const expiresAt = parseTokenExpiry(body?.expiresInDays, Date.now());
     if (
       typeof body?.name !== 'string' ||
@@ -9334,6 +9338,10 @@ export function configureDevicePairingHostRoutes(
   app.delete('/api/pairing/people/:principalId/tokens/:tokenId', (c) => {
     if (!currentOperator(c, c.req.raw))
       return c.json({ error: 'authentication_required' }, 401);
+    observeOperatorCredentialUse(
+      c,
+      'DELETE /api/pairing/people/:principalId/tokens/:tokenId',
+    );
     return pairing.revokePersonalToken(
       c.req.param('tokenId'),
       c.req.param('principalId'),

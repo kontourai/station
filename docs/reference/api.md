@@ -3532,6 +3532,32 @@ the operator credential itself, as changing a device's access does:
 See the [threat model](../security/remote-access-threat-model.md#scope-model)
 for what each group allows.
 
+## Personal access tokens
+
+A person manages their own tokens from a paired device tied to them (a
+verified Tailscale identity or an account). Anything else, including a token,
+the operator credential and a device tied to no one, is `403
+person_device_required`:
+
+- `GET /api/access/tokens` (`orchestration:read`) returns `{ tokens:
+  PersonalAccessToken[] }`, the caller's person's tokens, never a secret.
+- `POST /api/access/tokens` (`orchestration:operate`) with `{ "name":
+  string, "scope": "orchestration:read" | "orchestration:read
+  orchestration:operate", "expiresInDays"?: 1..365 }` returns `201 { token,
+  secret }`. The secret is shown only here. A scope the calling device may not
+  use now is `400 scope_exceeds_access`; a malformed body is `400
+  invalid_request`; a person already holding 20 active tokens gets `409
+  token_limit_reached`.
+- `DELETE /api/access/tokens/:tokenId` (`orchestration:operate`) revokes one
+  of the caller's person's tokens; anything else is `404 not_found`.
+
+Present the secret as `Authorization: Bearer stp_…`. The operator credential
+manages anyone's tokens: `GET /api/pairing/people` lists each person's
+`tokens`, `POST /api/pairing/people/:principalId/tokens` (same body; `404
+person_not_found` unless a live device is tied to the person) mints one, and
+`DELETE /api/pairing/people/:principalId/tokens/:tokenId` revokes one. The
+desktop's local grant lists them but cannot mint or revoke.
+
 ## Decide a pending paired-device request
 
 A current operator, qualifying local-grant credential, or Device explicitly
