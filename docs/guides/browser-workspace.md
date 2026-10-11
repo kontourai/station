@@ -213,6 +213,17 @@ a coarse pointer or a window up to 768px wide every control is at least 44px
 and the row does not wrap; the path gives way first, then the host. The 390px
 check below found no control under 44px.
 
+On narrow screens, editing the address hides its navigation buttons until
+editing ends, leaving room for the URL. Back and forward occupy space on a fine
+pointer only while the toolbar is hovered or focused. Touch takeover hints say
+**Tap**. The console scrolls within its share of the pane; it does not force the
+live page beneath the dock. On the standalone Browser route, the page frame
+passes its available height through to both views. The actions menu fits between
+the current toolbar/banner stack and the dock, with its own scroll when needed.
+Very short panes scroll internally so the console retains readable rows and the
+page remains reachable. Escape cancels an unsubmitted address and restores the
+committed URL; leaving the field restores navigation while retaining its draft.
+
 ## State, evidence and remaining limits
 
 Pane state `2.0` stores the Project ID and server browser-session reference.

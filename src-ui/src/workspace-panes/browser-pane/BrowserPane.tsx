@@ -179,6 +179,7 @@ function BrowserDriverChip({
   releaseBlocked: boolean;
   onRelease: () => void;
 }) {
+  const coarsePointer = useCoarsePointer();
   const [open, setOpen] = useState(false);
   const menuRef = useMenuFocus<HTMLDivElement>(open, () => setOpen(false));
   if (tone === 'none')
@@ -200,7 +201,7 @@ function BrowserDriverChip({
         data-tone={tone}
         title={
           tone === 'agent'
-            ? `${DRIVER_TEXT.agent}. Click the page to take over.`
+            ? `${DRIVER_TEXT.agent}. ${coarsePointer ? 'Tap' : 'Click'} the page to take over.`
             : DRIVER_TEXT[tone]
         }
       >
@@ -945,7 +946,7 @@ function BrowserSessionPane({
         aria-label="Browser toolbar"
       >
         <div
-          className={`browser-pane__omni${editing ? ' browser-pane__omni--editing' : ''}`}
+          className={`browser-pane__omni${editing ? ' browser-pane__omni--editing' : ''}${addressFocused ? ' browser-pane__omni--focused' : ''}`}
         >
           <span
             className="browser-pane__omni-lock"
@@ -967,6 +968,14 @@ function BrowserSessionPane({
                 requestAnimationFrame(() => input.select());
               }}
               onBlur={() => setAddressFocused(false)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setDraft(null);
+                  event.currentTarget.blur();
+                }
+              }}
               disabled={!live}
               autoCapitalize="off"
               autoComplete="off"
@@ -984,7 +993,7 @@ function BrowserSessionPane({
             )}
           </span>
           <IconButton
-            className="browser-pane__omni-reveal"
+            className="browser-pane__omni-reveal browser-pane__nav-action"
             aria-label="Back"
             title="Back"
             disabled={!live || busy}
@@ -993,7 +1002,7 @@ function BrowserSessionPane({
             <ArrowLeftGlyph />
           </IconButton>
           <IconButton
-            className="browser-pane__omni-reveal"
+            className="browser-pane__omni-reveal browser-pane__nav-action"
             aria-label="Forward"
             title="Forward"
             disabled={!live || busy}
@@ -1002,6 +1011,7 @@ function BrowserSessionPane({
             <ArrowRightGlyph />
           </IconButton>
           <IconButton
+            className="browser-pane__nav-action"
             aria-label="Reload"
             title="Reload"
             disabled={!live || busy}
@@ -1069,7 +1079,8 @@ function BrowserSessionPane({
         {body}
         {live && record?.surfaceId && chipTone === 'agent' ? (
           <span className="browser-pane__takeover-hint" aria-hidden="true">
-            Click anywhere to take over from the agent
+            {coarsePointer ? 'Tap' : 'Click'} anywhere to take over from the
+            agent
           </span>
         ) : null}
         {live && pendingDialog ? (

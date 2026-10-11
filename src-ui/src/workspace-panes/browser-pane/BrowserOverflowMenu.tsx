@@ -153,8 +153,9 @@ export function BrowserOverflowMenu({
       return;
     }
     const trigger = triggerRef.current?.getBoundingClientRect();
-    const menu = menuRef.current?.getBoundingClientRect();
-    if (!trigger || !menu) return;
+    const menuElement = menuRef.current;
+    const menu = menuElement?.getBoundingClientRect();
+    if (!trigger || !menuElement || !menu) return;
     // The chat dock overlays the bottom of the viewport above every popover
     // (`--layer-dock`), so the menu's floor is the dock's top edge, not the
     // window's: on a landscape phone the last rows otherwise sit under it.
@@ -165,19 +166,55 @@ export function BrowserOverflowMenu({
       window.innerHeight -
       inset('--dock-slot-size') -
       inset('--visual-viewport-bottom-inset');
+    const viewportTop = Math.max(
+      EDGE_PX,
+      document.querySelector('.app-toolbar')?.getBoundingClientRect().bottom ??
+        0,
+      document.querySelector('.banner-host')?.getBoundingClientRect().bottom ??
+        0,
+    );
     const below = viewportHeight - trigger.bottom - GAP_PX - EDGE_PX;
-    const above = trigger.top - GAP_PX - EDGE_PX;
+    const above = trigger.top - GAP_PX - viewportTop;
     const openUp = menu.height > below && above > below;
+    const menuStyle = getComputedStyle(menuElement);
+    const chromeHeight =
+      (Number.parseFloat(menuStyle.paddingTop) || 0) +
+      (Number.parseFloat(menuStyle.paddingBottom) || 0) +
+      (Number.parseFloat(menuStyle.borderTopWidth) || 0) +
+      (Number.parseFloat(menuStyle.borderBottomWidth) || 0);
+    const maxHeight = Math.max(
+      0,
+      Math.min(
+        viewportHeight - EDGE_PX - viewportTop,
+        Math.max(above, below) < chromeHeight + 44
+          ? viewportHeight - EDGE_PX - viewportTop
+          : openUp
+            ? above
+            : below,
+      ),
+    );
+    const height = Math.max(chromeHeight, Math.min(menu.height, maxHeight));
     setStyle({
       position: 'fixed',
       right: Math.max(EDGE_PX, window.innerWidth - trigger.right),
-      ...(openUp
-        ? { bottom: window.innerHeight - trigger.top + GAP_PX }
-        : { top: trigger.bottom + GAP_PX }),
-      maxHeight: Math.max(120, openUp ? above : below),
+      top: Math.max(
+        viewportTop,
+        Math.min(
+          openUp ? trigger.top - GAP_PX - height : trigger.bottom + GAP_PX,
+          viewportHeight - EDGE_PX - height,
+        ),
+      ),
+      maxHeight,
       maxWidth: `calc(100vw - ${EDGE_PX * 2}px)`,
     });
   }, [open, listId, menuRef]);
+
+  useEffect(() => {
+    if (!open || style.visibility === 'hidden') return;
+    menuRef.current
+      ?.querySelector<HTMLElement>('[role^="menuitem"]:not(:disabled)')
+      ?.focus({ preventScroll: true });
+  }, [open, style.visibility, menuRef]);
 
   const list = items.find(
     (item): item is Extract<BrowserMenuItem, { kind: 'list' }> =>
