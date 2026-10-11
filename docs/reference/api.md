@@ -1550,6 +1550,37 @@ model/pricing attribution stays unknown or unpriced. The window records
 observations, not a billing statement or precise consumption dates. See
 [Profile measurement scopes](../guides/monitoring.md#profile-usage-and-paired-people).
 
+### Export Retained Canonical Usage Observations
+
+The authored `GET /api/analytics/usage-export` source path returns
+`{success: true, data: UsageExportPage}`. Required `from`/`to` are inclusive
+UTC Station-observed dates, at most 366 days. `scope` defaults to `individual`;
+`personal-account` explicitly selects the existing approved personal owner set
+and refuses nonmembers or hosted use. `pageSize` is 1–100 observation events;
+`cursor` continues the fixed committed source watermark. Unknown/repeated
+query keys, invalid dates and malformed continuations refuse with 400.
+
+The page contains `schemaVersion: 1`, `stationId`, `streamEpoch`, `highWater`,
+`scope`, `window`, `observations: [{globalSequence, receipts}]`, optional
+`nextCursor`, and unknown `coverage`. Canonical token and provider-cost receipts
+remain distinct; no page total or provider-completeness claim is manufactured.
+One event can yield multiple receipts. The continuation binds the source,
+verified request person, tenant, owner set, scope and dates; it is not a grant.
+
+Production uses the canonical request authority and checks its current
+credential/account and personal owner set before response release and queued
+chunks. Unbound Device attribution, local operator fallback, foreign scope or
+a changed continuation context are refused. Source/storage failures and
+over-budget cumulative-cost projection return 503. All responses use
+`Cache-Control: no-store`.
+
+This authored path and its real runtime-composition controls remain
+unexecuted. It does not provide a companion source credential, deletion journal,
+restore-generation fence or durable sync checkpoint/index. A backup copies
+`streamEpoch`; it does not establish current restore authority. See
+[the monitoring guide](../guides/monitoring.md#canonical-usage-export-source)
+for source bounds and the open #3459/#3460 acceptance.
+
 ### Get Achievements
 
 `GET /api/analytics/achievements` returns

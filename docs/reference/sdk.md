@@ -4305,6 +4305,16 @@ on error or lost authority. `fetchUsageRollup(query, options?)` forwards capture
 request options, while the React-free client fetcher preserves HTTP refusal
 status as `StationHttpError`. These client controls confer no access.
 
+### Canonical usage-export follow-up
+
+The authored [canonical usage-export API](./api.md#export-retained-canonical-usage-observations)
+has a separate request/page type in `@kontourai/station-contracts/usage-export`.
+This SDK does not yet provide its fetcher, validator, scoped query key or
+sync/checkpoint consumer. `useUsageRollupQuery` retains its interactive limits;
+it must not be presented as a complete long-term export. Current export source
+and authentication controls remain unexecuted; #3459/#3460 retain grant,
+destination credential custody, deletion, restore and durable-index acceptance.
+
 ### Station peer enrollment
 
 The React-free client entry and SDK root export

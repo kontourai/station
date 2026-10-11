@@ -596,6 +596,23 @@ quota reads nor account creation or manual enrolment metadata. Activity uses the
 reads; its engine filter does not lower that floor, grant access to another
 principal's receipts or make them per-account billing.
 
+### Authored canonical usage export
+
+`GET /api/analytics/usage-export` inherits the analytics read family and adds
+its canonical verified-person/read-authority checks. Unbound Device attribution
+and the shared local operator are refused as individual people. Explicit
+personal-account selection requires the existing current membership owner set;
+hosted reads retain exact owner+tenant. The response rechecks current
+credential/account and owner/source facts before queued chunks leave. Cursor
+fields and request-supplied identifiers confer no authority.
+
+This source path is not a companion analytics grant. It does not reuse a peer,
+provider, product or OTel credential for private sync. Grants and person-scoped
+destination custody, deletion/restore invalidation and receiver indexing remain
+open under #3459/#3460. Authored scope/queued-revocation controls and query bounds
+are still unexecuted; no runtime, deployment or new person-identity assurance
+is established by this section. See [the API reference](../reference/api.md#export-retained-canonical-usage-observations).
+
 ### Coding routes: command execution and client paths (#2412)
 
 `/api/coding/**` runs git, reads files and runs shell commands in a Project's

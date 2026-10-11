@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  'e3fb9265ea3051997bfea4de8dfb0c7a51e1643831aabea07cbcb5a44afca9ea';
+  '27da532519bdfa06ff296f1384afb9043b375541d995f32076d9139653a26869';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -1178,7 +1178,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Scheduling, events, notifications, and voice',
     summary:
       'How unattended work and asynchronous events are recorded, delivered, retried, and connected to visible outcomes.',
-    body: 'How unattended work and asynchronous events are recorded, delivered, retried, and connected to visible outcomes.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Who owns retry, deduplication, and retention?\n- What survives a process restart?\n- Does a delivery receipt prove a person saw a notification?\n\nRead module topics with get_station_docs_topic:\n- architecture-operationaleventoutbox: OperationalEventOutbox\n- architecture-operationaleventdelivery: OperationalEventDelivery\n- architecture-operationaleventsubscriptions: OperationalEventSubscriptions\n- architecture-extensionnotificationbindings: ExtensionNotificationBindings\n- architecture-schedulerledger-and-builtinscheduler: SchedulerLedger and BuiltinScheduler\n- architecture-nativeinvocationruns: NativeInvocationRuns\n- architecture-monitoring-history-and-agent-catalog-reads: Monitoring history and Agent catalog reads\n- architecture-producttelemetryreceiver: ProductTelemetryReceiver\n- architecture-native-notification-feed: Native notification feed\n\nCanonical reading:\n- docs/guides/monitoring.md\n- docs/guides/web-push-notifications.md\n- docs/reference/usage-telemetry.md\n- packages/telemetry-broker/README.md\n- docs/architecture/module-map.md#voiceturnruns-and-correlated-s2s-v1\n- docs/learn/walkthroughs.md#inspect-an-approval',
+    body: 'How unattended work and asynchronous events are recorded, delivered, retried, and connected to visible outcomes.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Who owns retry, deduplication, and retention?\n- What survives a process restart?\n- Does a delivery receipt prove a person saw a notification?\n\nRead module topics with get_station_docs_topic:\n- architecture-operationaleventoutbox: OperationalEventOutbox\n- architecture-operationaleventdelivery: OperationalEventDelivery\n- architecture-operationaleventsubscriptions: OperationalEventSubscriptions\n- architecture-extensionnotificationbindings: ExtensionNotificationBindings\n- architecture-schedulerledger-and-builtinscheduler: SchedulerLedger and BuiltinScheduler\n- architecture-nativeinvocationruns: NativeInvocationRuns\n- architecture-monitoring-history-and-agent-catalog-reads: Monitoring history and Agent catalog reads\n- architecture-producttelemetryreceiver: ProductTelemetryReceiver\n- architecture-canonicalusageexport: CanonicalUsageExport\n- architecture-native-notification-feed: Native notification feed\n\nCanonical reading:\n- docs/guides/monitoring.md\n- docs/guides/web-push-notifications.md\n- docs/reference/usage-telemetry.md\n- packages/telemetry-broker/README.md\n- docs/architecture/module-map.md#voiceturnruns-and-correlated-s2s-v1\n- docs/learn/walkthroughs.md#inspect-an-approval',
     tags: ['architecture', 'background'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
@@ -1279,6 +1279,17 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     parentId: 'architecture-background',
     sourcePath: 'docs/architecture/module-map.md',
     sourceAnchor: 'producttelemetryreceiver',
+  },
+  {
+    id: 'architecture-canonicalusageexport',
+    title: 'CanonicalUsageExport',
+    summary:
+      'Interface, composition, invariants, and documented evidence for CanonicalUsageExport.',
+    body: 'Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## CanonicalUsageExport\n\n**Purpose and callers.** The authored\n[usage export reader](../../src-server/analytics/usage-export-reader.ts) serves\n`GET /api/analytics/usage-export` through the existing analytics route,\nruntime request-principal binder and OrchestrationService. Its\n[contract](../../packages/contracts/src/usage-export.ts) describes retained\ncanonical observations, not a source grant or complete synced history.\n\n**Authority.** Runtime composition resolves the existing verified person,\nrefuses unbound Device/operator attribution, and derives SessionReadAuthority\nserver-side. Individual scope keeps the exact owner; personal-account scope\nrequires the existing current membership verdict, and hosted scope keeps\nexact owner+tenant. Credential/account authority and owner/source facts are\nrechecked before queued response release. Continuations carry no authority.\n\n**Data and bounds.** EventStore reuses its canonical receipt SELECT/map inside\none read snapshot, pages committed global sequence through a fixed high\nwatermark/stream epoch, and projects each selected event through the existing\ntoken/provider-cost receipt owner. Pages contain at most 100 observation events\nin a bounded UTC observed-day window. Export-only cumulative-cost projection\nadmits at most 1,000 combined historical sequences before capped hydration;\nexcess is unavailable, never a truncated cost segment. Old rollup limits and\nclone/mirror reconciliation remain separate.\n\n**Evidence and open work.** Source review repaired binder, person, membership\nand cost-budget defects. Authored real EventStore/mounted-route and runtime\ncomposition controls remain unexecuted; source bounds are not measured latency\nor full runtime acceptance. Coverage remains unknown. Narrow grants, destination\ncredential custody, deletion invalidations, restore-generation fencing,\nreceiver index/checkpoint transactions, clone identity and deployment remain\nopen. A backed-up stream epoch is not a restore fence. See\n[monitoring](../guides/monitoring.md#canonical-usage-export-source).',
+    tags: ['architecture', 'background', 'CanonicalUsageExport'],
+    parentId: 'architecture-background',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'canonicalusageexport',
   },
   {
     id: 'architecture-native-notification-feed',

@@ -3985,6 +3985,40 @@ remain authoritative. The [Knowledge guide](../guides/knowledge.md#project-tools
 explains the UI and opt-out behavior.
 
 
+## CanonicalUsageExport
+
+**Purpose and callers.** The authored
+[usage export reader](../../src-server/analytics/usage-export-reader.ts) serves
+`GET /api/analytics/usage-export` through the existing analytics route,
+runtime request-principal binder and OrchestrationService. Its
+[contract](../../packages/contracts/src/usage-export.ts) describes retained
+canonical observations, not a source grant or complete synced history.
+
+**Authority.** Runtime composition resolves the existing verified person,
+refuses unbound Device/operator attribution, and derives SessionReadAuthority
+server-side. Individual scope keeps the exact owner; personal-account scope
+requires the existing current membership verdict, and hosted scope keeps
+exact owner+tenant. Credential/account authority and owner/source facts are
+rechecked before queued response release. Continuations carry no authority.
+
+**Data and bounds.** EventStore reuses its canonical receipt SELECT/map inside
+one read snapshot, pages committed global sequence through a fixed high
+watermark/stream epoch, and projects each selected event through the existing
+token/provider-cost receipt owner. Pages contain at most 100 observation events
+in a bounded UTC observed-day window. Export-only cumulative-cost projection
+admits at most 1,000 combined historical sequences before capped hydration;
+excess is unavailable, never a truncated cost segment. Old rollup limits and
+clone/mirror reconciliation remain separate.
+
+**Evidence and open work.** Source review repaired binder, person, membership
+and cost-budget defects. Authored real EventStore/mounted-route and runtime
+composition controls remain unexecuted; source bounds are not measured latency
+or full runtime acceptance. Coverage remains unknown. Narrow grants, destination
+credential custody, deletion invalidations, restore-generation fencing,
+receiver index/checkpoint transactions, clone identity and deployment remain
+open. A backed-up stream epoch is not a restore fence. See
+[monitoring](../guides/monitoring.md#canonical-usage-export-source).
+
 ## ProductTelemetryReceiver
 
 **Purpose.** The optional [receiver](../../packages/telemetry-broker/README.md)
