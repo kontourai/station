@@ -43,6 +43,33 @@ declarations and recording call sites, not proof of those destinations.
 
 ## Developer diagnostics
 
+### Canonical usage export source
+
+The authored `GET /api/analytics/usage-export` path selects retained canonical
+usage observations in committed global order. It reuses the EventStore receipt
+SELECT, mapping and pricing projection. Dates are inclusive UTC Station-observed
+days, at most 366 days; each page selects at most 100 observation events. One
+event can produce distinct token and provider-cost receipts. Continuation fixes
+the stream epoch/high watermark and binds the source, request principal, tenant,
+owner set, scope and dates. It is pagination data, never an authentication grant.
+
+`scope=individual` selects only the verified person's own recorded owner id.
+`personal-account` explicitly selects the existing approved personal-conversation
+owner set; hosted mode refuses that broader scope and keeps exact owner+tenant
+selection. Runtime composition refuses unverified/operator-only person claims,
+rechecks existing credential/account authority at response release, and rechecks
+the owner set/source epoch. Unknown query keys and malformed continuations refuse.
+
+Coverage stays unknown: retained observation pages do not establish missing
+provider reports, source deletions or complete history. This source path does
+not issue a companion grant or borrow a peer bearer. Durable grants and person
+destination credential custody, transactional invalidations, restored-home
+generation fencing, index/checkpoint transactions and clone/mirror policy are
+still pending under #3459/#3460. Stream epoch is copied by backups; it is not
+a restore-generation fence. The authored >500-row, scope and queued-release
+controls remain unexecuted on current source, as do runtime authentication,
+query budgets, full gates and deployment qualification.
+
 Developer → Monitoring provides five views over existing Station measurements:
 
 | View | Source and limits |

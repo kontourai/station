@@ -2696,6 +2696,46 @@ export function configureRuntimeRoutes(
         !hostedTenantRegistry &&
         !isHostedTenantExecutionRequired() &&
         isBoundRuntimeLocalOperator(request),
+      async (requestContext, request) => {
+        const { captureAuthorityObservation, revalidateAuthorityObservation } =
+          await import('../../services/identity/authority-observation.js');
+        const captured = await captureAuthorityObservation({
+          context: requestContext,
+          request: requestContext.req.raw,
+          runtimePrincipal: getRuntimeAuthenticatedRequestPrincipal(
+            requestContext.req.raw,
+          ),
+          security: context.environmentSecurityService,
+          deploymentAuthentication: context.deploymentAuthentication,
+          resolveRequestPrincipal: resolveOrchestrationRequestPrincipal,
+        });
+        if (
+          captured.envelope.principal.kind !== 'human' ||
+          captured.envelope.principal.id === LOCAL_OPERATOR_PRINCIPAL_ID
+        ) {
+          const { UsageExportRejected } = await import(
+            '../../analytics/usage-export-reader.js'
+          );
+          throw new UsageExportRejected('usage_export_authority_changed', 403);
+        }
+        const selected = context.orchestrationService.readUsageReceiptExport(
+          conversationReadAuthorityForRequest(requestContext.req.raw),
+          captured.envelope.environmentId,
+          request,
+        );
+        return {
+          page: selected.page,
+          async assertCurrent() {
+            await revalidateAuthorityObservation({
+              request: requestContext.req.raw,
+              captured,
+              security: context.environmentSecurityService,
+              deploymentAuthentication: context.deploymentAuthentication,
+            });
+            selected.assertCurrent();
+          },
+        };
+      },
     ),
   );
   context.app.route('/api/telemetry', createTelemetryRoutes(context.logger));

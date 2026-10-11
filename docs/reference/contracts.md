@@ -20,6 +20,13 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 
 ## Modules
 
+The authored `@kontourai/station-contracts/usage-export` module defines the
+individual/personal-account request and retained-observation page, including
+UTC window, stream epoch, fixed high watermark and unknown history coverage.
+It neither describes an analytics authorization credential nor proves a
+durable sync/restore fence. See [monitoring](../guides/monitoring.md#canonical-usage-export-source)
+for current implementation and unexecuted acceptance limits.
+
 | Module | Owns |
 |---|---|
 | `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |
