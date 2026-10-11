@@ -2146,6 +2146,10 @@ async function runLocalAccessCommand(
           .filter((token) => !elevatedAsked.includes(token))
           .join(' ')
       : undefined);
+  if (keptScope === '')
+    throw new Error(
+      `${accessRequestLabel(selected)} asks only for ${elevatedAsked.join(', ')}. Approving it grants one of them: name it with --scope=${elevatedAsked.join(',')}.`,
+    );
   if (explicitScope === undefined && elevatedAsked.length > 0 && keptScope)
     (dependencies.stderr ?? console.error)(
       `${accessRequestLabel(selected)} also asks for ${elevatedAsked.join(', ')}, which this approval leaves out. To grant it, approve with --scope=${[...keptScope.split(' '), ...elevatedAsked].join(',')}`,

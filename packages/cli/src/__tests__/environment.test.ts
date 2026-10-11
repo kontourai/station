@@ -418,6 +418,32 @@ describe('environment CLI commands', () => {
       ),
     );
 
+    // An offer that carries only an elevated grant is refused clearly, not
+    // approved with an empty scope.
+    const extrasOnly = makeAccessApi([
+      {
+        ...pending,
+        requestId: 'request-extras',
+        scope: 'approval:full-access',
+      },
+    ]);
+    await expect(
+      runEnvironmentCommand(
+        ['access', 'approve', 'request-extras', '--force'],
+        {
+          ...deps(),
+          request: extrasOnly,
+        },
+      ),
+    ).rejects.toThrow(
+      /asks only for approval:full-access\. Approving it grants one of them: name it with --scope=approval:full-access/,
+    );
+    expect(
+      extrasOnly.mock.calls.some(([, path]) =>
+        String(path).endsWith('/confirm'),
+      ),
+    ).toBe(false);
+
     // It only narrows: a scope the device did not ask for is refused before
     // anything is sent.
     const refused = makeAccessApi([pending]);

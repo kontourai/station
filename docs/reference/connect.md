@@ -479,7 +479,10 @@ the desktop's own local grant, never an `access:approve` device or the
 unauthenticated at-the-machine approval, which may still approve the rest with
 the extras unticked. The same rule covers an operator-created offer whose scope
 carries one. A delegation, relay or account-bound grant cannot be trimmed, and
-its **Needs attention** item carries no `requestedScope`. Pairing with a Station
+its **Needs attention** item carries no `requestedScope`; an account binding
+(operator only) approves the request as asked. The Station app never asks for
+an elevated grant on an account-bound request, so that matters only for an
+operator-created offer that carries one. Pairing with a Station
 that predates `scope` ignores it, and that Station's own approval surface shows
 the default grant it would issue. A request that names no scope still receives the historical
 default grant, which Station peers (`station environment access request`) and

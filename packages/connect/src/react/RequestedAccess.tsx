@@ -134,6 +134,26 @@ export function keepsElevatedScope(kept: ReadonlySet<PairingScope>): boolean {
 }
 
 /**
+ * The `--scope` a host approval command needs to grant exactly `kept`:
+ * `undefined` only when that is everything requested and nothing elevated,
+ * since the CLI leaves requested elevated grants out unless `--scope` names
+ * them.
+ */
+export function cliScopeForApproval(
+  requestedScope: string,
+  kept: ReadonlySet<PairingScope>,
+): string | undefined {
+  const requested = requestedScopeTokens(requestedScope);
+  const keptTokens = requested.filter((token) => kept.has(token));
+  const elevatedRequested = requested.some((token) =>
+    REQUESTABLE_EXTRAS.includes(token),
+  );
+  return keptTokens.length === requested.length && !elevatedRequested
+    ? undefined
+    : keptTokens.join(' ');
+}
+
+/**
  * The scope to send with an approval: `undefined` when everything requested
  * is kept (the route's bodyless approval), otherwise the kept tokens.
  */

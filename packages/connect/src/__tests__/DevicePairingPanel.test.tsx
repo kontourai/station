@@ -1529,6 +1529,53 @@ describe('device pairing panels', () => {
     );
   });
 
+  test('a refused approval that kept full access says to untick it, with a command that grants what was ticked', async () => {
+    const request = {
+      requestId: 'request-kept',
+      offerId: 'offer-kept',
+      deviceName: 'Casey phone',
+      scope:
+        'orchestration:read orchestration:operate terminal:operate approval:full-access',
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      source: 'same-origin',
+      status: 'pending',
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests/request-kept/confirm')
+        return response(
+          {
+            error: 'approval_requires_operator',
+            operatorCli: 'npx @kontourai/station-cli@nightly',
+          },
+          403,
+        );
+      if (path === '/api/pairing/requests')
+        return response({ requests: [request] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      return response({ error: 'unexpected' }, 500);
+    });
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.public.test"
+        getCredential={() => 'approver-credential'}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(await screen.findByText('Casey phone asks for')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: /Allow full access/ }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(
+      await screen.findByText(
+        "Only this Station's operator can grant Allow full access or Run commands. Untick them to approve the rest of “Casey phone”'s request, or run this on the Station: npx @kontourai/station-cli@nightly environment access approve request-kept --scope=orchestration:read,orchestration:operate,terminal:operate,approval:full-access --force",
+      ),
+    ).toBeTruthy();
+  });
+
   test('names the host CLI when this Station refuses the approval (station#1490)', async () => {
     const request = {
       requestId: 'request-refused',

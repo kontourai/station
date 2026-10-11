@@ -1,9 +1,11 @@
 import {
   approvalRefusalRemedy,
+  cliScopeForApproval,
   defaultKeptScope,
   keepsElevatedScope,
   keptScopeForApproval,
   RequestedScopeChecklist,
+  requestedScopeTokens,
 } from '@kontourai/station-connect';
 import type {
   AttentionPeerRequestReference,
@@ -368,7 +370,8 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
           item,
           'approve',
           operatorCli,
-          kept,
+          // What the refused approval sent, not the boxes as they are now.
+          submittedKept(confirmMutation.variables, requestedScope) ?? kept,
         )}
       />
       <MutationError
@@ -399,12 +402,27 @@ function pairingApprovalRemedy(
     deviceName: item.deviceName,
     requestId: item.source.requestId,
     operatorCli,
-    // The printed command keeps what this card would have kept, never more.
+    // The printed command grants exactly what this card would have kept.
     keptScope: item.requestedScope
-      ? keptScopeForApproval(item.requestedScope, kept)
+      ? cliScopeForApproval(item.requestedScope, kept)
       : undefined,
     keepsElevated: refusedKeepingElevated,
   });
+}
+
+/** The scope an approval mutation sent: all requested for a bodyless one. */
+function submittedKept(
+  variables: string | { requestId: string; scope?: string } | undefined,
+  requestedScope: string,
+): ReadonlySet<PairingScope> | undefined {
+  if (variables === undefined || !requestedScope) return undefined;
+  return new Set(
+    requestedScopeTokens(
+      typeof variables === 'string'
+        ? requestedScope
+        : (variables.scope ?? requestedScope),
+    ),
+  );
 }
 
 /**

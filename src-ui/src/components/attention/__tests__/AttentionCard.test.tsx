@@ -38,6 +38,8 @@ const pairingMocks = vi.hoisted(() => {
     confirmPairingState: {
       isPending: false,
       error: null as unknown,
+      /** What the last approval sent, as TanStack exposes it. */
+      variables: undefined as unknown,
     },
     denyPairingState: {
       isPending: false,
@@ -77,6 +79,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useConfirmDevicePairingRequestMutation: () => ({
     isPending: pairingMocks.confirmPairingState.isPending,
     error: pairingMocks.confirmPairingState.error,
+    variables: pairingMocks.confirmPairingState.variables,
     mutate: pairingMocks.confirmPairing,
   }),
   useDenyDevicePairingRequestMutation: () => ({
@@ -119,6 +122,7 @@ beforeEach(() => {
   pairingMocks.denyPairing.mockReset();
   pairingMocks.confirmPairingState.isPending = false;
   pairingMocks.confirmPairingState.error = null;
+  pairingMocks.confirmPairingState.variables = undefined;
   pairingMocks.denyPairingState.isPending = false;
   pairingMocks.denyPairingState.error = null;
   pairingMocks.statusChannel = undefined;
@@ -414,24 +418,22 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
     ).toBeTruthy();
   });
 
-  test('a refusal to keep the elevated grant says to untick it, and its command keeps only what is ticked', () => {
+  test('a refusal to keep the elevated grant says to untick it, and its command grants exactly what was sent', () => {
+    const asked =
+      'orchestration:read orchestration:operate terminal:operate approval:full-access';
     pairingMocks.confirmPairingState.error =
       new pairingMocks.MockDevicePairingRequestActionError(
         403,
         'approval_requires_operator',
       );
-    renderCard(
-      basePairing({
-        requestedScope:
-          'orchestration:read orchestration:operate terminal:operate approval:full-access',
-      }),
-    );
-    fireEvent.click(
-      screen.getByRole('checkbox', { name: /Allow full access/ }),
-    );
+    // The refused approval kept full access (a bodyless approve keeps all).
+    pairingMocks.confirmPairingState.variables = 'pair-req-1';
+    renderCard(basePairing({ requestedScope: asked }));
+    // The boxes start without full access; the message follows what was
+    // sent, not the boxes as they are now.
     expect(
       screen.getByText(
-        /Only this Station's operator can grant Allow full access or Run commands\. Untick them to approve the rest/,
+        "Only this Station's operator can grant Allow full access or Run commands. Untick them to approve the rest of “Test Phone”'s request, or run this on the Station: npx @kontourai/station-cli@latest environment access approve pair-req-1 --scope=orchestration:read,orchestration:operate,terminal:operate,approval:full-access --force",
       ),
     ).toBeTruthy();
   });

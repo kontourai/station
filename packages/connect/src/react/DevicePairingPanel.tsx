@@ -60,6 +60,7 @@ import {
 import { QRDisplay } from './QRDisplay';
 import { QRScanner } from './QRScanner';
 import {
+  cliScopeForApproval,
   DEFAULT_REQUESTED_ACCESS,
   defaultKeptScope,
   keepsElevatedScope,
@@ -1409,10 +1410,16 @@ export function HostDevicePairingPanel({
                   deviceName: request.deviceName,
                   requestId: request.requestId,
                   operatorCli: operatorCli ?? 'station',
-                  keptScope: scope,
+                  keptScope:
+                    request.kind !== 'delegation' && !bindAccount
+                      ? cliScopeForApproval(request.scope, keptScopeOf(request))
+                      : undefined,
+                  // Unticking helps only an ordinary approval; a person or
+                  // account binding is refused for its own reason.
                   keepsElevated:
                     request.kind !== 'delegation' &&
                     !bindAccount &&
+                    !bindPerson &&
                     keepsElevatedScope(keptScopeOf(request)),
                   extraFlag: bindPerson
                     ? ' --bind-person'
