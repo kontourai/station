@@ -10,9 +10,14 @@ import type { NativePlatformAdapter } from './types';
 // with its own attempt cap before reporting `failed`), there is no wall-clock
 // limit: giving up would leave a fresh home without the profile its native
 // identity proof requires. A terminal phase (`failed`, `stopping`, `stopped`)
-// gives up at once so the shell reaches its recovery UI instead of hanging a
-// visible window on the loader; a background continuation then finishes the
-// bootstrap if an explicit Restart later brings that sidecar to `running`.
+// releases the loader at once so the shell can render its recovery UI rather
+// than hang a visible (reloaded or dev) window; for an owned sidecar at first
+// launch that UI stays behind the native cover until readiness admits it.
+//
+// Only an explicit Restart brings a terminal owned sidecar back to `running`.
+// When that happens the page reloads, so first paint re-runs this bootstrap:
+// authoring, authorization and their errors keep their single first-paint
+// path instead of a second, out-of-band one.
 const STATUS_RETRY_MS = 100;
 const STATUS_RETRY_SLOW_MS = 1_000;
 const STATUS_FAST_ATTEMPTS = 600;
@@ -26,17 +31,13 @@ interface BootstrapDependencies {
   repository: NativeStationProfileRepository & { refresh(): Promise<boolean> };
   invoke(command: string, args?: Record<string, unknown>): Promise<unknown>;
   wait?: (milliseconds: number) => Promise<void>;
+  /** Re-runs first paint; injectable because jsdom cannot stub reload. */
+  reload?: () => void;
 }
 
 export interface BundledLocalProfileBootstrapResult {
   /** Safe, actionable copy for the one replacement write failure we own. */
   recoveryError?: string;
-  /**
-   * Present when the owned sidecar was in a terminal phase. It settles once an
-   * explicit Restart brings that sidecar to `running` and the deferred
-   * bootstrap completes; it never blocks the shell.
-   */
-  continuation?: Promise<BundledLocalProfileBootstrapResult>;
 }
 
 const REPLACEMENT_WRITE_FAILURE =
@@ -49,26 +50,29 @@ function defaultWait(milliseconds: number) {
 }
 
 /**
- * Background continuation for a bootstrap that gave up on a terminal owned
- * sidecar: poll gently until that sidecar runs, then finish the bootstrap.
+ * After the loader was released for a terminal owned sidecar, wait gently for
+ * an explicit Restart to bring it to `running`, then reload once so first
+ * paint re-runs the bootstrap. It never authors, authorizes or refreshes.
  */
-async function resumeWhenOwnedSidecarRuns(
+async function reloadWhenOwnedSidecarRuns(
   dependencies: BootstrapDependencies,
-): Promise<BundledLocalProfileBootstrapResult> {
+): Promise<void> {
   const wait = dependencies.wait ?? defaultWait;
+  const reload = dependencies.reload ?? (() => window.location.reload());
   for (;;) {
     await wait(STATUS_RETRY_SLOW_MS);
-    const status = await dependencies.adapter.getBundledServerStatus();
-    if (status.status !== 'ok') continue;
+    const status = await dependencies.adapter
+      .getBundledServerStatus()
+      .catch(() => undefined);
+    if (status?.status !== 'ok') continue;
     if (
       status.value.ownership === 'sidecar' &&
       status.value.phase !== 'running'
     ) {
       continue;
     }
-    const { continuation: _ignored, ...result } =
-      await bootstrapBundledLocalProfile(dependencies);
-    return result;
+    reload();
+    return;
   }
 }
 
@@ -84,7 +88,8 @@ export async function bootstrapBundledLocalProfile(
     const ownsSidecar = status.value.ownership === 'sidecar';
     if (ownsSidecar && status.value.phase !== 'running') {
       if (!PROGRESSING_PHASES.has(status.value.phase)) {
-        return { continuation: resumeWhenOwnedSidecarRuns(dependencies) };
+        void reloadWhenOwnedSidecarRuns(dependencies);
+        return {};
       }
       await wait(
         attempt < STATUS_FAST_ATTEMPTS ? STATUS_RETRY_MS : STATUS_RETRY_SLOW_MS,

@@ -16,18 +16,24 @@ describe('bundled local profile bootstrap', () => {
   /**
    * Runs the bootstrap with its production timer (`window.setTimeout`) on a
    * virtual clock. `phaseAt` decides the owned sidecar's phase from elapsed
-   * virtual milliseconds, standing in for a slow cold boot.
+   * virtual milliseconds, standing in for a slow cold boot. `statusFails`
+   * makes a status read reject at that elapsed time.
    */
   async function bootstrapOnVirtualClock(
     phaseAt: (elapsedMs: number) => string,
     runForMs: number,
+    statusFails: (elapsedMs: number) => boolean = () => false,
   ) {
     vi.useFakeTimers();
     const startedAt = Date.now();
-    const getBundledServerStatus = vi.fn(async () => ({
-      status: 'ok',
-      value: { phase: phaseAt(Date.now() - startedAt), ownership: 'sidecar' },
-    }));
+    const getBundledServerStatus = vi.fn(async () => {
+      const elapsed = Date.now() - startedAt;
+      if (statusFails(elapsed)) throw new Error('status bridge unavailable');
+      return {
+        status: 'ok',
+        value: { phase: phaseAt(elapsed), ownership: 'sidecar' },
+      };
+    });
     const invoke = vi.fn(async (command: string) =>
       command === 'station_ensure_bundled_local_profile' ? 'local' : undefined,
     );
@@ -37,11 +43,13 @@ describe('bundled local profile bootstrap', () => {
       pendingLocalSelfProvisionProfileName: vi.fn(() => undefined),
       authorizeActiveConnection: vi.fn(async () => true),
     };
+    const reload = vi.fn(() => undefined);
     let settled = false;
     const result = bootstrapBundledLocalProfile({
       adapter: { getBundledServerStatus } as never,
       repository: repository as never,
       invoke,
+      reload,
     }).finally(() => {
       settled = true;
     });
@@ -52,7 +60,18 @@ describe('bundled local profile bootstrap', () => {
       getBundledServerStatus,
       invoke,
       repository,
+      reload,
     };
+  }
+
+  /** The background wait may only reload; it never authors or authorizes. */
+  function expectNoBackgroundAuthoring(run: {
+    invoke: ReturnType<typeof vi.fn>;
+    repository: Record<string, ReturnType<typeof vi.fn>>;
+  }) {
+    expect(run.invoke).not.toHaveBeenCalled();
+    expect(run.repository.refresh).not.toHaveBeenCalled();
+    expect(run.repository.authorizeActiveConnection).not.toHaveBeenCalled();
   }
 
   test('keeps waiting for an owned sidecar whose cold boot outlasts a minute, then authors and authorizes its profile', async () => {
@@ -68,6 +87,7 @@ describe('bundled local profile bootstrap', () => {
     expect(run.repository.authorizeActiveConnection).toHaveBeenCalledWith(
       'station-profile:local',
     );
+    expect(run.reload).not.toHaveBeenCalled();
     // After the first minute the wait backs off instead of polling at 10 Hz.
     expect(run.getBundledServerStatus.mock.calls.length).toBeLessThan(700);
   });
@@ -77,23 +97,16 @@ describe('bundled local profile bootstrap', () => {
     async (phase) => {
       const run = await bootstrapOnVirtualClock(() => phase, 0);
       expect(run.settled()).toBe(true);
-      const result = await run.result;
-      expect(result.continuation).toBeInstanceOf(Promise);
-      expect(run.invoke).not.toHaveBeenCalled();
-      expect(run.repository.authorizeActiveConnection).not.toHaveBeenCalled();
-      // A sidecar that never recovers keeps the continuation pending; it never
-      // authors a profile or blocks the shell.
-      let resumed = false;
-      void result.continuation?.then(() => {
-        resumed = true;
-      });
+      await expect(run.result).resolves.toEqual({});
+      // A sidecar that never recovers is watched quietly: no reload, and the
+      // background never authors a profile or blocks the shell.
       await vi.advanceTimersByTimeAsync(300_000);
-      expect(resumed).toBe(false);
-      expect(run.invoke).not.toHaveBeenCalled();
+      expect(run.reload).not.toHaveBeenCalled();
+      expectNoBackgroundAuthoring(run);
     },
   );
 
-  test('an explicit Restart after a failed owned sidecar completes the deferred bootstrap', async () => {
+  test('an explicit Restart after a failed owned sidecar reloads once so first paint re-runs the bootstrap', async () => {
     const run = await bootstrapOnVirtualClock(
       (elapsed) =>
         elapsed < 40_000
@@ -104,20 +117,41 @@ describe('bundled local profile bootstrap', () => {
       0,
     );
     expect(run.settled()).toBe(true);
-    const result = await run.result;
-    expect(run.invoke).not.toHaveBeenCalled();
-    let resumed = false;
-    void result.continuation?.then(() => {
-      resumed = true;
-    });
-    await vi.advanceTimersByTimeAsync(105_000);
-    expect(resumed).toBe(true);
-    expect(run.invoke).toHaveBeenCalledWith(
-      'station_ensure_bundled_local_profile',
+    await vi.advanceTimersByTimeAsync(99_000);
+    expect(run.reload).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(run.reload).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(run.reload).toHaveBeenCalledTimes(1);
+    expectNoBackgroundAuthoring(run);
+  });
+
+  test('a crash right after the handshake (running then restarting) still reloads exactly once and authors nothing in the background', async () => {
+    const run = await bootstrapOnVirtualClock(
+      (elapsed) =>
+        elapsed < 10_000
+          ? 'failed'
+          : elapsed < 11_000
+            ? 'running'
+            : elapsed < 20_000
+              ? 'restarting'
+              : 'running',
+      60_000,
     );
-    expect(run.repository.authorizeActiveConnection).toHaveBeenCalledWith(
-      'station-profile:local',
+    expect(run.settled()).toBe(true);
+    expect(run.reload).toHaveBeenCalledTimes(1);
+    expectNoBackgroundAuthoring(run);
+  });
+
+  test('status-bridge failures while waiting in the background are not unhandled rejections', async () => {
+    const run = await bootstrapOnVirtualClock(
+      (elapsed) => (elapsed < 30_000 ? 'failed' : 'running'),
+      40_000,
+      (elapsed) => elapsed > 1_000 && elapsed < 20_000,
     );
+    expect(run.settled()).toBe(true);
+    expect(run.reload).toHaveBeenCalledTimes(1);
+    expectNoBackgroundAuthoring(run);
   });
 
   test('restarting is waited for and settles to the recovery UI once the supervisor reports failed', async () => {
@@ -128,8 +162,8 @@ describe('bundled local profile bootstrap', () => {
     expect(run.settled()).toBe(false);
     await vi.advanceTimersByTimeAsync(2_000);
     expect(run.settled()).toBe(true);
-    await expect(run.result).resolves.toHaveProperty('continuation');
-    expect(run.invoke).not.toHaveBeenCalled();
+    await expect(run.result).resolves.toEqual({});
+    expectNoBackgroundAuthoring(run);
   });
 
   test('does not author a profile while the owned sidecar is not running', async () => {
