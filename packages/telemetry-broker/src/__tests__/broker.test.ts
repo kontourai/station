@@ -182,11 +182,13 @@ describe('bounded receiver admission', () => {
     const inFlight = Array.from({ length: 8 }, () =>
       app.request('/v1/operator/storage', init),
     );
-    const busy = await app.request('/v1/operator/storage', init);
+    const busyRequest = app.request('/v1/operator/storage', init);
+    await Promise.resolve();
+    settle?.();
+    const busy = await busyRequest;
     expect(busy.status).toBe(503);
     expect(await busy.json()).toEqual({ error: 'receiver_busy' });
     expect(store.ready).toHaveBeenCalledTimes(8);
-    settle?.();
     const responses = await Promise.all(inFlight);
     expect(responses.every((response) => response.status === 200)).toBe(true);
     expect((await app.request('/v1/operator/storage', init)).status).toBe(200);

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { connect, createServer as createTcpServer } from 'node:net';
 import { getRequestListener } from '@hono/node-server';
@@ -31,7 +32,15 @@ let pool;
 let server;
 let created = false;
 let passed = false;
+let report;
 const checks = [];
+const artifactSha256 = createHash('sha256')
+  .update(
+    readFileSync(
+      new URL('../packages/telemetry-broker/dist/index.mjs', import.meta.url),
+    ),
+  )
+  .digest('hex');
 try {
   await admin.query(`CREATE DATABASE "${database}"`);
   created = true;
@@ -39,6 +48,8 @@ try {
   const store = new PgProductRepository(pool);
   await store.migrate();
   await store.ready();
+  const postgresVersion = (await pool.query('SHOW server_version')).rows[0]
+    .server_version;
   const operatorKey = `sto_${randomBytes(32).toString('base64url')}`;
   const sourceKey = `stp_${randomBytes(32).toString('base64url')}`;
   const otherKey = `stp_${randomBytes(32).toString('base64url')}`;
@@ -113,6 +124,21 @@ try {
   );
 
   const probes = [
+    [
+      'unlogged event storage',
+      'ALTER TABLE station_telemetry.events SET UNLOGGED',
+      'ALTER TABLE station_telemetry.events SET LOGGED',
+    ],
+    [
+      'unlogged commit receipts',
+      'ALTER TABLE station_telemetry.commits SET UNLOGGED',
+      'ALTER TABLE station_telemetry.commits SET LOGGED',
+    ],
+    [
+      'unlogged migration marker',
+      'ALTER TABLE station_telemetry.migrations SET UNLOGGED',
+      'ALTER TABLE station_telemetry.migrations SET LOGGED',
+    ],
     [
       'missing sources table',
       'ALTER TABLE station_telemetry.sources RENAME TO hidden_sources',
@@ -256,26 +282,26 @@ try {
     await new Promise((resolve) => transport.close(resolve));
   }
   passed = true;
-  console.log(
-    JSON.stringify(
-      {
-        state: 'PASS',
-        database,
-        checks,
-        scope:
-          'receiver HTTP and live PostgreSQL; not Station execution, persistent deployment, restore or native qualification',
-      },
-      null,
-      2,
-    ),
-  );
+  report = {
+    state: 'PASS',
+    artifactSha256,
+    postgresVersion,
+    database,
+    checks,
+    scope:
+      'receiver HTTP and live PostgreSQL; not Station execution, persistent deployment, restore or native qualification',
+  };
 } finally {
-  if (server) await new Promise((resolve) => server.close(resolve));
-  if (pool) await pool.end();
-  if (created && passed) await admin.query(`DROP DATABASE "${database}"`);
-  if (created && !passed)
-    console.error(
-      `Qualification failed; owned database retained for diagnosis: ${database}`,
-    );
-  await admin.end();
+  try {
+    if (server) await new Promise((resolve) => server.close(resolve));
+    if (pool) await pool.end();
+    if (created && passed) await admin.query(`DROP DATABASE "${database}"`);
+    if (created && !passed)
+      console.error(
+        `Qualification failed; owned database retained for diagnosis: ${database}`,
+      );
+  } finally {
+    await admin.end();
+  }
 }
+console.log(JSON.stringify(report, null, 2));

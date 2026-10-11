@@ -50,7 +50,7 @@ the old one.
 | Route | Credential and outcome |
 | --- | --- |
 | `GET /health/live` | Public process liveness and inventory revision; does not prove storage readiness |
-| `GET /v1/operator/storage` | Operator Bearer key; checks durability, migration, tables, columns, defaults, keys, constraints and index |
+| `GET /v1/operator/storage` | Operator Bearer key; checks durability, migration, logged tables, columns, defaults, keys, constraints and index |
 | `POST /v1/operator/sources` | Operator Bearer key; JSON `{id, label, credentialHash}` provisions a UUID source and a lowercase SHA-256 key digest |
 | `DELETE /v1/operator/sources/:id` | Operator Bearer key; commits revocation, fenced against concurrent ingestion |
 | `GET /v1/operator/trends?from=...&to=...` | Operator Bearer key; UTC ISO bounds, at most 365 days and 1,000 aggregate rows |
@@ -110,7 +110,7 @@ Station execution and release qualification require their own receipts.
 `npm run qualify:telemetry-broker` requires
 `STATION_TELEMETRY_QUALIFICATION_DATABASE_URL` with permission to create a
 separate database. Build the broker first. The runner creates a unique owned
-database, tests HTTP commit/deduplication, revocation, saturation, seven malformed
+database, tests HTTP commit/deduplication, revocation, saturation, ten malformed
 schema cases across all eight repository entrypoints, and a stalled PostgreSQL
 transport followed by connection recovery. Missing prerequisites fail the
 command. Successful runs remove only their owned database; failed runs retain

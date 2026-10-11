@@ -207,8 +207,9 @@ export class PgProductRepository implements ProductRepository {
       required: boolean;
       default: string | null;
       relkind: string;
+      persistence: string;
     }>(
-      `SELECT c.relname AS name,c.relkind,a.attname AS column,format_type(a.atttypid,a.atttypmod) AS type,a.attnotnull AS required,pg_get_expr(d.adbin,d.adrelid) AS default FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_attribute a ON a.attrelid=c.oid LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum WHERE n.nspname='station_telemetry' AND c.relname=ANY($1) AND a.attnum>0 AND NOT a.attisdropped ORDER BY c.relname,a.attnum`,
+      `SELECT c.relname AS name,c.relkind,c.relpersistence AS persistence,a.attname AS column,format_type(a.atttypid,a.atttypmod) AS type,a.attnotnull AS required,pg_get_expr(d.adbin,d.adrelid) AS default FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_attribute a ON a.attrelid=c.oid LEFT JOIN pg_attrdef d ON d.adrelid=c.oid AND d.adnum=a.attnum WHERE n.nspname='station_telemetry' AND c.relname=ANY($1) AND a.attnum>0 AND NOT a.attisdropped ORDER BY c.relname,a.attnum`,
       [['migrations', 'sources', 'events', 'commits']],
     );
     const expectedColumns = [
@@ -238,7 +239,9 @@ export class PgProductRepository implements ProductRepository {
         `${row.name}|${row.column}|${row.type}|${row.required}|${row.default ?? ''}`,
     );
     if (
-      columns.rows.some((row) => row.relkind !== 'r') ||
+      columns.rows.some(
+        (row) => row.relkind !== 'r' || row.persistence !== 'p',
+      ) ||
       JSON.stringify(actualColumns) !== JSON.stringify(expectedColumns)
     )
       throw new BrokerError('schema_incompatible');
