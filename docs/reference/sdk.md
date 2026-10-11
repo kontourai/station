@@ -482,7 +482,10 @@ own tokens use `useOwnAccessTokensQuery`, `useMintOwnAccessTokenMutation` and
 `isOperatorCredentialRequired` is the 401 a change without the operator
 credential gets, and `isStationAccessUnavailable` is a read refused as not for
 this caller (401, 403 or 404), which a surface hides rather than shows. A mint
-answers the secret once; its settled mutation is not retained.
+answers the secret once. The mint mutation holds that answer while observed, so
+call its `reset()` once the secret is captured; the settled mutation is then
+evicted at once. `setStationPersonGroup` resolves `{ person, revocations }`,
+where `revocations` is keyed by each device whose full access was reset.
 
 #### `useConnectionsQuery()`
 

@@ -168,9 +168,15 @@ vi.mock('@kontourai/station-sdk', async () => {
       mutateAsync: vi.fn(),
       isPending: false,
     }),
-    useMintStationPersonTokenMutation: () => ({ mutateAsync: vi.fn() }),
+    useMintStationPersonTokenMutation: () => ({
+      mutateAsync: vi.fn(),
+      reset: vi.fn(),
+    }),
     useRevokeStationPersonTokenMutation: () => ({ mutateAsync: vi.fn() }),
-    useMintOwnAccessTokenMutation: () => ({ mutateAsync: vi.fn() }),
+    useMintOwnAccessTokenMutation: () => ({
+      mutateAsync: vi.fn(),
+      reset: vi.fn(),
+    }),
     useRevokeOwnAccessTokenMutation: () => ({ mutateAsync: vi.fn() }),
     isOperatorCredentialRequired: () => false,
     StationAccessError: class extends Error {},

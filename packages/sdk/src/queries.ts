@@ -625,6 +625,7 @@ export {
   revokeStationPersonToken,
   STATION_PEOPLE_QUERY_KEY,
   StationAccessError,
+  type StationGroupChange,
   setStationPersonGroup,
   useMintOwnAccessTokenMutation,
   useMintStationPersonTokenMutation,

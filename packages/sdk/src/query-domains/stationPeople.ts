@@ -135,23 +135,36 @@ export async function fetchStationPeople(
   return body.people;
 }
 
+/**
+ * What a group change did: the person as they now are, and, keyed by device
+ * id, each device whose full access the new group no longer allows and was
+ * therefore reset.
+ */
+export interface StationGroupChange {
+  person: StationPerson;
+  revocations: Record<string, unknown>;
+}
+
 /** `PUT /api/pairing/people/:principalId/group`; operator credential only. */
 export async function setStationPersonGroup(
   principalId: string,
   group: StationGroup,
   apiBase?: string,
-): Promise<StationPerson> {
+): Promise<StationGroupChange> {
   const base = await resolveApiBase(apiBase);
   const body = await readJson(
     await authenticatedFetch(
       `${base}${personPath(principalId)}/group`,
       json('PUT', { group }),
     ),
-    (value): value is { person: StationPerson } =>
+    (value): value is { person: StationPerson; revocations?: unknown } =>
       isObject(value) && isObject(value.person),
     'Group change',
   );
-  return body.person;
+  return {
+    person: body.person,
+    revocations: isObject(body.revocations) ? body.revocations : {},
+  };
 }
 
 /** `POST /api/pairing/people/:principalId/tokens`; operator credential only. */
@@ -252,9 +265,10 @@ export function useSetStationPersonGroupMutation(apiBase?: string) {
 }
 
 /**
- * The answer carries the token's secret, so the settled mutation is evicted
- * rather than retained in the mutation cache; the caller holds the secret
- * for exactly as long as it shows it.
+ * The answer carries the token's secret. The mutation keeps it while any
+ * observer holds the mutation, so a caller must `reset()` the mutation once
+ * it has captured the answer; the settled mutation is then evicted at once
+ * (zero retention) rather than kept in the mutation cache.
  */
 export function useMintStationPersonTokenMutation(apiBase?: string) {
   return useApiMutation(
@@ -288,7 +302,7 @@ export function useOwnAccessTokensQuery(
   );
 }
 
-/** See {@link useMintStationPersonTokenMutation} on the secret's lifetime. */
+/** See {@link useMintStationPersonTokenMutation}: `reset()` after capturing. */
 export function useMintOwnAccessTokenMutation(apiBase?: string) {
   return useApiMutation(
     (input: PersonalTokenInput) => mintOwnAccessToken(input, apiBase),

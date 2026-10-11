@@ -13,7 +13,7 @@ import {
   type PersonalTokenInput,
   StationAccessError,
 } from '@kontourai/station-sdk';
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { copyToClipboard } from '../../lib/clipboard';
@@ -23,9 +23,15 @@ import './PeopleSection.css';
 
 /**
  * #3557: one person's personal access tokens — the list, Revoke, and the New
- * token form whose answer shows the secret exactly once. The operator's
- * People page and a person's own "Your access tokens" panel render the same
- * component over their own routes, so the two cannot drift apart.
+ * token form. The operator's People section and a person's own "Your access
+ * tokens" panel render the same component over their own routes, so the two
+ * cannot drift apart.
+ *
+ * The minted secret is NOT held here. The caller keeps it above its own list
+ * query, because a refetch that fails (or is refused) after a mint can stop
+ * this component rendering — and the secret exists nowhere else. The caller
+ * also resets the mint mutation once it has captured the answer, so the
+ * secret is not left in the mutation cache either.
  */
 
 const READ_SCOPE = PAIRING_SCOPE_ORCHESTRATION_READ;
@@ -78,7 +84,7 @@ export function tokenActionMessage(error: unknown): string {
       case 'token_limit_reached':
         return `A person can hold ${MAX_PERSONAL_TOKENS_PER_PERSON} active tokens. Revoke one, then try again.`;
       case 'scope_exceeds_access':
-        return 'This device can’t give a token more access than it has. Choose Read, then try again.';
+        return 'A token can’t carry more access than this device has.';
       case 'insufficient_scope':
         return 'This device’s access doesn’t allow managing tokens.';
       case 'account_bound_person':
@@ -120,25 +126,28 @@ function TokenRow({
   const now = Date.now();
   const limited = !sameScope(token.scope, token.effectiveScope);
   return (
-    <li className="people__item">
-      <div className="people__item-text">
-        <span className="people__item-name">{token.name}</span>
+    <li className="people__row">
+      <div className="people__row-text">
+        <span className="people__row-name">{token.name}</span>
         <span className="people__meta">
           {tokenAccessLabel(token.scope)} · {expiryText(token, now)} ·{' '}
           {token.lastUsedAt === null
             ? 'Never used'
             : `Last used ${relativeTimeAgo(token.lastUsedAt, now)}`}
         </span>
-        {limited && limitedBy && (
-          <span className="people__limited">
-            Limited to {tokenAccessLabel(token.effectiveScope)} by the{' '}
-            {limitedBy} group
-          </span>
-        )}
       </div>
+      {limited && limitedBy && (
+        <span
+          className="people__badge"
+          title={`Usable as ${tokenAccessLabel(token.effectiveScope)}`}
+        >
+          Limited by {limitedBy} group
+        </span>
+      )}
       <Button
         size="sm"
         variant="danger-outline"
+        className="people__compact"
         disabled={busy}
         onClick={onRevoke}
         aria-label={`Revoke token ${token.name}`}
@@ -149,24 +158,34 @@ function TokenRow({
   );
 }
 
-/** The secret, once. Leaving this box (Done) is the last time it exists here. */
-function SecretOnce({
+/**
+ * The secret, once. Copy is focused on arrival; only the copy RESULT is
+ * announced — the secret itself is never put in a live region.
+ */
+export function SecretOnce({
   minted,
+  ownerLabel,
   onDone,
 }: {
   minted: MintedPersonalAccessToken;
+  /** Set when the box stands apart from its owner's list. */
+  ownerLabel?: string;
   onDone: () => void;
 }) {
   const [copied, setCopied] = useState<boolean | null>(null);
   const fieldId = useId();
+  const copyRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    copyRef.current?.focus();
+  }, []);
   return (
-    <div className="people__secret" role="status">
+    <div className="people__secret" data-testid="token-secret">
       <label className="people__secret-label" htmlFor={fieldId}>
-        New token “{minted.token.name}”
+        New token “{minted.token.name}”{ownerLabel ? ` for ${ownerLabel}` : ''}
+        <span className="people__secret-warning">
+          Copy it now — it won’t be shown again.
+        </span>
       </label>
-      <p className="people__secret-warning">
-        Copy it now — it won’t be shown again.
-      </p>
       <div className="people__secret-row">
         <input
           id={fieldId}
@@ -178,27 +197,34 @@ function SecretOnce({
           autoComplete="off"
         />
         <Button
+          ref={copyRef}
           size="sm"
+          className="people__compact"
           onClick={() => {
             void copyToClipboard(minted.secret).then(setCopied);
           }}
         >
-          {copied ? 'Copied' : 'Copy'}
+          Copy
         </Button>
-      </div>
-      {copied === false && (
-        <p className="people__meta" role="alert">
-          Couldn’t copy automatically. Select the token and copy it yourself.
-        </p>
-      )}
-      <p className="people__meta">
-        Send it as <code>Authorization: Bearer …</code>.
-      </p>
-      <div className="people__actions">
-        <Button variant="primary" onClick={onDone}>
+        <Button
+          size="sm"
+          variant="primary"
+          className="people__compact"
+          onClick={onDone}
+        >
           Done
         </Button>
       </div>
+      <p className="people__meta" role="status">
+        {copied === true
+          ? 'Copied to the clipboard.'
+          : copied === false
+            ? 'Couldn’t copy automatically. Select the token and copy it yourself.'
+            : ''}
+      </p>
+      <p className="people__meta">
+        Send it as <code>Authorization: Bearer &lt;token&gt;</code>
+      </p>
     </div>
   );
 }
@@ -219,6 +245,10 @@ function NewTokenForm({
   const [expiry, setExpiry] = useState<string>('90');
   const nameId = useId();
   const expiryId = useId();
+  const nameRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    nameRef.current?.focus();
+  }, []);
   const trimmed = name.trim();
   return (
     <form
@@ -234,19 +264,38 @@ function NewTokenForm({
         });
       }}
     >
-      <label className="people__field" htmlFor={nameId}>
-        <span className="people__field-label">Name</span>
-        <input
-          id={nameId}
-          className="people__input"
-          value={name}
-          maxLength={100}
-          placeholder="e.g. Release script"
-          onChange={(event) => setName(event.target.value)}
-          disabled={pending}
-          required
-        />
-      </label>
+      <div className="people__form-fields">
+        <label className="people__field" htmlFor={nameId}>
+          <span className="people__field-label">Name</span>
+          <input
+            ref={nameRef}
+            id={nameId}
+            className="people__input"
+            value={name}
+            maxLength={100}
+            placeholder="e.g. Release script"
+            onChange={(event) => setName(event.target.value)}
+            disabled={pending}
+            required
+          />
+        </label>
+        <label className="people__field" htmlFor={expiryId}>
+          <span className="people__field-label">Expires after</span>
+          <select
+            id={expiryId}
+            className="editor-select"
+            value={expiry}
+            onChange={(event) => setExpiry(event.target.value)}
+            disabled={pending}
+          >
+            {EXPIRY_CHOICES.map((choice) => (
+              <option key={choice.value} value={choice.value}>
+                {choice.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       <fieldset className="people__field people__choices" disabled={pending}>
         <legend className="people__field-label">Access</legend>
         {ACCESS_CHOICES.map((choice) => (
@@ -264,34 +313,26 @@ function NewTokenForm({
           </label>
         ))}
       </fieldset>
-      <label className="people__field" htmlFor={expiryId}>
-        <span className="people__field-label">Expires after</span>
-        <select
-          id={expiryId}
-          className="editor-select"
-          value={expiry}
-          onChange={(event) => setExpiry(event.target.value)}
+      <div className="people__form-actions">
+        <Button
+          type="button"
+          size="sm"
+          className="people__compact"
+          onClick={onCancel}
           disabled={pending}
         >
-          {EXPIRY_CHOICES.map((choice) => (
-            <option key={choice.value} value={choice.value}>
-              {choice.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <div className="people__actions">
+          Cancel
+        </Button>
         <Button
           type="submit"
+          size="sm"
           variant="primary"
+          className="people__compact"
           disabled={!trimmed}
           pending={pending}
           pendingLabel="Creating…"
         >
-          Create token
-        </Button>
-        <Button type="button" onClick={onCancel} disabled={pending}>
-          Cancel
+          Create
         </Button>
       </div>
     </form>
@@ -299,44 +340,62 @@ function NewTokenForm({
 }
 
 /**
- * The token list and its actions. `mint` and `revoke` are the caller's own
- * route family; their refusals are rendered here, never swallowed.
+ * A token sub-section: its header line (title + a compact "+ New"), the
+ * list, and the form or the just-minted secret. `mint` and `revoke` are the
+ * caller's own route family; their refusals are rendered here.
  */
 export function PersonalTokens({
+  heading,
+  description,
   tokens,
   ownerLabel,
   limitedBy,
   canMint = true,
   cannotMintReason,
+  minted,
   mint,
+  onDone,
   revoke,
 }: {
+  heading: string;
+  /** One muted line under the header. */
+  description?: string;
   tokens: readonly PersonalAccessToken[];
-  /** Whose tokens these are, for accessible names ("Ada", "you"). */
+  /** Whose tokens these are, for accessible names ("ada@…", "you"). */
   ownerLabel: string;
   /** The owner's group label, to say when it limits a token. */
   limitedBy?: string;
   canMint?: boolean;
   cannotMintReason?: string;
-  mint: (input: PersonalTokenInput) => Promise<MintedPersonalAccessToken>;
+  /** The caller's just-minted token for this owner, until Done. */
+  minted: MintedPersonalAccessToken | null;
+  /** Mints and hands the answer to the caller, which then passes `minted`. */
+  mint: (input: PersonalTokenInput) => Promise<void>;
+  onDone: () => void;
   revoke: (token: PersonalAccessToken) => Promise<void>;
 }) {
   const [creating, setCreating] = useState(false);
   const [minting, setMinting] = useState(false);
-  // The secret lives in this state and nowhere else on the client: the
-  // mutation evicts its settled answer, and Done drops this.
-  const [minted, setMinted] = useState<MintedPersonalAccessToken | null>(null);
   const [pendingRevoke, setPendingRevoke] =
     useState<PersonalAccessToken | null>(null);
   const [revoking, setRevoking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [revokeError, setRevokeError] = useState<string | null>(null);
+  // Leaving the form or the secret returns focus to "+ New".
+  const newRef = useRef<HTMLButtonElement>(null);
+  const [focusNew, setFocusNew] = useState(false);
+  useEffect(() => {
+    if (!focusNew || !newRef.current) return;
+    newRef.current.focus();
+    setFocusNew(false);
+  });
+  const headingId = useId();
 
   async function submit(input: PersonalTokenInput) {
     setError(null);
     setMinting(true);
     try {
-      setMinted(await mint(input));
+      await mint(input);
       setCreating(false);
     } catch (cause) {
       setError(tokenActionMessage(cause));
@@ -359,12 +418,33 @@ export function PersonalTokens({
     }
   }
 
+  const showNew = canMint && !creating && !minted;
   return (
-    <div className="people__tokens">
+    <section className="people__sub" aria-labelledby={headingId}>
+      <div className="people__sub-header">
+        <h5 className="people__sub-title" id={headingId}>
+          {heading}
+        </h5>
+        {showNew && (
+          <Button
+            ref={newRef}
+            size="sm"
+            className="people__compact"
+            aria-label={`New token for ${ownerLabel}`}
+            onClick={() => {
+              setError(null);
+              setCreating(true);
+            }}
+          >
+            + New
+          </Button>
+        )}
+      </div>
+      {description && <p className="people__meta">{description}</p>}
       {tokens.length === 0 ? (
-        <p className="people__meta">No tokens.</p>
+        <p className="people__meta people__empty">No tokens.</p>
       ) : (
-        <ul className="people__list" aria-label={`Tokens for ${ownerLabel}`}>
+        <ul className="people__rows" aria-label={`Tokens for ${ownerLabel}`}>
           {tokens.map((token) => (
             <TokenRow
               key={token.id}
@@ -379,8 +459,17 @@ export function PersonalTokens({
           ))}
         </ul>
       )}
+      {!canMint && cannotMintReason && (
+        <p className="people__meta people__empty">{cannotMintReason}</p>
+      )}
       {minted ? (
-        <SecretOnce minted={minted} onDone={() => setMinted(null)} />
+        <SecretOnce
+          minted={minted}
+          onDone={() => {
+            onDone();
+            setFocusNew(true);
+          }}
+        />
       ) : creating ? (
         <NewTokenForm
           ownerLabel={ownerLabel}
@@ -388,17 +477,10 @@ export function PersonalTokens({
           onCancel={() => {
             setCreating(false);
             setError(null);
+            setFocusNew(true);
           }}
           onSubmit={(input) => void submit(input)}
         />
-      ) : canMint ? (
-        <div className="people__actions">
-          <Button size="sm" onClick={() => setCreating(true)}>
-            New token
-          </Button>
-        </div>
-      ) : cannotMintReason ? (
-        <p className="people__meta">{cannotMintReason}</p>
       ) : null}
       {error && (
         <p className="people__error" role="alert">
@@ -420,6 +502,6 @@ export function PersonalTokens({
           setRevokeError(null);
         }}
       />
-    </div>
+    </section>
   );
 }

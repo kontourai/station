@@ -122,9 +122,39 @@ function mount(ui: React.ReactElement) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(
-    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
-  );
+  return {
+    client,
+    ...render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>),
+  };
+}
+
+/** Whether a query under `prefix` has settled into an error. */
+function settledInError(client: QueryClient, prefix: string) {
+  return client
+    .getQueryCache()
+    .findAll({ queryKey: [prefix] })
+    .some((query) => query.state.status === 'error');
+}
+
+const PEOPLE_KEY = 'station-people';
+const OWN_KEY = 'own-access-tokens';
+const ADA_PATH =
+  '/api/pairing/people/human%3Atailscale-serve%3Aada%40example.com';
+
+/** Opens the New token form, fills it and submits. */
+async function createToken(
+  newLabel: string,
+  name: string,
+  options: { operate?: boolean; expiry?: string } = {},
+) {
+  fireEvent.click(await screen.findByRole('button', { name: newLabel }));
+  fireEvent.change(screen.getByLabelText('Name'), { target: { value: name } });
+  if (options.operate) fireEvent.click(screen.getByLabelText(/Read & operate/));
+  if (options.expiry)
+    fireEvent.change(screen.getByLabelText('Expires after'), {
+      target: { value: options.expiry },
+    });
+  fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 }
 
 /** A People route that answers from `people`, which a test may change. */
@@ -136,17 +166,14 @@ function peopleRoute(people: () => StationPerson[]): Handler {
 }
 
 const writes = () => calls.filter((call) => call.method !== 'GET');
+const NEW_FOR_ADA = 'New token for ada@example.com';
 
 describe('People section', () => {
-  test('changing a group PUTs it and shows the new group', async () => {
+  test('promoting PUTs the group at once and shows it', async () => {
     let current = ada();
     const list = peopleRoute(() => [current]);
     handler = (call) => {
-      if (
-        call.method === 'PUT' &&
-        call.path ===
-          '/api/pairing/people/human%3Atailscale-serve%3Aada%40example.com/group'
-      ) {
+      if (call.method === 'PUT' && call.path === `${ADA_PATH}/group`) {
         current = ada({ group: 'admin', assigned: true });
         return json({ person: current, revocations: {} });
       }
@@ -161,14 +188,62 @@ describe('People section', () => {
     fireEvent.change(select, { target: { value: 'admin' } });
 
     await waitFor(() => expect(select.value).toBe('admin'));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(writes()).toEqual([
-      {
-        method: 'PUT',
-        path: '/api/pairing/people/human%3Atailscale-serve%3Aada%40example.com/group',
-        body: { group: 'admin' },
-      },
+      { method: 'PUT', path: `${ADA_PATH}/group`, body: { group: 'admin' } },
     ]);
-    expect(screen.getByText(/approve other devices/)).toBeTruthy();
+  });
+
+  test('demoting asks first, then reports the full access it reset', async () => {
+    let current = ada({ group: 'admin', assigned: true });
+    const list = peopleRoute(() => [current]);
+    handler = (call) => {
+      if (call.method === 'PUT') {
+        current = ada();
+        return json({
+          person: current,
+          revocations: { 'dev-ada': { conversations: [] } },
+        });
+      }
+      return list(call);
+    };
+    mount(<PeopleSection />);
+
+    const select = (await screen.findByLabelText(
+      'Group for ada@example.com',
+    )) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'member' } });
+
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog.textContent).toContain('full access');
+    expect(writes()).toEqual([]);
+    expect(select.value).toBe('admin');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Move' }));
+
+    await waitFor(() => expect(select.value).toBe('member'));
+    expect(writes()).toEqual([
+      { method: 'PUT', path: `${ADA_PATH}/group`, body: { group: 'member' } },
+    ]);
+    expect(
+      await screen.findByText('Full access was reset on 1 device.'),
+    ).toBeTruthy();
+  });
+
+  test('a cancelled demotion changes nothing', async () => {
+    handler = peopleRoute(() => [ada({ group: 'admin', assigned: true })]);
+    mount(<PeopleSection />);
+    const select = (await screen.findByLabelText(
+      'Group for ada@example.com',
+    )) as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'member' } });
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Cancel',
+      }),
+    );
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(writes()).toEqual([]);
+    expect(select.value).toBe('admin');
   });
 
   test('a 401 group change says the operator credential is needed and keeps the group', async () => {
@@ -188,6 +263,24 @@ describe('People section', () => {
     expect(alert.textContent).toContain('operator credential');
     expect(alert.textContent).toContain('can only view');
     expect(select.value).toBe('member');
+  });
+
+  test('a group store that cannot take the change says so', async () => {
+    const list = peopleRoute(() => [ada()]);
+    handler = (call) =>
+      call.method === 'PUT'
+        ? json({ error: 'groups_unavailable' }, 503)
+        : list(call);
+    mount(<PeopleSection />);
+    fireEvent.change(
+      await screen.findByLabelText('Group for ada@example.com'),
+      {
+        target: { value: 'admin' },
+      },
+    );
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Groups can’t be changed on this Station right now',
+    );
   });
 
   test('a device the group caps says so; one it does not, does not', async () => {
@@ -220,15 +313,11 @@ describe('People section', () => {
     expect(plain?.textContent).not.toContain('Limited');
   });
 
-  test('a new token’s secret is shown once and is gone after Done', async () => {
+  test('a new token’s secret is shown once, focus follows, and it is gone after Done', async () => {
     let tokens: PersonalAccessToken[] = [];
     const list = peopleRoute(() => [ada({ tokens })]);
     handler = (call) => {
-      if (
-        call.method === 'POST' &&
-        call.path ===
-          '/api/pairing/people/human%3Atailscale-serve%3Aada%40example.com/tokens'
-      ) {
+      if (call.method === 'POST' && call.path === `${ADA_PATH}/tokens`) {
         const minted = token({
           name: 'CI',
           scope: 'orchestration:read orchestration:operate',
@@ -239,9 +328,10 @@ describe('People section', () => {
       }
       return list(call);
     };
-    mount(<PeopleSection />);
+    const { client } = mount(<PeopleSection />);
 
-    fireEvent.click(await screen.findByRole('button', { name: 'New token' }));
+    fireEvent.click(await screen.findByRole('button', { name: NEW_FOR_ADA }));
+    expect(document.activeElement).toBe(screen.getByLabelText('Name'));
     fireEvent.change(screen.getByLabelText('Name'), {
       target: { value: '  CI  ' },
     });
@@ -249,32 +339,97 @@ describe('People section', () => {
     fireEvent.change(screen.getByLabelText('Expires after'), {
       target: { value: 'never' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Create token' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 
     const secret = await screen.findByDisplayValue('stp_secret_value');
     expect(screen.getByText(/won’t be shown again/)).toBeTruthy();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: 'Copy' }),
+      ),
+    );
+    // The secret is never inside a live region; only the copy result is.
+    expect(secret.closest('[role="status"],[role="alert"],[aria-live]')).toBe(
+      null,
+    );
     expect(writes()).toEqual([
       {
         method: 'POST',
-        path: '/api/pairing/people/human%3Atailscale-serve%3Aada%40example.com/tokens',
+        path: `${ADA_PATH}/tokens`,
         // "Never" sends no expiry; the name is trimmed.
         body: { name: 'CI', scope: 'orchestration:read orchestration:operate' },
       },
     ]);
-    expect(secret).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     await waitFor(() =>
       expect(screen.queryByDisplayValue('stp_secret_value')).toBeNull(),
     );
     expect(document.body.textContent).not.toContain('stp_secret_value');
-    // The list now carries the token, without its secret.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: NEW_FOR_ADA }),
+      ),
+    );
+    // Nor does the mutation cache keep it once captured.
+    await waitFor(() =>
+      expect(
+        JSON.stringify(
+          client
+            .getMutationCache()
+            .getAll()
+            .map((mutation) => mutation.state),
+        ),
+      ).not.toContain('stp_secret_value'),
+    );
     const listed = await screen.findByRole('list', {
       name: 'Tokens for ada@example.com',
     });
     expect(listed.textContent).toContain('CI');
     expect(listed.textContent).toContain('Read & operate');
   });
+
+  test('Cancel returns focus to + New', async () => {
+    handler = peopleRoute(() => [ada()]);
+    mount(<PeopleSection />);
+    fireEvent.click(await screen.findByRole('button', { name: NEW_FOR_ADA }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: NEW_FOR_ADA }),
+      ),
+    );
+  });
+
+  test.each([
+    ['refused', () => json({ error: { code: 'insufficient_scope' } }, 403)],
+    ['failing', () => json({ error: 'boom' }, 500)],
+  ])(
+    'the secret survives a list refetch that comes back %s after the mint',
+    async (_label, afterMint) => {
+      let minted = false;
+      const list = peopleRoute(() => [ada()]);
+      handler = (call) => {
+        if (call.method === 'POST') {
+          minted = true;
+          return json({ token: token(), secret: 'stp_keep_me' }, 201);
+        }
+        return minted && call.method === 'GET' ? afterMint() : list(call);
+      };
+      const { client } = mount(<PeopleSection />);
+
+      await createToken(NEW_FOR_ADA, 'CI');
+      expect(await screen.findByDisplayValue('stp_keep_me')).toBeTruthy();
+      await waitFor(() =>
+        expect(settledInError(client, PEOPLE_KEY)).toBe(true),
+      );
+      expect(screen.getByDisplayValue('stp_keep_me')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+      await waitFor(() =>
+        expect(screen.queryByDisplayValue('stp_keep_me')).toBeNull(),
+      );
+    },
+  );
 
   test('revoking a token asks first, then DELETEs it', async () => {
     const list = peopleRoute(() => [ada({ tokens: [token()] })]);
@@ -295,14 +450,14 @@ describe('People section', () => {
       expect(writes()).toEqual([
         {
           method: 'DELETE',
-          path: '/api/pairing/people/human%3Atailscale-serve%3Aada%40example.com/tokens/tok-1',
+          path: `${ADA_PATH}/tokens/tok-1`,
           body: undefined,
         },
       ]),
     );
   });
 
-  test('a person who cannot hold tokens gets no New token, says why, and can still lose one', async () => {
+  test('a person who cannot hold tokens gets no + New, says why, and can still lose one', async () => {
     const list = peopleRoute(() => [
       ada(),
       grace({ tokens: [token({ id: 'tok-g', name: 'Old script' })] }),
@@ -311,20 +466,13 @@ describe('People section', () => {
       call.method === 'DELETE' ? json({ revoked: true }) : list(call);
     mount(<PeopleSection />);
 
-    const card = (await screen.findByText('Grace Hopper')).closest('article');
-    expect(card).toBeTruthy();
-    const scoped = within(card as HTMLElement);
-    expect(scoped.queryByRole('button', { name: 'New token' })).toBeNull();
-    expect(card?.textContent).toContain('Tailscale identity');
-    // Ada, who can, still gets the button.
-    const adaCard = screen
-      .getByText('ada@example.com', {
-        selector: 'h4',
-      })
-      .closest('article') as HTMLElement;
-    expect(
-      within(adaCard).getByRole('button', { name: 'New token' }),
-    ).toBeTruthy();
+    const card = (await screen.findByText('Grace Hopper')).closest(
+      'article',
+    ) as HTMLElement;
+    const scoped = within(card);
+    expect(scoped.queryByRole('button', { name: /New token/ })).toBeNull();
+    expect(card.textContent).toContain('Tailscale identity');
+    expect(screen.getByRole('button', { name: NEW_FOR_ADA })).toBeTruthy();
 
     fireEvent.click(
       scoped.getByRole('button', { name: 'Revoke token Old script' }),
@@ -367,21 +515,32 @@ describe('People section', () => {
 
   test('a caller the route refuses sees no People section at all', async () => {
     handler = () => json({ error: { code: 'insufficient_scope' } }, 403);
-    const { container } = mount(<PeopleSection />);
-    await waitFor(() => expect(calls).toHaveLength(1));
-    // Give the refusal time to settle into the query before reading the DOM.
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    const { client, container } = mount(<PeopleSection />);
+    await waitFor(() => expect(settledInError(client, PEOPLE_KEY)).toBe(true));
     expect(container.textContent).toBe('');
+  });
+
+  test('a server failure is shown, not hidden', async () => {
+    handler = () => json({ error: 'boom' }, 500);
+    mount(<PeopleSection />);
+    expect(await screen.findByText('People could not be listed')).toBeTruthy();
   });
 });
 
 describe('Your access tokens', () => {
   test('a device tied to no person sees nothing, not an error', async () => {
     handler = () => json({ error: { code: 'person_device_required' } }, 403);
-    const { container } = mount(<OwnAccessTokensPanel />);
-    await waitFor(() => expect(calls).toHaveLength(1));
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    const { client, container } = mount(<OwnAccessTokensPanel />);
+    await waitFor(() => expect(settledInError(client, OWN_KEY)).toBe(true));
     expect(container.textContent).toBe('');
+  });
+
+  test('a server failure is shown, not hidden', async () => {
+    handler = () => json({ error: 'boom' }, 500);
+    mount(<OwnAccessTokensPanel />);
+    expect(
+      await screen.findByText('Your tokens could not be listed'),
+    ).toBeTruthy();
   });
 
   test('a person’s own device lists and mints their tokens on the self-service route', async () => {
@@ -393,15 +552,11 @@ describe('Your access tokens', () => {
       tokens = [...tokens, minted];
       return json({ token: minted, secret: 'stp_own_secret' }, 201);
     };
-    mount(<OwnAccessTokensPanel />);
+    const { client } = mount(<OwnAccessTokensPanel />);
 
     expect(await screen.findByText('Your access tokens')).toBeTruthy();
     expect(screen.getByText('Release script')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'New token' }));
-    fireEvent.change(screen.getByLabelText('Name'), {
-      target: { value: 'Notebook' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Create token' }));
+    await createToken('New token for you', 'Notebook');
 
     expect(await screen.findByDisplayValue('stp_own_secret')).toBeTruthy();
     expect(writes()).toEqual([
@@ -416,6 +571,34 @@ describe('Your access tokens', () => {
         },
       },
     ]);
+    await waitFor(() =>
+      expect(
+        JSON.stringify(
+          client
+            .getMutationCache()
+            .getAll()
+            .map((mutation) => mutation.state),
+        ),
+      ).not.toContain('stp_own_secret'),
+    );
+  });
+
+  test('the secret survives the panel being refused after the mint', async () => {
+    let minted = false;
+    handler = (call) => {
+      if (call.method === 'POST') {
+        minted = true;
+        return json({ token: token(), secret: 'stp_still_here' }, 201);
+      }
+      return minted
+        ? json({ error: { code: 'person_device_required' } }, 403)
+        : json({ tokens: [] });
+    };
+    const { client } = mount(<OwnAccessTokensPanel />);
+    await createToken('New token for you', 'CI');
+    expect(await screen.findByDisplayValue('stp_still_here')).toBeTruthy();
+    await waitFor(() => expect(settledInError(client, OWN_KEY)).toBe(true));
+    expect(screen.getByDisplayValue('stp_still_here')).toBeTruthy();
   });
 
   test('an account-bound person minting their own token is told why not', async () => {
@@ -424,13 +607,7 @@ describe('Your access tokens', () => {
         ? json({ tokens: [] })
         : json({ error: { code: 'account_bound_person' } }, 400);
     mount(<OwnAccessTokensPanel />);
-
-    fireEvent.click(await screen.findByRole('button', { name: 'New token' }));
-    fireEvent.change(screen.getByLabelText('Name'), {
-      target: { value: 'Script' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Create token' }));
-
+    await createToken('New token for you', 'Script');
     expect((await screen.findByRole('alert')).textContent).toContain(
       'Tailscale identity',
     );
@@ -442,13 +619,7 @@ describe('Your access tokens', () => {
         ? json({ tokens: [] })
         : json({ error: { code: 'tokens_unavailable' } }, 503);
     mount(<OwnAccessTokensPanel />);
-
-    fireEvent.click(await screen.findByRole('button', { name: 'New token' }));
-    fireEvent.change(screen.getByLabelText('Name'), {
-      target: { value: 'Script' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Create token' }));
-
+    await createToken('New token for you', 'Script');
     expect((await screen.findByRole('alert')).textContent).toContain(
       'right now',
     );
@@ -460,16 +631,9 @@ describe('Your access tokens', () => {
         ? json({ tokens: [] })
         : json({ error: { code: 'scope_exceeds_access' } }, 400);
     mount(<OwnAccessTokensPanel />);
-
-    fireEvent.click(await screen.findByRole('button', { name: 'New token' }));
-    fireEvent.change(screen.getByLabelText('Name'), {
-      target: { value: 'Too much' },
-    });
-    fireEvent.click(screen.getByLabelText(/Read & operate/));
-    fireEvent.click(screen.getByRole('button', { name: 'Create token' }));
-
+    await createToken('New token for you', 'Too much', { operate: true });
     expect((await screen.findByRole('alert')).textContent).toContain(
-      'more access than it has',
+      'more access than this device has',
     );
   });
 });

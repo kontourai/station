@@ -733,6 +733,7 @@ export {
   STATION_PEOPLE_QUERY_KEY,
   STOP_REQUEST_BUDGET_MS,
   StationAccessError,
+  type StationGroupChange,
   type StopProviderTaskInput,
   type SurveyFlowReviewItemVM,
   type SurveyFlowReviewsVM,
