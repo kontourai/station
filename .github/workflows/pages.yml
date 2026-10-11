@@ -46,10 +46,11 @@ jobs:
       # The bundle is an add-on, so it fails open: if this step fails, the
       # Station site still publishes, and keep_files leaves the previous
       # docs-bundle.json on gh-pages (stale, shown as behind on the hub).
+      # docs-kit v0.4.0; docs-kit.yml runs its gate at the same commit.
       - name: Build docs-kit bundle
         continue-on-error: true
         run: >-
-          npx -y github:kontourai/docs-kit#efe0bfe4ad247861ef661c907f6354d6167fa3be
+          npx -y github:kontourai/docs-kit#6945efbe0309bc46ce4efafe0fccaff9b3302603
           docs-kit build
           --out "$RUNNER_TEMP/docs-kit-site"
           --base-url https://kontourai.github.io/station/

@@ -32,7 +32,7 @@ jobs:
     # kontourai/.github main at "chore(docs): pin docs-kit v0.3.0 (#49)".
     uses: kontourai/.github/.github/workflows/docs-gate.yml@f9ed64bc32b905451ed81d458d770ff09da2ed96
     with:
-      # The docs-kit commit pages.yml publishes the bundle with.
-      docs-kit-ref: efe0bfe4ad247861ef661c907f6354d6167fa3be
+      # The docs-kit commit pages.yml publishes the bundle with (v0.4.0).
+      docs-kit-ref: 6945efbe0309bc46ce4efafe0fccaff9b3302603
     permissions:
       contents: read
