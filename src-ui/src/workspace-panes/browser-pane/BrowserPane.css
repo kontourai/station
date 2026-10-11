@@ -31,6 +31,8 @@
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
   width: 100%;
 }
 
@@ -555,13 +557,6 @@
   gap: var(--space-2, 8px);
   min-height: 6rem;
   overflow: hidden;
-}
-
-@media (max-height: 540px) {
-  [data-workspace-pane-route]:has(.browser-pane) > .project-page__inner {
-    padding-top: 0;
-    padding-bottom: 0;
-  }
 }
 
 .browser-pane__console-bar {
