@@ -37,12 +37,12 @@ the process; a shell change does not reconfigure an already running service.
 
 | Variable | Default | Description | Source |
 |----------|---------|-------------|--------|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | _(none)_ | OTLP HTTP collector base URL; Station appends `/v1/traces` and `/v1/metrics`. Unset means this OpenTelemetry SDK/export path stays inactive. Local monitoring and direct product usage telemetry are separate. | `src-server/telemetry.ts` |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | _(none)_ | OTLP HTTP collector base URL; Station appends `/v1/traces` and `/v1/metrics`. Used when no saved collector address exists; without either address, this SDK/export path stays inactive. Local monitoring and direct product usage telemetry are separate. | `src-server/domain/telemetry-configuration.ts`, `src-server/telemetry.ts` |
 | `OTEL_SERVICE_NAME` | `station` | Service name reported in traces and metrics | `src-server/telemetry.ts` |
-| `STATION_OTEL_API_KEY` | _(none)_ | Optional `x-api-key` sent only to `OTEL_EXPORTER_OTLP_ENDPOINT`. Never used for product observations. | `src-server/domain/telemetry-configuration.ts`, `src-server/telemetry.ts` |
+| `STATION_OTEL_API_KEY` | _(none)_ | Optional `x-api-key` for the environment collector. A saved collector address or key reference suppresses this environment key. Never used for product observations. | `src-server/domain/telemetry-configuration.ts`, `src-server/telemetry.ts` |
 | `STATION_PRODUCT_TELEMETRY_ENABLED` | `true` | Product fallback when `app.json.telemetryEnabled` is absent. `false`, `off`, `0`, or `disabled` means off; `true`, `on`, `1`, or `enabled` means on (trimmed, case-insensitive). A saved toggle wins. Emission still requires a destination and current disclosure acknowledgement. | `src-server/domain/telemetry-configuration.ts`, `src-server/services/usage-telemetry-service.ts` |
-| `STATION_PRODUCT_TELEMETRY_ENDPOINT` | _(none)_ | Full product ingestion POST address. Station appends no path. Unset by default: no product observation is buffered, timed, or sent. | `src-server/domain/telemetry-configuration.ts`, `src-server/services/usage-telemetry-service.ts` |
-| `STATION_PRODUCT_TELEMETRY_KEY` | _(none)_ | Optional `x-api-key` sent only to the product destination. Never resolved from an OTLP key. | `src-server/domain/telemetry-configuration.ts`, `src-server/services/usage-telemetry-service.ts` |
+| `STATION_PRODUCT_TELEMETRY_ENDPOINT` | _(none)_ | Full product ingestion POST address when no saved address exists. Station appends no path. Without either address, no product observation is buffered, timed, or sent. | `src-server/domain/telemetry-configuration.ts`, `src-server/services/usage-telemetry-service.ts` |
+| `STATION_PRODUCT_TELEMETRY_KEY` | _(none)_ | Optional `x-api-key` for the environment product destination. A saved address or key reference suppresses this environment key. Never resolved from an OTLP key. | `src-server/domain/telemetry-configuration.ts`, `src-server/services/usage-telemetry-service.ts` |
 | `STATION_TELEMETRY_API_KEY` | _(none)_ | Legacy same-destination alias for `STATION_OTEL_API_KEY`. | `src-server/domain/telemetry-configuration.ts` |
 | `STATION_TELEMETRY_ENABLED` | `true` | Legacy same-destination alias for `STATION_PRODUCT_TELEMETRY_ENABLED`. | `src-server/domain/telemetry-configuration.ts`, `packages/contracts/src/settings-registry.ts` |
 | `STATION_TELEMETRY_ENDPOINT` | _(none)_ | Legacy same-destination alias for `STATION_PRODUCT_TELEMETRY_ENDPOINT`. Existing full-POST addresses retain their meaning. | `src-server/domain/telemetry-configuration.ts` |
@@ -55,6 +55,8 @@ notices name invalid, legacy or conflicting variables without their values.
 Aliases remain supported until a separate release decision removes them.
 Product and OTLP keys never cross destinations; product consent remains
 independent of OTLP configuration or connection checks.
+Saved addresses and SecretBinding references are described in
+[Usage telemetry](usage-telemetry.md#delivery-status-and-connection-checks).
 
 ## Frontend
 
