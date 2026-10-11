@@ -110,7 +110,7 @@ import {
   mapAcpDecisionToOutcome,
   mapAcpExtensionNotification,
   mapAcpSessionUpdate,
-  mapAcpStopReasonToFinishReason,
+  mapAcpStopReasonToTurnCompletion,
 } from './acp-adapter-events.js';
 import {
   type AcpToolServerSkip,
@@ -2615,7 +2615,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           createdAt: new Date().toISOString(),
           turnId,
           method: 'turn.completed',
-          finishReason: mapAcpStopReasonToFinishReason(response.stopReason),
+          ...mapAcpStopReasonToTurnCompletion(response.stopReason),
         });
         record.session.status = 'ready';
         record.session.updatedAt = new Date().toISOString();
