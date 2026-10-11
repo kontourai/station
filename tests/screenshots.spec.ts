@@ -2672,6 +2672,60 @@ const SCREENS: Screen[] = [
   })(),
 ];
 
+async function statusRasterState(page: Page) {
+  return page
+    .getByRole('button', {
+      name: 'Status unavailable — repair the connection',
+      exact: true,
+    })
+    .locator('..')
+    .evaluate((host) => {
+      const svg = host.querySelector('.live-status-glyph svg');
+      if (!(svg instanceof SVGSVGElement))
+        throw new Error('Mismatch status warning SVG is missing');
+      const matrix = svg.getScreenCTM();
+      if (!matrix) throw new Error('Mismatch status SVG has no screen matrix');
+      const rect = svg.getBoundingClientRect();
+      return {
+        devicePixelRatio,
+        rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+        matrix: [matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f],
+        strokeWidth: getComputedStyle(svg).strokeWidth,
+        color: getComputedStyle(svg).color,
+        ancestors: [
+          host,
+          ...host.querySelectorAll('button, .chat-status-pill__body'),
+        ]
+          .slice(0, 8)
+          .map((element) => {
+            const style = getComputedStyle(element);
+            return {
+              className: element.className,
+              transform: style.transform,
+              opacity: style.opacity,
+              willChange: style.willChange,
+            };
+          }),
+        animations: host
+          .getAnimations({ subtree: true })
+          .slice(0, 16)
+          .map((animation) => {
+            const timing = animation.effect?.getComputedTiming();
+            return {
+              playState: animation.playState,
+              pending: animation.pending,
+              fill: timing?.fill,
+              progress: timing?.progress,
+              iterations:
+                timing?.iterations === Infinity
+                  ? 'infinite'
+                  : timing?.iterations,
+            };
+          }),
+      };
+    });
+}
+
 interface Shot {
   screen: Screen;
   file: string;
@@ -2679,6 +2733,13 @@ interface Shot {
   error?: string;
   sha256?: string;
   controls?: Array<{ label: string; disabled: boolean }>;
+  rasterDiagnostic?: {
+    before: Awaited<ReturnType<typeof statusRasterState>>;
+    after: Awaited<ReturnType<typeof statusRasterState>>;
+    retiredCount: number;
+    file: string;
+    sha256: string;
+  };
   layout?: {
     appMainScrollTop: number;
     appMainScrollHeight: number;
@@ -2942,6 +3003,7 @@ test('build gallery — capture key screens', async ({ page }) => {
     for (const screen of selectedScreens) {
       const file = `${screen.name}.png`;
       let layout: Shot['layout'];
+      let rasterDiagnostic: Shot['rasterDiagnostic'];
       try {
         await page.setViewportSize(screen.viewport);
         await page.emulateMedia({
@@ -3051,6 +3113,53 @@ test('build gallery — capture key screens', async ({ page }) => {
               // in-flight transition from being mid-frame at capture time.
               animations: 'disabled',
             });
+            if (screen.name === 'overlay-dock-project-mismatch') {
+              const before = await statusRasterState(page);
+              const retiredCount = await page
+                .getByRole('button', {
+                  name: 'Status unavailable — repair the connection',
+                  exact: true,
+                })
+                .locator('..')
+                .evaluate((host) => {
+                  const finished = host
+                    .getAnimations({ subtree: true })
+                    .filter((animation) => {
+                      const timing = animation.effect?.getComputedTiming();
+                      return (
+                        animation.playState === 'finished' &&
+                        timing?.iterations !== Infinity &&
+                        (timing?.fill === 'both' || timing?.fill === 'forwards')
+                      );
+                    });
+                  for (const animation of finished) animation.cancel();
+                  return finished.length;
+                });
+              await page.evaluate(
+                () =>
+                  new Promise<void>((resolveFrame) =>
+                    requestAnimationFrame(() =>
+                      requestAnimationFrame(() => resolveFrame()),
+                    ),
+                  ),
+              );
+              const after = await statusRasterState(page);
+              const diagnosticFile = `${screen.name}.retired-effects-diagnostic.png`;
+              await page.screenshot({
+                path: join(GALLERY_DIR, diagnosticFile),
+                fullPage: true,
+                animations: 'disabled',
+              });
+              rasterDiagnostic = {
+                before,
+                after,
+                retiredCount,
+                file: diagnosticFile,
+                sha256: createHash('sha256')
+                  .update(readFileSync(join(GALLERY_DIR, diagnosticFile)))
+                  .digest('hex'),
+              };
+            }
           },
         });
         const controls = await page
@@ -3092,6 +3201,7 @@ test('build gallery — capture key screens', async ({ page }) => {
           ok: true,
           controls,
           layout,
+          rasterDiagnostic,
           sha256: createHash('sha256')
             .update(readFileSync(join(GALLERY_DIR, file)))
             .digest('hex'),
@@ -3139,7 +3249,16 @@ test('build gallery — capture key screens', async ({ page }) => {
           // gallery for full coverage.
           selection: requestedScreens,
           screens: shots.map(
-            ({ file, ok, screen, error, sha256, controls, layout }) => ({
+            ({
+              file,
+              ok,
+              screen,
+              error,
+              sha256,
+              controls,
+              layout,
+              rasterDiagnostic,
+            }) => ({
               file,
               ok,
               name: screen.name,
@@ -3147,6 +3266,7 @@ test('build gallery — capture key screens', async ({ page }) => {
               sha256,
               controls,
               layout,
+              rasterDiagnostic,
             }),
           ),
         },
