@@ -208,26 +208,6 @@
 
 /* The chip menus (lazy): one panel shape for the Agent list and the project
    list, on top of the shared composer popover shell. */
-/* On a phone a chip menu is a sheet over the start screen, and the shared
-   popover scrim (black at 32%) barely separated it from a dark page: the
-   page's own rows read as part of the sheet. The modal scrim does. */
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .composer-popover-overlay.start-menu__overlay {
-    background: var(--overlay-modal);
-    /* Docked to the bottom and side edges like a native sheet: the shared
-       surface's 8px float left a strip of page under the sheet and its last
-       row ending above the home indicator. The list pads that inset instead. */
-    padding: var(--safe-top, 0px) 0 0;
-  }
-  .composer-popover-panel.start-menu__panel {
-    --start-menu-inset: var(--k-space-4);
-    border-width: 1px 0 0;
-    border-radius: var(--k-radius-overlay) var(--k-radius-overlay) 0 0;
-  }
-  .start-menu__list {
-    padding-bottom: max(var(--k-space-2), var(--safe-bottom, 0px));
-  }
-}
 .start-menu__panel {
   --composer-popover-width: 440px;
   /* One inset for every left and right edge in the menu (header, filter,
@@ -402,4 +382,32 @@
   margin-top: var(--k-space-1);
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
+}
+
+/* On a phone a chip menu is a sheet over the start screen, and the shared
+   popover scrim (black at 32%) barely separated it from a dark page: the
+   page's own rows read as part of the sheet. The modal scrim does. Declared
+   after the base menu rules above so it wins at equal specificity. */
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .composer-popover-overlay.start-menu__overlay {
+    background: var(--overlay-modal);
+  }
+}
+/* A portrait phone docks the sheet to the bottom and side edges like a native
+   sheet: the shared surface's 8px float left a strip of page under it. The
+   side insets stay (a notch or cutout); the home-indicator inset moves into
+   the list's own padding so the last row scrolls clear of it. The landscape
+   branch keeps the shared floating panel, which is narrower than the screen. */
+@media (max-width: 768px) {
+  .composer-popover-overlay.start-menu__overlay {
+    padding: var(--safe-top, 0px) var(--safe-right, 0px) 0 var(--safe-left, 0px);
+  }
+  .composer-popover-panel.start-menu__panel {
+    --start-menu-inset: var(--k-space-4);
+    border-width: 1px 0 0;
+    border-radius: var(--k-radius-overlay) var(--k-radius-overlay) 0 0;
+  }
+  .start-menu__panel .start-menu__list {
+    padding-bottom: max(var(--k-space-2), var(--safe-bottom, 0px));
+  }
 }

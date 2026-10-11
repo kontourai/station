@@ -24,7 +24,8 @@ function engineQualifiedBy(
   agentName: string,
 ): EngineDescriptor | null {
   if (!engine) return engine;
-  const match = /^(.+?)\s*\((.+)\)$/.exec(engine.name);
+  // One trailing group only: "Claude Code (a) (b)" is not a qualifier.
+  const match = /^(.+?)\s*\(([^()]+)\)$/.exec(engine.name);
   if (
     !match ||
     normalizedDisplayLabel(match[1]) !== normalizedDisplayLabel(agentName)
@@ -77,9 +78,13 @@ function AgentPickerRow({
   const repeatsAgent =
     normalizedDisplayLabel(engineChipLabel(chipEngine)) ===
     normalizedDisplayLabel(agent.name);
-  // A model the engine never reported is nothing to choose and nothing to
-  // name, so the row does not print the gap (the Agent chip hides it too).
-  const showModel = !(modelUnavailable && modelLabel === MODEL_NOT_REPORTED);
+  // A model the engine never reported is not a model, so the row never
+  // prints the gap (the Agent chip hides it too). With a catalog there is
+  // still one to choose, so the trigger stays and asks for it; without one
+  // there is nothing to show.
+  const modelReported = modelLabel !== MODEL_NOT_REPORTED;
+  const showModel = modelReported || !modelUnavailable;
+  const modelText = modelReported ? modelLabel : 'Choose model';
   return (
     <div
       className="new-chat-modal__agent-row"
@@ -180,11 +185,13 @@ function AgentPickerRow({
             // choose — the trigger opened an empty picker. Disabled (not
             // hidden) while it still names a model, so the tooltip says why.
             disabled={interactionDisabled || modelUnavailable}
-            aria-label={`Model: ${modelLabel}`}
+            aria-label={`Model: ${modelText}`}
             title={
               modelUnavailable
                 ? 'This Agent has not reported a model catalog'
-                : `Choose model: ${modelLabel}`
+                : modelReported
+                  ? `Choose model: ${modelLabel}`
+                  : 'Choose model'
             }
           >
             {/* The model name alone. The `Model · ` prefix read four times per
@@ -192,7 +199,7 @@ function AgentPickerRow({
               — on every seeded row the visible string ended at the model's
               actual name ("Model · Default (r…"), the one part that matters.
               What this control IS stays in the accessible name and tooltip. */}
-            {modelLabel}
+            {modelText}
           </button>
         )}
         {/*

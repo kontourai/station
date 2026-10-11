@@ -86,6 +86,18 @@ describe('Agent picker row presentation', () => {
     ).toBeTruthy();
   });
 
+  test('only a single trailing qualifier is split off the engine name', () => {
+    const twoGroups: AgentData = {
+      ...PROXIED_CLAUDE,
+      slug: agentId('claude-two'),
+      engineDisplayName: 'Claude Code (a) (b)',
+    };
+    renderRows([twoGroups], () => ({ label: 'Opus', unavailable: false }));
+    expect(
+      within(row(twoGroups.slug)).getByText('Claude Code (a) (b)'),
+    ).toBeTruthy();
+  });
+
   test('a row with no resolvable engine draws no empty engine line', () => {
     // A custom Agent bound to a connection the catalog cannot name has no
     // engine descriptor; its meta line used to render empty and add height.
@@ -124,5 +136,30 @@ describe('Agent picker row presentation', () => {
       name: 'Model: Opus',
     });
     expect((named as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  test('an unreported model with a catalog asks for a choice', () => {
+    const opened: HTMLElement[] = [];
+    render(
+      <AgentPickerGroups
+        groups={[{ label: 'Coding apps', glyph: 'code', agents: [KIRO] }]}
+        flatList={[KIRO]}
+        selectedIndex={0}
+        onChoose={() => {}}
+        onHover={() => {}}
+        modelLabelFor={() => 'Model not reported'}
+        modelUnavailableFor={() => false}
+        onOpenModel={(_agent, trigger) => opened.push(trigger)}
+        fixDisabledFor={() => undefined}
+        onFix={() => {}}
+      />,
+    );
+    const trigger = within(row(KIRO.slug)).getByRole('button', {
+      name: 'Model: Choose model',
+    });
+    expect(trigger.textContent).toBe('Choose model');
+    expect(screen.queryByText('Model not reported')).toBeNull();
+    trigger.click();
+    expect(opened).toEqual([trigger]);
   });
 });

@@ -387,7 +387,7 @@ export function StartModelPicker({
       historyMode="entry"
       anchorRef={anchorRef}
       returnFocusTarget={anchor}
-      overlayClassName="composer-popover-overlay composer-popover-overlay--start start-menu__overlay"
+      overlayClassName="composer-popover-overlay composer-popover-overlay--start"
       panelClassName="composer-popover-panel chat-input__model-popover-panel"
     >
       {loading && models.length === 0 ? (
@@ -451,7 +451,7 @@ function StationScopedModelPicker(
       historyMode="entry"
       anchorRef={anchorRef}
       returnFocusTarget={props.anchor}
-      overlayClassName="composer-popover-overlay composer-popover-overlay--start start-menu__overlay"
+      overlayClassName="composer-popover-overlay composer-popover-overlay--start"
       panelClassName="composer-popover-panel chat-input__model-popover-panel"
     >
       <React.Suspense

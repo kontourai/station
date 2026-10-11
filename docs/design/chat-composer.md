@@ -66,8 +66,9 @@ separate Agent and Engine & model controls sit inside it beside Start and the ov
 for visual skills. The Agent list retains each Agent's readiness and repair
 action, with a short purpose for custom Agents. A row does not repeat what the
 list already states: the Station every row runs on, an engine name that is only
-the Agent's name plus a qualifier (the row keeps the qualifier), or a model the
-engine never reported. The Model picker offers search, recent choices, favorites and provider
+the Agent's name plus a qualifier (the row keeps the qualifier), or "Model not
+reported": a row with a model catalog but no reported model offers **Choose
+model**, and one with neither shows no model control. The Model picker offers search, recent choices, favorites and provider
 filters; Options reveals capability filters and the selected model's supported
 runtime controls. Reviewed canonical model identities still own grouping across
 provider routes; similar names do not establish equivalence.
