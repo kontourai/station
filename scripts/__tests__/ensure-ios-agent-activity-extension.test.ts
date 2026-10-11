@@ -466,14 +466,14 @@ describe('iOS agent-activity extension project spec', () => {
   test("the committed Xcode project deploys at the app's iOS floor", () => {
     // #3399: every declaration of the floor agrees with tauri.ios.conf.json.
     expect(IOS_APP_MINIMUM).toBe('16.4');
-    expect(YAML.parse(readFileSync(committedSpec, 'utf8')).options).toEqual(
-      expect.objectContaining({
-        deploymentTarget: { iOS: Number(IOS_APP_MINIMUM) },
-      }),
-    );
+    // Failsafe keeps every scalar a string: `16.10` must not read as 16.1.
+    expect(
+      YAML.parse(readFileSync(committedSpec, 'utf8'), { schema: 'failsafe' })
+        .options.deploymentTarget.iOS,
+    ).toBe(IOS_APP_MINIMUM);
     const targets = [
       ...readFileSync(committedXcodeProject, 'utf8').matchAll(
-        /IPHONEOS_DEPLOYMENT_TARGET = ([\d.]+);/g,
+        /IPHONEOS_DEPLOYMENT_TARGET = "?([^";]+)"?;/g,
       ),
     ].map((match) => match[1]);
     expect(targets.length).toBeGreaterThan(0);
