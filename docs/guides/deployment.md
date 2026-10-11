@@ -157,6 +157,13 @@ and hot reload stay outside the published image contract.
 
 ## Monitoring Stack
 
+The optional [private telemetry companion](../../deployment/telemetry/README.md)
+now has an explicit receiver image target and a separate pinned Compose profile.
+It requires private credential files and loopback exposure; consumer validation,
+actual delivery, backup/restore and release qualification are still pending.
+Its source is distinct from the development template below and existing dogfood
+receipts.
+
 The standalone stack in `monitoring/` is independently managed from the
 production Station container. It maps OTLP HTTP to 4318, Prometheus to 9090,
 Grafana to 3333 and Jaeger to 16686. The checked-in template uses mutable image

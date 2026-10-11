@@ -24,7 +24,8 @@ Configure these environment variables for the built entrypoint:
 
 | Variable | Meaning |
 | --- | --- |
-| `STATION_TELEMETRY_BROKER_DATABASE_URL` | Private PostgreSQL connection URL; use a dedicated database |
+| `STATION_TELEMETRY_BROKER_DATABASE_URL` | Private PostgreSQL connection URL; use a dedicated database and select this or the file input |
+| `STATION_TELEMETRY_BROKER_DATABASE_URL_FILE` | Owned/private Unix regular file containing the URL, bounded to 4096 bytes; selecting both inputs refuses startup |
 | `STATION_TELEMETRY_BROKER_OPERATOR_KEY_FILE` | Owned Unix regular file, private permissions, containing one `sto_` credential |
 | `STATION_TELEMETRY_BROKER_HOST` | Listen address, default `127.0.0.1` |
 | `STATION_TELEMETRY_BROKER_PORT` | Nonprivileged port, default `43891` |
@@ -44,6 +45,11 @@ personal identity. Product source keys cannot call operator routes, and operator
 keys cannot submit source events. Rotating the operator key requires restarting
 the receiver; rotating a source means provisioning a fresh source and revoking
 the old one.
+
+The [private companion profile](../../deployment/telemetry/README.md) composes
+an explicit standalone image target and separate pinned diagnostic stores.
+Its source exists; image/configuration/runtime and upgrade/restore qualification
+remain pending. A normal Station install does not start that profile.
 
 ## API
 
