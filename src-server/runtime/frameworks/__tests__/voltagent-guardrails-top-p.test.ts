@@ -115,3 +115,14 @@ test('no guardrail topP leaves the model call unset', async () => {
   expect(model.doGenerateCalls[0]!.topP).toBeUndefined();
   expect(model.doGenerateCalls[0]!.temperature).toBe(0.2);
 });
+
+test('temperature wins over topP when both guardrails are set', async () => {
+  // Bedrock forwards both, and newer Claude models reject that combination.
+  const { model, bundle } = await build({ temperature: 0.7, topP: 0.9 });
+  await (bundle.agent as any).raw.generateText('Hi', {
+    userId: 'owner',
+    conversationId: 'c6',
+  });
+  expect(model.doGenerateCalls[0]!.temperature).toBe(0.7);
+  expect(model.doGenerateCalls[0]!.topP).toBeUndefined();
+});

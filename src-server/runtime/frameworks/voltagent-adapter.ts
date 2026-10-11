@@ -1117,7 +1117,20 @@ export class VoltAgentFramework {
           ? { maxOutputTokens: config.appConfig.defaultMaxOutputTokens }
           : {}),
       });
-      bindDefaultTopP(agent, spec.guardrails?.topP);
+      // #323 review: when both guardrails are set, temperature wins, which is
+      // what @ai-sdk/anthropic already does for Claude. Some providers forward
+      // both (Bedrock), and newer Claude models reject a request that carries
+      // both, so binding topP there would turn a silently ignored setting
+      // into a failing agent.
+      const topP = spec.guardrails?.topP;
+      if (topP !== undefined && spec.guardrails?.temperature !== undefined) {
+        opts.logger?.warn?.(
+          { agent: slug },
+          'guardrails.topP is ignored because guardrails.temperature is also set',
+        );
+      } else {
+        bindDefaultTopP(agent, topP);
+      }
 
       return new VoltAgentWrapper(
         agent,
