@@ -377,6 +377,8 @@ describe('useSessionEventStream', () => {
 
   test('a stream that fails before it ever opens is interrupted after the grace window, not the connect timeout', async () => {
     vi.useFakeTimers();
+    // History answers, so only the live stream can make this interrupted.
+    fetchSession.mockResolvedValue({ session: {}, events: [] });
     fetchSSE.mockImplementationOnce(
       (_url: string, options: typeof streamOptions) => {
         streamOptions = options;
@@ -396,6 +398,7 @@ describe('useSessionEventStream', () => {
         await vi.advanceTimersByTimeAsync(1);
       });
       expect(result.current.connectionInterrupted).toBe(true);
+      expect(result.current.historyRetrying).toBe(false);
     } finally {
       unmount();
     }
