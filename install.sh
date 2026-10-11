@@ -1714,8 +1714,14 @@ hand_off_to_launcher() {
     }
     const id = crypto.randomUUID();
     const stage = `${request}.${process.pid}.tmp`;
-    fs.writeFileSync(stage, `${JSON.stringify({ id, requestedAt: new Date().toISOString(), targetVersion: version })}\n`, { mode: 0o600, flag: "wx" });
-    fs.renameSync(stage, request);
+    try {
+      fs.writeFileSync(stage, `${JSON.stringify({ id, requestedAt: new Date().toISOString(), targetVersion: version })}\n`, { mode: 0o600, flag: "wx" });
+      fs.renameSync(stage, request);
+    } catch (error) {
+      // A failed write (ENOSPC) must not leave the empty stage behind.
+      if (error?.code !== "EEXIST") fs.rmSync(stage, { force: true });
+      throw error;
+    }
     console.log(`Asked the Station service to switch to ${version}; it trials the new version and keeps the current one if the trial fails.`);
     const read = (file) => { try { return JSON.parse(fs.readFileSync(path.join(runtime, file), "utf8")); } catch { return null; } };
     const deadline = Date.now() + Number(timeoutSeconds) * 1000;
