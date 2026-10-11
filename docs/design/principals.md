@@ -120,6 +120,19 @@ fires. The landed attribution seam gives those device, presence, delegation,
 and Task-room actions stable principal references; it does not itself create
 the shared-membership model in (b).
 
+### Station groups (#3557)
+
+A person dimension on authorization, kept out of the scope string as R2
+requires: `<home>/security/station-groups.json` maps a person's principal id
+to a Station group (**Admin** or **Member**; unassigned means Member), and
+the group's ceiling (`@kontourai/station-contracts/station-groups`) caps the
+governed permissions of every device tied to that person. The person comes
+from the device's `principalBinding`, through the same
+`principalForDeviceBinding` request resolution uses, so the person a request
+acts as and the person whose group caps it cannot disagree. Groups never
+grant Project membership; Project roles stay per Project. See the
+[threat model](../security/remote-access-threat-model.md#scope-model).
+
 ## 3. The four contradictions this resolves
 
 Recorded because each will otherwise be rediscovered by whoever picks up an

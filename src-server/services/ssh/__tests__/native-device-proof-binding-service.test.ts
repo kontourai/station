@@ -324,6 +324,37 @@ describe('native device proof binding service (station#2893)', () => {
     expect(JSON.stringify(stored)).not.toContain('peerNonce');
   });
 
+  test('#3557: a Station group cap narrows what the binding admits, and never invalidates it', () => {
+    const homeDir = makeTempDir('station-proof-binding-capped-');
+    mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
+    let capped = false;
+    const pairing = new DevicePairingService({
+      homeDir,
+      environmentId: ENVIRONMENT_ID,
+      // As a person's group would: the cap only narrows what it may use.
+      capScope: (device) => (capped ? 'orchestration:read' : device.scope),
+    });
+    const bindingService = new NativeDeviceProofBindingService({
+      homeDir,
+      pairing,
+    });
+    const { deviceId } = pairForBindings(pairing);
+    const approved = surface();
+    createApproved(bindingService, deviceId, { surface: approved });
+    expect(
+      bindingService.currentBinding({ deviceId, surface: approved })?.device
+        .scope,
+    ).toBe(DEFAULT_GRANT_PAIRING_SCOPE);
+
+    capped = true;
+    const current = bindingService.currentBinding({
+      deviceId,
+      surface: approved,
+    });
+    expect(current).not.toBeNull();
+    expect(current?.device.scope).toBe('orchestration:read');
+  });
+
   test('returned binding ID equals the host-proposed candidate ID and survives reopen', () => {
     const { homeDir, pairing, bindingService } = harness();
     const { deviceId } = pairForBindings(pairing);

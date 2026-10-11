@@ -830,3 +830,9 @@ Scope: this record and S1. S2a, S2b, S3, S4 (and S1b) are follow-ups.
 | D9 | v1 scope: remote confirmation of pairing requests? Remote CLI (S5)? Native shells (S6)? | None in v1. Pairing approval stays on the host or with `access:approve`. |
 | D10 | Stations reachable only by IP or without a DNS name get no remote operator sign-in | Accept and document |
 | D11 | Hosted tenants | Out of scope; refuse operator passkey routes when a hosted tenant registry is present |
+
+### Decided (owner, 2026-10-11, #3557)
+
+| # | Decision |
+|---|---|
+| D12 | People sit in a Station group, Admin or Member (the default). A group caps what any device tied to the person may use; it never grants `access:manage`, so a paired device still never becomes an administrator. Devices tied to no person, peer Station delegations and home-possession credentials are not capped. Only the operator changes a group (`PUT /api/pairing/people/:principalId/group`). |

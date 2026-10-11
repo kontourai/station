@@ -129,6 +129,11 @@ async function createHarness(
   });
   const audits: Array<{ event: string; approver: string }> = [];
   configureDevicePairingHostRoutes(app as never, security.devicePairing, {
+    groups: {
+      groupOf: (principalId) => security.groupOf(principalId),
+      assignments: () => security.groupAssignments(),
+      assign: (principalId, group) => security.assignGroup(principalId, group),
+    },
     audit: (record) => audits.push(record),
     verifyOperatorCredential: (credential) =>
       security.verifyOperatorCredential(credential),
@@ -1053,5 +1058,118 @@ describe('delegated engine sign-in HTTP admission', () => {
     );
     expect(revoked.status).toBe(401);
     expect(profileReads).not.toHaveBeenCalled();
+  });
+});
+
+describe('#3557 Station groups at the HTTP boundary', () => {
+  const ELEVATED =
+    'orchestration:read orchestration:operate terminal:operate access:approve';
+
+  /** A device tied to a verified Tailscale person, with `scope`. */
+  const pairPerson = async (
+    harness: Awaited<ReturnType<typeof createHarness>>,
+    login: string,
+    scope: string,
+  ) => {
+    const pairing = harness.security.devicePairing;
+    const offer = pairing.createOffer({ endpoint: ORIGIN, scope });
+    const request = pairing.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: `${login} phone`,
+      source: 'tailnet',
+      requester: { provider: 'tailscale-serve', login },
+    });
+    const principalId = `human:tailscale-serve:${login}`;
+    pairing.confirmRequest(
+      request.requestId,
+      { kind: 'presented-credential' },
+      { principalId, kind: 'verified-ingress' },
+    );
+    return {
+      principalId,
+      ...pairing.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: request.requestId,
+      }),
+    };
+  };
+
+  test("a Member's device holding access:approve is refused an approval; promoting the person admits it without re-pairing", async () => {
+    const harness = await createHarness();
+    const casey = await pairPerson(harness, 'casey', ELEVATED);
+    const pending = await harness.createPendingRequest('New watch');
+    const confirm = () =>
+      harness.request(
+        `/api/pairing/requests/${pending.requestId}/confirm`,
+        { ...cookieInit(casey.credential, 'POST'), body: '{}' },
+        '203.0.113.61',
+      );
+    expect([401, 403]).toContain((await confirm()).status);
+
+    const promoted = await harness.request(
+      `/api/pairing/people/${encodeURIComponent(casey.principalId)}/group`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${harness.operatorCredential}`,
+        },
+        body: JSON.stringify({ group: 'admin' }),
+      },
+    );
+    expect(promoted.status).toBe(200);
+    expect(await promoted.json()).toMatchObject({
+      person: {
+        principalId: casey.principalId,
+        group: 'admin',
+        assigned: true,
+      },
+    });
+    expect((await confirm()).status).toBe(200);
+  });
+
+  test('only the operator lists people or changes a group', async () => {
+    const harness = await createHarness();
+    const casey = await pairPerson(harness, 'casey', ELEVATED);
+    await harness.security.assignGroup(casey.principalId, 'admin');
+    const listed = await harness.request('/api/pairing/people', {
+      headers: { Authorization: `Bearer ${harness.operatorCredential}` },
+    });
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toMatchObject({
+      people: [
+        {
+          principalId: casey.principalId,
+          group: 'admin',
+          devices: [{ id: casey.device.id, effectiveScope: ELEVATED }],
+        },
+      ],
+    });
+
+    // Casey's own Admin device may approve pairing requests, but never
+    // change anyone's group: that is the operator's alone.
+    for (const [method, path, body] of [
+      ['GET', '/api/pairing/people', undefined],
+      [
+        'PUT',
+        `/api/pairing/people/${encodeURIComponent(casey.principalId)}/group`,
+        JSON.stringify({ group: 'admin' }),
+      ],
+    ] as const) {
+      const refused = await harness.request(
+        path,
+        {
+          ...cookieInit(casey.credential, method === 'GET' ? 'GET' : 'POST'),
+          method,
+          ...(body ? { body } : {}),
+        },
+        '203.0.113.62',
+      );
+      expect([401, 403], `${method} ${path}`).toContain(refused.status);
+    }
+    expect(harness.security.groupOf(casey.principalId)).toBe('admin');
   });
 });

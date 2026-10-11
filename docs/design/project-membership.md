@@ -39,6 +39,10 @@ attributed work on separately approved compute. Joining does not offer the
 collaborator's files, credentials or computer. A viewing device needs neither
 an agent engine nor a checkout.
 
+Project roles are not Station groups. A Station group (Admin or Member, #3557)
+caps what any device tied to a person may do across the Station; a Project role
+says what that person may do in one Project. Neither grants the other.
+
 Use **Device** for what connects and **Station** for what it connects to, as
 [the glossary](../glossary.md#station-device-client) requires. In this document,
 "client software" means the UI/SDK on that device, not the glossary's **Client**

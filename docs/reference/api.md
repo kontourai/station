@@ -3512,6 +3512,24 @@ sealing, activation, cancellation, recovery and evidence limits.
 ---
 
 
+## People and Station groups
+
+Operator only, on the pairing family's gate (`currentOperator`):
+
+- `GET /api/pairing/people` returns `{ people: StationPerson[] }`: everyone
+  with a group assignment or a live device tied to them, each with `group`,
+  `assigned`, and their tied devices' granted `scope` and `effectiveScope`
+  (the scope capped by the group).
+- `PUT /api/pairing/people/:principalId/group` with `{ "group": "admin" |
+  "member" }` places a person (a `human:` principal id) in a group; Member
+  removes the assignment. Live connections of the person's devices
+  re-authenticate, and a full access the group no longer allows is reset
+  (`revocations`, keyed by device id). `400 invalid_group` or
+  `invalid_principal` refuses anything else.
+
+See the [threat model](../security/remote-access-threat-model.md#scope-model)
+for what each group allows.
+
 ## Decide a pending paired-device request
 
 A current operator, qualifying local-grant credential, or Device explicitly

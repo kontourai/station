@@ -96,7 +96,6 @@ import type { ApplicationSessionService } from '../../services/identity/applicat
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
 import {
   type DeploymentAuthenticationService,
-  deploymentAccountPrincipal,
   isDeploymentAccountPrincipalId,
 } from '../../services/identity/deployment-authentication-service.js';
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
@@ -152,7 +151,6 @@ import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
   DEVICE_PAIRING_BROWSER_COOKIE_DELIVERY,
-  type DevicePrincipalBinding,
   deviceRequestedExtraScopes,
   type FullAccessRevocationReport,
   isDeviceRequestableScope,
@@ -178,6 +176,13 @@ import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-
 import type { LaunchableModelInventory } from '@kontourai/station-contracts/model-inventory';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
+import {
+  isStationGroup,
+  type StationGroup,
+  type StationGroupAssignment,
+  type StationPerson,
+} from '@kontourai/station-contracts/station-groups';
 import { parseStationTaskBasisCollection } from '@kontourai/station-contracts/task-basis';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -186,28 +191,6 @@ import {
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { isStationNativeShellOrigin } from '@kontourai/station-shared/native-shell-origin';
 import { operatorCliCommand } from '@kontourai/station-shared/ports';
-
-function isAccountDeviceBinding(
-  binding: DevicePrincipalBinding,
-): binding is Extract<DevicePrincipalBinding, { kind: 'account' }> {
-  return 'kind' in binding && binding.kind === 'account';
-}
-
-function principalForDeviceBinding(binding: DevicePrincipalBinding) {
-  return isAccountDeviceBinding(binding)
-    ? deploymentAccountPrincipal(
-        binding.issuer,
-        binding.subject,
-        binding.displayName,
-      )
-    : deploymentHumanPrincipal(
-        binding.provider,
-        binding.subject,
-        binding.subject,
-      );
-}
-
-import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
 import type { Agent } from '@voltagent/core';
 import type { HonoServerConfig } from '@voltagent/server-hono';
 import type { Context } from 'hono';
@@ -423,6 +406,7 @@ import {
 } from '../../security/runtime-request-security.js';
 import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
 import { runAsStationServer } from '../../security/station-server-scope.js';
+import { principalForDeviceBinding } from '../../services/access/device-binding-principal.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
 import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
@@ -2626,6 +2610,14 @@ export function configureRuntimeRoutes(
     {
       operatorCli: () =>
         operatorCliCommand(context.buildProvenanceSnapshot?.channel),
+      groups: {
+        groupOf: (principalId) =>
+          context.environmentSecurityService.groupOf(principalId),
+        assignments: () =>
+          context.environmentSecurityService.groupAssignments(),
+        assign: (principalId, group) =>
+          context.environmentSecurityService.assignGroup(principalId, group),
+      },
       // An approval by a caller that presented no credential is the disclosed
       // residue being exercised — warn volume, same as a denied remote
       // authentication, so it is readable in the same place.
@@ -8579,6 +8571,15 @@ export function configureDevicePairingHostRoutes(
      * that tells a person what to run there. `station` when omitted.
      */
     operatorCli?: () => string;
+    /**
+     * #3557: Station groups for people. Omitted, the people routes answer
+     * 404 (a harness that does not exercise them).
+     */
+    groups?: {
+      groupOf(principalId: string): StationGroup;
+      assignments(): StationGroupAssignment[];
+      assign(principalId: string, group: StationGroup): Promise<void>;
+    };
     audit?: (record: PairingApprovalAuditRecord) => void;
     verifyOperatorCredential?: (credential: string) => boolean;
     isApprovalCurrent?: (request: Request) => boolean;
@@ -9130,6 +9131,128 @@ export function configureDevicePairingHostRoutes(
    * history; and `operator-promotion`, the grant path the contracts declare
    * for `access:approve` and `consent:decide`, had no mechanism at all.
    */
+  // #3557: everyone tied to a device or placed in a group, with what each
+  // tied device may actually use. Operator only, like device access.
+  const peopleView = (): StationPerson[] => {
+    const groups = options.groups!;
+    const people = new Map<string, StationPerson>();
+    const personFor = (principalId: string, displayName: string) => {
+      let person = people.get(principalId);
+      if (!person) {
+        const assigned = groups
+          .assignments()
+          .some((entry) => entry.principalId === principalId);
+        person = {
+          principalId,
+          displayName,
+          group: groups.groupOf(principalId),
+          assigned,
+          devices: [],
+        };
+        people.set(principalId, person);
+      }
+      return person;
+    };
+    for (const device of pairing.listDevices()) {
+      if (
+        device.revokedAt !== null ||
+        !device.principalBinding ||
+        device.kind === 'delegation'
+      )
+        continue;
+      const principal = principalForDeviceBinding(device.principalBinding);
+      personFor(principal.id, principal.display).devices.push({
+        id: device.id,
+        name: device.name,
+        scope: device.scope,
+        effectiveScope: pairing.effectiveScopeOfDevice(device.id) ?? '',
+      });
+    }
+    for (const entry of groups.assignments())
+      personFor(entry.principalId, entry.principalId);
+    return [...people.values()].sort((left, right) =>
+      left.displayName.localeCompare(right.displayName),
+    );
+  };
+  app.get('/api/pairing/people', (c) => {
+    if (!options.groups) return c.json({ error: 'not_found' }, 404);
+    if (!currentOperator(c, c.req.raw))
+      return c.json({ error: 'authentication_required' }, 401);
+    c.header('Cache-Control', 'no-store');
+    return c.json({ people: peopleView() });
+  });
+  app.put('/api/pairing/people/:principalId/group', async (c) => {
+    if (!options.groups) return c.json({ error: 'not_found' }, 404);
+    const request = c.req.raw;
+    if (!currentOperator(c, request))
+      return c.json({ error: 'authentication_required' }, 401);
+    const body = (await request.json().catch(() => null)) as {
+      group?: unknown;
+    } | null;
+    if (!isStationGroup(body?.group))
+      return c.json({ error: 'invalid_group' }, 400);
+    const principalId = c.req.param('principalId');
+    // Reading the body yielded: the decision stays the operator's.
+    if (!currentOperator(c, request))
+      return c.json({ error: 'authentication_required' }, 401);
+    const tied = pairing
+      .listDevices()
+      .filter(
+        (device) =>
+          device.revokedAt === null &&
+          device.kind !== 'delegation' &&
+          device.principalBinding !== undefined &&
+          principalForDeviceBinding(device.principalBinding).id === principalId,
+      );
+    const heldFullAccess = new Set(
+      tied
+        .filter((device) =>
+          pairingScopeIncludes(
+            pairing.effectiveScopeOfDevice(device.id) ?? '',
+            'approval:full-access',
+          ),
+        )
+        .map((device) => device.id),
+    );
+    try {
+      await options.groups.assign(principalId, body.group);
+    } catch {
+      return c.json({ error: 'invalid_principal' }, 400);
+    }
+    observeOperatorCredentialUse(
+      c,
+      'PUT /api/pairing/people/:principalId/group',
+    );
+    // As a device scope change: live terminal and voice connections
+    // re-authenticate under the new cap, and a full access the group no
+    // longer allows resets what it had granted.
+    const revocations: Record<string, unknown> = {};
+    for (const device of tied) {
+      options.connectedClientPresence?.disconnectDevice(device.id);
+      if (
+        heldFullAccess.has(device.id) &&
+        !pairingScopeIncludes(
+          pairing.effectiveScopeOfDevice(device.id) ?? '',
+          'approval:full-access',
+        )
+      )
+        revocations[device.id] = await revokeFullAccess(
+          request,
+          device.id,
+          'scope-removed',
+        );
+    }
+    const person = peopleView().find(
+      (entry) => entry.principalId === principalId,
+    ) ?? {
+      principalId,
+      displayName: principalId,
+      group: body.group,
+      assigned: body.group !== 'member',
+      devices: [],
+    };
+    return c.json({ person, revocations });
+  });
   app.post('/api/pairing/devices/:deviceId/scope', async (c) => {
     try {
       const request = c.req.raw;

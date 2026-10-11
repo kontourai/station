@@ -49,6 +49,10 @@ import {
   PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_PROTOCOL,
 } from '@kontourai/station-contracts/product-telemetry';
 import {
+  capScopeToGroup,
+  type StationGroup,
+} from '@kontourai/station-contracts/station-groups';
+import {
   assertExistingSecurityDirectory,
   EnvironmentSecurityRecordError,
   readEnvironmentSecurityRecord,
@@ -61,6 +65,8 @@ export { EnvironmentSecurityRecordError } from '@kontourai/station-shared/enviro
 import packageJson from '../../../package.json' with { type: 'json' };
 import { STATION_CAPABILITY_FLAGS } from '../../capabilities/station-capability-flags.js';
 import { sleep } from '../../utils/sleep.js';
+import { principalForDeviceBinding } from '../access/device-binding-principal.js';
+import { StationGroupsService } from '../access/station-groups-service.js';
 import { DevicePairingService } from './device-pairing-service.js';
 
 const SECURITY_DIRECTORY = 'security';
@@ -200,6 +206,7 @@ export class EnvironmentSecurityService {
   readonly #isProcessAlive: (pid: number) => boolean;
   readonly #hostIdentity: string;
   #devicePairingService?: DevicePairingService;
+  readonly #groups: StationGroupsService;
 
   constructor(options: EnvironmentSecurityServiceOptions) {
     this.#homeDir = options.homeDir;
@@ -212,6 +219,67 @@ export class EnvironmentSecurityService {
     this.#now = options.now ?? Date.now;
     this.#isProcessAlive = options.isProcessAlive ?? defaultIsProcessAlive;
     this.#hostIdentity = options.hostIdentity ?? resolveHostname();
+    this.#groups = new StationGroupsService({ securityDir: this.#securityDir });
+  }
+
+  /**
+   * #3557: what a device may actually use. A device tied to a person is
+   * capped by that person's Station group. Uncapped: a device tied to no
+   * person (the operator's own), a peer Station delegation, and a
+   * home-possession credential (the operator's own UI on this host).
+   */
+  #capScope = (
+    device: PairedDevice,
+    locality: 'home-possession' | undefined,
+  ): string => {
+    if (
+      !device.principalBinding ||
+      device.kind === 'delegation' ||
+      locality === 'home-possession'
+    )
+      return device.scope;
+    return capScopeToGroup(
+      device.scope,
+      this.#groups.groupOf(
+        principalForDeviceBinding(device.principalBinding).id,
+      ),
+    );
+  };
+
+  /**
+   * #3557, first use only: people whose tied devices already hold a
+   * permission Member would remove start as Admin, so turning groups on
+   * takes nothing away. Afterwards the operator decides.
+   */
+  async #seedGroups(pairing: DevicePairingService): Promise<void> {
+    if (this.#groups.exists()) return;
+    const admins = new Set<string>();
+    for (const device of pairing.listDevices()) {
+      if (
+        device.revokedAt !== null ||
+        !device.principalBinding ||
+        device.kind === 'delegation'
+      )
+        continue;
+      if (capScopeToGroup(device.scope, 'member') !== device.scope)
+        admins.add(principalForDeviceBinding(device.principalBinding).id);
+    }
+    await this.#groups.seed([...admins]);
+  }
+
+  /** #3557: the group a person sits in. */
+  groupOf(principalId: string): StationGroup {
+    return this.#groups.groupOf(principalId);
+  }
+
+  /** #3557: every explicit group assignment. */
+  groupAssignments() {
+    return this.#groups.assignments();
+  }
+
+  /** #3557: puts a person in a group (operator only; the route checks). */
+  async assignGroup(principalId: string, group: StationGroup): Promise<void> {
+    await this.#groups.assign(principalId, group);
   }
 
   async initialize(): Promise<EnvironmentSecurityRecord> {
@@ -229,7 +297,9 @@ export class EnvironmentSecurityService {
       homeDir: this.#homeDir,
       environmentId: record.environmentId,
       now: this.#now,
+      capScope: this.#capScope,
     });
+    await this.#seedGroups(this.#devicePairingService);
     return record;
   }
 
@@ -262,6 +332,7 @@ export class EnvironmentSecurityService {
         homeDir: this.#homeDir,
         environmentId: current.environmentId,
         now: this.#now,
+        capScope: this.#capScope,
       });
       const reset = createRecord();
       const resetKeyPath = this.#revisionEvidenceKeyPath(reset.environmentId);
@@ -365,7 +436,9 @@ export class EnvironmentSecurityService {
   resolveGrantedScope(candidate: string): string | undefined {
     if (this.verifyOperatorCredential(candidate))
       return DEFAULT_GRANT_PAIRING_SCOPE;
-    return this.#devicePairingService?.identifyDevice(candidate)?.scope;
+    // #3557: never the raw grant: a device tied to a person is capped by
+    // that person's Station group, here and in every reader of this.
+    return this.#devicePairingService?.effectiveScope(candidate);
   }
 
   verifyOperatorCredential(candidate: string): boolean {
