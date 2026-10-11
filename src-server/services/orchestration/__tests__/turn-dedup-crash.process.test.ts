@@ -10,8 +10,6 @@
  */
 import { type ChildProcess, spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -19,6 +17,7 @@ import {
   createGateTestRegistry,
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
   ProviderSendTurnInput,
   ProviderTurnStartResult,
@@ -140,7 +139,9 @@ async function waitFor<T>(
 }
 
 describe('client-turn dedup after a killed owner (#3559)', () => {
-  const directories: string[] = [];
+  // Created before the afterEach below: after-hooks run in reverse order, so
+  // these directories are removed only once the children and stores closed.
+  const makeTempDir = trackTempDirs();
   const children: ChildProcess[] = [];
   const stores: EventStore[] = [];
   const services: OrchestrationService[] = [];
@@ -154,8 +155,6 @@ describe('client-turn dedup after a killed owner (#3559)', () => {
     }
     for (const service of services.splice(0)) await service.shutdown();
     for (const store of stores.splice(0)) store.close();
-    for (const directory of directories.splice(0))
-      rmSync(directory, { recursive: true, force: true });
   });
 
   /** Starts the owner, waits for `until`, SIGKILLs it, and returns every step it reported. */
@@ -266,9 +265,7 @@ describe('client-turn dedup after a killed owner (#3559)', () => {
   }
 
   function newStorePath(): string {
-    const directory = mkdtempSync(join(tmpdir(), 'turn-dedup-crash-'));
-    directories.push(directory);
-    return join(directory, 'orchestration.sqlite');
+    return join(makeTempDir('turn-dedup-crash-'), 'orchestration.sqlite');
   }
 
   test(
