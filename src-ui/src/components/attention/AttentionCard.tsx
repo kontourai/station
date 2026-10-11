@@ -341,7 +341,11 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
         <button
           type="button"
           className="attention-item__action attention-item__action--primary"
-          disabled={busy}
+          // Nothing ticked is nothing to approve.
+          disabled={
+            busy ||
+            (requestedScopeTokens(requestedScope).length > 0 && kept.size === 0)
+          }
           onClick={() => {
             const scope = requestedScope
               ? keptScopeForApproval(requestedScope, kept)

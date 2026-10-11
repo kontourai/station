@@ -403,10 +403,12 @@ A session spawned before this change has nothing recorded.
   device holding the new operator-promotion scope `approval:full-access`.
   - The scope is in no preset and never in the default grant, like
     `engine:login` and #2412's `coding:exec`.
-  - The operator grants it once per device, in the device access editor
-    (**Paired devices** → the device → **Change access** → "Allow full
-    access") or on the Station host with `station environment access scope
-    <device> --add approval:full-access` (#1796).
+  - The operator grants it once per device: when approving a pairing
+    request that asked for it (it starts unticked, and only the operator
+    credential or the desktop's local grant may keep it), in the device
+    access editor (**Paired devices** → the device → **Change access** →
+    "Allow full access"), or on the Station host with `station environment
+    access scope <device> --add approval:full-access` (#1796).
 - **One derivation.** The check is `mayGrantFullAccess` in
   `src-server/security/coding-authority.ts`, next to #2412's
   `mayRunCommandsOnHost`. It shares the same `isOperatorInPerson`.

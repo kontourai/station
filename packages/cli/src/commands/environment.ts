@@ -2148,7 +2148,7 @@ async function runLocalAccessCommand(
       : undefined);
   if (keptScope === '')
     throw new Error(
-      `${accessRequestLabel(selected)} asks only for ${elevatedAsked.join(', ')}. Approving it grants one of them: name it with --scope=${elevatedAsked.join(',')}.`,
+      `${accessRequestLabel(selected)} asks only for ${elevatedAsked.join(', ')}. To approve it, name what to grant with --scope=${elevatedAsked.join(',')}.`,
     );
   if (explicitScope === undefined && elevatedAsked.length > 0 && keptScope)
     (dependencies.stderr ?? console.error)(

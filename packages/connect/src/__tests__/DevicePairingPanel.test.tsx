@@ -1634,6 +1634,55 @@ describe('device pairing panels', () => {
     expect(screen.getByText('Second browser')).toBeTruthy();
   });
 
+  test('a refused person-binding approval is not told to untick: unticking would not help', async () => {
+    const request = {
+      requestId: 'request-person',
+      offerId: 'offer-person',
+      deviceName: 'Laptop browser',
+      scope:
+        'orchestration:read orchestration:operate terminal:operate approval:full-access',
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      source: 'tailnet',
+      requester: {
+        provider: 'tailscale-serve',
+        login: 'casey@example.test',
+        displayName: 'Casey',
+      },
+      status: 'pending',
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests/request-person/confirm')
+        return response({ error: 'approval_requires_operator' }, 403);
+      if (path === '/api/pairing/requests')
+        return response({ requests: [request] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      return response({ error: 'unexpected' }, 500);
+    });
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.public.test"
+        getCredential={() => 'approver-credential'}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(await screen.findByText('Laptop browser asks for')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: /Recognize this device as/ }),
+    );
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: /Allow full access/ }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(
+      await screen.findByText(
+        'Approving “Laptop browser” needs a trusted Station session. Run this on the Station: station environment access approve request-person --scope=orchestration:read,orchestration:operate,terminal:operate,approval:full-access --force --bind-person',
+      ),
+    ).toBeTruthy();
+  });
+
   test('shows server-verified tailnet provenance in the host inbox', async () => {
     const request = {
       requestId: 'request-tailnet',

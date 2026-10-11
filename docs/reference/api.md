@@ -3526,6 +3526,28 @@ The promotion satisfies the pending-request route scope without granting
 not admit other Device-management routes or verified-person/account binding.
 Ordinary Device presets do not include the promotion.
 
+Each listed request carries the `scope` the device asked for (or its offer
+carried). A device's public access request
+(`POST /.well-known/station/v1/pairing/access-request`) may name `scope`:
+exactly one of `orchestration:read` (Read-only) or `orchestration:read
+orchestration:operate terminal:operate` (Standard), plus optionally
+`coding:exec` and `approval:full-access`; anything else is 400
+`invalid_request`. Omitted, the request still receives the historical default
+grant, `access:manage` included. Its 202 response carries `operatorCli`, the
+operator CLI command on this host (`npx @kontourai/station-cli@nightly` on a
+nightly build, otherwise `npx @kontourai/station-cli@latest`).
+
+`confirm` may take `{ "scope": "<space-delimited>" }`: what the approver keeps,
+a non-empty subset of the request's scope, for an ordinary device request only
+(not a delegation, relay or account binding). Omitted, it keeps everything
+requested. Keeping `coding:exec` or `approval:full-access` needs the operator
+credential or a qualifying local-grant credential; an `access:approve` Device or
+an unauthenticated approval is refused with 403
+`{ "error": "approval_requires_operator", "operatorCli": "…" }` and may approve
+the rest with them left out. Every such 403 carries `operatorCli`. A device
+pairing **Needs attention** item carries `requestedScope` for an ordinary,
+non-account-bound device request.
+
 Sender-side Station peer enrollment is a separate operator-only workflow under
 `/api/environments/peers/enrollments`. Its safe status response never returns the
 exchange proof or outbound bearer. See [the SDK route and lifecycle contract](sdk.md#station-peer-enrollment)

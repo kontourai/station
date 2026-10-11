@@ -403,6 +403,37 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
     expect(pairingMocks.confirmPairing).toHaveBeenLastCalledWith('pair-req-1');
   });
 
+  test('a refusal of a trimmed approval names only what it sent', () => {
+    pairingMocks.confirmPairingState.error =
+      new pairingMocks.MockDevicePairingRequestActionError(
+        403,
+        'approval_requires_operator',
+      );
+    pairingMocks.confirmPairingState.variables = {
+      requestId: 'pair-req-1',
+      scope: 'orchestration:read',
+    };
+    renderCard(
+      basePairing({
+        requestedScope:
+          'orchestration:read orchestration:operate terminal:operate approval:full-access',
+      }),
+    );
+    expect(
+      screen.getByText(
+        'Approving “Test Phone” needs a trusted Station session. Run this on the Station: npx @kontourai/station-cli@latest environment access approve pair-req-1 --scope=orchestration:read --force',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('Approve is disabled while nothing is ticked', () => {
+    renderCard(basePairing({ requestedScope: 'approval:full-access' }));
+    expect(
+      (screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
   test("a session that cannot decide is shown a command that keeps only the card's ticked scope", () => {
     renderCard(
       basePairing({

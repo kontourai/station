@@ -436,7 +436,7 @@ describe('environment CLI commands', () => {
         },
       ),
     ).rejects.toThrow(
-      /asks only for approval:full-access\. Approving it grants one of them: name it with --scope=approval:full-access/,
+      /asks only for approval:full-access\. To approve it, name what to grant with --scope=approval:full-access/,
     );
     expect(
       extrasOnly.mock.calls.some(([, path]) =>

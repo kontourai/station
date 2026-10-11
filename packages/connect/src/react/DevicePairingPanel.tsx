@@ -1994,6 +1994,11 @@ export function HostDevicePairingPanel({
                     }}
                     disabled={
                       requestActionIds.has(request.requestId) ||
+                      // Nothing ticked is nothing to approve.
+                      (request.kind !== 'delegation' &&
+                        !accountBindingRequests.has(request.requestId) &&
+                        requestedScopeTokens(request.scope).length > 0 &&
+                        keptScopeOf(request).size === 0) ||
                       (request.accountCandidate !== undefined &&
                         !accountBindingRequests.has(request.requestId) &&
                         !personBindingRequests.has(request.requestId) &&

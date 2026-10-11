@@ -233,8 +233,10 @@ reading, not execution):
   they use `x-station-internal-token`/`x-station-internal-caller`, checked by
   `classifyAttestedProxyCaller` (`runtime-http.ts:118-121`, `:282-297`). With no
   credential present the new check is a no-op.
-- The same-origin "Request access" continuity cookie always requests **full**
-  scope (`remote-access-threat-model.md:157-165`), so it passes unchanged.
+- The same-origin "Request access" flow requests the scope the person picked
+  (Standard by default), or the historical default grant when a caller sends
+  none; either is subject to the same loopback route-scope check, so it passes
+  unchanged.
 
 **Why this is not cosmetic.** Without it, Decision 1 is theater over SSH
 transport: `connectSshTarget` sends **no** credential at all (§1), so nothing
