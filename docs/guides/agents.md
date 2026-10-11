@@ -126,7 +126,7 @@ Station guardrail declaration does not establish external enforcement:
 
 - `maxSteps` — maximum agentic steps per turn before the runtime halts the loop
 - `maxTokens` — maximum output tokens per model call (overrides `defaultMaxOutputTokens` from app.json)
-- `temperature` / `topP` — standard inference parameters
+- `temperature` / `topP` — standard inference parameters. On VoltAgent, `topP` is ignored when `temperature` is also set (see the [config reference](../reference/config.md)).
 - `stopSequences` — accepted and typed, but not currently applied by any engine. Do not rely on it to constrain model output.
 
 ---

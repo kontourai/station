@@ -344,7 +344,9 @@ function UsageTab() {
               >
                 <span className="insights-text-primary">{name}</span>
                 <span className="insights-mono-sm insights-muted">
-                  {stats.chats} chats · {(stats.tokens / 1000).toFixed(1)}k tok
+                  {/* #463: chats only. No per-agent token figure is
+                      measured, and a "0.0k tok" here read as one. */}
+                  {stats.chats} chats
                 </span>
               </button>
             ))

@@ -248,8 +248,6 @@ function BannerItemView({ banner }: { banner: BannerItem }) {
       ]
         .filter(Boolean)
         .join(' ')}
-      role={banner.ariaLive === 'polite' ? 'status' : 'alert'}
-      aria-live={banner.ariaLive}
       data-banner-id={banner.id}
       data-phase={banner.phase ?? 'live'}
       data-collapsed={collapsed || undefined}
@@ -264,12 +262,28 @@ function BannerItemView({ banner }: { banner: BannerItem }) {
         : {})}
     >
       <div className="banner-host__item-inner" ref={innerRef}>
+        {/* station#529: the live region is the badge and message text only,
+            never the whole card. Every control sits OUTSIDE it on purpose —
+            a two-step confirm relabels its button ("Remove" -> "Confirm") and
+            a 5s timer relabels it back, and disarming re-collapses a card the
+            confirm force-expanded, which unmounts the Details disclosure and
+            its text. Any change inside a `role="alert"` (implicitly
+            assertive + atomic) can re-announce the whole alert unprompted, so
+            the actions row, the collapse/dismiss controls and the Details
+            disclosure all stay out of it. The live span stays mounted while
+            the card is collapsed, so a collapsed banner still announces. */}
         <div className="banner-host__message">
-          {banner.badge ? (
-            <span className="banner-host__badge">{banner.badge}</span>
-          ) : null}
-          {banner.badge ? ' ' : null}
-          {banner.message}
+          <span
+            className="banner-host__live"
+            role={banner.ariaLive === 'polite' ? 'status' : 'alert'}
+            aria-live={banner.ariaLive}
+          >
+            {banner.badge ? (
+              <span className="banner-host__badge">{banner.badge}</span>
+            ) : null}
+            {banner.badge ? ' ' : null}
+            {banner.message}
+          </span>
           {/* archive#3297: one line, tap to expand. The detail is rendered
               inside the message cell so it wraps under the summary rather
               than fighting the action column for width.
@@ -566,15 +580,31 @@ export function BannerHost({
     }
     reservedTargetRef.current = target;
     if (!host || !target) return;
+    const stack = host.querySelector('.banner-host__stack');
 
     const measure = () => {
       const hostTop = host.getBoundingClientRect().top;
+      const stackBounds = stack?.getBoundingClientRect();
+      const clipsStack =
+        stack !== null &&
+        ['auto', 'scroll', 'hidden', 'clip'].includes(
+          getComputedStyle(stack).overflowY,
+        );
       const entries: BannerReserveEntry[] = [];
       let anyReserving = false;
       for (const node of host.querySelectorAll('[data-banner-id]')) {
         const reserves = node.getAttribute('data-overlay') === null;
         anyReserving ||= reserves;
-        entries.push({ reserves, bottom: node.getBoundingClientRect().bottom });
+        const bounds = node.getBoundingClientRect();
+        const bottom =
+          clipsStack && stackBounds
+            ? Math.min(bounds.bottom, stackBounds.bottom)
+            : bounds.bottom;
+        const visible =
+          !clipsStack ||
+          !stackBounds ||
+          bottom > Math.max(bounds.top, stackBounds.top);
+        entries.push({ reserves: reserves && visible, bottom });
       }
       // The stack cap is chrome for the banners behind it, so it reserves on
       // the same terms they do: with something reserving it is part of the
@@ -597,12 +627,16 @@ export function BannerHost({
       }
     };
     measure();
+    stack?.addEventListener('scroll', measure);
     const observer =
       typeof ResizeObserver === 'undefined'
         ? null
         : new ResizeObserver(measure);
     observer?.observe(host);
-    return () => observer?.disconnect();
+    return () => {
+      observer?.disconnect();
+      stack?.removeEventListener('scroll', measure);
+    };
   }, [banners, expanded]);
 
   useEffect(

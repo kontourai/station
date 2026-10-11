@@ -1,0 +1,7 @@
+{
+  "revision": "84cc8f1539492198d8063d065a1a9d4d3bd3a9d9",
+
+  "notes": [
+    {"path":"docs/guides/android-build.md","note":"Reviewed against this branch: src-desktop/Cargo.toml gains [profile.release] strip, fat LTO, codegen-units 1; nightly-native-stage.yml and release.yml run scripts/check-android-native-size.mjs beside the 16 KB gate on the staged APK. Searched this document for release-profile, symbol, strip, LTO, size, alignment and Android stage-check claims. Added the Release size section (profile, measured 32.7->20.9 MB library and 35.4->23.7 MB APK on the aarch64 nightly build, gate rules and ceiling policy). Checks: check-android-native-size tests (9), real-APK gate runs (shipped 2474.2 rejected; strip and LTO builds pass), LTO APK launched on an Android 16 emulator, LTO iOS simulator smoke passed.","inputs":["docs/guides/android-build.md",".github/workflows/nightly-native-stage.yml",".github/workflows/release.yml","src-desktop/Cargo.toml"]}
+  ]
+}

@@ -558,6 +558,16 @@ export interface DelegatedTaskEvent {
   totalTokens?: number;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
+  /** Provider-reported cache writes with the five-minute ephemeral TTL. */
+  cacheWriteTokens5m?: number;
+  /** Provider-reported cache writes with the one-hour ephemeral TTL. */
+  cacheWriteTokens1h?: number;
+  /** Opaque provider-reported service tier, at most 64 characters. */
+  serviceTier?: string;
+  /** Provider-reported tokens currently occupying the context window. */
+  contextTokens?: number;
+  /** Provider-reported total context-window capacity in tokens. */
+  contextWindowTokens?: number;
   verdict?: string;
   gateId?: string;
   runId?: string;

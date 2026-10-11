@@ -154,7 +154,7 @@ test.describe('compatibility-aware reconnect', () => {
     state.healthy = false;
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
     const banner = page.locator(
-      '[role="alert"][data-banner-id="chrome:connection:offline"]',
+      '[data-banner-id="chrome:connection:offline"]:has([role="alert"])',
     );
     await expect(banner).toContainText("Can't reach Dev Server");
     // archive#3297: the banner is one line now, and the caveats live behind
@@ -227,7 +227,7 @@ test.describe('compatibility-aware reconnect', () => {
     state.healthy = false;
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
     const banner = page.locator(
-      '[role="alert"][data-banner-id="chrome:connection:offline"]',
+      '[data-banner-id="chrome:connection:offline"]:has([role="alert"])',
     );
     await expect(banner).toBeVisible();
     const bannerBox = await banner.boundingBox();
@@ -268,7 +268,7 @@ test.describe('compatibility-aware reconnect', () => {
 
       const toolbar = page.locator('.app-toolbar');
       const banner = page.locator(
-        '[role="alert"][data-banner-id="chrome:connection:offline"]',
+        '[data-banner-id="chrome:connection:offline"]:has([role="alert"])',
       );
       const mainContent = page.locator('.main-content');
       await expect(banner).toBeVisible();
@@ -467,7 +467,7 @@ test.describe('compatibility-aware reconnect', () => {
       await page.evaluate(() => window.dispatchEvent(new Event('online')));
 
       const banner = page.locator(
-        '[role="alert"][data-banner-id="chrome:connection:offline"]',
+        '[data-banner-id="chrome:connection:offline"]:has([role="alert"])',
       );
       await expect(banner).toBeVisible();
 
@@ -606,7 +606,7 @@ test.describe('compatibility-aware reconnect', () => {
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
 
     const banner = page.locator(
-      '[role="alert"][data-banner-id="chrome:connection:offline"]',
+      '[data-banner-id="chrome:connection:offline"]:has([role="alert"])',
     );
     await expect(banner).toBeVisible();
 
@@ -705,7 +705,7 @@ test.describe('compatibility-aware reconnect', () => {
     primaryHealthy = false;
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
     const banner = page.locator(
-      '[role="alert"][data-banner-id="chrome:connection:offline"]',
+      '[data-banner-id="chrome:connection:offline"]:has([role="alert"])',
     );
     await expect(banner).toContainText("Can't reach Dev Server");
 

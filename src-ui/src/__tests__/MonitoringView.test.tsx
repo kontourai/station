@@ -127,7 +127,6 @@ vi.mock('../contexts/MonitoringContext', async (importOriginal) => ({
           model: 'gpt-5.5',
           conversationCount: 1,
           messageCount: 12,
-          cost: 0.031,
           healthy: true,
         },
       ],
@@ -136,7 +135,6 @@ vi.mock('../contexts/MonitoringContext', async (importOriginal) => ({
         activeAgents: 1,
         runningAgents: 1,
         totalMessages: 12,
-        totalCost: 0.031,
       },
     },
     events: [

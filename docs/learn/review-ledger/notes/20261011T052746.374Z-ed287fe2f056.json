@@ -1,0 +1,7 @@
+{
+  "revision": "1c759e496c031266871a13cad1dca60dd9198593",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"#463: api.md changed only the Insights agentUsage, /monitoring/stats cost and /monitoring/metrics totalCost/unpricedCount prose; this guide routes to the API reference and makes no claims about those fields.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

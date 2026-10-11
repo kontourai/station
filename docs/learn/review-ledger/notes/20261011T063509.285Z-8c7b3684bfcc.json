@@ -1,0 +1,65 @@
+{
+  "revision": "5ac2b95c841aea0e608dab81c1a01621e424dc33",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/architecture/module-map.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/architecture/module-map.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/conduit-runtime-integration.md","note":"voltagent-adapter.ts swapped the #323 topP warning's logger arguments to (message, context). No documented behavior changed.","inputs":["docs/design/conduit-runtime-integration.md","src-server/runtime/frameworks/voltagent-adapter.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/design/connection-broker.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/instance-registry.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/design/instance-registry.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/mobile-credential-authority.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/design/mobile-credential-authority.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/design/native-capabilities.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/design/notification-delivery.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/design/operator-device-access.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/ssh-launched-environments.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/design/ssh-launched-environments.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/android-build.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/guides/android-build.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/connections.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/guides/connections.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/guides/desktop-build.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/guides/desktop-tray.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/guides/local-collaboration-lab.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/guides/mobile-release.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/native-releases.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/guides/native-releases.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/guides/native-shell-verification.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/nightly.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/guides/nightly.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/guides/release-channel-ports.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/guides/release-rings.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/guides/self-hosted-broker.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/store-entry.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/guides/store-entry.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/store-listing.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/guides/store-listing.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/reference/api.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/reference/api.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/reference/config.md","note":"voltagent-adapter.ts swapped the #323 topP warning's logger arguments to (message, context). No documented behavior changed.","inputs":["docs/reference/config.md","src-server/runtime/frameworks/voltagent-adapter.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/security/remote-access-threat-model.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/user/native-recovery.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["docs/user/native-recovery.md","src-desktop/src/lib.rs"]},
+
+    {"path":"patches/android-native-keyring-store/README.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["patches/android-native-keyring-store/README.md","src-desktop/src/lib.rs"]},
+
+    {"path":"src-server/services/connections/pion-peer/README.md","note":"lib.rs changed only the comment above the #759 panic-hook install (crash.log only when a log directory exists; logger fallback otherwise). No behavior changed; this page's claims about the desktop shell are unaffected.","inputs":["src-server/services/connections/pion-peer/README.md","src-desktop/src/lib.rs"]}
+  ]
+}

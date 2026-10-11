@@ -35,9 +35,14 @@ const target = vi.hoisted(() => ({
   station: undefined as string | undefined,
 }));
 
-vi.mock('@kontourai/station-sdk/client', () => ({
+vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
   authenticatedFetch,
   listPlugins,
+  // The real class: the commands tell a deadline miss from a refused
+  // connection with `instanceof` (#369).
+  StationRequestTimeoutError: (
+    await importOriginal<typeof import('@kontourai/station-sdk/client')>()
+  ).StationRequestTimeoutError,
 }));
 
 vi.mock('../commands/core-api.js', async (importOriginal) => {

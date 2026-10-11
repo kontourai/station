@@ -13,12 +13,12 @@ import {
   runWithNativeOutputTurnContext,
 } from '../../native-output-turn-grant.js';
 import { createBuiltinVendedToolDef } from '../../tools/vended-tool-compat.js';
+import { releaseAllNativeStationControlClients } from '../strands-native-client-pool.js';
 import {
   applyStrandsAvailableToolFilter,
   createStrandsFunctionTools,
   destroyStrandsAgentTools,
   loadStrandsTools,
-  releaseAllNativeStationControlClients,
 } from '../strands-tool-loader.js';
 
 const { strandsMcpClients } = vi.hoisted(() => ({

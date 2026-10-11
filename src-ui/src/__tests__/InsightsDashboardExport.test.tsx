@@ -96,6 +96,28 @@ describe('Insights scan evidence reaches the actual dashboard', () => {
     },
   );
 
+  /**
+   * #463: nothing measures per-agent tokens. Older Stations still send the
+   * unmeasured `tokens: 0`, which this row used to print as "0.0k tok" — a
+   * measurement nothing computed. The row shows only what is counted.
+   */
+  test.each([
+    ['a current Station', { chats: 4 }],
+    ['an older Station that sends tokens: 0', { chats: 4, tokens: 0 }],
+  ] as const)(
+    'shows an agent row from %s with chats and no token figure',
+    (_label, usage) => {
+      insightsQuery.data = {
+        ...data(),
+        agentUsage: { coder: usage as UsageInsights['agentUsage'][string] },
+      };
+      render(<InsightsDashboard />);
+      const row = screen.getByRole('button', { name: /coder/ });
+      expect(row.textContent).toContain('4 chats');
+      expect(row.textContent).not.toMatch(/tok/);
+    },
+  );
+
   test('failed refetch hides cached complete totals', () => {
     insightsQuery.data = {
       ...data(),

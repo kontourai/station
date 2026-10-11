@@ -328,6 +328,7 @@ jobs:
           node scripts/verify-android-aab-signature.mjs cohort-android/station-nightly-universal.aab "$ANDROID_UPLOAD_CERT_SHA256"
           node scripts/verify-android-apk-signature.mjs "$apk" "$ANDROID_UPLOAD_CERT_SHA256" "$apksigner"
           node scripts/check-android-16kb-alignment.mjs "$apk"
+          node scripts/check-android-native-size.mjs "$apk"
           # Prove the AAB carries exactly the ABI this build claims: an empty
           # or drifted ABI set would otherwise reach Play unnoticed.
           abis=$(unzip -Z1 cohort-android/station-nightly-universal.aab | sed -n 's#^base/lib/\([^/][^/]*\)/.*#\1#p' | sort -u | tr '\n' ' ')

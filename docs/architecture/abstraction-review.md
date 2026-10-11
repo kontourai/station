@@ -302,12 +302,15 @@ install a plugin or run a live Agent.
 
 ### Library tests can miss a broken release command
 
-The release workflow calls an assembly CLI whose `sbomContext` function uses
-an unimported filesystem reader. The actual command exits before producing an
-inventory, while nearby tests exercise its library or scan the workflow text.
-[#2783](https://github.com/kontourai/station/issues/2783) records the reproduction
-and requires a regression through both real assembly and validation commands.
-This is a local caller failure, not an observed hosted release attempt.
+The release workflow's assembly CLI used an unimported filesystem reader, and
+its validation step compared the sorted-key inventory against the
+writer-ordered container descriptor byte for byte. Both commands would have
+failed on every release while the nearby tests exercised only the library or
+scanned the workflow text.
+[#2783](https://github.com/kontourai/station/issues/2783) fixed both and added a
+regression that runs the real assemble and validate commands with
+`release.yml`'s arguments. That evidence is local; no hosted tagged release
+has exercised it yet.
 
 ### Public configuration and runtime enforcement must agree
 
@@ -367,9 +370,10 @@ discovery loses completeness across the checker, route, SDK and management view
 ([#2858](https://github.com/kontourai/station/issues/2858)). These are traced
 caller contracts; no directory outage or missed installed update was observed.
 The fix belongs in those owners, with distinct complete, partial and unavailable
-outcomes where needed. Insights has separate placeholder values
-([#463](https://github.com/kontourai/station/issues/463)); neither invented zeroes
-nor successful empty responses establish an observation.
+outcomes where needed. Insights and monitoring stats used to carry placeholder
+zeroes for per-Agent tokens and cost; they now omit what nothing measures
+([#463](https://github.com/kontourai/station/issues/463)). Neither invented
+zeroes nor successful empty responses establish an observation.
 
 ### Durable operations need an operation-level outcome
 

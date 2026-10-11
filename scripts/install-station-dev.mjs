@@ -12,18 +12,25 @@
  * overwrite a file that does not carry this shim's marker comment line — see
  * `scripts/station-dev.mjs`'s `station-dev-shim-marker` line — so it can
  * never silently clobber something unrelated that happens to occupy the same
- * path.
+ * path. It also refuses a symlink, or anything else that is not a regular
+ * file, at the destination (#554): following one would write into whatever
+ * it points at (another checkout's tracked `station-dev.mjs`, or, for a
+ * dangling link, a new file at its target) and leave a symlink installed.
+ * The copy is written to a temporary file beside the destination and renamed
+ * over it, and a rename replaces the directory entry without following it.
  */
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import {
   chmodSync,
-  existsSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
+  renameSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { delimiter, dirname, join } from 'node:path';
+import { basename, delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
@@ -44,8 +51,29 @@ export function withShebang(content) {
  * Pure decision logic, exercised directly by tests without touching the
  * filesystem: given the source shim content and what (if anything) already
  * exists at the destination, what should the installer do?
+ *
+ * `existingKind` is what `lstat` reports for the destination entry itself:
+ * `'file'`, `'symlink'`, `'other'`, or `undefined` when nothing is there.
  */
-export function planInstall({ sourceContent, existingContent }) {
+export function planInstall({
+  sourceContent,
+  existingContent,
+  existingKind = existingContent === undefined ? undefined : 'file',
+}) {
+  if (existingKind === 'symlink') {
+    return {
+      action: 'refuse',
+      reason:
+        'refusing to overwrite: the destination is a symlink, and station-dev is installed as a copy, never through a link',
+    };
+  }
+  if (existingKind !== undefined && existingKind !== 'file') {
+    return {
+      action: 'refuse',
+      reason:
+        'refusing to overwrite: the destination exists and is not a regular file',
+    };
+  }
   if (existingContent !== undefined && !existingContent.includes(SHIM_MARKER)) {
     return {
       action: 'refuse',
@@ -68,23 +96,52 @@ export function install({
   sourcePath = join(dirname(fileURLToPath(import.meta.url)), 'station-dev.mjs'),
   destDir = process.env.STATION_DEV_BIN || join(homedir(), '.local', 'bin'),
   destName = 'station-dev',
-  fs = { existsSync, mkdirSync, readFileSync, writeFileSync, chmodSync },
+  fs = {
+    lstatSync,
+    mkdirSync,
+    readFileSync,
+    writeFileSync,
+    chmodSync,
+    renameSync,
+    rmSync,
+  },
   env = process.env,
 } = {}) {
   const sourceContent = fs.readFileSync(sourcePath, 'utf8');
   const destPath = join(destDir, destName);
-  const existingContent = fs.existsSync(destPath)
-    ? fs.readFileSync(destPath, 'utf8')
-    : undefined;
+  // lstat, not stat/exists: the question is what occupies the destination
+  // entry, not what a link there happens to point at.
+  const existing = fs.lstatSync(destPath, { throwIfNoEntry: false });
+  const existingKind = !existing
+    ? undefined
+    : existing.isSymbolicLink()
+      ? 'symlink'
+      : existing.isFile()
+        ? 'file'
+        : 'other';
+  const existingContent =
+    existingKind === 'file' ? fs.readFileSync(destPath, 'utf8') : undefined;
 
-  const plan = planInstall({ sourceContent, existingContent });
+  const plan = planInstall({ sourceContent, existingContent, existingKind });
   if (plan.action === 'refuse') {
     return { ok: false, destPath, reason: plan.reason };
   }
 
   fs.mkdirSync(destDir, { recursive: true });
-  fs.writeFileSync(destPath, plan.content, { mode: 0o755 });
-  fs.chmodSync(destPath, 0o755);
+  // `wx` refuses to open an existing entry (a link included), and the rename
+  // swaps the destination's directory entry rather than writing through it.
+  const tempPath = join(
+    destDir,
+    `.${basename(destPath)}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`,
+  );
+  try {
+    fs.writeFileSync(tempPath, plan.content, { mode: 0o755, flag: 'wx' });
+    fs.chmodSync(tempPath, 0o755);
+    fs.renameSync(tempPath, destPath);
+  } catch (error) {
+    fs.rmSync(tempPath, { force: true });
+    throw error;
+  }
 
   return {
     ok: true,

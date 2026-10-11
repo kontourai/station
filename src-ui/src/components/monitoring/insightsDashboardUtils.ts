@@ -10,7 +10,7 @@ interface InsightsUsageData {
     }
   >;
   hourlyActivity: number[];
-  agentUsage: Record<string, { chats: number; tokens: number }>;
+  agentUsage: Record<string, { chats: number }>;
 }
 
 interface MessageRatingSummary {

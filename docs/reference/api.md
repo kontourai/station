@@ -1585,10 +1585,11 @@ monitoring events. They are not interchangeable measures of the whole Station.
 `GET /monitoring/stats` returns `{success: true, data: {agents, summary}}`.
 Rows come from the active managed-Agent map. `healthy` checks for a model and
 memory adapter; it is not a fresh model completion. Personal mode can include
-cached conversation/message counts. The legacy `cost`, `activeAgents`, and
-`runningAgents` values here are currently zero placeholders, so they must not
-be presented as measured spend or activity. Hosted mode omits the personal
-history counts and cost fields.
+cached conversation/message counts. Nothing on this route prices usage, so it
+returns no per-Agent `cost` and no `summary.totalCost`. Older Stations sent
+zero placeholders for both. The legacy `activeAgents` and `runningAgents`
+values are still zero placeholders, so they must not be presented as measured
+activity. Hosted mode omits the personal history counts.
 
 ### Get Historical Metrics
 
@@ -1596,7 +1597,9 @@ history counts and cost fields.
 Agent and returns `{success: true, data: {range, metrics}}`.
 `today`, `week`, and `month` mean trailing 24 hours, 7 days, and 30 days;
 `all` or an unrecognized value applies no start cutoff. This is not a query of
-all durable history. Hosted mode returns an empty metrics list through this
+all durable history. Each metric's `totalCost` sums only priced completions and
+is absent when none was priced; `unpricedCount` counts completions with no
+price. An unpriced completion is unknown spend, not free. Hosted mode returns an empty metrics list through this
 legacy path.
 
 ### Get/Stream Events (SSE)
@@ -1987,8 +1990,9 @@ Chat counts deduplicate observed trace IDs, with a separate count for completed
 `no-session` events. Tool calls count start records; errors, unresolved outcomes,
 and unknown outcomes count end records. They are not a guaranteed joined
 population: a retained end record can have no matching retained start.
-`agentUsage.tokens` is currently initialized to zero and never accumulated by
-this route; it is not measured token usage.
+`agentUsage` entries carry only `chats`. The route measures no per-Agent token
+figure. Older Stations sent an unmeasured `agentUsage.tokens: 0`, which is not
+token usage.
 
 Filtering applies before aggregation. A tool filter excludes ordinary chat
 records, so chat/model aggregates normally disappear. The current

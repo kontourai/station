@@ -508,6 +508,30 @@ export function mapAcpStopReasonToFinishReason(
   }
 }
 
+/** Bound on an engine-reported stop reason carried as opaque text. */
+const MAX_ACP_STOP_REASON_LENGTH = 64;
+
+/**
+ * The `turn.completed` outcome fields for an ACP `StopReason`. #354: a reason
+ * the shared finishReason vocabulary cannot express (`refusal`,
+ * `max_turn_requests`, or one a newer agent invents) still folds to
+ * `'other'`, but its raw value rides along as `stopReason`, so a refusal and
+ * an exhausted request budget stay distinguishable from an ordinary stop.
+ * Whether `max_turn_requests` should be retryable is an open product
+ * decision; this only preserves the fact.
+ */
+export function mapAcpStopReasonToTurnCompletion(
+  reason: StopReason,
+): Pick<TurnCompletedEvent, 'finishReason' | 'stopReason'> {
+  const finishReason = mapAcpStopReasonToFinishReason(reason);
+  if (finishReason !== 'other') return { finishReason };
+  const raw =
+    typeof reason === 'string'
+      ? reason.trim().slice(0, MAX_ACP_STOP_REASON_LENGTH)
+      : '';
+  return raw ? { finishReason, stopReason: raw } : { finishReason };
+}
+
 /**
  * Map an adapter-level permission decision plus the ACP `PermissionOption[]`
  * the agent offered into the ACP `RequestPermissionOutcome` the `Client`

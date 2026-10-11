@@ -11,6 +11,15 @@ afterEach(() => {
   act(() => bannerStore.reset());
 });
 
+/** station#529: the live region is the message cell; card state lives on the card. */
+function bannerCard(): HTMLElement {
+  const card = screen
+    .getByRole('alert')
+    .closest<HTMLElement>('.banner-host__item');
+  if (!card) throw new Error('alert is not inside a banner card');
+  return card;
+}
+
 function present(dismissible: boolean) {
   act(() => {
     bannerStore.present({
@@ -27,7 +36,7 @@ describe('BannerHost touch gestures', () => {
   test('a horizontal touch swipe dismisses a dismissible notice', () => {
     present(true);
     render(<BannerHost />);
-    const notice = screen.getByRole('alert');
+    const notice = bannerCard();
     Object.assign(notice, {
       getBoundingClientRect: () => ({ width: 320 }),
       setPointerCapture: vi.fn(),
@@ -61,7 +70,7 @@ describe('BannerHost touch gestures', () => {
   test('blocking notices do not advertise or respond to swipe dismissal', () => {
     present(false);
     render(<BannerHost />);
-    const notice = screen.getByRole('alert');
+    const notice = bannerCard();
 
     expect(notice.hasAttribute('data-swipe-dismissible')).toBe(false);
     fireEvent.pointerDown(notice, {
@@ -91,7 +100,7 @@ describe('BannerHost touch gestures', () => {
   test('vertical touch movement leaves a dismissible notice in place', () => {
     present(true);
     render(<BannerHost />);
-    const notice = screen.getByRole('alert');
+    const notice = bannerCard();
 
     fireEvent.pointerDown(notice, {
       pointerId: 1,
