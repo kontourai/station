@@ -51,7 +51,7 @@ export function resolveProductTelemetryEnvironment(
   };
 }
 
-export function resolveOtelTelemetryEnvironment(
+function resolveOtelTelemetryEnvironment(
   environment: NodeJS.ProcessEnv,
 ) {
   return {
