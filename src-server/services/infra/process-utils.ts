@@ -11,7 +11,6 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  compareProcessBirthFingerprints,
   type ExactProcessIdentityProbe,
   lookupProcessBirthFingerprint,
   PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
@@ -506,23 +505,27 @@ function ownerIsGone(
 }
 
 interface OwnedProcessSweepResult {
-  /**
-   * Orphaned groups that were group-SIGKILLed: a live recorded leader, or a
-   * dead leader whose surviving members were each verified (#561).
-   */
+  /** Orphaned groups whose live recorded leader was group-SIGKILLed. */
   reaped: number[];
   /** Records whose child and its whole process group had already exited. */
   alreadyDead: number;
   /**
-   * Records removed because their pid or group id no longer names the
-   * recorded child: a birth mismatch, a surviving group member older than
-   * the recorded leader, or a record from an earlier boot.
+   * Records removed because their pid no longer names the recorded child: a
+   * birth mismatch, or a dead leader whose record is from an earlier boot.
    */
   recycled: number;
-  /** Records left in place because their owner is still demonstrably alive. */
+  /**
+   * Records left in place: the owner is alive, an identity is unavailable,
+   * or a dead leader's group still has members (see `survivingGroups`).
+   */
   retained: number;
   /** Records that could not be parsed; left for a human rather than guessed. */
   corrupt: number;
+  /**
+   * #561: retained records whose leader is dead while its process group still
+   * has members. Nothing is signaled; `members` is null when unreadable.
+   */
+  survivingGroups: Array<{ pgid: number; members: number | null }>;
 }
 
 /**
@@ -557,9 +560,30 @@ export type ProcessGroupLister = (
 const PS_PID_PPID_PGID_LINE = /^\s*(\d+)\s+(\d+)\s+(\d+)\s*$/;
 
 /**
- * Read the members of process group `pgid` from `ps -A -o pid=,ppid=,pgid=`
- * (macOS and procps). Null when `ps` fails, times out, or prints a line that
- * is not exactly three integers: a partial table is never read as complete.
+ * Parse `ps -A -o pid=,ppid=,pgid=` output into the members of group `pgid`.
+ * Null when any non-blank line is not exactly three integers: a partial or
+ * garbled table is never read as a complete one.
+ */
+export function parseProcessGroupListing(
+  stdout: string,
+  pgid: number,
+): ProcessGroupMember[] | null {
+  const members: ProcessGroupMember[] = [];
+  for (const line of stdout.split('\n')) {
+    if (line.trim() === '') continue;
+    const match = PS_PID_PPID_PGID_LINE.exec(line);
+    if (!match) return null;
+    if (Number(match[3]) === pgid) {
+      members.push({ pid: Number(match[1]), ppid: Number(match[2]) });
+    }
+  }
+  return members;
+}
+
+/**
+ * Read the members of process group `pgid` (macOS and procps `ps`). Null when
+ * `ps` fails, times out, or prints a line {@link parseProcessGroupListing}
+ * rejects.
  */
 const listProcessGroupMembers: ProcessGroupLister = (pgid) =>
   new Promise((resolve) => {
@@ -575,115 +599,49 @@ const listProcessGroupMembers: ProcessGroupLister = (pgid) =>
         env: { ...process.env, LC_ALL: 'C' },
       },
       (error, stdout) => {
-        if (error) {
-          resolve(null);
-          return;
-        }
-        const members: ProcessGroupMember[] = [];
-        for (const line of stdout.split('\n')) {
-          if (line.trim() === '') continue;
-          const match = PS_PID_PPID_PGID_LINE.exec(line);
-          if (!match) {
-            resolve(null);
-            return;
-          }
-          if (Number(match[3]) === pgid) {
-            members.push({ pid: Number(match[1]), ppid: Number(match[2]) });
-          }
-        }
-        resolve(members);
+        resolve(error ? null : parseProcessGroupListing(stdout, pgid));
       },
     );
   });
 
 type DeadLeaderGroupOutcome =
   | { kind: 'empty' }
-  | { kind: 'foreign'; reason: string }
-  | { kind: 'retain'; reason: string }
-  | { kind: 'verified' };
+  | { kind: 'previous-boot' }
+  | { kind: 'surviving'; members: number | null };
 
 /**
- * #561: the recorded leader is dead. Decide whether its process group still
- * holds the recorded child's descendants, which must be reaped before the
- * record may go.
+ * #561: the recorded leader is dead. Its process group may still have live
+ * members, and dropping the record would forget them for good.
  *
- * A process group id cannot be reused while any member lives, and a detached
- * child is also a new session, so only its own descendants can join its
- * group. The remaining risk is that the whole group exited earlier and the id
- * was later reused by an unrelated group, such as a shell job whose first
- * process has exited. So every member must prove it can belong to the
- * recorded group before anything is signaled:
+ * The sweep NEVER signals such a group. No per-member proof available here
+ * ties a group with a dead leader to the recorded engine: pids wrap within
+ * minutes, and a normal host carries many unrelated groups with a dead leader
+ * and init-parented members (crash handlers, servers, shell jobs). A review
+ * probe showed a birth-and-parentage check SIGKILLing exactly such a group.
+ * A missed reclaim is acceptable; a wrong kill is not.
  *
- * - The record has a birth, and that birth is in the current boot (a group
- *   from an earlier boot is gone, whatever now carries its id).
- * - Each live member's identity is exact (no `unavailable`) and was born no
- *   earlier than the recorded leader. An older member proves the id names
- *   another group.
- * - The group is orphaned: each member's parent is init (1) or another
- *   member. A member whose parent lives outside the group (a shell holding a
- *   job) is not ours to prove, so it is retained.
- *
- * `foreign` drops the record without signaling. `retain` keeps it for a later
- * sweep. Only `verified` permits the group kill. Residual risk, disclosed:
- * within one boot, an unrelated session leader reuses the pid, exits, and
- * leaves orphaned children all born after the recorded leader.
+ * - Group empty: the record can go.
+ * - Record from an earlier boot: nothing it names can still run, so the
+ *   record goes without a signal.
+ * - Otherwise (current boot, or a boot that cannot be read): the record is
+ *   retained and reported as a surviving group. A later sweep re-checks it
+ *   and drops it once the group is empty.
  */
 async function settleDeadLeaderGroup(
   record: OwnedProcessRecord,
-  probeIdentity: ProcessIdentityProbe,
   listGroup: ProcessGroupLister,
 ): Promise<DeadLeaderGroupOutcome> {
   if (process.platform === 'win32' || !processGroupExists(record.enginePid)) {
     return { kind: 'empty' };
   }
-  if (!record.engineBirth) {
-    return { kind: 'retain', reason: 'no recorded engine birth' };
-  }
-  const predatesBoot = processBirthPredatesCurrentBoot(record.engineBirth);
-  if (predatesBoot === null) {
-    return { kind: 'retain', reason: 'boot of the recorded engine unknown' };
-  }
-  if (predatesBoot) {
-    return { kind: 'foreign', reason: 'record is from an earlier boot' };
+  if (
+    record.engineBirth &&
+    processBirthPredatesCurrentBoot(record.engineBirth) === true
+  ) {
+    return { kind: 'previous-boot' };
   }
   const members = await listGroup(record.enginePid);
-  if (members === null) {
-    return { kind: 'retain', reason: 'process group listing unavailable' };
-  }
-  const memberPids = new Set(members.map((member) => member.pid));
-  let liveMembers = 0;
-  for (const member of members) {
-    if (!isKillableEnginePid(member.pid)) {
-      return { kind: 'retain', reason: 'group lists a protected pid' };
-    }
-    const probe = probeIdentity(member.pid);
-    if (probe.state === 'dead') continue;
-    if (probe.state === 'unavailable') {
-      return { kind: 'retain', reason: 'member identity unavailable' };
-    }
-    const order = compareProcessBirthFingerprints(
-      probe.identity.start,
-      record.engineBirth,
-    );
-    if (order === null) {
-      return { kind: 'retain', reason: 'member birth not comparable' };
-    }
-    if (order < 0) {
-      return { kind: 'foreign', reason: 'member born before recorded engine' };
-    }
-    if (member.ppid !== 1 && !memberPids.has(member.ppid)) {
-      return { kind: 'retain', reason: 'member parent is outside the group' };
-    }
-    liveMembers += 1;
-  }
-  if (liveMembers === 0) {
-    // Every listed member exited while we looked. Only an empty group may
-    // drop the record; anything else is read again by a later sweep.
-    return processGroupExists(record.enginePid)
-      ? { kind: 'retain', reason: 'group changed during the sweep' }
-      : { kind: 'empty' };
-  }
-  return { kind: 'verified' };
+  return { kind: 'surviving', members: members?.length ?? null };
 }
 
 /**
@@ -703,6 +661,9 @@ async function settleDeadLeaderGroup(
  * fingerprint cannot be read is UNAVAILABLE — it is RETAINED, never killed,
  * because a missed reclaim is acceptable and a wrong kill is not. Both
  * directions of pid reuse (owner and engine) are covered by birth comparison.
+ * A dead leader whose process group still has members is retained and
+ * reported in `survivingGroups`, never signaled (#561): the group id alone
+ * cannot prove those members are the recorded engine's.
  *
  * Registry trust (archive#1863 BLOCKING 2): the sweep refuses to read a
  * directory that is not owned by us or whose mode is broader than 0700, so a
@@ -743,6 +704,7 @@ export async function sweepOrphanedOwnedProcesses(
     recycled: 0,
     retained: 0,
     corrupt: 0,
+    survivingGroups: [],
   };
   // BLOCKING 2: never read a registry we do not own.
   if (!registryDirIsTrustworthy(registryDir, log)) {
@@ -795,42 +757,36 @@ export async function sweepOrphanedOwnedProcesses(
     // (null birth → skip check → kill) is structurally unwritable.
     const engineProbe = probeIdentity(record.enginePid);
     if (engineProbe.state === 'dead') {
-      // #561: a dead leader does not mean a dead group. Its descendants keep
-      // the group id alive, and dropping the record would orphan them for good.
-      const group = await settleDeadLeaderGroup(
-        record,
-        probeIdentity,
-        listGroup,
-      );
+      // #561: a dead leader does not mean a dead group, but nothing here can
+      // prove a surviving group is ours, so it is retained, never signaled.
+      const group = await settleDeadLeaderGroup(record, listGroup);
       if (group.kind === 'empty') {
         result.alreadyDead += 1;
         rmSync(file, { force: true });
         continue;
       }
-      if (group.kind === 'foreign') {
+      if (group.kind === 'previous-boot') {
         result.recycled += 1;
-        log(
-          'owned-process sweep: group id no longer names the record; removing',
-          {
-            enginePid: record.enginePid,
-            reason: group.reason,
-          },
-        );
+        log('owned-process sweep: record is from an earlier boot; removing', {
+          enginePid: record.enginePid,
+        });
         rmSync(file, { force: true });
         continue;
       }
-      if (group.kind === 'retain') {
-        result.retained += 1;
-        log(
-          'owned-process sweep: leader dead, group alive but unproven; retaining',
-          {
-            enginePid: record.enginePid,
-            reason: group.reason,
-          },
-        );
-        continue;
-      }
-      // Verified: fall through to the same group kill and record removal.
+      result.retained += 1;
+      result.survivingGroups.push({
+        pgid: record.enginePid,
+        members: group.members,
+      });
+      logger.warn(
+        'owned-process sweep: leader dead but its process group is alive; retaining the record, not signaling',
+        {
+          pgid: record.enginePid,
+          members: group.members,
+          command: record.command,
+        },
+      );
+      continue;
     } else if (engineProbe.state === 'unavailable') {
       // Alive but the fingerprint cannot be read right now (ENOSPC, high
       // load, transient failure). FAIL CLOSED: retain rather than risk
@@ -862,9 +818,8 @@ export async function sweepOrphanedOwnedProcesses(
         continue;
       }
     }
-    // Identity confirmed: the live leader matches its recorded birth, or the
-    // dead leader's surviving members were each verified above. The owner is
-    // gone. Reap the whole process group.
+    // Identity confirmed: same pid, same birth fingerprint. The owner is gone.
+    // Reap the whole process group.
     try {
       // Negative pid => signal the whole process group. A detached child's
       // group id equals its pid, so this reaps the grandchild too. The pid

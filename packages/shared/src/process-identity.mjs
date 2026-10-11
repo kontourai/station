@@ -747,31 +747,6 @@ function parsePosixBirth(fingerprint) {
 }
 
 /**
- * Order two POSIX birth fingerprints taken on this host: -1 when `a` was born
- * before `b`, 0 when they cannot be told apart (macOS `lstart` has 1-second
- * resolution), 1 when after. Null when either cannot be parsed, the formats
- * differ, or two Linux fingerprints come from different boots: no order is
- * claimed that the fingerprints do not carry.
- */
-export function compareProcessBirthFingerprints(a, b) {
-  const left = parsePosixBirth(a);
-  const right = parsePosixBirth(b);
-  if (!left || !right) return null;
-  if ('ticks' in left && 'ticks' in right) {
-    if (left.boot !== right.boot) return null;
-    return left.ticks < right.ticks ? -1 : left.ticks > right.ticks ? 1 : 0;
-  }
-  if ('epochMs' in left && 'epochMs' in right) {
-    return left.epochMs < right.epochMs
-      ? -1
-      : left.epochMs > right.epochMs
-        ? 1
-        : 0;
-  }
-  return null;
-}
-
-/**
  * Was the process with this birth fingerprint born before the host's current
  * boot? True means nothing it started can still be running. Linux compares
  * the fingerprint's boot id with `/proc/sys/kernel/random/boot_id`; the

@@ -14,7 +14,6 @@
 import { describe, expect, test } from 'vitest';
 import {
   birthProvesReuse,
-  compareProcessBirthFingerprints,
   describeProcessBirthProbe,
   describeRecentProcessBirthProbeFailures,
   lookupProcessBirthFingerprint,
@@ -602,77 +601,9 @@ describe('birthProvesReuse (station#2904)', () => {
   });
 });
 
-// #561: the orphan sweep orders a surviving group member against the
-// recorded leader and refuses records from an earlier boot. Every null below
-// is a "cannot tell" the sweep must read as retain, never as either answer.
-describe('compareProcessBirthFingerprints', () => {
-  const boot = '0b6c3e9a-1f2d-4c5b-9a8e-7d6f5e4c3b2a';
-
-  test('orders lstart births at one-second resolution', () => {
-    expect(
-      compareProcessBirthFingerprints(
-        'Sun Oct  4 20:41:31 2026',
-        'Mon Oct  5 01:00:00 2026',
-      ),
-    ).toBe(-1);
-    expect(
-      compareProcessBirthFingerprints(
-        'Sun Oct 11 20:41:31 2026',
-        'Sun Oct 11 20:41:31 2026',
-      ),
-    ).toBe(0);
-    expect(
-      compareProcessBirthFingerprints(
-        'Thu Jan  1 00:00:00 2027',
-        'Thu Dec 31 23:59:59 2026',
-      ),
-    ).toBe(1);
-  });
-
-  test('orders Linux births only within one boot', () => {
-    expect(
-      compareProcessBirthFingerprints(
-        `linux:${boot}:900`,
-        `linux:${boot}:1000`,
-      ),
-    ).toBe(-1);
-    expect(
-      compareProcessBirthFingerprints(
-        `linux:${boot}:1000`,
-        `linux:${boot}:900`,
-      ),
-    ).toBe(1);
-    expect(
-      compareProcessBirthFingerprints(
-        `linux:${boot}:900`,
-        'linux:00000000-0000-0000-0000-000000000000:1000',
-      ),
-    ).toBeNull();
-  });
-
-  test('claims no order for unparseable or mixed formats', () => {
-    expect(compareProcessBirthFingerprints(null, `linux:${boot}:1`)).toBeNull();
-    expect(
-      compareProcessBirthFingerprints(
-        'Sun Oct 11 20:41:31',
-        'Sun Oct 11 20:41:31',
-      ),
-    ).toBeNull();
-    expect(
-      compareProcessBirthFingerprints(
-        'Sun Oct 11 20:41:31 2026',
-        `linux:${boot}:1`,
-      ),
-    ).toBeNull();
-    expect(
-      compareProcessBirthFingerprints(
-        '2026-10-11T20:41:31.1234567Z',
-        '2026-10-11T20:41:32.1234567Z',
-      ),
-    ).toBeNull();
-  });
-});
-
+// #561: the orphan sweep drops a dead leader's record from an earlier boot
+// without signaling. Every null below is a "cannot tell" the sweep must read
+// as retain, never as either answer.
 describe('processBirthPredatesCurrentBoot', () => {
   const sysctl =
     (output: string) =>
