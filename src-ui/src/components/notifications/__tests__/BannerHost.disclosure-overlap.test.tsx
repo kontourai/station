@@ -211,6 +211,8 @@ describe.skipIf(!chromiumAvailable)(
             MIN_TOUCH_TARGET_PX,
           );
           expect(detailBox, '.banner-host__detail not visible').not.toBe(null);
+          expect(detailBox!.width).toBeGreaterThan(0);
+          expect(detailBox!.height).toBeGreaterThan(0);
 
           expect(
             lineRects.length,
