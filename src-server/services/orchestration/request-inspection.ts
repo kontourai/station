@@ -4,7 +4,7 @@ import {
   type AttentionRequestReference,
 } from '@kontourai/station-contracts/attention';
 import type { RequestOpenedEvent } from '@kontourai/station-contracts/runtime-events';
-import { readHarnessQuestionnaire } from '@kontourai/station-shared/harness-questions';
+import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
 import type { EventStore } from './event-store.js';
 import { presentOpenRequest } from './request-presentation.js';
 
@@ -125,9 +125,7 @@ export function inspectRequestEvent(
     requestType: event.requestType as 'approval' | 'permission',
     ...presentOpenRequest(event),
     openedAt: event.createdAt,
-    ...(readHarnessQuestionnaire(event.payload?.questionnaire)
-      ? { requiresAnswers: true }
-      : {}),
+    ...(inputRequestFromRequestEvent(event) ? { requiresAnswers: true } : {}),
   };
 }
 

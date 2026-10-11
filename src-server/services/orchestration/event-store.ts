@@ -32,6 +32,7 @@ import type {
   ConnectionRecoveryProjection,
 } from '@kontourai/station-contracts/connection-recovery';
 import type {
+  ConversationHandoffProjection,
   OrchestrationCommandReceipt,
   RuntimeEventElisionReason,
   SteerTurnResult,
@@ -94,7 +95,9 @@ import { ensureProjectTaskRoomRevisionAttributionColumn } from '../../domain/mig
 import { CONVERSATION_SESSION_LINEAGE_MIGRATION } from '../../domain/migrations/010-conversation-session-lineage.js';
 import {
   CONVERSATION_HANDOFF_MIGRATION,
+  ensureConversationHandoffExecutionAgentColumn,
   ensureConversationHandoffMessageDigestColumn,
+  ensureConversationHandoffNativeReturnColumn,
 } from '../../domain/migrations/011-conversation-handoffs.js';
 import {
   CONVERSATION_CONTEXT_BOUNDARY_MIGRATION,
@@ -198,6 +201,7 @@ import {
   type NativeInvocationStarter,
   releaseNativeInvocationOwner,
 } from './native-invocation-runs.js';
+import { NATIVE_SESSION_OWNERSHIP_MIGRATION } from './native-session-ownership.js';
 import {
   type ConversationDraftFacts,
   clientOriginIdentity,
@@ -519,6 +523,52 @@ const USAGE_RECEIPT_EVENT_SELECT = `SELECT e.id, e.provider, e.thread_id, e.turn
                     AND config.sequence >= COALESCE((SELECT MAX(epoch.sequence) FROM orchestration_events epoch WHERE epoch.thread_id = e.thread_id AND epoch.method = 'session.started' AND epoch.sequence <= e.sequence), 0)
                   ORDER BY config.sequence DESC LIMIT 1) AS credential_profile_json
 `;
+
+/** How much of a turn's prompt the digest read keeps (the first line is clipped from it). */
+export const TURN_DIGEST_PROMPT_PREFIX_CHARS = 1024;
+/** The most Sessions one conversation lineage the digest reads may name. */
+const TURN_DIGEST_LINEAGE_MAX = 500;
+
+/** The digest read's lineage is past what it reads; refused, never cut. */
+export class TurnDigestLineageTooLongError extends Error {
+  readonly code = 'session_digest_lineage_too_long';
+  constructor() {
+    super('The Session lineage is longer than the digest reads.');
+    this.name = 'TurnDigestLineageTooLongError';
+  }
+}
+const TURN_DIGEST_FILES_READ = 50;
+const TURN_DIGEST_PULL_REQUESTS_READ = 50;
+
+type TurnDigestTerminalMethod =
+  | 'turn.completed'
+  | 'turn.aborted'
+  | 'runtime.error';
+
+/** The recorded facts of one turn; see `EventStore.readTurnDigestFacts`. */
+export interface TurnDigestFacts {
+  threadId: string;
+  turnId: string;
+  startedAt: string;
+  /** The `turn.started` event's global sequence: the paging position. */
+  startSequence: number;
+  promptPrefix?: string;
+  /** The engine opened this turn on its own (`PROVIDER_TURN_TRIGGER`). */
+  providerTriggered?: true;
+  terminal?: { method: TurnDigestTerminalMethod; finishReason?: string };
+  toolCalls: Array<{ toolName: string; calls: number }>;
+  /**
+   * Whether any `tool.completed` of the turn carried an engine-reported
+   * `toolKind`. Without one, an absent `files` says nothing about what the
+   * turn touched: the engine never says.
+   */
+  toolKindsReported: boolean;
+  /** Distinct recorded file paths (all of them), and the first few. */
+  filesTotal: number;
+  files: string[];
+  /** Declared `pull-request` descriptors, unparsed beyond JSON. */
+  declaredPullRequests: unknown[];
+}
 
 /** A session that names a parent conversation; see `listSessionsNamingParents`. */
 export interface SessionNamingParent {
@@ -2047,7 +2097,10 @@ export class EventStore {
       this.ensureUsageReceiptIndex();
       this.db.exec(CONVERSATION_SESSION_LINEAGE_MIGRATION);
       this.db.exec(CONVERSATION_HANDOFF_MIGRATION);
+      this.db.exec(NATIVE_SESSION_OWNERSHIP_MIGRATION);
       ensureConversationHandoffMessageDigestColumn(this.db);
+      ensureConversationHandoffNativeReturnColumn(this.db);
+      ensureConversationHandoffExecutionAgentColumn(this.db);
       this.db.exec(CONVERSATION_CONTEXT_BOUNDARY_MIGRATION);
       ensureConversationContextBoundaryColumns(this.db);
       this.db.exec(SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION);
@@ -3476,6 +3529,7 @@ export class EventStore {
     let nextSequence: number;
     let globalSequence: number;
     try {
+      this.reserveEventAppendWriter();
       // Persisted event time is the sole replay authority. A new terminal gets
       // exactly one host observation time, shared by its event and association.
       const observedAt =
@@ -3687,6 +3741,17 @@ export class EventStore {
     current: () => boolean;
   }) {
     return this.sessionWorkItemAdmissions.stage(input);
+  }
+
+  private reserveEventAppendWriter(): void {
+    // A read-first savepoint cannot upgrade under a peer writer: SQLite
+    // refuses that upgrade without consulting busy_timeout. Acquire the
+    // writer first while leaving the cursor and savepoint lifetime unchanged.
+    this.db
+      .prepare(
+        'UPDATE orchestration_stream_identity SET high_water = high_water WHERE singleton = 1',
+      )
+      .run();
   }
 
   private openAppendEventSavepoint(): void {
@@ -4223,6 +4288,7 @@ export class EventStore {
     let globalSequence: number;
     let absent: boolean;
     try {
+      this.reserveEventAppendWriter();
       nextSequence = this.nextSequence(event.threadId);
       globalSequence = this.nextGlobalSequence();
       const result = this.db
@@ -4614,6 +4680,252 @@ export class EventStore {
       ...(typeof value.label === 'string' ? { label: value.label } : {}),
       descriptor,
       sequence: Number(value.sequence),
+    };
+  }
+
+  /**
+   * station#3413 (`list_project_activity`): the threads that COULD be in one
+   * Project's scope, selected from their `session.started` records by the
+   * `localProjectId` the start stamped (a SEEK on `idx_events_method`), so a
+   * call can narrow before it folds anything. `projectId` names a Project: its
+   * own Sessions and every Session whose start names none; absent means the
+   * global space: only Sessions whose start names none.
+   *
+   * A candidate list, never the check, and always a SUPERSET of what the scope
+   * check would admit. The scope owner reads a thread's first start record:
+   * its `session.started` metadata, else its `session.configured` metadata
+   * (`firstStartedRecordOfThread`). So every `session.started` AND
+   * `session.configured` row counts here, and a thread is left out only when
+   * ALL of them name another Project: a Session recorded only by a
+   * `session.configured` is a candidate too. A Session with no Project can
+   * still be scoped to a Project by its folder; the caller decides each
+   * Session's scope with `stationControlScopeRefusal`, not from this.
+   */
+  // Called by the Project activity route through a `Pick<EventStore>`
+  // parameter, which the dead-code audit cannot trace to this class.
+  // fallow-ignore-next-line unused-class-member
+  listThreadIdsStartedIn(projectId: string | undefined): string[] {
+    const rows = this.db
+      .prepare(
+        `SELECT DISTINCT thread_id FROM orchestration_events
+          WHERE method IN ('session.started', 'session.configured')
+            AND json_valid(payload)
+            AND (json_extract(payload, '$.metadata.localProjectId') IS NULL
+              ${projectId === undefined ? '' : "OR json_extract(payload, '$.metadata.localProjectId') = ?"})`,
+      )
+      .all(...(projectId === undefined ? [] : [projectId])) as Array<{
+      thread_id: string;
+    }>;
+    return rows.map((row) => row.thread_id);
+  }
+
+  /**
+   * station#3413 (`get_session_digest`): the recorded facts of a window of a
+   * conversation's turns, newest first, selected and aggregated in SQLite so
+   * the digest never replays a transcript or reads a tool's (unbounded)
+   * output. Every fact is a column of an event Station already wrote:
+   *
+   * - the turn: its `turn.started` (a steer's `inputKind` is not a turn),
+   *   with the first {@link TURN_DIGEST_PROMPT_PREFIX_CHARS} characters of its
+   *   prompt;
+   * - its outcome: its LAST terminal event (`turn.completed`, `turn.aborted`
+   *   or `runtime.error`), `finishReason` included;
+   * - tool use: a count of `tool.started` per tool name;
+   * - files: the path argument of a call whose own `tool.completed` reported
+   *   an `edit`, `delete` or `move` kind and succeeded. A path nothing
+   *   reported is not guessed from a tool's name;
+   * - pull requests: the `pull-request` rows in `orchestration_declared_outputs`
+   *   for the turn.
+   *
+   * `beforeGlobalSequence` pages older: it is the `startSequence` of the oldest
+   * turn of the previous page. One turn past `turnLimit` is read to say
+   * whether older turns remain.
+   */
+  // Called by the Project activity route through a `Pick<EventStore>`
+  // parameter, which the dead-code audit cannot trace to this class.
+  // fallow-ignore-next-line unused-class-member
+  readTurnDigestFacts(
+    threadIds: readonly string[],
+    options: { beforeGlobalSequence?: number; turnLimit: number },
+  ): {
+    turns: TurnDigestFacts[];
+    hasMore: boolean;
+    totalTurns: number;
+    /** When the first turn newer than the newest returned began, if any. */
+    newerTurnStartedAt?: string;
+  } {
+    const ids = [...new Set(threadIds)];
+    if (ids.length > TURN_DIGEST_LINEAGE_MAX)
+      throw new TurnDigestLineageTooLongError();
+    if (ids.length === 0) throw new Error('Turn digest lineage is invalid');
+    if (
+      !Number.isInteger(options.turnLimit) ||
+      options.turnLimit < 1 ||
+      options.turnLimit > 100
+    )
+      throw new Error('Turn digest limit must be between 1 and 100');
+    const placeholders = ids.map(() => '?').join(', ');
+    const isTurnStart = `thread_id IN (${placeholders}) AND method = 'turn.started'
+      AND turn_id IS NOT NULL AND json_valid(payload)
+      AND json_extract(payload, '$.inputKind') IS NULL`;
+    const totalTurns = Number(
+      (
+        this.db
+          .prepare(
+            `SELECT COUNT(*) AS total FROM orchestration_events WHERE ${isTurnStart}`,
+          )
+          .get(...ids) as { total: number }
+      ).total,
+    );
+    const starts = this.db
+      .prepare(
+        `SELECT thread_id, turn_id, created_at, global_sequence,
+                substr(json_extract(payload, '$.prompt'), 1, ${TURN_DIGEST_PROMPT_PREFIX_CHARS}) AS prompt,
+                json_extract(payload, '$.metadata.trigger') AS turn_trigger
+           FROM orchestration_events
+          WHERE ${isTurnStart} AND global_sequence < ?
+          ORDER BY global_sequence DESC LIMIT ?`,
+      )
+      .all(
+        ...ids,
+        options.beforeGlobalSequence ?? Number.MAX_SAFE_INTEGER,
+        options.turnLimit + 1,
+      ) as Array<{
+      thread_id: string;
+      turn_id: string;
+      created_at: string;
+      global_sequence: number;
+      prompt: unknown;
+      turn_trigger: unknown;
+    }>;
+    const selected = starts.slice(0, options.turnLimit);
+    const terminal = this.db.prepare(
+      `SELECT method, json_extract(payload, '$.finishReason') AS finish_reason
+         FROM orchestration_events
+        WHERE thread_id = ? AND turn_id = ? AND json_valid(payload)
+          AND method IN ('turn.completed', 'turn.aborted', 'runtime.error')
+        ORDER BY sequence DESC LIMIT 1`,
+    );
+    const tools = this.db.prepare(
+      `SELECT json_extract(payload, '$.toolName') AS tool_name, COUNT(*) AS calls
+         FROM orchestration_events
+        WHERE thread_id = ? AND turn_id = ? AND method = 'tool.started'
+          AND json_valid(payload)
+        GROUP BY tool_name ORDER BY calls DESC, tool_name ASC`,
+    );
+    const kinded = this.db.prepare(
+      `SELECT COUNT(*) AS total FROM orchestration_events
+        WHERE thread_id = ? AND turn_id = ? AND method = 'tool.completed'
+          AND json_valid(payload)
+          AND json_extract(payload, '$.toolKind') IS NOT NULL`,
+    );
+    const fileRows = `FROM orchestration_events done
+         JOIN orchestration_events call
+           ON call.thread_id = done.thread_id AND call.turn_id = done.turn_id
+          AND call.method = 'tool.started' AND json_valid(call.payload)
+          AND json_extract(call.payload, '$.toolCallId') = json_extract(done.payload, '$.toolCallId')
+        WHERE done.thread_id = ? AND done.turn_id = ? AND done.method = 'tool.completed'
+          AND json_valid(done.payload)
+          AND json_extract(done.payload, '$.status') = 'success'
+          AND json_extract(done.payload, '$.toolKind') IN ('edit', 'delete', 'move')`;
+    const filePath = `COALESCE(json_extract(call.payload, '$.arguments.path'),
+          json_extract(call.payload, '$.arguments.file_path'),
+          json_extract(call.payload, '$.arguments.filePath'))`;
+    const fileCount = this.db.prepare(
+      `SELECT COUNT(DISTINCT ${filePath}) AS total ${fileRows} AND typeof(${filePath}) = 'text'`,
+    );
+    const fileList = this.db.prepare(
+      `SELECT ${filePath} AS path ${fileRows} AND typeof(${filePath}) = 'text'
+        GROUP BY path ORDER BY MIN(done.sequence) ASC LIMIT ${TURN_DIGEST_FILES_READ}`,
+    );
+    const pullRequests = this.db.prepare(
+      `SELECT descriptor FROM orchestration_declared_outputs
+        WHERE thread_id = ? AND turn_id = ? AND json_valid(descriptor)
+          AND json_extract(descriptor, '$.kind') = 'pull-request'
+        ORDER BY declared_at ASC, declaration_id ASC LIMIT ${TURN_DIGEST_PULL_REQUESTS_READ}`,
+    );
+    const turns = selected.map((start): TurnDigestFacts => {
+      const end = terminal.get(start.thread_id, start.turn_id) as
+        | { method: string; finish_reason: unknown }
+        | undefined;
+      const files = fileCount.get(start.thread_id, start.turn_id) as {
+        total: number;
+      };
+      const declared: unknown[] = [];
+      for (const row of pullRequests.all(
+        start.thread_id,
+        start.turn_id,
+      ) as Array<{
+        descriptor: string;
+      }>) {
+        try {
+          declared.push(JSON.parse(row.descriptor));
+        } catch {
+          // json_valid held in SQL; a row that still fails to parse is skipped.
+        }
+      }
+      return {
+        threadId: start.thread_id,
+        turnId: start.turn_id,
+        startedAt: start.created_at,
+        startSequence: Number(start.global_sequence),
+        ...(typeof start.prompt === 'string'
+          ? { promptPrefix: start.prompt }
+          : {}),
+        ...(start.turn_trigger === PROVIDER_TURN_TRIGGER
+          ? { providerTriggered: true as const }
+          : {}),
+        ...(end
+          ? {
+              terminal: {
+                method: end.method as TurnDigestTerminalMethod,
+                ...(typeof end.finish_reason === 'string'
+                  ? { finishReason: end.finish_reason }
+                  : {}),
+              },
+            }
+          : {}),
+        toolCalls: (
+          tools.all(start.thread_id, start.turn_id) as Array<{
+            tool_name: unknown;
+            calls: number;
+          }>
+        ).map((row) => ({
+          toolName:
+            typeof row.tool_name === 'string' ? row.tool_name : '(unnamed)',
+          calls: Number(row.calls),
+        })),
+        toolKindsReported:
+          Number(
+            (kinded.get(start.thread_id, start.turn_id) as { total: number })
+              .total,
+          ) > 0,
+        filesTotal: Number(files.total),
+        files: (
+          fileList.all(start.thread_id, start.turn_id) as Array<{
+            path: string;
+          }>
+        ).map((row) => row.path),
+        declaredPullRequests: declared,
+      };
+    });
+    // The newest returned turn ran until the next one began (a child started
+    // meanwhile belongs to it).
+    const newer = selected[0]
+      ? (this.db
+          .prepare(
+            `SELECT created_at FROM orchestration_events WHERE ${isTurnStart}
+                AND global_sequence > ? ORDER BY global_sequence ASC LIMIT 1`,
+          )
+          .get(...ids, selected[0].global_sequence) as
+          | { created_at: string }
+          | undefined)
+      : undefined;
+    return {
+      turns,
+      hasMore: starts.length > options.turnLimit,
+      totalTurns,
+      ...(newer ? { newerTurnStartedAt: newer.created_at } : {}),
     };
   }
 
@@ -9079,11 +9391,200 @@ export class EventStore {
     return this.conversationHandoffs.reserve(input);
   }
 
+  assertNativeSessionMutable(sessionId: string): void {
+    const row = this.db
+      .prepare(`SELECT owners.owner_session_id, owners.pending_session_id
+      FROM orchestration_native_session_bindings binding
+      JOIN orchestration_native_session_owners owners USING(identity_key)
+      WHERE binding.session_id = ?`)
+      .get(sessionId) as
+      | { owner_session_id: string; pending_session_id: string | null }
+      | undefined;
+    if (row && (row.owner_session_id !== sessionId || row.pending_session_id)) {
+      throw new Error(
+        'The native conversation is owned by another execution Session.',
+      );
+    }
+  }
+
+  nativeSessionOwnedBy(sessionId: string): boolean {
+    const row = this.db
+      .prepare(`SELECT 1 FROM orchestration_native_session_bindings binding
+      JOIN orchestration_native_session_owners owners USING(identity_key)
+      WHERE binding.session_id = ? AND owners.owner_session_id = ? AND owners.pending_session_id IS NULL`)
+      .get(sessionId, sessionId);
+    return row !== undefined;
+  }
+
+  nativeSessionReservedFor(
+    sourceSessionId: string,
+    targetSessionId: string,
+  ): boolean {
+    return (
+      this.db
+        .prepare(`SELECT 1 FROM orchestration_native_session_bindings binding
+      JOIN orchestration_native_session_owners owners USING(identity_key)
+      WHERE binding.session_id = ? AND
+        ((owners.owner_session_id = ? AND owners.pending_session_id = ?) OR
+         (owners.owner_session_id = ? AND owners.pending_session_id IS NULL))`)
+        .get(
+          sourceSessionId,
+          sourceSessionId,
+          targetSessionId,
+          targetSessionId,
+        ) !== undefined
+    );
+  }
+
+  claimNativeSessionIdentity(
+    identityKey: string,
+    sessionId: string,
+    allowProfileRebind = false,
+  ): void {
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      const binding = this.db
+        .prepare(
+          'SELECT identity_key FROM orchestration_native_session_bindings WHERE session_id = ?',
+        )
+        .get(sessionId) as { identity_key: string } | undefined;
+      this.assertNativeSessionMutable(sessionId);
+      if (
+        binding &&
+        binding.identity_key !== identityKey &&
+        !allowProfileRebind
+      ) {
+        throw new Error(
+          'An execution Session cannot silently change native identity.',
+        );
+      }
+      const owner = this.db
+        .prepare(
+          'SELECT owner_session_id, pending_session_id FROM orchestration_native_session_owners WHERE identity_key = ?',
+        )
+        .get(identityKey) as
+        | { owner_session_id: string; pending_session_id: string | null }
+        | undefined;
+      if (owner?.pending_session_id)
+        throw new Error(
+          'Native ownership transfer is waiting for confirmed retirement.',
+        );
+      if (owner && owner.owner_session_id !== sessionId) {
+        const lineage = this.conversationForSession(sessionId);
+        const prior = this.db
+          .prepare(
+            'SELECT identity_key, retired FROM orchestration_native_session_bindings WHERE session_id = ?',
+          )
+          .get(owner.owner_session_id) as
+          | { identity_key: string; retired: number }
+          | undefined;
+        if (
+          lineage?.predecessorSessionId !== owner.owner_session_id ||
+          prior?.identity_key !== identityKey ||
+          prior.retired !== 1
+        ) {
+          throw new Error(
+            'The native conversation is owned by another execution Session.',
+          );
+        }
+      }
+      this.db
+        .prepare(`INSERT INTO orchestration_native_session_owners(identity_key, owner_session_id)
+        VALUES (?, ?) ON CONFLICT(identity_key) DO UPDATE SET owner_session_id=excluded.owner_session_id`)
+        .run(identityKey, sessionId);
+      this.db
+        .prepare(`INSERT INTO orchestration_native_session_bindings(session_id, identity_key, retired)
+        VALUES (?, ?, 0) ON CONFLICT(session_id) DO UPDATE SET identity_key=excluded.identity_key, retired=0`)
+        .run(sessionId, identityKey);
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  recordNativeSessionRetired(sessionId: string): void {
+    this.db
+      .prepare(
+        'UPDATE orchestration_native_session_bindings SET retired=1 WHERE session_id=?',
+      )
+      .run(sessionId);
+  }
+
+  completeNativeReturnRetirement(handoffSessionId: string): void {
+    const marker = this.conversationHandoffForSession(handoffSessionId);
+    if (!marker?.nativeReturnSourceSessionId)
+      throw new Error('Native return reservation was not found.');
+    this.db
+      .prepare(`UPDATE orchestration_native_session_owners
+      SET owner_session_id=?, pending_session_id=NULL
+      WHERE pending_session_id=? AND owner_session_id=? AND identity_key IN
+        (SELECT identity_key FROM orchestration_native_session_bindings WHERE session_id=? AND retired=1)`)
+      .run(
+        handoffSessionId,
+        handoffSessionId,
+        marker.nativeReturnSourceSessionId,
+        marker.nativeReturnSourceSessionId,
+      );
+    if (!this.nativeSessionOwnedBy(handoffSessionId)) {
+      throw new Error('The source native engine has not confirmed retirement.');
+    }
+  }
+
   describeConversationHandoff(
     marker: ConversationHandoffMarker,
     outcome: 'created' | 'existing',
   ): ReturnType<ConversationHandoffModule['reserve']> {
     return this.conversationHandoffs.describe(marker, outcome);
+  }
+
+  /** Browser-safe persisted binding; callers authorize the conversation before projecting it. */
+  projectConversationHandoff(
+    marker: ConversationHandoffMarker,
+  ): ConversationHandoffProjection {
+    const disclosure = this.describeConversationHandoff(marker, 'existing');
+    const targetSession = this.readSessionByThread(marker.sessionId);
+    const startEvent = this.latestEventByMethod(
+      marker.sessionId,
+      'session.started',
+    )?.payload;
+    const startMetadata =
+      startEvent?.method === 'session.started'
+        ? startEvent.metadata
+        : undefined;
+    const expectedDefinitionFingerprint =
+      marker.targetExecutionAgentId &&
+      typeof startMetadata?.expectedDefinitionFingerprint === 'string' &&
+      /^sha256:[0-9a-f]{64}$/.test(startMetadata.expectedDefinitionFingerprint)
+        ? startMetadata.expectedDefinitionFingerprint
+        : undefined;
+    return {
+      predecessorSessionId: marker.predecessorSessionId,
+      sessionId: marker.sessionId,
+      idempotencyKey: marker.idempotencyKey,
+      targetAgentId: marker.targetAgentId,
+      ...(marker.targetExecutionAgentId
+        ? { targetExecutionAgentId: marker.targetExecutionAgentId }
+        : {}),
+      ...(targetSession ? { targetProvider: targetSession.provider } : {}),
+      ...(expectedDefinitionFingerprint
+        ? { expectedDefinitionFingerprint }
+        : {}),
+      ...(marker.targetConnectionId
+        ? { targetConnectionId: marker.targetConnectionId }
+        : {}),
+      ...(marker.targetModelId ? { targetModelId: marker.targetModelId } : {}),
+      createdAt: marker.createdAt,
+      carried: disclosure.carried,
+      reset: disclosure.reset,
+      ...(marker.nativeReturnSourceSessionId
+        ? {
+            nativeReturn: {
+              sourceSessionId: marker.nativeReturnSourceSessionId,
+            },
+          }
+        : {}),
+    };
   }
 
   conversationHandoffForSession(
@@ -9579,32 +10080,41 @@ export class EventStore {
       sessionId: row.session_id,
       idempotencyKey: row.idempotency_key,
       targetAgentId: row.target_agent_id,
+      ...(row.target_execution_agent_id
+        ? { targetExecutionAgentId: row.target_execution_agent_id }
+        : {}),
       targetEnvironmentId: row.target_environment_id,
       ...(row.target_connection_id
         ? { targetConnectionId: row.target_connection_id }
         : {}),
       ...(row.target_model_id ? { targetModelId: row.target_model_id } : {}),
       messageDigest: row.message_digest,
+      ...(row.native_return_source_session_id
+        ? { nativeReturnSourceSessionId: row.native_return_source_session_id }
+        : {}),
+      ...(row.native_return_source_event_id
+        ? { nativeReturnSourceEventId: row.native_return_source_event_id }
+        : {}),
       createdAt: row.created_at,
     });
     const byKey = this.db.prepare(
       `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
-              target_agent_id, target_environment_id, target_connection_id,
-              target_model_id, message_digest, created_at
+              target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
+              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
        FROM orchestration_conversation_handoffs
        WHERE conversation_id = ? AND idempotency_key = ?`,
     );
     const byPredecessor = this.db.prepare(
       `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
-              target_agent_id, target_environment_id, target_connection_id,
-              target_model_id, message_digest, created_at
+              target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
+              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
        FROM orchestration_conversation_handoffs
        WHERE predecessor_session_id = ?`,
     );
     const byConversation = this.db.prepare(
       `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
-              target_agent_id, target_environment_id, target_connection_id,
-              target_model_id, message_digest, created_at
+              target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
+              target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
        FROM orchestration_conversation_handoffs
        WHERE conversation_id = ?
        ORDER BY created_at ASC, session_id ASC`,
@@ -9625,9 +10135,9 @@ export class EventStore {
     const insertMarker = this.db.prepare(
       `INSERT INTO orchestration_conversation_handoffs
         (conversation_id, predecessor_session_id, session_id, idempotency_key,
-         target_agent_id, target_environment_id, target_connection_id,
-         target_model_id, message_digest, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
+         target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const sameTarget = (
       left: ConversationHandoffMarker,
@@ -9636,10 +10146,13 @@ export class EventStore {
       left.conversationId === right.conversationId &&
       left.predecessorSessionId === right.predecessorSessionId &&
       left.targetAgentId === right.targetAgentId &&
+      left.targetExecutionAgentId === right.targetExecutionAgentId &&
       left.targetEnvironmentId === right.targetEnvironmentId &&
       left.targetConnectionId === right.targetConnectionId &&
       left.targetModelId === right.targetModelId &&
-      left.messageDigest === right.messageDigest;
+      left.messageDigest === right.messageDigest &&
+      left.nativeReturnSourceSessionId === right.nativeReturnSourceSessionId &&
+      left.nativeReturnSourceEventId === right.nativeReturnSourceEventId;
     return createConversationHandoffModule({
       persistence: {
         listByConversation: (conversationId) =>
@@ -9704,10 +10217,39 @@ export class EventStore {
               input.targetAgentId,
               input.targetEnvironmentId,
               input.targetConnectionId ?? null,
+              input.targetExecutionAgentId ?? null,
               input.targetModelId ?? null,
               input.messageDigest,
+              input.nativeReturnSourceSessionId ?? null,
+              input.nativeReturnSourceEventId ?? null,
               input.createdAt,
             );
+            if (input.nativeReturnSourceSessionId) {
+              const binding = this.db
+                .prepare(
+                  'SELECT identity_key FROM orchestration_native_session_bindings WHERE session_id=?',
+                )
+                .get(input.nativeReturnSourceSessionId) as
+                | { identity_key: string }
+                | undefined;
+              if (
+                !binding ||
+                !this.nativeSessionOwnedBy(input.nativeReturnSourceSessionId)
+              )
+                throw new Error(
+                  'The earlier Session no longer owns its native conversation.',
+                );
+              this.db
+                .prepare(
+                  'UPDATE orchestration_native_session_owners SET pending_session_id=? WHERE identity_key=?',
+                )
+                .run(input.sessionId, binding.identity_key);
+              this.db
+                .prepare(
+                  'INSERT INTO orchestration_native_session_bindings(session_id, identity_key, retired) VALUES (?, ?, 0)',
+                )
+                .run(input.sessionId, binding.identity_key);
+            }
             this.db.exec('COMMIT');
             return { marker: input, outcome: 'created' as const };
           } catch (error) {
@@ -9723,8 +10265,8 @@ export class EventStore {
           const row = this.db
             .prepare(
               `SELECT conversation_id, predecessor_session_id, session_id, idempotency_key,
-                      target_agent_id, target_environment_id, target_connection_id,
-                      target_model_id, message_digest, created_at
+                      target_agent_id, target_environment_id, target_connection_id, target_execution_agent_id,
+                      target_model_id, message_digest, native_return_source_session_id, native_return_source_event_id, created_at
                FROM orchestration_conversation_handoffs WHERE session_id = ?`,
             )
             .get(sessionId);

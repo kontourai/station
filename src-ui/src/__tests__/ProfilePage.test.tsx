@@ -38,6 +38,8 @@ const analyticsState = vi.hoisted(() => ({
 
 vi.mock('@kontourai/station-sdk', () => ({
   AuthStatusBadge: () => <div>Auth badge</div>,
+}));
+vi.mock('@kontourai/station-sdk/usage-rollup-query', () => ({
   useUsageRollupQuery: () => ({
     data: { coverage: [], rows: [], receipts: [] },
     isLoading: false,
@@ -47,6 +49,13 @@ vi.mock('@kontourai/station-sdk', () => ({
 
 vi.mock('../components/profile/StationPeoplePanel', () => ({
   StationPeoplePanel: () => <div>Paired profiles</div>,
+}));
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => null,
+}));
+
+vi.mock('../components/usage-stats/StationUsagePanel', () => ({
+  StationUsagePanel: () => <div>Station operator overview</div>,
 }));
 
 vi.mock('../components/badges/AchievementsBadge', () => ({

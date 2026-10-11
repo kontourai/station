@@ -1,0 +1,7 @@
+{
+  "revision": "ecd7add0d0d6da04c9a68e4f732a6442723b6ffd",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the additive media manifest entries for before/after shared chat and Project composer appearance. Existing Starter Work captures, readiness, plugin creation, task execution and receiver claims are unchanged. New captures explicitly establish browser layout only.","inputs":["docs/guides/starter-work.md","docs/learn/media.json"]}
+  ]
+}

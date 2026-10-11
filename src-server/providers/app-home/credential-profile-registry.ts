@@ -3,6 +3,8 @@ import type {
   CredentialProfile,
   CredentialProfileApplicationCapability,
   CredentialProfileApplicationOutcome,
+  CredentialProfileProjection,
+  CredentialProfileRecord,
   CredentialProfileRegistryState,
   CredentialRecoveryGroup,
   CredentialRecoveryGroupProjection,
@@ -11,6 +13,11 @@ import {
   DEFAULT_CREDENTIAL_RECOVERY_POLICY,
   isAutomaticCredentialRecoveryEnabled,
 } from '@kontourai/station-contracts/connection-recovery';
+import {
+  sanitizeCredentialProfileEnv,
+  sanitizeCredentialProfileEnvInvalidNames,
+  validateCredentialProfileEnv,
+} from '../../services/connections/connection-env.js';
 import {
   appHomeProfileDir,
   type EnsureAppHomeProfileOptions,
@@ -24,8 +31,14 @@ const MAX_ATTEMPT_ID_LENGTH = 128;
 /** Never evict an unacknowledged receipt: refusing a new stage is safer. */
 const MAX_APPLICATION_RECEIPTS = 64;
 
-type RegistryState = Required<
-  Pick<CredentialProfileRegistryState, 'profiles' | 'group' | 'policy'>
+/**
+ * See `CredentialProfileRecord`: an invalid saved overlay is persisted as a
+ * value-free `envInvalid` marker, never its values.
+ */
+export type RegistryCredentialProfile = CredentialProfileRecord;
+
+type RegistryState = { profiles: RegistryCredentialProfile[] } & Required<
+  Pick<CredentialProfileRegistryState, 'group' | 'policy'>
 > &
   Omit<CredentialProfileRegistryState, 'profiles' | 'group' | 'policy'>;
 
@@ -102,20 +115,71 @@ function normalizeAttemptId(value: unknown): string | undefined {
     : undefined;
 }
 
-function normalizeProfiles(value: unknown): CredentialProfile[] {
+/**
+ * One persisted profile. An invalid `env` becomes the value-free
+ * `envInvalid` marker (its values are dropped here, so no write persists
+ * them). An existing marker (`envInvalid`: any value but null/undefined)
+ * is kept, and wins over any `env` beside it: the profile stays refused
+ * until `setCredentialProfileEnv` replaces the overlay, which passes no
+ * marker.
+ */
+function profileRecord(
+  ref: string,
+  label: string | undefined,
+  env: unknown,
+  envInvalid?: unknown,
+): RegistryCredentialProfile {
+  const validation = validateCredentialProfileEnv(env);
+  const base = { ref, ...(label ? { label } : {}) };
+  const marked = envInvalid !== undefined && envInvalid !== null;
+  if (!validation.ok || marked) {
+    const names = !validation.ok
+      ? validation.names
+      : typeof envInvalid === 'object'
+        ? (envInvalid as { names?: unknown }).names
+        : undefined;
+    return {
+      ...base,
+      envInvalid: { names: sanitizeCredentialProfileEnvInvalidNames(names) },
+    };
+  }
+  return Object.keys(validation.env).length > 0
+    ? { ...base, env: { ...validation.env } }
+    : base;
+}
+
+function normalizeProfiles(value: unknown): RegistryCredentialProfile[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
-  const profiles: CredentialProfile[] = [];
+  const profiles: RegistryCredentialProfile[] = [];
   for (const candidate of value) {
     if (!candidate || typeof candidate !== 'object') continue;
     const raw = candidate as Record<string, unknown>;
     const ref = normalizeRef(raw.ref);
     if (!ref || seen.has(ref) || profiles.length >= MAX_PROFILES) continue;
     seen.add(ref);
-    const label = normalizeLabel(raw.label);
-    profiles.push(label ? { ref, label } : { ref });
+    profiles.push(
+      profileRecord(ref, normalizeLabel(raw.label), raw.env, raw.envInvalid),
+    );
   }
   return profiles;
+}
+
+/**
+ * The normalized record for `refInput` (its first valid occurrence), or
+ * `undefined`. Normalization turns a raw invalid overlay (say, a hand edit
+ * not yet rewritten) into the `envInvalid` marker, so the spawn-time
+ * resolver sees one shape to fail closed on.
+ */
+export function persistedCredentialProfile(
+  value: unknown,
+  refInput: string,
+): RegistryCredentialProfile | undefined {
+  const ref = normalizeRef(refInput);
+  if (!ref) return undefined;
+  return normalizeCredentialProfileRegistry(value).profiles.find(
+    (profile) => profile.ref === ref,
+  );
 }
 
 function normalizeRefs(value: unknown, knownRefs: Set<string>): string[] {
@@ -223,7 +287,12 @@ function normalizeReceipts(value: unknown): LegacyApplicationReceipt[] {
   return receipts;
 }
 
-/** Drops malformed and unsafe untrusted input; absence remains default-off. */
+/**
+ * Normalizes untrusted registry input: malformed or unsafe entries are
+ * dropped, except a profile's invalid env overlay, which is reduced to the
+ * value-free `envInvalid` marker (see `profileRecord`) so the profile stays
+ * refused. Absence remains default-off.
+ */
 export function normalizeCredentialProfileRegistry(
   value: unknown,
 ): LegacyCredentialProfileRegistryState {
@@ -280,10 +349,14 @@ function rejected(
   };
 }
 
-/** Upserts management metadata and explicitly adds a new profile to the group. */
+/**
+ * Upserts management metadata (ref + label) and explicitly adds a new profile
+ * to the group. The env overlay is not metadata: an upsert keeps an existing
+ * profile's env untouched, and `setCredentialProfileEnv` owns changing it.
+ */
 export function upsertCredentialProfile(
   value: unknown,
-  profile: CredentialProfile,
+  profile: Pick<CredentialProfile, 'ref' | 'label'>,
 ): CredentialProfileRegistryTransitionResult {
   const state = stateOf(value);
   const ref = normalizeRef(profile.ref);
@@ -294,9 +367,11 @@ export function upsertCredentialProfile(
     return rejected(state);
   const profiles = existing
     ? state.profiles.map((candidate) =>
-        candidate.ref === ref ? (label ? { ref, label } : { ref }) : candidate,
+        candidate.ref === ref
+          ? profileRecord(ref, label, candidate.env, candidate.envInvalid)
+          : candidate,
       )
-    : [...state.profiles, label ? { ref, label } : { ref }];
+    : [...state.profiles, profileRecord(ref, label, undefined)];
   const profileRefs = state.group.profileRefs.includes(ref)
     ? state.group.profileRefs
     : [...state.group.profileRefs, ref];
@@ -305,6 +380,32 @@ export function upsertCredentialProfile(
       ...state,
       profiles,
       group: { ...state.group, profileRefs },
+    }),
+    transition: 'ignored',
+  };
+}
+
+/**
+ * Replaces a profile's env overlay wholesale; an empty map clears it. An
+ * invalid overlay is rejected whole rather than partially applied.
+ */
+export function setCredentialProfileEnv(
+  value: unknown,
+  refInput: string,
+  envInput: unknown,
+): CredentialProfileRegistryTransitionResult {
+  const state = stateOf(value);
+  const ref = normalizeRef(refInput);
+  const env = sanitizeCredentialProfileEnv(envInput);
+  if (!ref || !env) return rejected(state);
+  if (!state.profiles.some((profile) => profile.ref === ref))
+    return rejected(state);
+  return {
+    state: withState({
+      ...state,
+      profiles: state.profiles.map((profile) =>
+        profile.ref === ref ? profileRecord(ref, profile.label, env) : profile,
+      ),
     }),
     transition: 'ignored',
   };
@@ -378,6 +479,49 @@ export function deleteCredentialProfile(
   };
 }
 
+/**
+ * A valid overlay is projected as `env`; an invalid saved overlay only as
+ * its value-free `envInvalid` marker (normalization already dropped the
+ * values).
+ */
+function projectProfile(
+  profile: RegistryCredentialProfile,
+): CredentialProfileProjection {
+  return {
+    ref: profile.ref,
+    ...(profile.label ? { label: profile.label } : {}),
+    ...(profile.envInvalid
+      ? { envInvalid: { names: [...profile.envInvalid.names] } }
+      : profile.env
+        ? { env: { ...profile.env } }
+        : {}),
+  };
+}
+
+/**
+ * Public form of a raw, untrusted `credentialRecovery.profiles` value (for
+ * example the legacy `GET /config/app` projection): normalized records, so
+ * an invalid overlay appears only as its value-free marker and never with
+ * its values.
+ */
+export function projectPublicCredentialProfiles(
+  value: unknown,
+): CredentialProfileProjection[] {
+  return normalizeProfiles(value).map(projectProfile);
+}
+
+/**
+ * Persisted form of a raw, untrusted `credentialRecovery.profiles` value
+ * written around the registry (for example `PUT /config/app` or a settings
+ * import): normalized records, so an invalid overlay is stored only as its
+ * value-free marker and its values never reach disk.
+ */
+export function persistableCredentialProfiles(
+  value: unknown,
+): RegistryCredentialProfile[] {
+  return normalizeProfiles(value);
+}
+
 /** Public projection intentionally does not include pending attempt identity. */
 export function projectCredentialProfileRegistry(
   value: unknown,
@@ -385,7 +529,7 @@ export function projectCredentialProfileRegistry(
 ): CredentialRecoveryGroupProjection {
   const state = stateOf(value);
   return {
-    profiles: state.profiles.map((profile) => ({ ...profile })),
+    profiles: state.profiles.map(projectProfile),
     group: {
       profileRefs: [...state.group.profileRefs],
       enrolledProfileRefs: [...state.group.enrolledProfileRefs],

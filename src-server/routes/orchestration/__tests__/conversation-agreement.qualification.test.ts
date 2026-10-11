@@ -22,6 +22,7 @@ import {
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import type { ProviderAdapterMetadata } from '../../../providers/adapter-shape.js';
+import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import {
   type ExecutionSessionBinding,
   type ExecutionTargetExecutionDependencies,
@@ -374,6 +375,16 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
           }),
       });
       const app = new Hono();
+      // A plain-folder binding takes the operator in person; a request no
+      // auth boundary saw is refused.
+      app.use('*', async (c, next) => {
+        setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+          credential: 'operator-credential',
+          authority: 'operator-credential',
+          source: 'bearer',
+        });
+        await next();
+      });
       app.route('/api/orchestration', routes);
 
       const send = async (path: string, body: unknown) => {

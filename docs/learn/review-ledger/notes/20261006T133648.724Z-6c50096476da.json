@@ -1,0 +1,7 @@
+{
+  "revision": "3e4ab28f7a5512d14beda8b72147394210f0f1bb",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"#3406 delta round: session-api.md change is limited to the attached-session discovery paragraph; the ADR's status pointer stays accurate. No prose change.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

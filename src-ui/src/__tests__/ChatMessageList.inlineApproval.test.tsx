@@ -38,6 +38,10 @@ vi.mock('../contexts/ToastContext', () => ({
 vi.mock('../hooks/useActiveChatSessions', () => ({
   useSendMessage: () => vi.fn(),
 }));
+vi.mock('../components/chat/AttachAnswerToTaskButton', () => ({
+  AttachUserInputToTaskButton: () => null,
+  AttachAnswerToTaskButton: () => null,
+}));
 vi.mock('../components/chat/StreamingMessage', () => ({
   StreamingMessage: () => <div data-testid="streaming-message">Streaming</div>,
 }));
@@ -78,6 +82,7 @@ vi.mock('../hooks/orchestration/useSessionEventWindow', () => ({
 import { ChatMessageList } from '../components/chat/ChatMessageList';
 import { ActiveChatsProvider } from '../contexts/ActiveChatsContext';
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { forgetApprovalAnswer } from '../hooks/orchestration/answerRequest';
 import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
 import type { ChatSession } from '../types';
 
@@ -207,12 +212,14 @@ function renderCard(session = chatSession()) {
   const rendered = render(tree(session));
   // Re-renders the SAME mount (the window's events are read at render).
   return {
+    unmount: rendered.unmount,
     rerender: (next: ChatSession = session) => rendered.rerender(tree(next)),
   };
 }
 
 describe('#2316 inline approval card', () => {
   beforeEach(() => {
+    forgetApprovalAnswer('claude-child-b', 'req-claude-b');
     // What the mounted `ApiBaseProvider` does in the app; the registry route
     // resolves its base from here.
     _setApiBase(API_BASE);
@@ -225,6 +232,40 @@ describe('#2316 inline approval card', () => {
     windowEvents.settled = true;
     vi.unstubAllGlobals();
     _setApiBase('');
+  });
+
+  test('remounting an uncertain approval keeps decisions locked and status checking visible', async () => {
+    const calls = stubFetch((call) =>
+      call.method === 'POST'
+        ? Promise.reject(new TypeError('Reply lost'))
+        : Response.json({
+            success: true,
+            data: {
+              state: 'unavailable',
+              reference: {
+                threadId: 'claude-child-b',
+                requestId: 'req-claude-b',
+                requestEventId: 'evt-3',
+              },
+              message: 'Inspection unavailable',
+            },
+          }),
+    );
+    const first = renderCard();
+    fireEvent.click(await screen.findByRole('button', { name: 'Allow Once' }));
+    await screen.findByText(/Delivery is not confirmed/);
+    first.unmount();
+    renderCard();
+    expect(
+      (await screen.findByRole('button', { name: 'Allow Once' })).hasAttribute(
+        'disabled',
+      ),
+    ).toBe(true);
+    expect(
+      screen.getByRole('button', { name: 'Deny' }).hasAttribute('disabled'),
+    ).toBe(true);
+    expect(screen.getByRole('button', { name: 'Check status' })).toBeTruthy();
+    expect(calls.filter((call) => call.method === 'POST')).toHaveLength(1);
   });
 
   test.each([
@@ -285,33 +326,29 @@ describe('#2316 inline approval card', () => {
       () => Promise.reject(new TypeError('Failed to fetch')),
       /Failed to fetch/,
     ],
-  ])(
-    'says the decision was not delivered when %s, and stays actionable',
-    async (_case, failure, reason) => {
-      stubFetch(failure);
-      renderCard();
+  ])('reports the delivery outcome when %s', async (_case, failure, reason) => {
+    stubFetch(failure);
+    renderCard();
 
-      fireEvent.click(
-        await screen.findByRole('button', { name: 'Allow Once' }),
-      );
+    fireEvent.click(await screen.findByRole('button', { name: 'Allow Once' }));
 
-      // The card's own alert (the transcript may carry unrelated ones, e.g.
-      // a lazy Task action that did not load in this environment).
-      const alert = await screen.findByText(/Your decision was not delivered/);
-      expect(alert.getAttribute('role')).toBe('alert');
-      expect(alert.textContent).toMatch(reason);
-      // The request is still open: the card must not pretend it is settled.
-      for (const name of [
-        'Allow Once',
-        'Allow Bash for this session',
-        'Deny',
-      ]) {
-        expect(
-          (screen.getByRole('button', { name }) as HTMLButtonElement).disabled,
-        ).toBe(false);
-      }
-    },
-  );
+    // The card's own alert (the transcript may carry unrelated ones, e.g.
+    // a lazy Task action that did not load in this environment).
+    const alert = await screen.findByText(
+      _case === 'the network fails'
+        ? /Delivery is not confirmed/
+        : /Your decision was not delivered/,
+    );
+    expect(alert.closest('[role="alert"]')).not.toBeNull();
+    if (_case !== 'the network fails')
+      expect(alert.closest('[role="alert"]')?.textContent).toMatch(reason);
+    // The request is still open: the card must not pretend it is settled.
+    for (const name of ['Allow Once', 'Allow Bash for this session', 'Deny']) {
+      expect(
+        (screen.getByRole('button', { name }) as HTMLButtonElement).disabled,
+      ).toBe(_case === 'the network fails');
+    }
+  });
 
   test('a card without its request’s session falls back to the registry route and surfaces its refusal', async () => {
     // A part that does not carry `approvalThreadId` (not produced by the
@@ -355,8 +392,10 @@ describe('#2316 inline approval card', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Allow Once' }));
 
     const alert = await screen.findByText(/Your decision was not delivered/);
-    expect(alert.getAttribute('role')).toBe('alert');
-    expect(alert.textContent).toMatch(/Approval request not found/);
+    expect(alert.closest('[role="alert"]')).not.toBeNull();
+    expect(alert.closest('[role="alert"]')?.textContent).toMatch(
+      /Approval request not found/,
+    );
     expect(calls).toHaveLength(1);
     expect(calls[0]).toMatchObject({
       url: `${API_BASE}/tool-approval/registry-approval-1`,
@@ -548,7 +587,7 @@ describe('#2316 inline approval card', () => {
       );
 
       const alert = await screen.findByText(/Your decision was not delivered/);
-      expect(alert.getAttribute('role')).toBe('alert');
+      expect(alert.closest('[role="alert"]')).not.toBeNull();
       expect(screen.queryByText('This request is no longer open.')).toBeNull();
     });
 
@@ -576,7 +615,7 @@ describe('#2316 inline approval card', () => {
       );
 
       const alert = await screen.findByText(/Your decision was not delivered/);
-      expect(alert.getAttribute('role')).toBe('alert');
+      expect(alert.closest('[role="alert"]')).not.toBeNull();
       expect(screen.queryByText('This request is no longer open.')).toBeNull();
     });
 

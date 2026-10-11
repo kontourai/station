@@ -1,3 +1,4 @@
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { environmentId as toEnvironmentId } from '@kontourai/station-contracts/execution-target';
 import type { ProjectIdentityView } from '@kontourai/station-contracts/project-identity';
 import {
@@ -10,6 +11,7 @@ import {
   usePeerCredentialsQuery,
   useSshEnvironmentsQuery,
 } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -18,6 +20,10 @@ import {
   useScopedProjectQuery,
 } from '../../contexts/ProjectsContext';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
+import {
+  CONNECTION_SETUP_RETURN_EVENT,
+  openConnectionsModal,
+} from '../../lib/connectionModalEvents';
 import {
   peerStationLabel,
   selectablePeerStations,
@@ -36,11 +42,23 @@ interface DelegationLauncherProps {
   projectName?: string | null;
   currentAgentId?: string;
   currentModel?: string | null;
+  initialEnvironmentId?: string;
+  executionAgentId?: string;
+  expectedDefinitionFingerprint?: string;
+  providerOptions?: Record<string, unknown>;
   parentTaskId?: string;
   parentTaskLabel?: string;
   initialPrompt?: string;
+  onDraftChange?: (prompt: string) => void;
+  title?: string;
+  submitLabel?: string;
+  routingExpanded?: boolean;
   onClose: () => void;
-  onDelegated: (task: DelegatedTaskHandle, targetName: string) => void;
+  onDelegated: (
+    task: DelegatedTaskHandle,
+    targetName: string,
+    placement: { stationName: string; prompt: string },
+  ) => void;
 }
 
 type TargetOption = {
@@ -142,9 +160,17 @@ export function DelegationLauncher({
   projectName,
   currentAgentId,
   currentModel,
+  initialEnvironmentId,
+  executionAgentId,
+  expectedDefinitionFingerprint,
+  providerOptions,
   parentTaskId,
   parentTaskLabel,
   initialPrompt = '',
+  onDraftChange,
+  title = 'Delegate a task',
+  submitLabel = 'Delegate',
+  routingExpanded = false,
   onClose,
   onDelegated,
 }: DelegationLauncherProps) {
@@ -219,7 +245,9 @@ export function DelegationLauncher({
 
   // Null follows the Project default; an explicit choice survives inventory
   // refreshes. Missing inventory must never substitute the current machine.
-  const [chosenEnvironmentId, setEnvironmentId] = useState<string | null>(null);
+  const [chosenEnvironmentId, setEnvironmentId] = useState<string | null>(
+    initialEnvironmentId ?? null,
+  );
   const environmentId = chosenEnvironmentId ?? configuredEnvironmentId;
   // Only an unset choice follows the default. An unavailable explicit choice
   // stays selected until the user chooses a replacement.
@@ -283,7 +311,24 @@ export function DelegationLauncher({
   const [prompt, setPrompt] = useState(initialPrompt);
   const [target, setTarget] = useState(defaultTarget);
   const [model, setModel] = useState(currentModel ?? '');
-  const [showRouting, setShowRouting] = useState(false);
+  const [showRouting, setShowRouting] = useState(routingExpanded);
+  const [setupRequestId, setSetupRequestId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!setupRequestId) return;
+    const resume = (event: Event) => {
+      if (
+        !(event instanceof CustomEvent) ||
+        event.detail?.setupRequestId !== setupRequestId
+      )
+        return;
+      setSetupRequestId(null);
+      void peerCredentialsQuery.refetch();
+      void retryDiscovery();
+    };
+    window.addEventListener(CONNECTION_SETUP_RETURN_EVENT, resume);
+    return () =>
+      window.removeEventListener(CONNECTION_SETUP_RETURN_EVENT, resume);
+  }, [setupRequestId, peerCredentialsQuery.refetch, retryDiscovery]);
   // Public repo labels/ids for the portable placement selector. The declared
   // execution-root repo wins; a sole repo is unambiguous; anything else
   // requires an explicit choice — never a guess.
@@ -313,15 +358,16 @@ export function DelegationLauncher({
     if (isOpen && !wasOpenRef.current) {
       setPrompt(initialPrompt);
       setTarget(defaultTarget);
-      setEnvironmentId(null);
+      setEnvironmentId(initialEnvironmentId ?? null);
       setChosenResourceId(null);
       setAuthorityStale(false);
       setModel(defaultTarget === currentTarget ? (currentModel ?? '') : '');
-      setShowRouting(false);
+      setShowRouting(routingExpanded);
       mutation.reset();
       requestAnimationFrame(() => promptRef.current?.focus());
     }
     if (!isOpen) {
+      setSetupRequestId(null);
       setEnvironmentId(null);
       setChosenResourceId(null);
     }
@@ -330,9 +376,11 @@ export function DelegationLauncher({
     currentModel,
     currentTarget,
     defaultTarget,
+    initialEnvironmentId,
     initialPrompt,
     isOpen,
     mutation.reset,
+    routingExpanded,
   ]);
 
   useEffect(() => {
@@ -352,7 +400,7 @@ export function DelegationLauncher({
     target,
   ]);
 
-  if (!isOpen) return null;
+  if (!isOpen || setupRequestId) return null;
 
   const selectedTarget = targets.find((option) => option.value === target);
   const unavailableTargets = targets.filter((option) => !option.ready);
@@ -429,9 +477,31 @@ export function DelegationLauncher({
     ? (identityResources.find((resource) => resource.id === resourceId)?.name ??
       resourceId)
     : null;
-  const resolvedModelId = model.trim() || selectedTarget?.defaultModel || '';
+  const overrideSelected = Boolean(
+    executionAgentId && selectedTarget?.id === currentAgentId,
+  );
+  const engineBinding = overrideSelected
+    ? delegationOptions?.targets.find(
+        (entry) => entry.id === executionAgentId && entry.executionDefault,
+      )
+    : undefined;
+  const targetModels = overrideSelected
+    ? (engineBinding?.models ?? [])
+    : (selectedTarget?.models ?? []);
+  const overrideUnavailable =
+    overrideSelected &&
+    (!engineBinding?.executionReady ||
+      (expectedDefinitionFingerprint &&
+        delegationOptions?.targets.find((entry) => entry.id === currentAgentId)
+          ?.definitionFingerprint !== expectedDefinitionFingerprint));
+  const resolvedModelId =
+    model.trim() ||
+    (overrideSelected
+      ? engineBinding?.defaultModel
+      : selectedTarget?.defaultModel) ||
+    '';
   const resolvedModelName = resolvedModelId
-    ? (selectedTarget?.models.find(
+    ? (targetModels.find(
         (option) =>
           option.id === resolvedModelId ||
           option.originalId === resolvedModelId,
@@ -448,6 +518,7 @@ export function DelegationLauncher({
     event.preventDefault();
     if (
       !selectedTarget?.ready ||
+      overrideUnavailable ||
       !prompt.trim() ||
       environmentUnavailable ||
       portableBlocked ||
@@ -472,10 +543,12 @@ export function DelegationLauncher({
         }
       : undefined;
     const invocationApiBase = invocationScope?.apiBase ?? apiBase;
+    const capturedDraft = prompt;
     const capturedPrompt = prompt.trim();
     const capturedEnvironmentId = environmentId;
     const capturedTargetId = selectedTarget.id;
     const capturedTargetName = selectedTarget.name;
+    const capturedStationName = selectedEnvironmentName;
     const capturedModel = model.trim();
     const capturedParentTaskId = parentTaskId;
     const capturedWorkspace = projectSlug
@@ -500,8 +573,25 @@ export function DelegationLauncher({
               capturedEnvironmentId === 'current'
                 ? { kind: 'current' }
                 : { kind: 'saved', id: toEnvironmentId(capturedEnvironmentId) },
-            agent: capturedTargetId,
-            ...(capturedModel ? { model: { override: capturedModel } } : {}),
+            agent:
+              overrideSelected && executionAgentId
+                ? {
+                    kind: 'agent-execution-override',
+                    agent: capturedTargetId,
+                    executionAgent: agentId(executionAgentId),
+                    ...(expectedDefinitionFingerprint
+                      ? { expectedDefinitionFingerprint }
+                      : {}),
+                  }
+                : capturedTargetId,
+            ...(capturedModel
+              ? {
+                  model: {
+                    override: capturedModel,
+                    ...(providerOptions ? { options: providerOptions } : {}),
+                  },
+                }
+              : {}),
             ...(capturedWorkspace ? { workspace: capturedWorkspace } : {}),
           },
           ...(capturedParentTaskId
@@ -517,7 +607,10 @@ export function DelegationLauncher({
         setAuthorityStale(true);
         return;
       }
-      onDelegated(task, capturedTargetName);
+      onDelegated(task, capturedTargetName, {
+        stationName: capturedStationName,
+        prompt: capturedDraft,
+      });
     } catch {
       // React Query exposes the actionable error inline and keeps the draft,
       // Project/resource and machine choice: no automatic redispatch, and a
@@ -528,6 +621,7 @@ export function DelegationLauncher({
   const containFocus = (event: React.KeyboardEvent<HTMLFormElement>) => {
     if (event.key === 'Escape') {
       event.preventDefault();
+      event.stopPropagation();
       onClose();
       return;
     }
@@ -589,11 +683,14 @@ export function DelegationLauncher({
         aria-modal="true"
         aria-labelledby="delegation-launcher-title"
         onKeyDown={containFocus}
-        onSubmit={(event) => void submit(event)}
+        onSubmit={(event) => {
+          event.stopPropagation();
+          void submit(event);
+        }}
       >
         <header className="delegation-launcher__header">
           <div>
-            <h2 id="delegation-launcher-title">Delegate a task</h2>
+            <h2 id="delegation-launcher-title">{title}</h2>
             <p>
               Start resumable work{projectName ? ` for ${projectName}` : ''}.
             </p>
@@ -621,7 +718,10 @@ export function DelegationLauncher({
               value={prompt}
               rows={5}
               placeholder="Implement the next bounded backlog item and verify it locally…"
-              onChange={(event) => setPrompt(event.target.value)}
+              onChange={(event) => {
+                setPrompt(event.target.value);
+                onDraftChange?.(event.target.value);
+              }}
             />
           </label>
 
@@ -653,6 +753,21 @@ export function DelegationLauncher({
               {showRouting ? 'Hide routing' : 'Change routing'}
             </button>
           </div>
+
+          <Button
+            onClick={() => {
+              const id = randomCorrelationId();
+              setSetupRequestId(id);
+              openConnectionsModal({
+                mode: 'connect-station',
+                setupRequestId: id,
+                projectName: projectName ?? undefined,
+                peerOnly: true,
+              });
+            }}
+          >
+            Connect a Station for this task
+          </Button>
 
           {discoveryError && (
             <div className="delegation-launcher__discovery-error" role="alert">
@@ -897,9 +1012,9 @@ export function DelegationLauncher({
                   list="delegation-launcher-models"
                   onChange={(event) => setModel(event.target.value)}
                 />
-                {selectedTarget?.models.length ? (
+                {targetModels.length ? (
                   <datalist id="delegation-launcher-models">
-                    {selectedTarget.models.map((option) => (
+                    {targetModels.map((option) => (
                       <option key={option.id} value={option.id}>
                         {option.name}
                       </option>
@@ -952,12 +1067,13 @@ export function DelegationLauncher({
               Boolean(discoveryError) ||
               !prompt.trim() ||
               !selectedTarget?.ready ||
+              overrideUnavailable ||
               environmentUnavailable ||
               portableBlocked ||
               sshProjectBlocked
             }
           >
-            {mutation.isPending ? 'Starting…' : 'Delegate'}
+            {mutation.isPending ? 'Starting…' : submitLabel}
           </button>
         </footer>
       </form>

@@ -53,7 +53,9 @@ describe('LogsTab', () => {
     render(<LogsTab />);
     // Not a degraded page: the entries the device IS entitled to still render.
     expect(screen.getByLabelText('Server logs')).toBeTruthy();
-    expect(screen.getByText(/booted/)).toBeTruthy();
+    expect(
+      screen.getByText('2026-08-23T00:00:00.000Z info booted'),
+    ).toBeTruthy();
     expect(screen.getByText(REDACTED_SENTENCE)).toBeTruthy();
   });
 

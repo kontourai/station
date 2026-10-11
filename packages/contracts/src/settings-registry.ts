@@ -330,6 +330,18 @@ export const APP_SETTINGS_REGISTRY = [
     defaultValue: true,
   }),
   defineSetting({
+    key: 'attachedSessionsOutsideProjects',
+    scope: 'station',
+    descriptor: { kind: 'boolean' },
+    label: 'Conversations outside projects',
+    help: 'Activity lists Claude Code and Codex conversations on this machine whose folder is in no project, under No project.',
+    description:
+      'List Claude Code and Codex conversations on this machine whose folder belongs to no project, under No project in Activity. Station copies what it reads into its own history and search. Turn off to stop reading them; conversations already read stay listed.',
+    // Confirmed against attached-session-follow-service.ts:
+    // `attachedSessionsOutsideProjectsEnabled` reads `!== false`.
+    defaultValue: true,
+  }),
+  defineSetting({
     key: 'knowledgeStores',
     scope: 'station',
     descriptor: { kind: 'boolean' },

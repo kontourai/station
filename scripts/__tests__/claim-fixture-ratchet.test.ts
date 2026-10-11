@@ -307,7 +307,7 @@ function statusView(state: SshEnvironmentState): {
     const HISTORICAL_1166_TEST = `
 describe('SshEnvironmentsSection on mobile', () => {
   beforeEach(() => {
-    mocks.environments = [{ profile: { name: 'Brian media' }, state: { phase: 'connected' } }];
+    mocks.environments = [{ profile: { name: 'Home media' }, state: { phase: 'connected' } }];
   });
 
   test('offers a touch-sized stop control', () => {
@@ -321,7 +321,7 @@ describe('SshEnvironmentsSection on mobile', () => {
 
   test('states what this environment unlocks', () => {
     render(<SshEnvironmentsSection />);
-    expect(screen.getByText('This Station can run delegated tasks here — work runs on Brian media, with its own agents and workspace.')).toBeTruthy();
+    expect(screen.getByText('This Station can run delegated tasks here — work runs on Home media, with its own agents and workspace.')).toBeTruthy();
   });
 });
 `;

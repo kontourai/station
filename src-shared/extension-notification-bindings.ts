@@ -1,3 +1,8 @@
+import {
+  EXTENSION_TRANSCRIPT_MARKERS,
+  type ExtensionTranscriptMarkerEmitter,
+} from '@kontourai/station-shared/extension-transcript-markers';
+
 export type ExtensionNotificationConsumer =
   | 'acp.commands.available'
   | 'acp.turn-error-cause'
@@ -10,20 +15,27 @@ export type ExtensionNotificationConsumer =
   | 'ui.claude.session-status'
   | 'ui.claude.task-registry'
   | 'ui.claude.task-settled'
-  | 'ui.engine.mcp-status';
+  | 'ui.engine.mcp-status'
+  | 'transcript.marker';
 
 export type ExtensionHandshakeVariant =
   | 'kiro-v2'
   | 'kiro-v3'
   | 'claude-adapter'
-  | 'xai-acp';
+  | 'xai-acp'
+  | ExtensionTranscriptMarkerEmitter;
 
-/** Evidence tags identify a runtime observation or a pinned SDK protocol contract. */
+/**
+ * Evidence tags identify a runtime observation, a pinned SDK protocol
+ * contract, or (`station-session-source-emitter`) a tuple a Station session
+ * source mints itself, pinned by that source's own tests.
+ */
 export type ExtensionNotificationEvidence =
   | 'station#1815-runtime-observation'
   | 'station#4084-runtime-observation'
   | 'station#1935-runtime-observation'
-  | 'claude-sdk-api-retry-contract';
+  | 'claude-sdk-api-retry-contract'
+  | 'station-session-source-emitter';
 
 export interface ExtensionNotificationBinding {
   readonly namespace: string;
@@ -219,9 +231,25 @@ const DECLARED_EXTENSION_NOTIFICATION_BINDINGS = [
   },
 ] as const satisfies readonly ExtensionNotificationBinding[];
 
+/**
+ * station#3415: the transcript-marker tuples come from the projection's own
+ * table, so one entry there both binds a tuple and renders it.
+ */
+const TRANSCRIPT_MARKER_BINDINGS: readonly ExtensionNotificationBinding[] =
+  EXTENSION_TRANSCRIPT_MARKERS.map(({ namespace, type, emitter }) => ({
+    namespace,
+    type,
+    consumer: 'transcript.marker',
+    observedAgainst: [emitter],
+    evidence: 'station-session-source-emitter',
+  }));
+
 export const EXTENSION_NOTIFICATION_BINDINGS: readonly ExtensionNotificationBinding[] =
   Object.freeze(
-    DECLARED_EXTENSION_NOTIFICATION_BINDINGS.map((binding) =>
+    [
+      ...DECLARED_EXTENSION_NOTIFICATION_BINDINGS,
+      ...TRANSCRIPT_MARKER_BINDINGS,
+    ].map((binding) =>
       Object.freeze({
         ...binding,
         observedAgainst: Object.freeze([...binding.observedAgainst]),

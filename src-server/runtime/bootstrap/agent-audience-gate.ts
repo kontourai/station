@@ -24,7 +24,8 @@
  *   configuration).
  * - `GET /agents/:slug`, `GET /api/agents/:slug`: that view, or the uniform
  *   not-found.
- * - Any other `/agents/:slug/...` or `/api/agents/:slug/...` leaf, and the
+ * - Any other `/agents/:slug/...` or `/api/agents/:slug/...` leaf (running
+ *   an MCP prompt, `POST .../mcp-prompts/run`, counts as a turn), and the
  *   orchestration routes that start a turn on a named Agent: the uniform
  *   not-found when the audience does not admit the caller. An Agent it does
  *   admit is still refused with `member_agent_turns_unavailable`: a member's
@@ -149,11 +150,17 @@ const COLLECTION_MUTATIONS = new Set(['/agents/materialize-engine']);
 const ADDRESSED_TURN = /^\/(?:invoke|invoke\/stream|chat)$/;
 /** `POST /agents/:slug/tools/:toolName` runs a tool; other `/tools` writes edit. */
 const ADDRESSED_TOOL_RUN = /^\/tools\/(?!allowed$)[^/]+$/;
+/**
+ * #3284: `POST /agents/:slug/mcp-prompts/run` reads a prompt through the
+ * Agent's MCP connection to become a turn's input: a turn, not an edit.
+ */
+const ADDRESSED_PROMPT_RUN = '/mcp-prompts/run';
 
 function addressedTurn(method: string, leaf: string): boolean {
   return (
     ADDRESSED_TURN.test(leaf) ||
-    (method === 'POST' && ADDRESSED_TOOL_RUN.test(leaf))
+    (method === 'POST' &&
+      (ADDRESSED_TOOL_RUN.test(leaf) || leaf === ADDRESSED_PROMPT_RUN))
   );
 }
 const ADDRESSED = /^\/(?:api\/)?agents\/([^/]+)(\/.*)?$/;

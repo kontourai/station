@@ -13,7 +13,7 @@ const manifest = JSON.parse(readFileSync('.github/labels.json', 'utf8'));
 
 describe('label manifest', () => {
   test('pins all live labels plus the lifecycle and stage additions', () => {
-    expect(manifest.labels).toHaveLength(29);
+    expect(manifest.labels).toHaveLength(30);
     expect(validateLabelManifest(manifest)).toEqual([]);
     expect(
       manifest.labels.map(({ name }: { name: string }) => name).sort(),
@@ -78,7 +78,7 @@ describe('label manifest', () => {
       { ...manifest.labels[0], color: 'ffffff' },
       { name: 'unexpected', color: '000000', description: 'keep me' },
     ]);
-    expect(plan.create).toHaveLength(28);
+    expect(plan.create).toHaveLength(29);
     expect(plan.update).toEqual([manifest.labels[0]]);
     expect(plan.unexpected).toEqual(['unexpected']);
   });

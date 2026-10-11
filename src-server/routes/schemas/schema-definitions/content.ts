@@ -9,6 +9,7 @@ import {
   SKILL_COMMAND_NAME_PATTERN,
   SKILL_COMMAND_NAME_RULE,
 } from '@kontourai/station-contracts/skill-command';
+import { isSafeToolServerId } from '@kontourai/station-contracts/tool';
 import {
   SETUP_IMPORT_MAX_ITEMS,
   SETUP_IMPORT_MAX_SOURCE_ID_LENGTH,
@@ -217,6 +218,16 @@ export const projectCreateSchema = z
     workingDirectory: z.string().optional(),
     description: z.string().optional(),
     defaultEnvironment: projectEnvironmentRefSchema.optional(),
+    toolDefaults: z
+      .object({
+        mcpServers: z
+          .array(z.string().min(1).max(128).refine(isSafeToolServerId))
+          .max(32)
+          .optional(),
+        knowledge: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
     // #2144 slice 2 — the three Station settings a project may override
     // (`PROJECT_OVERRIDABLE_APP_SETTING_KEYS`), spelled as the project
     // record spells them. Declared explicitly rather than left to

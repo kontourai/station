@@ -198,6 +198,7 @@ interface ChatInputAreaProps {
    * refusal names something actionable instead of a generic line.
    */
   modelProviderLabel?: string;
+  executionEngineLabel?: string;
   // Display
   fontSize: number;
   dockHeight: number;
@@ -211,8 +212,10 @@ interface ChatInputAreaProps {
   agentDefaultModel?: string;
   defaultModelSource?: EffectiveModelSource;
   availableModels: SelectableModel[];
+  pickerModels?: SelectableModel[];
   modelProviders?: ModelProviderOption[];
   currentProviderId?: string;
+  currentExecutionAgentId?: string;
   modelQuery: string | null;
   agentConnectionId?: string;
   modelRuntimeOptions?: Record<string, unknown>;
@@ -380,6 +383,7 @@ export function ChatInputArea({
   modelSupportsAttachments,
   fileAttachmentsSupported = modelSupportsAttachments,
   modelProviderLabel,
+  executionEngineLabel,
   fontSize,
   dockHeight,
   currentModel,
@@ -391,8 +395,10 @@ export function ChatInputArea({
   agentDefaultModel,
   defaultModelSource,
   availableModels,
+  pickerModels,
   modelProviders,
   currentProviderId,
+  currentExecutionAgentId,
   modelQuery,
   agentConnectionId,
   modelRuntimeOptions,
@@ -578,7 +584,9 @@ export function ChatInputArea({
     ? `${aliasLabel} → ${resolvedLabel}`
     : aliasLabel;
   const modelAccessibleLabel = [
-    'Model:',
+    'Engine & model:',
+    executionEngineLabel,
+    currentExecutionAgentId ? 'Conversation override.' : '',
     modelProviderLabel
       ? `${modelProviderLabel} — ${fullModelIdentity}`
       : fullModelIdentity,
@@ -844,7 +852,7 @@ export function ChatInputArea({
           overlayClassName="composer-popover-overlay composer-popover-overlay--start"
           panelClassName="composer-popover-panel chat-input__model-popover-panel"
         >
-          {availableModels.length === 0 ? (
+          {(pickerModels ?? availableModels).length === 0 ? (
             modelsLoading ? (
               // The wrapper keeps its class: index.css uses it to supply the
               // popover's border/radius/shadow while the picker's own chunk
@@ -876,10 +884,16 @@ export function ChatInputArea({
               }
             >
               <SessionModelPicker
-                models={availableModels}
+                models={pickerModels ?? availableModels}
                 stale={modelsStale}
                 providers={modelProviders}
                 currentProviderId={currentProviderId}
+                currentExecutionAgentId={currentExecutionAgentId}
+                bindingLabel={
+                  currentExecutionAgentId
+                    ? 'Conversation override'
+                    : 'Agent default'
+                }
                 currentModel={currentModel}
                 defaultModel={agentDefaultModel}
                 defaultSourceLabel={modelResetSourceLabel(defaultModelSource)}
@@ -932,7 +946,8 @@ export function ChatInputArea({
           >
             <span className="chat-input__chip-stack">
               <span className="chat-input__chip-caption" aria-hidden="true">
-                Model
+                {executionEngineLabel ?? 'Engine & model'}
+                {currentExecutionAgentId ? ' · Conversation override' : ''}
               </span>
               <span className="chat-input__model-name" aria-hidden="true">
                 {modelLabel}
@@ -1116,7 +1131,7 @@ export function ChatInputArea({
             <React.Suspense fallback={null}>
               <ModelSelectorAutocomplete
                 query={modelQuery}
-                models={availableModels.map((m) => ({
+                models={(pickerModels ?? availableModels).map((m) => ({
                   ...m,
                   originalId: m.originalId || m.id,
                 }))}

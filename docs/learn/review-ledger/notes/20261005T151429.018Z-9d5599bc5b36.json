@@ -1,0 +1,7 @@
+{
+  "revision": "3dc718517ffcf6997f9eee8b395d76f246f2cc92",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"#3331 adapts orchestration-chat-flow's #2917 test: at 360/720px the decisions are in the request sheet, the narrow desktop dock keeps the inline buttons. Its smoke row (transcript, tool activity and approval UI from synthetic canonical events) still holds; smoke manifest selection unchanged.","inputs":["docs/testing/browser-smoke.md","tests/e2e-manifest.mjs","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

@@ -11,7 +11,10 @@ import type {
 } from '@kontourai/station-contracts/agent-identity';
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 import type { BoardReference } from '@kontourai/station-contracts/board';
-import type { HarnessQuestionnaire } from '@kontourai/station-contracts/harness-questions';
+import type {
+  InputRequestForm,
+  InputRequestRecord,
+} from '@kontourai/station-contracts/input-request';
 import type {
   ApprovalMode,
   EngineId,
@@ -209,7 +212,13 @@ export interface ChatMessage {
     approvalToolName?: string;
     /** #2915: see `MessagePart.approvalSessionGrant`. */
     approvalSessionGrant?: ToolRequestSessionGrant;
-    questionnaire?: HarnessQuestionnaire;
+    /**
+     * #3390: an open form request (a harness question or a tool server's
+     * elicitation), answered on the pending-requests card.
+     */
+    inputRequest?: InputRequestForm;
+    /** #3390: an `input-request` part's record; see `MessagePart`. */
+    inputRequestRecord?: InputRequestRecord;
     cancelled?: boolean;
     approvalStatus?:
       | 'auto-approved'
@@ -226,6 +235,8 @@ export interface ChatMessage {
     runtimeErrorCode?: string;
     uiBlock?: UIBlock;
     toolCallId?: string;
+    /** Durable terminal result event, shared with streaming parts. */
+    sourceEventId?: string;
     flowRunAttached?: FlowRunBinding;
     flowGateVerdict?: FlowGateVerdictInfo;
     conversationHandoff?: import('@kontourai/station-contracts/orchestration').ConversationHandoffProjection;
@@ -356,6 +367,9 @@ export interface ChatSession {
   stopPending?: boolean;
   model?: string;
   modelSource?: EffectiveModelSource;
+  executionAgentId?: string;
+  executionOnCurrentStation?: boolean;
+  expectedDefinitionFingerprint?: string;
   requestedModel?: string;
   requestedModelSource?: EffectiveModelSource;
   requestedProviderOptions?: Record<string, unknown>;

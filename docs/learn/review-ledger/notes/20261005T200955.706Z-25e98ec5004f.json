@@ -1,0 +1,7 @@
+{
+  "revision": "a99f1c02384b93210c184b9306fd7ae47022f080",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Round 3 for #3391: the resolver change is list-read only (guardFolderChecks: reuse an in-flight folder check per path, stop starting checks once two are stuck past their time box). The session-directory section's start-path claims are unchanged.","inputs":["docs/architecture/module-map.md","src-server/services/projects/project-resource-resolver.ts"]}
+  ]
+}

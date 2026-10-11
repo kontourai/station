@@ -17,6 +17,7 @@
  * ever shows up in what a person sees.
  */
 
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import type { ReactElement } from 'react';
@@ -438,5 +439,89 @@ describe('assistant row identity composition (station#1434)', () => {
     expect(container.querySelector('.message__model-badge')?.textContent).toBe(
       'Opus 5 (1M)',
     );
+  });
+});
+
+/**
+ * #3355: the assistant avatar's engine mark comes from the turn's own
+ * envelope, the same authority as the engine chip — never the agent's live
+ * binding (archive#1424). Before, a row carrying `agentDisplayName` drew
+ * initials ("RR") under a dock header that showed the Codex mark.
+ */
+describe('assistant avatar engine mark (#3355)', () => {
+  function renderWithAgents(msg: ChatMessage, agents: unknown[]) {
+    return render(
+      withQueryClient(
+        <MessageBubble
+          msg={msg}
+          idx={0}
+          activeSession={{
+            id: 'thread-1',
+            agentSlug: 'release-reviewer',
+            agentName: 'Release Reviewer',
+            messageCount: 1,
+          }}
+          agents={agents as never}
+          chatFontSize={14}
+          showReasoning={false}
+          showToolDetails={false}
+          onCopy={() => {}}
+          owner={{ id: 'casey', label: 'Casey Example' }}
+        />,
+      ),
+    );
+  }
+
+  function avatarBrand(container: HTMLElement) {
+    const avatar = container.querySelector('.brand-icon');
+    expect(avatar).not.toBeNull();
+    return avatar?.getAttribute('data-brand-key') ?? null;
+  }
+
+  const codexTurn = {
+    role: 'assistant' as const,
+    content: 'OK',
+    turnId: 'turn-7',
+    agentSlug: agentId('release-reviewer'),
+    provenance: envelope({ engine: observed({ provider: 'codex' }) }),
+  };
+
+  it('draws the engine the turn recorded on a row that carries its own display name', () => {
+    const { container } = renderWithAgents(
+      { ...codexTurn, agentDisplayName: 'Release Reviewer' },
+      [],
+    );
+    expect(avatarBrand(container)).toBe('codex');
+  });
+
+  it('keeps the recorded engine after the agent is rebound to another engine', () => {
+    // The catalog now says Claude; the turn ran on Codex. History keeps Codex.
+    const { container } = renderWithAgents(codexTurn, [
+      {
+        slug: 'release-reviewer',
+        name: 'Release Reviewer',
+        engineId: 'claude',
+      },
+    ]);
+    expect(avatarBrand(container)).toBe('codex');
+  });
+
+  it('draws the recorded engine for a deleted agent', () => {
+    const { container } = renderWithAgents(codexTurn, []);
+    expect(avatarBrand(container)).toBe('codex');
+  });
+
+  it('a row with no envelope renders as before', () => {
+    const { container } = renderWithAgents(
+      { ...codexTurn, provenance: undefined },
+      [
+        {
+          slug: 'release-reviewer',
+          name: 'Release Reviewer',
+          engineId: 'claude',
+        },
+      ],
+    );
+    expect(avatarBrand(container)).toBe('claude');
   });
 });

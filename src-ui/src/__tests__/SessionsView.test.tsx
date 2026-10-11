@@ -1590,6 +1590,28 @@ describe('SessionsView', () => {
     });
   });
 
+  test('#3382: an open request title is shown in display form beside Approve', () => {
+    const RLO = String.fromCodePoint(0x202e);
+    feedEvents = [
+      {
+        provider: 'codex',
+        threadId: 'thread-alpha',
+        createdAt: '2026-06-28T00:00:03.000Z',
+        method: 'request.opened',
+        requestId: 'req-8',
+        requestType: 'approval',
+        title: `echo ${RLO}a\nrm -rf /`,
+      },
+    ];
+    renderView();
+    fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
+
+    const request = screen.getByTestId('session-request');
+    expect(request.querySelector('strong')!.textContent).toBe(
+      `echo a ${String.fromCodePoint(0x23ce)} rm -rf /`,
+    );
+  });
+
   test('surfaces an open request and resolves it', async () => {
     feedEvents = [
       {
@@ -3728,6 +3750,11 @@ describe('SessionsView', () => {
         {
           ...sessions[0],
           threadId: 'peer-delegation:847',
+          // The real writer's shape: the peer's target as the agent slug and
+          // the peer's conversation id.
+          assignedAgentSlug: 'codex',
+          conversationId: 'task-peer-847',
+          controlMode: 'station-owned',
           displayTitle: 'Run the peer checks',
           lifecycleState: 'queued',
           hasActiveTurn: false,
@@ -3747,6 +3774,8 @@ describe('SessionsView', () => {
       expect(rowNames(container)).toContain('Run the peer checks');
       // The paired Station owns the turn: no local Stop… on its row.
       expect(rowMenuItems('Run the peer checks')).not.toContain('Stop…');
+      // Its agent slug and conversation are the peer's: no local chat.
+      expect(rowMenuItems('Run the peer checks')).not.toContain('Open in chat');
     });
 
     test('every row carries a relative time', () => {

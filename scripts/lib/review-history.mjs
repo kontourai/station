@@ -1,6 +1,11 @@
 import { execFileSync } from 'node:child_process';
 import { bindingDigest, bindingFile } from './review-binding.mjs';
 import { readGitObjects } from './review-git.mjs';
+import {
+  isNoteArchiveFile,
+  REVIEW_LEDGER_DIR,
+  REVIEW_NOTES_DIR,
+} from './review-ledger-paths.mjs';
 
 function git(root, args) {
   return execFileSync('git', args, {
@@ -21,6 +26,12 @@ const inputs = (entry) => [
   ...entry.sources.map((source) => source.path),
 ];
 const notes = (entry) => entry?.notes ?? [];
+// A note archive (#3394) holds notes added at or before an earlier baseline;
+// adding one moves old notes, it never records a review in this range.
+const addedNote = (status, file) =>
+  status === 'A' &&
+  file.startsWith(REVIEW_NOTES_DIR) &&
+  !isNoteArchiveFile(file);
 
 /** Compare human decisions across layouts, ignoring old derived bindings. */
 export function reviewDecisionChanged(before, after) {
@@ -104,8 +115,12 @@ function landingChanges(root, range) {
  * Use HEAD's dependency lists throughout history. Removed citations stop tracking
  * old changes; new citations can expose old changes. Scoped checks separately
  * compare both ends of the PR and retain source-drop protection.
+ * @param {string} root
+ * @param {any} state compiled review state
+ * @param {() => Set<string>} committedNotes every note committed at HEAD,
+ * loose or archived, by note file name
  */
-export function deriveReviewHistory(root, state) {
+export function deriveReviewHistory(root, state, committedNotes) {
   const baseline = state.ledger.coverageBaseline;
   const current = entries(state).filter(
     (entry) => entry.historyChanges !== undefined,
@@ -128,7 +143,7 @@ export function deriveReviewHistory(root, state) {
     (state.media?.captures ?? []).map((entry) => entry.path),
   );
   const recordPath = (entry) =>
-    `docs/learn/review-ledger/${capturePaths.has(entry.path) ? 'captures' : 'records'}/${entry.path}.json`;
+    `${REVIEW_LEDGER_DIR}/${capturePaths.has(entry.path) ? 'captures' : 'records'}/${entry.path}.json`;
   const owned = new Map(current.map((entry) => [recordPath(entry), entry]));
   const pointers = [
     ...new Set(
@@ -146,8 +161,7 @@ export function deriveReviewHistory(root, state) {
       specs.add(`${commit.revision}:docs/learn/media.json`);
     }
     for (const { status, file } of commit.changes) {
-      if (status === 'A' && file.startsWith('docs/learn/review-ledger/notes/'))
-        specs.add(`${commit.revision}:${file}`);
+      if (addedNote(status, file)) specs.add(`${commit.revision}:${file}`);
       if (owned.has(file)) {
         specs.add(`${commit.revision}^1:${file}`);
         specs.add(`${commit.revision}:${file}`);
@@ -219,23 +233,15 @@ export function deriveReviewHistory(root, state) {
         outstanding.add(entry.path);
     }
     for (const { status, file } of commit.changes) {
-      if (status !== 'A' || !file.startsWith('docs/learn/review-ledger/notes/'))
-        continue;
+      if (!addedNote(status, file)) continue;
       for (const note of json(`${commit.revision}:${file}`).notes)
         for (const input of note.inputs ?? [])
           pending.get(note.path)?.delete(input);
     }
   }
-  const committedNotes = new Set(
-    git(root, [
-      'ls-tree',
-      '-r',
-      '--name-only',
-      'HEAD',
-      '--',
-      'docs/learn/review-ledger/notes',
-    ]).split('\n'),
-  );
+  // Only a note not yet committed may cover a working-tree edit; an archived
+  // note is committed even though no loose file carries its name.
+  const committedNoteFiles = committedNotes();
   const dirty = new Set(
     git(root, ['diff', '--no-renames', '--name-only', '-z', 'HEAD', '--'])
       .split('\0')
@@ -254,7 +260,7 @@ export function deriveReviewHistory(root, state) {
     )
       outstanding.add(entry.path);
     for (const note of notes(entry).filter(
-      (note) => !committedNotes.has(note.file),
+      (note) => !committedNoteFiles.has(note.file),
     ))
       for (const input of note.inputs ?? []) outstanding.delete(input);
     for (const input of inputs(entry))

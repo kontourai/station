@@ -9,6 +9,7 @@ import {
 } from 'node:fs';
 import { cp, readFile } from 'node:fs/promises';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import {
   assertSafeContextText,
@@ -466,14 +467,16 @@ function setup(runtime?: {
   applyConfigurationMutation: any;
   settleProviderAdapterRetirements: () => Promise<void>;
 }) {
-  return createPluginRoutes(
-    '/tmp/project',
-    logger as any,
-    eventBus as any,
-    {
-      ...runtime,
-      visibility: operatorPluginVisibility('/tmp/project'),
-    } as any,
+  return withOperatorPrincipal(
+    createPluginRoutes(
+      '/tmp/project',
+      logger as any,
+      eventBus as any,
+      {
+        ...runtime,
+        visibility: operatorPluginVisibility('/tmp/project'),
+      } as any,
+    ),
   );
 }
 
@@ -500,18 +503,20 @@ function legacyUpdateApp(
   proposals: { complete: (...args: any[]) => unknown },
   activation: 'applied' | 'pending',
 ) {
-  return createPluginRoutes(
-    '/tmp/project',
-    logger as any,
-    eventBus as any,
-    {
-      applyConfigurationMutation: vi.fn(async (operation) =>
-        operation(vi.fn(), { status: activation }),
-      ),
-      settleProviderAdapterRetirements: vi.fn().mockResolvedValue(undefined),
-      visibility: operatorPluginVisibility('/tmp/project'),
-      proposals,
-    } as any,
+  return withOperatorPrincipal(
+    createPluginRoutes(
+      '/tmp/project',
+      logger as any,
+      eventBus as any,
+      {
+        applyConfigurationMutation: vi.fn(async (operation) =>
+          operation(vi.fn(), { status: activation }),
+        ),
+        settleProviderAdapterRetirements: vi.fn().mockResolvedValue(undefined),
+        visibility: operatorPluginVisibility('/tmp/project'),
+        proposals,
+      } as any,
+    ),
   );
 }
 

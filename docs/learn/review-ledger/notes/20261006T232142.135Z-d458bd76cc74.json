@@ -1,0 +1,17 @@
+{
+  "revision": "b32df3ab82313aaafe62353111b25bbbc96ae7ba",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the already inspected package/query/primitive boundary claims against the query-barrel path change to mcpPromptRun. Public SDK export, API-base context, React Query listing, shared primitives and typed admission ownership remain unchanged. Prompt execution now uses canonical envelopeError with preserved refusal text and richer status/code/details. No token, theme, viewport, grant, persistence or asynchronous admission change; no prose change needed.","inputs":["docs/guides/responsive-ui.md","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the already inspected package/query/primitive boundary claims against the query-barrel path change to mcpPromptRun. Public SDK export, API-base context, React Query listing, shared primitives and typed admission ownership remain unchanged. Prompt execution now uses canonical envelopeError with preserved refusal text and richer status/code/details. No token, theme, viewport, grant, persistence or asynchronous admission change; no prose change needed.","inputs":["docs/guides/theming.md","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the already inspected package/query/primitive boundary claims against the query-barrel path change to mcpPromptRun. Public SDK export, API-base context, React Query listing, shared primitives and typed admission ownership remain unchanged. Prompt execution now uses canonical envelopeError with preserved refusal text and richer status/code/details. No token, theme, viewport, grant, persistence or asynchronous admission change; no prose change needed.","inputs":["docs/patterns/backend.md","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the already inspected package/query/primitive boundary claims against the query-barrel path change to mcpPromptRun. Public SDK export, API-base context, React Query listing, shared primitives and typed admission ownership remain unchanged. Prompt execution now uses canonical envelopeError with preserved refusal text and richer status/code/details. No token, theme, viewport, grant, persistence or asynchronous admission change; no prose change needed.","inputs":["docs/patterns/frontend.md","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the published-contract import boundaries and SDK root/client integration guidance against the prompt executor extraction. Existing public root export remains; the context-bound executor stays beside root query-domain APIs and does not extend the React-free client entry. New prompt refusal metadata follows the documented shared envelope rule, without changing route authority or runtime integration.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Read the complete SDK instruction scope after the reference adds prompt refusal metadata. Canonical public SDK exports, app-internal import prohibition and both-cache-and-waiting-caller race requirements remain accurate. The separate prompt execution owner uses the root API-base context and canonical envelopeError; no instruction change required.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

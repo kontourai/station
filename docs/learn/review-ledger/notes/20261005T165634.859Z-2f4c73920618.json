@@ -1,0 +1,7 @@
+{
+  "revision": "6a61808025ba36e3fd734ffe569080ef7f9af13f",
+
+  "notes": [
+    {"path":"docs/strategy/station-delivery-retirement.md","note":"Fix round for #3391: projects.ts changes touch only the list GET and project body normalization, not the flow/runs rejection this document describes.","inputs":["docs/strategy/station-delivery-retirement.md","src-server/routes/projects/projects.ts"]}
+  ]
+}

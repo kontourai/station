@@ -1,3 +1,4 @@
+import type { AgentProfileCapability } from '@kontourai/station-contracts/enriched-agent';
 /**
  * Canonical delegation fetchers (#977 Wave 2), inside the #167 DRY client
  * layer. Zero delegation fetchers existed on the portable client before this
@@ -42,7 +43,10 @@
  * this same file.
  */
 
-import type { AgentId } from '@kontourai/station-contracts/agent-identity';
+import type {
+  AgentId,
+  EngineId,
+} from '@kontourai/station-contracts/agent-identity';
 import type {
   ExecutionResolutionReceipt,
   ExecutionTarget,
@@ -305,6 +309,14 @@ export interface DelegationTargetOption {
   description?: string;
   kind: 'agent';
   ready: boolean;
+  definitionFingerprint?: string;
+  profileCapabilities?: AgentProfileCapability[];
+  unsupportedProfileCapabilities?: AgentProfileCapability[];
+  executionDefault?: boolean;
+  executionReady?: boolean;
+  engineConnectionId?: string;
+  engineId?: EngineId;
+  engineName?: string;
   unavailableReason?: string;
   defaultModel?: string;
   models: Array<{ id: string; name: string; originalId: string }>;
@@ -349,6 +361,15 @@ export interface DelegatedTaskPendingRequest {
   id: string;
   title?: string;
   type?: string;
+  /** `delegatedInputAnswers`: the request's `request.opened` event id. */
+  eventId?: string;
+  /** The question as the serving Station presents it. */
+  body?: string;
+  /**
+   * The serving Station's check of the reading caller on the route that
+   * answers the request; absent when it did not evaluate one.
+   */
+  callerCanRespond?: boolean;
 }
 
 /**
@@ -589,6 +610,17 @@ export async function observeDelegatedTaskEvents(
 export interface ContinueDelegatedTaskInput
   extends DelegatedTaskReferenceInput {
   message: string;
+  /**
+   * Deliver `message` only as the answer to this exact open input request
+   * on the task's current Session. The serving Station refuses with
+   * `input_request_changed` when it is gone or replaced; forwarding to
+   * another Station requires its `delegatedInputAnswers` capability.
+   */
+  expectedInputRequest?: {
+    threadId: string;
+    requestId: string;
+    requestEventId: string;
+  };
   model?: string;
   /** station#978: per-invocation settings passthrough on a follow-up turn. */
   modelOptions?: Record<string, unknown>;

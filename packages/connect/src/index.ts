@@ -61,6 +61,7 @@ export {
   observePendingPairingApproval,
   requestCurrentStationAccess,
   requestDevicePairing,
+  savePendingExchange,
   setNativePairingExchangeTransport,
 } from './core/devicePairing';
 export type {

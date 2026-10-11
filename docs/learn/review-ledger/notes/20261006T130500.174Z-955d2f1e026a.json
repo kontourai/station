@@ -1,0 +1,7 @@
+{
+  "revision": "14bdd3b6765b9a74e6457bce3f1538cb13d883c4",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Scoped protocol caller keeper review at 14bdd3b676 against c2e05aa8dd and Main qualification37423043587. Reviewed canonical SDK Node/protocol dispatch and CLI configGet caller; transport adds the build protocol1 without changing URLs, methods, payloads, signals or error behavior. Updated41 exact request assertions in36 failing cases across17 caller files and added ordinal/count checks against extra routing. Off-host clean baseline36FAIL/180PASS; repair216PASS; restored19 suites218PASS including canonical protocol/origin controls. Wrong protocol, trailing-slash route and extra-dispatch mutations each failed the intended assertion, all production bytes restored and clean. No production dependency/policy changes or full-regression/Nightly/Windows/native claim. Existing fixture-fidelity and caller-boundary guidance remains accurate.","inputs":["docs/guides/testing.md"]}
+  ]
+}

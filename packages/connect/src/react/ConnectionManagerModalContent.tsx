@@ -10,7 +10,6 @@ import {
 } from '@kontourai/station-shared/return-focus';
 import {
   lazy,
-  type ReactNode,
   Suspense,
   useCallback,
   useEffect,
@@ -31,12 +30,12 @@ import {
 import { normalizeHostInput } from '../core/hostInput';
 import type { SavedConnection } from '../core/types';
 import { ConnectionManagerDiscoverPanel } from './ConnectionManagerDiscoverPanel';
+import type { ConnectionManagerModalProps } from './ConnectionManagerModal';
 import { useConnections } from './ConnectionsContext';
 import { ConnectionListPanel } from './connection-manager-modal/ConnectionListPanel';
 import { ManualAddPanel } from './connection-manager-modal/ManualAddPanel';
 import { PairedDevicesPanel } from './connection-manager-modal/PairedDevicesPanel';
 import {
-  type ConnectionManagerActiveHealth,
   type ConnectionManagerPanel,
   getConnectionManagerTitle,
   getConnectionStatus,
@@ -59,82 +58,10 @@ const CompatibilityNotice = lazy(() =>
   })),
 );
 
-interface ConnectionManagerModalContentProps {
-  onClose: () => void;
-  /**
-   * A bare `false` cannot say why the check failed, so the caller may return a
-   * `{ ok: false, reason }` result instead. `ConnectionHealthCheckResult`
-   * includes `boolean`, so existing boolean implementations still satisfy this.
-   */
-  /** Host's live status, bound to its currently selected connection. */
-  activeHealth?: ConnectionManagerActiveHealth;
-  /** Host-owned unsaved-work decision before changing the selected Station. */
-  guardConnectionChange?: (proceed: () => void) => void;
-  checkHealth: (
-    url: string,
-    credential?: string,
-  ) => Promise<ConnectionHealthCheckResult>;
-  /**
-   * Client/server compatibility check, run against a host before the
-   * connection is committed. Every add and pairing path requires this proof;
-   * an omitted checker is an actionable integration error, never permission to
-   * save an unverified URL-only profile.
-   */
-  checkCompatibility?: (
-    url: string,
-    signal?: AbortSignal,
-  ) => Promise<StationCompatibilityResult>;
-  initialPanel?: ConnectionManagerPanel;
-  listFooterContent?: ReactNode;
-  /** A decoded, one-time pairing payload awaiting the user's confirmation. */
-  initialPairingPayload?: string;
-  pairingLinkError?: string;
-  onPairingReviewDismissed?: () => void;
-  /**
-   * True when the page origin is a usable direct-request target (served by a
-   * Station host). Passed through to the request-access panel; defaults to
-   * true so the served-from-Station web behavior is unchanged when unset.
-   */
-  originIsStation?: boolean;
-  /**
-   * True when this device has a Station of its own: the web UI served by that
-   * Station, or a native desktop supervising its local server. False on a
-   * client-only device such as the phone, where no local Station exists and
-   * the paired device credential cannot mint pairing offers on a remote host,
-   * so the list's host-access section and the host-pairing panel are dead
-   * ends (station#2205). Defaults to true so served-from-Station web behavior
-   * is unchanged when unset.
-   */
-  hasLocalStation?: boolean;
-  /** Native shell name, when this UI is not running in a browser. */
-  hostAppName?: string;
-  pairingClientChannel?: 'stable' | 'beta' | 'nightly';
-  /** Native desktop keeps bearer values host-side and disables manual entry. */
-  allowManualCredentials?: boolean;
-  /** Host-owned request transport for native management routes. */
-  authenticatedRequest?: typeof fetch;
-  /**
-   * Restart the supervising desktop's bundled server. Passed only by a
-   * supervising desktop host; when omitted the not-running local-server row
-   * shows its state without a Restart control.
-   */
-  onRestartInjectedConnection?: (connection: SavedConnection) => void;
-  /** Host-owned id of the managed local Station when it stops with the app. */
-  localStationOwnerId?: string;
-  /**
-   * Re-authorize this app's own access to the active Station (#2228). Passed
-   * only by a host whose local service can self-provision (native desktop);
-   * when omitted the host pairing panel's auth-rejected state renders its
-   * copy without a Reconnect control.
-   */
-  onReconnectLocalService?: () => Promise<boolean>;
-  /** Persistent trigger to restore after a parent chooser is replaced. */
-  returnFocusTarget?: HTMLElement | null;
-  /** Optional success side-effect after pairing commits (station#1954). */
-  onPairingSucceeded?: () => void;
-  /** Move a submitted approval request into persistent application chrome. */
-  onApprovalPending?: (pending: PendingPairingExchange) => void;
-}
+type ConnectionManagerModalContentProps = Omit<
+  ConnectionManagerModalProps,
+  'isOpen'
+>;
 
 const FOCUSABLE =
   'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [href], [tabindex]:not([tabindex="-1"])';
@@ -186,6 +113,7 @@ export function ConnectionManagerModalContent({
   checkCompatibility,
   initialPanel = 'list',
   listFooterContent,
+  onConnectStation,
   initialPairingPayload,
   pairingLinkError,
   onPairingReviewDismissed,
@@ -1060,7 +988,8 @@ export function ConnectionManagerModalContent({
               setEditingId(null);
               setCredentialEntry('');
             }}
-            onAddManual={() => setPanel('add')}
+            onAddManual={onConnectStation ?? (() => setPanel('add'))}
+            addStationLabel={onConnectStation ? 'Connect a Station' : undefined}
             onRestartInjectedConnection={onRestartInjectedConnection}
             localStationOwnerId={localStationOwnerId}
             onRequestAccess={(connection) => {

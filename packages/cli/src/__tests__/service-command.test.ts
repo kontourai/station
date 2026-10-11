@@ -6,7 +6,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { join, win32 } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
@@ -213,18 +213,22 @@ describe('an installer-owned archive service runs the fixed launcher with curren
     );
   });
 
-  test('Windows runs node.exe and bin\\station.mjs through current (no launcher before slice W)', () => {
+  test('Windows runs the fixed launcher with its frozen node.exe, from the launcher directory (#2675 W3)', () => {
     const command = renderWindowsServiceCommand({
       kind: 'archive',
       installRoot: 'C:\\Station\\installs\\stable',
-      nodePath: 'C:\\Station\\installs\\stable\\current\\runtime\\node.exe',
+      nodePath: 'C:\\Station\\installs\\stable\\runtime\\node.exe',
       repoPath: 'C:\\Station\\installs\\stable\\current',
       instanceId: 'agent',
       lifecycle: windowsLifecycle,
     });
     expect(command).toContain(
-      'cd /d "C:\\Station\\installs\\stable\\current" || exit /b 1\r\n"C:\\Station\\installs\\stable\\current\\runtime\\node.exe" "C:\\Station\\installs\\stable\\current\\bin\\station.mjs" "service" "run" "--instance=agent"',
+      'cd /d "C:\\Station\\installs\\stable\\runtime" || exit /b 1\r\n"C:\\Station\\installs\\stable\\runtime\\node.exe" "C:\\Station\\installs\\stable\\runtime\\station-launcher.mjs" "service" "run" "--instance=agent"',
     );
+    // Nothing the task runs, nor its working directory, goes through a
+    // junction or names a version an update would remove.
+    expect(command).not.toContain('current');
+    expect(command).not.toContain('versions');
     expect(command).not.toContain('tsx');
   });
 });
@@ -294,6 +298,25 @@ describe('where a service installed from a code root runs', () => {
       installRoot,
       nodePath: join(installRoot, 'current', 'runtime', 'bin', 'node'),
       repoPath: join(installRoot, 'current'),
+    });
+  });
+
+  test('on Windows the active version runs the node.exe frozen beside the launcher (#2675 W3)', () => {
+    const { installRoot, versionDir } = archiveInstall(
+      makeTempDir('station-service-location-'),
+    );
+    expect(
+      resolveServiceCodeLocation({
+        codeRoot: resolveLifecycleCodeRoot(versionDir),
+        execPath: process.execPath,
+        fs: nodeFs,
+        platform: 'win32',
+      }),
+    ).toEqual({
+      kind: 'archive',
+      installRoot,
+      nodePath: win32.join(installRoot, 'runtime', 'node.exe'),
+      repoPath: win32.join(installRoot, 'current'),
     });
   });
 

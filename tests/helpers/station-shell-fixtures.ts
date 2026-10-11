@@ -17,6 +17,7 @@ const READS: Readonly<Record<string, unknown>> = {
   '/api/models': { success: true, data: [] },
   '/api/plugins': { plugins: [] },
   '/api/projects': { success: true, data: [] },
+  '/api/projects/run-locations': { success: true, data: {} },
   '/api/orchestration/sessions/read-model': { success: true, data: [] },
   '/api/attention': { success: true, data: { items: [], pendingCount: 0 } },
   '/api/connections/models': { success: true, data: [] },

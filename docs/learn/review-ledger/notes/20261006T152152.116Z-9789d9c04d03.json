@@ -1,0 +1,7 @@
+{
+  "revision": "c02475e0d13466465df1d41b50dd9cc529553703",
+
+  "notes": [
+    {"path":"docs/user/workspace-checkpoints.md","note":"MessageBubble's phone change wraps the existing ⋯ details trigger in a meta row with a time; the Restore workspace control still renders inside that details sheet from the same metadata, unchanged on desktop and hidden during replay as before.","inputs":["docs/user/workspace-checkpoints.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

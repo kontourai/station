@@ -175,6 +175,41 @@ describe('credential recovery selection', () => {
     });
   });
 
+  test('#2966: refuses a candidate whose env overlay routes differently from the active profile', () => {
+    const routedPrimary = {
+      ref: 'profile-primary',
+      env: { ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318' },
+    };
+    expect(
+      selectCredentialRecoveryCandidate({
+        ...selectable,
+        profiles: [routedPrimary, { ref: 'profile-recovery' }],
+      }),
+    ).toEqual({ outcome: 'refused', reason: 'environment_mismatch' });
+    expect(
+      selectCredentialRecoveryCandidate({
+        ...selectable,
+        profiles: [
+          routedPrimary,
+          {
+            ref: 'profile-recovery',
+            env: { ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318' },
+          },
+        ],
+      }),
+    ).toEqual({ outcome: 'selected', candidateProfileRef: 'profile-recovery' });
+    const invalid = { ANTHROPIC_AUTH_TOKEN: 'x' };
+    expect(
+      selectCredentialRecoveryCandidate({
+        ...selectable,
+        profiles: [
+          { ref: 'profile-primary', env: invalid },
+          { ref: 'profile-recovery', env: invalid },
+        ],
+      }),
+    ).toEqual({ outcome: 'refused', reason: 'environment_mismatch' });
+  });
+
   test('defaults automatic switching off', () => {
     expect(
       selectCredentialRecoveryCandidate({

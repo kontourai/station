@@ -154,6 +154,32 @@ describe('handleExtensionNotificationEvent', () => {
     expect(chat?.messages ?? []).toEqual([]);
   });
 
+  test('station#3415: a transcript-marker tuple is bound, adds no ephemeral row, and logs nothing', async () => {
+    const { log } = await import('../../../utils/logger');
+    const spy = vi.spyOn(log, 'chat').mockImplementation(() => {});
+    // An unrelated activity hint must survive: the marker is not chat state.
+    const hint = { kind: 'requesting' as const, detail: 'MCP 1/2' };
+    activeChatsStore.updateChat(threadId, { activityHint: hint });
+    handleExtensionNotificationEvent({
+      eventId: 'evt-compacted',
+      provider: 'codex',
+      threadId,
+      createdAt: '2026-10-05T00:00:00.000Z',
+      method: 'extension.notification',
+      namespace: 'codex-rollout',
+      type: 'context-compacted',
+      payload: { source: 'provider-event' },
+    });
+    // The projection renders the marker from the durable event; a second,
+    // ephemeral copy here would show it twice.
+    const chat = activeChatsStore.getSnapshot()[threadId];
+    expect(chat?.ephemeralMessages ?? []).toEqual([]);
+    expect(chat?.messages ?? []).toEqual([]);
+    expect(chat?.activityHint).toEqual(hint);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
   test('_x.ai/mcp/init_progress sets a requesting activity hint', () => {
     handleExtensionNotificationEvent({
       eventId: 'evt-1',

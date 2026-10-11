@@ -1,4 +1,6 @@
 import type { AgentId } from '@kontourai/station-contracts/agent-identity';
+import { isStationAgentIdentity } from '@kontourai/station-contracts/agent-identity';
+import type { ProjectRunLocations } from '@kontourai/station-contracts/project';
 import type {
   AgentConnectionView,
   ConnectionConfig,
@@ -22,11 +24,7 @@ import type {
   ModelProviderOption,
   SelectableModel,
 } from '../../utils/modelCapabilities';
-import {
-  AUTHORED_BAND_LABEL,
-  ENGINE_BAND_LABEL,
-  isEngineProvenanceAgent,
-} from '../agent-provenance';
+import { isEngineProvenanceAgent } from '../agent-provenance';
 import { AGENT_NOT_SET_UP_LABEL, agentRunnability } from '../agent-runnability';
 import { selectProjectScopedChatAgents } from '../agent-selection-policy';
 import { displayableProjectIcon } from '../icons/ProjectIcon';
@@ -68,7 +66,16 @@ export type NewChatWorkspaceHint =
   | { kind: 'project'; path: string }
   | { kind: 'connection'; path: string }
   | { kind: 'home' }
-  | { kind: 'managed' };
+  | { kind: 'managed' }
+  /** #3370: the server says a start here would be refused, and why. */
+  | { kind: 'unavailable'; reason: string }
+  /**
+   * The server did not check the folder this time (`runsAt.kind ===
+   * 'unchecked'`): the stored folder, marked as not checked. Not a refusal.
+   */
+  | { kind: 'unverified'; path: string }
+  /** Not checked, and no stored folder to show: only the short reason. */
+  | { kind: 'unchecked'; reason: string };
 
 /** The hint as one sentence, for a chip's folder line and the menu. */
 export function workspaceHintText(hint: NewChatWorkspaceHint): string {
@@ -77,9 +84,55 @@ export function workspaceHintText(hint: NewChatWorkspaceHint): string {
       return 'Runs in your home folder (~)';
     case 'managed':
       return 'Runs in a private folder Station makes for this chat';
+    case 'unavailable':
+      // The server's sentence already opens "Project 'x' cannot start here".
+      return hint.reason;
+    case 'unverified':
+      return `Runs in ${hint.path} (not checked yet)`;
+    case 'unchecked':
+      return hint.reason;
     default:
       return `Runs in ${hint.path}`;
   }
+}
+
+/**
+ * The Project list with each project's `runsAt` from the run-locations read
+ * (#3391). The list never carries it, so until that read answers this is the
+ * list unchanged and every surface falls back to the stored folder. Returns
+ * the same array when there is nothing to merge, so memoized consumers keep
+ * their identity.
+ */
+export function withProjectRunLocations(
+  projects: ProjectMetadata[],
+  locations: ProjectRunLocations | undefined,
+): ProjectMetadata[] {
+  if (!locations) return projects;
+  return projects.map((project) => {
+    const runsAt = locations[project.slug];
+    return runsAt ? { ...project, runsAt } : project;
+  });
+}
+
+/**
+ * The directory a project's chats run in, or `undefined` when it has none.
+ *
+ * #3370: `runsAt` is the server's resolution — the manifest's binding and
+ * `executionRoot` included — and outranks the stored `workingDirectory`,
+ * which a manifest-bound project may not have at all. A server that predates
+ * `runsAt` (or a member's view, which carries no paths) falls back to the
+ * stored folder, which is what the session start used before manifests.
+ */
+function projectRunDirectory(
+  project: Pick<ProjectMetadata, 'runsAt' | 'workingDirectory'>,
+): string | undefined {
+  const runsAt = project.runsAt;
+  // Not checked this time: the stored folder is the best statement there is.
+  if (!runsAt || runsAt.kind === 'unchecked')
+    return project.workingDirectory?.trim() || undefined;
+  return runsAt.kind === 'folder' || runsAt.kind === 'execution-root'
+    ? runsAt.path
+    : undefined;
 }
 
 /** Spoken when the server refused a row without saying why. */
@@ -184,7 +237,16 @@ export function resolveNewChatWorkspaceHint({
   project: ProjectMetadata | undefined;
   acpConnections: ACPSelectionConnection[];
 }): NewChatWorkspaceHint {
-  const projectDirectory = project?.workingDirectory?.trim();
+  if (project?.runsAt?.kind === 'unavailable') {
+    return { kind: 'unavailable', reason: project.runsAt.reason };
+  }
+  if (project?.runsAt?.kind === 'unchecked') {
+    const stored = project.workingDirectory?.trim();
+    return stored
+      ? { kind: 'unverified', path: stored }
+      : { kind: 'unchecked', reason: project.runsAt.reason };
+  }
+  const projectDirectory = project ? projectRunDirectory(project) : undefined;
   if (projectDirectory) return { kind: 'project', path: projectDirectory };
 
   const connectionId = agent?.execution?.agentConnectionId;
@@ -283,7 +345,12 @@ export interface NewChatModalContextOption {
   label: string;
   icon?: string;
   glyph?: 'folder' | 'globe';
+  /** The directory the project's chats run in, when the project has one. */
   workingDirectory?: string;
+  /** Why a chat cannot start in this project here (#3370); absent when it can. */
+  unavailable?: string;
+  /** Why the folder was not checked this time; not a refusal. */
+  unchecked?: string;
 }
 
 interface NewChatModalAgentGroup {
@@ -392,7 +459,13 @@ export function buildContextOptions(
       // Only an icon the contracts rule allows: `LayoutIcon` renders a URL
       // or path as an <img>, and a legacy stored link must not load here.
       ...(icon ? { icon } : { glyph: 'folder' as const }),
-      workingDirectory: project.workingDirectory,
+      workingDirectory: projectRunDirectory(project),
+      ...(project.runsAt?.kind === 'unavailable'
+        ? { unavailable: project.runsAt.reason }
+        : {}),
+      ...(project.runsAt?.kind === 'unchecked'
+        ? { unchecked: project.runsAt.reason }
+        : {}),
     });
   }
   return options;
@@ -451,9 +524,6 @@ export function buildNewChatModalViewModel({
   contextSearch,
   agentSearch,
   selectedProjectAgentFilter,
-  layoutAvailableAgents,
-  layoutName,
-  layoutIcon,
   providerManagedAgentSlugs = [],
   recentSlugs,
 }: {
@@ -529,102 +599,36 @@ export function buildNewChatModalViewModel({
         agent.slug.toLowerCase().includes(query)),
   );
 
-  const isLayoutAgent = (agent: AgentData) => {
-    if (agent.engineConnectionType === 'acp') return false;
-    if (layoutAvailableAgents.includes(agent.slug)) return true;
-    if (agent.plugin) return true;
-    return false;
-  };
-
-  // Registry-owned defaults join their engine group by explicit marker.
-  // Presentation only — see `findAuthoredAgentForEngineConnection`.
-  const engineGroupSlugs = new Set(
-    filtered
-      .filter((agent) => isEngineProvenanceAgent(agent))
-      .map((agent) => agent.slug),
+  const recentOrder = new Map(recentSlugs.map((slug, index) => [slug, index]));
+  const ordered = [...filtered].sort(
+    (a, b) =>
+      (recentOrder.get(a.slug) ?? Number.MAX_SAFE_INTEGER) -
+      (recentOrder.get(b.slug) ?? Number.MAX_SAFE_INTEGER),
   );
-
-  const isAcpAgent = (agent: AgentData) => agent.engineConnectionType === 'acp';
-  const engineAgents = filtered.filter(
-    (agent) => engineGroupSlugs.has(agent.slug) && !isAcpAgent(agent),
-  );
-  const wsAgents = filtered.filter(
-    (agent) => !engineGroupSlugs.has(agent.slug) && isLayoutAgent(agent),
-  );
-  const globalAgents = filtered.filter(
-    (agent) =>
-      !isAcpAgent(agent) &&
-      !engineGroupSlugs.has(agent.slug) &&
-      !isLayoutAgent(agent),
-  );
-  const acpAgents = filtered.filter(isAcpAgent);
-
-  const seenRecentSlugs = new Set<string>();
-  const recentAgents = agentSearch
-    ? []
-    : recentSlugs
-        .map((slug) => filtered.find((agent) => agent.slug === slug))
-        .filter((agent): agent is AgentData => {
-          if (!agent) return false;
-          if (seenRecentSlugs.has(agent.slug)) return false;
-          seenRecentSlugs.add(agent.slug);
-          return true;
-        });
-  const recentSet = new Set(recentAgents.map((agent) => agent.slug));
-
-  const groups: NewChatModalAgentGroup[] = [];
-
-  if (recentAgents.length > 0) {
-    groups.push({ label: 'Recent', glyph: 'time', agents: recentAgents });
-  }
-  const visibleEngineAgents = engineAgents.filter(
-    (agent) => !recentSet.has(agent.slug) || !!agentSearch,
-  );
-
-  const showLayoutAgents = isGlobal || (selectedProject?.layoutCount ?? 0) > 0;
-  if (showLayoutAgents && wsAgents.length > 0) {
-    groups.push({
-      label: layoutName || 'Layout',
-      icon: layoutIcon,
-      agents: wsAgents.filter(
-        (agent) => !recentSet.has(agent.slug) || !!agentSearch,
-      ),
-    });
-  }
-
-  /*
-   * DESIGN.md §5: the picker is grouped "the same two ways" the Agents list
-   * is — `Engines on this machine` (the `engineDefault` provenance marker,
-   * command-backed engines included) and `Your agents`. It used to open one
-   * group PER ENGINE DISPLAY NAME plus a `Global` group, so a fresh install
-   * showed four one-row groups and an authored agent sat under a heading
-   * ("Global") that names a scope, not a kind. `engineDefault` is the same
-   * field `buildAgentsViewItems` bands on, so the two surfaces cannot band
-   * the same agent differently.
-   *
-   * `Recent` and a project layout's own group survive above them: those are
-   * CONTEXT groupings (what you used last here, what this layout offers),
-   * orthogonal to what an agent IS, and the list has no equivalent because
-   * it is not opened inside a context.
-   */
-  const notRecent = (agent: AgentData) =>
-    !recentSet.has(agent.slug) || !!agentSearch;
-  const engineBand = [...visibleEngineAgents, ...acpAgents.filter(notRecent)];
-  if (engineBand.length > 0) {
-    groups.push({
-      label: ENGINE_BAND_LABEL,
+  const groups: NewChatModalAgentGroup[] = [
+    {
+      label: 'Station',
       glyph: 'engine',
-      agents: engineBand,
-    });
-  }
-  const authoredBand = globalAgents.filter(notRecent);
-  if (authoredBand.length > 0) {
-    groups.push({
-      label: AUTHORED_BAND_LABEL,
+      agents: ordered.filter((agent) => isStationAgentIdentity(agent.slug)),
+    },
+    {
+      label: 'Coding apps',
+      glyph: 'engine',
+      agents: ordered.filter(
+        (agent) =>
+          !isStationAgentIdentity(agent.slug) && isEngineProvenanceAgent(agent),
+      ),
+    },
+    {
+      label: 'My agents',
       glyph: 'globe',
-      agents: authoredBand,
-    });
-  }
+      agents: ordered.filter(
+        (agent) =>
+          !isStationAgentIdentity(agent.slug) &&
+          !isEngineProvenanceAgent(agent),
+      ),
+    },
+  ];
 
   const visibleGroups = groups.filter((group) => group.agents.length > 0);
   // Only warn about genuinely-degraded runtimes — not optional ones that are

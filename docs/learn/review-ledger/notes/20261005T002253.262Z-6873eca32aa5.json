@@ -1,0 +1,7 @@
+{
+  "revision": "4e1e86cfa480f25809639151a29e3e9f3dd6ad3c",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"No prose change: request-presentation now takes PresentableOpenRequest, the four request.opened fields it already read (requestType, title, description, payload); its output is unchanged for every caller.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/services/orchestration/request-presentation.ts"]}
+  ]
+}

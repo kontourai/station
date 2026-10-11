@@ -1,0 +1,7 @@
+{
+  "revision": "2dbfb6cd8a2fac9bae401fdea2835542875adc59",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Scoped coordinator keeper review: FIFO fixture now observes the production queued/healthy wait boundary after two actual samples, holds that boundary until its earlier contender is removed, and races premature completion into the existing zero-call assertion. Fake-clock ordering and overall test bounds remain unchanged; no production guard or polling deadline widened. Exact clean2db counterfactual removed only atomic FIFO admission predicate: intended keeper failed calls1 versus0; byte-exact production restore returned121/121PASS and clean source. Prior aa4 CI wall-clock fixture timeout is retained; this proves current keeper effectiveness, not canonical completion.","inputs":["docs/guides/testing.md"]}
+  ]
+}

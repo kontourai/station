@@ -9,6 +9,7 @@ import {
   type TaskRoomWorkOutcome,
   type TaskRoomWorkRecord,
 } from '@kontourai/station-contracts/task-room-work';
+import { taskRoomModelOptionsDigest } from '@kontourai/station-sdk/client';
 import {
   mutateJsonFile,
   mutateJsonFileWithGuardedRead,
@@ -22,8 +23,12 @@ type StoredRecord = Omit<TaskRoomWorkRecord, 'requesterId'> & {
   ownerId: string;
 };
 const CONTEXT_STORE_VERSION = 'station.task-room-work-store/v2' as const;
+const EXECUTION_STORE_VERSION = 'station.task-room-work-store/v3' as const;
 type Store = {
-  version: typeof TASK_ROOM_WORK_VERSION | typeof CONTEXT_STORE_VERSION;
+  version:
+    | typeof TASK_ROOM_WORK_VERSION
+    | typeof CONTEXT_STORE_VERSION
+    | typeof EXECUTION_STORE_VERSION;
   records: StoredRecord[];
 };
 export type TaskRoomWorkScope = {
@@ -52,7 +57,22 @@ function validRecord(value: unknown): value is StoredRecord {
   if (!value || typeof value !== 'object') return false;
   const r = value as Record<string, unknown>;
   return (
-    Object.keys(r).length === (r.context === undefined ? 11 : 12) &&
+    Object.keys(r).length ===
+      11 +
+        Number(r.context !== undefined) +
+        Number(r.executionAgentId !== undefined) +
+        Number(r.modelId !== undefined) +
+        Number(r.modelOptionsDigest !== undefined) +
+        Number(r.expectedDefinitionFingerprint !== undefined) &&
+    (r.executionAgentId === undefined || validText(r.executionAgentId, 64)) &&
+    (r.expectedDefinitionFingerprint === undefined ||
+      (r.executionAgentId !== undefined &&
+        typeof r.expectedDefinitionFingerprint === 'string' &&
+        /^sha256:[0-9a-f]{64}$/.test(r.expectedDefinitionFingerprint))) &&
+    (r.modelId === undefined || validText(r.modelId, 512)) &&
+    (r.modelOptionsDigest === undefined ||
+      (typeof r.modelOptionsDigest === 'string' &&
+        /^[0-9a-f]{64}$/.test(r.modelOptionsDigest))) &&
     validText(r.taskId, 160) &&
     validText(r.projectId, 160) &&
     validText(r.taskCreatedAt, 40) &&
@@ -87,10 +107,19 @@ function checkedStore(value: unknown): Store {
   if (
     Object.keys(store).length !== 2 ||
     (store.version !== TASK_ROOM_WORK_VERSION &&
-      store.version !== CONTEXT_STORE_VERSION) ||
+      store.version !== CONTEXT_STORE_VERSION &&
+      store.version !== EXECUTION_STORE_VERSION) ||
     !Array.isArray(store.records) ||
     store.records.length > MAX_REQUESTS ||
     !store.records.every(validRecord) ||
+    (store.version !== EXECUTION_STORE_VERSION &&
+      store.records.some(
+        (record) =>
+          record.executionAgentId !== undefined ||
+          record.expectedDefinitionFingerprint !== undefined ||
+          record.modelId !== undefined ||
+          record.modelOptionsDigest !== undefined,
+      )) ||
     (store.version === TASK_ROOM_WORK_VERSION &&
       store.records.some((record) => record.context !== undefined))
   )
@@ -227,11 +256,29 @@ export class TaskRoomWorkModule {
         validText(v, 160),
       ) ||
       !validText(input.prompt, 12_000) ||
+      (input.executionAgentId !== undefined &&
+        !validText(input.executionAgentId, 64)) ||
       (input.context !== undefined &&
         (input.context.version !== TASK_ROOM_CONTEXT_VERSION ||
           !/^[0-9a-f]{64}$/.test(input.context.digest)))
     )
       return { kind: 'refused', reason: 'input' };
+    if (
+      input.model?.override !== undefined &&
+      !validText(input.model.override, 512)
+    )
+      return { kind: 'refused', reason: 'input' };
+    if (
+      input.expectedDefinitionFingerprint !== undefined &&
+      (!input.executionAgentId ||
+        !/^sha256:[0-9a-f]{64}$/.test(input.expectedDefinitionFingerprint))
+    )
+      return { kind: 'refused', reason: 'input' };
+    const modelId = input.model?.override?.trim() || undefined;
+    const modelOptionsDigest =
+      input.model?.options === undefined
+        ? undefined
+        : await taskRoomModelOptionsDigest(input.model.options);
     const scope = await authorize();
     if (!scope || scope.requesterId !== requesterId)
       return { kind: 'refused', reason: 'access' };
@@ -275,6 +322,11 @@ export class TaskRoomWorkModule {
             existing.projectId !== scope.projectId ||
             existing.taskCreatedAt !== scope.taskCreatedAt ||
             existing.agentId !== input.agentId ||
+            existing.executionAgentId !== input.executionAgentId ||
+            existing.expectedDefinitionFingerprint !==
+              input.expectedDefinitionFingerprint ||
+            existing.modelId !== modelId ||
+            existing.modelOptionsDigest !== modelOptionsDigest ||
             existing.prompt !== input.prompt ||
             existing.context?.digest !== input.context?.digest
               ? { kind: 'refused', reason: 'conflict' }
@@ -310,6 +362,17 @@ export class TaskRoomWorkModule {
           operationId: input.operationId,
           ownerId: requesterId,
           agentId: input.agentId,
+          ...(input.executionAgentId
+            ? { executionAgentId: input.executionAgentId }
+            : {}),
+          ...(input.expectedDefinitionFingerprint
+            ? {
+                expectedDefinitionFingerprint:
+                  input.expectedDefinitionFingerprint,
+              }
+            : {}),
+          ...(modelId ? { modelId } : {}),
+          ...(modelOptionsDigest ? { modelOptionsDigest } : {}),
           prompt: input.prompt,
           sessionId: `task:${randomUUID()}`,
           createdAt: new Date().toISOString(),
@@ -322,7 +385,15 @@ export class TaskRoomWorkModule {
           replayed: false,
         };
         return {
-          version: captured ? CONTEXT_STORE_VERSION : checked.version,
+          version:
+            input.executionAgentId !== undefined ||
+            modelId !== undefined ||
+            modelOptionsDigest !== undefined ||
+            checked.version === EXECUTION_STORE_VERSION
+              ? EXECUTION_STORE_VERSION
+              : captured
+                ? CONTEXT_STORE_VERSION
+                : checked.version,
           records: [...checked.records, record],
         };
       },
@@ -406,6 +477,11 @@ export class TaskRoomWorkModule {
             record.requesterId ||
           previous.operationId !== record.operationId ||
           previous.agentId !== record.agentId ||
+          previous.executionAgentId !== record.executionAgentId ||
+          previous.expectedDefinitionFingerprint !==
+            record.expectedDefinitionFingerprint ||
+          previous.modelId !== record.modelId ||
+          previous.modelOptionsDigest !== record.modelOptionsDigest ||
           previous.prompt !== record.prompt ||
           previous.context?.digest !== record.context?.digest ||
           previous.createdAt !== record.createdAt

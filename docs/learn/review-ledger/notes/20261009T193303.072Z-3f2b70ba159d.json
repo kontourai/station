@@ -1,0 +1,7 @@
+{
+  "revision": "606274d968c15fbab93178b17379b78ce14a0a3a",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the full coverage map and bounded Monitoring row against its manifest, browser fixture, current header/time/sidebar renderers and MonitoringWidgets.css. Desktop actions now remain right anchored as the date label changes; the phone time control owns a full row above equal action buttons. All four 1440/430 dark/light geometry and overflow cases passed; the retained history/filter/search/sidebar-count/time-range/reset journey passed. Removed obsolete connection-label and retired aggregate metric assertions in favor of the current connection text, configured count and independently seeded sidebar message counts. At clean committed 606274d968, removing the two desktop anchor declarations made the geometry regression fail on both buttons shifting about 1.4px; exact committed CSS restored and the same case passed. This proves mounted browser layout and fixture workflows only, not telemetry producer completeness, real engines, native shells or hosted Gallery acceptance. Bucket ownership and existing coverage limits remain accurate.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/monitoring.spec.ts","src-ui/src/views/MonitoringWidgets.css"]}
+  ]
+}

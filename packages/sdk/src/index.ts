@@ -79,6 +79,7 @@ export type {
 } from '@kontourai/station-contracts/attention';
 export type {
   AdoptedSessionResult,
+  AdoptSessionTarget,
   TurnProgressSilence,
 } from '@kontourai/station-contracts/orchestration';
 export type {
@@ -188,11 +189,18 @@ export {
   setClientRawEgressPolicyResolver,
 } from './client/http';
 export {
+  cancelPeerEnrollment,
+  completePeerEnrollment,
+  getPeerEnrollment,
+  startPeerEnrollment,
+} from './client/peer-enrollments';
+export {
   applyProjectLayout,
   bindProjectResource,
   closeProjectTerminal,
   getProjectResolution,
   getProjectView,
+  listProjectRunLocations,
   listProjectViews,
 } from './client/projects';
 export {
@@ -394,6 +402,7 @@ export {
   acknowledgeConversation,
   actOnNotification,
   adoptOrchestrationSession,
+  agentMcpPromptsQueryKey,
   allDiffCommentsQueryKey,
   analyzeFeedback,
   answerShareQueries,
@@ -636,6 +645,7 @@ export {
   type PluginSettingField,
   type PluginSettingsData,
   PluginVisibilityForbiddenError,
+  PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX,
   ProjectIdentityIncarnationMismatchError,
   type ProjectIdentityReadFailure,
   type ProjectReadQueryConfig,
@@ -688,6 +698,7 @@ export {
   reviewEvidenceQueryKey,
   revokePluginPermissions,
   revokeWorkspaceHomeRoleGrant,
+  runAgentMcpPrompt,
   runsQueries,
   SESSION_SUMMARY_GENERATE_MUTATION_KEY,
   type ServerCapabilities,
@@ -779,6 +790,7 @@ export {
   useAgentConnectionCatalogQuery,
   useAgentConnectionQuery,
   useAgentInvokeMutation,
+  useAgentMcpPromptsQuery,
   useAgentQuery,
   useAgentsQuery,
   useAgentTemplatesQuery,
@@ -969,6 +981,7 @@ export {
   useProjectLayoutsQuery,
   useProjectQuery,
   useProjectResolutionQuery,
+  useProjectRunLocationsQuery,
   useProjectSessionBoardQuery,
   useProjectsQuery,
   useProposedChangesQuery,
@@ -1042,6 +1055,7 @@ export {
   useSmokeAgentConnectionMutation,
   useSmokeModelConnectionMutation,
   useSshEnvironmentsQuery,
+  useStationUsageQuery,
   useStatsQuery,
   useStopProviderTaskMutation,
   useSurveyFlowReviewsQuery,
@@ -1163,6 +1177,13 @@ export {
   usePatchNotificationPreferencesMutation,
   useUpdateNotificationPreferencesMutation,
 } from './query-domains/notificationPreferences.js';
+export {
+  peerEnrollmentQueries,
+  useCancelPeerEnrollmentMutation,
+  useCompletePeerEnrollmentMutation,
+  usePeerEnrollmentQuery,
+  useStartPeerEnrollmentMutation,
+} from './query-domains/peerEnrollments';
 export type {
   PersonalLayoutCreateInput,
   PersonalLayoutUpdateInput,

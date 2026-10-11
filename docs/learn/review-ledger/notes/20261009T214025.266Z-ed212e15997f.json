@@ -1,0 +1,7 @@
+{
+  "revision": "146a71c99f976452bcf59cd430cadf4258dfb165",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the question-content and interactive approval sections against the current mobile-request-sheet fixture at 146a71c and the canonical form/decision callers after normal main245 integration. The fixture uses station.input-request/v1 form payloads, exact opened-event content responses, and the ordinary grouped-sheet dismissal path. Approval buttons derive their once/session/deny choices from Station grant scope and still call the approval authority path; form responses validate content and do not mint session tool grants. The Allow in-flight keeper now holds the actual commands HTTP response until pending controls are observed, matching the existing Deny boundary, then releases the accepted response. Restored input-request/mobile-sheet browser journeys passed all24 on Linux; removing ChatMessageList form exclusion made the phone form action fail behind an approval sheet, and exact restoration passed. Independent source/fixture reviews were clear. The inspected guide claims remain accurate; no prose, grant semantics or historical provider evidence changed. This note covers the named changed mobile fixture, not unrelated main-history documentation inputs, native/Windows enforcement, hosted acceptance or engine acknowledgement.","inputs":["docs/conformance/tool-policy-delivery.md","tests/mobile-request-sheet.spec.ts"]}
+  ]
+}

@@ -92,6 +92,9 @@ const DECISION_2_PRINCIPAL_READS = [
   'get_review_receipt',
   // #3160: an owner-scoped read of a Session the owner may read.
   'wait_session',
+  // #3413: owner-scoped reads of the Sessions the caller's scope admits.
+  'list_project_activity',
+  'get_session_digest',
 ];
 // Decision 3: answering a worker's request needs bound + Project approve;
 // until slice C adds the Project path, only the bound operator.
@@ -782,6 +785,24 @@ describe('station-control authority table: declare_pull_request and Task close-o
         isOperatorPrincipal,
       })?.code,
     ).toBe('station_control_caller_required');
+  });
+
+  // #3391: agents need no Project run locations. `/api/projects/:slug`
+  // would capture the leaf, so it is excluded by name and answered, for
+  // every caller, with the unmapped refusal; the slug read itself stays.
+  test('no tool reaches the run-locations read, though the Project detail read stays mapped', () => {
+    const route = '/api/projects/run-locations';
+    expect(matchStationControlRoute('GET', route)).toBeUndefined();
+    expect(matchStationControlRoute('HEAD', route)).toBeUndefined();
+    expect(matchStationControlRoute('GET', '/api/projects/acme')).toBeDefined();
+    for (const [name, caller] of Object.entries(CALLERS))
+      expect([
+        name,
+        authorizeStationControlRequest('GET', route, {
+          caller,
+          isOperatorPrincipal,
+        })?.code,
+      ]).toEqual([name, 'station_control_route_unmapped']);
   });
 
   // The opt-in is a person's. No tool names the route, so the guard answers

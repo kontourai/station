@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
+import { sessionLadderWord } from '@kontourai/station-contracts/session-attention';
 import { describe, expect, test } from 'vitest';
 import {
   HOME_LIFECYCLE_LABELS,
@@ -243,6 +244,21 @@ describe('a row word can never contradict its lane heading', () => {
     expect(lanes.reduce((total, lane) => total + lane.sessions.length, 0)).toBe(
       MIXED_FIXTURE.length,
     );
+  });
+
+  test('the word the server tools use (contracts) is the ladder’s own, for every session in the walk', () => {
+    // `list_project_activity` words a session with `sessionLadderWord`, not a
+    // copy: the two must agree on every shape here. The UI's Running rung
+    // alone refines its word with UI facts (a sub-agent count, the no-progress
+    // marker), which the server's summary-only read leaves as "Running".
+    const refinements = /^(\d+ sub-agents?|No progress)$/;
+    for (const entry of MIXED_FIXTURE) {
+      const ui = wordOf(entry.threadId);
+      expect([entry.threadId, sessionLadderWord(entry)]).toEqual([
+        entry.threadId,
+        refinements.test(ui) ? 'Running' : ui,
+      ]);
+    }
   });
 
   test('every session in every lane prints a word that lane permits', () => {
@@ -510,7 +526,9 @@ describe('one vocabulary on the work surfaces', () => {
   const files = SURFACE_ROOTS.flatMap((root) => sourceFilesUnder(root));
 
   test('the scan reaches the surfaces it guards', () => {
-    const names = files.map((file) => relative(SRC_ROOT, file));
+    const names = files.map((file) =>
+      relative(SRC_ROOT, file).replaceAll('\\', '/'),
+    );
     for (const guarded of [
       'views/home/work-status.ts',
       'views/SessionsView.tsx',
@@ -530,7 +548,7 @@ describe('one vocabulary on the work surfaces', () => {
   test('no surface writes a retired status word, lane name, noun or time form', () => {
     const offenders: string[] = [];
     for (const file of files) {
-      const name = relative(SRC_ROOT, file);
+      const name = relative(SRC_ROOT, file).replaceAll('\\', '/');
       const source = withoutComments(readFileSync(file, 'utf8'));
       // Case-blind: a retired word is retired at the start of a label and
       // mid-sentence alike ("Awaiting approval", "2 awaiting approval").
@@ -575,7 +593,7 @@ describe('one vocabulary on the work surfaces', () => {
     ]);
     const offenders: string[] = [];
     for (const file of files) {
-      const name = relative(SRC_ROOT, file);
+      const name = relative(SRC_ROOT, file).replaceAll('\\', '/');
       if (spellers.has(name)) continue;
       const source = withoutComments(readFileSync(file, 'utf8'));
       for (const word of WORDS) {

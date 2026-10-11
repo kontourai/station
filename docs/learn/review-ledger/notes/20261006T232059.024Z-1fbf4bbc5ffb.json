@@ -1,0 +1,9 @@
+{
+  "revision": "b32df3ab82313aaafe62353111b25bbbc96ae7ba",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed prompt execution through the SDK API-base context and authenticated fetch in the separate query-domain owner. The public root/query export and request/return contract remain; envelopeError retains the same refusal text and now supplies status, code, details and Retry-After. Three real fetcher refusal cases failed on the legacy hand-built error and passed on the canonical helper. The executor stays outside the React-free client tree; client-portability and public-barrel controls own those distinct boundaries.","inputs":["docs/reference/sdk.md","packages/sdk/src/__tests__/client-fetchers-envelope-a3a.test.ts","packages/sdk/src/query-domains/mcpPromptRun.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed frontend SDK summary against the executor moved beside root query-domain APIs because it requires SDK API-base context. Public route and export are unchanged; canonical prompt refusal now retains StationHttpError metadata. Remaining legacy fetchers still lack uniform transport/error behavior, so that documented limit remains accurate.","inputs":["docs/reference/api.md","packages/sdk/src/queries.ts"]}
+  ]
+}

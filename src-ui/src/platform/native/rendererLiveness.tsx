@@ -27,9 +27,10 @@ export function createNativeRendererMountCommit(
           await adapter.commitRendererMount();
         })
         .catch(() => {
-          // Fail closed. Native startup readiness owns the bounded timeout and
-          // Retry/Exit surface; the renderer must not reveal itself or invent
-          // a second recovery UI when the host acknowledgement is unavailable.
+          // Fail closed. Native startup readiness owns the slow-start
+          // Restart/Quit recovery surface; the renderer must not reveal itself
+          // or invent a second recovery UI when the host acknowledgement is
+          // unavailable.
         });
       void commit;
     }, []);

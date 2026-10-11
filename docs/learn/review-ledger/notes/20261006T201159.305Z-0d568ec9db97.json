@@ -1,0 +1,7 @@
+{
+  "revision": "830fabf4a79a7c8391a783b95c845c4279b99995",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed merge integration: resolver now returns ResolvedAppHome env plus selected profileRef, retains main usage-account custody and source-home affinity, and typed overlay failures subclass main CredentialProfileEnvironmentError. Overlay merges below profile home key; focused runtime evidence pending installation.","inputs":["docs/guides/connections.md","src-server/providers/app-home/credential-profile-env.ts","src-server/providers/adapters/claude-adapter.ts","src-server/providers/adapters/codex-adapter.ts","src-server/routes/connections/app-home.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/services/connections/connection-env.ts","src-server/services/connections/credential-enrolment.ts"]}
+  ]
+}

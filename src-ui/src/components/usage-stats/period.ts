@@ -1,4 +1,8 @@
 import { MS_PER_DAY } from '@kontourai/station-contracts/time';
+import type {
+  UnallocatedUsage,
+  UsageStats,
+} from '@kontourai/station-contracts/usage-stats';
 import type { EngineUsageCoverage } from './UsageSummaryCards';
 
 /**
@@ -106,23 +110,24 @@ export function trendMetric(days: TrendDay[]): 'cost' | 'messages' {
   return days.some((day) => day.recorded && day.cost > 0) ? 'cost' : 'messages';
 }
 
-/**
- * The one sentence that keeps a period sum from reading as a complete one
- * (the `describeCostCoverage` pattern from archive#3245, applied to the date
- * dimension). After archive#3266, engine (orchestration) sessions contribute
- * lifetime totals but deliberately NO `byDate` rows — a whole-session
- * aggregate has no per-day resolution — so every figure derived from daily
- * history undercounts whenever engine traffic exists.
- *
- * Derived, not a label: `engineUsageCoverage` is written only when a rescan
- * actually folded engine sessions into the lifetime totals, which is exactly
- * the population missing from daily history. `null` when there is nothing to
- * disclose — no engine sessions means daily history and lifetime cover the
- * same corpus.
- */
+/** Older snapshots exclude engine dates; current projections disclose unallocated observations. */
 export function describeDailyHistoryGap(
   coverage: EngineUsageCoverage | undefined,
+  snapshot?: UsageStats['snapshot'],
+  unallocated?: UnallocatedUsage,
 ): string | null {
+  if (snapshot?.projection === 'retained-source-v1') {
+    return unallocated &&
+      (unallocated.messages > 0 ||
+        unallocated.inputTokens > 0 ||
+        unallocated.outputTokens > 0 ||
+        unallocated.cost > 0 ||
+        Object.values(unallocated.tokenReports ?? {}).some(
+          (count) => count > 0,
+        ))
+      ? 'Some retained usage has no reliable date and is excluded from daily totals.'
+      : null;
+  }
   if (!coverage || coverage.sessions === 0) return null;
   const subject =
     coverage.sessions === 1

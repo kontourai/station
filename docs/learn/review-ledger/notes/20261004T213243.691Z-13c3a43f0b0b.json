@@ -1,0 +1,7 @@
+{
+  "revision": "6a740918ced3d8ef7cf6865385ece383fecdaa86",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"No prose change: reviewed its attention/continue/capability mentions, none concern delegated bound answers; contracts.md documents the fields.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md","docs/reference/sdk.md"]}
+  ]
+}

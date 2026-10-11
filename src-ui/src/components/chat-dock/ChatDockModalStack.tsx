@@ -48,7 +48,9 @@ const loadChatSettingsPanel = () =>
     default: m.ChatSettingsPanel,
   }));
 const loadNewChatModal = () =>
-  import('../modals/NewChatModal').then((m) => ({ default: m.NewChatModal }));
+  import('./DockStartComposer').then((m) => ({
+    default: m.DockStartComposer,
+  }));
 const loadSessionPickerModal = () =>
   import('../modals/SessionPickerModal').then((m) => ({
     default: m.SessionPickerModal,
@@ -75,6 +77,8 @@ interface ChatDockModalStackProps {
   projectBindable?: boolean;
   projectsLoaded?: boolean;
   projectAccentBySlug?: ReadonlyMap<string, string>;
+  /** The sidebar's project icons, for the start composer's project chip. */
+  projectIconBySlug: ReadonlyMap<string, string>;
   recentChats?: ComponentProps<typeof NewChatModal>['recentChats'];
   showChatSettings: boolean;
   showSessionPicker: boolean;
@@ -97,8 +101,12 @@ interface ChatDockModalStackProps {
     providerType?: string,
     experienceDraft?: SkillExperienceDraft,
     sendInitialMessage?: boolean,
+    executionAgentId?: string,
+    expectedDefinitionFingerprint?: string,
+    executionOnCurrentStation?: boolean,
   ) => void;
   onCloseNewChat: () => void;
+  onNewTaskStarted?: () => void;
   onCloseSettings: () => void;
   onCloseSessionPicker: () => void;
   onSessionPickerSelect: (
@@ -139,6 +147,7 @@ export function ChatDockModalStack({
   projectBindable,
   projectsLoaded,
   projectAccentBySlug,
+  projectIconBySlug,
   recentChats,
   showChatSettings,
   showSessionPicker,
@@ -149,6 +158,7 @@ export function ChatDockModalStack({
   autoHideEnabled,
   onSelectNewChat,
   onCloseNewChat,
+  onNewTaskStarted,
   onCloseSettings,
   onCloseSessionPicker,
   onSessionPickerSelect,
@@ -192,12 +202,14 @@ export function ChatDockModalStack({
             projectBindable,
             projectsLoaded,
             projectAccentBySlug,
+            projectIconBySlug,
             startSurface: true,
             recentChats,
             activeProjectSlug:
               newChatProjectOverride?.slug ?? activeProjectSlug,
             onSelect: handleNewChatSelect,
             onClose: onCloseNewChat,
+            onTaskStarted: onNewTaskStarted,
             draftContext: forkMode
               ? undefined
               : composerDraftContext(newChatProjectOverride?.composerDraft),

@@ -1,0 +1,7 @@
+{
+  "revision": "2385171e1988e72366b6afd7c627b2a489a5b794",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed 2385171e19 correction to the mobile fold keeper: querySelector now declares HTMLElement for the real pending approval DOM node passed to within; no cast, runtime action or request-binding assertion changed. The 72 focused fold, ToolCallDisplay and inline approval tests pass, and the narrow UI typecheck passes. The prior scoped phone-sheet and grant claims remain accurate. Earlier clean-commit visibility/event-binding controls remain the same assertions; no unrelated guide inputs or historical provider evidence refreshed.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/__tests__/ChatMessageList.mobileTurnFold.test.tsx"]}
+  ]
+}

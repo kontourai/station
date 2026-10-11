@@ -1,0 +1,7 @@
+{
+  "revision": "7dc5a9c590d9a9a049d34861591b7f171addd2a0",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"Paired devices revoke steps unchanged in behavior; only native-host 401 copy, hint text and an internal busy-guard refactor changed in PairedDevicesPanel.tsx.","inputs":["docs/guides/web-push-notifications.md","packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx"]}
+  ]
+}

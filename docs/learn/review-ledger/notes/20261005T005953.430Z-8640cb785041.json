@@ -1,0 +1,7 @@
+{
+  "revision": "4de275495bfff9019a8dcb8ebe474e2b080b0e65",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed the merge-queue statements (freshness reporting in the merge queue, line ~117): unchanged by this change, which adds a plan job and a conditional full-regression call to merge-queue-regression.yml and an optional plan field (mergeQueueRegressionPaths) validated in fast-checks-shards.mjs. No Veritas configuration or evidence policy changes.","inputs":[".veritas/README.md",".github/workflows/merge-queue-regression.yml","scripts/lib/fast-checks-shards.mjs"]}
+  ]
+}

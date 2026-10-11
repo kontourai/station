@@ -1,0 +1,25 @@
+{
+  "revision": "04e0c71131aba526d44bb5f69d8f3c6b38e33b0f",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"#3429 round 2: the only module-map change is one sentence in the dispatchCanonicalCwd paragraph (the record also binds a project-only /chat follow-up to the recorded folder). This document routes to or summarizes module-map sections other than that paragraph; its claims and anchors are unaffected.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"#3429 round 2: the only module-map change is one sentence in the dispatchCanonicalCwd paragraph (the record also binds a project-only /chat follow-up to the recorded folder). This document routes to or summarizes module-map sections other than that paragraph; its claims and anchors are unaffected.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"#3429 round 2: the only module-map change is one sentence in the dispatchCanonicalCwd paragraph (the record also binds a project-only /chat follow-up to the recorded folder). This document routes to or summarizes module-map sections other than that paragraph; its claims and anchors are unaffected.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"#3429 round 2: the only module-map change is one sentence in the dispatchCanonicalCwd paragraph (the record also binds a project-only /chat follow-up to the recorded folder). This document routes to or summarizes module-map sections other than that paragraph; its claims and anchors are unaffected.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"#3429 round 2: the only module-map change is one sentence in the dispatchCanonicalCwd paragraph (the record also binds a project-only /chat follow-up to the recorded folder). This document routes to or summarizes module-map sections other than that paragraph; its claims and anchors are unaffected.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"#3429 round 2: the only module-map change is one sentence in the dispatchCanonicalCwd paragraph (the record also binds a project-only /chat follow-up to the recorded folder). This document routes to or summarizes module-map sections other than that paragraph; its claims and anchors are unaffected.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"#3429 round 2: the only module-map change is one sentence in the dispatchCanonicalCwd paragraph (the record also binds a project-only /chat follow-up to the recorded folder). This document routes to or summarizes module-map sections other than that paragraph; its claims and anchors are unaffected.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"#3429 round 2: the only module-map change is one sentence in the dispatchCanonicalCwd paragraph (the record also binds a project-only /chat follow-up to the recorded folder). This document routes to or summarizes module-map sections other than that paragraph; its claims and anchors are unaffected.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"#3429 round 2: the only module-map change is one sentence in the dispatchCanonicalCwd paragraph (the record also binds a project-only /chat follow-up to the recorded folder). This document routes to or summarizes module-map sections other than that paragraph; its claims and anchors are unaffected.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"#3429 round 2: the only module-map change is one sentence in the dispatchCanonicalCwd paragraph (the record also binds a project-only /chat follow-up to the recorded folder). This document routes to or summarizes module-map sections other than that paragraph; its claims and anchors are unaffected.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

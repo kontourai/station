@@ -21,6 +21,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -496,13 +497,24 @@ describe('ComputersSection', () => {
     expect(computersTab.textContent).toContain(String(renderedRows));
   });
 
-  test('unconfigured peer credentials render as one row with a copy-command action (CI-R13)', () => {
+  test('unconfigured peer credentials keep the CLI command behind an advanced disclosure, not a row (CI-R13)', () => {
     peerCredentialsState.isSuccess = true;
     peerCredentialsState.data = [];
     render(<ComputersSection />);
-    expect(screen.getByText('Outbound peer credentials')).toBeTruthy();
-    expect(screen.getByText(/station environment peers add/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Copy command' })).toBeTruthy();
+    expect(
+      document.querySelectorAll('.connections-computers__row'),
+    ).toHaveLength(0);
+    const summary = screen.getByText('Advanced: delegate to another Station');
+    const details = summary.closest('details')!;
+    expect(details.open).toBe(false);
+    fireEvent.click(summary);
+    expect(details.open).toBe(true);
+    expect(
+      within(details).getByText(/station environment peers add/),
+    ).toBeTruthy();
+    expect(
+      within(details).getByRole('button', { name: 'Copy command' }),
+    ).toBeTruthy();
   });
 
   test('configured peer credentials render in the same row shape as everything else', () => {
@@ -536,7 +548,9 @@ describe('ComputersSection', () => {
 
   test('renders nothing for peer credentials while the fetch has not succeeded', () => {
     render(<ComputersSection />);
-    expect(screen.queryByText('Outbound peer credentials')).toBeNull();
+    expect(
+      screen.queryByText('Advanced: delegate to another Station'),
+    ).toBeNull();
   });
 
   /**

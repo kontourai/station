@@ -1,0 +1,7 @@
+{
+  "revision": "4e1e86cfa480f25809639151a29e3e9f3dd6ad3c",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"No prose change: station-control-delegation only replaces a type cast with a checked parse of the open request fields before presenting its question text; behaviour is unchanged.","inputs":["docs/reference/api.md","src-server/tools/station-control-delegation.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

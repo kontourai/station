@@ -20,6 +20,7 @@ import {
   type StationClientCompatibilityPolicy,
   type StationCompatibilityResult,
 } from '@kontourai/station-contracts/environment-security';
+import { beginClientProtocolObservation } from '@kontourai/station-shared/client-protocol';
 
 /** Deliberately short: this gates a button press, not a background poll. */
 const COMPATIBILITY_PROBE_TIMEOUT_MS = 5_000;
@@ -107,6 +108,7 @@ export async function checkHostCompatibility(
   const abort = () => controller.abort();
   signal?.addEventListener('abort', abort, { once: true });
   const timeout = setTimeout(abort, COMPATIBILITY_PROBE_TIMEOUT_MS);
+  const observeProtocol = beginClientProtocolObservation(url);
   try {
     const response = await transport(
       new URL(PUBLIC_STATION_HANDSHAKE_PATH, url),
@@ -123,7 +125,11 @@ export async function checkHostCompatibility(
       };
     }
     const handshake = (await response.json()) as { compatibility?: unknown };
-    return evaluateCompatibility(policy, handshake?.compatibility);
+    const result = evaluateCompatibility(policy, handshake?.compatibility);
+    observeProtocol(
+      result.verdict === 'unknown' ? undefined : handshake?.compatibility,
+    );
+    return result;
   } catch {
     const timedOut = controller.signal.aborted && !signal?.aborted;
     return {

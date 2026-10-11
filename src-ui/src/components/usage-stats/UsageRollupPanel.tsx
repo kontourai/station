@@ -6,8 +6,9 @@ import type {
 import {
   type UsageRollupQuery,
   useUsageRollupQuery,
-} from '@kontourai/station-sdk';
+} from '@kontourai/station-sdk/usage-rollup-query';
 import { useState } from 'react';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { Empty, SkeletonBlock } from '../state';
 import './UsageRollupPanel.css';
 
@@ -43,17 +44,39 @@ function snapshotLabel(value: {
 
 /** Table-first read surface; coverage is displayed before any numeric claim. */
 export function UsageRollupPanel() {
+  const scope = useHostRequestAuthorityScope();
   const [days, setDays] = useState<Days>(14);
   const [groupBy, setGroupBy] = useState<GroupBy>('provider');
-  const [cursor, setCursor] = useState<string | undefined>();
+  const scopeKey = JSON.stringify([scope?.apiBase, scope?.authorityKey]);
+  const [cursorState, setCursorState] = useState<{
+    scopeKey: string;
+    value: string;
+  }>();
+  const cursor =
+    cursorState?.scopeKey === scopeKey ? cursorState.value : undefined;
+  const setCursor = (value: string | undefined) =>
+    setCursorState(value ? { scopeKey, value } : undefined);
   const [showCoverage, setShowCoverage] = useState(false);
   const [showReceipts, setShowReceipts] = useState(false);
-  const { data, isLoading, error, refetch } = useUsageRollupQuery({
-    days,
-    groupBy,
-    cursor,
-    pageSize: 25,
-  });
+  const {
+    data: response,
+    isLoading,
+    error,
+    refetch,
+  } = useUsageRollupQuery(
+    {
+      days,
+      groupBy,
+      cursor,
+      pageSize: 25,
+    },
+    {
+      requestScope: scope ?? undefined,
+      requireRequestScope: true,
+      keepPreviousData: false,
+    },
+  );
+  const data = scope?.isCurrent() && !error ? response : undefined;
   const coverage = error ? [] : (data?.coverage ?? []);
   const hasGap =
     coverage.length === 0 || coverage.some((item) => item.state !== 'complete');
@@ -80,13 +103,15 @@ export function UsageRollupPanel() {
         >
           {error
             ? 'Coverage unavailable'
-            : isLoading
-              ? 'Loading coverage'
-              : neverReported
-                ? 'Usage never reported'
-                : hasGap
-                  ? 'Coverage incomplete'
-                  : 'Coverage complete'}
+            : !scope?.isCurrent()
+              ? 'Connection required'
+              : isLoading
+                ? 'Loading coverage'
+                : neverReported
+                  ? 'Usage never reported'
+                  : hasGap
+                    ? 'Coverage incomplete'
+                    : 'Coverage complete'}
         </button>
       </div>
       <div className="usage-rollup__controls">
@@ -124,7 +149,9 @@ export function UsageRollupPanel() {
           </select>
         </label>
       </div>
-      {isLoading ? (
+      {!scope?.isCurrent() ? (
+        <Empty label="Connect to this Station to view authorized usage." />
+      ) : isLoading ? (
         <SkeletonBlock count={3} label="Loading usage receipts" />
       ) : error ? (
         <div role="alert">

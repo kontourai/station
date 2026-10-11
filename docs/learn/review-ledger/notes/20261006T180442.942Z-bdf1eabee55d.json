@@ -1,0 +1,23 @@
+{
+  "revision": "b624c32f4b8b469cdc7ecf6997d50f9a46c1e8dc",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"#3382 bundle round: the shared export map gains ./display-reveal (a .ts leaf, browser-safe) and the reveal helpers move there from display-text. This document makes no claim about either subpath's contents; no prose change.","inputs":["docs/architecture.md","packages/shared/package.json","packages/shared/package.json#/exports"]},
+
+    {"path":"docs/guides/build-your-first-plugin.md","note":"#3382 bundle round: the shared export map gains ./display-reveal (a .ts leaf, browser-safe) and the reveal helpers move there from display-text. This document makes no claim about either subpath's contents; no prose change.","inputs":["docs/guides/build-your-first-plugin.md","packages/shared/package.json"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"#3382 bundle round: the shared export map gains ./display-reveal (a .ts leaf, browser-safe) and the reveal helpers move there from display-text. This document makes no claim about either subpath's contents; no prose change.","inputs":["docs/guides/responsive-ui.md","packages/shared/package.json"]},
+
+    {"path":"docs/guides/theming.md","note":"#3382 bundle round: the shared export map gains ./display-reveal (a .ts leaf, browser-safe) and the reveal helpers move there from display-text. This document makes no claim about either subpath's contents; no prose change.","inputs":["docs/guides/theming.md","packages/shared/package.json"]},
+
+    {"path":"docs/patterns/backend.md","note":"#3382 bundle round: the shared export map gains ./display-reveal (a .ts leaf, browser-safe) and the reveal helpers move there from display-text. This document makes no claim about either subpath's contents; no prose change.","inputs":["docs/patterns/backend.md","packages/shared/package.json"]},
+
+    {"path":"docs/patterns/frontend.md","note":"#3382 bundle round: the shared export map gains ./display-reveal (a .ts leaf, browser-safe) and the reveal helpers move there from display-text. This document makes no claim about either subpath's contents; no prose change.","inputs":["docs/patterns/frontend.md","packages/shared/package.json"]},
+
+    {"path":"packages/shared/README.md","note":"#3382 bundle round: the only export-map change is ./display-reveal -> ./src/display-reveal.ts, a .ts leaf not added to the root barrel. The README's explicit-subpath, .ts/.mjs and Node 24 claims still hold. No prose change.","inputs":["packages/shared/README.md","packages/shared/package.json#/exports"]},
+
+    {"path":"docs/reference/shared.md","note":"#3382 bundle round: added the ./display-reveal subpath bullet (revealHiddenCharacters and friends, split from display-text to keep them out of an entry bundle) and trimmed the display-text bullet to match.","inputs":["docs/reference/shared.md","packages/shared/package.json"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#3382 bundle round: the reveal helpers moved from display-text.ts to display-reveal.ts; ToolCallDisplay imports them from there with unchanged behaviour (the reveal tests and two fault injections still pass and fail as before). The page's citation of display-text.ts is for the display form, which stays there. No prose change.","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/__tests__/tool-request-preview.test.ts","packages/shared/src/display-text.ts","src-ui/src/components/chat/ToolCallDisplay.tsx"]}
+  ]
+}

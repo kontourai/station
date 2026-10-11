@@ -122,6 +122,15 @@
       "configKey": "surfaceTrustFromVeritasEvidence"
     },
     {
+      "id": "attached-sessions-outside-projects",
+      "label": "Conversations outside projects",
+      "help": "Activity lists Claude Code and Codex conversations on this machine whose folder is in no project, under No project.",
+      "scope": "station",
+      "section": "host-runtime",
+      "route": "/settings?view=host-runtime&highlight=attached-sessions-outside-projects",
+      "configKey": "attachedSessionsOutsideProjects"
+    },
+    {
       "id": "device-helper-url",
       "label": "Device helper URL",
       "help": "After a restart, Station lists this machine’s simulators and emulators through the device helper at this address.",

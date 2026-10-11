@@ -13,7 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, relative, resolve } from 'node:path';
 import { load } from 'js-yaml';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { describe, expect, it } from 'vitest';
 import {
   createNativeReleaseConfig,

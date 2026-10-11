@@ -20,6 +20,7 @@ import {
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
@@ -103,8 +104,8 @@ function harness(format: Format) {
   stores.push(store);
   const proposals = new PluginLifecycleProposalService(home);
   const log = logger();
-  const app = new Hono();
-  registerPluginInstallRoutes(app, {
+  const routes = new Hono();
+  registerPluginInstallRoutes(routes, {
     projectVisiblePlugins: () => (installed) => installed,
     agentsDir: join(home, 'agents'),
     logger: log,
@@ -113,6 +114,7 @@ function harness(format: Format) {
     packageMcpJournal: store.createPackageMcpAdmissionJournal(),
     proposals,
   });
+  const app = withOperatorPrincipal(routes);
   const post = async (path: string, body: unknown) => {
     const response = await app.request(path, {
       method: 'POST',

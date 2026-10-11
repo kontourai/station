@@ -1,4 +1,5 @@
 import { NativeMemoryContinuityUnavailableError } from '../../services/orchestration/native-memory-continuity.js';
+import { projectToolContext } from './project-tool-context.js';
 /**
  * Chat Routes - POST /:slug/chat SSE streaming endpoint
  * Extracted from station-runtime.ts lines 1940-2800
@@ -337,6 +338,8 @@ export function createChatRoutes(ctx: ChatRuntimeContext) {
         agent = modelOverrideResult.agent;
         modelOverride = modelOverrideResult.resolvedModelId ?? modelOverride;
       }
+
+      agent = await projectToolContext(ctx, slug, projectSlug, agent);
 
       return streamPrimaryAgentChat({
         c,

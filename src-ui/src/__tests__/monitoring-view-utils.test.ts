@@ -101,7 +101,7 @@ describe('monitoring view utils', () => {
         },
         filteredEvents,
       ),
-    ).toBe('1 Active • 1 Historical');
+    ).toBe('1 Configured • 1 Historical');
     expect(getRunningConversations(filteredEvents, 'alpha')).toEqual([
       {
         id: 'conversation:1',

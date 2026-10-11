@@ -1,0 +1,7 @@
+{
+  "revision": "22f74ffcc1ad4760769b1dc225535730638d108e",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed #3405 repair: only chat-native forms opt into existing queueOnBusy follow-up semantics and admission observation. Default composer steer/queue behavior, parsing and chip selection stay unchanged. Existing Retry and full-access-retry carry the form observer without changing their idempotency key. Mobile tool folding and message ordering remain unchanged. Current composer prose stays accurate; no new native qualification.","inputs":["docs/design/chat-composer.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

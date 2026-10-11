@@ -38,7 +38,8 @@ const CONTINUE_SECTION_ID = 'home-continue';
  * the work. With recent work on the page the lanes come right after the
  * form and the heading, the action cards and the chart wait below them —
  * someone with work does not need to be asked what they want to work on
- * above it. An empty Station keeps the heading and leads with the cards.
+ * above it. The shared composer owns the visible start heading; Home keeps
+ * an accessible page title and an empty Station leads with the cards.
  * The counts that used to caption the lanes are gone: the lane headings
  * carry their counts, and the chart draws only once it has more than one
  * row to compare.
@@ -183,11 +184,7 @@ export function HomeSurface({
           Skip to recent work
         </a>
       )}
-      {!hasWork && (
-        <header className="home-view__intro">
-          <h1>What's next?</h1>
-        </header>
-      )}
+      <h1 className="sr-only">Home</h1>
       {/* A plain wrapper: the form is the one "Start work" landmark. A
           section named the same nested a second landmark with one name. */}
       <div

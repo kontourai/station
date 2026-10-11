@@ -32,6 +32,7 @@ import {
   surveyFlowReviewDiscoverSchema,
   validate,
 } from '../schemas/schemas.js';
+import { refuseUngrantedCommandChoice } from '../working-directory-authority.js';
 
 export interface FlowRunRouteDeps {
   /** Resolve a project slug to its workspace path (workingDirectory). */
@@ -348,6 +349,9 @@ export function createFlowRunRoutes(
     '/runs/:runId/evidence/command',
     validate(flowCommandEvidenceSchema),
     async (c) => {
+      // This runs the command line the body names.
+      const commandRefused = refuseUngrantedCommandChoice(c);
+      if (commandRefused) return commandRefused;
       try {
         const data = await flowRunService.attachCommandEvidence(
           c.get('cwd'),

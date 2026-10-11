@@ -1,0 +1,7 @@
+{
+  "revision": "d6b83a58534742fd1e1796a3563bf8965a0911ac",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"#3386 fix round: runtime-initialize.ts only gained the outsideProjectsEnabled option on AttachedSessionFollowService (reads AppConfig.attachedSessionsOutsideProjects via configLoader.loadAppConfig); no claim in this document concerns attached-session following or that setting. No prose change.","inputs":["docs/reference/sdk.md","src-server/runtime/bootstrap/runtime-initialize.ts"]}
+  ]
+}

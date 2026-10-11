@@ -1,0 +1,7 @@
+{
+  "revision": "0dd234dc8966852429ddc69f3f920e62a7cb4ab3",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the mobile New chat entry and shared desktop/picker callers after removing the sole generic toolbar branch. ChatDockMobileHeader retains the same native button type, classes, accessible name, title, drag exclusion, callback and NewChatGlyph; shared NewChatAction callers retain their button/tooltip forms. Icon-only mobile reachability and no-message-on-open prose remains accurate. Source inspection only for this refactor; prior fcd attribution build exited 1 at 410224/410000 bytes, and changed-source build, caller tests, Gallery and device proof remain pending.","inputs":["docs/design/chat-composer.md","src-ui/src/components/NewChatAction.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx"]}
+  ]
+}

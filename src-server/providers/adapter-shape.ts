@@ -6,7 +6,7 @@ import {
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ConnectionQuotaResult } from '@kontourai/station-contracts/connection-quota';
 import type { ConnectionRecoveryCapability } from '@kontourai/station-contracts/connection-recovery';
-import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
+import type { InputRequestContent } from '@kontourai/station-contracts/input-request';
 import type { ModelInventoryExecutionIdentity } from '@kontourai/station-contracts/model-inventory';
 import type {
   EngineId,
@@ -15,6 +15,7 @@ import type {
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionAdoptInput,
+  ProviderSessionRetirement,
   ProviderSessionSourceAffinity,
   ProviderSessionStartInput,
   ProviderTurnStartResult,
@@ -330,11 +331,19 @@ export interface ProviderAdapterShape {
      */
     context?: {
       clientOrigin?: ClientOrigin;
-      answers?: HarnessQuestionAnswers;
+      /**
+       * #3390: accepted content for a form input request (a harness question
+       * or a tool server's elicitation), already validated against the
+       * stored request. An adapter that holds its own copy of the form
+       * checks it again before it reaches the engine.
+       */
+      inputContent?: InputRequestContent;
       expectedRequestEventId?: string;
     },
   ): Promise<void>;
   stopSession(threadId: string): Promise<void>;
+  /** Native ownership may move only after this reports confirmed retirement. */
+  retireSession?(threadId: string): Promise<ProviderSessionRetirement>;
   listSessions(): Promise<ProviderSession[]>;
   /**
    * Whether THIS PROCESS currently holds a live engine binding for the

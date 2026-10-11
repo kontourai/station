@@ -1,0 +1,9 @@
+{
+  "revision": "9b36926339a1f8c54e26626a543cd0d992c37769",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#3382 round 2: re-read the display-form bullet against ToolCallDisplay.tsx ToolCallDetails (command block and argument JSON rendered through RevealedText, warning when hasHiddenCharacters) and display-text.ts revealHiddenCharacters (bidi set, U+200B/U+2060/U+FEFF, Cc except LF and tab; guillemet tokens). Updated the sentence that said the details keep the raw arguments. Checked by the ToolCallDisplay reveal tests and the shared reveal test, each fault-injected.","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/__tests__/tool-request-preview.test.ts","packages/shared/src/display-text.ts","src-ui/src/components/chat/ToolCallDisplay.tsx"]},
+
+    {"path":"docs/reference/shared.md","note":"#3382 round 2: the display-text subpath now also exports revealHiddenCharacters, revealHiddenCharactersText, hasHiddenCharacters and hiddenCharacterToken; updated the subpath bullet to name the raw-view helper. No other claim on the page changed.","inputs":["docs/reference/shared.md","packages/shared/src/display-text.ts"]}
+  ]
+}

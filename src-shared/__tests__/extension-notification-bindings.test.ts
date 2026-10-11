@@ -191,6 +191,28 @@ describe('extension notification bindings', () => {
         observedAgainst: ['xai-acp'],
         evidence: 'station#1935-runtime-observation',
       },
+      // station#3415: derived from the transcript projection's marker table.
+      {
+        namespace: 'codex-rollout',
+        type: 'context-compacted',
+        consumer: 'transcript.marker',
+        observedAgainst: ['codex-rollout-session-source'],
+        evidence: 'station-session-source-emitter',
+      },
+      {
+        namespace: 'grok-session',
+        type: 'context-compacted',
+        consumer: 'transcript.marker',
+        observedAgainst: ['grok-session-source'],
+        evidence: 'station-session-source-emitter',
+      },
+      {
+        namespace: 'grok-session',
+        type: 'conversation-rewound',
+        consumer: 'transcript.marker',
+        observedAgainst: ['grok-session-source'],
+        evidence: 'station-session-source-emitter',
+      },
     ]);
   });
 

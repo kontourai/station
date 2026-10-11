@@ -8,11 +8,15 @@ import {
   type AgentSpec,
   isSupportedAgentIconToken,
 } from '@kontourai/station-contracts/agent';
-import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
-import type {
-  AttentionInputReplyContext,
-  AttentionRequestInspection,
-  AttentionRequestReference,
+import {
+  agentId,
+  parseEngineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
+import {
+  ATTENTION_REQUEST_ID_MAX_CHARS,
+  type AttentionInputReplyContext,
+  type AttentionRequestInspection,
+  type AttentionRequestReference,
 } from '@kontourai/station-contracts/attention';
 import { validateChatAttachments } from '@kontourai/station-contracts/chat-attachment';
 import { projectDelegateChildWork } from '@kontourai/station-contracts/child-work';
@@ -40,6 +44,7 @@ import type {
   OrchestrationCommandDispatchResult,
   OrchestrationCommandReceipt,
   OrchestrationConversationEventWindow,
+  OrchestrationPeerPendingRequest,
   OrchestrationSendTurnInput,
   OrchestrationSessionDetail,
   OrchestrationSessionEventPage,
@@ -119,9 +124,10 @@ import type { SessionBuilderRunView } from '@kontourai/station-contracts/workflo
 import type { WorkspaceIsolationMode } from '@kontourai/station-contracts/workspace-isolation';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
 import {
-  readHarnessQuestionnaire,
-  validateHarnessQuestionAnswers,
-} from '@kontourai/station-shared/harness-questions';
+  harnessAnswersToInputContent,
+  inputRequestFromRequestEvent,
+  validateInputRequestContent,
+} from '@kontourai/station-shared/input-request';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
@@ -205,6 +211,7 @@ import { composeAmbientTurnText } from '../../utils/ambient-context.js';
 import { raceWithSignal, throwIfAborted } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
+import { canonicalPath } from '../../utils/path-containment.js';
 import { expandTilde, safeHomeDirectory } from '../../utils/paths.js';
 import { type AgentPolicyService } from '../agents/agent-policy-service.js';
 import { publicAgentIdFromRuntimeKey } from '../agents/runtime-agent-identity.js';
@@ -243,6 +250,7 @@ import {
 } from '../projects/project-resource-shadow.js';
 import type { UsageTelemetryProperties } from '../usage-telemetry-inventory.js';
 import { AdapterRetirement } from './adapter-retirement.js';
+import type { ResolveAdoptedChildExecutionBinding } from './adopted-child-execution-binding.js';
 import type { AdoptionLedger, AdoptionReservation } from './adoption-ledger.js';
 import {
   ApprovalPosture,
@@ -253,6 +261,7 @@ import {
   type AdoptionConfinement,
   AttachedSessionAdoption,
 } from './attached-session-adoption.js';
+import { resolveContinuationPlace } from './attached-session-continuation-place.js';
 import { type AttachedProjectRoot } from './attached-session-follow-service.js';
 import { ChildWorkProjection } from './child-work-projection.js';
 import {
@@ -736,7 +745,10 @@ class DraftDiscardedError extends Error {
   }
 }
 
-export { AdoptionContinuationInProgressError } from './attached-session-adoption.js';
+export {
+  AdoptionContinuationInProgressError,
+  AdoptionEngineNotReadyError,
+} from './attached-session-adoption.js';
 export { ModelLaunchPlanUnavailableError } from './model-launch-planning.js';
 
 /**
@@ -827,6 +839,14 @@ interface OrchestrationServiceOptions {
   /** When provided, sessions started in Flow workspaces are gate-bound. */
   flowRunService?: FlowRunService;
   listProjects?: () => AttachedProjectRoot[];
+  /**
+   * #3429: the Agent and Environment a continued attached conversation runs
+   * as (`adopted-child-execution-binding.ts`). Absent, a continuation has no
+   * Agent and the dock cannot open it.
+   */
+  resolveAdoptedChildExecutionBinding?: ResolveAdoptedChildExecutionBinding;
+  /** Read-only identity of this receiver; absence leaves reopen placement unverified. */
+  readCurrentEnvironmentId?: () => Promise<string | undefined>;
   /** Destination-local resource resolution for new starts and missing-cwd recovery. */
   resolveProjectSessionDirectory?: (
     slug: string,
@@ -1062,10 +1082,56 @@ export const PEER_PENDING_REQUEST_TITLE_MAX_CHARS = 512;
  * can tell it was shortened; the request id carries identity, not the title.
  */
 function boundedPeerRequestTitle(title: string): string {
-  const characters = Array.from(title);
-  return characters.length > PEER_PENDING_REQUEST_TITLE_MAX_CHARS
-    ? `${characters.slice(0, PEER_PENDING_REQUEST_TITLE_MAX_CHARS - 1).join('')}…`
-    : title;
+  return boundedPeerText(title, PEER_PENDING_REQUEST_TITLE_MAX_CHARS);
+}
+
+function boundedPeerText(text: string, max: number): string {
+  const characters = Array.from(text);
+  return characters.length > max
+    ? `${characters.slice(0, max - 1).join('')}…`
+    : text;
+}
+
+/** Only the request types the canonical vocabulary names are stored. */
+function isPeerRequestType(
+  type: string | undefined,
+): type is NonNullable<OrchestrationPeerPendingRequest['type']> {
+  return (
+    type === 'approval' ||
+    type === 'permission' ||
+    type === 'confirmation' ||
+    type === 'input'
+  );
+}
+
+/** Bound on the paired Station's presented question text. */
+export const PEER_PENDING_REQUEST_BODY_MAX_CHARS = 4_000;
+
+/** Every reported field except the local observation time. */
+function samePeerPendingRequest(
+  a: OrchestrationPeerPendingRequest,
+  b: OrchestrationPeerPendingRequest,
+): boolean {
+  return (
+    a.id === b.id &&
+    a.type === b.type &&
+    a.title === b.title &&
+    a.eventId === b.eventId &&
+    a.threadId === b.threadId &&
+    a.body === b.body &&
+    a.callerCanRespond === b.callerCanRespond
+  );
+}
+
+/** What the paired Station's status read reported about its open request. */
+export interface PeerReportedPendingRequest {
+  id: string;
+  type?: string;
+  title?: string;
+  eventId?: string;
+  threadId?: string;
+  body?: string;
+  callerCanRespond?: boolean;
 }
 
 function peerDelegationActivityThreadId(
@@ -2204,6 +2270,12 @@ export class OrchestrationService {
         ? { flowRunService: options.flowRunService }
         : {}),
       ...(options.listProjects ? { listProjects: options.listProjects } : {}),
+      ...(options.resolveAdoptedChildExecutionBinding
+        ? {
+            resolveExecutionBinding:
+              options.resolveAdoptedChildExecutionBinding,
+          }
+        : {}),
       ...(options.requireTenantExecutionContext !== undefined
         ? {
             requireTenantExecutionContext:
@@ -2483,6 +2555,15 @@ export class OrchestrationService {
       perTurnModelOverride: (provider) =>
         options.adapterRegistry.get(provider)?.metadata.modelLaunch
           ?.overridePerTurn !== false,
+      nativeReturnSupported: (provider) => {
+        const adapter = options.adapterRegistry.get(provider);
+        const continuity = adapter?.metadata.continuity;
+        return (
+          continuity?.resumeIdentity === 'require-match' &&
+          continuity.nativeReturn === 'same-binding' &&
+          typeof adapter?.retireSession === 'function'
+        );
+      },
       ...(this.turnDeduplicator
         ? { turnDeduplicator: this.turnDeduplicator }
         : {}),
@@ -2510,11 +2591,44 @@ export class OrchestrationService {
         const session = detail.session;
         const lineageTail =
           this.conversationLineage.currentConversationSessionId(conversationId);
-        const recordedConnection = this.readLatestSessionStartMetadata(
+        const startMetadata = this.readLatestSessionStartMetadata(
           session.threadId,
           detail.events,
-        )?.connectionId;
-        const connection = parseEngineConnectionId(recordedConnection);
+        );
+        // The adapter-safe metadata projection above strips the server-minted Environment identity.
+        const identityEvent = [...detail.events]
+          .reverse()
+          .find(
+            (event) =>
+              event.threadId === session.threadId &&
+              event.method === 'session.started',
+          );
+        const recordedEnvironmentId =
+          identityEvent?.method === 'session.started' &&
+          typeof identityEvent.metadata?.environmentId === 'string'
+            ? identityEvent.metadata.environmentId
+            : undefined;
+        const currentEnvironmentId =
+          recordedEnvironmentId &&
+          session.controlMode === 'station-owned' &&
+          !this.isPeerDelegationActivityRecord(session.threadId)
+            ? await this.options
+                .readCurrentEnvironmentId?.()
+                .catch(() => undefined)
+            : undefined;
+        const connection = parseEngineConnectionId(startMetadata?.connectionId);
+        const executionAgentId =
+          typeof startMetadata?.executionAgentId === 'string'
+            ? agentId(startMetadata.executionAgentId)
+            : undefined;
+        const expectedDefinitionFingerprint =
+          executionAgentId &&
+          typeof startMetadata?.expectedDefinitionFingerprint === 'string' &&
+          /^sha256:[0-9a-f]{64}$/.test(
+            startMetadata.expectedDefinitionFingerprint,
+          )
+            ? startMetadata.expectedDefinitionFingerprint
+            : undefined;
         const model = session.reportedModel ?? session.model;
         return {
           sessionId: session.threadId,
@@ -2531,10 +2645,18 @@ export class OrchestrationService {
             ? {
                 execution: {
                   sessionId: session.threadId,
+                  ...(currentEnvironmentId &&
+                  currentEnvironmentId === recordedEnvironmentId
+                    ? { environment: { kind: 'current' as const } }
+                    : {}),
                   agentId: publicAgentIdFromRuntimeKey(
                     session.assignedAgentSlug,
                   ),
                   provider: session.provider,
+                  ...(executionAgentId ? { executionAgentId } : {}),
+                  ...(expectedDefinitionFingerprint
+                    ? { expectedDefinitionFingerprint }
+                    : {}),
                   ...(connection ? { engineConnectionId: connection } : {}),
                   ...(model ? { model } : {}),
                   ...(session.appliedModel
@@ -3370,7 +3492,8 @@ export class OrchestrationService {
       return ref ? { ...input, credentialProfileRef: ref } : input;
     }
     if (input.credentialProfileRef) return input;
-    const agentSlug = input.metadata?.agentSlug;
+    const agentSlug =
+      input.metadata?.executionAgentId ?? input.metadata?.agentSlug;
     if (typeof agentSlug !== 'string' || !agentSlug) return input;
     if (!this.options.loadAgentExecutionConfig) return input;
     try {
@@ -3786,7 +3909,7 @@ export class OrchestrationService {
   recordPeerDelegationPendingRequest(input: {
     taskId: string;
     environmentId: string;
-    pendingRequest: { id: string; type?: string; title?: string } | null;
+    pendingRequest: PeerReportedPendingRequest | null;
     /**
      * Set when the paired Station has just answered `respond` for this
      * request id: clear the observation only if it still names that request,
@@ -3825,23 +3948,45 @@ export class OrchestrationService {
         { threadId, length: rawId.length },
       );
     const id = idRefused ? undefined : rawId;
-    const title = input.pendingRequest?.title?.trim();
+    const reported = input.pendingRequest;
+    const title = reported?.title?.trim();
+    const body = reported?.body?.trim();
+    // The binding pair is stored only whole and within bounds; a cut id
+    // would name another request, so an over-long one leaves no binding
+    // (the inbox then keeps the note rather than offering an answer).
+    const binding =
+      reported?.eventId &&
+      reported.threadId &&
+      Array.from(reported.eventId).length <= ATTENTION_REQUEST_ID_MAX_CHARS &&
+      Array.from(reported.threadId).length <= ATTENTION_REQUEST_ID_MAX_CHARS
+        ? { eventId: reported.eventId, threadId: reported.threadId }
+        : undefined;
     const next = id
       ? {
           id,
-          ...(input.pendingRequest?.type
-            ? { type: input.pendingRequest.type }
-            : {}),
+          ...(isPeerRequestType(reported?.type) ? { type: reported.type } : {}),
           ...(title ? { title: boundedPeerRequestTitle(title) } : {}),
+          ...(binding ?? {}),
+          ...(body
+            ? {
+                body: boundedPeerText(
+                  body,
+                  PEER_PENDING_REQUEST_BODY_MAX_CHARS,
+                ),
+              }
+            : {}),
+          ...(typeof reported?.callerCanRespond === 'boolean'
+            ? { callerCanRespond: reported.callerCanRespond }
+            : {}),
           observedAt: new Date().toISOString(),
         }
       : null;
     if (
       next === null
         ? current === null || current === undefined
-        : current?.id === next.id &&
-          current.type === next.type &&
-          current.title === next.title
+        : current !== null &&
+          current !== undefined &&
+          samePeerPendingRequest(current, next)
     )
       return false;
     this.projectAndPublishEvent({
@@ -3926,9 +4071,16 @@ export class OrchestrationService {
     return true;
   }
 
+  /**
+   * `options.threadIds` narrows the read to those sessions (station#3413: the
+   * digest of ONE Session must not fold the whole inventory). Each is still
+   * held to the same readability and ephemeral checks as the full read.
+   */
   async listSessionReadModel(
     authority: SessionReadScope,
+    options?: { threadIds?: readonly string[] },
   ): Promise<OrchestrationSessionSummary[]> {
+    const only = options?.threadIds ? new Set(options.threadIds) : undefined;
     this.initialize();
     await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
     this.evictCollidingAttachedAliases();
@@ -3948,6 +4100,7 @@ export class OrchestrationService {
     const observedAt = new Date().toISOString();
     const readableThreadIds = [...threadIds].filter(
       (threadId) =>
+        (!only || only.has(threadId)) &&
         !this.isEphemeralSession(threadId) &&
         this.sessionAuthz.canReadSession(threadId, authority),
     );
@@ -4328,6 +4481,42 @@ export class OrchestrationService {
   }
 
   /**
+   * #3412: the Project and directory one Session is bound to, for a reader
+   * allowed to read it, without materializing its transcript: the Project
+   * its start stamped (`firstStartedMetadataOfThread`, which later sparse
+   * reconfiguration cannot shadow) and the loaded or persisted row's `cwd`.
+   * `null` when the authority may not read the Session or Station has no
+   * record of it. A read-only attached Session names no Project here: its
+   * attribution is a correctable later statement, which only the full read
+   * model folds.
+   */
+  readSessionWorkspaceBinding(
+    threadId: string,
+    authority: SessionReadScope,
+  ): { projectSlug?: string; cwd?: string } | null {
+    this.initialize();
+    if (
+      this.isEphemeralSession(threadId) ||
+      !this.sessionAuthz.canReadSession(threadId, authority)
+    )
+      return null;
+    const session =
+      this.sessionReadModel.get(threadId) ??
+      this.options.eventStore?.readSessionByThread(threadId);
+    if (!session) return null;
+    const projectSlug =
+      session.controlMode === 'read-only-attached'
+        ? undefined
+        : this.firstStartedMetadataOfThread(threadId)?.projectSlug;
+    return {
+      ...(typeof projectSlug === 'string' && projectSlug.length > 0
+        ? { projectSlug }
+        : {}),
+      ...(session.cwd ? { cwd: session.cwd } : {}),
+    };
+  }
+
+  /**
    * #2377 slice C2a: whether Station recorded a start for this session, so a
    * station-control call that names it is a follow-up, not a new session.
    */
@@ -4519,6 +4708,8 @@ export class OrchestrationService {
     resumeCursor?: unknown;
     resumeModel?: string;
     transcriptSeed?: string;
+    nativeSourceSessionId?: string;
+    nativeResumeBindingKey?: string;
     contextBoundary?: ConversationContextBoundaryProjection;
   }> {
     this.initialize();
@@ -4605,11 +4796,13 @@ export class OrchestrationService {
     authority: SessionReadScope,
     target: {
       agentId: string;
+      executionAgentId?: string;
       environmentId: string;
       connectionId?: string;
       modelId?: string;
       idempotencyKey: string;
       messageDigest: string;
+      provider?: EngineId;
     },
   ): ReturnType<ConversationLineage['prepareConversationHandoff']> {
     this.initialize();
@@ -4865,10 +5058,30 @@ export class OrchestrationService {
         summary.answerability?.answerable !== true
       )
         return unavailable();
+      const startMetadata = this.readLatestSessionStartMetadata(
+        reference.threadId,
+      );
+      const executionAgentId =
+        typeof startMetadata?.executionAgentId === 'string'
+          ? agentId(startMetadata.executionAgentId)
+          : undefined;
+      const expectedDefinitionFingerprint =
+        startMetadata?.expectedDefinitionFingerprint;
+      if (
+        expectedDefinitionFingerprint !== undefined &&
+        (!executionAgentId ||
+          typeof expectedDefinitionFingerprint !== 'string' ||
+          !/^sha256:[0-9a-f]{64}$/.test(expectedDefinitionFingerprint))
+      )
+        return unavailable();
       return {
         state: 'open',
         reference,
         agentId: summary.assignedAgentSlug,
+        ...(executionAgentId ? { executionAgentId } : {}),
+        ...(expectedDefinitionFingerprint
+          ? { expectedDefinitionFingerprint }
+          : {}),
         conversationId: summary.conversationId,
         provider: adapter.provider,
         engineId: engineIdForAdapter(adapter),
@@ -5819,6 +6032,11 @@ export class OrchestrationService {
             confinement: _untrustedConfinement,
             ...publicStartInput
           } = input as ProviderSessionStartInput;
+          const admittedStartWorkspace =
+            internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
+            readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
+            internal?.receiverExecutionAdmission?.admitted ??
+            (await this.adoptedChildAdmittedWorkspace(publicStartInput));
           let startInput = await resolveStartSessionCwd(
             normalizeOmittedModelId(
               withoutDispatchCanonicalCwd(
@@ -5833,10 +6051,11 @@ export class OrchestrationService {
             // bound resource path (outside the compat project default) is
             // admitted rather than re-derived, and never forged: the
             // coordinate arrives only via internal options, and the effect
-            // closure below verifies the prepared input against it.
-            internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
-              readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
-              internal?.receiverExecutionAdmission?.admitted,
+            // closure below verifies the prepared input against it. #3429:
+            // an adopted child's successor is admitted to the folder its
+            // conversation recorded, re-verified now (see
+            // `adoptedChildAdmittedWorkspace`).
+            admittedStartWorkspace,
             this.options.resolveProjectSessionDirectory,
           );
           // Station #90 lane D (D5): record the Project's local id beside its
@@ -5844,9 +6063,7 @@ export class OrchestrationService {
           startInput = withSessionLocalProjectId(
             startInput,
             this.options.listProjects,
-            internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
-              readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
-              internal?.receiverExecutionAdmission?.admitted,
+            admittedStartWorkspace,
           );
           // #2873: record the canonical folder a scoped dispatch was
           // admitted into (decided again here, for the directory this start
@@ -6593,6 +6810,8 @@ export class OrchestrationService {
             // request's grant, like every other start, and (#1796) who
             // granted it. A grant naming no grantor is refused.
             adoptionConfinement(context?.fullAccessGrant),
+            // #3386: where a conversation no project claims continues.
+            command.target,
           );
         case 'sendTurn': {
           // Monitor envelopes register here, at the one execution choke
@@ -8029,26 +8248,54 @@ export class OrchestrationService {
               command.threadId,
               command.requestId,
             );
-          const questionnaire = readHarnessQuestionnaire(
+          // #3390: a form input request — a harness question or a tool
+          // server's elicitation, read through one reader whether the event
+          // was stored before or after #3390. Accepted content must fit the
+          // form the person was actually shown — this exact opened event —
+          // and is refused with a reason otherwise; never coerced or cut to
+          // fit. This runs whatever the client checked: a client is not
+          // trusted to have run the same validator.
+          const inputForm = inputRequestFromRequestEvent(
             currentQuestionRequest?.state === 'found' &&
               currentQuestionRequest.event.payload.method === 'request.opened'
-              ? currentQuestionRequest.event.payload.payload?.questionnaire
+              ? currentQuestionRequest.event.payload
               : undefined,
           );
-          if (questionnaire || command.answers !== undefined) {
+          let inputContent:
+            | ReturnType<typeof validateInputRequestContent>
+            | undefined;
+          if (
+            inputForm ||
+            command.content !== undefined ||
+            command.answers !== undefined
+          ) {
             if (
-              !questionnaire ||
+              !inputForm ||
               !command.expectedRequestEventId ||
               command.decision === 'acceptForSession'
             )
               throw new RequestEventGuardError(
                 'request_verification_unavailable',
-                'Inspect the current question before answering it.',
+                'Inspect the current request before answering it.',
               );
-            if (command.decision === 'accept')
-              validateHarnessQuestionAnswers(questionnaire, command.answers);
-            else if (command.answers !== undefined)
-              throw new Error('A cancelled question cannot carry answers.');
+            if (command.content !== undefined && command.answers !== undefined)
+              throw new Error('Send the answer once, as content.');
+            if (command.decision === 'accept') {
+              const submitted =
+                command.content ??
+                (command.answers !== undefined
+                  ? harnessAnswersToInputContent(inputForm, command.answers)
+                  : undefined);
+              if (submitted === undefined)
+                throw new Error('Fill in the form before sending it.');
+              inputContent = validateInputRequestContent(inputForm, submitted);
+            } else if (
+              command.content !== undefined ||
+              command.answers !== undefined
+            )
+              throw new Error(
+                'A declined or cancelled request cannot carry an answer.',
+              );
           }
 
           const assertAnswerCurrent = () => {
@@ -8174,13 +8421,13 @@ export class OrchestrationService {
           // old `/tool-approval` path did. Passed only when there is one, so
           // an adapter never sees a context it cannot use.
           const requestContext =
-            questionnaire || context?.clientOrigin
+            inputForm || context?.clientOrigin
               ? {
                   ...(context?.clientOrigin
                     ? { clientOrigin: context.clientOrigin }
                     : {}),
-                  ...(command.answers ? { answers: command.answers } : {}),
-                  ...(questionnaire && command.expectedRequestEventId
+                  ...(inputContent ? { inputContent } : {}),
+                  ...(inputForm && command.expectedRequestEventId
                     ? { expectedRequestEventId: command.expectedRequestEventId }
                     : {}),
                 }
@@ -8381,6 +8628,134 @@ export class OrchestrationService {
    * `dispatch` (its resolve-to-dispatch gap in the foreground seam) is
    * invisible here; closing that needs the resolve step to reserve the Session.
    */
+  async retireHandoffPredecessor(
+    handoffSessionId: string,
+    authority: SessionReadScope,
+  ): Promise<void> {
+    this.initialize();
+    const marker =
+      this.options.eventStore?.conversationHandoffForSession(handoffSessionId);
+    if (!marker)
+      throw new Error('Conversation handoff reservation was not found.');
+    await this.retireNativeContinuationSource(
+      marker.predecessorSessionId,
+      handoffSessionId,
+      authority,
+    );
+  }
+
+  async retireNativeContinuationSource(
+    sourceId: string,
+    targetId: string,
+    authority: SessionReadScope,
+  ): Promise<void> {
+    this.initialize();
+    const store = this.options.eventStore;
+    if (
+      store?.conversationForSession(targetId)?.predecessorSessionId !== sourceId
+    )
+      throw new Error('Native continuation source was not found.');
+    await this.sessionExecutionCoordinator.runLifecycleTransition(
+      sourceId,
+      async () => {
+        const source = await this.readSession(sourceId, authority);
+        const children =
+          source && this.childWork.read(sourceId, source.session.provider);
+        if (
+          !source ||
+          !this.sessionAuthz.canReadSession(sourceId, authority) ||
+          source.session.hasActiveTurn ||
+          source.session.pendingReview ||
+          this.sendTurnsInDispatch.has(sourceId) ||
+          this.sessionExecutionCoordinator.hasActiveTurn(sourceId) ||
+          (children?.observability === 'reported' &&
+            children.running.length > 0)
+        )
+          throw new Error('The source native engine is not at rest.');
+        const adapter =
+          this.sessionAdapters.get(sourceId) ??
+          this.options.adapterRegistry.get(source.session.provider);
+        if (adapter?.metadata.continuity?.nativeReturn === 'same-binding') {
+          const retirement = await adapter.retireSession?.(sourceId);
+          if (retirement?.status !== 'retired')
+            throw new Error(
+              'The source native engine has not confirmed retirement.',
+            );
+        } else {
+          if (!adapter)
+            throw new Error('The source engine adapter is unavailable.');
+          // After restart a non-native-return adapter may own no live session.
+          // Native reuse still requires the explicit retirement receipt above.
+          if (await adapter.hasSession(sourceId))
+            await this.stopSessionNow(sourceId);
+        }
+        store.recordNativeSessionRetired(sourceId);
+      },
+    );
+  }
+
+  async retireNativeReturnSource(
+    handoffSessionId: string,
+    authority: SessionReadScope,
+  ): Promise<void> {
+    this.initialize();
+    const store = this.options.eventStore;
+    const marker = store?.conversationHandoffForSession(handoffSessionId);
+    if (
+      !store ||
+      !marker?.nativeReturnSourceSessionId ||
+      !marker.nativeReturnSourceEventId
+    ) {
+      throw new Error('Native return reservation was not found.');
+    }
+    const sourceId = marker.nativeReturnSourceSessionId;
+    await this.sessionExecutionCoordinator.runLifecycleTransition(
+      sourceId,
+      async () => {
+        const source = await this.readSession(sourceId, authority);
+        const terminal = store
+          .listEvents(sourceId)
+          .filter(
+            (event) =>
+              event.method === 'turn.completed' ||
+              event.method === 'turn.aborted' ||
+              event.method === 'runtime.error',
+          )
+          .at(-1);
+        const children =
+          source && this.childWork.read(sourceId, source.session.provider);
+        if (
+          !source ||
+          !this.sessionAuthz.canReadSession(sourceId, authority) ||
+          source.session.controlMode !== 'station-owned' ||
+          source.session.hasActiveTurn ||
+          source.session.pendingReview ||
+          this.sendTurnsInDispatch.has(sourceId) ||
+          this.sessionExecutionCoordinator.hasActiveTurn(sourceId) ||
+          (children?.observability === 'reported' &&
+            children.running.length > 0) ||
+          terminal?.id !== marker.nativeReturnSourceEventId ||
+          store.conversationSessions(marker.conversationId).at(-1)
+            ?.sessionId !== handoffSessionId
+        ) {
+          throw new Error(
+            'The earlier native engine is not safely available for return.',
+          );
+        }
+        const adapter =
+          this.sessionAdapters.get(sourceId) ??
+          this.options.adapterRegistry.get(source.session.provider);
+        const retirement = await adapter?.retireSession?.(sourceId);
+        if (retirement?.status !== 'retired')
+          throw new Error(
+            'The earlier native engine has not confirmed retirement.',
+          );
+        store.recordNativeSessionRetired(sourceId);
+        store.completeNativeReturnRetirement(handoffSessionId);
+      },
+    );
+  }
+
   async retireNeverRanSession(
     threadId: string,
     context?: {
@@ -8793,6 +9168,49 @@ export class OrchestrationService {
     const recorded = recordedDispatchCanonicalCwd(input.metadata);
     const current = admission.recheck(...binding);
     if (current !== recorded) throw dispatchCwdMovedError(recorded, current);
+  }
+
+  /**
+   * #3429: a later session of a conversation Continue in Station created
+   * (its root Session records `continuationSourceThreadId`, written only by
+   * adoption) may start in the folder that conversation was admitted into,
+   * even when that folder is a worktree outside the Project folder. Only
+   * when the start names that exact folder and Project, the conversation
+   * recorded it as `dispatchCanonicalCwd` (server-written), the folder still
+   * resolves to that record, and it still passes adoption's own check (the
+   * Project folder or a genuine worktree of its repository) right now.
+   * Anything else gets no coordinate and meets the ordinary rule.
+   */
+  private async adoptedChildAdmittedWorkspace(
+    input: ProviderSessionStartInput,
+  ): Promise<
+    { threadId: string; projectSlug: string; cwd: string } | undefined
+  > {
+    const store = this.options.eventStore;
+    const projectSlug = input.metadata?.projectSlug;
+    if (!store || !input.cwd || typeof projectSlug !== 'string' || !projectSlug)
+      return undefined;
+    const cwd = resolve(expandTilde(input.cwd));
+    const conversationId =
+      store.conversationForSession(input.threadId)?.conversationId ??
+      input.threadId;
+    if (!store.readSessionByThread(conversationId)?.continuationSourceThreadId)
+      return undefined;
+    const recorded = this.inheritedDispatchCanonicalCwd({ ...input, cwd });
+    if (recorded === undefined) return undefined;
+    try {
+      if (canonicalPath(cwd) !== recorded) return undefined;
+      const place = await resolveContinuationPlace({
+        cwd: recorded,
+        projects: this.options.listProjects?.() ?? [],
+        hosted: this.options.requireTenantExecutionContext?.() === true,
+      });
+      if (place.cwd !== recorded || place.project?.slug !== projectSlug)
+        return undefined;
+    } catch {
+      return undefined;
+    }
+    return { threadId: input.threadId, projectSlug, cwd };
   }
 
   /**

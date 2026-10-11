@@ -1,0 +1,15 @@
+{
+  "revision": "ecd7add0d0d6da04c9a68e4f732a6442723b6ffd",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Inspected the before/after resting UI at 390x844 in light theme using the same isolated sample home. Before captures retain c5f0c9ec70, after captures retain c9a03dc150; later callback protection and custom Agent purpose do not change the pictured resting state. Sources reviewed against current UI; appearance only, no receiver/provider/native/release proof.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Inspected the before/after resting UI at 390x844 in light theme using the same isolated sample home. Before captures retain c5f0c9ec70, after captures retain c9a03dc150; later callback protection and custom Agent purpose do not change the pictured resting state. Sources reviewed against current UI; appearance only, no receiver/provider/native/release proof.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/chat-start/StartComposer.css","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Inspected the before/after resting UI at 390x844 in light theme using the same isolated sample home. Before captures retain c5f0c9ec70, after captures retain c9a03dc150; later callback protection and custom Agent purpose do not change the pictured resting state. Sources reviewed against current UI; appearance only, no receiver/provider/native/release proof.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/chat-start/StartComposer.css","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Inspected the before/after resting UI at 390x844 in light theme using the same isolated sample home. Before captures retain c5f0c9ec70, after captures retain c9a03dc150; later callback protection and custom Agent purpose do not change the pictured resting state. Sources reviewed against current UI; appearance only, no receiver/provider/native/release proof.","inputs":["docs/learn/media/project-start-before.png","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Inspected the before/after resting UI at 390x844 in light theme using the same isolated sample home. Before captures retain c5f0c9ec70, after captures retain c9a03dc150; later callback protection and custom Agent purpose do not change the pictured resting state. Sources reviewed against current UI; appearance only, no receiver/provider/native/release proof.","inputs":["docs/learn/media/project-start-after.png","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/views/ProjectPage.tsx"]}
+  ]
+}

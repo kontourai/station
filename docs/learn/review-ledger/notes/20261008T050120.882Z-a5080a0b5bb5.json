@@ -1,0 +1,7 @@
+{
+  "revision": "04dded92fb12792e7091859330e2cce926387999",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Merged main 5326f034: station-runtime.ts delta since the last review is additive wiring only (relayInvitationOwner pass-through, projectMcpServers resolution from Knowledge roots, project native tool loader). Checked this document's runtime claims; none reference those seams and the described behavior is unchanged.","inputs":["docs/architecture.md","packages/cli/package.json","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

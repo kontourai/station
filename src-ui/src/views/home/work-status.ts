@@ -1,3 +1,4 @@
+import { SESSION_STATUS_WORDS } from '@kontourai/station-contracts/session-attention';
 import { formatDuration } from '../../utils/relativeTime';
 import type { HomeWorkItem } from './home-view-model';
 import type { WorkAttentionKind, WorkFacts } from './work-facts';
@@ -113,23 +114,13 @@ function epochMs(value: string | undefined): number | undefined {
 
 type Rung = Omit<WorkStatus, 'line'>;
 
-const ATTENTION_WORDS: Record<WorkAttentionKind, string> = {
-  approval: 'Needs approval',
-  answer: 'Needs answer',
-  // The generic rung, for an owed decision whose kind nothing recorded.
-  waiting: 'Waiting on you',
-  queued: 'Queued to send',
-  blocked: 'Blocked',
-  interrupted: 'Interrupted',
-};
-
 /**
  * The ladder's word for one kind of owed decision, for a surface that marks
  * that decision without a whole row to classify: the transcript's approval
  * marker says the pill's "Needs approval" from here, not from a copy.
  */
 export function attentionWord(kind: WorkAttentionKind): string {
-  return ATTENTION_WORDS[kind];
+  return SESSION_STATUS_WORDS[kind];
 }
 
 function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
@@ -140,7 +131,7 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
       rung: 'external',
       lane: 'external',
       tone: 'neutral',
-      word: 'Elsewhere',
+      word: SESSION_STATUS_WORDS.elsewhere,
       reason: `Started in ${item.agentLabel}`,
     };
   }
@@ -153,7 +144,7 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
         rung: kind,
         lane: 'needsYou',
         tone: 'attention',
-        word: ATTENTION_WORDS[kind],
+        word: SESSION_STATUS_WORDS[kind],
       };
     }
     case 'Failed':
@@ -163,7 +154,7 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
         rung: 'failed',
         lane: 'finished',
         tone: 'broken',
-        word: 'Failed',
+        word: SESSION_STATUS_WORDS.failed,
         detail: item.failureNotice,
       };
     case 'Stopped':
@@ -171,7 +162,7 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
         rung: 'stopped',
         lane: 'finished',
         tone: 'neutral',
-        word: 'Stopped',
+        word: SESSION_STATUS_WORDS.stopped,
         reason: item.failureNotice,
       };
     case 'Unanswerable':
@@ -179,7 +170,7 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
         rung: 'unanswerable',
         lane: 'idle',
         tone: 'neutral',
-        word: 'Elsewhere',
+        word: SESSION_STATUS_WORDS.elsewhere,
         reason: item.unanswerableNotice,
       };
     case 'Running': {
@@ -228,7 +219,7 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
         rung: 'running',
         lane: 'running',
         tone: 'active',
-        word: 'Running',
+        word: SESSION_STATUS_WORDS.running,
         detail: activity?.toolName,
         since,
       };
@@ -238,12 +229,22 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
         rung: 'draft',
         lane: 'drafts',
         tone: 'neutral',
-        word: 'Draft',
+        word: SESSION_STATUS_WORDS.draft,
       };
     case 'Completed':
-      return { rung: 'done', lane: 'finished', tone: 'neutral', word: 'Done' };
+      return {
+        rung: 'done',
+        lane: 'finished',
+        tone: 'neutral',
+        word: SESSION_STATUS_WORDS.done,
+      };
     default:
-      return { rung: 'idle', lane: 'idle', tone: 'neutral', word: 'Idle' };
+      return {
+        rung: 'idle',
+        lane: 'idle',
+        tone: 'neutral',
+        word: SESSION_STATUS_WORDS.idle,
+      };
   }
 }
 

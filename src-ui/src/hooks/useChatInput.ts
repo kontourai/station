@@ -866,6 +866,12 @@ export function useChatInput({
     ],
   );
 
+  const openModelForExecution = useCallback(() => {
+    if (!sessionId) return;
+    closeCommand();
+    openModel();
+  }, [sessionId, closeCommand, openModel]);
+
   const handleModelOpen = useCallback(() => {
     if (!sessionId) return;
     if (!canModelSelect) {
@@ -1167,6 +1173,7 @@ export function useChatInput({
       handleApprovalModeChange,
       handleAcpSessionModeChange,
       handleModelOpen,
+      openModelForExecution,
       handleModelClose: closeModel,
       handleCommandSelect,
       handleCommandClose: closeCommand,
@@ -1213,6 +1220,7 @@ export function useChatInput({
       handleApprovalModeChange,
       handleAcpSessionModeChange,
       handleModelOpen,
+      openModelForExecution,
       closeModel,
       handleCommandSelect,
       closeCommand,

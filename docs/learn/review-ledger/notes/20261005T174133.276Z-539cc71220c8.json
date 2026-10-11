@@ -1,0 +1,7 @@
+{
+  "revision": "a95306807baeb2227e447a207332218a0ba597ac",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#3382 review round: ToolCallDisplay now isolates right-to-left words in the row label and the details' Tool line as well as the details blocks (isolateRightToLeft); added that to the display-form bullet. Checked by the label/Tool-line RTL test, fault-injected for each site.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/chat/ToolCallDisplay.tsx"]}
+  ]
+}

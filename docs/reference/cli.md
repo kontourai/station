@@ -871,6 +871,13 @@ the CLI. Chat currently uses that process directory rather than the preserved
 the Station checkout. For directory-based work, pass an explicit target-visible
 `--cwd`. This is a current caller limitation, not a Project authorization grant.
 
+With `--on=<environment>` and neither `--project` nor `--cwd`, a new chat sends
+no workspace, because this machine's directory means nothing on another Station.
+A directory workspace (the default for the current Station, or `--cwd`, or
+`station delegate --project-path`/`--cwd`) needs the operator's credential or a
+device holding the `coding:exec` grant; a paired device without it is refused with
+`working-directory-not-granted` and nothing starts. `--project` needs no grant.
+
 On continuation, the current caller omits workspace selection: `--project`
 and `--cwd` have no effect and are not warned about. The Conversation keeps its
 persisted workspace. Omit those flags when continuing; start a new chat to
@@ -1340,7 +1347,8 @@ carries `requestEventId`, the `request.opened` event it was read from.
 `respond` looks the request up first and, for an approval or permission this
 Station still lists, sends that id as `expectedRequestEventId`, so the server
 answers the request that was listed and refuses one that changed. A question
-(a request carrying a questionnaire) is never bound this way, so the server
+(a request carrying an input-request form, or a stored pre-#3390
+questionnaire) is never bound this way, so the server
 still refuses to close one that was not inspected. A request the lookup does
 not find is posted without the id and the server decides; nothing is refused
 client-side.
@@ -1549,8 +1557,25 @@ station connections create --data=<json> [--api-base=<url>]
 station connections update <id> --data=<json> [--api-base=<url>]
 station connections delete <id> [--api-base=<url>]
 station connections test <id> [--api-base=<url>]
+station connections recovery <id> [--api-base=<url>]
+station connections profiles <id> [--api-base=<url>]
+station connections profile-upsert <id> --data='{"ref":"...","label":"..."}' [--api-base=<url>]
+station connections profile-env <id> <profile-ref> --data='{"env":{"NAME":"value"}}' [--api-base=<url>]
+station connections profile-delete|profile-enroll|profile-unenroll <id> <profile-ref> [--api-base=<url>]
+station connections recovery-policy <id> --automatic=<true|false> [--api-base=<url>]
+station connections profile-import <id> <profile-ref> [--include-credentials] [--api-base=<url>]
+station connections profile-apply <id> <profile-ref> --confirm [--timeout-ms=<ms>] [--api-base=<url>]
 ```
 
+`profile-env` replaces a credential profile's non-secret env overlay
+(`{"env":{}}` clears it). Credential-shaped names and values are refused by a
+heuristic (names such as `*_KEY`, `*_TOKEN`, `*_AUTH`, `*_HEADERS`, `*_PAT`;
+values with URL userinfo or an authorization header); set such a name to `""`
+to mask an inherited value. `profile-upsert` refuses an `env` field.
+`profiles` and `profile-env` print each profile's overlay, or `envInvalid`
+with the offending variable names when the saved overlay breaks the rules;
+`recovery` does not. See
+[credential profile env overlays](../guides/connections.md#give-a-credential-profile-its-own-routing).
 `create`, `update` and `delete` print the resolved target to stderr
 (`Target: station=… endpoint=… source=…`) before the request, because the
 default target can be a saved remote Station. `create` refuses an `id` that
@@ -1571,7 +1596,8 @@ station flow report <project> <runId> [--api-base=<url>]
 ```
 
 `attach-command` runs the command **server-side in the project workspace**
-(same trust level as scheduler jobs and tool servers) and attaches the output
+(same trust level as scheduler jobs and tool servers, and a paired device needs the
+operator's `coding:exec` grant: `command-not-granted` otherwise) and attaches the output
 tail as claim evidence: exit 0 attaches the claim with status `assumed` — a
 passing command is a claim, not verification, and Surface downgrades
 `verified` without backing evidence; a non-zero exit or timeout attaches
@@ -1852,7 +1878,13 @@ version `install.sh` made active (on Linux and macOS), the unit runs the
 archive's bundled Node.js through `<install root>/current` (and puts
 `current/runtime/bin` on its `PATH`) with the fixed service launcher that
 `service install` copies to `<install root>/runtime/station-launcher.mjs`; the
-launcher runs the active version. The
+launcher runs the active version. For the version `install.ps1` made active
+(on Windows, #2675 W3), `service install` also copies that version's
+`runtime\node.exe` to `<install root>\runtime\node.exe`, and the task's
+`cmd.exe` wrapper runs that copy with the launcher, from `<install
+root>\runtime`: no junction is on the path the task executes, and the
+running launcher holds no version directory open, so an update can switch
+`current` and prune old versions under it. The
 service manifest records which (`kind`: `source` or `archive`) and, for such
 an archive, its `installRoot`; the installer and `station upgrade` recognize
 the service by that root. Installing a service from another version under
@@ -1897,6 +1929,25 @@ run `station service stop --instance=<name>` and
 `station service start --instance=<name>`: each start tries the restore once
 more. That includes any restart of the launcher, a reboot among them: every
 launcher start in this state runs one restore attempt on its own.
+
+On Windows the launcher supervises itself, because Task Scheduler does
+neither of the things the other two managers do for it: it does not run a task
+again when its program exits, and `schtasks /End` ends only the `cmd.exe`
+wrapper, not the processes it started. So the Windows launcher, where it
+would exit for its manager to restart it (the running version exited, or a
+step of an update failed, such as a restore), waits and starts over from
+`runtime\service-state.json` in the same process: 5 seconds, doubling to at
+most 60, and back to 5 after a run of 10 minutes. A failing restore is still
+counted and still ends in needs-operator. The launcher stops when its
+wrapper is gone, and it stops the running version by closing their IPC
+channel, which `service run` answers with the same orderly shutdown a
+SIGTERM starts elsewhere. `service stop` therefore ends the task, waits for
+the launcher to stop Station and exit (up to its 150-second stop budget, after
+which it ends the launcher by pid only if the launcher's start time proves the
+pid is still the launcher's, and otherwise refuses, naming the pid), and then
+stops anything left by record.
+If the launcher process itself is killed, nothing starts it again until the
+next logon or `service start`.
 `station service status` shows the update (`update` in `--json`), and in this
 state names the recovery; it is the place to see it, since no Station runs
 for a client to ask. While the launcher that accepted the update runs, the service's
@@ -2000,6 +2051,9 @@ did not persist. Unlike the macOS (`KeepAlive`) and Linux (`Restart=always`)
 units, the Windows task does not relaunch a service that exits: Task
 Scheduler's restart settings apply to a task it could not start, and a wrapper
 that exits non-zero is left stopped until the next logon or `service start`.
+A service of an `install.ps1` install runs the fixed launcher, which restarts
+the Station it supervises itself (see the self-update section above); a
+service installed from any other code root is not restarted.
 `service status` (and `station upgrade`) read the same six values on a
 `scheduling` line: a task registered by an earlier version reports `stale`
 with the reinstall command, and `healthy` is false until it is reinstalled.
@@ -2226,6 +2280,8 @@ station environment access deny [<request-id-or-offer-id>|--latest] [--force] [-
 station environment access devices [--json] [--api-base=<loopback-url>|--station=<name>]
 station environment access scope <device-id|id-prefix|name> (--add=<scope,…>|--remove=<scope,…>|--set=<scope,…>) [--dry-run] [--api-base=<loopback-url>|--station=<name>]
 station environment access scopes [--json]
+station environment access revoke <device-id|id-prefix|name> [--force] [--api-base=<loopback-url>|--station=<name>]
+station environment access remove <device-id|id-prefix|name> [--force] [--api-base=<loopback-url>|--station=<name>]
 station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
 station environment hosts [--api-base=<url>]
 station environment list [--api-base=<url>]
@@ -2303,6 +2359,18 @@ station environment peers remove <environment-id>
   it; re-running changes nothing already reset. A paired remote CLI cannot run
   these verbs: they refuse a non-loopback target before reading any
   credential.
+- `access revoke` and `access remove` finish what the Paired devices panel
+  cannot do from a native host app (#3256), on the same host-only channel and
+  with the same device selector as `access scope` (id, unique id prefix, or
+  exact name; an ambiguous one is refused). `access revoke` ends a live
+  device's access immediately, closes its terminal and voice connections, and
+  resets to Ask what its full access had granted, printing the same report as
+  `--remove approval:full-access`; the device can pair again later. `access
+  remove` deletes the record of an already-revoked device; a device that is
+  still paired is refused (revoke it first). Both name the device before
+  acting and fail unless Station's answer names that same device as revoked.
+  Neither can be undone, so an interactive run asks first, and a run with no
+  terminal is refused before Station is contacted unless it passes `--force`.
 - `environment peers` manages the **outbound** peer-credential store: the
   credentials this Station presents when it delegates to another Station, as
   opposed to the inbound device credentials `access`/pairing issues. `peers add`
@@ -2382,7 +2450,7 @@ install state, provenance, ownership marker and active link, then re-runs that
 version's installer with the recorded release manifest. On Windows the
 installer is the version's `install.ps1`, run through the system Windows
 PowerShell, and the install root's ACL (current user only) is checked in place
-of POSIX mode bits; a Windows service is not switched yet (#2675 W3). Public-manifest
+of POSIX mode bits. Public-manifest
 installs record the URL in schema-4 state; an explicit
 `STATION_INSTALL_PUBLIC_MANIFEST_URL` overrides it. The installer keeps the ports
 the install recorded: the CLI's own `STATION_SERVER_PORT`/`STATION_UI_PORT`

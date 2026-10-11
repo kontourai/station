@@ -1,0 +1,7 @@
+{
+  "revision": "e8ed3e747a8092969560e2c76a0ab88a6663a7ea",
+
+  "notes": [
+    {"path":"docs/acp-chat-architecture.md","note":"#3411 fix round: depends on docs/guides/acp.md, whose probe-session paragraph changed again. This historical proposal makes no claim about capability-probe sessions; no prose change.","inputs":["docs/acp-chat-architecture.md","docs/guides/acp.md"]}
+  ]
+}

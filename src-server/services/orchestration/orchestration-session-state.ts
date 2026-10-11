@@ -307,7 +307,27 @@ export function trackOrchestrationSession(options: {
     options.session.threadId,
     options.session.provider,
   );
-  options.sessionReadModel.set(options.session.threadId, options.session);
+  const existing = options.sessionReadModel.get(options.session.threadId);
+  const nativeState =
+    existing?.provider === options.session.provider ? existing : undefined;
+  const retainCursor =
+    options.session.resumeCursor === undefined &&
+    nativeState?.resumeCursor !== undefined;
+  const retainPersistence =
+    options.session.persistSession === undefined &&
+    nativeState?.persistSession !== undefined;
+  options.sessionReadModel.set(
+    options.session.threadId,
+    retainCursor || retainPersistence
+      ? {
+          ...options.session,
+          ...(retainCursor ? { resumeCursor: nativeState?.resumeCursor } : {}),
+          ...(retainPersistence
+            ? { persistSession: nativeState?.persistSession }
+            : {}),
+        }
+      : options.session,
+  );
 }
 
 export async function resolveOrchestrationAdapterForThread(options: {
@@ -387,6 +407,7 @@ export function projectOrchestrationEventToReadModel(options: {
     case 'session.configured':
       nextSession = {
         ...baseSession,
+        modelRoute: readModelRoute(event.metadata?.modelRoute),
         // A session already marked terminal keeps that status: 'closed' is
         // preserved today, and a `dead` binding (archive#1827) must not be
         // resurrected to 'ready' by a stray/late configured event either —
@@ -509,6 +530,19 @@ export function buildOrchestrationSessionSummary(options: {
   conversationDraftFacts?: ConversationDraftFacts;
 }): OrchestrationSessionSummary {
   const base = options.loaded ?? options.persisted;
+  const persistedNativeState =
+    options.persisted?.provider === base?.provider &&
+    options.persisted?.threadId === base?.threadId
+      ? options.persisted
+      : undefined;
+  const resumeCursor =
+    base?.resumeCursor !== undefined
+      ? base.resumeCursor
+      : persistedNativeState?.resumeCursor;
+  const persistSession =
+    base?.persistSession !== undefined
+      ? base.persistSession
+      : persistedNativeState?.persistSession;
   if (!base) {
     throw new Error('A persisted or loaded session is required');
   }
@@ -527,6 +561,15 @@ export function buildOrchestrationSessionSummary(options: {
         ...(delegation.title ? { title: delegation.title } : {}),
       }
     : undefined;
+  const configuredRouteEvent = [...events]
+    .reverse()
+    .find((event) => event.method === 'session.configured');
+  const modelRoute =
+    options.loaded && Object.hasOwn(options.loaded, 'modelRoute')
+      ? readModelRoute(options.loaded.modelRoute)
+      : configuredRouteEvent
+        ? readModelRoute(configuredRouteEvent.metadata?.modelRoute)
+        : readModelRoute(base.modelRoute);
   const effectiveSelection = extractEffectiveModelSelection(events);
   const selectionReceipt = extractModelSelectionReceipt(events);
   const modelLaunchPlan = extractModelLaunchPlan(events);
@@ -605,21 +648,13 @@ export function buildOrchestrationSessionSummary(options: {
       observedBy: options.answerability.observedBy,
       observedAt: options.answerability.observedAt,
     }),
+    ...(modelRoute ? { modelRoute } : {}),
     ...(base.model ? { model: base.model } : {}),
     ...(base.cwd ? { cwd: base.cwd } : {}),
-    ...(base.resumeCursor !== undefined
-      ? { resumeCursor: base.resumeCursor }
-      : {}),
-    // #765 A1: carried so conversation continuation can tell a cursor with a
-    // durable engine transcript behind it from one whose session was started
-    // with persistence explicitly off (the Claude adapter spawns those with
-    // `--no-session-persistence`, so presenting the cursor to a child start
-    // is guaranteed to fail). Only a LOADED session ever carries an explicit
-    // `false` — the event-store row stores false and absent identically —
-    // which is exactly the live-continuation window the guard needs.
-    ...(base.persistSession !== undefined
-      ? { persistSession: base.persistSession }
-      : {}),
+    ...(resumeCursor !== undefined ? { resumeCursor } : {}),
+    // A partial live projection cannot erase a persisted native cursor or its
+    // persistence posture; explicit false still refuses a native continuation.
+    ...(persistSession !== undefined ? { persistSession } : {}),
     ...(base.attachedSource ? { attachedSource: base.attachedSource } : {}),
     createdAt: base.createdAt,
     updatedAt: base.updatedAt,
@@ -1006,7 +1041,12 @@ function extractAttachedSessionAttribution(
     ) {
       return { state: 'attributed', slug: projectSlug };
     }
-    if (stringMeta(metadata, 'projectAttribution') !== 'ambiguous') continue;
+    const marker = stringMeta(metadata, 'projectAttribution');
+    // #3386: the follow service found no project for this session and said
+    // so. It is the newest statement, so nothing older is read past it — the
+    // same precedence the writer's stored fingerprint uses.
+    if (marker === 'unattributed') return undefined;
+    if (marker !== 'ambiguous') continue;
     const raw = metadata?.projectCandidates;
     if (!Array.isArray(raw)) continue;
     const named = raw.filter(
@@ -1134,6 +1174,19 @@ export function extractPeerPendingRequestObservation(
         : {}),
       ...(typeof record.title === 'string' && record.title.trim()
         ? { title: record.title }
+        : {}),
+      // The binding pair is read only whole.
+      ...(typeof record.eventId === 'string' &&
+      record.eventId &&
+      typeof record.threadId === 'string' &&
+      record.threadId
+        ? { eventId: record.eventId, threadId: record.threadId }
+        : {}),
+      ...(typeof record.body === 'string' && record.body.trim()
+        ? { body: record.body }
+        : {}),
+      ...(typeof record.callerCanRespond === 'boolean'
+        ? { callerCanRespond: record.callerCanRespond }
         : {}),
       observedAt,
     };
@@ -1667,10 +1720,9 @@ export async function startRecoveredOrchestrationSession(options: {
       try {
         startInput = await deps.resolveSessionAgent(startInput);
       } catch (error) {
-        // Belt-and-suspenders: the resolver's own contract is never-throws
-        // (session-agent-resolution.ts), but degrading to the unresolved
-        // input on an unexpected throw is strictly safer than failing the
-        // turn outright — this is exactly what boot recovery did.
+        if (startInput.metadata?.executionAgentId) throw error;
+        // Ordinary saved bindings retain boot recovery's unresolved-input
+        // fallback. Explicit overrides above require verified profile delivery.
         deps.logger.warn(
           'resolveSessionAgent failed during session recovery; continuing without a resolved agent definition',
           {
@@ -2230,4 +2282,31 @@ function findTerminalFailureEvent(
     turnIdentityAnchor = nextTurnIdentityAnchor(turnIdentityAnchor, event);
   }
   return lastFailure;
+}
+
+function readModelRoute(value: unknown): ProviderSession['modelRoute'] {
+  if (!value || typeof value !== 'object') return undefined;
+  const route = value as Record<string, unknown>;
+  if (
+    typeof route.connectionId !== 'string' ||
+    typeof route.label !== 'string' ||
+    typeof route.endpoint !== 'string'
+  )
+    return undefined;
+  try {
+    const url = new URL(route.endpoint);
+    if (
+      !['http:', 'https:'].includes(url.protocol) ||
+      url.username ||
+      url.password
+    )
+      return undefined;
+    return {
+      connectionId: route.connectionId,
+      label: route.label.slice(0, 200),
+      endpoint: url.origin,
+    };
+  } catch {
+    return undefined;
+  }
 }

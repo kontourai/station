@@ -1,0 +1,7 @@
+{
+  "revision": "2000dd43abd8a30ca28bb7a4ccd336ad7dfe3131",
+
+  "notes": [
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"No prose change after merging main: orchestration-service differs from main only by storing the paired Station binding, question and caller check on peer records; none of it touches what this document claims.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

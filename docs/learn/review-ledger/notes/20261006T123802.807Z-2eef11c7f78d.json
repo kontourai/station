@@ -1,0 +1,7 @@
+{
+  "revision": "5726479f1e13084afd9eccb0790ddd11e5ac7132",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"#3386 Phase B: attached external session follow now names Claude Code and Codex transcripts, Grok Build sessions and OpenCode's session database, matching station-runtime.ts attachedSessionSources (claude, codex, Grok, OpenCode). Supersedes this branch's earlier note that wrongly said main already named Grok here.","inputs":["docs/architecture.md"]}
+  ]
+}

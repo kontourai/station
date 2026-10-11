@@ -1,0 +1,7 @@
+{
+  "revision": "84ff444b2ce79f1f993e99399adc737793560698",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Re-reviewed for #3279 fix round 1: station-docs-content.ts changed only by docs:mcp:generate recompiling the module-map SecretBindingAdministration Ownership paragraph (viewer on bind/unbind, one 404 for missing and another person's binding, viewer-filtered integration projection). This manual's prose makes no secret-binding claim and its statements about generated content and docs:mcp:generate/check still hold, so no prose change.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

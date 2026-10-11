@@ -130,7 +130,11 @@
 
     "packages/shared/src/portability.ts",
 
+    "packages/shared/src/sqlite-store-integrity.ts",
+
     "packages/shared/src/station-home-archive.ts",
+
+    "packages/shared/src/station-home-store-registry.ts",
 
     "packages/shared/src/workspace-package-io.ts",
 
@@ -143,6 +147,8 @@
     "scripts/__tests__/release-sboms.test.ts",
 
     "scripts/generate-release-sboms.mjs",
+
+    "scripts/lib/portable-server-archive.mjs",
 
     "scripts/lib/release-artifacts.mjs",
 
@@ -162,37 +168,31 @@
 
     "src-server/routes/operations/monitoring.ts",
 
+    "src-server/routes/orchestration/dispatch-scope.ts",
+
     "src-server/routes/orchestration/runs.ts",
 
+    "src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts",
+
+    "src-server/runtime/mcp/station-control-dispatch-scope.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts",
+
     "src-server/services/evidence/review-evidence-module.ts",
+
+    "src-server/services/execution-target/__tests__/execution-target-resolver.test.ts",
+
+    "src-server/services/execution-target/execution-target-resolver.ts",
 
     "src-server/services/flow/flow-run-service.ts",
 
     "src-server/services/orchestration/run-service.ts",
 
-    "station",
-
-    "src-server/runtime/mcp/station-control-dispatch-scope.ts",
-
-    "src-server/routes/orchestration/dispatch-scope.ts",
-
     "src-server/tools/station-control-policy.ts",
-
-    "src-server/runtime/mcp/__tests__/station-control-dispatch-scope.test.ts",
-
-    "src-server/runtime/routes/__tests__/runtime-routes-station-control-dispatch-scope.test.ts",
-
-    "src-server/services/execution-target/execution-target-resolver.ts",
-
-    "src-server/services/execution-target/__tests__/execution-target-resolver.test.ts",
 
     "src-server/utils/path-containment.ts",
 
-    "scripts/lib/portable-server-archive.mjs",
-
-    "packages/shared/src/station-home-store-registry.ts",
-
-    "packages/shared/src/sqlite-store-integrity.ts"
+    "station"
   ],
 
   "checks": [

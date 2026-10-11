@@ -4,6 +4,7 @@ import type { SessionChildWork } from './child-work.js';
 import type { ClientOrigin } from './client-origin.js';
 import type { ConnectionRecoveryProjection } from './connection-recovery.js';
 import type { HarnessQuestionAnswers } from './harness-questions.js';
+import type { InputRequestContent } from './input-request.js';
 import type {
   ApprovalMode,
   AttachedSessionSourceMetadata,
@@ -52,7 +53,11 @@ export interface OrchestrationSendTurnInput
  */
 export type OrchestrationStartSessionInput = Omit<
   ProviderSessionStartInput,
-  'credentialProfileRef' | 'reviewIsolation' | 'confinement'
+  | 'credentialProfileRef'
+  | 'reviewIsolation'
+  | 'confinement'
+  | 'requireNativeResumeIdentity'
+  | 'nativeResumeBindingKey'
 >;
 
 /** Public wire discriminant guarantees old servers refuse before any provider effect. */
@@ -64,12 +69,32 @@ export interface ReceiptProtectedSteerCommand {
   clientInputId: string;
 }
 
+/**
+ * #3386: where the continuation of a conversation that belongs to no project
+ * runs. A conversation a project claims (by folder, or by repository from a
+ * worktree) always continues in its own folder under that project, and
+ * needs no target.
+ *
+ * - `project`: continue it under this project. Station accepts it only when
+ *   the conversation's folder is inside the project's folder or in a genuine
+ *   worktree of the project's repository; it never moves a conversation to
+ *   another folder.
+ * - `own-folder`: continue it as a No project chat confined to its own
+ *   folder. Refused for a folder too broad to confine an agent to (the home
+ *   folder, the filesystem root, and the like).
+ */
+export type AdoptSessionTarget =
+  | { kind: 'project'; projectSlug: string }
+  | { kind: 'own-folder' };
+
 export type OrchestrationCommand =
   | { type: 'startSession'; input: OrchestrationStartSessionInput }
   | {
       type: 'adoptSession';
       sourceThreadId: string;
       idempotencyKey?: string;
+      /** #3386: where a conversation no project claims continues. */
+      target?: AdoptSessionTarget;
     }
   | { type: 'sendTurn'; input: OrchestrationSendTurnInput }
   | {
@@ -112,6 +137,17 @@ export type OrchestrationCommand =
       /** Compare this exact opened event immediately before responding. */
       expectedRequestEventId?: string;
       decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+      /**
+       * #3390: accepted content for a form input request (a harness question
+       * or a tool server's elicitation), keyed by field name. Only with
+       * `accept`; the server validates it against the exact opened event.
+       */
+      content?: InputRequestContent;
+      /**
+       * @deprecated since 0.9.0; removed in 0.10.0. A pre-#3390 harness
+       * answer, translated to `content` and validated the same way. Send
+       * `content` instead; never both.
+       */
       answers?: HarnessQuestionAnswers;
     }
   | { type: 'stopSession'; threadId: string }
@@ -564,6 +600,22 @@ export interface OrchestrationPeerPendingRequest {
   type?: CanonicalRequestType;
   /** The paired Station's request title, bounded. */
   title?: string;
+  /**
+   * `delegatedInputAnswers`: the request's own `request.opened` event id and
+   * the paired Station's Session it is open on (its `currentSessionId`), so
+   * an answer can be bound to exactly this request. Present only when the
+   * paired Station reported them.
+   */
+  eventId?: string;
+  threadId?: string;
+  /** The question as the paired Station presents it, bounded. */
+  body?: string;
+  /**
+   * The paired Station's own check of THIS Station's credential on the
+   * route that answers the request. Absent when it did not report one (an
+   * older Station).
+   */
+  callerCanRespond?: boolean;
   /** When this Station observed it on the paired Station's status read. */
   observedAt: string;
 }
@@ -1290,6 +1342,7 @@ export interface OrchestrationConversationEventWindow
    */
   sessionLineage?: Array<{
     sessionId: string;
+    provider?: EngineId;
     agentSlug?: AgentId;
     /** Immutable presentation snapshot captured with the execution Session. */
     agentDisplayName?: string;
@@ -1319,7 +1372,8 @@ export const CONVERSATION_HANDOFF_RESET_FIELDS = Object.freeze([
 ] as const);
 
 export type ConversationHandoffCarriedField =
-  (typeof CONVERSATION_HANDOFF_CARRIED_FIELDS)[number];
+  | (typeof CONVERSATION_HANDOFF_CARRIED_FIELDS)[number]
+  | 'nativeSession';
 export type ConversationHandoffResetField =
   (typeof CONVERSATION_HANDOFF_RESET_FIELDS)[number];
 
@@ -1334,6 +1388,7 @@ export const CONVERSATION_HANDOFF_DISCLOSURE_LABELS: Readonly<
   authorizedTranscript: 'Recent conversation messages, up to a size limit',
   ownerTenantWorkspace: 'Workspace and identity',
   targetAgentModel: 'Selected Agent and model',
+  nativeSession: 'Earlier native engine conversation',
   providerNativeCursor: 'Provider-native cursor',
   toolState: 'Tool state',
   sessionApprovals: 'Session approvals',
@@ -1352,10 +1407,16 @@ export interface ConversationHandoffProjection {
   idempotencyKey: string;
   targetAgentId: string;
   targetConnectionId?: string;
+  targetExecutionAgentId?: string;
+  /** Actual persisted successor binding, absent before that Session starts. */
+  targetProvider?: EngineId;
+  expectedDefinitionFingerprint?: string;
   targetModelId?: string;
   createdAt: string;
   carried: readonly ConversationHandoffCarriedField[];
   reset: readonly ConversationHandoffResetField[];
+  /** A requested native return; provider acceptance remains a separate fact. */
+  nativeReturn?: { sourceSessionId: string };
 }
 
 export type ConversationHandoffEffectStatus =
@@ -1372,6 +1433,51 @@ export interface ConversationHandoffStatusProjection {
   status: ConversationHandoffEffectStatus;
   marker: ConversationHandoffProjection;
   providerTurnId?: string;
+  nativeResumeIdentity?: import('./provider.js').NativeResumeIdentityStatus;
+}
+
+/** Bounded agent-facing transcript rows; missing attribution stays unknown. */
+export interface ConversationReadMessage {
+  index: number;
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  text: string;
+  sessionId?: string;
+  model?: { id: string; source: 'provider-reported' | 'selected' };
+  textTruncated?: { originalBytes: number };
+  tools?: string[];
+  createdAt?: string;
+}
+
+export type ConversationReadProvenance =
+  | { protocolVersion: 1; status: 'unavailable' }
+  | {
+      protocolVersion: 1;
+      status: 'available';
+      currentSessionId: string;
+      sessions: NonNullable<
+        OrchestrationConversationEventWindow['sessionLineage']
+      >;
+      handoffs: ConversationHandoffProjection[];
+      /** A parent reference is provenance, not permission to read the parent. */
+      forkedFrom?: {
+        sourceConversationId: string;
+        sourceSessionId?: string;
+        branchPointTurnId?: string;
+        continuation?: 'native' | 'replay-seed';
+      };
+    };
+
+export interface ConversationReadPage {
+  conversationId: string;
+  access: 'own' | 'scope' | 'reference' | 'person';
+  notice: string;
+  messageCount: number;
+  messages: ConversationReadMessage[];
+  prevCursor: string | null;
+  nextCursor: string | null;
+  /** Older servers omit this; absence does not mean there were no handoffs. */
+  provenance?: ConversationReadProvenance;
 }
 
 export type AgentRunStatus = RunStatus;
@@ -1552,7 +1658,11 @@ export interface ConversationListItem {
 /** Execution facts from the same authorized current-child read, never Agent defaults. */
 export interface ConversationOpenExecution {
   sessionId: string;
+  /** Present only when this receiver verified the persisted execution owner as itself. */
+  environment?: { kind: 'current' };
   agentId: AgentId;
+  executionAgentId?: AgentId;
+  expectedDefinitionFingerprint?: string;
   provider: EngineId;
   engineConnectionId?: string;
   model?: string;

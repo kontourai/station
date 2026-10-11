@@ -13,6 +13,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useSkillsQuery: () => ({ data: skills }),
   useProviderCommandsQuery: (...args: unknown[]) =>
     useProviderCommandsQueryMock(...args),
+  useAgentMcpPromptsQuery: () => ({ data: undefined }),
 }));
 
 vi.mock('../contexts/AgentsContext', () => ({

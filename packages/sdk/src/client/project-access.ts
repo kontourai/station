@@ -217,3 +217,28 @@ export async function changeProjectAccess(
     throw new Error('Project access change was not confirmed.');
   return { kind: 'changed' };
 }
+
+/** Extract a code for the already-selected Station; never dial or trust the link's origin. */
+export function readProjectInvitationToken(value: string): string | undefined {
+  const input = value.trim();
+  const token = /^[A-Za-z0-9_-]{43}$/u;
+  if (token.test(input)) return input;
+  try {
+    const link = new URL(input);
+    if (
+      !['http:', 'https:'].includes(link.protocol) ||
+      link.username ||
+      link.password ||
+      link.search ||
+      link.pathname !== '/account/join'
+    )
+      return undefined;
+    const fields = new URLSearchParams(link.hash.slice(1));
+    const invitation = fields.get('invitation');
+    return fields.size === 1 && invitation && token.test(invitation)
+      ? invitation
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}

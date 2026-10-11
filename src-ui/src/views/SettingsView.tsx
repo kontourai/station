@@ -1,3 +1,4 @@
+import { SectionNavigation } from '../components/SectionNavigation';
 import './SettingsView.css';
 import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import {
@@ -20,7 +21,7 @@ import { Button } from '../components/Button';
 import { ThemeToggle } from '../components/header/ThemeToggle';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { PageRow } from '../components/PageRow';
-import { SectionNav, type SectionNavItem } from '../components/SectionNav';
+import type { SectionNavItem } from '../components/SectionNav';
 import { ExistingSetupImportStepper } from '../components/setup/ExistingSetupImportStepper';
 import {
   describeReadFailure,
@@ -1695,7 +1696,14 @@ function SettingsSectionNav({
     navigateToSection(key);
   };
   return (
-    <div className="settings__navigation section-nav--rail">
+    <SectionNavigation
+      label="Settings sections"
+      pickerLabel="Settings section"
+      items={items}
+      activeKey={selectedKey}
+      showSelection={!searchQuery.trim()}
+      onNavigate={choosePage}
+    >
       <input
         type="search"
         className="settings__search"
@@ -1704,32 +1712,6 @@ function SettingsSectionNav({
         onChange={(event) => onSearchChange(event.target.value)}
         aria-label="Filter settings"
       />
-      <label className="settings__mobile-section-picker">
-        Settings section
-        <select
-          className="editor-select"
-          value={selectedKey}
-          onChange={(event) => choosePage(event.target.value)}
-        >
-          {selectedKey === 'overview' && (
-            <option value="overview">All settings</option>
-          )}
-          {items.map((item) => (
-            <option key={item.key} value={item.key}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <SectionNav
-        className="settings__section-nav section-nav--rail"
-        aria-label="Settings sections"
-        items={items}
-        activeKey={
-          searchQuery.trim() || selectedKey === 'overview' ? '' : selectedKey
-        }
-        onNavigate={choosePage}
-      />
-    </div>
+    </SectionNavigation>
   );
 }

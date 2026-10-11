@@ -147,11 +147,14 @@ export async function addStoredMessage({
   await mkdir(paths.getSessionsDir(resourceId), { recursive: true });
 
   const parsedMessage = parseReasoningFromMessage(message);
+  const metadata = (parsedMessage as UIMessageWithMetadata).metadata;
   const messageWithMetadata: UIMessageWithMetadata = {
     ...parsedMessage,
     metadata: {
-      ...(parsedMessage as UIMessageWithMetadata).metadata,
-      timestamp: Date.now(),
+      ...metadata,
+      timestamp: context?.suppressUsageAggregation
+        ? metadata?.timestamp
+        : (metadata?.timestamp ?? Date.now()),
       modelMetadata: context?.modelMetadata,
       usage: context?.usage,
       model: context?.model,

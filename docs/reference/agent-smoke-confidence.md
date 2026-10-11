@@ -32,10 +32,20 @@ does not prove the UI or CLI send paths, project working-directory behavior or
 project switching, history or inbox agreement, attachments, self-change, or
 phone/native behavior.
 
+## Check a connection in the UI
+
+**Connections → Engines → Check connection** runs the same bounded turn, with a
+visible allowance disclosure. Save changes first. The check can retry retained
+authentication failures; missing binaries and other prerequisites still block it.
+When the catalog is temporarily empty, a previously selected model can be checked
+against the engine instead of being refused solely by a stale catalog. A non-empty
+catalog that excludes that model still refuses it. A failed check is presented as
+**Check failed**, and only a proven successful turn restores runtime auth health.
+
 ## Explicit dogfood command
 
 The command refuses to run without the billable-turn confirmation flag. Each
-selected connection gets one attempt; disabled connections, missing prerequisites
+selected connection gets one attempt; disabled connections, missing non-authentication prerequisites
 and unsupported model/runtime choices fail before sending. An admitted attempt
 sends one short turn asking for no tools or modifications, with a diagnostic
 timeout clamped between 5 and 60 seconds. This instruction is not a tool sandbox.

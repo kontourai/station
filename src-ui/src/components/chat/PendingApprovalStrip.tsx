@@ -5,9 +5,9 @@ import { LazyBoundary } from '../LazyBoundary';
 import { SkeletonBlock } from '../state';
 import { type ToolApprovalOutcome, ToolCallDisplay } from './ToolCallDisplay';
 
-const loadHarnessQuestions = () =>
-  import('./HarnessQuestionRequest').then((module) => ({
-    default: module.HarnessQuestionRequest,
+const loadInputRequest = () =>
+  import('./InputRequestRequest').then((module) => ({
+    default: module.InputRequestRequest,
   }));
 
 const requestKey = (request: PendingApprovalRequest) =>
@@ -122,14 +122,12 @@ export function PendingApprovalStrip({
           aria-label="Approvals waiting on you"
         >
           {requests.map((request) =>
-            request.questionnaire ? (
+            request.inputRequest ? (
               <LazyBoundary
                 key={requestKey(request)}
-                load={loadHarnessQuestions}
+                load={loadInputRequest}
                 componentProps={{ request }}
-                pending={
-                  <SkeletonBlock count={1} label="Loading agent questions" />
-                }
+                pending={<SkeletonBlock count={1} label="Loading the form" />}
               />
             ) : (
               <ToolCallDisplay

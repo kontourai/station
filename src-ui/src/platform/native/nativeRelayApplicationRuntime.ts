@@ -1,6 +1,7 @@
 import type { SavedConnection } from '@kontourai/station-connect';
 import { createNativeApplicationTransport } from '@kontourai/station-connect/native-application';
 import type { ApprovedStationConnectionTrust } from '@kontourai/station-contracts/connection-proof';
+import { isNativeManagementRequest } from '@kontourai/station-sdk/application-session-native';
 import { createNativeApplicationSignalingBridge } from './nativeApplicationSignalingBridge';
 import { createNativeRelayIceConfigurationBridge } from './nativeRelayIceConfigurationBridge';
 import {
@@ -110,10 +111,11 @@ export async function createNativeRelayApplicationRuntime(input: {
       ((method === 'GET' || method === 'HEAD') &&
         (init?.body != null ||
           (request instanceof Request && request.body !== null))) ||
-      (!(
-        (method === 'GET' || method === 'HEAD') &&
-        READ_LEAVES.some((leaf) => leaf.test(url.pathname))
-      ) &&
+      (!isNativeManagementRequest(method, `${url.pathname}${url.search}`) &&
+        !(
+          (method === 'GET' || method === 'HEAD') &&
+          READ_LEAVES.some((leaf) => leaf.test(url.pathname))
+        ) &&
         !(
           method === 'POST' &&
           [

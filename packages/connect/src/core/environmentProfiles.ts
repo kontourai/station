@@ -122,6 +122,10 @@ const FAILURE_COPY: Record<
     summary: `${host} is running an older Station than this app needs.`,
     action: `Update Station on ${host}, then try again.`,
   }),
+  'client-protocol-unsupported': (host) => ({
+    summary: `${host} no longer supports this version of the app.`,
+    action: `Install the latest Station app or CLI on this device, then connect to ${host} again.`,
+  }),
   timeout: (host) => ({
     summary: `${host} didn't answer in time.`,
     action: 'It may be busy. Trying again shortly.',

@@ -1,0 +1,7 @@
+{
+  "revision": "4de275495bfff9019a8dcb8ebe474e2b080b0e65",
+
+  "notes": [
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed: new scripts/merge-queue-regression-decision.mjs sits under scripts/ like its sibling gate scripts; actionlint-gate.mjs change does not alter any layout claim.","inputs":["docs/guides/repository-layout.md","scripts/actionlint-gate.mjs"]}
+  ]
+}

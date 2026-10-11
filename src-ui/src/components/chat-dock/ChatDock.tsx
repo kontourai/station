@@ -68,6 +68,7 @@ import {
 import { useGitLocationByThreadId } from '../../hooks/useGitLocationByThreadId';
 import { useDockFoldsToOneRegion } from '../../hooks/useIsMobile';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
+import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
 import { useProjectIcons } from '../../hooks/useProjectIcons';
 import {
@@ -103,6 +104,7 @@ import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
 import { ContextPercentage } from '../conversation-stats/ConversationStats';
 import { LazyBoundary } from '../LazyBoundary';
+import { GLOBAL_CONTEXT } from '../modals/new-chat-modal-utils';
 import { SkillShortcutRegistrar } from '../SkillShortcutRegistrar';
 import { SkeletonBlock } from '../state';
 import {
@@ -1007,6 +1009,17 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     ],
   );
 
+  const executionSelection = useNewChatSelectionModel({
+    agents,
+    projects,
+    selectedContext: activeSessionForHook?.projectSlug ?? GLOBAL_CONTEXT,
+  });
+  const executionProfile = agents.find(
+    (entry) => entry.slug === activeSessionForHook?.agentSlug,
+  );
+  const executionRoutes = executionProfile
+    ? executionSelection.executionModelsForAgent(executionProfile)
+    : effectiveModels;
   // Chat input hook - encapsulates autocomplete, history, and input handling
   const chatInput = useChatInput({
     apiBase,
@@ -1442,6 +1455,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       initialAttachments?: FileAttachment[],
       providerId?: string,
       providerType?: string,
+      executionAgent?: AgentData,
+      expectedDefinitionFingerprint?: string,
+      executionOnCurrentStation?: boolean,
     ) => {
       if (routeToScopedChatProject(targetProjectSlug)) return;
       const effectiveProjectSlug = hasImmutableProjectScope
@@ -1465,6 +1481,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         initialAttachments,
         providerId,
         providerType,
+        executionAgent,
+        expectedDefinitionFingerprint,
+        executionOnCurrentStation,
       );
       if (!hasImmutableProjectScope && effectiveProjectSlug) {
         setActiveProjectSlug(effectiveProjectSlug);
@@ -2188,6 +2207,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               full-screen placement never had one. */}
           {isMobile ? (
             <ChatDockMobileHeader
+              routeLabel={activeOrchestrationSession?.modelRoute?.label}
               // Only when the app toolbar is hidden — otherwise its drawer
               // toggle and this one are two controls with one accessible name.
               showDrawerToggle={isMobileToolbarHidden}
@@ -2362,6 +2382,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     }
                     agent={activeChatAgent}
                     modelLabel={activeChatModelLabel}
+                    routeLabel={activeOrchestrationSession?.modelRoute?.label}
                     inputOrigin={activeOrchestrationSession?.inputOrigin}
                     onClose={removeSession}
                   />
@@ -2668,6 +2689,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       }
                       toolPolicyDelivery={toolPolicyDelivery}
                       availableModels={effectiveModels}
+                      executionModels={executionRoutes}
+                      onExecutionModelSelect={
+                        conversationBoundaryDialogs.openExecutionHandoff
+                      }
                       modelsLoading={modelsLoading}
                       chatInput={chatInput}
                       secondaryActions={secondaryActions}
@@ -2964,6 +2989,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           // bound project to a guessed No project.
           projectsLoaded: projectsConfirmed,
           projectAccentBySlug,
+          projectIconBySlug,
           recentChats: {
             items: taskItems,
             pending: taskItemsPending,
@@ -3036,6 +3062,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             providerType,
             experienceDraft,
             sendInitialMessage,
+            executionAgentId,
+            expectedDefinitionFingerprint,
+            executionOnCurrentStation,
           ) => {
             // station#4525: an explicit project choice inside the New Chat
             // modal is exactly as deliberate as a picker pick (#4524's
@@ -3043,6 +3072,16 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             // only things that may move the binding) — sync it so the
             // header agrees with the chat that's about to open instead of
             // the new session immediately diverging from a stale badge.
+            if (
+              executionAgentId &&
+              !agents.some(
+                (entry) =>
+                  entry.slug === executionAgentId && entry.executionDefault,
+              )
+            )
+              throw new Error(
+                'The selected engine binding is unavailable. Choose an engine again.',
+              );
             // Never CLEARS the binding: a modal chat started with no project
             // chosen leaves it exactly where it was.
             const sessionId = openChatForAgentInScopedPane(
@@ -3058,6 +3097,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               undefined,
               providerId,
               providerType,
+              executionAgentId
+                ? agents.find((entry) => entry.slug === executionAgentId)
+                : undefined,
+              expectedDefinitionFingerprint,
+              executionOnCurrentStation,
             );
             if (sessionId && experienceDraft)
               updateChat(sessionId, {
@@ -3209,6 +3253,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               if (forkAbortRef.current === controller)
                 forkAbortRef.current = null;
             }
+          },
+          onNewTaskStarted: () => {
+            setShowNewChatModal(false, undefined, 'started');
+            setNewChatProjectOverride(null);
+            setHandoffSource(null);
           },
           onCloseNewChat: () => {
             setShowNewChatModal(false);

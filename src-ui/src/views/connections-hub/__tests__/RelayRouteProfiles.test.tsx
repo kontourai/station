@@ -729,10 +729,10 @@ describe('RelayRouteProfiles', () => {
     });
     renderRoutes();
     expect(writeText).not.toHaveBeenCalled();
-    openDetails('Connection settings');
     fireEvent.click(
-      screen.getByRole('button', { name: 'Copy public iOS setup link' }),
+      screen.getByRole('button', { name: 'More actions for Home Station' }),
     );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Copy setup link' }));
     // iOS requires the clipboard write in the original tap activation.
     expect(writeText).toHaveBeenCalledOnce();
     const link = String(writeText.mock.calls[0]?.[0]);
@@ -759,7 +759,7 @@ describe('RelayRouteProfiles', () => {
   test('lists an unconfigured route, offers edit, and removes it without revoking trust', async () => {
     renderRoutes();
     expect(screen.getByText('Your Stations')).toBeTruthy();
-    expect(screen.getByText('Device setup required')).toBeTruthy();
+    expect(screen.getByText('Setup needed')).toBeTruthy();
     await waitFor(() =>
       expect(screen.getByText('Station needs confirmation')).toBeTruthy(),
     );
@@ -787,12 +787,14 @@ describe('RelayRouteProfiles', () => {
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
-    openDetails('Connection settings');
-    fireEvent.click(screen.getByRole('button', { name: 'Remove this route' }));
-    expect(
-      screen.getByRole('heading', { name: 'Remove broker route?' }),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Remove route' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: 'More actions for Home Station' }),
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove' }));
+    const confirm = within(
+      screen.getByRole('dialog', { name: 'Remove Home Station?' }),
+    );
+    fireEvent.click(confirm.getByRole('button', { name: 'Remove' }));
     await waitFor(() =>
       expect(mocks.remove).toHaveBeenCalledWith(
         'station-profile:home station',
@@ -801,7 +803,7 @@ describe('RelayRouteProfiles', () => {
     );
     expect(
       screen.getByText(
-        'No broker routes are saved on this device yet. Save the Station and broker details provided by the Station operator to begin setup.',
+        'No Stations yet. Open a setup link from the Station owner, or add one.',
       ),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Add a Station' })).toBeTruthy();
@@ -830,9 +832,9 @@ describe('RelayRouteProfiles', () => {
     });
     renderRoutes();
 
-    expect(screen.getByText('Device configured · not selected')).toBeTruthy();
+    expect(screen.getByText('Not in use')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Use this Station' }));
-    await screen.findByText('Station selected · account sign-in required');
+    await screen.findByText('In use · sign in needed');
     expect(mocks.setActiveConnection).toHaveBeenCalledWith(
       'station-profile:home station',
     );
@@ -914,7 +916,7 @@ describe('RelayRouteProfiles', () => {
 
     const { queryClient } = renderRoutes();
     await screen.findByText('Connection invitation needed.');
-    expect(screen.getByText('Device setup required')).toBeTruthy();
+    expect(screen.getByText('Setup needed')).toBeTruthy();
     expect(mocks.grantInvoke).toHaveBeenCalledTimes(1);
 
     const routingInvitationField = screen.getByLabelText(
@@ -957,7 +959,7 @@ describe('RelayRouteProfiles', () => {
     expect(mocks.grantInvoke).toHaveBeenCalledWith(
       'station_profile_store_read',
     );
-    expect(screen.getByText('Device setup required')).toBeTruthy();
+    expect(screen.getByText('Setup needed')).toBeTruthy();
     expect(screen.getByText('Station confirmed')).toBeTruthy();
     expect(
       queryClient.getQueryData([
@@ -1089,16 +1091,15 @@ describe('RelayRouteProfiles', () => {
       target: { value: 'test-password-only' },
     });
     fireEvent.click(
-      screen.getByLabelText(
-        'I have an operator invitation to register a new Station account',
-      ),
+      screen.getByLabelText('Create an account with a Project invitation'),
     );
-    fireEvent.change(
-      screen.getByLabelText('Operator registration invitation'),
-      { target: { value: 'test-operator-invitation' } },
-    );
+    fireEvent.change(screen.getByLabelText('Project invitation link or code'), {
+      target: {
+        value: `https://station.test/account/join#invitation=${'I'.repeat(43)}`,
+      },
+    });
     const operatorInvitationField = screen.getByLabelText(
-      'Operator registration invitation',
+      'Project invitation link or code',
     ) as HTMLInputElement;
     expect(operatorInvitationField.type).toBe('password');
     expect(operatorInvitationField.getAttribute('autocomplete')).toBe('off');
@@ -1124,7 +1125,7 @@ describe('RelayRouteProfiles', () => {
         username: 'operator-account@example.test',
         password: 'test-password-only',
       },
-      invitation: 'test-operator-invitation',
+      invitation: 'I'.repeat(43),
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Check approval' }));
@@ -1150,8 +1151,8 @@ describe('RelayRouteProfiles', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Finish device setup' }),
     );
-    await screen.findByText('Device configured · not selected');
-    expect(screen.queryByText('Device setup required')).toBeNull();
+    await screen.findByText('Not in use');
+    expect(screen.queryByText('Setup needed')).toBeNull();
     expect(repository.getRelayRouteProfiles()[0]?.configurationState).toBe(
       'configured',
     );
@@ -1787,7 +1788,7 @@ describe('RelayRouteProfiles', () => {
       screen.getByRole('button', { name: 'Sign in to this Station account' }),
     );
 
-    await screen.findByLabelText('Account invitation token');
+    await screen.findByLabelText('Project invitation link or code');
     expect(mocks.accountLogin).toHaveBeenCalledWith({
       username: 'member@example.test',
       password: 'transient-password',
@@ -1805,7 +1806,7 @@ describe('RelayRouteProfiles', () => {
     ).toBe(true);
 
     const accountInvitationField = screen.getByLabelText(
-      'Account invitation token',
+      'Project invitation link or code',
     ) as HTMLInputElement;
     expect(accountInvitationField.type).toBe('password');
     expect(accountInvitationField.getAttribute('autocomplete')).toBe('off');
@@ -1813,15 +1814,13 @@ describe('RelayRouteProfiles', () => {
     expect(accountInvitationField.getAttribute('autocorrect')).toBe('off');
     expect(accountInvitationField.getAttribute('spellcheck')).toBe('false');
     fireEvent.change(accountInvitationField, {
-      target: { value: 'one-time-account-invitation' },
+      target: {
+        value: `https://station.test/account/join#invitation=${'J'.repeat(43)}`,
+      },
     });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Accept account invitation' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Join Project' }));
     await screen.findByText(/Access was added for Project shared-project/);
-    expect(mocks.accountAcceptInvitation).toHaveBeenCalledWith(
-      'one-time-account-invitation',
-    );
+    expect(mocks.accountAcceptInvitation).toHaveBeenCalledWith('J'.repeat(43));
     expect(onInvitationAccepted).toHaveBeenCalledTimes(1);
     expect(onInvitationAccepted).toHaveBeenCalledWith(
       {
@@ -1839,8 +1838,11 @@ describe('RelayRouteProfiles', () => {
       }),
     );
     expect(
-      (screen.getByLabelText('Account invitation token') as HTMLInputElement)
-        .value,
+      (
+        screen.getByLabelText(
+          'Project invitation link or code',
+        ) as HTMLInputElement
+      ).value,
     ).toBe('');
 
     fireEvent.click(
@@ -1946,7 +1948,9 @@ describe('RelayRouteProfiles', () => {
     );
     expect(mocks.accountLogout).toHaveBeenCalledTimes(1);
     expect(mocks.accountRetire).not.toHaveBeenCalled();
-    expect(screen.queryByLabelText('Account invitation token')).toBeNull();
+    expect(
+      screen.queryByLabelText('Project invitation link or code'),
+    ).toBeNull();
     expect(
       await screen.findByLabelText('Station account username'),
     ).toBeTruthy();
@@ -2003,12 +2007,13 @@ describe('RelayRouteProfiles', () => {
     const onInvitationAccepted = vi.fn();
     const rendered = renderRoutes(onInvitationAccepted);
 
-    fireEvent.change(await screen.findByLabelText('Account invitation token'), {
-      target: { value: 'pending-account-invitation' },
-    });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Accept account invitation' }),
+    fireEvent.change(
+      await screen.findByLabelText('Project invitation link or code'),
+      {
+        target: { value: 'P'.repeat(43) },
+      },
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Join Project' }));
     await waitFor(() =>
       expect(mocks.accountAcceptInvitation).toHaveBeenCalled(),
     );
@@ -2140,7 +2145,7 @@ describe('RelayRouteProfiles', () => {
     renderRoutes();
     expect(
       screen.getByText(
-        'No broker routes are saved on this device yet. Save the Station and broker details provided by the Station operator to begin setup.',
+        'No Stations yet. Open a setup link from the Station owner, or add one.',
       ),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Add a Station' }));
@@ -2163,7 +2168,7 @@ describe('RelayRouteProfiles', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save route' }));
 
     await screen.findByText('Zach Station');
-    expect(screen.getByText('Device setup required')).toBeTruthy();
+    expect(screen.getByText('Setup needed')).toBeTruthy();
     expect(repository.getRelayRouteProfiles()).toHaveLength(1);
     expect(persisted.store.profiles[0]).toMatchObject({
       name: 'Zach Station',
@@ -2214,6 +2219,9 @@ describe('RelayRouteProfiles', () => {
       name: `Saved route ${index}`,
     }));
     renderRoutes();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'About your Stations' }),
+    );
     expect(
       screen.getByText(
         /approved routing grants renew while this app is awake/i,

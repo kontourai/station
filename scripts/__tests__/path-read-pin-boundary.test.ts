@@ -101,6 +101,9 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Reads identity/config files created in isolated Station temp homes, never
+  // repository source. Direct telemetry imports own changed-test selection.
+  'src-server/__tests__/telemetry.test.ts',
   // Read install.ps1 through the generator's exported path and the installer
   // core it embeds from a temporary extraction (#2675 W1): computed paths the
   // scanner cannot pin. The install.ps1 impact edge selects both, and their
@@ -518,10 +521,10 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'walks its own fixture directory',
   'scripts/__tests__/ci-event-environment.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
+  'scripts/__tests__/test-impact-incidents.test.ts':
+    'lists src-server/runtime/bootstrap to pin every gate module to its impact edge; asserts nothing about their content',
   'packages/cli/src/__tests__/profile.test.ts':
     'lists the saved Station store directory under its temporary STATION_HOME',
-  'packages/sdk/src/__tests__/client-entry-portability.test.ts':
-    'walks packages/sdk/src/client; its packages/sdk/src/client/** edge selects it',
   'packages/shared/src/__tests__/workspace-package.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/android-channel-release-generation.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',

@@ -1,0 +1,7 @@
+{
+  "revision": "b301ae9fc9da889a047137cc3bf548dcaf2bb1e6",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"No prose change: it routes SDK work to docs/reference/sdk.md and its rules; the sdk.md change only adds the continueDelegatedTask bound-answer note, which follows those rules.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

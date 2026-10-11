@@ -79,10 +79,10 @@ function mount() {
         for (const question of request.questionnaire.questions) {
           if (question.secret) continue;
           const field = element('fieldset');
-          field.append(
-            element('legend', question.header),
-            element('p', question.prompt),
-          );
+          // A question with no header gets no empty legend slot.
+          if (question.header.trim())
+            field.append(element('legend', question.header));
+          field.append(element('p', question.prompt));
           answers[question.id] = { optionIds: [] };
           for (const option of question.options) {
             const label = element('label');

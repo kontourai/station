@@ -1,0 +1,11 @@
+{
+  "revision": "643b76f228a1ece43a772284a7616c44a3629cea",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"#3410 round 1: InputRequestCard now draws a question's header above it only when present; added that sentence. Checked against InputRequestCard and tests/input-request.spec.ts (Target/Checks shown, none on the MCP form).","inputs":["docs/guides/agents.md","src-ui/src/components/chat/InputRequestCard.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"#3410 round 1: harness-questions.ts now also carries each question's header into the form; the respondToRequest content, limits and engine answer mappings documented here are unchanged.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/harness-questions.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"#3410 round 1: documented the optional `header` extension (64 chars, never blank), the per-source header column, and own-key-only reading (non-plain prototypes refused); checked against packages/shared/src/input-request.ts, harness-questions.ts (questionnaire header now from the field) and the new tests.","inputs":["docs/reference/shared.md","packages/shared/src/harness-questions.ts"]}
+  ]
+}

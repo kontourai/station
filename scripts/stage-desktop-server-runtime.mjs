@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { stageBundledRegistry } from './lib/bundled-registry.mjs';
 import {
   stageDesktopServerRuntime,
   WINDOWS_DESKTOP_RUNTIME_RESOURCE_DIR,
@@ -16,4 +17,5 @@ const outputRoot = stageDesktopServerRuntime({
       }
     : {}),
 });
+stageBundledRegistry({ projectRoot, outputRoot });
 console.log(`Staged desktop server runtime dependencies in ${outputRoot}`);

@@ -176,7 +176,23 @@
 
     "tests/tauri-shell/native-project-runtime-fixture.ts",
 
-    "tests/tauri-shell/native-relay-diagnostic-echo-webview.ts"
+    "tests/tauri-shell/native-relay-diagnostic-echo-webview.ts",
+
+    "src-server/services/connections/relay-invitation-owner.ts",
+
+    "src-server/routes/system/relay-management-routes.ts",
+
+    "src-server/security/relay-management-actor.ts",
+
+    "src-server/security/relay-management-authority.ts",
+
+    "packages/shared/src/native-relay-link.ts",
+
+    "packages/shared/package.json#/exports/.~1native-relay-link",
+
+    "src-server/runtime/bootstrap/account-bound-device-gate.ts",
+
+    "src-server/security/pairing-route-scopes.ts"
   ],
 
   "checks": [

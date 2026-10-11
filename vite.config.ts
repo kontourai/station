@@ -408,6 +408,7 @@ export default defineConfig(({ command }) => {
         ]),
     },
     build: {
+      manifest: true,
       sourcemap: process.env.STATION_JOURNEY_PROFILE_DIR ? 'hidden' : false,
       outDir: `../${process.env.STATION_BUILD_UI_DIR || 'dist-ui'}`,
       emptyOutDir: true,

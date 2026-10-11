@@ -1,6 +1,14 @@
+import assert from 'node:assert';
+import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import { Agent } from '@voltagent/core';
 import { describe, expect, test, vi } from 'vitest';
+import { z } from 'zod';
 import { CHAT_INPUT_MAX_CHARS } from '../../../../src-shared/chat-input-limits.js';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { VoltAgentFramework } from '../../../runtime/frameworks/voltagent-adapter.js';
+import type { ITool, RuntimeContext } from '../../../runtime/types.js';
+import { createProjectNativeToolLoader } from '../../../services/projects/project-native-tools.js';
 import { getInternalApiToken } from '../../../utils/internal-api-token.js';
 
 vi.mock('../chat-request-preparation.js', () => ({
@@ -29,7 +37,152 @@ const { createChatRoutes, externalEngineChatRedirectMessage } = await import(
 );
 const { prepareChatRequest } = await import('../chat-request-preparation.js');
 
+type ProjectChatFixture = Pick<
+  RuntimeContext,
+  | 'appConfig'
+  | 'activeAgents'
+  | 'agentSpecs'
+  | 'memoryAdapters'
+  | 'loadProjectTools'
+  | 'getAgentConfigurationRevision'
+  | 'commitAgentConfigurationRead'
+  | 'logger'
+> & {
+  storageAdapter: Pick<RuntimeContext['storageAdapter'], 'getProject'>;
+  providerService: Pick<
+    RuntimeContext['providerService'],
+    'getLaunchabilityRevision' | 'listProviderConnections'
+  >;
+  configLoader: Pick<
+    RuntimeContext['configLoader'],
+    'getLaunchabilityRevision' | 'getProjectHomeDir'
+  >;
+};
+
 describe('Chat Routes', () => {
+  test.each(['station', 'reader'])(
+    'loads Project tools for /%s/chat without leaking them into the shared Agent',
+    async (publicSlug) => {
+      const slug = publicSlug === 'station' ? 'default' : publicSlug;
+      const baseTool: ITool = {
+        name: 'custom',
+        description: 'Custom base tool',
+        parameters: z.object({}),
+        execute: async () => 'base',
+      };
+      const projectTool: ITool = {
+        name: 'weather_read',
+        description: 'Read weather',
+        parameters: z.object({}),
+        execute: async () => 'project',
+      };
+      const framework = new VoltAgentFramework();
+      const wrapper = await framework.createTempAgent({
+        agentId: publicSlug,
+        name: slug,
+        instructions: 'Preserve my prompt',
+        model: {},
+        tools: [baseTool],
+        hooks: {
+          beforeToolCall: async () => false,
+        },
+      });
+      assert('raw' in wrapper && wrapper.raw instanceof Agent);
+      const registered = wrapper.raw;
+      const projects: Record<string, ProjectConfig> = {
+        a: {
+          id: 'a',
+          slug: 'a',
+          name: 'A',
+          createdAt: '2026-10-03T00:00:00Z',
+          updatedAt: '2026-10-03T00:00:00Z',
+          toolDefaults: { mcpServers: ['weather'], knowledge: false },
+        },
+        b: {
+          id: 'b',
+          slug: 'b',
+          name: 'B',
+          createdAt: '2026-10-03T00:00:00Z',
+          updatedAt: '2026-10-03T00:00:00Z',
+          toolDefaults: { knowledge: false },
+        },
+      };
+      const loadTools = vi.fn(async (_slug: string, _spec: AgentSpec) => [
+        projectTool,
+      ]);
+      const loadProjectTools = createProjectNativeToolLoader({
+        agentSpecs: new Map(
+          slug === 'default'
+            ? []
+            : [
+                [
+                  slug,
+                  {
+                    name: 'Reader',
+                    prompt: 'Reader prompt',
+                    tools: { mcpServers: [], available: ['weather_read'] },
+                  },
+                ],
+              ],
+        ),
+        getProject: (id) => projects[id],
+        listRoots: async () => [],
+        loadTools,
+      });
+      const ctx: ProjectChatFixture = {
+        storageAdapter: { getProject: (id: string) => projects[id] },
+        providerService: {
+          getLaunchabilityRevision: () => 0,
+          listProviderConnections: (): ReturnType<
+            RuntimeContext['providerService']['listProviderConnections']
+          > => [],
+        },
+        configLoader: {
+          getLaunchabilityRevision: () => 0,
+          getProjectHomeDir: () => '/tmp/station-test-home',
+        },
+        getAgentConfigurationRevision: (): number | null => 0,
+        commitAgentConfigurationRead: async <T>(
+          _revision: number,
+          fn: () => Promise<T>,
+        ) => fn(),
+        appConfig: { defaultModel: '', invokeModel: '', structureModel: '' },
+        activeAgents: new Map([[slug, registered]]),
+        agentSpecs: new Map(),
+        memoryAdapters: new Map(),
+        loadProjectTools,
+        logger: {
+          debug: vi.fn(),
+          info: vi.fn(),
+          warn: vi.fn(),
+          error: vi.fn(),
+        },
+      };
+      const app = createChatRoutes(
+        // @ts-expect-error Persistence and streaming services are mocked after this route selects its real tool view.
+        ctx,
+      );
+      streamPrimaryAgentChat.mockReturnValue(new Response('stream'));
+      for (const projectSlug of ['a', 'b']) {
+        const response = await app.request(`/${publicSlug}/chat`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input: 'hello', projectSlug }),
+        });
+        expect(response.status).toBe(200);
+        const selected = streamPrimaryAgentChat.mock.calls.at(-1)?.[0].agent;
+        expect(selected.getTools().map((tool: ITool) => tool.name)).toEqual(
+          projectSlug === 'a' ? ['custom', 'weather_read'] : ['custom'],
+        );
+      }
+      expect(loadTools.mock.calls[0]?.[0]).toBe(slug);
+      expect(wrapper.instructions).toBe('Preserve my prompt');
+      expect(registered.getTools().map((tool) => tool.name)).toEqual([
+        'custom',
+      ]);
+    },
+  );
+
   // archive#1426 fix round 3 (M-1): launchPersistedAgentWithOverride is the
   // rescue path for a persisted agent that failed to register at boot (its
   // default model didn't resolve) but the chat picker sent a model override.
@@ -38,70 +191,130 @@ describe('Chat Routes', () => {
   // and ctx.logger reach that call, so a Dispatch-carrying agent on this
   // path is graded the same way as any other, not silently as 'unavailable'
   // with no evidence source wired.
-  test('launchPersistedAgentWithOverride forwards ctx.dispatchEvidenceSource and ctx.logger to createModel', async () => {
-    const createModel = vi.fn(async () => ({ id: 'resolved-model' }));
-    const createTempAgent = vi.fn(async () => ({ id: 'rescued-agent' }));
-    const dispatchEvidenceSource = {
-      getConnectionReadinessEvidence: vi.fn(async () => new Map()),
-    };
-    const logger = {
-      error: vi.fn(),
-      warn: vi.fn(),
-      info: vi.fn(),
-      debug: vi.fn(),
-    };
-    const usageAggregator = { incrementalUpdate: vi.fn() };
+  test.each([false, true])(
+    'model override recovery preserves an empty Project and refuses ungated Project additions: %s',
+    async (adding) => {
+      const createModel = vi.fn(async () => ({ id: 'resolved-model' }));
+      const framework = new VoltAgentFramework();
+      const createTempAgent = vi.fn(
+        (options: Parameters<VoltAgentFramework['createTempAgent']>[0]) =>
+          framework.createTempAgent(options),
+      );
+      streamPrimaryAgentChat.mockClear();
+      streamPrimaryAgentChat.mockReturnValue(new Response('stream'));
+      const dispatchEvidenceSource = {
+        getConnectionReadinessEvidence: vi.fn(async () => new Map()),
+      };
+      const logger = {
+        error: vi.fn(),
+        warn: vi.fn(),
+        info: vi.fn(),
+        debug: vi.fn(),
+      };
+      const usageAggregator = { incrementalUpdate: vi.fn() };
 
-    const app = createChatRoutes({
-      acpBridge: { hasAgent: () => false },
-      storageAdapter: { getProject: vi.fn() },
-      providerService: {
-        getLaunchabilityRevision: () => 0,
-        listProviderConnections: vi.fn(() => []),
-      },
-      configLoader: {
-        loadAgent: vi.fn(async () => ({
-          name: 'writer',
-          prompt: 'Be helpful',
-        })),
-        getProjectHomeDir: () => '/tmp/station-test-home',
-        getLaunchabilityRevision: () => 0,
-      },
-      appConfig: {
-        systemPrompt: 'Global system prompt',
-        defaultMaxTurns: 9,
-      },
-      replaceTemplateVariables: (text: string) => text,
-      framework: { createModel, createTempAgent },
-      modelCatalog: undefined,
-      // Not in activeAgents — this is the "persisted but failed to
-      // register" state launchPersistedAgentWithOverride exists to rescue.
-      activeAgents: new Map(),
-      getAgentConfigurationRevision: () => 0,
-      dispatchEvidenceSource,
-      logger,
-      agentSpecs: new Map(),
-      memoryAdapters: new Map(),
-      usageAggregator,
-    } as any);
+      const loadProjectTools = createProjectNativeToolLoader({
+        agentSpecs: new Map(
+          adding
+            ? [
+                [
+                  'writer',
+                  {
+                    name: 'Writer',
+                    prompt: 'Be helpful',
+                    tools: { mcpServers: [] },
+                  },
+                ],
+              ]
+            : [],
+        ),
+        getProject: () => ({
+          id: 'demo',
+          slug: 'demo',
+          name: 'Demo',
+          createdAt: '2026-10-03T00:00:00Z',
+          updatedAt: '2026-10-03T00:00:00Z',
+          toolDefaults: {
+            mcpServers: adding ? ['weather'] : [],
+            knowledge: false,
+          },
+        }),
+        listRoots: async () => [],
+        loadTools: async () => [
+          {
+            name: 'weather_read',
+            description: 'Read weather',
+            parameters: z.object({}),
+            execute: async () => 'weather',
+          },
+        ],
+      });
+      const app = createChatRoutes({
+        acpBridge: { hasAgent: () => false },
+        storageAdapter: { getProject: vi.fn() },
+        providerService: {
+          getLaunchabilityRevision: () => 0,
+          listProviderConnections: vi.fn(() => []),
+        },
+        configLoader: {
+          loadAgent: vi.fn(async () => ({
+            name: 'writer',
+            prompt: 'Be helpful',
+          })),
+          getProjectHomeDir: () => '/tmp/station-test-home',
+          getLaunchabilityRevision: () => 0,
+        },
+        appConfig: {
+          systemPrompt: 'Global system prompt',
+          defaultMaxTurns: 9,
+        },
+        replaceTemplateVariables: (text: string) => text,
+        framework: { createModel, createTempAgent },
+        modelCatalog: undefined,
+        // Not in activeAgents — this is the "persisted but failed to
+        // register" state launchPersistedAgentWithOverride exists to rescue.
+        activeAgents: new Map(),
+        loadProjectTools,
+        commitAgentConfigurationRead: async <T>(
+          _revision: number,
+          operation: () => Promise<T>,
+        ) => operation(),
+        getAgentConfigurationRevision: () => 0,
+        dispatchEvidenceSource,
+        logger,
+        agentSpecs: new Map(),
+        memoryAdapters: new Map(),
+        usageAggregator,
+      } as any);
 
-    const response = await app.request('/writer/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ input: 'ping', options: { model: 'gpt-5.4' } }),
-    });
+      const response = await app.request('/writer/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          input: 'ping',
+          projectSlug: 'demo',
+          options: { model: 'gpt-5.4' },
+        }),
+      });
 
-    expect(response).toBeTruthy();
-    expect(createModel).toHaveBeenCalledWith(
-      expect.any(Object),
-      expect.objectContaining({ dispatchEvidenceSource, logger }),
-    );
-    expect(createTempAgent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        memoryAdapter: expect.objectContaining({ usageAggregator }),
-      }),
-    );
-  });
+      expect(response.status).toBe(adding ? 500 : 200);
+      if (adding) {
+        expect(await json(response)).toMatchObject({
+          error: 'Agent tool approvals are unavailable.',
+        });
+        expect(streamPrimaryAgentChat).not.toHaveBeenCalled();
+      }
+      expect(createModel).toHaveBeenCalledWith(
+        expect.any(Object),
+        expect.objectContaining({ dispatchEvidenceSource, logger }),
+      );
+      expect(createTempAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          memoryAdapter: expect.objectContaining({ usageAggregator }),
+        }),
+      );
+    },
+  );
 
   test('returns 404 for unknown Agents and strips forged host-action provenance from direct chat options', async () => {
     const app = createChatRoutes({

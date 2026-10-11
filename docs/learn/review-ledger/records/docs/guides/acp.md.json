@@ -18,7 +18,9 @@
 
     "src-server/services/acp/acp-probe.ts",
 
-    "src-shared/extension-notification-bindings.ts"
+    "src-shared/extension-notification-bindings.ts",
+
+    "src-server/services/acp/acp-probe-session.ts"
   ],
 
   "checks": [

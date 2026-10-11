@@ -1,0 +1,7 @@
+{
+  "revision": "6742d66ceed0eb4ff94c0de675cd65a21e586ee4",
+
+  "notes": [
+    {"path":"packages/cli/README.md","note":"Verb list now includes revoke and remove; checked against the environment.ts access action allow-list.","inputs":["packages/cli/README.md","docs/reference/cli.md","packages/cli/src/commands/environment.ts"]}
+  ]
+}

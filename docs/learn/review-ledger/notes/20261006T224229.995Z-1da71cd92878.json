@@ -1,0 +1,7 @@
+{
+  "revision": "c38dc4ba40fad15b7375e4132e3bd514b6da0148",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the MCP saved-credential issuer claims against the composed client 2.2.0 graph and this branch: tool-server-oauth adds only prompt-read operation labeling; mcp-connection adds turn-scoped form routing and concurrency refusal while retaining the context-aware OAuth provider and HTTP transports. Shared adds form-only exports without dependency or credential policy changes. The guide remains accurate; c300 advisory floor passed. No new production reachability or hosted/runtime claim.","inputs":["docs/guides/dependency-security.md","packages/shared/package.json","src-server/services/plugins/tool-server-oauth.ts","packages/shared/src/mcp-connection.ts"]}
+  ]
+}

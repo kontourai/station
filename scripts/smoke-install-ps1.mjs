@@ -42,16 +42,31 @@
 //   7. a profile path that is not ASCII: the launcher stays ASCII through
 //      %USERPROFILE% and runs the installed version, and passes an argument
 //      with `^` and `%` unchanged, with the environment it sets.
+//   8. the Windows service in the update path (#2675 slice W3), under the
+//      real user profile (the service runs with it): `station service
+//      install` registers a user-level Task Scheduler task whose cmd.exe
+//      wrapper runs the fixed launcher with the node.exe frozen beside it,
+//      from the launcher's own directory; a supervisor killed by force is
+//      relaunched by the launcher itself (Task Scheduler reruns nothing);
+//      `station upgrade` stages archive 2 and hands the switch to the
+//      running service, whose launcher trials and commits it while the
+//      wrapper keeps running; a staged version whose trial exits is rolled
+//      back to archive 2; a request with no version (the server's) is staged
+//      by the service through install.ps1 and answered up to date; `service
+//      stop` ends the wrapper and the launcher stops Station in order; and
+//      `service uninstall` and install.ps1 uninstall remove it all.
 // Windows only: it drives powershell.exe, pwsh.exe and NTFS junctions.
 import { spawn, spawnSync } from 'node:child_process';
-import { generateKeyPairSync, sign } from 'node:crypto';
+import { createHash, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import {
+  copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -414,6 +429,405 @@ function hardenLikeProfile(path) {
     { encoding: 'utf8', windowsHide: true },
   );
   check(result.status === 0, `icacls failed: ${result.stdout}${result.stderr}`);
+}
+
+// 8. The Windows service in the update path (#2675 W3).
+const cmdExe = win32.join(systemRoot, 'System32', 'cmd.exe');
+
+function sha256Of(path) {
+  return createHash('sha256').update(readFileSync(path)).digest('hex');
+}
+
+function readJson(path) {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+async function waitUntil(what, probe, timeoutMs = 5 * 60_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const value = await probe();
+    if (value) return value;
+    await new Promise((wait) => setTimeout(wait, 1000));
+  }
+  throw new Error(`smoke failed: timed out waiting for ${what}`);
+}
+
+/** The pid of a live process, or null once it is gone. */
+function alive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Sets (or, with null, removes) a variable of the user's own environment. */
+function userEnvironment(name, value) {
+  const reg = win32.join(systemRoot, 'System32', 'reg.exe');
+  const result = spawnSync(
+    reg,
+    value === null
+      ? ['delete', 'HKCU\\Environment', '/v', name, '/f']
+      : [
+          'add',
+          'HKCU\\Environment',
+          '/v',
+          name,
+          '/t',
+          'REG_SZ',
+          '/d',
+          value,
+          '/f',
+        ],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  if (value !== null)
+    check(
+      result.status === 0,
+      `reg add ${name}: ${result.stdout}${result.stderr}`,
+    );
+}
+
+async function serviceUpdates() {
+  // The task runs with the real user profile, and install.ps1 (which the
+  // service runs to stage) installs only beneath it.
+  const realProfile = process.env.USERPROFILE;
+  check(realProfile, 'USERPROFILE is not set');
+  const stationRoot = join(realProfile, 'station-w3-smoke');
+  rmSync(stationRoot, { recursive: true, force: true });
+  const installRoot = join(stationRoot, 'installs', first.runtime);
+  const runtime = join(installRoot, 'runtime');
+  const home = join(stationRoot, 'instances', first.runtime);
+  const binDir = join(stationRoot, 'bin');
+  const launcher = join(binDir, `station-${first.runtime}.cmd`);
+  const instance = 'w3smoke';
+  const taskName = `\\KontourStation-${instance}`;
+  const wrapper = join(home, 'service', `station-${instance}.cmd`);
+  const serviceLog = join(home, 'logs', `${instance}-service.log`);
+  const serverPort = 47241;
+  const uiPort = 47100;
+  check(
+    (await portIsFree(serverPort)) && (await portIsFree(uiPort)),
+    'the smoke ports 47241/47100 are in use',
+  );
+  const env = (manifestUrl, overrides = {}) =>
+    environment(stationRoot, manifestUrl, {
+      STATION_INSTALL_STAGE_ONLY: '',
+      USERPROFILE: realProfile,
+      STATION_BIN_DIR: binDir,
+      ...overrides,
+    });
+  const cli = (args, options = {}) =>
+    runAsync(
+      cmdExe,
+      ['/d', '/c', launcher, ...args],
+      env(''),
+      undefined,
+      options,
+    );
+  const state = () => readJson(join(runtime, 'service-state.json'));
+  const launcherPid = () => readJson(join(runtime, 'service-state.lock'))?.pid;
+  const currentVersion = () =>
+    win32.basename(realpathSync(join(installRoot, 'current')));
+  // A service staging for itself runs install.ps1 in the task's own
+  // environment, which must carry the test-only key override for the
+  // throwaway-signed manifests this smoke serves.
+  const taskTestEnvironment = {
+    STATION_INSTALL_ALLOW_INSECURE_TEST_URLS: '1',
+    STATION_INSTALL_MANIFEST_PUBLIC_KEY_URL: `${origin}/test-key.pem`,
+  };
+  for (const [name, value] of Object.entries(taskTestEnvironment))
+    userEnvironment(name, value);
+  try {
+    const manifestUrl = publish('w3', first);
+    const installed = await runFile(
+      windowsPowerShell,
+      env(manifestUrl, {
+        STATION_INSTALL_SERVER_PORT: String(serverPort),
+        STATION_INSTALL_UI_PORT: String(uiPort),
+        STATION_INSTALL_NO_START: '1',
+      }),
+    );
+    check(
+      installed.status === 0,
+      'installing archive 1 for the service failed',
+    );
+
+    console.log(
+      '== service install: a Task Scheduler task runs the fixed launcher',
+    );
+    const serviceInstall = await cli(
+      [
+        'service',
+        'install',
+        `--instance=${instance}`,
+        `--base=${home}`,
+        `--port=${serverPort}`,
+        `--ui-port=${uiPort}`,
+      ],
+      { startsStation: true },
+    );
+    check(serviceInstall.status === 0, '`station service install` failed');
+    const wrapperText = readFileSync(wrapper, 'utf8');
+    check(
+      wrapperText.includes(`cd /d "${runtime}" || exit /b 1`) &&
+        wrapperText.includes(
+          `"${join(runtime, 'node.exe')}" "${join(runtime, 'station-launcher.mjs')}" "service" "run"`,
+        ) &&
+        !wrapperText.includes('\\versions\\') &&
+        !wrapperText.includes('\\current'),
+      `the wrapper does not run the frozen launcher from its own directory:\n${wrapperText}`,
+    );
+    check(
+      sha256Of(join(runtime, 'node.exe')) ===
+        sha256Of(
+          join(installRoot, 'versions', first.version, 'runtime', 'node.exe'),
+        ),
+      'runtime\\node.exe is not the installed version node.exe',
+    );
+    const one = await identityOf(uiPort);
+    check(
+      one?.sha === first.sha,
+      `the service answers as ${JSON.stringify(one)}`,
+    );
+    check(one.bootId, 'the identity names no boot to tell generations apart');
+    check(
+      state()?.activeVersion === first.version,
+      `unexpected launcher state ${JSON.stringify(state())}`,
+    );
+    const launcherAtStart = launcherPid();
+    check(
+      Number.isInteger(launcherAtStart) && alive(launcherAtStart),
+      'no live launcher holds the service lock',
+    );
+
+    console.log(
+      '== a supervisor killed by force is relaunched by its launcher',
+    );
+    const children = spawnSync(
+      windowsPowerShell,
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        `Get-CimInstance Win32_Process -Filter "ParentProcessId=${launcherAtStart}" | Where-Object { $_.CommandLine -like '*service run*' } | ForEach-Object { $_.ProcessId }`,
+      ],
+      { encoding: 'utf8', windowsHide: true },
+    );
+    const supervisors = children.stdout.trim().split(/\s+/).filter(Boolean);
+    check(
+      supervisors.length === 1,
+      `expected one supervisor under the launcher, found: ${children.stdout}${children.stderr}`,
+    );
+    const killed = spawnSync(
+      win32.join(systemRoot, 'System32', 'taskkill.exe'),
+      ['/F', '/PID', supervisors[0]],
+      { encoding: 'utf8', windowsHide: true },
+    );
+    check(
+      killed.status === 0,
+      `taskkill failed: ${killed.stdout}${killed.stderr}`,
+    );
+    const relaunched = await waitUntil('a new Station generation', async () => {
+      const now = await identityOf(uiPort).catch(() => null);
+      return now?.bootId && now.bootId !== one.bootId ? now : null;
+    });
+    check(relaunched.sha === first.sha, 'the relaunch serves another version');
+    check(
+      launcherPid() === launcherAtStart,
+      'the launcher itself was replaced; it should have relaunched its child',
+    );
+    check(
+      readFileSync(serviceLog, 'utf8').includes('relaunching in'),
+      'the service log does not show the launcher relaunching',
+    );
+
+    console.log('== station upgrade hands archive 2 to the running service');
+    publish('w3', second);
+    const upgrade = await cli(['upgrade']);
+    check(upgrade.status === 0, '`station upgrade` under the service failed');
+    check(
+      upgrade.stdout.includes(
+        `Asked the Station service to switch to ${second.version}`,
+      ) &&
+        upgrade.stdout.includes(
+          `The Station service now runs ${second.version}.`,
+        ),
+      'the upgrade did not hand the switch to the service launcher',
+    );
+    const committed = state();
+    check(
+      committed?.activeVersion === second.version &&
+        committed.update?.status === 'committed' &&
+        committed.update.fromVersion === first.version,
+      `unexpected launcher state ${JSON.stringify(committed)}`,
+    );
+    check(
+      currentVersion() === second.version,
+      'current did not follow the commit',
+    );
+    const two = await identityOf(uiPort);
+    check(
+      two?.sha === second.sha,
+      `after the update the service answers as ${JSON.stringify(two)}`,
+    );
+    // The same wrapper and launcher ran through the switch.
+    check(
+      launcherPid() === launcherAtStart,
+      'the launcher restarted for the update',
+    );
+
+    console.log('== a trial that exits is rolled back');
+    const broken = `${second.version.replace(/\.(\d+)$/, (_, n) => `.${Number(n) + 1}`)}`;
+    const brokenDir = join(installRoot, 'versions', broken);
+    mkdirSync(join(brokenDir, 'bin'), { recursive: true });
+    mkdirSync(join(brokenDir, 'runtime'), { recursive: true });
+    copyFileSync(
+      join(installRoot, 'versions', second.version, 'runtime', 'node.exe'),
+      join(brokenDir, 'runtime', 'node.exe'),
+    );
+    writeFileSync(join(brokenDir, 'bin', 'station.mjs'), 'process.exit(3);\n');
+    writeFileSync(
+      join(brokenDir, '.station-install-complete'),
+      `${'0'.repeat(64)}\n`,
+    );
+    const request = (targetVersion) => {
+      const id = randomUUID();
+      const path = join(runtime, 'update-request.json');
+      writeFileSync(
+        `${path}.smoke`,
+        JSON.stringify({
+          id,
+          requestedAt: new Date().toISOString(),
+          ...(targetVersion ? { targetVersion } : {}),
+        }),
+      );
+      renameSync(`${path}.smoke`, path);
+      return id;
+    };
+    const failing = request(broken);
+    const rolledBack = await waitUntil('the rollback', () => {
+      const update = state()?.update;
+      return update?.requestId === failing && update.status !== 'pending'
+        ? update
+        : null;
+    });
+    check(
+      rolledBack.status === 'rolled-back' &&
+        rolledBack.reason === 'candidate-exited:3' &&
+        state().activeVersion === second.version,
+      `unexpected rollback ${JSON.stringify(state())}`,
+    );
+    check(
+      currentVersion() === second.version,
+      'current did not return after the rollback',
+    );
+    const restored = await waitUntil('archive 2 serving again', async () => {
+      const now = await identityOf(uiPort).catch(() => null);
+      return now && now.bootId !== two.bootId ? now : null;
+    });
+    check(
+      restored.sha === second.sha,
+      `after the rollback the service answers as ${JSON.stringify(restored)}`,
+    );
+
+    console.log(
+      "== the server's request (no version) is staged by the service with install.ps1",
+    );
+    const unversioned = request(undefined);
+    const answered = await waitUntil('the staging answer', () => {
+      const result = readJson(join(runtime, 'update-request-result.json'));
+      return result?.requestId === unversioned ? result : null;
+    });
+    check(
+      answered.status === 'up-to-date' && answered.version === second.version,
+      `the service's own staging answered ${JSON.stringify(answered)}`,
+    );
+
+    console.log(
+      '== service stop ends the wrapper; the launcher stops Station in order',
+    );
+    const stopped = await cli([
+      'service',
+      'stop',
+      `--instance=${instance}`,
+      `--base=${home}`,
+    ]);
+    check(stopped.status === 0, '`station service stop` failed');
+    check(
+      !existsSync(join(runtime, 'service-state.lock')),
+      'the launcher still holds its lock',
+    );
+    check(!alive(launcherAtStart), 'the launcher outlived `service stop`');
+    check(
+      await portClosed(uiPort),
+      'Station still answers after `service stop`',
+    );
+    check(
+      readFileSync(serviceLog, 'utf8').includes('is gone; stopping'),
+      'the launcher did not stop on its own when its wrapper ended',
+    );
+    const started = await cli(
+      ['service', 'start', `--instance=${instance}`, `--base=${home}`],
+      { startsStation: true },
+    );
+    check(started.status === 0, '`station service start` failed');
+    const again = await identityOf(uiPort);
+    check(
+      again?.sha === second.sha,
+      `after a restart the service answers as ${JSON.stringify(again)}`,
+    );
+
+    console.log('== service uninstall, then install.ps1 uninstall');
+    const removed = await cli([
+      'service',
+      'uninstall',
+      `--instance=${instance}`,
+      `--base=${home}`,
+    ]);
+    check(removed.status === 0, '`station service uninstall` failed');
+    check(!existsSync(wrapper), 'the uninstall left the wrapper');
+    check(
+      await portClosed(uiPort),
+      'Station still answers after the service uninstall',
+    );
+    const uninstalled = await runFile(
+      windowsPowerShell,
+      env(''),
+      join(installRoot, 'current', 'install.ps1'),
+      ['uninstall'],
+    );
+    check(
+      uninstalled.status === 0,
+      'install.ps1 uninstall after the service failed',
+    );
+    check(!existsSync(installRoot), 'the uninstall left the install root');
+  } catch (error) {
+    for (const log of [serviceLog, join(home, 'logs', `${instance}.log`)])
+      if (existsSync(log))
+        process.stdout.write(
+          `===== ${log} (last 200 lines) =====\n${readFileSync(log, 'utf8').split(/\r?\n/).slice(-200).join('\n')}\n`,
+        );
+    process.stdout.write(
+      `===== launcher state =====\n${JSON.stringify(state())}\n`,
+    );
+    throw error;
+  } finally {
+    const schtasks = win32.join(systemRoot, 'System32', 'schtasks.exe');
+    spawnSync(schtasks, ['/End', '/TN', taskName], { windowsHide: true });
+    spawnSync(schtasks, ['/Delete', '/TN', taskName, '/F'], {
+      windowsHide: true,
+    });
+    const pid = launcherPid();
+    if (Number.isInteger(pid) && alive(pid)) process.kill(pid);
+    for (const name of Object.keys(taskTestEnvironment))
+      userEnvironment(name, null);
+  }
 }
 
 // 7. A profile whose path is not ASCII (#2675 W2 review): cmd.exe reads a
@@ -1001,6 +1415,7 @@ try {
   }
   await fullInstall();
   await nonAsciiProfile();
+  await serviceUpdates();
   console.log('install.ps1 smoke passed.');
 } finally {
   server.close();

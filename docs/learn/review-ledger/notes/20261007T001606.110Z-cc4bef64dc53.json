@@ -1,0 +1,9 @@
+{
+  "revision": "b07f7080aaf1c0455fedd5ec2d8f63855e83bc66",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed the normal-main integration and exact citation union: preserved stationUsage, usageRollup, station-usage client, usage-semantics and usage-fold sources alongside main’s mcpPromptRun source. Combined prose preserves existing operator scope/polling/legacy bindings and adds the MCP prompt/form call contract. Traced runAgentMcpPrompt through authenticatedFetch/envelopeError and the exact-event elicitation reply path; no production or prose conflict resolution was needed. Historical 6719 test/render evidence is not qualification of this merged head.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed the combined shared helper reference and exact source-list union: usage-semantics and legacy usage-fold remain alongside main’s mcp-elicitation-form source. The form-only reader remains distinct from answer validation, while the facade retains its helpers; the new usage leaf preserves scope/cache/context declarations and the existing fold exports. Non-source review-record fields were identical on both sides; the union preserves every unique citation. No helper stub or authority change was introduced.","inputs":["docs/reference/shared.md"]}
+  ]
+}

@@ -51,6 +51,9 @@ export interface ToolCallBatchProps<P extends ToolCallLike> {
    * so this component never builds a second detail renderer.
    */
   renderCall: (part: P, index: number, expanded?: boolean) => ReactNode;
+  /** Renders narration folded into the run (`run.interludes`) inside the
+   * sheet, between the calls it originally sat between. */
+  renderInterlude?: (part: P, index: number) => ReactNode;
 }
 
 /**
@@ -68,6 +71,7 @@ export interface ToolCallBatchProps<P extends ToolCallLike> {
 export function ToolCallBatch<P extends ToolCallLike>({
   run,
   renderCall,
+  renderInterlude,
 }: ToolCallBatchProps<P>) {
   const [isOpen, setIsOpen] = useState(false);
   const titleId = useId();
@@ -115,6 +119,13 @@ export function ToolCallBatch<P extends ToolCallLike>({
         {/* station#1569 (item 3): the verb alone can only decline to claim
             completion — it cannot say HOW MANY of these calls may never have
             run. Same disclosure duty as the failure count beside it. */}
+        {/* A failure a later identical call recovered is history, not the
+            outcome: named neutrally so it is not read as still broken. */}
+        {group.recoveredCount > 0 && (
+          <span className="tool-call-batch__retried">
+            {`${group.recoveredCount} retried`}
+          </span>
+        )}
         {group.unresolvedCount > 0 && (
           <span className="tool-call-batch__unresolved">
             {group.unresolvedCount === 1
@@ -175,6 +186,7 @@ export function ToolCallBatch<P extends ToolCallLike>({
         <ToolCallBatchSheetBoundary
           group={group}
           renderCall={renderCall}
+          renderInterlude={renderInterlude}
           titleId={titleId}
           onClose={() => setIsOpen(false)}
         />

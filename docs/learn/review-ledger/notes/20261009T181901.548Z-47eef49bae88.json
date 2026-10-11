@@ -1,0 +1,7 @@
+{
+  "revision": "bf4e35daf3bf4de68208fe34e1003c5545e31519",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed the unchanged seven-spec PR smoke manifest, zero retries and browser-health boundaries. Updated orchestration-chat-flow interactions for canonical notification navigation and focus, automatic sheet dismissal, authenticated Station refusal, and a distinct desktop request after settlement. The grouped-sheet contrast check selects and counts the actual Allow/Deny buttons instead of the removed footer. Both affected browser observations passed locally; this does not establish physical-phone behavior or change runner/manifest policy.","inputs":["docs/testing/browser-smoke.md","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

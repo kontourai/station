@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-10-06T15-04-48-266Z-de7dd64f8f38",
+  "kind": "policy-change",
+  "actor": {
+    "id": "codex-agent",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": null,
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-10-06T15:04:48.266Z",
+  "repoStandardsHash": "sha256:03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed",
+  "repoMapHash": "sha256:8fc9938f121d8e94a115d60f4f7f65657a1d89392bf599b8ba2057f6532bde71",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-10-04T12-44-56-532Z-870911b824ce",
+  "validUntilDays": 7,
+  "notes": "Executed by Codex under Brians explicit conditional machine-bound acceptance approval. Exact root production sprintf-js1.0.3 GHSA-hp3w-g68c-fv3c moderate residual expires2026-10-13; no renewal/identity fallback. Guard e319df1a8968e21581378e02c690d35bf47997d8 independent review PASS,109/109 controls, verification-call bypass17FAIL/2PASS, exact restored109PASS. Composed managed dependencies ci0 verify0; source-map1.2.2; Node24.19.0; installed binding PASS patchddcddc58f18573895595a7b9fd9153b834cc47a1a7b096494f8a35dc328d0654 one accounted formatter source/min instance. Production format reachability unproven; width/padding/parser outside scope. Actual audit/hosted/landing remain separate.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-10-04T12-44-56-532Z-870911b824ce",
+    "approvalRef": "t3-thread:2476b495-8abe-4c47-be5a-57851a445325:Brian-Approve-machine-bound-acceptance-2026-10-06",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-10-06T15-04-48-266Z-de7dd64f8f38",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "7b42e9aae2d22c5f7bfba53a9d7f87dafd7f2e93fa1c9382cf682b1df75a5416",
+        "validUntil": "2026-10-13T15:04:48.266Z"
+      },
+      "createdAt": "2026-10-06T15:04:48.266Z",
+      "updatedAt": "2026-10-06T15:04:48.266Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-10-06T15-04-48-266Z-de7dd64f8f38",
+      "claimId": "veritas.attestation.policy-change-2026-10-06T15-04-48-266Z-de7dd64f8f38",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Executed by Codex under Brians explicit conditional machine-bound acceptance approval. Exact root production sprintf-js1.0.3 GHSA-hp3w-g68c-fv3c moderate residual expires2026-10-13; no renewal/identity fallback. Guard e319df1a8968e21581378e02c690d35bf47997d8 independent review PASS,109/109 controls, verification-call bypass17FAIL/2PASS, exact restored109PASS. Composed managed dependencies ci0 verify0; source-map1.2.2; Node24.19.0; installed binding PASS patchddcddc58f18573895595a7b9fd9153b834cc47a1a7b096494f8a35dc328d0654 one accounted formatter source/min instance. Production format reachability unproven; width/padding/parser outside scope. Actual audit/hosted/landing remain separate.",
+      "observedAt": "2026-10-06T15:04:48.266Z",
+      "collectedBy": "codex-agent",
+      "integrityRef": "7b42e9aae2d22c5f7bfba53a9d7f87dafd7f2e93fa1c9382cf682b1df75a5416",
+      "metadata": {
+        "actor": {
+          "id": "codex-agent",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-10-06T15:04:48.266Z",
+        "validUntil": "2026-10-13T15:04:48.266Z",
+        "contentHash": "7b42e9aae2d22c5f7bfba53a9d7f87dafd7f2e93fa1c9382cf682b1df75a5416"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-10-06T15-04-48-266Z-de7dd64f8f38.verified",
+      "claimId": "veritas.attestation.policy-change-2026-10-06T15-04-48-266Z-de7dd64f8f38",
+      "status": "verified",
+      "actor": "codex-agent",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-10-06T15-04-48-266Z-de7dd64f8f38"
+      ],
+      "createdAt": "2026-10-06T15:04:48.266Z",
+      "verifiedAt": "2026-10-06T15:04:48.266Z"
+    }
+  }
+}

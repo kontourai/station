@@ -1,0 +1,7 @@
+{
+  "revision": "6a740918ced3d8ef7cf6865385ece383fecdaa86",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Its CLI pendingRequest note is unchanged; the snapshot adds optional fields only.","inputs":["docs/architecture/abstraction-review.md","src-server/routes/orchestration/orchestration.ts"]}
+  ]
+}

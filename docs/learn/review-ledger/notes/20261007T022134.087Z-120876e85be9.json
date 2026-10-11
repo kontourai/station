@@ -1,0 +1,7 @@
+{
+  "revision": "305355b474a30b93dbca4d3310bb17d484ce5296",
+
+  "notes": [
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed #3405 MessageBubble delta: adding messageKey to MessageContent affects UI-block identity only. Checkpoint eligibility, settle-snapshot selection, replay visibility, restore preview and confirmation callbacks are untouched. Existing checkpoint guide remains accurate. Source review of the affected composition; no checkpoint restore was executed.","inputs":["docs/user/workspace-checkpoints.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

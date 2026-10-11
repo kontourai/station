@@ -245,29 +245,36 @@ test('the derivations agree with the contracts vocabulary', () => {
   ]);
 });
 
-test('an operator can grant engine sign-in, and it is marked elevated', () => {
-  const standard = 'orchestration:read orchestration:operate terminal:operate';
-  const onApply = openEditor(standard);
-  const toggle = screen.getByRole('checkbox', {
-    name: /Start engine sign-in/,
-  }) as HTMLInputElement;
+test.each([
+  { token: 'engine:login', label: /Start engine sign-in/ },
+  { token: 'relay:manage', label: /Manage remote access/ },
+] satisfies ReadonlyArray<{ token: PairingScope; label: RegExp }>)(
+  'an operator can grant $token, and it is marked elevated',
+  ({ token, label }) => {
+    const standard =
+      'orchestration:read orchestration:operate terminal:operate';
+    const onApply = openEditor(standard);
+    const toggle = screen.getByRole('checkbox', {
+      name: label,
+    }) as HTMLInputElement;
 
-  expect(toggle.checked).toBe(false);
-  expect(toggle.closest('label')?.textContent).toContain('Elevated');
+    expect(toggle.checked).toBe(false);
+    expect(toggle.closest('label')?.textContent).toContain('Elevated');
 
-  fireEvent.click(toggle);
-  apply();
+    fireEvent.click(toggle);
+    apply();
 
-  expect(onApply).toHaveBeenCalledWith(
-    [
-      'orchestration:read',
-      'orchestration:operate',
-      'terminal:operate',
-      'engine:login',
-    ],
-    standard,
-  );
-});
+    expect(onApply).toHaveBeenCalledWith(
+      [
+        'orchestration:read',
+        'orchestration:operate',
+        'terminal:operate',
+        token,
+      ],
+      standard,
+    );
+  },
+);
 
 test('collaborator management applies exactly read+operate, never terminal or device management', () => {
   const onApply = openEditor('orchestration:read');
@@ -393,27 +400,31 @@ test('an account-bound grant with extras still opens as Delegation, extras intac
   );
 });
 
-test('an engine sign-in grant survives an unrelated base edit', () => {
-  const onApply = openEditor(
-    'orchestration:read orchestration:operate terminal:operate engine:login',
-  );
-  expect(
-    (
-      screen.getByRole('checkbox', {
-        name: /Start engine sign-in/,
-      }) as HTMLInputElement
-    ).checked,
-  ).toBe(true);
+test.each([
+  { token: 'engine:login', label: /Start engine sign-in/ },
+  { token: 'relay:manage', label: /Manage remote access/ },
+] satisfies ReadonlyArray<{ token: PairingScope; label: RegExp }>)(
+  'an existing $token grant survives an unrelated base edit',
+  ({ token, label }) => {
+    const currentScope = `orchestration:read orchestration:operate terminal:operate ${token}`;
+    const onApply = openEditor(currentScope);
+    expect(
+      (
+        screen.getByRole('checkbox', {
+          name: label,
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
 
-  fireEvent.click(screen.getByRole('radio', { name: /^Delegation/ }));
-  apply();
+    fireEvent.click(screen.getByRole('radio', { name: /^Delegation/ }));
+    apply();
 
-  expect(onApply.mock.calls[0][0]).toEqual([
-    'orchestration:read',
-    'orchestration:operate',
-    'engine:login',
-  ]);
-});
+    expect(onApply).toHaveBeenCalledWith(
+      ['orchestration:read', 'orchestration:operate', token],
+      currentScope,
+    );
+  },
+);
 
 /*
  * The editor offers operator-promotion grants from a hand-written list, and the

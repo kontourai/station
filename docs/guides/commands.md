@@ -12,12 +12,13 @@ why a command is unavailable.
 | Built-in | Station's command registry, such as `/help`, `/stats`, and `/model` | A UI handler; some actions require a capability supported by the current engine |
 | Authored Agent command | The Agent specification's `commands` field | Positional prompt expansion in the chat client |
 | Command skill | An enabled skill command, offered globally or attached through the Agent's `skills` list | Skill body lookup, variable validation, then prompt expansion |
+| MCP prompt | A prompt offered by an MCP server in the Station agent's tool view, typed as `/<server>:<prompt>` | The server reads the prompt (`prompts/get`) with the typed arguments; its text is sent as the turn |
 | Engine command | Commands advertised by an engine connected through ACP | Raw command text sent to that engine |
 
 For an ACP connection, the catalog and handler use the engine's commands;
 Station does not first expand authored commands or command skills. Other
-connections check authored commands, then offered command skills, then built-in
-handlers. Unrecognized commands pass through for Claude and Codex chat
+connections check authored commands, then offered command skills, then MCP
+prompts, then built-in handlers. Unrecognized commands pass through for Claude and Codex chat
 providers; other providers get an unknown-command notice. A command appearing
 in a catalog is not proof that a remote engine will accept it.
 
@@ -98,6 +99,24 @@ produces an error and nothing is sent. The handler reads the body on demand;
 a body-read failure also stops dispatch. The skill Test surface uses the same
 substitution helper.
 
+For an **MCP prompt**, arguments use the same `name=value` and positional
+parser as skill variables, in the order the server declares them. MCP prompt
+arguments are named strings with an optional `required` flag; the protocol
+gives them no other type. A missing required argument, an unknown argument,
+or a value longer than 12,000 characters is refused and nothing is sent. The
+server-side run also refuses prompt content Station cannot insert as message
+text (image, audio, blob and resource-link content) and output over 100,000
+characters, rather than dropping or cutting it. A prompt whose messages are
+all `user` text is sent as that text; any `assistant` message is labelled by
+role in the inserted text.
+
+A prompt is offered only from a server the agent attaches (`tools.mcpServers`)
+and only when the agent's `tools.available` restriction admits
+`<server>_<prompt>` — the same pattern grammar its tools use — so an agent
+narrowed to specific tools is not offered that server's prompts by default.
+Station-managed servers (`station-control`, `station-knowledge`,
+`station-docs`) are not asked for prompts.
+
 These are separate implementations. Do not infer the skill's validation
 behavior from the Agent command's `required` field, or vice versa. A recorded
 skill run is attempted after expansion; it does not prove the engine completed
@@ -140,17 +159,29 @@ transaction here.
 ## Implementation and evidence
 
 The [catalog](../../src-ui/src/hooks/useSlashCommands.ts) composes sources and
-availability; the [handler](../../src-ui/src/hooks/useSlashCommandHandler.ts)
-owns dispatch order and authored expansion. The
-[skill helpers](../../src-ui/src/utils/skill-commands.ts) own parsing, offered
-skills, and skill variable assignment. The
+availability; the [hook](../../src-ui/src/hooks/useSlashCommandHandler.ts)
+loads the [dispatcher](../../src-ui/src/slashCommands/dispatch.ts) when a
+command is submitted. ACP commands pass through without loading it. A failed
+dispatcher load reports that nothing was sent. The dispatcher owns command
+precedence and authored expansion. The
+[catalog helpers](../../src-ui/src/utils/skill-command-catalog.ts) select
+offered skills; the [input helpers](../../src-ui/src/utils/skill-commands.ts)
+own parsing and skill variable assignment. The
 [chat sender](../../src-ui/src/hooks/useActiveChatSessionMessaging.ts) consumes
 expanded text or a handled result before its normal turn submission. The
 [Agent projection](../../src-server/routes/agents/enriched-agents.ts) exposes
 persisted commands; [ConfigLoader](../../src-server/domain/config-loader.ts)
-owns file loading/watching.
+owns file loading/watching. MCP prompts are listed and run by the
+[prompt routes](../../src-server/routes/agents/mcp-prompts.ts) over the
+[prompt service](../../src-server/services/plugins/mcp-prompts.ts). The
+[MCP prompt runner](../../src-ui/src/slashCommands/mcpPrompt.ts) loads when
+the dispatcher matches an offered prompt.
 
 Existing [catalog tests](../../src-ui/src/__tests__/useSlashCommands.test.ts) and
 [skill-handler tests](../../src-ui/src/__tests__/useSlashCommandHandler.skills.test.tsx)
 exercise synthetic chat state and bodies. They do not establish that a live
-engine supports a particular slash command.
+engine supports a particular slash command. The
+[MCP prompt route tests](../../src-server/routes/agents/__tests__/mcp-prompts.routes.test.ts)
+run a fixture MCP server's prompt through the real route and `MCPService`;
+the [prompt handler tests](../../src-ui/src/__tests__/useSlashCommandHandler.mcpPrompts.test.tsx)
+stub only the run request.

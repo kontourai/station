@@ -1,0 +1,7 @@
+{
+  "revision": "45860cd1266dd257ee31e0a030696e72babca452",
+
+  "notes": [
+    {"path":"docs/guides/desktop-tray.md","note":"The archive service paragraph now says installer-owned archives run the fixed launcher on Windows too (slice W3, frozen node.exe), matching service-command.ts runsLauncher; the tray still refuses archive services.","inputs":["docs/guides/desktop-tray.md","packages/cli/src/commands/service.ts"]}
+  ]
+}

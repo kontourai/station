@@ -48,10 +48,14 @@ vi.mock('../components/session-detail/SessionDetail', () => ({
     </div>
   ),
 }));
-function setup(onContinueInDock = vi.fn().mockResolvedValue(true)) {
+function setup(
+  onContinueInDock = vi.fn().mockResolvedValue(true),
+  refetchContinued: () => Promise<unknown> = vi.fn(),
+) {
   sendMessage.mockClear();
   updateChat.mockClear();
   query.mockImplementation((id: string) => ({
+    ...(id === 'continued' ? { refetch: refetchContinued } : {}),
     data:
       id === 'source'
         ? { session: { threadId: 'source', controlMode: 'read-only-attached' } }
@@ -64,7 +68,7 @@ function setup(onContinueInDock = vi.fn().mockResolvedValue(true)) {
               },
             }
           : undefined,
-    refetch: vi.fn(),
+    ...(id === 'continued' ? {} : { refetch: vi.fn() }),
   }));
   const view = render(
     <ImportedConversationPane
@@ -122,6 +126,61 @@ describe('imported conversation in the dock', () => {
     fireEvent.click(retry);
     await waitFor(() => expect(onContinue).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+  });
+  // #3429: a continuation Station created without an Agent (its engine had
+  // none here) can never open as a chat tab. The pane says so, from a fresh
+  // read of the continuation, instead of offering a retry that cannot work.
+  test('a continuation with no Agent explains why it cannot open, without a retry', async () => {
+    const onContinue = vi.fn().mockResolvedValue(false);
+    const refetch = vi.fn().mockResolvedValue({
+      data: {
+        session: {
+          threadId: 'continued',
+          conversationId: 'conversation-1',
+          controlMode: 'station-owned',
+          provider: 'claude',
+        },
+      },
+    });
+    setup(onContinue, refetch);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Confirm continuation' }),
+    );
+    expect(
+      await screen.findByText("This continuation can't open as a chat"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/Station has no Claude Code agent/).textContent,
+    ).toContain('Open it from Activity');
+    expect(screen.queryByText('Could not open the continuation')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry opening' })).toBeNull();
+    expect(screen.getByText('Original conversation')).toBeTruthy();
+    expect(refetch).toHaveBeenCalledOnce();
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+  test('a continuation that has an Agent but failed to open keeps the retry', async () => {
+    const onContinue = vi.fn().mockResolvedValue(false);
+    const refetch = vi.fn().mockResolvedValue({
+      data: {
+        session: {
+          threadId: 'continued',
+          conversationId: 'conversation-1',
+          controlMode: 'station-owned',
+          provider: 'claude',
+          assignedAgentSlug: 'claude',
+        },
+      },
+    });
+    setup(onContinue, refetch);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Confirm continuation' }),
+    );
+    expect(
+      await screen.findByRole('button', { name: 'Retry opening' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText("This continuation can't open as a chat"),
+    ).toBeNull();
   });
   test('uses the dock-sized box, not a fixed viewport overlay', async () => {
     setup();

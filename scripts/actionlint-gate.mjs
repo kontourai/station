@@ -428,7 +428,7 @@ const WINDOWS_PR_EVIDENCE_PATHS =
  * written down is not. Landing a bump is now one deliberate edit here.
  */
 export const PNPM_SETUP_ACTION =
-  'pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b';
+  'pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024';
 /**
  * #2675: pnpm/setup installs only pnpm's native single-executable build, and
  * for pnpm v11 it refuses Intel macOS ("does not provide a working binary for
@@ -634,7 +634,7 @@ const MISSING_CALLEE_MESSAGE =
  *   pull_request (checked before the default branch), saves only in
  *   OverlayBase mode, and merge_group gets neither.
  * - pnpm/setup restores and saves a lockfile-verification log on every run,
- *   independently of its `cache` input, with no opt-out (dist at 703c526: the
+ *   independently of its `cache` input, with no opt-out (reviewed dist at fbda4c85: the
  *   post step calls the save unconditionally). That save is NOT safe on its
  *   own merits: the key is the hash of the checked-out (candidate) lockfile,
  *   the pre-upload check only confirms earlier records survived (appended
@@ -789,8 +789,35 @@ function isExactPortableServerArchiveUpload(file, jobId, step) {
 }
 const MERGE_QUEUE_REGRESSION_AGGREGATE_JOB = 'merge-queue-regression';
 const MERGE_QUEUE_REGRESSION_AGGREGATE_RUN = `echo "$NEEDS" | jq -r 'to_entries[] | "\\(.key): \\(.value.result)"'
-echo "$NEEDS" | jq -e 'length > 0 and (to_entries | all(.value.result == "success"))' > /dev/null
+echo "$NEEDS" | jq -r 'if .plan.outputs["full-regression"] == "false" then "no deferred lane: fast path" else "full regression: \\(.["full-regression"].result)" end'
+echo "$NEEDS" | jq -e '.diff.result == "success" and (.["full-regression"].result == "success" or (.plan.result == "success" and .plan.outputs["full-regression"] == "false" and .["full-regression"].result == "skipped"))' > /dev/null
 `;
+const MERGE_QUEUE_FULL_REGRESSION_JOB = 'full-regression';
+const MERGE_QUEUE_FULL_REGRESSION_GUARD = `\${{ always() && !cancelled() && github.event_name != 'pull_request_target' && needs.plan.outputs.full-regression != 'false' }}`;
+
+/**
+ * The merge queue's one reusable call: the hosted full regression of this
+ * candidate (github.sha), fail-closed on its plan decision. It needs
+ * `actions: read` for full-regression.yml's exact-source evidence reuse, the
+ * same grant as ci.yml's dispatch call. Any other callee, guard, input,
+ * secret or permission loses the exemption.
+ */
+function isExactMergeQueueFullRegressionCall(file, jobId, job) {
+  return (
+    file === MERGE_QUEUE_REGRESSION_WORKFLOW &&
+    jobId === MERGE_QUEUE_FULL_REGRESSION_JOB &&
+    hasExactKeys(job, ['needs', 'if', 'permissions', 'uses', 'with']) &&
+    job.needs === 'plan' &&
+    job.if === MERGE_QUEUE_FULL_REGRESSION_GUARD &&
+    job.uses === './.github/workflows/full-regression.yml' &&
+    hasExactKeys(job.permissions, ['contents', 'actions']) &&
+    job.permissions.contents === 'read' &&
+    job.permissions.actions === 'read' &&
+    hasExactKeys(job.with, ['source_sha', 'allow_reuse']) &&
+    job.with.source_sha === `\${{ github.sha }}` &&
+    job.with.allow_reuse === true
+  );
+}
 
 /**
  * The merge-queue regression aggregate reads only its needed jobs' results. It
@@ -2225,7 +2252,24 @@ const FAST_CHECKS_SHARD_ZSH_STEP = Object.freeze({
   // package and reads no secret or credential; the shard's selection can
   // include tests that exec zsh (ops/nightly/macos-build-only-cleanup).
   name: 'Provision and preflight zsh for process-heavy installer fixtures',
-  run: 'if [[ ! -x /bin/zsh ]]; then\n  sudo apt-get update\n  sudo apt-get install --yes zsh\nfi\ncommand -v zsh\ntest -x /bin/zsh\n/bin/zsh --version\n',
+  env: {
+    BOOTSTRAP_SOURCE_REPOSITORY: `\${{ github.repository }}`,
+    BOOTSTRAP_SOURCE_SHA: `\${{ github.workflow_sha }}`,
+  },
+  run: `set -euo pipefail
+if [[ ! -x /bin/zsh ]]; then
+  bootstrap="$RUNNER_TEMP/install-ci-ubuntu-packages.sh"
+  curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \\
+    "https://raw.githubusercontent.com/\${BOOTSTRAP_SOURCE_REPOSITORY}/\${BOOTSTRAP_SOURCE_SHA}/scripts/install-ci-ubuntu-packages.sh" \\
+    --output "$bootstrap"
+  printf 'Ubuntu bootstrap workflow source: %s@%s\\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
+  sha256sum "$bootstrap"
+  sudo bash "$bootstrap" zsh
+fi
+command -v zsh
+test -x /bin/zsh
+/bin/zsh --version
+`,
 });
 
 /**
@@ -2621,10 +2665,11 @@ function primaryCiRouterFindings(file, document) {
   return findings;
 }
 
-// This credentialed ingress executes only trusted base policy, never PR code.
+// This credentialed ingress executes only trusted base policy, never PR code
+// (the dequeue job fetches the candidate head as Git objects for merge-tree).
 // Any topology/authority change requires review and a new policy digest.
 const LANDING_POLICY_SHA256 =
-  'b552afc755befa7871d1c96dc52ef4dfdc5072b393a71fdc6b4235ed8d8edcf8';
+  'cc0241a3b1655e3dc5ededeb69de44109656ef287171c49073b1509cabbf59e9';
 function orderedPolicy(value) {
   if (Array.isArray(value)) return value.map(orderedPolicy);
   if (value && typeof value === 'object')
@@ -2705,9 +2750,15 @@ function baseControlledPrWorkflowFindings(file, document) {
   if (file === SECURITY_ANALYSIS_WORKFLOW)
     findings.push(...securityAnalysisTopologyFindings(file, jobs));
   for (const [jobId, job] of Object.entries(jobs)) {
+    const exactFullRegressionCall = isExactMergeQueueFullRegressionCall(
+      file,
+      jobId,
+      job,
+    );
     if (
       job?.permissions !== undefined &&
-      !hasOnlyReadContentsPermission(job.permissions)
+      !hasOnlyReadContentsPermission(job.permissions) &&
+      !exactFullRegressionCall
     )
       findings.push({
         file,
@@ -2716,7 +2767,9 @@ function baseControlledPrWorkflowFindings(file, document) {
           'base-controlled PR job permission overrides must declare only permissions: { contents: read }',
       });
     const runner = classifyRunner(job);
-    if (!runner.hosted)
+    // The exact call has no runner of its own. This rule does not follow
+    // it into full-regression.yml, whose jobs run on ubuntu-22.04 today.
+    if (!runner.hosted && !exactFullRegressionCall)
       findings.push({
         file,
         jobId,
@@ -2732,6 +2785,7 @@ function baseControlledPrWorkflowFindings(file, document) {
           : file === SECURITY_ANALYSIS_WORKFLOW
             ? false
             : isExactMergeQueueRegressionAggregate(file, jobId, job) ||
+              exactFullRegressionCall ||
               hasExplicitCheckout(
                 job,
                 FAST_CHECKOUT_REPOSITORY,

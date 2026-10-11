@@ -9,7 +9,10 @@ import {
   type EngineConnectionId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
-import type { ExecutionTarget } from '@kontourai/station-contracts/execution-target';
+import {
+  type ExecutionTarget,
+  executionProfileAgentId,
+} from '@kontourai/station-contracts/execution-target';
 import {
   authenticatedFetch,
   continueExecutionMessage,
@@ -420,7 +423,7 @@ export async function sendExecutionTargetChat(
     onRequest?: OnRequestMode;
   },
 ): Promise<void> {
-  return sendOrchestrationChat(apiBase, target.agent, {
+  return sendOrchestrationChat(apiBase, executionProfileAgentId(target.agent), {
     ...options,
     executionTarget: target,
   });

@@ -1,0 +1,7 @@
+{
+  "revision": "3d0a06fc7c110fcd5a983ce3f3b53a9953e6b259",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"#3386 fix round: corrected the Settings path to Settings > Advanced (Station host section) with Save, matching the rendered page on an isolated instance where toggling off and saving stopped a new outside-project transcript being followed and toggling on picked it up within one poll.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

@@ -83,6 +83,8 @@ type DialogHistoryMode = 'entry' | 'route' | 'none';
 
 export interface ResponsiveDialogSurfaceProps {
   children: ReactNode;
+  /** Keep content mounted while releasing modal history and focus when closed. */
+  open?: boolean;
   onClose: () => void;
   ariaLabel?: string;
   ariaLabelledBy?: string;
@@ -219,6 +221,7 @@ export function ResponsiveSurfaceActions({
  */
 export function ResponsiveDialogSurface({
   role = 'dialog',
+  open = true,
   children,
   onClose,
   ariaLabel,
@@ -257,6 +260,7 @@ export function ResponsiveDialogSurface({
 
   useEffect(() => {
     if (
+      !open ||
       !dismissible ||
       historyMode !== 'entry' ||
       typeof window === 'undefined'
@@ -268,7 +272,7 @@ export function ResponsiveDialogSurface({
       () => onCloseRef.current(),
       dialogHistoryHost,
     );
-  }, [dialogHistoryHost, dialogHistoryId, dismissible, historyMode]);
+  }, [dialogHistoryHost, dialogHistoryId, dismissible, historyMode, open]);
 
   // Anchored desktop-popover measurement. Raw trigger geometry only — how the
   // panel uses it (side, offsets, clamping) belongs to the feature's CSS.
@@ -280,7 +284,7 @@ export function ResponsiveDialogSurface({
   const [anchorSide, setAnchorSide] = useState<'above' | 'below'>('above');
   const [anchorVars, setAnchorVars] = useState<CSSProperties | null>(null);
   useLayoutEffect(() => {
-    if (isMobile || !anchorRef?.current) {
+    if (!open || isMobile || !anchorRef?.current) {
       setAnchorVars(null);
       return;
     }
@@ -316,9 +320,13 @@ export function ResponsiveDialogSurface({
       window.removeEventListener('resize', update);
       observer?.disconnect();
     };
-  }, [anchorRef, isMobile]);
+  }, [anchorRef, isMobile, open]);
 
   useLayoutEffect(() => {
+    if (!open) {
+      capturedReturnFocus.current = false;
+      return;
+    }
     if (!capturedReturnFocus.current) {
       returnFocusRef.current = captureReturnFocus(returnFocusTarget);
       capturedReturnFocus.current = true;
@@ -330,7 +338,7 @@ export function ResponsiveDialogSurface({
       ? (initialFocusRef?.current ?? panelRef.current)
       : panelRef.current;
     focusTarget?.focus();
-  }, [initialFocusPolicy, initialFocusRef, isMobile, returnFocusTarget]);
+  }, [initialFocusPolicy, initialFocusRef, isMobile, returnFocusTarget, open]);
 
   // Focus restoration, with a fallback for the case the trigger did not
   // survive (archive#1126). The behaviour lives in
@@ -339,6 +347,7 @@ export function ResponsiveDialogSurface({
   // (archive#1206, #1245). The panel node is read at mount, not in the cleanup:
   // React nulls refs as it tears the tree down.
   useEffect(() => {
+    if (!open) return;
     // StrictMode replays effect cleanup while the dialog remains mounted.
     // Cancel that provisional restore before it can pull focus out of the
     // live dialog. A real unmount still schedules the normal return path.
@@ -348,7 +357,7 @@ export function ResponsiveDialogSurface({
     return () => {
       restoreFrame.current = restoreReturnFocus(returnFocusRef.current, panel);
     };
-  }, []);
+  }, [open]);
 
   const containFocus = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented) return;
@@ -420,7 +429,13 @@ export function ResponsiveDialogSurface({
   return createPortal(
     <div
       className={`${overlayClassName} responsive-surface-overlay`.trim()}
-      style={{ ...visualViewport.style, ...anchorVars, ...overlayStyle }}
+      style={{
+        ...visualViewport.style,
+        ...anchorVars,
+        ...overlayStyle,
+        ...(!open ? { display: 'none' } : {}),
+      }}
+      aria-hidden={!open || undefined}
       data-responsive-layer={layer}
       /**
        * #1638: a modal or popover surface is not part of the dock's resize

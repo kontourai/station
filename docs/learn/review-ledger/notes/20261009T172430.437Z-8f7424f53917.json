@@ -1,0 +1,7 @@
+{
+  "revision": "d5ced853347c6b1221aacd21434f9c99b20b6d3c",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the added ApprovalSheetProvider inventory entry as a compositor of the covered RequestSheet owner, without claiming direct shared-surface adoption. Its grouped 320/390 screen-edge, session action, dismissal and cross-copy pending/resolved keepers provide the named scope. Responsive inventory and state-primitives gates passed without changing ceilings or adding exceptions.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-surfaces.json"]}
+  ]
+}

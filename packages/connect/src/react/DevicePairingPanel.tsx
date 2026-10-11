@@ -166,6 +166,8 @@ export function JoinDevicePairingPanel({
   onCancel,
   onApprovalPending,
   initialMode = 'scan',
+  initialManualEndpoint = '',
+  initialManualCode = '',
   originIsStation = true,
   hostAppName,
   directEndpoint,
@@ -184,6 +186,9 @@ export function JoinDevicePairingPanel({
    */
   onApprovalPending?: (pending: PendingPairingExchange) => void;
   initialMode?: 'direct' | 'scan' | 'manual';
+  /** Destination and short code already collected by the host setup journey. */
+  initialManualEndpoint?: string;
+  initialManualCode?: string;
   /**
    * True when the page was served by a Station host, so `window.location.origin`
    * is a usable direct-request target (the web case). Defaults to true to keep
@@ -234,8 +239,8 @@ export function JoinDevicePairingPanel({
   // otherwise resolve between focus/selection and the input event, replacing
   // the selected value so the user's text is appended to the detected label.
   const deviceNameOwnedByUserRef = useRef(false);
-  const [manualEndpoint, setManualEndpoint] = useState('');
-  const [manualCode, setManualCode] = useState('');
+  const [manualEndpoint, setManualEndpoint] = useState(initialManualEndpoint);
+  const [manualCode, setManualCode] = useState(initialManualCode);
   const [reviewOffer, setReviewOffer] = useState<ScannedPairingOffer | null>(
     () =>
       initialPairingPayload
@@ -419,6 +424,12 @@ export function JoinDevicePairingPanel({
 
   const begin = async (offer: ScannedPairingOffer) => {
     if (!httpConsent.allowed) return;
+    if (offer.kind === 'delegation') {
+      setError(
+        'This invitation is for a peer Station. Use Connect a Station to request peer access; it cannot pair this device.',
+      );
+      return;
+    }
     setError(null);
     setWaitingOnConnection(false);
     try {
@@ -428,6 +439,10 @@ export function JoinDevicePairingPanel({
         proof: offer.challenge,
         deviceName,
       });
+      if (request.kind === 'delegation')
+        throw new Error(
+          'This code grants peer Station access and cannot pair this device.',
+        );
       const nextPending: PendingPairingExchange = {
         // station#1876: stamped so the app-level gate can show a real
         // progress bar during the approval wait instead of a spinner.
@@ -473,6 +488,10 @@ export function JoinDevicePairingPanel({
         proof: manualCode.trim().toUpperCase(),
         deviceName,
       });
+      if (request.kind === 'delegation')
+        throw new Error(
+          'This code grants peer Station access and cannot pair this device.',
+        );
       const nextPending: PendingPairingExchange = {
         // station#1876: stamped so the app-level gate can show a real
         // progress bar during the approval wait instead of a spinner.
@@ -754,6 +773,12 @@ export function JoinDevicePairingPanel({
       <div style={{ display: 'grid', gap: 12 }}>
         <strong>Review pairing offer</strong>
         <HttpConnectionConsent consent={httpConsent} />
+        {reviewOffer.kind === 'delegation' ? (
+          <p role="alert">
+            This invitation is for a peer Station. Use Connect a Station; it
+            cannot pair this device.
+          </p>
+        ) : null}
         <span style={{ color: 'var(--text-secondary, #999)', fontSize: 13 }}>
           Backend ID: {reviewOffer.environmentId}. Endpoint:{' '}
           {reviewOffer.endpoint}. Expires:{' '}
@@ -761,7 +786,7 @@ export function JoinDevicePairingPanel({
         </span>
         <button
           type="button"
-          disabled={!httpConsent.allowed}
+          disabled={!httpConsent.allowed || reviewOffer.kind === 'delegation'}
           onClick={() => void begin(reviewOffer)}
           style={primaryBtnStyle}
         >
@@ -1525,6 +1550,11 @@ export function HostDevicePairingPanel({
                 }}
               >
                 <strong>{request.deviceName}</strong>
+                <span>
+                  {request.kind === 'delegation'
+                    ? 'Peer Station access'
+                    : 'Device access'}
+                </span>
                 {request.source === 'tailnet' && request.requester && (
                   <span
                     style={{
@@ -1537,7 +1567,9 @@ export function HostDevicePairingPanel({
                 )}
               </div>
               <span style={{ color: 'var(--text-secondary, #999)' }}>
-                Requests {describeDeviceScope(request.scope)}
+                {request.kind === 'delegation'
+                  ? 'Lets this Station send work here. Project resource consent is separate.'
+                  : `Requests ${describeDeviceScope(request.scope)}`}
               </span>
               <small style={{ color: 'var(--text-secondary, #999)' }}>
                 {request.source === 'tailnet'

@@ -1,0 +1,7 @@
+{
+  "revision": "aba42ce53b74ffabb4bf04f675cd257b5f3dbe8f",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Checked against merge-queue-dequeue.mjs: each run reads removals.at(-1) from the PR timeline and ignores stale or unmapped reasons. The guide now says a burst can skip a middle report and a non-reportable latest removal leaves the earlier report newest; it no longer claims the last report always describes the latest removal.","inputs":["docs/guides/releasing.md",".github/workflows/landing-automation.yml"]}
+  ]
+}

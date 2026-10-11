@@ -1,0 +1,7 @@
+{
+  "revision": "19d2e6914b48dba1f6aeaf49a64df7f7a00af163",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Round 6 for #3391: ChatDock now passes the project icon map (projectIconBySlug, already computed for the inbox) through ChatDockModalStack to NewChatModal, which forwards icons and accents to StartProjectMenu instead of reading the project list itself; the dock's Workspace button adds '(not checked yet)' for an unchecked folder. No responsive layout claim changes.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/index.css"]}
+  ]
+}

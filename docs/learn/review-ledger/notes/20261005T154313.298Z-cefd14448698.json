@@ -1,0 +1,7 @@
+{
+  "revision": "d7b687317d1e47a5c0212f3d2eea5fb31a3cff38",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Reviewed d7b687317d source-scan repair. UsageRollupPanel and StationUsagePanel explicitly opt out of held previous data, matching their SDK hook defaults, so the documented captured-authority cache isolation is unchanged. Analytics HTTP body catches use shared unlessDeadline: stalled non2xx bodies preserve StationRequestTimeoutError while nondeadline JSON failures keep canonical HTTP fallback handling. Both new real-fetch stalled-body regressions failed before repair and all49 focused SDK/UI/runtime/structural checks passed after. Independent delta review found no issue; no new browser/native/provider or release proof.","inputs":["docs/guides/monitoring.md","src-ui/src/components/usage-stats/UsageRollupPanel.tsx"]}
+  ]
+}

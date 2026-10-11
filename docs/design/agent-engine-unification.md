@@ -25,6 +25,16 @@
 > per-capability instead of per-type. `entity-hierarchy.md` gets revised in the same
 > commits as the code that moves each boundary, per the standing rule.
 
+## Conversation execution overrides
+
+The saved Agent continues to bind one default engine. A conversation can now
+explicitly choose another receiver-owned default engine Agent as its execution
+binding while retaining its authored profile. Engine and model appear together
+in the shared picker, and reverting to Agent defaults uses an explicit handoff
+on an existing conversation. This does not edit the saved definition or relocate
+the conversation between Stations. See the [execution target contract](../reference/session-api.md#preserve-an-agent-profile-with-an-execution-override)
+and [composer interaction policy](chat-composer.md#starting-and-resuming-work).
+
 ## 1. The unification: one agent, executed by an engine
 
 Station's former model was a two-type taxonomy (Station agent / External agent) with a
@@ -385,10 +395,12 @@ channel — is **invalid-as-authored**, and the system says so where authoring h
   with save allowed (an agent definition is portable data). Fields whose capability is
   `unsupported` never render as silently-editable-but-ignored, and authored content is
   never invisible.
-- **API:** agent save responses carry the validation findings; session start against
-  an invalid pairing succeeds only for the deliverable subset and records the
-  undelivered fields in the session's configuration receipt (`session.configured`
-  metadata) — visible in receipts, never dropped on the floor.
+- **API:** Agent save responses carry the validation findings. The existing saved-binding
+  path records undelivered fields in its configuration receipt (`session.configured`)
+  when starting with the deliverable subset. An explicit conversation engine override
+  is stricter: required profile delivery must be supported and must actually succeed;
+  otherwise resolution or adapter startup refuses it. It cannot silently reduce the
+  profile to fit the selected engine.
 - **Never at session time as silence.** The one thing forbidden is the current de
   facto behavior: accepting configuration and quietly not delivering it.
 
@@ -611,9 +623,10 @@ editor, matrix-driven — the third hardcoded tab set (`ACP_TABS`) disappears.
 The Connections hub remains **engine setup** (plus Models/Knowledge): its "Agent apps"
 section becomes the engine section — cards for Claude Code, Codex, configured
 command-backed engines, and detected-but-unadded CLIs (detection principle unchanged).
-Agents never live in the hub. The new-chat picker groups by engine (today's
-"External" + per-ACP-connection groups converge), with default agents appearing as
-ordinary members of their engine's group; Recent stays first.
+Agents never live in the hub. The current new-chat picker groups **Station**,
+**Coding apps**, and **My agents**. Engine defaults sit in Coding apps; recency
+orders rows within each group. Engine/model execution overrides are selected in
+the shared model picker without substituting the authored profile.
 
 First run asks two separate questions through shared production seams: which
 detected engines should receive ordinary default Agent wrappers, and which

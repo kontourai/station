@@ -1,0 +1,13 @@
+{
+  "revision": "60042d4c9b680ff5c371cc424e65e98c935b6a7b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-read after the secret-binding bind ordering changed: the route now checks a bind on a missing or hidden binding too. Nothing this document states changes.","inputs":["docs/architecture/module-map.md","src-server/routes/secret-bindings.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-read after the secret-binding bind ordering changed: the route now checks a bind on a missing or hidden binding too. Nothing this document states changes.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/reference/api.md","note":"Same ordering sentence against the route and its tests; a caller without the grant gets command-not-granted for a missing or hidden binding, one with it gets the service 404, a person-owned binding keeps the 400.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Rewrote the secret-binding ordering sentence against secret-bindings.ts bindingMayAttach (only a person-owned binding skips the check; missing and hidden are checked because a create can land between the route read and the service read) and the new race test in command-choice-authority.routes.test.ts, plus the connected-accounts e2e expectations.","inputs":["docs/security/remote-access-threat-model.md"]}
+  ]
+}

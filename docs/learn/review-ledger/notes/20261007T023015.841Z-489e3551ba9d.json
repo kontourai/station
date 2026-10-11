@@ -1,0 +1,7 @@
+{
+  "revision": "22f74ffcc1ad4760769b1dc225535730638d108e",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed #3405 sender delta against this historical flag-routing ADR. It adds optional form admission observation and carries it through existing Retry, without changing HTTP entry points, feature-flag routing, usage guards or durable persistence. Historical classification and route explanations remain accurate; no historical experiment was rerun.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

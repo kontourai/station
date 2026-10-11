@@ -1,0 +1,7 @@
+{
+  "revision": "3e4ab28f7a5512d14beda8b72147394210f0f1bb",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"#3406 delta round: follow-service change is the D1 onlyWithStoredProject path in attached-session discovery; the guide makes no claim about it. No prose change.","inputs":["docs/guides/agents.md","src-server/services/orchestration/attached-session-follow-service.ts"]}
+  ]
+}

@@ -180,6 +180,20 @@ export interface AttentionPeerRequestReference {
   taskId: string;
   requestId: string;
   requestType?: AttentionRequestType;
+  /**
+   * `delegatedInputAnswers`: the paired Station's Session and event id for
+   * the request, so an answer to an `input` request can be bound to it
+   * (`expectedInputRequest` on the delegated `continue`). Absent when the
+   * paired Station did not report them; no bound answer is then possible.
+   */
+  threadId?: string;
+  requestEventId?: string;
+  /**
+   * The paired Station's own check of this Station's credential on the
+   * route that answers the request. `false` means it would refuse; absent
+   * means it did not say (an older Station).
+   */
+  callerCanRespond?: boolean;
 }
 
 /** See `NeedsInputAttentionItem` — same request-evidence projection, review_pending kind. */
@@ -655,6 +669,8 @@ export type AttentionInputReplyContext =
       state: 'open';
       reference: AttentionRequestReference;
       agentId: string;
+      executionAgentId?: string;
+      expectedDefinitionFingerprint?: string;
       conversationId: string;
       provider: string;
       engineId: string;

@@ -94,6 +94,7 @@ export function ConversationBoundaryDialogs({
           conversationId={handoffSession.conversationId}
           sessionId={handoffSession.id}
           currentAgentId={handoffSession.agentSlug}
+          executionPreset={handoffSource.executionPreset}
           projectSlug={handoffSession.projectSlug}
           agents={agents}
           projects={projects}
@@ -134,7 +135,14 @@ export function ConversationBoundaryDialogs({
             const state = activeChatsStore.getSnapshot()[handoffSession.id];
             updateChat(
               handoffSession.id,
-              acceptConversationHandoffUiState(state, target, receipt),
+              acceptConversationHandoffUiState(
+                state,
+                target,
+                receipt,
+                agents.find(
+                  (agent) => agent.slug === receipt.target.executionAgentId,
+                ),
+              ),
             );
             if (handoffSession.id === activeSession?.id) {
               chatInput.handleClearInput();

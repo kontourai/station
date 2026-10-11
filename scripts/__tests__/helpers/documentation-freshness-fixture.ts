@@ -119,6 +119,7 @@ export function fixture({
   const root = makeDir('station-doc-freshness-');
   const { write } = fixtureAt(root, '');
   const files: Record<string, string> = {
+    '.gitattributes': '* text=auto eol=lf\n',
     'docs/a.md': '# A\n',
     'docs/b.md': '# B\n',
     'docs/c.md': '# C cites A\n',

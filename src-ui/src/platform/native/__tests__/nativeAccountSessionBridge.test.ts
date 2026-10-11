@@ -149,7 +149,7 @@ async function fixture(contextLifetimeMs = 120000, serverLifetimeMs = 300000) {
         };
       }
       const request = args.request as
-        | { method: 'GET' | 'HEAD'; path: string }
+        | { method: 'GET' | 'HEAD' | 'POST'; path: string }
         | undefined;
       const proof = await createNativeApplicationSessionProof(key, trust, {
         purpose: 'request',
@@ -170,7 +170,11 @@ async function fixture(contextLifetimeMs = 120000, serverLifetimeMs = 300000) {
         [CONTINUATION]: continuation.credential,
         [PROOF]: proof,
       };
-      if (command === 'station_native_account_request_headers') return headers;
+      if (
+        command === 'station_native_account_request_headers' ||
+        command === 'station_native_account_management_headers'
+      )
+        return headers;
       if (command === 'station_native_account_revoke_prepare')
         return { body: {}, headers };
       if (command === 'station_native_account_accept_invitation_prepare')
@@ -319,4 +323,32 @@ test('account sign-in delay never publishes server continuation beyond the actua
   } finally {
     clock.mockRestore();
   }
+});
+
+test('management proof follows the selected native account through the dedicated host operation and refuses unlisted or retired requests', async () => {
+  const h = await fixture();
+  await h.bridge.login({
+    username: 'zach',
+    password: 'Native fixture password',
+  });
+  const target = {
+    method: 'POST' as const,
+    path: '/api/relay-management/invitations',
+  };
+  const headers = await h.bridge.managementHeaders(target);
+  expect(headers[PROOF]).toBeTypeOf('string');
+  expect(h.invoke.invoke).toHaveBeenCalledWith(
+    'station_native_account_management_headers',
+    expect.objectContaining({ request: target }),
+  );
+  const count = h.invoke.invoke.mock.calls.length;
+  await expect(
+    h.bridge.managementHeaders({
+      method: 'POST',
+      path: '/api/pairing/devices',
+    }),
+  ).rejects.toThrow();
+  expect(h.invoke.invoke.mock.calls.length).toBe(count);
+  h.retireOwner();
+  await expect(h.bridge.managementHeaders(target)).rejects.toThrow('retired');
 });

@@ -2486,6 +2486,87 @@ describe('AttachedSessionFollowService', () => {
     }
   });
 
+  test('yields after slow committed events without advancing a partially imported page', async () => {
+    const source: AttachedSessionSource = {
+      provider: 'claude',
+      kind: 'claude-transcript',
+      discover: vi
+        .fn()
+        .mockResolvedValue({ outcome: 'ok', sessions: [session] }),
+      read: vi
+        .fn()
+        .mockResolvedValueOnce({ outcome: 'ok', events: [], cursor: 1 })
+        .mockResolvedValueOnce({
+          outcome: 'ok',
+          events: [
+            event('slice-1'),
+            event('slice-2'),
+            event('slice-3'),
+            event('slice-4'),
+          ],
+          cursor: 2,
+        }),
+    };
+    const service = new AttachedSessionFollowService({
+      sources: [source],
+      eventStore: store,
+      eventBus,
+      listProjects: () => [
+        { slug: 'app', workingDirectory: join(dir, 'repository', 'app') },
+      ],
+    });
+    await service.pollNow();
+    let clock = 0;
+    let imported = 0;
+    let observed:
+      | { imported: number; durable: boolean; cursor: unknown }
+      | undefined;
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => clock);
+    const appendOriginal = store.appendEventIfAbsent.bind(store);
+    const append = vi
+      .spyOn(store, 'appendEventIfAbsent')
+      .mockImplementation((value) => {
+        const sequence = appendOriginal(value);
+        if (value.eventId.startsWith('slice-')) {
+          imported++;
+          clock += 20;
+          if (imported === 1)
+            setImmediate(() => {
+              observed = {
+                imported,
+                durable: store
+                  .listEvents(session.threadId)
+                  .some((row) => row.id === 'slice-1'),
+                cursor: store
+                  .readSessions()
+                  .find((row) => row.threadId === session.threadId)
+                  ?.resumeCursor,
+              };
+            });
+        }
+        return sequence;
+      });
+    try {
+      await service.pollNow();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(observed?.imported).toBeLessThan(4);
+      expect(observed?.durable).toBe(true);
+      expect(observed?.cursor).toMatchObject({ cursor: 1 });
+      expect(
+        store
+          .listEvents(session.threadId)
+          .filter((row) => row.id.startsWith('slice-')),
+      ).toHaveLength(4);
+      expect(
+        store.readSessions().find((row) => row.threadId === session.threadId)
+          ?.resumeCursor,
+      ).toMatchObject({ cursor: 2 });
+    } finally {
+      append.mockRestore();
+      now.mockRestore();
+    }
+  });
+
   test('yields to the macrotask queue while rehydrating many persisted sessions (#1997)', async () => {
     const sessions = Array.from({ length: 64 }, (_, index) => ({
       ...session,
@@ -2901,7 +2982,7 @@ describe('AttachedSessionFollowService', () => {
     expect(source.read).not.toHaveBeenCalled();
   });
 
-  test('does not import an unmatched transcript and preserves prior transcript state when a source disappears', async () => {
+  test('preserves prior transcript state when a source disappears, and refiles it under No project when its project goes', async () => {
     const source: AttachedSessionSource = {
       provider: 'claude',
       kind: 'claude-transcript',
@@ -2936,7 +3017,23 @@ describe('AttachedSessionFollowService', () => {
     });
     await unmatched.pollNow();
 
-    expect(store.listEvents(session.threadId)).toHaveLength(3);
+    // #3386 review F5: project `app` is gone, so the session moves to No
+    // project — one envelope pair, and no transcript event imported twice.
+    const after = store
+      .listEvents(session.threadId)
+      .map((item) => item.payload as unknown as CanonicalRuntimeEvent);
+    expect(after).toHaveLength(5);
+    expect(after.filter((item) => item.eventId === 'event-1')).toHaveLength(1);
+    expect(
+      after
+        .slice(3)
+        .map((item) =>
+          item.method === 'session.started' ||
+          item.method === 'session.configured'
+            ? item.metadata?.projectAttribution
+            : item.method,
+        ),
+    ).toEqual(['unattributed', 'unattributed']);
     expect(metrics.attachedSessionDiscovery.add).toHaveBeenCalledWith(
       1,
       expect.objectContaining({ source: 'claude-transcript', outcome: 'ok' }),

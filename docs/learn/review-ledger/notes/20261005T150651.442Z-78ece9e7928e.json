@@ -1,0 +1,7 @@
+{
+  "revision": "5ca325e6fcd43dec9a5466a593c7c37826d1081b",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"connection-service.ts change in this round only rewords the stored-collision warning; the smoke ownership claims (admission, matching, durable results) are unaffected. No prose change.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/services/connections/connection-service.ts"]}
+  ]
+}

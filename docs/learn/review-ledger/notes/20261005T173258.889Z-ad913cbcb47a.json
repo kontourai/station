@@ -1,0 +1,7 @@
+{
+  "revision": "dd2d81c75c7b9df1208e8c6ee22600e88c51be54",
+
+  "notes": [
+    {"path":"docs/design/operator-device-access.md","note":"No prose change: this branch differs from main in runtime-routes only by the callerMayAnswerDelegatedRequest wiring for bound delegated answers; the operator device access design makes no claim about delegated task answers or the attention route.","inputs":["docs/design/operator-device-access.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

@@ -23,7 +23,7 @@ interface ACPProbeLike {
  * `runACPManagerProbes` re-probed — i.e. re-SPAWNED the connected engine
  * binary — for every registered connection on every single tick of
  * `ACPManager`'s 60-second timer, forever, with no regard for how recently
- * that connection had already been observed. Measured on the brian-media
+ * that connection had already been observed. Measured on the media-server
  * dogfood host: ~2 spawns/minute of OpenCode's Bun-embedded binary, each
  * leaking an unreclaimed extracted `.so` (archive#1908).
  *

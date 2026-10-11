@@ -1,0 +1,7 @@
+{
+  "revision": "cbc2079af1af80cab8189da6ac6e7ac477aceb60",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed explicit saved-proxy selection, current-credential launch resolution, native Codex provider arguments, safe session route capture, model choices and connection-check recovery. Focused tests cover routing refusal, secret-free argv, authentication retry and missing-CLI refusal. Isolated browser proof covers a saved brian-media proxy, 61 native models and a successful Codex answer at desktop and phone widths. Windows and historical production-session replay are not verified.","inputs":["docs/design/connections-onboarding.md","src-server/providers/adapters/claude-adapter.ts","src-server/providers/adapters/codex-adapter.ts","src-server/runtime/bootstrap/station-runtime.ts","src-ui/src/views/provider-settings/providerCatalog.tsx","src-server/services/connections/engine-proxy-routing.ts","src-ui/src/views/EngineProxySettings.tsx","src-ui/src/views/AgentConnectionView.tsx"]}
+  ]
+}

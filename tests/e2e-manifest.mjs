@@ -1,6 +1,6 @@
 import { readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import ts from 'typescript';
+import ts from 'typescript-api';
 
 export const E2E_AUDIT_PATTERN =
   /localhost:(3141|3000|5274)|waitForTimeout\(|test\.skip\(/;
@@ -360,7 +360,6 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/browser-relay-route-acceptance.spec.ts',
     'tests/credential-recovery-groups.spec.ts',
     'tests/ssh-environments-ui.spec.ts',
-    'tests/connect-modal.spec.ts',
     'tests/connect-retry.spec.ts',
     'tests/connect-remote-auth-recovery.spec.ts',
     'tests/connect-reconnect-banner.spec.ts',
@@ -371,6 +370,9 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/orchestration-provider-picker.spec.ts',
     'tests/project-layout-render-storm.spec.ts',
     'tests/orchestration-chat-flow.spec.ts',
+    'tests/mcp-elicitation-form.spec.ts',
+    'tests/mobile-request-sheet.spec.ts',
+    'tests/input-request.spec.ts',
     'tests/acp-orchestration-plan.spec.ts',
     'tests/flow-gate-verdicts.spec.ts',
     'tests/veritas-readiness-panel.spec.ts',
@@ -394,6 +396,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/connections-computers-ssh.spec.ts',
   ],
   sharedInstanceExclusive: [
+    // Owns real receiver pairing state and temporary credential files.
+    'tests/connect-modal.spec.ts',
     // Retains reviewed timeline/restore screenshots under .kontourai/chat-563.
     'tests/conversation-timeline.spec.ts',
     // Retains the short-viewport composer acceptance screenshot beside the
@@ -1439,6 +1443,33 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Isolated Claude and Codex JSONL follow: discover after startup, open read-only activity, observe appends, reject unsupported continuation or direct mutation, and retain controls at 320px.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/mcp-elicitation-form.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    rationale:
+      '#3284 MCP form elicitation on the pending-requests strip: rendered fields, contrast, touch targets and focus at desktop and 390px in both themes, refusal of a missing required field, and the typed respondToRequest content; an MCP prompt listed in the composer slash menu as /<server>:<prompt> with its MCP badge at desktop and 390px.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/mobile-request-sheet.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    rationale:
+      '#3331 shared mobile request sheet at 390x844 for a long MCP elicitation form and a short tool approval: card-to-sheet, pinned actions, content-fit height, dismissal (backdrop, swipe, Escape, close) leaving the request pending, Send with an emulated keyboard, resolution elsewhere closing the sheet, focus trap/return, reduced motion, and inline desktop at 1280.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/input-request.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    rationale:
+      '#3390 one station.input-request/v1 renderer at 1280 and 390x844: Claude single/multi/custom questions with a required-field error marked and focused on its field, a Codex secret answer, MCP defaults pre-selected, an approval decision, transcript records for resolved requests including one resolved on another device, and a pre-#3390 stored harness question that still renders and answers.',
     exceptions: [],
   },
   {

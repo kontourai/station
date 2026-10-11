@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { cleanup, render, screen } from '@testing-library/react';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const platform = vi.hoisted(() => ({ isTauri: false }));

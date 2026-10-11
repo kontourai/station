@@ -1,7 +1,12 @@
 name: "PR: Merge integration"
 
-# The required context retains its old name for existing rulesets. Full
-# regression now belongs to scheduled qualification and release promotion.
+# The required context keeps its name: ruleset 21782867 requires exactly
+# `Merge-queue regression`. fast-checks runs only its plan's affected tests,
+# and a plan that defers to a lane (shared packages, the manifest, large
+# diffs) drops related discovery and every explicit test above 32. Such a
+# candidate, or one naming a `mergeQueueRegression` path, runs the hosted full
+# regression here; every other candidate keeps the fast path. Scheduled
+# qualification and release promotion own the full corpus for main.
 on:
   pull_request_target:
     branches: [main]
@@ -41,16 +46,83 @@ jobs:
           fi
           git diff --check "$BASE_SHA" HEAD
 
+  # The same planner and inputs as ci.yml's fast-checks plan, recomputed
+  # here because a workflow cannot wait on another workflow's artifact.
+  plan:
+    name: Merge-queue regression plan
+    if: github.event_name != 'pull_request_target'
+    runs-on: ubuntu-22.04
+    # install (15) + planning (5) + decision and ~5 minutes of setup.
+    timeout-minutes: 30
+    outputs:
+      full-regression: ${{ steps.decide.outputs.full-regression }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup pinned pnpm
+        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        with: { install: false }
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      # A failed install or plan leaves no plan file, and the decision below
+      # fails closed to the full regression rather than failing this job.
+      - name: Install dependencies
+        id: install
+        continue-on-error: true
+        timeout-minutes: 15
+        run: npm run dependencies:ci
+
+      - name: Plan the affected-test selection
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          STATION_FAST_CHECKS_ADAPTIVE_SHARDS: 'true'
+          STATION_CI_FAST_BASE: ${{ github.event.merge_group.base_sha || 'origin/main' }}
+          STATION_TYPECHECK_SLOTS: '4'
+        run: npm run fast-checks:shard -- plan --out="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json"
+
+      - name: Decide whether this candidate needs the full regression
+        id: decide
+        if: ${{ !cancelled() }}
+        env:
+          HEAD_SHA: ${{ github.sha }}
+          PLAN_BASE: ${{ github.event.merge_group.base_sha || 'origin/main' }}
+        run: node scripts/merge-queue-regression-decision.mjs --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --head="$HEAD_SHA" --base="$PLAN_BASE"
+
+  # Fail-closed: runs unless the decision is exactly 'false', so a failed or
+  # missing plan job runs the full regression instead of skipping it.
+  full-regression:
+    needs: plan
+    if: ${{ always() && !cancelled() && github.event_name != 'pull_request_target' && needs.plan.outputs.full-regression != 'false' }}
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/full-regression.yml
+    with:
+      source_sha: ${{ github.sha }}
+      allow_reuse: true
+
   merge-queue-regression:
     name: Merge-queue regression
     if: always() && github.event_name != 'pull_request_target'
-    needs: [diff]
+    needs: [diff, plan, full-regression]
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     steps:
-      - name: Require every regression job to succeed
+      - name: Require the candidate diff and the planned regression
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: |
           echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
-          echo "$NEEDS" | jq -e 'length > 0 and (to_entries | all(.value.result == "success"))' > /dev/null
+          echo "$NEEDS" | jq -r 'if .plan.outputs["full-regression"] == "false" then "no deferred lane: fast path" else "full regression: \(.["full-regression"].result)" end'
+          echo "$NEEDS" | jq -e '.diff.result == "success" and (.["full-regression"].result == "success" or (.plan.result == "success" and .plan.outputs["full-regression"] == "false" and .["full-regression"].result == "skipped"))' > /dev/null

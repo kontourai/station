@@ -12,6 +12,7 @@ import type {
 } from '@kontourai/station-shared/usage-fold';
 import {
   foldUsageEvents,
+  foldUsageObservationProjection,
   providerCostScope,
   providerUsageScope,
 } from '@kontourai/station-shared/usage-fold';
@@ -202,12 +203,44 @@ export class SessionTranscriptReads {
       if (this.deps.isEphemeralSession(threadId)) continue;
       if (!this.deps.canReadSession(threadId, authority)) continue;
       const attribution = this.deps.sessionAttributionFor(threadId);
-      if (!attribution) continue;
+      const events = this.deps.listEventPayloads(threadId);
+      const projection = foldUsageObservationProjection(events, (dropped) =>
+        this.deps.reportDroppedUsageFigure(dropped),
+      );
+      if (
+        !attribution &&
+        projection.observations.length === 0 &&
+        projection.usage.contextTokens === undefined
+      )
+        continue;
+      const relayAgentIds = new Set(
+        events.flatMap((event) =>
+          event.method === 'session.configured' &&
+          event.provider === 'station-agent' &&
+          typeof event.metadata?.agentId === 'string' &&
+          event.metadata.agentId
+            ? [event.metadata.agentId]
+            : [],
+        ),
+      );
+      const relayAgentId =
+        relayAgentIds.size === 1 &&
+        events.every((event) => event.provider === 'station-agent')
+          ? [...relayAgentIds][0]
+          : undefined;
       sessions.push({
         threadId,
-        conversationId: attribution.conversationId,
-        ...(attribution.slug ? { agentSlug: attribution.slug } : {}),
-        usage: this.readSessionUsage(threadId, authority),
+        conversationId: attribution?.conversationId ?? threadId,
+        ...(attribution?.slug ? { agentSlug: attribution.slug } : {}),
+        ...(relayAgentId
+          ? {
+              memoryMirror: {
+                agentSlug: relayAgentId,
+                conversationId: threadId,
+              },
+            }
+          : {}),
+        ...projection,
       });
     }
     return sessions;

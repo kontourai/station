@@ -43,6 +43,7 @@ import {
   type ProjectChatComposerDraft,
   requestProjectChat,
 } from '../../../lib/projectChatEvents';
+import { displayableProjectIcon } from '../../icons/ProjectIcon';
 
 const { createChatSession, sendMessage, updateChat, pickerProps, dockProbe } =
   vi.hoisted(() => ({
@@ -57,8 +58,20 @@ const { createChatSession, sendMessage, updateChat, pickerProps, dockProbe } =
     },
   }));
 
+const RUN_LOCATIONS = {
+  pulse: { kind: 'execution-root', path: '/work/pulse/app' },
+};
+const runLocationReads: boolean[] = [];
+
+// The shape the icon picker stores: a base64 image data URL.
+const PULSE_ICON = 'data:image/png;base64,iVBORw0KGgo=';
 const projects = [
-  { slug: 'pulse', name: 'Pulse', workingDirectory: '/work/pulse' },
+  {
+    slug: 'pulse',
+    name: 'Pulse',
+    workingDirectory: '/work/pulse',
+    icon: PULSE_ICON,
+  },
   { slug: 'other', name: 'Other', workingDirectory: '/work/other' },
 ];
 
@@ -138,6 +151,11 @@ vi.mock('../../../contexts/ProjectsContext', async (importOriginal) => ({
     project: projects.find((project) => project.slug === slug),
     isLoading: false,
   }),
+  // The run-locations read; each call is one render of a component reading it.
+  useScopedProjectRunLocationsQuery: () => {
+    runLocationReads.push(true);
+    return { data: RUN_LOCATIONS };
+  },
 }));
 vi.mock('../../../contexts/AgentsContext', async (importOriginal) => ({
   ...(await importOriginal<object>()),
@@ -195,6 +213,7 @@ beforeAll(() => {
 afterEach(() => {
   cleanup();
   pickerProps.length = 0;
+  runLocationReads.length = 0;
   createChatSession.mockClear();
   sendMessage.mockClear();
   updateChat.mockClear();
@@ -538,6 +557,38 @@ test('the docked New chat button opens a draft in the bound Project with one rea
   expect(pickerProps.at(-1)!.activeProjectSlug).toBe('pulse');
   expect(pickerProps.at(-1)!.startSurface).toBe(true);
   expect(createChatSession).not.toHaveBeenCalled();
+});
+
+test('the dock reads run locations only while the start composer is open, and hands them over', async () => {
+  deviceSettingsStore.set('chatDockProjectSlug', 'pulse');
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+  // Nothing reads run locations while the dock shows no start composer.
+  expect(runLocationReads).toEqual([]);
+
+  fireEvent.click(screen.getByTitle('New chat (Ctrl+T)'));
+  await screen.findByRole('dialog', { name: 'New chat picker' });
+
+  expect(runLocationReads.length).toBeGreaterThan(0);
+  expect(pickerProps.at(-1)!.projectRunLocations).toEqual(RUN_LOCATIONS);
+});
+
+test('the dock hands the start composer the sidebar’s project icons', async () => {
+  deviceSettingsStore.set('chatDockProjectSlug', 'pulse');
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+
+  fireEvent.click(screen.getByTitle('New chat (Ctrl+T)'));
+  await screen.findByRole('dialog', { name: 'New chat picker' });
+  const icons = pickerProps.at(-1)!.projectIconBySlug as ReadonlyMap<
+    string,
+    string
+  >;
+  expect(displayableProjectIcon(PULSE_ICON)).toBe(PULSE_ICON);
+  expect(icons.get('pulse')).toBe(displayableProjectIcon(PULSE_ICON));
+  expect(icons.has('other')).toBe(false);
 });
 
 test('the docked New Chat picker defaults to the dock’s bound Project', async () => {

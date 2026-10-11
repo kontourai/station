@@ -1257,6 +1257,30 @@ describe('CLI core commands over HTTP', () => {
     });
   });
 
+  test("does not send this machine's shell directory to another Environment by default", async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'chat',
+      'codex',
+      'use the remote workspace',
+      '--on=remote-env',
+      `--api-base=${apiBase}`,
+    ]);
+
+    expect(orchestrationCommands[0]).toEqual({
+      type: 'executeTarget',
+      input: {
+        conversationId: expect.any(String),
+        message: 'use the remote workspace',
+        target: {
+          environment: { kind: 'saved', id: 'remote-env' },
+          agent: 'codex',
+        },
+      },
+    });
+  });
+
   test('rejects --cwd combined with --project as a usage error before any request (review r1 HIGH fix 2)', async () => {
     const { runCli } = await import('../cli.js');
     const fetchSpy = vi.spyOn(globalThis, 'fetch');

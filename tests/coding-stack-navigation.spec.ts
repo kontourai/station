@@ -2,9 +2,11 @@ import { expect, type Page } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
 import {
   codingNavigation,
+  codingRailMode,
   codingViewItem,
   codingViewRail,
   openCodingView,
+  selectCodingPane,
 } from './helpers/coding-stack';
 import { test } from './helpers/fixture-audit';
 import {
@@ -1222,5 +1224,44 @@ test.describe('Coding stack — wide (1440px): links, reloads and the Terminal a
     await expect(drillInPage(page)).toHaveAttribute('data-active', 'true');
     await expect(crumbs(page)).toContainText('Terminal');
     await expect(page.locator('.coding-layout__terminal')).toHaveCount(1);
+  });
+});
+
+/**
+ * #3465 review F1: panels mode needs Chat in the centre as well as the wide
+ * fold, and a coarse pointer folds the dock to one region at any width. A
+ * touch screen past 1280px therefore keeps the drill-in stack: the rail item
+ * is the current page, not a pressed toggle.
+ */
+test.describe('Coding stack — wide touch screen (1440px, coarse pointer)', () => {
+  test.use({ viewport: { width: 1440, height: 900 }, hasTouch: true });
+
+  test.beforeEach(async ({ page }) => {
+    await seed(page);
+  });
+
+  test('a rail pick drills in as a page, not a panel toggle', async ({
+    page,
+  }) => {
+    await page.goto(`${ROUTE}?chat=conv-1`);
+    await dismissSetupLauncher(page);
+    expect(
+      await page.evaluate(() => window.matchMedia('(pointer: coarse)').matches),
+    ).toBe(true);
+    await expect(codingViewItem(page, 'Diff')).toBeVisible({
+      timeout: 20_000,
+    });
+    expect(await codingRailMode(page)).toBe('stack');
+
+    await selectCodingPane(page, 'Diff');
+    await expect(codingViewItem(page, 'Diff')).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    await expect(codingViewItem(page, 'Diff')).not.toHaveAttribute(
+      'aria-pressed',
+      /.*/,
+    );
+    await expect(drillInPage(page)).toHaveAttribute('data-active', 'true');
   });
 });

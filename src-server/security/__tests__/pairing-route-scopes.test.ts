@@ -1290,6 +1290,10 @@ describe('pairing-route-scopes: table-driven lookups', () => {
         'PUT',
         '/api/connections/agent/codex/credential-recovery/profiles/profile-a/enrollment',
       ],
+      [
+        'PUT',
+        '/api/connections/agent/codex/credential-recovery/profiles/profile-a/env',
+      ],
       ['PUT', '/api/connections/agent/codex/credential-recovery/policy'],
       [
         'POST',

@@ -1,0 +1,7 @@
+{
+  "revision": "ae3033839a74ad8dc5d005fa71bb349e1efea634",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed the Home role bullets: lapse reasons (uninstall, version or byte change) are unchanged; widening the Home projection with delegationEnvironmentKind makes HomeRolePane show its existing projection fallback until re-approval, which is not a lapse state and is documented in session-api.md. The slice k migration acceptance is a future slice and unaffected.","inputs":["docs/design/shell-plugins-distributions.md","packages/contracts/src/workspace-home-role.ts"]}
+  ]
+}

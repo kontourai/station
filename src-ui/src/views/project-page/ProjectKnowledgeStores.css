@@ -1,0 +1,22 @@
+.project-knowledge-stores {
+  display: grid;
+  gap: var(--k-space-3);
+  min-width: 0;
+}
+.project-knowledge-stores__store {
+  min-width: 0;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  padding: var(--k-space-3);
+}
+.project-knowledge-stores__store > summary {
+  display: list-item;
+  min-height: 44px;
+  align-content: center;
+  cursor: pointer;
+  font-weight: 500;
+}
+.project-knowledge-stores__store > summary:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}

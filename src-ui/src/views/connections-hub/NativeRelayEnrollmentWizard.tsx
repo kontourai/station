@@ -6,6 +6,7 @@ import {
 } from '@kontourai/station-connect/native-enrollment';
 import type { StationProfile } from '@kontourai/station-contracts';
 import type { NativeRelayEnrollmentHostResumeAttempt } from '@kontourai/station-contracts/native-relay-enrollment';
+import { readProjectInvitationToken } from '@kontourai/station-sdk/project-access-client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
@@ -562,10 +563,19 @@ export function NativeRelayEnrollmentWizard({
       setInvitation('');
       return;
     }
+    const projectInvitation = registerAccount
+      ? readProjectInvitationToken(invitation)
+      : undefined;
+    if (registerAccount && !projectInvitation) {
+      setError('Paste a Project invitation link or code.');
+      return;
+    }
     credentialsRef.current = {
       username,
       password,
-      ...(registerAccount ? { registration: { invitation } } : {}),
+      ...(projectInvitation
+        ? { registration: { invitation: projectInvitation } }
+        : {}),
     };
     login.mutate();
   }
@@ -727,12 +737,12 @@ export function NativeRelayEnrollmentWizard({
                   onChange={(event) => setRegisterAccount(event.target.checked)}
                   disabled={busy}
                 />
-                I have an operator invitation to register a new Station account
+                Create an account with a Project invitation
               </label>
               {registerAccount ? (
                 <label className="editor-field">
                   <span className="editor-label">
-                    Operator registration invitation
+                    Project invitation link or code
                   </span>
                   <input
                     className="editor-input"

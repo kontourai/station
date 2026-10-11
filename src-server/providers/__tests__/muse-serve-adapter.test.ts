@@ -656,6 +656,11 @@ describe('#2452 muse serve: workflow children are child work', () => {
           'Ran `date > stamp.txt` in workspace root. File stamp.txt content: "Thu Sep 24 04:40:45 UTC 2026".',
       },
     });
+    // #3337: the terminal revision carries only a duration; the settle still
+    // reports the whole accumulated figure, so nothing is left provisional.
+    expect(child.usage).toEqual({ totalTokens: 30972 + 627, durationMs: 8170 });
+    expect(child.usageProvisional).toBeUndefined();
+    expect(child.usageRunningFields).toBeUndefined();
   });
 
   test("deny: a child whose every tool was denied stays completed (muse's verdict) but never reads as a clean success", async () => {
@@ -666,6 +671,8 @@ describe('#2452 muse serve: workflow children are child work', () => {
     });
     const [child] = childWorkForReporter(fold(h.events), THREAD);
     expect(child.status).toBe('completed');
+    expect(child.usage).toEqual({ totalTokens: 20216 + 312, durationMs: 3728 });
+    expect(child.usageProvisional).toBeUndefined();
     expect(
       child.result?.summary?.startsWith(MUSE_CHILD_ALL_TOOLS_FAILED_PREFIX),
     ).toBe(true);
@@ -688,6 +695,9 @@ describe('#2452 muse serve: workflow children are child work', () => {
     ).toEqual(['stopped-unconfirmed', 'cancelled']);
     const [child] = childWorkForReporter(fold(h.events), THREAD);
     expect(child.status).toBe('cancelled');
+    // #3337: the usage revision muse sent after the stop still counts.
+    expect(child.usage).toEqual({ totalTokens: 0, durationMs: 3104 });
+    expect(child.usageProvisional).toBeUndefined();
     // No summary was reported (final_summary.summary is null): none invented.
     expect(child.result).toBeUndefined();
   });

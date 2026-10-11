@@ -1,0 +1,7 @@
+{
+  "revision": "7b17c5662be37adecdc39524a9a602eaf2f5955c",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Resolved the concurrent SDK source-list additions by preserving the continuity HTTP reader test and both developerRuntime/resourcePosture owners. Inspected merged telemetry prose against useServerLogsQuery host-keyed cache, opt-in refetch interval, bounded response type and optional HostResourceSnapshot resource fields; continuity readConversation attribution/provenance remains intact. This merge review does not establish new live provider, native device, publication or release evidence.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

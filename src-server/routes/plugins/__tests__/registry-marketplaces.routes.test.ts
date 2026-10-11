@@ -15,6 +15,7 @@ import type {
   RegistrySource,
 } from '@kontourai/station-contracts/catalog';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../../domain/home-schema-gate.js';
@@ -56,17 +57,19 @@ function setup() {
   const home = temporary('marketplace-home-');
   const config = new ConfigLoader({ projectHomeDir: home });
   const service = new SkillService(config, logger);
-  const app = createRegistryRoutes(config, async () => {}, undefined, service, {
-    logger,
-    canSeePlugin: () => true,
-    visibility: {
-      resolvePrincipal: () => ({
-        id: LOCAL_OPERATOR_PRINCIPAL_ID,
-        kind: 'human',
-        display: 'Operator',
-      }),
-    },
-  });
+  const app = withOperatorPrincipal(
+    createRegistryRoutes(config, async () => {}, undefined, service, {
+      logger,
+      canSeePlugin: () => true,
+      visibility: {
+        resolvePrincipal: () => ({
+          id: LOCAL_OPERATOR_PRINCIPAL_ID,
+          kind: 'human',
+          display: 'Operator',
+        }),
+      },
+    }),
+  );
   const request = (path: string, method = 'GET', body?: unknown) =>
     app.request(path, {
       method,
@@ -755,12 +758,8 @@ describe('Marketplace source lifecycle through Registry routes', () => {
     await writeVersion('1.0.0');
     const store = new EventStore(join(home, 'events.sqlite'));
     try {
-      const app = createRegistryRoutes(
-        config,
-        async () => {},
-        undefined,
-        service,
-        {
+      const app = withOperatorPrincipal(
+        createRegistryRoutes(config, async () => {}, undefined, service, {
           logger,
           packageMcpJournal: store.createPackageMcpAdmissionJournal(),
           visibility: {
@@ -770,7 +769,7 @@ describe('Marketplace source lifecycle through Registry routes', () => {
               display: 'Operator',
             }),
           },
-        },
+        }),
       );
       const call = (path: string, body?: unknown) =>
         app.request(path, {

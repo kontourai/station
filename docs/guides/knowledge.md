@@ -343,6 +343,34 @@ document-upload panel), for that project's **project-scoped** knowledge store:
   It does not cut over or clean up the source corpus, but source reading can
   recover an interrupted earlier transaction before records are copied.
 
+### Project tools and automatic store detection
+
+Project Settings → Tools adds configured MCP servers to Agents working in that
+Project. The default **Use Knowledge** setting adds `station-knowledge` when a
+registered Project store exists; disabling it removes the Project's addition.
+An Agent can still carry Knowledge independently in its own configuration.
+
+The [Project Knowledge panel](../../src-ui/src/views/project-page/ProjectKnowledgeStores.tsx)
+detects registered stores and offers **Create store** when none exists. Expand a
+store to browse its derived record graph; selecting a record reads it through
+the canonical store adapter. Detection never creates, imports, or migrates a
+store automatically, and records are not added wholesale to Agent prompts.
+
+[Project tool defaults](../../src-server/services/projects/project-tools.ts)
+preserve the Agent's tool selections, disabled tools, approval policy, and
+explicit harness replacement choice. With no authored server list or mode,
+Project additions keep inherited harness discovery. External engines capture
+defaults when a new session starts; native chats read them on the next turn and
+use an [Agent-owned tool view](../../src-server/routes/chat/project-tool-context.ts)
+that preserves its prompt, memory, and hooks. An unavailable Agent recovered only
+with a temporary model and no approval hooks cannot receive Project additions;
+a Project with no additions keeps the existing recovery behavior.
+
+Knowledge MCP access retains the session owner's store permissions. Adding it
+because a Project store exists does not restrict it exclusively to that Project;
+other stores remain accessible only if the owner is allowed to use them. Project
+MCP choices are delivery defaults, not new approval or credential grants.
+
 ## Knowledge Library: general, read-only recall
 
 **Knowledge Library** (`examples/knowledge-library/`) is the general Station surface for browsing

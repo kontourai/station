@@ -38,6 +38,7 @@ import {
 } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { createLogger } from '../../utils/logger.js';
+import { canonicalPath } from '../../utils/path-containment.js';
 import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { assertProjectWorktreeDirectory } from '../projects/project-service.js';
@@ -168,6 +169,9 @@ type ConversationHandoffLaunchCapability = Readonly<{
   targetEnvironmentId: string;
   targetConnectionId?: string;
   transcriptSeed: string;
+  nativeReturnSourceSessionId?: string;
+  resumeCursor?: unknown;
+  nativeResumeBindingKey?: string;
   [conversationHandoffLaunchCapabilityBrand]: true;
 }>;
 
@@ -216,6 +220,9 @@ export interface ForegroundMessageHandle {
     outcome: 'created' | 'existing';
     target: {
       agentId: AgentId;
+      executionAgentId?: AgentId;
+      provider?: EngineId;
+      expectedDefinitionFingerprint?: string;
       engine: ResolvedExecutionEngine;
       modelId?: string;
     };
@@ -281,10 +288,17 @@ function mayHaveStartedForegroundSession(error: unknown): boolean {
 export interface ExecutionSessionBinding {
   environmentId: string;
   agentId: string;
+  executionAgentId?: string;
   connectionId?: string;
   userId?: string;
   projectSlug?: string;
   cwd?: string;
+  /**
+   * #3429: the canonical folder the server admitted this conversation into
+   * (`dispatchCanonicalCwd`): an adopted attached conversation's own folder,
+   * or a scoped dispatch's. Never caller-supplied.
+   */
+  admittedCwd?: string;
   workspaceIsolation?: WorkspaceIsolationConfig;
   worktree?: WorktreeSessionMetadata;
 }
@@ -377,6 +391,8 @@ export interface ExecutionTargetExecutionDependencies
     startRequired: boolean;
     /** Server-owned cursor copied only from the predecessor Session. */
     resumeCursor?: unknown;
+    nativeResumeBindingKey?: string;
+    nativeSourceSessionId?: string;
     /** Concrete model observed on the same-engine predecessor. */
     resumeModel?: string;
     /** Bounded provider-neutral transcript fallback when no cursor exists. */
@@ -390,6 +406,20 @@ export interface ExecutionTargetExecutionDependencies
   retireSession?: (
     access: EnvironmentAccess,
     sessionId: string,
+  ) => Promise<void>;
+  /** Confirm source-engine retirement before another process resumes its identity. */
+  retireNativeReturnSource?: (
+    access: EnvironmentAccess,
+    handoffSessionId: string,
+  ) => Promise<void>;
+  retireNativeContinuationSource?: (
+    access: EnvironmentAccess,
+    sourceSessionId: string,
+    targetSessionId: string,
+  ) => Promise<void>;
+  retireHandoffPredecessor?: (
+    access: EnvironmentAccess,
+    handoffSessionId: string,
   ) => Promise<void>;
   claimConversationContextBoundaryColdStart?: (
     access: EnvironmentAccess,
@@ -412,6 +442,8 @@ export interface ExecutionTargetExecutionDependencies
     input: {
       conversationId: string;
       agentId: AgentId;
+      provider?: EngineId;
+      executionAgentId?: AgentId;
       connectionId?: string;
       modelId?: string;
       idempotencyKey: string;
@@ -424,8 +456,11 @@ export interface ExecutionTargetExecutionDependencies
       targetAgentId: string;
       targetEnvironmentId: string;
       targetConnectionId?: string;
+      nativeReturnSourceSessionId?: string;
     };
     transcriptSeed?: string;
+    resumeCursor?: unknown;
+    nativeResumeBindingKey?: string;
     outcome: 'created' | 'existing';
     carried: readonly string[];
     reset: readonly string[];
@@ -529,6 +564,8 @@ export async function executeForegroundMessage(
         attachments: input.attachments ?? [],
         ambientContext: input.ambientContext ?? '',
         provider: resolved.provider,
+        executionAgentId: resolved.executionAgentId,
+        expectedDefinitionFingerprint: resolved.expectedDefinitionFingerprint,
         engine: resolved.engine,
         modelId: resolved.modelId ?? null,
         modelLaunchPlan: resolved.modelLaunchPlan,
@@ -562,12 +599,24 @@ export async function executeForegroundMessage(
     );
   }
   if (binding) {
-    validateContinuationWorkspace(binding, resolved.workspace);
+    validateContinuationWorkspace(
+      binding,
+      resolved.workspace,
+      // #3429: the request named its project and nothing more (the dock's
+      // follow-up), so it asks to continue the conversation where it is.
+      input.target.workspace?.kind === 'project' &&
+        input.target.workspace.cwd === undefined &&
+        input.target.workspace.workspaceIsolation === undefined,
+    );
   }
   const preparedHandoff = requestedHandoff
     ? await deps.prepareConversationHandoff?.(resolved.access, {
         conversationId,
         agentId: resolved.agentId,
+        provider: resolved.provider,
+        ...(resolved.executionAgentId
+          ? { executionAgentId: resolved.executionAgentId }
+          : {}),
         ...(resolved.engine.kind === 'connection'
           ? { connectionId: resolved.engine.connectionId }
           : {}),
@@ -590,6 +639,18 @@ export async function executeForegroundMessage(
           ? { targetConnectionId: preparedHandoff.marker.targetConnectionId }
           : {}),
         transcriptSeed: preparedHandoff.transcriptSeed ?? '',
+        ...(preparedHandoff.resumeCursor !== undefined
+          ? { resumeCursor: preparedHandoff.resumeCursor }
+          : {}),
+        ...(preparedHandoff.nativeResumeBindingKey
+          ? { nativeResumeBindingKey: preparedHandoff.nativeResumeBindingKey }
+          : {}),
+        ...(preparedHandoff.marker.nativeReturnSourceSessionId
+          ? {
+              nativeReturnSourceSessionId:
+                preparedHandoff.marker.nativeReturnSourceSessionId,
+            }
+          : {}),
       })
     : input.handoffCapability;
   const validHandoff =
@@ -600,7 +661,20 @@ export async function executeForegroundMessage(
     (handoff.targetConnectionId === undefined ||
       (resolved.engine.kind === 'connection' &&
         handoff.targetConnectionId === resolved.engine.connectionId));
-  if (binding && binding.agentId !== resolved.agentId && !validHandoff) {
+  const changedOverride =
+    binding &&
+    (binding.executionAgentId !== undefined ||
+      resolved.executionAgentId !== undefined) &&
+    (binding.executionAgentId !== resolved.executionAgentId ||
+      binding.connectionId !==
+        (resolved.engine.kind === 'connection'
+          ? resolved.engine.connectionId
+          : undefined));
+  if (
+    binding &&
+    (binding.agentId !== resolved.agentId || changedOverride) &&
+    !validHandoff
+  ) {
     throw new Error(
       'The requested conversation belongs to a different Environment, Agent, or Station user',
     );
@@ -631,6 +705,16 @@ export async function executeForegroundMessage(
           outcome: 'existing',
           target: {
             agentId: resolved.agentId,
+            provider: resolved.provider,
+            ...(resolved.executionAgentId
+              ? { executionAgentId: resolved.executionAgentId }
+              : {}),
+            ...(resolved.expectedDefinitionFingerprint
+              ? {
+                  expectedDefinitionFingerprint:
+                    resolved.expectedDefinitionFingerprint,
+                }
+              : {}),
             engine: resolved.engine,
             ...(resolved.modelId ? { modelId: resolved.modelId } : {}),
           },
@@ -653,6 +737,12 @@ export async function executeForegroundMessage(
           preparedHandoff.contextBoundary?.status === 'consumed'
         ),
         transcriptSeed: handoff.transcriptSeed,
+        ...(handoff.resumeCursor !== undefined
+          ? { resumeCursor: handoff.resumeCursor }
+          : {}),
+        ...(handoff.nativeResumeBindingKey
+          ? { nativeResumeBindingKey: handoff.nativeResumeBindingKey }
+          : {}),
         ...(preparedHandoff?.contextBoundary
           ? { contextBoundary: preparedHandoff.contextBoundary }
           : {}),
@@ -736,6 +826,31 @@ export async function executeForegroundMessage(
       ? resolved.workspace.workspaceIsolation
       : undefined);
   if (!binding || continuation?.startRequired) {
+    if (validHandoff && deps.retireHandoffPredecessor)
+      await deps.retireHandoffPredecessor(resolved.access, sessionId);
+    if (handoff?.nativeReturnSourceSessionId) {
+      if (!deps.retireNativeReturnSource)
+        throw new Error(
+          'Native return requires confirmed source-engine retirement.',
+        );
+      await deps.retireNativeReturnSource(resolved.access, sessionId);
+    } else if (
+      continuation &&
+      'nativeSourceSessionId' in continuation &&
+      continuation.nativeSourceSessionId &&
+      deps.getProviderAdapter(resolved.provider)?.metadata.continuity
+        ?.nativeReturn === 'same-binding'
+    ) {
+      if (!deps.retireNativeContinuationSource)
+        throw new Error(
+          'Native continuation requires confirmed source-engine retirement.',
+        );
+      await deps.retireNativeContinuationSource(
+        resolved.access,
+        continuation.nativeSourceSessionId,
+        sessionId,
+      );
+    }
     // A boundary is claimed at the real cold-start seam, never by a warm turn
     // or ordinary recovery.  Empty policy intentionally has no transcript seed.
     const contextBoundaryStartCommandId = continuation?.contextBoundary
@@ -793,7 +908,19 @@ export async function executeForegroundMessage(
           : {}),
         ...(startModelId ? { modelId: startModelId } : {}),
         ...(continuation?.resumeCursor !== undefined
-          ? { resumeCursor: continuation.resumeCursor }
+          ? {
+              resumeCursor: continuation.resumeCursor,
+              ...('nativeResumeBindingKey' in continuation &&
+              continuation.nativeResumeBindingKey
+                ? {
+                    nativeResumeBindingKey: continuation.nativeResumeBindingKey,
+                  }
+                : {}),
+              ...(deps.getProviderAdapter(resolved.provider)?.metadata
+                .continuity?.resumeIdentity === 'require-match'
+                ? { requireNativeResumeIdentity: true as const }
+                : {}),
+            }
           : {}),
         // #765 A1: a durable conversation's Sessions must keep their native
         // engine transcript. `resolveConversationContinuation` reserves a
@@ -812,6 +939,15 @@ export async function executeForegroundMessage(
         metadata: {
           agentId: resolved.agentId,
           agentSlug: resolved.agentId,
+          ...(resolved.expectedDefinitionFingerprint
+            ? {
+                expectedDefinitionFingerprint:
+                  resolved.expectedDefinitionFingerprint,
+              }
+            : {}),
+          ...(resolved.executionAgentId
+            ? { executionAgentId: resolved.executionAgentId }
+            : {}),
           // Continuations validate this canonical Environment + Agent binding
           // before they can reuse a persisted conversation. Keep it alongside
           // the legacy agent fields so a foreground-created session is as
@@ -1066,6 +1202,16 @@ export async function executeForegroundMessage(
             outcome: preparedHandoff.outcome,
             target: {
               agentId: resolved.agentId,
+              provider: resolved.provider,
+              ...(resolved.executionAgentId
+                ? { executionAgentId: resolved.executionAgentId }
+                : {}),
+              ...(resolved.expectedDefinitionFingerprint
+                ? {
+                    expectedDefinitionFingerprint:
+                      resolved.expectedDefinitionFingerprint,
+                  }
+                : {}),
               engine: resolved.engine,
               ...(resolved.modelId ? { modelId: resolved.modelId } : {}),
             },
@@ -1090,6 +1236,7 @@ const defaultWorktreeFinalizer =
 function validateContinuationWorkspace(
   binding: ExecutionSessionBinding,
   workspace: ResolvedWorkspaceTarget | undefined,
+  projectOnly = false,
 ): void {
   const requestedIsolation =
     workspace?.kind === 'project'
@@ -1122,6 +1269,36 @@ function validateContinuationWorkspace(
       'continuation_workspace_unbound',
       'This conversation was started without a workspace, so it cannot be continued inside one. Continue it as it is, or start a new chat in this workspace.',
     );
+  }
+  // #3429: a conversation the server admitted into a verified folder (an
+  // adopted attached conversation: the project folder, a folder inside it,
+  // or a worktree of its repository) is bound to that folder. A request that
+  // names only the conversation's project continues it there, in the folder
+  // and isolation it already has; it never moves it to the project root. A
+  // request naming a folder or an isolation still meets the exact checks
+  // below.
+  if (
+    workspace?.kind === 'project' &&
+    projectOnly &&
+    binding.admittedCwd !== undefined &&
+    !binding.worktree
+  ) {
+    if (binding.projectSlug !== workspace.projectSlug)
+      throw new ContinuationWorkspaceError(
+        'continuation_workspace_different_project',
+        'This conversation belongs to a different project.',
+      );
+    // `admittedCwd` is already canonical; the bound folder must still
+    // resolve to exactly it (a folder swapped for a link does not).
+    if (
+      binding.cwd === undefined ||
+      canonicalPathOrUndefined(binding.cwd) !== binding.admittedCwd
+    )
+      throw new ContinuationWorkspaceError(
+        'continuation_workspace_direct_mismatch',
+        'This conversation belongs to a different workspace directory.',
+      );
+    return;
   }
   if (workspace?.kind === 'project' && !originalIsolation) {
     throw new Error(
@@ -1211,6 +1388,14 @@ function validateContinuationWorkspace(
       'continuation_workspace_direct_mismatch',
       'This conversation belongs to a different workspace directory.',
     );
+  }
+}
+
+function canonicalPathOrUndefined(path: string): string | undefined {
+  try {
+    return canonicalPath(path);
+  } catch {
+    return undefined;
   }
 }
 

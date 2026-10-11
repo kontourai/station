@@ -55,6 +55,8 @@ const deleteProfileMutate = vi.fn();
 const resetMutate = vi.fn();
 const importProfileMutate = vi.fn();
 let saveFailure: Error | null = null;
+const checkConnection = vi.fn();
+let modelConnections: unknown[] = [];
 /**
  * The device projection this page reads. `undefined` is the honest default --
  * it is what a server that has not answered yet returns, and `HostAction`
@@ -228,6 +230,11 @@ vi.mock('@kontourai/station-sdk', () => ({
     isPending: false,
   }),
   useTestAgentConnectionMutation: () => ({ mutate: vi.fn(), isPending: false }),
+  useSmokeAgentConnectionMutation: () => ({
+    mutate: checkConnection,
+    isPending: false,
+  }),
+  useModelConnectionsQuery: () => ({ data: modelConnections }),
   useReconnectACPConnectionMutation: (options: {
     onError?: (error: Error) => void;
   }) => ({
@@ -1683,4 +1690,63 @@ describe('AgentConnectionView', () => {
         ).toBeTruthy();
     },
   );
+});
+
+test('guided proxy setup saves a reference and checks only saved settings', async () => {
+  modelConnections = [
+    {
+      id: 'proxy-home',
+      kind: 'model',
+      type: 'openai-compat',
+      name: 'home-media',
+      enabled: true,
+      config: { apiKeyConfigured: true },
+      capabilities: ['llm'],
+      status: 'ready',
+      prerequisites: [],
+    },
+  ];
+  connectionQueryData = {
+    id: 'codex',
+    kind: 'agent',
+    type: 'codex',
+    name: 'Codex',
+    enabled: true,
+    capabilities: ['agent-runtime'],
+    status: 'ready',
+    prerequisites: [],
+    config: { defaultModel: 'gpt-6.1-sol' },
+    runtimeCatalog: {
+      source: 'live',
+      models: [
+        { id: 'gpt-6.1-sol', name: 'GPT-6.1 Sol', originalId: 'gpt-6.1-sol' },
+      ],
+    },
+  };
+  await render(
+    <AgentConnectionView selectedRuntimeId="codex" onNavigate={vi.fn()} />,
+  );
+  expect(screen.getByRole('combobox', { name: 'Default model' })).toBeTruthy();
+  fireEvent.change(screen.getByRole('combobox', { name: 'Connect through' }), {
+    target: { value: 'proxy-home' },
+  });
+  expect(
+    (
+      screen.getByRole('button', {
+        name: 'Check connection',
+      }) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect(save).toHaveBeenCalledWith(
+    expect.objectContaining({
+      connection: expect.objectContaining({
+        config: expect.objectContaining({ proxyConnectionId: 'proxy-home' }),
+      }),
+    }),
+  );
+  const stored = save.mock.calls.at(-1)?.[0];
+  expect(stored.connection.config).not.toHaveProperty('apiKey');
+  expect(stored.connection.config).not.toHaveProperty('env');
+  modelConnections = [];
 });

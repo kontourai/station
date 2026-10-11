@@ -27,7 +27,18 @@ export interface ProviderContinuityCapabilities {
   fork: 'native' | 'replay-seed' | 'none';
   /** Move an existing execution Session back to a prior turn. */
   rewind: 'in-place' | 'none';
+  /** Opt-in enforcement of an exact native identity at the provider open seam. */
+  resumeIdentity?: 'require-match';
+  /** Resume a prior Session only within its recorded engine-home/profile binding. */
+  nativeReturn?: 'same-binding';
 }
+
+export const NATIVE_RESUME_IDENTITY_METADATA_KEY = 'nativeResumeIdentity';
+export const NATIVE_RESUME_BINDING_METADATA_KEY = 'nativeResumeBindingKey';
+export type NativeResumeIdentityStatus = 'matched' | 'mismatch';
+export type ProviderSessionRetirement =
+  | { status: 'retired' }
+  | { status: 'indeterminate' };
 
 export const NO_PROVIDER_CONTINUITY: ProviderContinuityCapabilities = {
   resume: 'none',
@@ -276,6 +287,8 @@ export const SKILL_EXPERIENCE_METADATA_KEY = 'stationSkillExperience' as const;
 
 export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   'usageAccountKey',
+  NATIVE_RESUME_IDENTITY_METADATA_KEY,
+  NATIVE_RESUME_BINDING_METADATA_KEY,
   SKILL_EXPERIENCE_METADATA_KEY,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
@@ -1061,6 +1074,14 @@ export interface ProviderSessionStartInput {
   resumeCursor?: unknown;
   workspaceIsolation?: WorkspaceIsolationConfig;
   /**
+   * Refuse a different native thread instead of silently starting fresh.
+   * Requires an adapter declaring continuity.resumeIdentity; a queued prompt
+   * or locally retained cursor is not proof that the provider matched it.
+   */
+  requireNativeResumeIdentity?: true;
+  /** Server-owned opaque binding copied from the prior native activation. */
+  nativeResumeBindingKey?: string;
+  /**
    * Server-owned independent-review policy. Public orchestration commands
    * omit this field. Supporting Adapters must enforce it at their native
    * process sandbox boundary; a detached worktree alone is not read-only.
@@ -1171,6 +1192,8 @@ export interface ProviderSendTurnInput {
 }
 
 export interface ProviderSession {
+  /** Safe route captured from the configuration used to launch this session. */
+  modelRoute?: { connectionId: string; label: string; endpoint: string };
   provider: EngineId;
   threadId: string;
   /**

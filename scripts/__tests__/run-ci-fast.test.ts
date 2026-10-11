@@ -294,6 +294,8 @@ describe('bounded ci:fast runner', () => {
       ['npm', ['run', 'gate:evidence-check-execution']],
       ['npm', ['run', 'install-script:check']],
       ['npm', ['run', 'mobile:permissions:gate']],
+      // #3149: a renderer-wide scan no path edge can select.
+      ['npm', ['run', 'native-platform:ratchet']],
       ['npm', ['run', 'agent-plugin:validators:gate']],
       ['npm', ['run', 'settings:registry:gate']],
       ['npm', ['run', 'content:integrity']],
@@ -323,7 +325,7 @@ describe('bounded ci:fast runner', () => {
       ['npm', ['run', 'lint:check']],
       // Ordered after the two evidence-checks it re-executes, so a failure in
       // either reports under its own name first.
-      ['npm', ['run', 'veritas:readiness']],
+      ['npm', ['run', 'veritas:readiness', '--', '--format', 'json']],
       // station#4273: the typecheck invariant, and `build:connect` as its
       // stated precondition (typecheck:ui resolves @kontourai/station-connect
       // through packages/connect/dist). The aggregate is invoked DIRECTLY
@@ -492,8 +494,26 @@ describe('bounded ci:fast runner', () => {
       }),
     ).toBe(CI_FAST_INFRASTRUCTURE_EXIT_CODE);
     expect(output).toEqual([
-      `${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${cause}\n`,
+      `\n${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${cause}\n`,
     ]);
+  });
+
+  it('separates the owner verdict from nested stderr without a trailing newline', () => {
+    let stderr = 'nested stack without a newline';
+    const cause = 'ci:fast exceeded its feedback budget';
+    expect(
+      runCiFastCli({
+        run: () => {
+          throw new CiFastInfrastructureError(cause);
+        },
+        error: (message) => {
+          stderr += message;
+        },
+      }),
+    ).toBe(CI_FAST_INFRASTRUCTURE_EXIT_CODE);
+    expect(stderr.split('\n')).toContain(
+      `${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${cause}`,
+    );
   });
 
   it('classifies a signal-terminated nested command as infrastructure', () => {
@@ -511,7 +531,7 @@ describe('bounded ci:fast runner', () => {
       }),
     ).toBe(CI_FAST_INFRASTRUCTURE_EXIT_CODE);
     expect(output).toEqual([
-      `${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${CI_FAST_NESTED_INFRASTRUCTURE_CAUSE}\n`,
+      `\n${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${CI_FAST_NESTED_INFRASTRUCTURE_CAUSE}\n`,
     ]);
   });
 

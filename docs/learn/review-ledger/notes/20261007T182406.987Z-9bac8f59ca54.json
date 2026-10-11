@@ -1,0 +1,7 @@
+{
+  "revision": "943b47fd6119e89b8a0dcc657e159948a9255568",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed hosted PR failure 37656768156: orchestration layout keeper still queried Approval needed while the canonical request sheet now names Needs approval. Corrected only that dialog locator; button legibility, no-overlap, viewport, rejection alert and decisions assertions are retained. Targeted pr-smoke browser case passed (11.7s) with one worker and zero retries; e2e typecheck passed. The smoke manifest, synthetic event boundary, browser-health policy and CI admission contracts are unchanged.","inputs":["docs/testing/browser-smoke.md","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

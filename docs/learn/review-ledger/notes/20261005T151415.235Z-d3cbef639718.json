@@ -1,0 +1,7 @@
+{
+  "revision": "3dc718517ffcf6997f9eee8b395d76f246f2cc92",
+
+  "notes": [
+    {"path":"docs/patterns/backend.md","note":"#3331 changes only the responsive-surface inventory text files and UI components; no backend pattern claim is affected.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt","docs/ui/responsive-surfaces.json"]}
+  ]
+}

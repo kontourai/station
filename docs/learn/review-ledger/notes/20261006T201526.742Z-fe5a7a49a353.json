@@ -1,0 +1,7 @@
+{
+  "revision": "1c7b4971af13314c1ef31272823e38066720c02f",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"#2966 marker round: rewrote invalid-overlay paragraph (values not retained after the next profile write, GET /config/app never returns them, marker keeps profile refused); checked registry profileRecord/projectPublicCredentialProfiles, config.ts projectPublicAppConfig, resolver credentialProfileOverlayEnv. URL-userinfo heuristic change (bounded scheme run) does not change documented heuristic list.","inputs":["docs/guides/connections.md"]}
+  ]
+}

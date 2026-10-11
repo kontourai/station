@@ -1,4 +1,4 @@
-import { useQueryClient } from '@kontourai/station-sdk';
+import { useQueryClient } from '@tanstack/react-query';
 import { type ReactNode, useCallback, useMemo } from 'react';
 import { ConversationsContext } from './conversation-context';
 import type { ConversationsContextType } from './conversation-types';

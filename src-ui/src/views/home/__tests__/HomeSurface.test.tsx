@@ -163,9 +163,11 @@ describe('HomeSurface composition', () => {
     showSurfacePage.mockClear();
   });
 
-  test('an empty Station keeps the page heading and leads with the cards (V1)', () => {
+  test('an empty Station keeps its accessible page heading and starter cards', () => {
     renderHome({ workItems: [] });
-    expect(screen.getByRole('heading', { name: "What's next?" })).toBeTruthy();
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Home' }),
+    ).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Work actions' })).toBeTruthy();
     expect(screen.queryByText('Skip to recent work')).toBeNull();
   });

@@ -162,6 +162,8 @@ vi.mock('../contexts/MonitoringContext', async (importOriginal) => ({
         'gen_ai.tool.name': 'read_file',
         'gen_ai.tool.call.id': 'call-1',
         'gen_ai.tool.call.result': { ok: true },
+        'station.tool.duration_ms': 125,
+        'gen_ai.tool.call.outcome': 'success',
       },
     ],
     historyTruncated: true,
@@ -282,13 +284,12 @@ describe('MonitoringView shell port', () => {
     expect(root?.classList.contains('monitoring-view')).toBe(false);
     expect(container.querySelector('.page__header')).toBeNull();
 
-    expect(screen.getByRole('heading', { name: 'Monitoring' })).toBeTruthy();
-    expect(
-      screen.getByLabelText('Monitoring connection connected'),
-    ).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Monitoring' })).toBeNull();
+    expect(screen.getByText('Event stream: connected')).toBeTruthy();
     expect(screen.getByText('Planner Agent')).toBeTruthy();
     expect(screen.getByText('AGENT-START')).toBeTruthy();
-    expect(screen.getByText('METRICS')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Usage' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Fleet routing' })).toBeNull();
   });
 
   /**
@@ -314,6 +315,7 @@ describe('MonitoringView shell port', () => {
     // Did not fall into the error boundary's fallback — the panel itself
     // handled the error state.
     expect(container.textContent).not.toMatch(/something went wrong/i);
+    fireEvent.click(screen.getByRole('tab', { name: 'Routing' }));
     expect(screen.getByRole('heading', { name: 'Fleet routing' })).toBeTruthy();
     expect(screen.getByRole('alert')).toBeTruthy();
   });
@@ -383,4 +385,14 @@ describe('MonitoringView tool-result copy (station#3341)', () => {
 test('the mounted monitoring view discloses the loaded-window search boundary', () => {
   render(<MonitoringViewWithBoundary />);
   expect(screen.getByText(/Showing the latest 1,000 events/)).toBeTruthy();
+});
+
+test('tool latency uses the loaded event window and reports partial history', () => {
+  render(<MonitoringViewWithBoundary />);
+  fireEvent.click(screen.getByRole('tab', { name: 'Tool latency' }));
+  expect(screen.getAllByText('125 ms')).toHaveLength(2);
+  expect(
+    screen.getByText('Partial event history.', { exact: false }),
+  ).toBeTruthy();
+  expect(screen.queryByText('AGENT-START')).toBeNull();
 });

@@ -9,7 +9,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { devNull, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import type {
@@ -684,8 +684,6 @@ export function unpackWorkspace(input: {
       ]);
     } else
       packageGit(workspace, ['update-ref', '--no-deref', 'HEAD', payload.head]);
-    packageGit(workspace, ['config', 'core.attributesFile', devNull]);
-    packageGit(workspace, ['config', 'core.excludesFile', devNull]);
     for (const [name, value] of Object.entries(payload.policy))
       packageGit(workspace, ['config', `core.${name}`, String(value)]);
     if (payload.index.length) {

@@ -1,0 +1,9 @@
+{
+  "revision": "473401b8573a7964401d24e2ad7ce4239ed5db3c",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"Scoped merge review: main added a ToolsSection stub to the Project Settings shell fixture while this lane supplies typed successful integration and Knowledge-root query results so the real section can stay mounted. Removed only that incoming stub, preserving the original mounted boundary and its SDK fixtures. Project Settings shell plus the existing Tools save keeper passed37 tests, retaining unavailable selections and additive Weather/Knowledge payload behavior. This changes no Knowledge store, derived index, capture permissions, rebuild/migration contract or guide prose. It does not turn the helper keeper into hosted or native evidence; the composer merge remains separately qualified.","inputs":["docs/guides/knowledge.md","src-ui/src/__tests__/ProjectSettingsView.test.tsx"]},
+
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Scoped merge review: main added a ToolsSection stub to the Project Settings shell fixture while this lane supplies typed successful integration and Knowledge-root query results so the real section can stay mounted. Removed only that incoming stub, preserving the original mounted boundary and its SDK fixtures. Project Settings shell plus the existing Tools save keeper passed37 tests, retaining unavailable selections and additive Weather/Knowledge payload behavior. This changes no Knowledge store, derived index, capture permissions, rebuild/migration contract or guide prose. It does not turn the helper keeper into hosted or native evidence; the composer merge remains separately qualified.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md"]}
+  ]
+}

@@ -19,6 +19,7 @@ on:
   workflow_call:
     inputs:
       source_sha: { required: true, type: string }
+      force_rebuild: { required: false, type: boolean, default: false }
       build:
         description: The staging phase's exact `build` output; anything but 'true' skips every job.
         required: true
@@ -54,7 +55,7 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -87,7 +88,7 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -135,7 +136,7 @@ jobs:
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.admit-cohort.result == 'success' && needs.create-promotion-fence.result == 'success' }}
     runs-on: ubuntu-22.04
     environment: native-release
-    permissions: { contents: read, id-token: write }
+    permissions: { contents: read, actions: read, id-token: write }
     env:
       GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_PLAY_WORKLOAD_IDENTITY_PROVIDER }}
       GCP_PLAY_SERVICE_ACCOUNT: ${{ vars.GCP_PLAY_SERVICE_ACCOUNT }}
@@ -143,11 +144,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -187,7 +189,16 @@ jobs:
           node scripts/release-cohort-workflow.mjs assert-promotion-fence-tag-object "$tag_object" cohort/cohort-plan.json cohort/cohort-admission.json
 
 
+      - name: Recheck source qualification, cadence and published ancestry under the delivery lock
+        id: publisher
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          FORCE_REBUILD: ${{ inputs.force_rebuild }}
+          STATION_NIGHTLY_INTERVAL_HOURS: ${{ vars.STATION_NIGHTLY_INTERVAL_HOURS }}
+        run: node scripts/release-pipeline.mjs publisher
       - name: Upload the admitted AAB with its exact release name
+        if: steps.publisher.outputs.android_needed == 'true'
         id: play_upload
         env:
           INPUT_SERVICEACCOUNTJSON: ${{ steps.google_auth.outputs.credentials_file_path }}
@@ -204,8 +215,12 @@ jobs:
         id: android_provider_state
         run: |
           node scripts/release-cohort.mjs begin-promotion cohort/cohort-admission.json > promotion-state.json
-          node scripts/query-google-play-release.mjs query-json "$(node -e 'process.stdout.write(JSON.stringify(require("./cohort/cohort-plan.json").versionIdentities.android))')" > play-observation.json
-          node scripts/release-cohort-workflow.mjs provider-claim android-claim.json cohort/cohort-plan.json android play-observation.json
+          if [ '${{ steps.publisher.outputs.android_needed }}' = 'true' ]; then
+            node scripts/query-google-play-release.mjs query-json "$(node -e 'process.stdout.write(JSON.stringify(require("./cohort/cohort-plan.json").versionIdentities.android))')" > play-observation.json
+            node scripts/release-cohort-workflow.mjs provider-claim android-claim.json cohort/cohort-plan.json android play-observation.json
+          else
+            node scripts/release-cohort-workflow.mjs not-attempted-claim android-claim.json cohort/cohort-plan.json android "run:$GITHUB_RUN_ID:previous-source-publication-retained"
+          fi
           node scripts/release-cohort.mjs promotion-receipt promotion-state.json android-claim.json > promotion-android-state.json
       - name: Record unknown Android provider state for disclosure
         if: ${{ always() && steps.android_provider_state.outcome != 'success' }}
@@ -229,7 +244,7 @@ jobs:
     if: ${{ github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.admit-cohort.result == 'success' && needs.create-promotion-fence.result == 'success' }}
     runs-on: macos-15
     environment: native-release
-    permissions: { contents: write }
+    permissions: { contents: write, actions: read }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -252,7 +267,16 @@ jobs:
           status=$(curl --silent --show-error --output "$tag_object" --write-out '%{http_code}' --header 'Accept: application/vnd.github+json' --header "Authorization: Bearer $GITHUB_TOKEN" --url "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/git/tags/$tag_sha")
           test "$status" = 200
           node scripts/release-cohort-workflow.mjs assert-promotion-fence-tag-object "$tag_object" cohort/cohort-plan.json cohort/cohort-admission.json
+      - name: Recheck source qualification, cadence and published ancestry under the delivery lock
+        id: publisher
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ inputs.source_sha }}
+          FORCE_REBUILD: ${{ inputs.force_rebuild }}
+          STATION_NIGHTLY_INTERVAL_HOURS: ${{ vars.STATION_NIGHTLY_INTERVAL_HOURS }}
+        run: node scripts/release-pipeline.mjs publisher
       - name: Upload both desktops, then publish latest.json last
+        if: steps.publisher.outputs.desktop_needed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -270,9 +294,14 @@ jobs:
         id: macos_provider_state
         run: |
           node scripts/release-cohort.mjs begin-promotion cohort/cohort-admission.json > promotion-state.json
-          node scripts/release-cohort-workflow.mjs provider-claim macos-claim.json cohort/cohort-plan.json macos github-release-observation.json
+          if [ '${{ steps.publisher.outputs.desktop_needed }}' = 'true' ]; then
+            node scripts/release-cohort-workflow.mjs provider-claim macos-claim.json cohort/cohort-plan.json macos github-release-observation.json
+            node scripts/release-cohort-workflow.mjs provider-claim windows-claim.json cohort/cohort-plan.json windows github-release-observation.json
+          else
+            node scripts/release-cohort-workflow.mjs not-attempted-claim macos-claim.json cohort/cohort-plan.json macos "run:$GITHUB_RUN_ID:previous-source-publication-retained"
+            node scripts/release-cohort-workflow.mjs not-attempted-claim windows-claim.json cohort/cohort-plan.json windows "run:$GITHUB_RUN_ID:previous-source-publication-retained"
+          fi
           node scripts/release-cohort.mjs promotion-receipt promotion-state.json macos-claim.json > promotion-macos-state.json
-          node scripts/release-cohort-workflow.mjs provider-claim windows-claim.json cohort/cohort-plan.json windows github-release-observation.json
           node scripts/release-cohort.mjs promotion-receipt promotion-state.json windows-claim.json > promotion-windows-state.json
           node scripts/release-cohort.mjs group-desktop-states promotion-macos-state.json promotion-windows-state.json > promotion-desktop-state.pending.json
           mv promotion-desktop-state.pending.json promotion-desktop-state.json
@@ -353,7 +382,7 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with: { pattern: nightly-cohort-*, path: cohort, merge-multiple: true }
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -579,7 +608,7 @@ jobs:
     needs: [create-promotion-fence, promote-android, promote-macos, deliver-ios, protected-finalize, record-native-completion]
     if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && inputs.source_sha == github.sha && needs.create-promotion-fence.result != 'skipped' }}
     runs-on: ubuntu-22.04
-    permissions: { contents: write }
+    permissions: { contents: write, actions: read }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

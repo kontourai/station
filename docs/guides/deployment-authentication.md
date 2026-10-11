@@ -255,15 +255,51 @@ their prior behavior. Existing Tailnet person bindings remain a separate
 personal-device mechanism; they do not become Project membership through this
 account contract.
 
+#### Native relay-management admission
+
+The account-bound Device gate admits these exact relay path families only
+through current native Device proof, current account session and matching
+Device/account binding. The shared pure classifier grants no authority:
+
+| Method | Exact path |
+| --- | --- |
+| GET / HEAD | `/api/relay-management` |
+| GET / HEAD | `/api/relay-management/capabilities` |
+| POST | `/api/relay-management/approvals` |
+| POST | `/api/relay-management/approvals/revoke` |
+| POST | `/api/relay-management/invitations` |
+| POST | `/api/relay-management/devices/:enrollmentId/approve` |
+| POST | `/api/relay-management/devices/:enrollmentId/deny` |
+
+The Device decision ID must match the existing 43-character opaque-ID rule.
+Management still requires an explicit current `relay:manage` promotion; the
+capabilities read can return `canManage: false` and confers no authority.
+Credential-only account-bound Devices remain gated. This does not add a legacy
+access grant, admit arbitrary methods or descendants, waive Project IAM, or
+open Agent, terminal or Task share/unshare operations. Both native-proof
+conditions on neutral Device-only observations remain intact; management is
+not a Device-only observation and still requires the account.
+
+The [gate](../../src-server/runtime/bootstrap/account-bound-device-gate.ts),
+[exact classifier](../../src-server/security/pairing-route-scopes.ts) and
+[management authority](../../src-server/security/relay-management-authority.ts)
+own these separate checks. This is source admission, not a physical/native
+operator or released Nightly journey receipt.
+
 #### Invited administrators through the API
 
 An accepted Project administrator can read `GET /api/projects/:slug/access`
 with an approved account-bound Device carrying `orchestration:read`. To manage
 members or invitation links, the operator must independently approve
-`orchestration:operate` on that Device through the existing
-`POST /api/pairing/devices/:deviceId/scope` endpoint. Grant exactly
-`["orchestration:read", "orchestration:operate"]`; the standard personal-device
-preset includes terminal access and is not the collaborator-management grant.
+`orchestration:operate` or the narrower `relay:manage` on that Device through
+the existing `POST /api/pairing/devices/:deviceId/scope` endpoint. For the closed
+access-management leaves, grant `orchestration:read` plus `relay:manage`
+(**Manage remote access**); presets/defaults exclude it. The standard
+personal-device preset includes terminal access and is not the
+collaborator-management grant. Native management account proofs use a separate
+fixed host operation. Account-bound relay management admits only the exact
+native leaves described below, with current Device/account proof and separate
+`relay:manage`. Neither scope replaces the person's Project role.
 The person remains signed in as their own account throughout this workflow.
 
 The audited POST leaves beneath `/api/projects/:slug/access` are

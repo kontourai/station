@@ -1,0 +1,7 @@
+{
+  "revision": "6a61808025ba36e3fd734ffe569080ef7f9af13f",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Fix round for #3391: rewrote the runsAt paragraph against packages/contracts/src/project.ts and the resolver: the directory the records name with identity not verified, not where worktree-isolated chats run, unavailable also covering a folder that did not answer within the per-project time box, async folder reads, and runsAt ignored on update (projects.ts normalizeProjectBody).","inputs":["docs/reference/shared.md","packages/contracts/src/project.ts"]}
+  ]
+}

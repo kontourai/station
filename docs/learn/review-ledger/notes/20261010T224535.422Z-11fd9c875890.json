@@ -1,0 +1,7 @@
+{
+  "revision": "d31017e3262ebf0f8b7a1b2fcd497daf7f53433c",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Fix round 1 only regenerated the DesktopStartupReadiness topic in src-server/tools/station-docs-content.ts from the re-reviewed module-map section (key monitor routing, dialog Keep Waiting and failed-cover fallback, non-owned native recovery recommit, renderer bootstrap without a wall-clock limit). Canonical prose in this document unchanged; generator output matches docs:mcp:generate.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

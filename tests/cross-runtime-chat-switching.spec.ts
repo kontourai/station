@@ -1415,20 +1415,24 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
       }),
     ).toBeVisible();
     await expect(
-      alphaAgents.locator('.new-chat-modal__agent', { hasText: 'Station' }),
+      alphaAgents
+        .locator('.new-chat-modal__agent')
+        .filter({ has: page.getByText('Station', { exact: true }) }),
     ).toBeVisible();
     await expect(
-      alphaAgents.locator('.new-chat-modal__agent', {
-        hasText: 'Claude Runtime',
-      }),
+      alphaAgents
+        .locator('.new-chat-modal__agent')
+        .filter({ has: page.getByText('Claude Runtime', { exact: true }) }),
     ).toBeVisible();
     await expect(
-      alphaAgents.locator('.new-chat-modal__agent', { hasText: 'kiro-cli' }),
+      alphaAgents
+        .locator('.new-chat-modal__agent')
+        .filter({ has: page.getByText('kiro-cli', { exact: true }) }),
     ).toBeVisible();
     await expect(
-      alphaAgents.locator('.new-chat-modal__agent', {
-        hasText: 'Codex Runtime',
-      }),
+      alphaAgents
+        .locator('.new-chat-modal__agent')
+        .filter({ has: page.getByText('Codex Runtime', { exact: true }) }),
     ).toHaveCount(0);
     await alphaAgents.press('Escape');
     await expect(alphaAgents).toHaveCount(0);
@@ -1452,24 +1456,29 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
       .click();
     const betaAgents = page.getByRole('dialog', { name: 'Choose agent' });
     await expect(
-      betaAgents.locator('.new-chat-modal__agent', {
-        hasText: 'Codex Runtime',
-      }),
+      betaAgents
+        .locator('.new-chat-modal__agent')
+        .filter({ has: page.getByText('Codex Runtime', { exact: true }) }),
     ).toBeVisible();
     await expect(
-      betaAgents.locator('.new-chat-modal__agent', { hasText: 'Station' }),
+      betaAgents
+        .locator('.new-chat-modal__agent')
+        .filter({ has: page.getByText('Station', { exact: true }) }),
     ).toHaveCount(0);
     await expect(
-      betaAgents.locator('.new-chat-modal__agent', {
-        hasText: 'Claude Runtime',
-      }),
+      betaAgents
+        .locator('.new-chat-modal__agent')
+        .filter({ has: page.getByText('Claude Runtime', { exact: true }) }),
     ).toHaveCount(0);
     await expect(
-      betaAgents.locator('.new-chat-modal__agent', { hasText: 'kiro-cli' }),
+      betaAgents
+        .locator('.new-chat-modal__agent')
+        .filter({ has: page.getByText('kiro-cli', { exact: true }) }),
     ).toHaveCount(0);
 
     await betaAgents
-      .locator('.new-chat-modal__agent', { hasText: 'Codex Runtime' })
+      .locator('.new-chat-modal__agent')
+      .filter({ has: page.getByText('Codex Runtime', { exact: true }) })
       .click();
     await expect(
       dockComposer(page).getByRole('button', {
@@ -1581,10 +1590,14 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
     const agents = await openNewChatModal(page);
 
     await expect(
-      agents.locator('.new-chat-modal__agent', { hasText: 'kiro-cli' }),
+      agents
+        .locator('.new-chat-modal__agent')
+        .filter({ has: page.getByText('kiro-cli', { exact: true }) }),
     ).toBeVisible();
     await expect(
-      agents.locator('.new-chat-modal__agent', { hasText: 'other-cli' }),
+      agents
+        .locator('.new-chat-modal__agent')
+        .filter({ has: page.getByText('other-cli', { exact: true }) }),
     ).toHaveCount(0);
   });
 });

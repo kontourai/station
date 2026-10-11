@@ -313,7 +313,7 @@ describe('ConnectionStore — migrate()', () => {
     const store = new ConnectionStore({ storage: adapter });
 
     const connection = store.addHostTunnel('Media server', {
-      hostAlias: 'brian-media',
+      hostAlias: 'home-media',
       remoteProjectPath: '~/dev/github/kontourai/station',
     });
 
@@ -329,7 +329,7 @@ describe('ConnectionStore — migrate()', () => {
           accessVersion: 1,
           kind: 'host-tunnel',
           adapter: 'ssh',
-          hostAlias: 'brian-media',
+          hostAlias: 'home-media',
           remoteProjectPath: '~/dev/github/kontourai/station',
         },
       ],
@@ -557,7 +557,7 @@ describe('ConnectionStore — stable environment profiles', () => {
     const direct = store.add('My Station', 'https://station.example.test');
     store.reconcileHandshake(direct.id, handshake('environment-1'));
     const host = store.addHostTunnel('Media access', {
-      hostAlias: 'brian-media',
+      hostAlias: 'home-media',
       remoteProjectPath: '/srv/station',
     });
     const hostMethod = host.accessMethods[0];
@@ -588,7 +588,7 @@ describe('ConnectionStore — stable environment profiles', () => {
       'access:direct:',
     );
     store.addHostTunnel('Media access', {
-      hostAlias: 'brian-media',
+      hostAlias: 'home-media',
       remoteProjectPath: '/srv/station',
     });
     expect(store.getActive()?.selectedAccessMethodId).toBe(hostMethod.id);
@@ -604,7 +604,7 @@ describe('ConnectionStore — stable environment profiles', () => {
     store.update(direct.id, { url: 'https://candidate.example.test' });
     const pending = store.getActive()?.endpointCandidate;
     const host = store.addHostTunnel('Media access', {
-      hostAlias: 'brian-media',
+      hostAlias: 'home-media',
       remoteProjectPath: '/srv/station',
     });
 
@@ -621,7 +621,7 @@ describe('ConnectionStore — stable environment profiles', () => {
     const adapter = memoryAdapter();
     const store = new ConnectionStore({ storage: adapter });
     const connection = store.addHostTunnel('Media access', {
-      hostAlias: 'brian-media',
+      hostAlias: 'home-media',
       remoteProjectPath: '/srv/station',
     });
     const hostMethod = connection.accessMethods[0];

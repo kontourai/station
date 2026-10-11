@@ -63,6 +63,7 @@ export function buildProjectForm(project: ProjectConfig): ProjectForm {
     defaultEnvironment: project.defaultEnvironment ?? { kind: 'current' },
     workingDirectory: project.workingDirectory ?? '',
     agents: project.agents,
+    toolDefaults: project.toolDefaults,
   };
 }
 

@@ -46,6 +46,10 @@ const sdkMocks = vi.hoisted(() => ({
 // requires it. This harness mounts a fragment of that tree, and nothing
 // here asserts a surface reveal, so the command hook is supplied directly.
 const showSurfaceStub = vi.hoisted(() => vi.fn());
+vi.mock('../components/home/HomeStartComposer', () => ({
+  HomeStartComposer: () => <div>Project start composer</div>,
+}));
+
 vi.mock('../contexts/useShowSurface', () => ({
   useShowSurface: () => showSurfaceStub,
   useShowSurfacePage: () => showSurfaceStub,

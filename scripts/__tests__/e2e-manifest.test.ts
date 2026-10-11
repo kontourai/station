@@ -222,6 +222,7 @@ describe('e2e manifest', () => {
     expect(new Set(classified).size).toBe(classified.length);
     expect(new Set(classified)).toEqual(new Set(productSpecs));
     expect(PRODUCT_E2E_EXECUTION_PROFILE.sharedInstanceExclusive).toEqual([
+      'tests/connect-modal.spec.ts',
       'tests/conversation-timeline.spec.ts',
       'tests/mobile-chat-composer.spec.ts',
       'tests/agents-readiness-board.spec.ts',

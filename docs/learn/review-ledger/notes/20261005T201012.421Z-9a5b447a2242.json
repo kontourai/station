@@ -1,0 +1,7 @@
+{
+  "revision": "a99f1c02384b93210c184b9306fd7ae47022f080",
+
+  "notes": [
+    {"path":"docs/design/portable-project-identity.md","note":"Round 3 for #3391: no change to resolution semantics or the live identity check on starts; only the list read's folder checks are deduplicated and capped. No design claim affected.","inputs":["docs/design/portable-project-identity.md","src-server/services/projects/project-resource-resolver.ts"]}
+  ]
+}

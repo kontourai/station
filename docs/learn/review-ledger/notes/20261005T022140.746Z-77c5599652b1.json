@@ -1,0 +1,7 @@
+{
+  "revision": "118cebb159ffb91fc9e5b6d5898fbaae9178ebf1",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Checked the launcher-protocol claims against station-launcher.mjs: W3 adds self-supervision on Windows and a junction switch but keeps LAUNCHER_PROTOCOL 1 and its persistence across updates; still true.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packaging/portable-server/bin/station-launcher.mjs"]}
+  ]
+}

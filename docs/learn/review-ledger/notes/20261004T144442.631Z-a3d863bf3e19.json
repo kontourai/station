@@ -1,0 +1,11 @@
+{
+  "revision": "5c33fc398bd8db438e0e37d3c16004aa1daa9c01",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Delta since the previous note is type-only: a JSDoc entry for the shard's failedReportDir option and typed parameters on a test's runner stub. Behavior and the reviewed claims are unchanged.","inputs":["docs/guides/testing.md","scripts/__tests__/fast-checks-shard-cli.test.ts","scripts/run-changed-verification.mjs"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Delta since the previous note is type-only: a JSDoc entry for the shard's failedReportDir option and typed parameters on a test's runner stub. Behavior and the reviewed claims are unchanged.","inputs":["docs/reference/verification-receipts.md","scripts/run-changed-verification.mjs"]},
+
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"Delta since the previous note is type-only: a JSDoc entry for the shard's failedReportDir option and typed parameters on a test's runner stub. Behavior and the reviewed claims are unchanged.","inputs":["scripts/__tests__/fixtures/changed-verification/README.md","scripts/run-changed-verification.mjs"]}
+  ]
+}

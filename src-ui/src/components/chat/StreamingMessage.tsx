@@ -14,6 +14,7 @@ import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import { ElapsedWait } from '../ElapsedWait';
 import { LoadingDots } from '../LoadingDots';
 import { FilePartPreview } from './FilePartPreview';
+import { InputRequestRecordRow } from './InputRequestRecordRow';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
 import { StreamingMarkdown } from './StreamingMarkdown';
@@ -24,6 +25,7 @@ import {
 import { TurnActivityProgress } from './TurnActivityProgress';
 import { splitToolCallRuns } from './tool-call-runs';
 import { UIBlockRenderer } from './UIBlockRenderer';
+import { uiBlockIdentity } from './ui-block-identity';
 
 export type StreamingMessageProps = {
   sessionId: string;
@@ -234,7 +236,19 @@ export function StreamingMessageView({
             return <StreamingMarkdown key={i} content={part.content} />;
           }
           if (part.type === 'ui-block' && part.uiBlock) {
-            return <UIBlockRenderer key={i} block={part.uiBlock} />;
+            const identity = uiBlockIdentity(contentParts, i, sessionId);
+            return (
+              <UIBlockRenderer
+                key={identity}
+                instanceKey={identity}
+                block={part.uiBlock}
+              />
+            );
+          }
+          if (part.type === 'input-request' && part.inputRequestRecord) {
+            return (
+              <InputRequestRecordRow key={i} record={part.inputRequestRecord} />
+            );
           }
           if (part.type === 'file') {
             // An image a tool returned mid-turn (a screenshot the agent took)

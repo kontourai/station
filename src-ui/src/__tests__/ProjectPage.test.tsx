@@ -95,6 +95,10 @@ const sdkMocks = vi.hoisted(() => ({
 const pluginRegistryState = vi.hoisted(() => ({
   loadStatus: {} as { failure?: string },
 }));
+vi.mock('../components/home/HomeStartComposer', () => ({
+  HomeStartComposer: () => <div>Project start composer</div>,
+}));
+
 vi.mock('../core/PluginRegistry', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../core/PluginRegistry')>()),
   pluginRegistry: {

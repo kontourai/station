@@ -37,8 +37,8 @@
   overflow: hidden;
   clip: rect(0 0 0 0);
 }
-.usage-rollup button,
-.usage-rollup select {
+.usage-rollup button:not(.button),
+.usage-rollup select:not(.choice-trigger) {
   background: var(--bg-tertiary);
   color: var(--text-primary);
   border: 1px solid var(--border-primary);

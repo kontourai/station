@@ -1,8 +1,10 @@
 import { Hono } from 'hono';
+import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   PeerCredentialMutationAuthorizationError,
   type PeerCredentialStore,
 } from '../../services/peers/peer-credential-store.js';
+import type { PeerEnrollmentService } from '../../services/peers/peer-enrollment-service.js';
 import {
   errorMessage,
   getBody,
@@ -23,12 +25,12 @@ import {
  * station-control tools): the bearer is now read in-process, only by the
  * one remote seam runtime composition builds (`RemoteStationForwarder`).
  *
- * Provisioning UX (slice 2, explicit stopgap): these routes are the whole
- * provisioning mechanism for now — a `station environment peers add/list/
- * remove` CLI verb calls them directly against a loopback `--api-base`, the
- * same pattern `station environment access approve/deny` already uses for
- * other loopback-only operator actions. Slice 4's mutual pairing exchange
- * protocol supersedes this manual path entirely; do not build on top of it.
+ * The manual `station environment peers add/list/remove` CLI remains
+ * available. Operator-owned `/enrollments` requests separately obtain a
+ * one-way delegation grant from a receiver, then publish it directly to this
+ * server's store without returning its credential. Receiver approval remains
+ * independent; this enrollment does not implement mutual pairing or grant
+ * Project execution consent.
  */
 export function createPeerCredentialRoutes(
   store: PeerCredentialStore,
@@ -56,6 +58,7 @@ export function createPeerCredentialRoutes(
    */
   hasSshProfile?: (environmentId: string) => boolean,
   authorize?: (request: Request) => boolean,
+  enrollments?: PeerEnrollmentService,
 ) {
   const app = new Hono();
 
@@ -69,6 +72,132 @@ export function createPeerCredentialRoutes(
       return false;
     }
   };
+
+  app.post('/enrollments', async (c) => {
+    const request = c.req.raw;
+    if (!mutationAuthorized(request))
+      return c.json({ success: false, error: 'Forbidden' }, 403);
+    if (!enrollments)
+      return c.json({ success: false, error: 'Enrollment unavailable' }, 503);
+    const body = await readBoundedRequestBody(request, 2048);
+    if (body.status !== 'ok')
+      return c.json({ success: false, error: 'Invalid enrollment' }, 400);
+    try {
+      const parsed: unknown = JSON.parse(body.body);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+        throw new Error('Invalid enrollment');
+      const value = parsed as Record<string, unknown>;
+      if (
+        Object.keys(value).some(
+          (key) => !['id', 'apiBase', 'environmentId', 'label'].includes(key),
+        ) ||
+        typeof value.id !== 'string' ||
+        typeof value.apiBase !== 'string' ||
+        typeof value.environmentId !== 'string' ||
+        (value.label !== undefined && typeof value.label !== 'string')
+      )
+        throw new Error('Invalid enrollment');
+      const data = await enrollments.start(
+        {
+          id: value.id,
+          apiBase: value.apiBase,
+          environmentId: value.environmentId,
+          ...(typeof value.label === 'string' ? { label: value.label } : {}),
+        },
+        () => mutationAuthorized(request),
+      );
+      return c.json({ success: true, data }, 201);
+    } catch (error) {
+      return c.json(
+        {
+          success: false,
+          error:
+            error instanceof PeerCredentialMutationAuthorizationError
+              ? 'Forbidden'
+              : errorMessage(error),
+        },
+        error instanceof PeerCredentialMutationAuthorizationError ? 403 : 400,
+      );
+    }
+  });
+  app.get('/enrollments/:id', async (c) => {
+    const request = c.req.raw;
+    if (!mutationAuthorized(request))
+      return c.json({ success: false, error: 'Forbidden' }, 403);
+    if (!enrollments)
+      return c.json({ success: false, error: 'Enrollment unavailable' }, 503);
+    try {
+      return c.json({
+        success: true,
+        data: await enrollments.get(param(c, 'id'), () =>
+          mutationAuthorized(request),
+        ),
+      });
+    } catch (error) {
+      return c.json(
+        {
+          success: false,
+          error:
+            error instanceof PeerCredentialMutationAuthorizationError
+              ? 'Forbidden'
+              : errorMessage(error),
+        },
+        error instanceof PeerCredentialMutationAuthorizationError ? 403 : 404,
+      );
+    }
+  });
+  app.post('/enrollments/:id/complete', async (c) => {
+    const request = c.req.raw;
+    if (!mutationAuthorized(request))
+      return c.json({ success: false, error: 'Forbidden' }, 403);
+    if (!enrollments)
+      return c.json({ success: false, error: 'Enrollment unavailable' }, 503);
+    try {
+      return c.json({
+        success: true,
+        data: await enrollments.complete(param(c, 'id'), () =>
+          mutationAuthorized(request),
+        ),
+      });
+    } catch (error) {
+      return c.json(
+        {
+          success: false,
+          error:
+            error instanceof PeerCredentialMutationAuthorizationError
+              ? 'Forbidden'
+              : errorMessage(error),
+        },
+        error instanceof PeerCredentialMutationAuthorizationError ? 403 : 400,
+      );
+    }
+  });
+  app.delete('/enrollments/:id', async (c) => {
+    const request = c.req.raw;
+    if (!mutationAuthorized(request))
+      return c.json({ success: false, error: 'Forbidden' }, 403);
+    if (!enrollments)
+      return c.json({ success: false, error: 'Enrollment unavailable' }, 503);
+    try {
+      return c.json({
+        success: true,
+        data: await enrollments.cancel(param(c, 'id'), () =>
+          mutationAuthorized(request),
+        ),
+      });
+    } catch (error) {
+      return c.json(
+        {
+          success: false,
+          error:
+            error instanceof PeerCredentialMutationAuthorizationError
+              ? 'Forbidden'
+              : errorMessage(error),
+        },
+        error instanceof PeerCredentialMutationAuthorizationError ? 403 : 400,
+      );
+    }
+  });
 
   app.get('/', (c) => c.json({ success: true, data: store.list() }));
 

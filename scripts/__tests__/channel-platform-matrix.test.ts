@@ -164,6 +164,14 @@ describe('cross-platform release channel matrix', () => {
 
   test('applies each channel identity to main and debug so source-set precedence cannot mask it', () => {
     const fixture = mkdtempSync(join(tmpdir(), 'station-channel-icons-'));
+    const publicAssets = join(fixture, 'src-ui/public');
+    mkdirSync(publicAssets, { recursive: true });
+    writeFileSync(join(publicAssets, 'favicon.png'), 'station-mark');
+    for (const channel of ['dev', 'beta', 'nightly'])
+      writeFileSync(
+        join(publicAssets, `favicon-${channel}.png`),
+        `station-${channel}-mark`,
+      );
     for (const [channel, identity] of Object.entries(
       ANDROID_CHANNEL_IDENTITY,
     )) {
@@ -214,6 +222,14 @@ describe('cross-platform release channel matrix', () => {
         expect(
           readFileSync(join(resources, 'mipmap-mdpi/ic_launcher.png'), 'utf8'),
         ).toBe(channel);
+        expect(
+          readFileSync(
+            join(resources, 'drawable/station_startup_logo.png'),
+            'utf8',
+          ),
+        ).toBe(
+          channel === 'stable' ? 'station-mark' : `station-${channel}-mark`,
+        );
         if (channel !== 'stable') {
           expect(
             readFileSync(

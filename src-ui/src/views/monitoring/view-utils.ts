@@ -124,7 +124,7 @@ export function getMonitoringAgentCountLabel(
     filteredEvents,
     stats?.agents || [],
   ).length;
-  return `${activeCount} Active${historicalCount > 0 ? ` • ${historicalCount} Historical` : ''}`;
+  return `${activeCount} Configured${historicalCount > 0 ? ` • ${historicalCount} Historical` : ''}`;
 }
 
 export function getRunningConversations(

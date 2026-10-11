@@ -13,7 +13,7 @@ import {
 } from '../openssh-worker-probe.js';
 
 const INPUT = {
-  alias: 'brian-media',
+  alias: 'home-media',
   controlPath: '/private/control.sock',
   remoteProjectPath: '~/dev/github/kontourai/station',
   remotePort: 3141,
@@ -27,7 +27,7 @@ const RESULT = {
   remoteHome: '/home/user',
   remoteProjectPath: '/home/user/dev/github/kontourai/station',
   environmentId: '11111111-1111-4111-8111-111111111111',
-  instanceId: 'brian-media-dogfood',
+  instanceId: 'home-media-dogfood',
   sha: 'a'.repeat(40),
   bootId: '22222222-2222-4222-8222-222222222222',
 };
@@ -42,7 +42,7 @@ describe('OpenSSH remote worker probe', () => {
         'ForwardAgent=no',
         'PermitLocalCommand=no',
         '--',
-        'brian-media',
+        'home-media',
         'node',
         '-',
       ]),

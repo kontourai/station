@@ -1,4 +1,7 @@
-import type { AgentId } from '@kontourai/station-contracts/agent-identity';
+import type {
+  AgentId,
+  EngineId,
+} from '@kontourai/station-contracts/agent-identity';
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 import type { AttentionRequestReference } from '@kontourai/station-contracts/attention';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
@@ -94,6 +97,9 @@ export interface ConversationHandoffReceipt {
   outcome: 'created' | 'existing';
   target: {
     agentId: AgentId;
+    executionAgentId?: AgentId;
+    provider?: EngineId;
+    expectedDefinitionFingerprint?: string;
     engine: ExecutionResolutionReceipt['engine'];
     modelId?: string;
   };

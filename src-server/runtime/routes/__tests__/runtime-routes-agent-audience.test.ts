@@ -668,6 +668,66 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
     });
   });
 
+  test('#3284 MCP prompts: a member gets the uniform not-found for a hidden Agent and no list or run on an admitted one; the operator reaches the routes', async () => {
+    // Only B's own account request: no station-control tool maps to these
+    // routes, so a tool call is refused before this gate.
+    const { base } = await setup();
+    const run = (): RequestInit => ({
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        serverId: 'private-crm',
+        name: 'summarize',
+        arguments: {},
+      }),
+    });
+    const unknown = await asAccount(base, '/api/agents/no-such-agent');
+    expect(unknown.status).toBe(404);
+    for (const slug of HIDDEN) {
+      for (const [path, init] of [
+        [`/agents/${slug}/mcp-prompts`, {}],
+        [`/agents/${slug}/mcp-prompts/run`, run()],
+      ] as const) {
+        const refused = await asAccount(base, path, init);
+        // Byte-identical to an Agent that does not exist.
+        expect([path, refused.status, refused.body]).toEqual([
+          path,
+          unknown.status,
+          unknown.body,
+        ]);
+        expect(refused.cacheControl).toBe('no-store');
+      }
+    }
+    // An admitted Agent: the prompt list names the Agent's MCP servers, which
+    // a member never receives, and running a prompt reads it with the Agent's
+    // server connection to feed a turn, so both follow the member-turn rule.
+    for (const [path, init] of [
+      ['/agents/concierge/mcp-prompts', {}],
+      ['/agents/concierge/mcp-prompts/run', run()],
+    ] as const) {
+      const refused = await asAccount(base, path, init);
+      expect([path, refused.status, refused.body?.code]).toEqual([
+        path,
+        403,
+        'member_agent_turns_unavailable',
+      ]);
+      expect(JSON.stringify(refused.body)).not.toMatch(/private-crm/);
+    }
+    // The operator is not gated: the prompt routes themselves answer (this
+    // composition activates no Agent, so their own "not active" refusal).
+    for (const [path, init] of [
+      ['/agents/ops-only/mcp-prompts', {}],
+      ['/agents/ops-only/mcp-prompts/run', run()],
+    ] as const) {
+      const reached = await asOperator(base, path, init);
+      expect([path, reached.status, reached.body]).toEqual([
+        path,
+        404,
+        { success: false, error: "Agent 'ops-only' is not active." },
+      ]);
+    }
+  });
+
   const send = (method: string, body?: unknown): RequestInit => ({
     method,
     headers: { 'content-type': 'application/json' },

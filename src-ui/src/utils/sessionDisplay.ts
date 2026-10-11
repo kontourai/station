@@ -376,7 +376,10 @@ export function displayProvider(session: OrchestrationSessionSummary): string {
     return `${delegationTargetLabel(session)} · ${identity}`;
   }
   const engineLabel = engineDisplayLabel(session.provider);
-  return engineLabel ?? `Station agent · ${session.provider}`;
+  const label = engineLabel ?? `Station agent · ${session.provider}`;
+  return session.modelRoute
+    ? `${label} · via ${session.modelRoute.label}`
+    : label;
 }
 
 export function displayEnvironment(

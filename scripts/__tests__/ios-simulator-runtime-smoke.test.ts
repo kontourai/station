@@ -132,7 +132,9 @@ describe('iOS simulator runtime smoke selection', () => {
     // It can also win the race with that first tap itself (#1174), so a
     // second reactivating dismissal must sit between the first tap and the
     // bounded manager wait. The call-site equality above cannot see its loss.
-    const managerWait = swiftSmoke.indexOf('tap(connect, until: addAddress');
+    const managerWait = swiftSmoke.indexOf(
+      'tap(connect, until: connectStation',
+    );
     expect(managerWait).toBeGreaterThan(firstTap);
     expect(swiftSmoke.slice(firstTap, managerWait)).toMatch(
       /if dismissSystemAlertIfPresent\(\) \{\s+app\.activate\(\)\s+\}/,
@@ -150,8 +152,8 @@ describe('iOS simulator runtime smoke selection', () => {
     // a surface that never opens (#1174): each tap-opened surface is asserted
     // through the bounded tap-retry helper, never a bare existence wait.
     for (const [source, target] of [
-      ['connect', 'addAddress'],
-      ['addAddress', 'name'],
+      ['connect', 'connectStation'],
+      ['connectStation', 'address'],
     ]) {
       expect(swiftSmoke).toMatch(
         new RegExp(`tap\\(${source}, until: ${target}, budget: \\d+\\)`),

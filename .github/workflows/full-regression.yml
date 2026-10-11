@@ -28,6 +28,8 @@ jobs:
     timeout-minutes: 10
     outputs:
       reuse_run: ${{ steps.evidence.outputs.reuse_run }}
+      ordinary: ${{ steps.capacity.outputs.ordinary }}
+      heavy: ${{ steps.capacity.outputs.heavy }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -37,6 +39,19 @@ jobs:
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
+      - name: Resolve qualification runner profile
+        id: capacity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATION_QUALIFICATION_RUNNER_PROFILE: ${{ vars.STATION_QUALIFICATION_RUNNER_PROFILE }}
+          STATION_HOSTED_TOTAL_SLOTS: ${{ vars.STATION_HOSTED_TOTAL_SLOTS }}
+          STATION_HOSTED_MACOS_SLOTS: ${{ vars.STATION_HOSTED_MACOS_SLOTS }}
+          STATION_CAPACITY_REPOSITORIES: ${{ vars.STATION_CAPACITY_REPOSITORIES }}
+          STATION_QUALIFICATION_ORDINARY_SLOTS: ${{ vars.STATION_QUALIFICATION_ORDINARY_SLOTS }}
+          STATION_QUALIFICATION_PROCESS_HEAVY_SLOTS: ${{ vars.STATION_QUALIFICATION_PROCESS_HEAVY_SLOTS }}
+          STATION_INTEGRATION_RESERVE: ${{ vars.STATION_INTEGRATION_RESERVE }}
+        run: |
+          node scripts/release-pipeline.mjs profile
       - name: Resolve exact-source evidence
         id: evidence
         env:
@@ -44,6 +59,28 @@ jobs:
           SOURCE_SHA: ${{ inputs.source_sha }}
           ALLOW_REUSE: ${{ inputs.allow_reuse }}
         run: node scripts/qualification-evidence.mjs resolve
+      - name: Admit fresh qualification before expensive fanout
+        if: steps.evidence.outputs.reuse_run == ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATION_QUALIFICATION_RUNNER_PROFILE: ${{ vars.STATION_QUALIFICATION_RUNNER_PROFILE }}
+          STATION_HOSTED_TOTAL_SLOTS: ${{ vars.STATION_HOSTED_TOTAL_SLOTS }}
+          STATION_HOSTED_MACOS_SLOTS: ${{ vars.STATION_HOSTED_MACOS_SLOTS }}
+          STATION_CAPACITY_REPOSITORIES: ${{ vars.STATION_CAPACITY_REPOSITORIES }}
+          STATION_QUALIFICATION_ORDINARY_SLOTS: ${{ vars.STATION_QUALIFICATION_ORDINARY_SLOTS }}
+          STATION_QUALIFICATION_PROCESS_HEAVY_SLOTS: ${{ vars.STATION_QUALIFICATION_PROCESS_HEAVY_SLOTS }}
+          STATION_INTEGRATION_RESERVE: ${{ vars.STATION_INTEGRATION_RESERVE }}
+        run: |
+          set -euo pipefail
+          node scripts/release-pipeline.mjs admission | tee "$RUNNER_TEMP/qualification-admission.json"
+      - name: Retain capacity admission receipt
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qualification-admission-${{ inputs.source_sha }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/qualification-admission.json
+          if-no-files-found: ignore
+          retention-days: 14
 
   static:
     name: Static and app builds
@@ -59,7 +96,7 @@ jobs:
           ref: ${{ inputs.source_sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -113,6 +150,7 @@ jobs:
     timeout-minutes: 120
     strategy:
       fail-fast: false
+      max-parallel: ${{ fromJSON(needs.resolve.outputs.ordinary) }}
       matrix:
         include:
           - slice: 1-2 of 8
@@ -131,7 +169,7 @@ jobs:
           ref: ${{ inputs.source_sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -145,10 +183,19 @@ jobs:
 
       - name: Provision and preflight zsh for process-heavy installer fixtures
         timeout-minutes: 5
+        env:
+          BOOTSTRAP_SOURCE_REPOSITORY: ${{ github.repository }}
+          BOOTSTRAP_SOURCE_SHA: ${{ github.workflow_sha }}
         run: |
+          set -euo pipefail
           if [[ ! -x /bin/zsh ]]; then
-            sudo apt-get update
-            sudo apt-get install --yes zsh
+            bootstrap="$RUNNER_TEMP/install-ci-ubuntu-packages.sh"
+            curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \
+              "https://raw.githubusercontent.com/${BOOTSTRAP_SOURCE_REPOSITORY}/${BOOTSTRAP_SOURCE_SHA}/scripts/install-ci-ubuntu-packages.sh" \
+              --output "$bootstrap"
+            printf 'Ubuntu bootstrap workflow source: %s@%s\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
+            sha256sum "$bootstrap"
+            sudo bash "$bootstrap" zsh
           fi
           command -v zsh
           test -x /bin/zsh
@@ -217,6 +264,7 @@ jobs:
     timeout-minutes: 120
     strategy:
       fail-fast: false
+      max-parallel: ${{ fromJSON(needs.resolve.outputs.heavy) }}
       matrix:
         include:
           - slice: 1 of 2
@@ -231,7 +279,7 @@ jobs:
           ref: ${{ inputs.source_sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -245,10 +293,19 @@ jobs:
 
       - name: Provision and preflight zsh for process-heavy installer fixtures
         timeout-minutes: 5
+        env:
+          BOOTSTRAP_SOURCE_REPOSITORY: ${{ github.repository }}
+          BOOTSTRAP_SOURCE_SHA: ${{ github.workflow_sha }}
         run: |
+          set -euo pipefail
           if [[ ! -x /bin/zsh ]]; then
-            sudo apt-get update
-            sudo apt-get install --yes zsh
+            bootstrap="$RUNNER_TEMP/install-ci-ubuntu-packages.sh"
+            curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \
+              "https://raw.githubusercontent.com/${BOOTSTRAP_SOURCE_REPOSITORY}/${BOOTSTRAP_SOURCE_SHA}/scripts/install-ci-ubuntu-packages.sh" \
+              --output "$bootstrap"
+            printf 'Ubuntu bootstrap workflow source: %s@%s\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
+            sha256sum "$bootstrap"
+            sudo bash "$bootstrap" zsh
           fi
           command -v zsh
           test -x /bin/zsh
@@ -321,7 +378,7 @@ jobs:
           ref: ${{ inputs.source_sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -335,10 +392,19 @@ jobs:
 
       - name: Provision and preflight zsh for process-heavy installer fixtures
         timeout-minutes: 5
+        env:
+          BOOTSTRAP_SOURCE_REPOSITORY: ${{ github.repository }}
+          BOOTSTRAP_SOURCE_SHA: ${{ github.workflow_sha }}
         run: |
+          set -euo pipefail
           if [[ ! -x /bin/zsh ]]; then
-            sudo apt-get update
-            sudo apt-get install --yes zsh
+            bootstrap="$RUNNER_TEMP/install-ci-ubuntu-packages.sh"
+            curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \
+              "https://raw.githubusercontent.com/${BOOTSTRAP_SOURCE_REPOSITORY}/${BOOTSTRAP_SOURCE_SHA}/scripts/install-ci-ubuntu-packages.sh" \
+              --output "$bootstrap"
+            printf 'Ubuntu bootstrap workflow source: %s@%s\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
+            sha256sum "$bootstrap"
+            sudo bash "$bootstrap" zsh
           fi
           command -v zsh
           test -x /bin/zsh
@@ -413,7 +479,7 @@ jobs:
           ref: ${{ inputs.source_sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

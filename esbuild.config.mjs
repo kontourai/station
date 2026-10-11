@@ -139,6 +139,15 @@ await Promise.all([
     entryPoints: ['./src-server/services/plugins/plugin-draft-build-child.ts'],
     outfile: `${serverDir}/plugin-draft-build-child.js`,
   }),
+  // #3406: attached-session discovery reads session folders in this helper
+  // process, spawned via an import.meta.url-relative path like the one above.
+  esbuild.build({
+    ...shared,
+    entryPoints: [
+      './src-server/services/orchestration/attached-session-path-child.ts',
+    ],
+    outfile: `${serverDir}/attached-session-path-child.js`,
+  }),
   // The private document worker is loaded via import.meta.url at runtime too.
   // Ship it beside the history worker: source-only availability passes dev
   // tests while a packaged server otherwise fails its first room request.

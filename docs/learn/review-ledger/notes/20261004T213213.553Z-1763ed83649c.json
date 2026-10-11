@@ -1,0 +1,7 @@
+{
+  "revision": "6a740918ced3d8ef7cf6865385ece383fecdaa86",
+
+  "notes": [
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Its gate-on-capability pattern is unchanged; delegatedInputAnswers follows the same rule for a different field.","inputs":["docs/guides/delegation-attempt-claims.md","packages/sdk/src/client/delegations.ts","src-server/routes/orchestration/orchestration.ts"]}
+  ]
+}

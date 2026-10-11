@@ -53,6 +53,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           QUALIFICATION_RUN: ${{ inputs.run_id }}
           RETRY: ${{ inputs.retry }}
+          # Unset/empty: no automated agent (episode is needs-owner). `codex` opts in.
+          QUALIFICATION_REPAIR_AGENT: ${{ vars.QUALIFICATION_REPAIR_AGENT }}
         run: node scripts/qualification-repair.mjs prepare
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: steps.prepare.outputs.claim == 'true'
@@ -66,7 +68,7 @@ jobs:
 
   repair:
     needs: prepare
-    if: needs.prepare.outputs.claim == 'true'
+    if: needs.prepare.outputs.claim == 'true' && vars.QUALIFICATION_REPAIR_AGENT == 'codex'
     runs-on: ubuntu-22.04
     timeout-minutes: 55
     permissions:
@@ -86,7 +88,7 @@ jobs:
         with:
           name: qualification-repair-context
           path: station-worktrees/repair
-      - uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+      - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with: { install: false }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -97,7 +99,7 @@ jobs:
         run: npm run dependencies:ci
         timeout-minutes: 15
       - name: Repair collected failures once
-        uses: openai/codex-action@86365089eb2b84e0a8fb0717b304f8bdcb13b20e
+        uses: openai/codex-action@bdf19a4a223ec2549a3e2274a0cf61556bc07675
         timeout-minutes: 40
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}

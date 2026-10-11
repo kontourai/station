@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { expect, type Page, type Route, test } from '@playwright/test';
+import type { PublicStationHandshake } from '@kontourai/station-contracts/environment-security';
+import { expect, type Page, type Route } from '@playwright/test';
 import { contrastRatio } from './helpers/color-contrast';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import { openChooserFromToggle } from './helpers/region-placement';
 import { runScreenshotCaptureSequence } from './helpers/screenshot-capture-sequence';
 
@@ -142,6 +144,23 @@ function fulfillGalleryStationIdentity(route: Route): Promise<void> {
   });
 }
 
+async function fulfillGallerySystemStatus(route: Route): Promise<void> {
+  const response = await route.fetch();
+  const status = await response.json();
+  if (!response.ok() || !status.devicePresentation)
+    throw new Error('Gallery requires the live host presentation.');
+  await route.fulfill({
+    response,
+    json: {
+      ...status,
+      devicePresentation: {
+        ...status.devicePresentation,
+        hostName: 'Gallery host',
+      },
+    },
+  });
+}
+
 function fulfillGalleryConnectionsFixture(route: Route): Promise<void> {
   if (route.request().method() !== 'GET') return route.fallback();
   return route.fulfill({
@@ -244,7 +263,7 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  *    gallery ever renders a toast for
  *    (`motion-reduced-notification`).
  *  - The Profile's completed rebuild timestamp. The unavailable-time
- *    fallback stays visible; only a live "Snapshot rebuilt ..." line is hidden.
+ *    fallback stays visible; only a live "Updated ..." timestamp is hidden.
  *  - `.chat-dock__mobile-conn` (ChatDockMobileHeader.tsx via
  *    `ChatDockMobileConnection.tsx`): the mobile chat dock's OWN
  *    connected/connecting/error/needs-credential indicator — the same
@@ -271,8 +290,8 @@ async function assertNoStrayProjectModal(page: Page, timeoutMs = 10_000) {
  */
 async function hideVolatileChrome(page: Page) {
   await page
-    .locator('.profile-usage-status p')
-    .filter({ hasText: /^Snapshot rebuilt / })
+    .locator('.profile-usage-status span')
+    .filter({ hasText: /^Updated / })
     .evaluateAll((elements) => {
       for (const element of elements) element.style.visibility = 'hidden';
     });
@@ -1133,6 +1152,18 @@ function overlayDockProjectMismatchHooks(): Pick<
       cleanups = [
         await withRoute(
           page,
+          '**/api/conversations/gallery-mismatch-conversation/open',
+          async (route) => {
+            if (route.request().method() !== 'GET')
+              return rejectUnexpectedFixtureRequest(route);
+            await route.fulfill({
+              status: 503,
+              json: { success: false, error: 'temporarily_unavailable' },
+            });
+          },
+        ),
+        await withRoute(
+          page,
           '**/api/orchestration/sessions/read-model',
           orchestrationSessionFixture({
             threadId: 'gallery-mismatch-conversation',
@@ -1210,6 +1241,32 @@ function overlayDockProjectMismatchHooks(): Pick<
         await expect(
           page.locator('.chat-dock__project-session-name'),
         ).toBeVisible({ timeout: 10_000 });
+        await expect(
+          page.getByRole('button', {
+            name: 'Status unavailable — repair the connection',
+            exact: true,
+          }),
+        ).toBeVisible({ timeout: 10_000 });
+        await expect
+          .poll(() =>
+            page
+              .getByRole('button', {
+                name: 'Status unavailable — repair the connection',
+                exact: true,
+              })
+              .evaluate(
+                (pill) =>
+                  pill
+                    .getAnimations({ subtree: true })
+                    .filter(
+                      (animation) =>
+                        animation.playState === 'running' &&
+                        animation.effect?.getComputedTiming().iterations !==
+                          Infinity,
+                    ).length,
+              ),
+          )
+          .toBe(0);
       } finally {
         // See `withRoute`'s doc comment: every route registered above must
         // be unregistered again, or its fixture leaks into every screen
@@ -1319,25 +1376,84 @@ const SCREENS: Screen[] = [
       viewport: { width, height: 844 },
       waitFor: '[data-testid="app-toolbar-connection"]',
       afterGoto: async (page) => {
-        await page.getByTestId('app-toolbar-connection').click();
-        await page
-          .getByRole('menuitem', { name: 'Manage Stations', exact: true })
-          .click();
-        const dialog = page.getByRole('dialog');
-        await dialog
-          .getByRole('button', { name: 'Add a Station address', exact: true })
-          .click();
-        await dialog
-          .getByRole('textbox', { name: 'Station address', exact: true })
-          .fill('http://100.64.0.20:3492');
-        await expect(
-          dialog.getByRole('checkbox', {
+        const receiverOrigin = 'http://100.64.0.20:3492';
+        const receiverIdentity = '00000000-0000-4000-8000-000000003481';
+        const receiverHandshake: PublicStationHandshake = {
+          schemaVersion: 1,
+          environmentId: receiverIdentity,
+          authentication: { scheme: 'bearer', protocolVersion: 1 },
+          transports: { http: 1, sse: 1, websocket: 1 },
+          compatibility: {
+            serverVersion: '0.0.0-screenshot-gallery',
+            protocolVersion: 1,
+            minClientProtocol: 1,
+            capabilities: {
+              remoteAuth: 1,
+              devicePairing: 1,
+              environmentProof: 1,
+            },
+          },
+        };
+        const cleanup = await withRoute(
+          page,
+          `${receiverOrigin}/.well-known/station/v1`,
+          (route) => {
+            if (route.request().method() !== 'GET')
+              return rejectUnexpectedFixtureRequest(route);
+            return route.fulfill({ json: receiverHandshake });
+          },
+        );
+        try {
+          await page.getByTestId('app-toolbar-connection').click();
+          await page
+            .getByRole('menuitem', { name: 'Manage Stations', exact: true })
+            .click();
+          const dialog = page.getByRole('dialog');
+          await dialog
+            .getByRole('button', { name: 'Connect a Station', exact: true })
+            .click();
+          await dialog
+            .getByRole('textbox', { name: 'Station address', exact: true })
+            .fill(receiverOrigin);
+          await dialog
+            .getByRole('button', { name: 'Continue', exact: true })
+            .click();
+          await expect(
+            dialog.getByText(receiverIdentity, { exact: true }),
+          ).toBeVisible();
+          await expect(
+            dialog.getByRole('checkbox', {
+              name: `Use ${receiverOrigin} from this device`,
+              exact: true,
+            }),
+          ).toBeChecked();
+          await expect(
+            dialog.getByRole('checkbox', {
+              name: `Let ${GALLERY_CONNECTION_NAME} send work to ${receiverOrigin}`,
+              exact: true,
+            }),
+          ).not.toBeChecked();
+          await dialog
+            .getByRole('button', {
+              name: 'Request selected access',
+              exact: true,
+            })
+            .click();
+          const consent = dialog.getByRole('checkbox', {
             name: 'Allow an unencrypted connection',
-          }),
-        ).not.toBeChecked();
-        await expect(
-          dialog.getByRole('button', { name: 'Add', exact: true }),
-        ).toBeDisabled();
+          });
+          const requestAccess = dialog.getByRole('button', {
+            name: 'Request access',
+            exact: true,
+          });
+          await requestAccess.scrollIntoViewIfNeeded();
+          await expect(consent).not.toBeChecked();
+          await expect(consent).toBeInViewport({ ratio: 1 });
+          await expect(requestAccess).toBeDisabled();
+          await expect(requestAccess).toBeInViewport({ ratio: 1 });
+        } finally {
+          await cleanup();
+        }
       },
     },
     {
@@ -1397,7 +1513,20 @@ const SCREENS: Screen[] = [
     title: 'Home / Coding layout',
     path: '/',
     viewport: DESKTOP,
-    afterGoto: (page) => assertNoStrayProjectModal(page),
+    afterGoto: async (page) => {
+      await assertNoStrayProjectModal(page);
+      await expect(
+        page.getByRole('heading', { name: 'What would you like to do?' }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole('heading', { name: "What's next?" }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole('button', {
+          name: 'Run a task on a Station; current Station: Gallery host',
+        }),
+      ).toBeVisible();
+    },
   },
   { name: 'agents', title: 'Agents', path: '/agents', viewport: DESKTOP },
   {
@@ -1505,6 +1634,23 @@ const SCREENS: Screen[] = [
         .click();
       const tooltip = page.getByRole('tooltip');
       await expect(tooltip).toBeVisible();
+      await expect
+        .poll(
+          () =>
+            page.locator('.app__main').evaluate((element) => element.scrollTop),
+          {
+            message:
+              'Section navigation must keep the application frame in view',
+          },
+        )
+        .toBe(0);
+      await expect
+        .poll(() =>
+          page
+            .locator('.app-toolbar')
+            .evaluate((element) => element.getBoundingClientRect().top),
+        )
+        .toBeGreaterThanOrEqual(0);
       await tooltip.evaluate(async (element) => {
         await Promise.all(
           element.getAnimations().map((animation) => animation.finished),
@@ -2533,6 +2679,12 @@ interface Shot {
   error?: string;
   sha256?: string;
   controls?: Array<{ label: string; disabled: boolean }>;
+  layout?: {
+    appMainScrollTop: number;
+    appMainScrollHeight: number;
+    appMainClientHeight: number;
+    documentScrollY: number;
+  };
 }
 
 function escapeHtml(value: string): string {
@@ -2677,6 +2829,7 @@ test('build gallery — capture key screens', async ({ page }) => {
   });
   await page.route('**/.well-known/station/v1', fulfillGalleryStationHandshake);
   await page.route('**/api/system/identity', fulfillGalleryStationIdentity);
+  await page.route('**/api/system/status', fulfillGallerySystemStatus);
 
   // station#531: a fresh temp-home seeds this same built-in vector connection,
   // but gives it `<run-specific-home>/vectordb`. Seed the established
@@ -2788,6 +2941,7 @@ test('build gallery — capture key screens', async ({ page }) => {
   try {
     for (const screen of selectedScreens) {
       const file = `${screen.name}.png`;
+      let layout: Shot['layout'];
       try {
         await page.setViewportSize(screen.viewport);
         await page.emulateMedia({
@@ -2865,6 +3019,26 @@ test('build gallery — capture key screens', async ({ page }) => {
               : () => assertGalleryConnectionChrome(page),
           hideVolatileChrome: () => hideVolatileChrome(page),
           screenshot: async () => {
+            // Lazy brand marks can settle after the data skeleton disappears.
+            // A pending or failed mark is an incomplete reference image.
+            await expect(
+              page.locator('.brand-icon[data-brand-key]').filter({
+                hasNot: page.locator('svg, img, .brand-icon__glyph'),
+              }),
+            ).toHaveCount(0, { timeout: 15_000 });
+            if (screen.name === 'settings-info-tip') {
+              layout = await page.evaluate(() => {
+                const main = document.querySelector<HTMLElement>('.app__main');
+                if (!main)
+                  throw new Error('Gallery app main column is missing');
+                return {
+                  appMainScrollTop: main.scrollTop,
+                  appMainScrollHeight: main.scrollHeight,
+                  appMainClientHeight: main.clientHeight,
+                  documentScrollY: window.scrollY,
+                };
+              });
+            }
             if (screen.name !== 'settings-info-tip') {
               await page.mouse.move(0, 0);
             }
@@ -2917,6 +3091,7 @@ test('build gallery — capture key screens', async ({ page }) => {
           file,
           ok: true,
           controls,
+          layout,
           sha256: createHash('sha256')
             .update(readFileSync(join(GALLERY_DIR, file)))
             .digest('hex'),
@@ -2964,13 +3139,14 @@ test('build gallery — capture key screens', async ({ page }) => {
           // gallery for full coverage.
           selection: requestedScreens,
           screens: shots.map(
-            ({ file, ok, screen, error, sha256, controls }) => ({
+            ({ file, ok, screen, error, sha256, controls, layout }) => ({
               file,
               ok,
               name: screen.name,
               error: error ?? null,
               sha256,
               controls,
+              layout,
             }),
           ),
         },

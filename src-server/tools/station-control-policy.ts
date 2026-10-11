@@ -638,6 +638,21 @@ export const STATION_CONTROL_TOOL_POLICY = {
     routes: [get('/api/orchestration/session-control/:sessionId/wait')],
   },
 
+  // ── operations: Project activity (#3413) ───────────────────────────────
+  // Owner-scoped reads (decision 2): each answers with what the caller's owner
+  // may read. The routes then hold every Session to the one scope rule
+  // (`stationControlScopeRefusal`, Project `view`): a caller that is not bound
+  // stays in its own Project or the global space, and another Project's
+  // Sessions read as absent. Each owns its leaf and shares none.
+  list_project_activity: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/session-activity')],
+  },
+  get_session_digest: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/session-activity/:sessionId/digest')],
+  },
+
   // ── operations: SSH environments ───────────────────────────────────────
   create_ssh_environment: {
     ...OPERATOR_MUTATION,
@@ -979,7 +994,11 @@ export function stationControlSessionScope(
   return { kind: 'global' };
 }
 
-function sameScope(a: StationControlScope, b: StationControlScope): boolean {
+/** Whether two scopes are the same Project, or both the global space. */
+export function sameScope(
+  a: StationControlScope,
+  b: StationControlScope,
+): boolean {
   if (a.kind === 'unreadable' || b.kind === 'unreadable') return false;
   if (a.kind === 'global' || b.kind === 'global') return a.kind === b.kind;
   return a.id === b.id;
@@ -1245,6 +1264,13 @@ export function matchStationControlRoute(
   routeIndex ??= buildRouteIndex();
   const normalized = method.toUpperCase() === 'HEAD' ? 'GET' : method;
   const segments = segmentsOf(path);
+  if (
+    UNMAPPED_LITERAL_ROUTES.some(
+      (route) =>
+        route.method === normalized && route.path === `/${segments.join('/')}`,
+    )
+  )
+    return undefined;
   let best: IndexedRoute | undefined;
   for (const route of routeIndex) {
     if (route.method !== normalized || !matches(route, segments)) continue;
@@ -1254,6 +1280,20 @@ export function matchStationControlRoute(
     ? { owners: best.owners, policies: best.policies, rules: best.rules }
     : undefined;
 }
+
+/**
+ * Literal leaves that a parameterized route in the table would otherwise
+ * capture, but that no tool needs, so they stay unmapped (refused with
+ * `station_control_route_unmapped`) like any leaf the table never names.
+ *
+ * - `GET /api/projects/run-locations` (#3391) matches `/api/projects/:slug`,
+ *   which dispatch tools read. It names the directory every Project resolves
+ *   to on this Station, including a manifest-bound execution root no other
+ *   read returns; the start composer is its only consumer.
+ */
+const UNMAPPED_LITERAL_ROUTES: readonly { method: string; path: string }[] = [
+  { method: 'GET', path: '/api/projects/run-locations' },
+];
 
 /**
  * Authorize one internal request against the table. Allowed when ANY tool

@@ -1025,27 +1025,63 @@ describe('owned process lifecycle', () => {
     expect(outcome.errors.at(-1)?.message).toMatch(/remained alive/);
   });
 
-  test('settles a real cooperative process tree without escalation', async () => {
-    const execution = executeOwnedProcess(
+  test('settles a real ready owned process tree without escalation', async () => {
+    const execution = executeOwnedCommand(
       process.execPath,
       [
         '-e',
-        "process.on('SIGTERM', () => process.exit(0)); setInterval(() => {}, 1000)",
+        "process.on('SIGTERM', () => process.exit(0)); process.stdout.write('owned-ready\\n'); setInterval(() => {}, 1000)",
       ],
       undefined,
       'cooperative child',
-      { stdio: 'ignore' },
+      { stdio: ['ignore', 'pipe', 'ignore'] },
     );
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    await expect(
-      terminateSuiteExecution(execution, {
-        processLabel: 'cooperative child',
-        waitForSuiteSettlement,
-        terminationGraceMs: 1_000,
-        terminationForceMs: 1_000,
-      }),
-    ).resolves.toEqual({ settled: true, escalated: false, errors: [] });
+    try {
+      await new Promise<void>((resolveReady, rejectReady) => {
+        const stdout = execution.child?.stdout;
+        if (!stdout)
+          return rejectReady(new Error('owned child stdout missing'));
+        let output = '';
+        let settled = false;
+        const finish = (error?: Error) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          stdout.removeListener('data', onData);
+          if (error) rejectReady(error);
+          else resolveReady();
+        };
+        const onData = (chunk: Buffer) => {
+          output += chunk.toString('utf8');
+          if (output.includes('owned-ready\n')) finish();
+        };
+        const timer = setTimeout(
+          () => finish(new Error('owned child never announced readiness')),
+          10_000,
+        );
+        stdout.on('data', onData);
+        void execution.promise.then(
+          () => finish(new Error('owned child exited before readiness')),
+          (error: Error) => finish(error),
+        );
+      });
+      await expect(
+        terminateSuiteExecution(execution, {
+          processLabel: 'cooperative child',
+          waitForSuiteSettlement,
+          terminationGraceMs: 1_000,
+          terminationForceMs: 1_000,
+        }),
+      ).resolves.toEqual({ settled: true, escalated: false, errors: [] });
+    } finally {
+      if (execution.isAlive())
+        await terminateSuiteExecution(execution, {
+          processLabel: 'cooperative child',
+          waitForSuiteSettlement,
+          terminationGraceMs: 1_000,
+          terminationForceMs: 1_000,
+        });
+    }
   });
 
   test('fails closed on Windows launcher close without a proven tree settlement', async () => {

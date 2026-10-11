@@ -2119,9 +2119,75 @@
   align-self: stretch;
   max-width: none;
 }
-.message-row--compact:not(.message-row--user) > .message-details__trigger {
-  align-self: flex-end;
+.message-row--compact:not(.message-row--user) > .message-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--k-space-1);
   margin-top: -10px;
+}
+.message-meta__time {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-variant-numeric: tabular-nums;
+}
+/* A failure a later identical call recovered: history, not a verdict. */
+.tool-call-batch__retried {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+/* Narration a folded turn moved into its sheet, between the calls it was
+   written between: the transcript's own prose, quieter than the answer. */
+.tool-call-batch-sheet__note {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.tool-call-batch-sheet__note > :first-child {
+  margin-top: 0;
+}
+.tool-call-batch-sheet__note > :last-child {
+  margin-bottom: 0;
+}
+
+/* A long chat title leaves the phone header's project control 40px of content
+   width (measured at 320, 390 and 412px), where it only ever read "New ch… /
+   No …"; there it collapses to its folder glyph, and the button's aria-label
+   still names the project. The shortest title ("Chat") leaves 56px at 320px,
+   where "No pr…" still reads, so the cut sits between the two at 48px. The
+   base header rules live in index.css; these are parent-qualified so source
+   order cannot decide. */
+.chat-dock__mobile-header .chat-dock__mobile-project {
+  container: chat-dock-mobile-project / inline-size;
+}
+.chat-dock__mobile-project .chat-dock__mobile-project-glyph {
+  display: none;
+  color: var(--text-secondary);
+}
+@container chat-dock-mobile-project (max-width: 48px) {
+  .chat-dock__mobile-project .chat-dock__mobile-project-glyph {
+    display: inline-flex;
+  }
+  .chat-dock__mobile-project .chat-dock__mobile-project-lines {
+    display: none;
+  }
+}
+
+/* Phone density: the transcript's own 16px gap separates rows; the base 16px
+   margin on top of it doubled every step. A virtualized transcript positions
+   rows absolutely, where the container gap does not apply, so the margin
+   stays its only spacing there. */
+.message-row--compact {
+  margin-bottom: 0;
+}
+[data-transcript-row] .message-row--compact {
+  margin-bottom: var(--k-space-4);
+}
+/* A thin rule opens each exchange after the first (MessageBubble sets the
+   class on every phone user row but the transcript's first). */
+.message-row--compact.message-row--exchange-start {
+  border-top: var(--k-border-thin) solid var(--k-line);
+  padding-top: var(--k-space-4);
 }
 .message-row--compact .message {
   padding: 10px 14px;

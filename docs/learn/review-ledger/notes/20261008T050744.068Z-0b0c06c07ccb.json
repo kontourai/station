@@ -1,0 +1,7 @@
+{
+  "revision": "04dded92fb12792e7091859330e2cce926387999",
+
+  "notes": [
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"help.ts delta is this PR's profile-env help entry; this guide's skill authoring claims do not reference the connections CLI; unchanged.","inputs":["docs/guides/authoring-skill-experiences.md","packages/cli/src/commands/experience.ts","packages/cli/src/help.ts"]}
+  ]
+}

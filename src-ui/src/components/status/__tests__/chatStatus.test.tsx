@@ -36,6 +36,18 @@ const openTurn = {
 };
 
 describe('deriveChatStatus — one status, by priority', () => {
+  test('does not report a cached active turn as Working when its observation failed', () => {
+    const status = deriveChatStatus({
+      ...base,
+      turnLive: true,
+      activity: openTurn,
+      turnStartedAt: Date.now() - 13 * 3600000,
+      observationUnavailable: true,
+    });
+    expect(status?.label).toBe('Status unavailable');
+    expect(status?.clockFrom).toBeUndefined();
+    expect(status?.action).toBe('repair');
+  });
   test('the live pill names a reported retry and includes only reported counters', () => {
     const reported = deriveChatStatus({
       ...base,

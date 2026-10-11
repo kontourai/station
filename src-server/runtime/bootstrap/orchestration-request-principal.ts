@@ -28,7 +28,10 @@ import {
   deploymentAccountPrincipal,
 } from '../../services/identity/deployment-authentication-service.js';
 import type { VerifiedIdentity } from '../../services/identity/identity-source.js';
-import { identifyIngress } from '../../services/identity/identity-source.js';
+import {
+  DEVICE_IDENTITY_PROVIDER,
+  identifyIngress,
+} from '../../services/identity/identity-source.js';
 import {
   PrincipalUnresolvedError,
   principalForRecordedSessionOwner,
@@ -65,7 +68,7 @@ function deviceIdentity(
   device: Pick<PairedDevice, 'id' | 'name'>,
 ): VerifiedIdentity {
   return {
-    provider: 'device',
+    provider: DEVICE_IDENTITY_PROVIDER,
     subject: device.id,
     displayName: device.name?.trim() || device.id,
   };

@@ -1,0 +1,36 @@
+.project-tools > .page-section__header {
+  flex-direction: row;
+  align-items: center;
+}
+.project-tools .page-section__title,
+.project-tools__row .page-row__label {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+}
+.project-tools > .page-section__header > .page-section__actions {
+  width: auto;
+  flex: 0 0 auto;
+}
+.project-tools__row.page-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--k-space-3);
+}
+.project-tools__row > .page-row__content,
+.project-tools__name {
+  min-width: 0;
+}
+.project-tools__name {
+  overflow-wrap: anywhere;
+}
+.project-tools__row > .page-row__aside {
+  width: auto;
+  margin: 0;
+}
+.project-tools__row .page-row__control > .cb {
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
+}

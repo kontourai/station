@@ -7,6 +7,7 @@ import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import {
   OrchestrationService,
+  PEER_PENDING_REQUEST_BODY_MAX_CHARS,
   PEER_PENDING_REQUEST_ID_MAX_CHARS,
   PEER_PENDING_REQUEST_TITLE_MAX_CHARS,
 } from '../../services/orchestration/orchestration-service.js';
@@ -233,7 +234,8 @@ function fixture() {
         candidate.kind === 'review_pending' &&
         candidate.source.threadId === threadId,
     );
-  return { service, threadId, observe, item };
+  const items = async () => (await projection.list()).items;
+  return { service, threadId, observe, item, items };
 }
 
 describe("a paired Station's open request reaches this Station's inbox", () => {
@@ -557,5 +559,101 @@ describe('a decision goes only to the recorded hosting Station', () => {
         .slice(before)
         .some(([url]) => String(url).startsWith(OTHER_PEER_API)),
     ).toBe(false);
+  });
+});
+
+describe("a paired Station's input question with a binding (delegatedInputAnswers)", () => {
+  test('the status read carries the binding, question and caller check to the item', async () => {
+    const { observe, items } = fixture();
+    peerResponse = () =>
+      json({
+        success: true,
+        data: {
+          ...peerSnapshot({
+            id: 'req-question',
+            type: 'input',
+            title: 'Which bucket?',
+            eventId: 'evt-question',
+            body: 'The release needs a destination bucket.',
+            callerCanRespond: true,
+          }),
+          status: 'needs_input',
+        },
+      });
+    await observe();
+    const projected = (await items()).find(
+      (candidate) => candidate.kind === 'needs_input',
+    );
+    expect(projected).toMatchObject({
+      body: 'The release needs a destination bucket.',
+      peerRequestReference: {
+        environmentId: ENVIRONMENT_ID,
+        taskId: TASK_ID,
+        requestId: 'req-question',
+        requestType: 'input',
+        threadId: 'peer-session-1',
+        requestEventId: 'evt-question',
+        callerCanRespond: true,
+      },
+    });
+    expect(projected).not.toHaveProperty('inputReference');
+  });
+
+  test('without an event id (an older paired Station) no binding is exposed', async () => {
+    const { observe, items } = fixture();
+    peerResponse = () =>
+      json({
+        success: true,
+        data: {
+          ...peerSnapshot({ id: 'req-question', type: 'input' }),
+          status: 'needs_input',
+        },
+      });
+    await observe();
+    const projected = (await items()).find(
+      (candidate) => candidate.kind === 'needs_input',
+    );
+    expect(projected?.peerRequestReference).toBeDefined();
+    expect(projected?.peerRequestReference).not.toHaveProperty(
+      'requestEventId',
+    );
+    expect(projected?.peerRequestReference).not.toHaveProperty('threadId');
+  });
+});
+
+describe('the paired Station question text bound', () => {
+  async function storedBody(body: string) {
+    const { service, observe, threadId } = fixture();
+    peerResponse = () =>
+      json({
+        success: true,
+        data: {
+          ...peerSnapshot({ id: 'req-body', type: 'input', body }),
+          status: 'needs_input',
+        },
+      });
+    await observe();
+    const summary = (
+      await service.listSessionReadModel(
+        sessionReadAuthorityFromRequest('default', undefined, undefined),
+      )
+    ).find((session) => session.threadId === threadId);
+    return summary?.delegation?.peerPendingRequest?.body ?? '';
+  }
+
+  test(`a body of exactly ${PEER_PENDING_REQUEST_BODY_MAX_CHARS} code points is stored whole`, async () => {
+    expect(PEER_PENDING_REQUEST_BODY_MAX_CHARS).toBe(4000);
+    const body = '𝔟'.repeat(PEER_PENDING_REQUEST_BODY_MAX_CHARS);
+    expect(await storedBody(body)).toBe(body);
+  });
+
+  test('a body one code point over is cut with a visible ellipsis', async () => {
+    const stored = await storedBody(
+      '𝔟'.repeat(PEER_PENDING_REQUEST_BODY_MAX_CHARS + 1),
+    );
+    expect(Array.from(stored)).toHaveLength(
+      PEER_PENDING_REQUEST_BODY_MAX_CHARS,
+    );
+    expect(stored.endsWith('…')).toBe(true);
   });
 });

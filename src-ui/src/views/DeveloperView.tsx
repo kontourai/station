@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo } from 'react';
 import { PageEyebrowTrail, usePageHeader } from '../components/page-frame';
-import { Tabs, tabElementId, tabPanelElementId } from '../components/Tabs';
+import { SectionNavigation } from '../components/SectionNavigation';
 import { useNavigation } from '../contexts/NavigationContext';
 import type { DeveloperTab } from '../types';
 import './DeveloperView.css';
@@ -14,15 +14,34 @@ const ArchiveTab = lazy(() => import('./developer/ArchiveTab'));
 // imports here makes DeveloperView the only route-level owner of monitoring.
 const TelemetryTab = lazy(() => import('./developer/TelemetryTab'));
 
-/** Groups this view's generated tab/panel ids — see `components/Tabs.tsx`. */
-const TABS_ID = 'developer-tabs';
-
-const tabs: Array<{ id: DeveloperTab; label: string }> = [
-  { id: 'logs', label: 'Logs' },
-  { id: 'system', label: 'System' },
-  { id: 'telemetry', label: 'Telemetry' },
-  { id: 'memory', label: 'Memory' },
-  { id: 'archive', label: 'Archive' },
+const tabs: Array<{ id: DeveloperTab; label: string; description: string }> = [
+  {
+    id: 'logs',
+    label: 'Logs',
+    description: 'Search server output and inspect structured records.',
+  },
+  {
+    id: 'system',
+    label: 'System',
+    description: 'Inspect this Station, host resources, and Engine readiness.',
+  },
+  {
+    id: 'telemetry',
+    label: 'Monitoring',
+    description:
+      'Investigate activity, tool latency, usage, and inference routing.',
+  },
+  {
+    id: 'memory',
+    label: 'Memory',
+    description:
+      'Inspect recall and canonical records in configured knowledge stores.',
+  },
+  {
+    id: 'archive',
+    label: 'Archive',
+    description: 'Browse session history and download diagnostics.',
+  },
 ];
 
 export function DeveloperView({
@@ -48,6 +67,7 @@ export function DeveloperView({
   usePageHeader({
     eyebrow,
     title: tabs.find((item) => item.id === active)?.label ?? 'Developer',
+    subtitle: tabs.find((item) => item.id === active)?.description,
   });
   const body =
     active === 'logs' ? (
@@ -62,23 +82,19 @@ export function DeveloperView({
       <ArchiveTab apiBase={apiBase} />
     );
   return (
-    <div className="pane-host developer-view">
-      <Tabs
-        id={TABS_ID}
-        className="developer-view__tabs"
-        aria-label="Developer"
-        // archive#4463: arrow keys must not push routes or steal tab focus.
-        activation="manual"
-        items={tabs.map(({ id, label }) => ({ key: id, label }))}
+    <div className="pane-host developer-view section-nav-rail">
+      <SectionNavigation
+        label="Developer sections"
+        pickerLabel="Developer section"
+        items={tabs.map(({ id, label }) => ({
+          key: id,
+          label,
+          href: `/developer/${id}`,
+        }))}
         activeKey={active}
-        onSelect={(key) => navigate(`/developer/${key}`)}
+        onNavigate={(key) => navigate(`/developer/${key}`)}
       />
-      <div
-        role="tabpanel"
-        id={tabPanelElementId(TABS_ID, active)}
-        aria-labelledby={tabElementId(TABS_ID, active)}
-        className="tab-panel"
-      >
+      <div className="section-nav-rail__body developer-view__body">
         <Suspense
           fallback={
             <div className="developer-view__loading">

@@ -142,7 +142,9 @@
 
     "src-ui/src/views/settings/SystemSection.tsx",
 
-    "vite.config.ts"
+    "vite.config.ts",
+
+    "scripts/__tests__/tauri-context.test.ts"
   ],
 
   "checks": [

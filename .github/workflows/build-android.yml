@@ -57,7 +57,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -103,6 +103,12 @@ jobs:
       # sets the ROOT, so `frontendDist: ../dist-ui` resolved against
       # `experiments/browser-host/`. This lane produced no APK for four days
       # because of it (station#2306).
+      # Regenerate from the pinned CLI's templates, as the nightly and release
+      # lanes do. Initializing over the checked-in project kept a RustPlugin
+      # older than the BuildTask that Tauri 2.12 rewrites, so Gradle refused the
+      # unset projectDir and this lane built nothing after the bump.
+      - name: Reset the generated Android project
+        run: node scripts/reset-android-generated-project.mjs
       - name: Initialize Tauri Android project
         working-directory: src-desktop
         run: npx tauri android init --ci --skip-targets-install --config tauri.conf.json --config tauri.android.dev.conf.json

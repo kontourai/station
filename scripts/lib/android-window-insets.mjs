@@ -62,7 +62,26 @@ export function applyAndroidInsets(activityPath, namespace) {
   const current = readFileSync(activityPath, 'utf8');
   if (!current.startsWith(`package ${namespace}\n`))
     throw new Error('Android inset activity namespace mismatch.');
-  const next = activityWithAndroidInsets(current);
+  let next = activityWithAndroidInsets(current);
+  const startupBackground =
+    'window.setBackgroundDrawableResource(R.drawable.station_startup_background)';
+  if (!next.includes(startupBackground)) {
+    if (
+      (next.match(/super\.onCreate\(savedInstanceState\)/g) ?? []).length !== 1
+    )
+      throw new Error(
+        'Expected one Android activity initialization for the startup background.',
+      );
+    next = next.replace(
+      'super.onCreate(savedInstanceState)',
+      `${startupBackground}\n    super.onCreate(savedInstanceState)`,
+    );
+  }
+  const transparentWebView =
+    'webView.setBackgroundColor(android.graphics.Color.TRANSPARENT)';
+  if (!next.includes(transparentWebView)) {
+    next = next.replace(install, `${transparentWebView}\n    ${install}`);
+  }
   const template = readFileSync(
     join(
       import.meta.dirname,

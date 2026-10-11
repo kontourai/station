@@ -465,9 +465,10 @@ describe('station-control session search and rename (#176)', () => {
         const found = await tool(caller, 'search_sessions', {
           query: 'cobalt',
         });
-        expect([caller.channel, found.isError, sessionIds(found.body)]).toEqual(
-          [caller.channel, false, ['carol-chat']],
-        );
+        expect(
+          [caller.channel, found.isError, sessionIds(found.body)],
+          `search_sessions ${caller.channel}: ${JSON.stringify(found.body)}`,
+        ).toEqual([caller.channel, false, ['carol-chat']]);
         expect(JSON.stringify(found.body)).not.toMatch(
           /DAVE-MARKER|OPERATOR-MARKER|TASK-MARKER/,
         );

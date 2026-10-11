@@ -1,0 +1,7 @@
+{
+  "revision": "5a194aab20dbb6b67819346c6cbd9dafb1c639c5",
+
+  "notes": [
+    {"path":"docs/guides/desktop-tray.md","note":"same tauri-context.mjs probe-budget delta; this guide does not name probe deadlines or report timing; unchanged.","inputs":["docs/guides/desktop-tray.md","scripts/tauri-context.mjs"]}
+  ]
+}

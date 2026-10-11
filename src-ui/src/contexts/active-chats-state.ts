@@ -1,4 +1,5 @@
 import type { ChildWorkModel } from '@kontourai/station-contracts/child-work';
+import type { InputRequestRecord } from '@kontourai/station-contracts/input-request';
 import type {
   ConversationHandoffProjection,
   ConversationOpenResolution,
@@ -148,6 +149,8 @@ export type ChatContentPart = {
   flowRunAttached?: FlowRunBinding;
   flowGateVerdict?: FlowGateVerdictInfo;
   conversationHandoff?: ConversationHandoffProjection;
+  /** #3390: an `input-request` part's record; see `MessagePart`. */
+  inputRequestRecord?: InputRequestRecord;
 };
 
 export type ChatMessage = {
@@ -569,6 +572,9 @@ export type ChatUIState = {
    * `undefined` means no outstanding picker request, a string is a requested
    * override, and `null` is an explicit request to use the engine default.
    */
+  executionAgentId?: string;
+  executionOnCurrentStation?: boolean;
+  expectedDefinitionFingerprint?: string;
   requestedModel?: string | null;
   requestedModelSource?: EffectiveModelSource;
   requestedProviderOptions?: Record<string, unknown>;
@@ -684,6 +690,9 @@ export type ActiveChatMetadata = {
   provider?: EngineId;
   model?: string;
   modelSource?: EffectiveModelSource;
+  executionAgentId?: string;
+  executionOnCurrentStation?: boolean;
+  expectedDefinitionFingerprint?: string;
   requestedModel?: string | null;
   requestedModelSource?: EffectiveModelSource;
   requestedProviderOptions?: Record<string, unknown>;
@@ -721,6 +730,9 @@ export type PersistedActiveChat = {
   title?: string;
   model?: string;
   modelSource?: EffectiveModelSource;
+  executionAgentId?: string;
+  executionOnCurrentStation?: boolean;
+  expectedDefinitionFingerprint?: string;
   requestedModel?: string | null;
   requestedModelSource?: EffectiveModelSource;
   requestedProviderOptions?: Record<string, unknown>;
@@ -1002,6 +1014,12 @@ export function hydrateActiveChats(
       title: text(session.title),
       model: text(session.model),
       modelSource: text(session.modelSource) as EffectiveModelSource,
+      executionAgentId: text(session.executionAgentId),
+      executionOnCurrentStation:
+        session.executionOnCurrentStation === true ? true : undefined,
+      expectedDefinitionFingerprint: text(
+        session.expectedDefinitionFingerprint,
+      ),
       requestedModel:
         session.requestedModel === null ? null : text(session.requestedModel),
       requestedModelSource: text(
@@ -1197,6 +1215,9 @@ export function serializeActiveChats(
       title: chat.title,
       model: chat.model,
       modelSource: chat.modelSource,
+      executionAgentId: chat.executionAgentId,
+      executionOnCurrentStation: chat.executionOnCurrentStation,
+      expectedDefinitionFingerprint: chat.expectedDefinitionFingerprint,
       requestedModel: chat.requestedModel,
       requestedModelSource: chat.requestedModelSource,
       requestedProviderOptions: chat.requestedProviderOptions,
@@ -1400,6 +1421,9 @@ export function mergeChatUpdates(
     'executionMode' in nextUpdates ||
     'executionScope' in nextUpdates ||
     'agentConnectionId' in nextUpdates ||
+    'executionAgentId' in nextUpdates ||
+    'executionOnCurrentStation' in nextUpdates ||
+    'expectedDefinitionFingerprint' in nextUpdates ||
     'providerId' in nextUpdates ||
     'defaultProviderId' in nextUpdates ||
     'model' in nextUpdates ||

@@ -1,0 +1,46 @@
+.connect-station-setup {
+  display: grid;
+  gap: var(--k-space-4);
+}
+
+.connect-station-methods,
+.connect-station-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-3);
+}
+
+.connect-station-destination {
+  display: grid;
+  gap: var(--k-space-2);
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  overflow-wrap: anywhere;
+}
+
+.connect-station-setup label {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-height: 44px;
+}
+
+.connect-station-setup .editor-field {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.connect-station-status {
+  padding: var(--k-space-3);
+  background: var(--k-panel);
+  border-bottom: 1px solid var(--k-line);
+}
+
+.connect-station-methods {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}

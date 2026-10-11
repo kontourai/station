@@ -2,23 +2,12 @@
  * @vitest-environment jsdom
  */
 
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { BannerHost } from '../components/notifications/BannerHost';
 import { PluginRegistryGate } from '../components/registry/PluginRegistryGate';
-import {
-  BANNER_EXIT_MS,
-  BANNER_PRIORITY,
-  bannerStore,
-} from '../contexts/banner-store';
-import { EXTENSIONS_UNAVAILABLE_LABEL } from '../core/pluginRegistryCopy';
+import { bannerStore } from '../contexts/banner-store';
+import { toastStore } from '../contexts/ToastContext';
 import { setRemotePluginBundlesAllowed } from '../core/remotePluginBundleConsent';
 
 const mocks = vi.hoisted(() => ({
@@ -86,6 +75,7 @@ function setLoadStatus(
 describe('PluginRegistryGate', () => {
   beforeEach(() => {
     bannerStore.reset();
+    toastStore.clear();
     window.localStorage.clear();
     mocks.listeners.clear();
     mocks.queryClient.invalidateQueries.mockReset();
@@ -101,6 +91,7 @@ describe('PluginRegistryGate', () => {
   afterEach(() => {
     cleanup();
     bannerStore.reset();
+    toastStore.clear();
   });
 
   test('keeps the ready shell clear of banners and invalidates layouts after loading settles', async () => {
@@ -128,43 +119,25 @@ describe('PluginRegistryGate', () => {
   });
 
   test.each([false, true])(
-    'keeps bundle-load failure visible until retry succeeds (remote consent: %s)',
+    'notifies a genuine bundle failure without a global banner (consent: %s)',
     async (consented) => {
       setRemotePluginBundlesAllowed('local-station', mocks.apiBase, consented);
-      mocks.reload
-        .mockImplementationOnce(async () => {
-          setLoadStatus('degraded', ['broken-layout'], 'bundle-load-failure');
-          return 'degraded';
-        })
-        .mockImplementationOnce(async () => {
-          setLoadStatus('ready');
-          return 'ready';
-        });
-
-      render(
-        <>
-          <PluginRegistryGate>
-            <main>Station shell</main>
-          </PluginRegistryGate>
-          <BannerHost />
-        </>,
-      );
-
-      await waitFor(() =>
-        expect(screen.getByRole('alert').textContent).toMatch(/broken-layout/),
-      );
-      expect(
-        screen.queryByRole('button', { name: 'Dismiss notice' }),
-      ).toBeNull();
-      expect(bannerStore.getSnapshot()[0]).toMatchObject({
-        dismissible: false,
-        actions: [{ label: 'Retry extensions' }],
+      mocks.reload.mockImplementation(async () => {
+        setLoadStatus('degraded', ['broken-layout'], 'bundle-load-failure');
+        return 'degraded';
       });
-
-      fireEvent.click(screen.getByRole('button', { name: 'Retry extensions' }));
-
-      await waitFor(() => expect(mocks.reload).toHaveBeenCalledTimes(2));
-      await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+      render(
+        <PluginRegistryGate>
+          <main>Station shell</main>
+        </PluginRegistryGate>,
+      );
+      await waitFor(() => expect(toastStore.getSnapshot()).toHaveLength(1));
+      expect(bannerStore.getSnapshot()).toHaveLength(0);
+      expect(toastStore.getSnapshot()[0]?.message).toContain('broken-layout');
+      toastStore.getSnapshot()[0]?.actions?.[0]?.onClick();
+      expect(mocks.navigate).toHaveBeenCalledWith('/registry');
+      act(() => setLoadStatus('ready'));
+      expect(toastStore.getSnapshot()).toHaveLength(0);
     },
   );
 
@@ -241,7 +214,8 @@ describe('PluginRegistryGate', () => {
         <BannerHost />
       </>,
     );
-    await screen.findByText(EXTENSIONS_UNAVAILABLE_LABEL);
+    await waitFor(() => expect(toastStore.getSnapshot()).toHaveLength(1));
+    expect(bannerStore.getSnapshot()).toHaveLength(0);
   });
 
   test('suppresses an outage-caused registry failure, then presents it once the connection is healthy', async () => {
@@ -261,7 +235,7 @@ describe('PluginRegistryGate', () => {
     );
 
     await waitFor(() => expect(mocks.reload).toHaveBeenCalledTimes(1));
-    expect(screen.queryByText(EXTENSIONS_UNAVAILABLE_LABEL)).toBeNull();
+    expect(toastStore.getSnapshot()).toHaveLength(0);
     expect(
       screen.queryByRole('button', { name: 'Retry extensions' }),
     ).toBeNull();
@@ -276,19 +250,12 @@ describe('PluginRegistryGate', () => {
       </>,
     );
 
-    await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toContain(
-        'plugin registry',
-      ),
+    await waitFor(() => expect(toastStore.getSnapshot()).toHaveLength(1));
+    expect(toastStore.getSnapshot()[0]?.actions?.[0]?.label).toBe(
+      'Open Extensions',
     );
-    expect(bannerStore.getSnapshot()[0]).toMatchObject({
-      actions: [{ label: 'Retry extensions' }],
-    });
-    expect(bannerStore.getSnapshot()[0]?.actions).toHaveLength(1);
+    expect(bannerStore.getSnapshot()).toHaveLength(0);
     expect(mocks.reload).toHaveBeenCalledTimes(2);
-    expect(bannerStore.getSnapshot()[0]?.priority).toBe(
-      BANNER_PRIORITY.capabilityFailure,
-    );
   });
 
   test('automatically clears an outage-caused registry failure when reconnect reload succeeds', async () => {
@@ -329,205 +296,59 @@ describe('PluginRegistryGate', () => {
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
   });
 
-  test('invalidates layouts when a retry changes the degraded plugin set', async () => {
-    mocks.reload
-      .mockImplementationOnce(async () => {
-        setLoadStatus('degraded', ['first-layout'], 'bundle-load-failure');
-        return 'degraded';
-      })
-      .mockImplementationOnce(async () => {
-        setLoadStatus('degraded', ['second-layout'], 'bundle-load-failure');
-        return 'degraded';
-      });
-
+  test('invalidates layouts when a reload changes the degraded plugin set', async () => {
+    mocks.reload.mockImplementation(async () => {
+      setLoadStatus('degraded', ['first-layout'], 'bundle-load-failure');
+      return 'degraded';
+    });
     render(
-      <>
-        <PluginRegistryGate>
-          <main>Station shell</main>
-        </PluginRegistryGate>
-        <BannerHost />
-      </>,
+      <PluginRegistryGate>
+        <main>Station shell</main>
+      </PluginRegistryGate>,
     );
-
     await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toMatch(/first-layout/),
+      expect(mocks.queryClient.invalidateQueries).toHaveBeenCalledTimes(1),
     );
-    expect(mocks.queryClient.invalidateQueries).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Retry extensions' }));
-
-    await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toMatch(/second-layout/),
+    act(() =>
+      setLoadStatus('degraded', ['second-layout'], 'bundle-load-failure'),
     );
     await waitFor(() =>
       expect(mocks.queryClient.invalidateQueries).toHaveBeenCalledTimes(2),
     );
+    expect(bannerStore.getSnapshot()).toHaveLength(0);
   });
 
-  test('makes remote extension isolation dismissible and remembers dismissal for the same Station', async () => {
-    mocks.connectionStatus = 'error';
+  test('keeps intentional remote isolation quiet across profile changes and unavailable storage', async () => {
     mocks.reload.mockImplementation(async () => {
       setLoadStatus('degraded', [], 'remote-isolation');
       return 'degraded';
     });
-
-    render(
-      <>
-        <PluginRegistryGate>
-          <main>Station shell</main>
-        </PluginRegistryGate>
-        <BannerHost />
-      </>,
-    );
-
-    await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toMatch(/remote Station/),
-    );
-    expect(
-      screen.queryByRole('button', { name: 'Retry extensions' }),
-    ).toBeNull();
-    expect(bannerStore.getSnapshot()[0]).toMatchObject({
-      actions: [{ label: 'Review in Registry' }],
-    });
-    expect(bannerStore.getSnapshot()[0]?.actions).toHaveLength(1);
-    fireEvent.click(screen.getByRole('button', { name: 'Review in Registry' }));
-    expect(mocks.navigate).toHaveBeenCalledWith('/registry');
-
-    vi.useFakeTimers();
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Dismiss extensions unavailable notice',
-      }),
-    );
-    act(() => vi.advanceTimersByTime(BANNER_EXIT_MS));
-    vi.useRealTimers();
-    expect(screen.queryByRole('alert')).toBeNull();
-    expect(
-      window.localStorage.getItem(
-        'station:plugin-registry:remote-isolation-dismissed:local-station',
-      ),
-    ).toBe('1');
-
-    act(() => setLoadStatus('degraded', [], 'remote-isolation'));
-    expect(screen.queryByRole('alert')).toBeNull();
-  });
-
-  test('does not present the remote-isolation banner when this profile has consented', async () => {
-    mocks.connectionStatus = 'error';
-    setRemotePluginBundlesAllowed('local-station', mocks.apiBase, true);
-    mocks.reload.mockImplementation(async () => {
-      setLoadStatus('ready');
-      return 'ready';
-    });
-
-    render(
-      <>
-        <PluginRegistryGate>
-          <main>Station shell</main>
-        </PluginRegistryGate>
-        <BannerHost />
-      </>,
-    );
-
-    await waitFor(() => expect(mocks.reload).toHaveBeenCalledTimes(1));
-    expect(mocks.setApiBase).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.any(String),
-      { allowRemoteBundles: true, remoteProfile: true },
-    );
-    expect(bannerStore.getSnapshot()).toEqual([]);
-  });
-
-  test('degrades to session-only dismissal when storage access throws', async () => {
-    mocks.connectionStatus = 'error';
-    mocks.reload.mockImplementation(async () => {
-      setLoadStatus('degraded', [], 'remote-isolation');
-      return 'degraded';
-    });
-    const getItem = vi
+    const storage = vi
       .spyOn(Storage.prototype, 'getItem')
       .mockImplementation(() => {
-        throw new Error('storage disabled');
-      });
-    const setItem = vi
-      .spyOn(Storage.prototype, 'setItem')
-      .mockImplementation(() => {
-        throw new Error('storage disabled');
+        throw new Error('Storage disabled');
       });
     try {
-      render(
-        <>
-          <PluginRegistryGate>
-            <main>Station shell</main>
-          </PluginRegistryGate>
-          <BannerHost />
-        </>,
+      const view = render(
+        <PluginRegistryGate>
+          <main>Station shell</main>
+        </PluginRegistryGate>,
       );
-
-      // The banner still presents (read failure = not dismissed), and the
-      // shell survives the throwing storage.
-      await waitFor(() =>
-        expect(screen.getByRole('alert').textContent).toMatch(/remote Station/),
+      await waitFor(() => expect(mocks.reload).toHaveBeenCalledTimes(1));
+      expect(bannerStore.getSnapshot()).toHaveLength(0);
+      expect(toastStore.getSnapshot()).toHaveLength(0);
+      mocks.activeConnection.id = 'other-station';
+      view.rerender(
+        <PluginRegistryGate>
+          <main>Station shell</main>
+        </PluginRegistryGate>,
       );
-
-      // Dismissal works session-only: the write failure is swallowed.
-      vi.useFakeTimers();
-      fireEvent.click(
-        screen.getByRole('button', {
-          name: 'Dismiss extensions unavailable notice',
-        }),
-      );
-      act(() => vi.advanceTimersByTime(BANNER_EXIT_MS));
-      vi.useRealTimers();
-      expect(screen.queryByRole('alert')).toBeNull();
+      await waitFor(() => expect(mocks.reload).toHaveBeenCalledTimes(2));
+      expect(bannerStore.getSnapshot()).toHaveLength(0);
+      expect(toastStore.getSnapshot()).toHaveLength(0);
       expect(screen.getByText('Station shell')).toBeTruthy();
     } finally {
-      getItem.mockRestore();
-      setItem.mockRestore();
+      storage.mockRestore();
     }
-  });
-
-  test('presents remote extension isolation once for a different profile', async () => {
-    mocks.connectionStatus = 'error';
-    mocks.reload.mockImplementation(async () => {
-      setLoadStatus('degraded', [], 'remote-isolation');
-      return 'degraded';
-    });
-
-    const view = render(
-      <>
-        <PluginRegistryGate>
-          <main>Station shell</main>
-        </PluginRegistryGate>
-        <BannerHost />
-      </>,
-    );
-
-    await screen.findByRole('alert');
-    vi.useFakeTimers();
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Dismiss extensions unavailable notice',
-      }),
-    );
-    act(() => vi.advanceTimersByTime(BANNER_EXIT_MS));
-    vi.useRealTimers();
-
-    mocks.activeConnection.id = 'different-station';
-    view.rerender(
-      <>
-        <PluginRegistryGate>
-          <main>Station shell</main>
-        </PluginRegistryGate>
-        <BannerHost />
-      </>,
-    );
-
-    await screen.findByRole('alert');
-    expect(
-      screen.getByRole('button', {
-        name: 'Dismiss extensions unavailable notice',
-      }),
-    ).toBeTruthy();
   });
 });

@@ -151,6 +151,11 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   ]),
   Object.freeze(['npm', Object.freeze(['run', 'install-script:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'mobile:permissions:gate'])]),
+  // #3149: the native platform boundary scans every renderer source for Tauri
+  // access outside the adapter. Its only pull-request test spawns it among
+  // thirty other gates, and no path edge can select that for any src-ui change,
+  // so #3114 first failed it in scheduled qualification. Under a second.
+  Object.freeze(['npm', Object.freeze(['run', 'native-platform:ratchet'])]),
   Object.freeze([
     'npm',
     Object.freeze(['run', 'agent-plugin:validators:gate']),
@@ -243,7 +248,10 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   // exactly as they do locally. The "0 files changed -> no matched nodes"
   // line printed on a clean tree reports changed-node routing, not these
   // rules — reading it as "nothing was checked" is the trap.
-  Object.freeze(['npm', Object.freeze(['run', 'veritas:readiness'])]),
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'veritas:readiness', '--', '--format', 'json']),
+  ]),
   // PRECONDITION for the aggregate below, not a build step for its own sake
   // (station#4273). `typecheck:ui` resolves `@kontourai/station-connect`
   // through `packages/connect/dist`; without it that lane reports a bogus
@@ -437,13 +445,13 @@ export function runCiFastCli({
     const status = run();
     if (status === CI_FAST_INFRASTRUCTURE_EXIT_CODE)
       error(
-        `${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${CI_FAST_NESTED_INFRASTRUCTURE_CAUSE}\n`,
+        `\n${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${CI_FAST_NESTED_INFRASTRUCTURE_CAUSE}\n`,
       );
     return status;
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : String(caught);
     if (caught instanceof CiFastInfrastructureError) {
-      error(`${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${message}\n`);
+      error(`\n${CI_FAST_OWNER_INFRASTRUCTURE_PREFIX}${message}\n`);
       return CI_FAST_INFRASTRUCTURE_EXIT_CODE;
     }
     error(`${message}\n`);

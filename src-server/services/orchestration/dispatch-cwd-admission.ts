@@ -11,7 +11,8 @@
  *   context, and the service runs it again beside the adapter start, for the
  *   directory the start is actually bound to;
  * - the canonical path is recorded on the session's start metadata
- *   ({@link DISPATCH_CANONICAL_CWD_METADATA_KEY}), and every later engine
+ *   ({@link DISPATCH_CANONICAL_CWD_METADATA_KEY}; #3386: an adopted
+ *   attached-session child records its folder the same way), and every later engine
  *   start for that session, or for a child session that continues it in the
  *   same folder, re-canonicalizes the folder and refuses a different result
  *   ({@link assertDispatchCwdUnmoved}).
@@ -120,7 +121,7 @@ export function dispatchCwdMovedError(
   current: string | undefined,
 ): DispatchCwdRefusedError {
   return new DispatchCwdRefusedError(
-    `Station will not start this session: an agent dispatched it into ${
+    `Station will not start this session: it was admitted into ${
       recorded ?? 'a folder Station did not record'
     }, and its working directory ${
       current === undefined

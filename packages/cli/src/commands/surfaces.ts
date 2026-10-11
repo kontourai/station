@@ -126,10 +126,14 @@ function safeStringList(value: unknown): string[] {
  * boundary. This keeps an accidental server-side addition (for example a
  * profile directory, raw import result, or credentials) out of normal CLI
  * output. Labels are management metadata and are shown only by `profiles`.
+ * A profile's env overlay is non-secret by server contract (credential-shaped
+ * names and values are refused heuristically) and is shown by `profiles` and
+ * `profile-env`, keeping only string values. `envInvalid` lists the variable
+ * names of a saved overlay the server refuses to apply.
  */
 function credentialRecoveryOutput(
   data: unknown,
-  options: { includeLabels: boolean },
+  options: { includeLabels: boolean; includeEnv?: boolean },
 ): JsonRecord {
   const source = isRecord(data) ? data : {};
   const profiles = Array.isArray(source.profiles)
@@ -138,6 +142,21 @@ function credentialRecoveryOutput(
         const result: JsonRecord = { ref: profile.ref };
         if (options.includeLabels && typeof profile.label === 'string') {
           result.label = profile.label;
+        }
+        if (options.includeEnv && isRecord(profile.env)) {
+          const env = Object.fromEntries(
+            Object.entries(profile.env).filter(
+              (entry): entry is [string, string] =>
+                typeof entry[1] === 'string',
+            ),
+          );
+          if (Object.keys(env).length > 0) result.env = env;
+        }
+        if (options.includeEnv && isRecord(profile.envInvalid)) {
+          // Names only: a saved overlay the server refuses to apply.
+          result.envInvalid = {
+            names: safeStringList(profile.envInvalid.names),
+          };
         }
         return [result];
       })
@@ -177,7 +196,7 @@ function credentialRecoveryOutput(
 async function requestCredentialRecoveryAndPrint(
   apiBase: string,
   path: string,
-  options: { includeLabels: boolean },
+  options: { includeLabels: boolean; includeEnv?: boolean },
   init?: AuthenticatedFetchInit,
 ) {
   const data = await requestJson<unknown>(apiBase, path, init);
@@ -363,7 +382,19 @@ async function runConnectionsCommand(args: string[]) {
       await requestCredentialRecoveryAndPrint(
         apiBase,
         `/api/connections/agent/${encodeURIComponent(id)}/credential-recovery`,
-        { includeLabels: true },
+        { includeLabels: true, includeEnv: true },
+      );
+      return;
+    }
+    case 'profile-env': {
+      const id = requirePositional(parsed, 1, 'connection id');
+      const ref = requirePositional(parsed, 2, 'credential profile ref');
+      const body = await loadJsonPayload(parsed);
+      await requestCredentialRecoveryAndPrint(
+        apiBase,
+        `/api/connections/agent/${encodeURIComponent(id)}/credential-recovery/profiles/${encodeURIComponent(ref)}/env`,
+        { includeLabels: false, includeEnv: true },
+        { method: 'PUT', body: JSON.stringify(body) },
       );
       return;
     }
@@ -459,7 +490,7 @@ async function runConnectionsCommand(args: string[]) {
     }
     default:
       throw new Error(
-        "Unknown connections action. Use 'list', 'models', 'runtimes', 'get', 'create', 'update', 'delete', 'test', 'recovery', 'profiles', 'profile-upsert', 'profile-delete', 'profile-enroll', 'profile-unenroll', 'recovery-policy', 'profile-import', or 'profile-apply'.",
+        "Unknown connections action. Use 'list', 'models', 'runtimes', 'get', 'create', 'update', 'delete', 'test', 'recovery', 'profiles', 'profile-upsert', 'profile-env', 'profile-delete', 'profile-enroll', 'profile-unenroll', 'recovery-policy', 'profile-import', or 'profile-apply'.",
       );
   }
 }

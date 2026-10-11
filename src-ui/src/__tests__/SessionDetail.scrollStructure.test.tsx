@@ -96,6 +96,8 @@ const session = {
   threadId: 'external:claude:thread',
   provider: 'claude',
   controlMode: 'read-only-attached',
+  // A project's conversation: #3386 labels one outside every project differently.
+  projectSlug: 'station',
   createdAt: '2026-08-18T00:00:00.000Z',
   updatedAt: '2026-08-18T00:00:00.000Z',
 } as any;

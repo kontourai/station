@@ -1,0 +1,7 @@
+{
+  "revision": "6cf06dc623d0567acc79d1e9a551a49849061863",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"Reviewed the shared Project Settings fixture repair adopted as f2f002001744 in this branch: the real Tools section stays mounted and typed successful empty integration and Knowledge-root query results restore the shell fixture. Inspected SDK query return types, ToolsSection query consumers and its save payload; the Knowledge guide still accurately describes additive Project tool choices and stores. Our exact local ProjectSettingsView suite passed 36 tests and the existing ToolsSection keeper passed 1 test, preserving unavailable choices and Weather in the saved mcpServers payload. No product or guide behavior changed. The owner original note referenced a commit outside this cherry-picked history, so this maintained record replaces only that imported note with local provenance. Evidence is local jsdom, not hosted qualification, provider/device or release proof.","inputs":["docs/guides/knowledge.md","src-ui/src/__tests__/ProjectSettingsView.test.tsx"]}
+  ]
+}

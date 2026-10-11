@@ -46,6 +46,8 @@ const KEYS_THE_DISSOLVED_CARD_RENDERED = [
   'mobileDeviceHubUrl',
   // #3157: whether a usage-limit stop resumes itself after the reset.
   'usageLimitAutoResume',
+  // #3386: whether Activity follows conversations outside every project.
+  'attachedSessionsOutsideProjects',
 ] as const;
 
 test('#2182: the split renders every key the one card used to, and no other', () => {

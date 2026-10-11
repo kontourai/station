@@ -1,0 +1,7 @@
+{
+  "revision": "c02475e0d13466465df1d41b50dd9cc529553703",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Added the phone settled-turn fold (one work row, narration in the sheet, grants/files/errors/UI blocks outside, live turn unchanged), retried vs failed counting, failed rows keeping the completed verb, envelope-sourced meta time, exchange rules, and the narrow project-control glyph. Checked each sentence against MessageBubble/MessageContent/foldTurnWork/recoveredFailures/toolCallPhase and the ChatMessageList.mobileTurnFold seam tests; the New chats caption sentence now states the glyph fallback.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat/chat.css","src-ui/src/index.css","src-ui/src/components/chat/MessageBubble.tsx","src-ui/src/components/chat/message-bubble/MessageContent.tsx","src-ui/src/components/chat/tool-call-runs.ts","src-ui/src/components/chat/tool-call-groups.ts","src-ui/src/components/chat/tool-call-labels.ts"]}
+  ]
+}

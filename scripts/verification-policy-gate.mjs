@@ -104,6 +104,8 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   ]),
   Object.freeze(['npm', Object.freeze(['run', 'install-script:check'])]),
   Object.freeze(['npm', Object.freeze(['run', 'mobile:permissions:gate'])]),
+  // #3149: the renderer-wide native platform scan; see run-ci-fast.mjs.
+  Object.freeze(['npm', Object.freeze(['run', 'native-platform:ratchet'])]),
   Object.freeze([
     'npm',
     Object.freeze(['run', 'agent-plugin:validators:gate']),
@@ -140,7 +142,10 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   // itself red, and for why readiness runs last of the three.
   Object.freeze(['npm', Object.freeze(['run', 'proof:repo-governance'])]),
   Object.freeze(['npm', Object.freeze(['run', 'lint:check'])]),
-  Object.freeze(['npm', Object.freeze(['run', 'veritas:readiness'])]),
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'veritas:readiness', '--', '--format', 'json']),
+  ]),
   // station#4273: the typecheck invariant and its stated precondition. This
   // allowlist is the CANONICAL declaration — `run-ci-fast.mjs` must match it
   // exactly, which is what keeps "what the gate says it runs" and "what the

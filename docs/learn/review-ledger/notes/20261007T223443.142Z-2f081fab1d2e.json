@@ -1,0 +1,7 @@
+{
+  "revision": "0eb8b8079b7ec238a861eb1bdb515cfc4b6fdf86",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Read the complete interaction-policy guide, preserving its dated audit and platform evidence limits. Re-reviewed only the affected merged DelegationLauncher claims through StartStationControl, the connection-modal event owner and OnboardingGate return callback. The main routingExpanded prop remains independent of setupRequestId; setup temporarily hides the mounted launcher, matching return only clears the correlation and refreshes credentials/discovery, and it preserves the prompt, explicit Station and chosen Project resource. The existing portable identity/admission checks still own task dispatch; connection approval does not submit or change foreground placement. Added concise prose for that setup-return behavior. Executed the existing DelegationLauncher keeper at committed 0eb8b8079b: 36/36 passed, including no-randomUUID correlated return with mismatched-event refusal and retained draft/Station/resource/no-dispatch assertions. This is focused component evidence with SDK fixtures, not a real remote Project workload, native shell, provider, browser-full-suite or hosted qualification. Earlier ecbd CI and exact d22 readiness failures remain failed receipts; the mixed-source documentation diagnostic is not qualification. No deploy-ledger stamp, immutable note edit, policy exception or PNG change.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/DelegationLauncher.tsx"]}
+  ]
+}

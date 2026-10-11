@@ -29,7 +29,6 @@ import {
   readFileSync,
   readSync,
   realpathSync,
-  renameSync,
   rmdirSync,
   statSync,
   unlinkSync,
@@ -38,6 +37,7 @@ import {
 import { homedir } from 'node:os';
 import { join, parse, resolve, sep } from 'node:path';
 import { STATION_RELEASE_RINGS_DATA } from '../channel-ports.generated.js';
+import { renamePathSyncRetrying } from '../fs-windows-compat.js';
 import { findPortableServerTarget } from '../portable-server-targets.mjs';
 import type { ReleaseManifestPayload } from '../release-manifest.mjs';
 import { STATION_RELEASE_MANIFEST_KEYS as PINNED_MANIFEST_SIGNING_KEYS } from '../release-manifest-keys.generated.js';
@@ -1091,7 +1091,7 @@ export async function prepareRelease(
       io.err(`${(error as Error).message}`);
       fail('could not extract the release archive');
     }
-    renameSync(join(stage, ARCHIVE_ROOT), incoming);
+    renamePathSyncRetrying(join(stage, ARCHIVE_ROOT), incoming);
     rmdirSync(stage);
     // The files extracted are the ones whose identity was read above.
     const extractedMatches = (() => {
@@ -1119,7 +1119,7 @@ export async function prepareRelease(
     writeFileSync(join(incoming, VERSION_SENTINEL), `${actualChecksum}\n`);
     if (replacement) return { ...result, outcome: 'replacement', incoming };
     try {
-      renameSync(incoming, releaseDir);
+      renamePathSyncRetrying(incoming, releaseDir);
       sealTree(releaseDir);
     } catch (error) {
       io.err(`${(error as Error).message}`);

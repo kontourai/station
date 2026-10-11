@@ -125,8 +125,10 @@ These lanes are not this programme's acceptance evidence.
 
 Relay owner reports #3114, #3190 and #3199 merged. Enrollment, activation trust
 and recovery source/simulator evidence do not prove physical iPhone delivery.
-Their operator-control lane retains ownership and awaits account-gate #3210,
-docs/UI/CI/publication. This thread does not edit or arm that lane. Nightly has
+At this dated handoff, their operator-control lane retained ownership and awaited
+account-gate #3210, docs/UI/CI/publication. The native-only gate admission is now
+integrated in source; this does not supply this programme's native/physical or
+two-human acceptance evidence. This thread does not edit or arm that lane. Nightly has
 a separate sole owner; no competing dispatch is authorized here. The accepted
 two-human work journey and physical no-Tailscale journey remain distinct.
 

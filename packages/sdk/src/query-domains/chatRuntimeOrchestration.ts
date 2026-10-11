@@ -1,8 +1,10 @@
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { ConversationContextBoundaryProjection } from '@kontourai/station-contracts/conversation-context-boundary';
 import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
+import type { InputRequestContent } from '@kontourai/station-contracts/input-request';
 import type {
   AdoptedSessionResult,
+  AdoptSessionTarget,
   InterruptTurnResult,
   OrchestrationConversationEventWindow,
   OrchestrationSessionEventWindow,
@@ -113,6 +115,11 @@ export class AdoptSessionError extends Error {
   readonly retryable: boolean;
   readonly status?: number;
   readonly cause?: unknown;
+  /**
+   * #3386: Station's own reason for a refusal it says will not change on
+   * retry (a folder Station will not continue in), for showing as written.
+   */
+  readonly refusal?: string;
 
   constructor(input: {
     failureClass: AdoptSessionFailureClass;
@@ -120,6 +127,7 @@ export class AdoptSessionError extends Error {
     retryable: boolean;
     status?: number;
     cause?: unknown;
+    refusal?: string;
   }) {
     super(input.message);
     this.name = 'AdoptSessionError';
@@ -127,6 +135,7 @@ export class AdoptSessionError extends Error {
     this.retryable = input.retryable;
     this.status = input.status;
     this.cause = input.cause;
+    if (input.refusal) this.refusal = input.refusal;
   }
 }
 
@@ -628,15 +637,13 @@ export async function dispatchOrchestrationCommand<T = unknown>(
     // is kept, so a caller can tell a refusal from a transport failure.
     // Its `details` too (#1796's full-access refusal is rendered from them),
     // on the field `StationHttpError` carries them in.
-    throw typeof result.code === 'string'
-      ? new ChatHttpError(
-          new StationHttpError(response.status, message, {
-            code: result.code,
-            details: result.details ?? undefined,
-          }),
-          isStationAnswer(response, result),
-        )
-      : new Error(message);
+    throw new ChatHttpError(
+      new StationHttpError(response.status, message, {
+        code: typeof result.code === 'string' ? result.code : undefined,
+        details: result.details ?? undefined,
+      }),
+      isStationAnswer(response, result),
+    );
   }
   return result.data as T;
 }
@@ -673,16 +680,24 @@ export function createAdoptOrchestrationSessionIntent(): AdoptOrchestrationSessi
 function rejectedContinuation(
   status: number,
   detail?: string,
+  retryable?: unknown,
 ): AdoptSessionError {
   const statusMessage =
     status === 401 || status === 403
       ? `Permission denied by Station (HTTP ${status}).`
       : `Station rejected the continuation request (HTTP ${status}).`;
+  // #3386: a refusal Station itself marks `retryable: false` (a coded,
+  // permanent refusal, such as a folder it will not continue in) is final:
+  // the same request is refused again, so no retry is offered. Any other
+  // refusal keeps the retryable default.
+  const permanent =
+    status >= 400 && status < 500 && retryable === false && Boolean(detail);
   return new AdoptSessionError({
     failureClass: 'certain-response',
     message: detail ? `${statusMessage} ${detail}` : statusMessage,
-    retryable: true,
+    retryable: !permanent,
     status,
+    ...(permanent && detail ? { refusal: detail } : {}),
   });
 }
 
@@ -690,6 +705,8 @@ export async function adoptOrchestrationSession(input: {
   sourceThreadId: string;
   apiBase?: string;
   intent?: AdoptOrchestrationSessionIntent;
+  /** #3386: where a conversation no project claims continues. */
+  target?: AdoptSessionTarget;
 }): Promise<AdoptedSessionResult> {
   const resolvedApiBase = await resolveApiBase(input.apiBase);
   const intent = input.intent ?? createAdoptOrchestrationSessionIntent();
@@ -704,6 +721,7 @@ export async function adoptOrchestrationSession(input: {
           type: 'adoptSession',
           sourceThreadId: input.sourceThreadId,
           idempotencyKey: intent.idempotencyKey,
+          ...(input.target ? { target: input.target } : {}),
         }),
       },
     );
@@ -733,6 +751,7 @@ export async function adoptOrchestrationSession(input: {
     success?: boolean;
     data?: AdoptedSessionResult;
     error?: string;
+    retryable?: unknown;
   };
   try {
     result = (await response.json()) as typeof result;
@@ -765,7 +784,11 @@ export async function adoptOrchestrationSession(input: {
     result = {};
   }
   if (!response.ok || !result.success)
-    throw rejectedContinuation(response.status, result.error?.trim());
+    throw rejectedContinuation(
+      response.status,
+      result.error?.trim(),
+      result.retryable,
+    );
   return result.data as AdoptedSessionResult;
 }
 
@@ -1069,8 +1092,13 @@ export async function resolveOrchestrationRequest(input: {
   requestId: string;
   expectedRequestEventId?: string;
   decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
+  /** @deprecated since 0.9.0; removed in 0.10.0. Use `content`. */
   answers?: HarnessQuestionAnswers;
+  /** #3390: accepted content for a form input request. */
+  content?: InputRequestContent;
   apiBase?: string;
+  /** Deadline for decision admission; a timeout does not cancel the server-side decision. */
+  timeoutMs?: number;
 }): Promise<void> {
   await dispatchOrchestrationCommand(
     {
@@ -1082,8 +1110,10 @@ export async function resolveOrchestrationRequest(input: {
         : {}),
       decision: input.decision,
       ...(input.answers ? { answers: input.answers } : {}),
+      ...(input.content ? { content: input.content } : {}),
     },
     input.apiBase,
+    input.timeoutMs,
   );
 }
 

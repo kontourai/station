@@ -52,42 +52,89 @@ test('an older Station never receives a delegation before version negotiation su
   );
 });
 
-test('a room request sends exact intent and incarnation and adopts a replay acknowledgement', async () => {
-  const fetcher = vi.fn<typeof fetch>().mockImplementation(async (url) =>
-    String(url).endsWith('/agent-requests')
-      ? response({
-          version: TASK_ROOM_WORK_VERSION,
-          kind: 'available',
-          records: [],
-        })
-      : response({ kind: 'recorded', record, replayed: true }),
-  );
-  vi.stubGlobal('fetch', fetcher);
-  await expect(
-    submitTaskRoomAgentRequest(
-      'http://station.test',
-      'task-1',
-      'demo',
-      incarnation,
-      input,
-    ),
-  ).resolves.toMatchObject({ kind: 'recorded', replayed: true, record });
-  const write = fetcher.mock.calls[1];
-  expect(write[0]).toBe('http://station.test/api/orchestration/delegations');
-  expect(JSON.parse(String(write[1]?.body))).toEqual({
-    prompt: input.prompt,
-    target: {
-      environment: { kind: 'current' },
-      agent: input.agentId,
-      workspace: { kind: 'project', projectSlug: 'demo' },
-    },
-    taskRoomRequest: {
-      taskId: 'task-1',
-      taskCreatedAt: incarnation,
-      operationId: input.operationId,
-    },
-  });
-});
+test.each([undefined, 'codex'])(
+  'a room request sends exact execution binding %s and adopts a matching replay acknowledgement',
+  async (executionAgentId) => {
+    const model = executionAgentId
+      ? {
+          override: 'model-a',
+          options: { reasoningEffort: 'high', nested: { b: 2, a: 1 } },
+        }
+      : undefined;
+    const request = {
+      ...input,
+      ...(model ? { model } : {}),
+      ...(executionAgentId
+        ? {
+            executionAgentId,
+            expectedDefinitionFingerprint: `sha256:${'a'.repeat(64)}`,
+          }
+        : {}),
+    };
+    const recorded = {
+      ...record,
+      ...(model
+        ? {
+            modelId: 'model-a',
+            modelOptionsDigest:
+              'd1bea53ae92863831c08cbba45c23aceeb56fcc1151746376a30fd316a9a17ac',
+          }
+        : {}),
+      ...(executionAgentId
+        ? {
+            executionAgentId,
+            expectedDefinitionFingerprint: `sha256:${'a'.repeat(64)}`,
+          }
+        : {}),
+    };
+    const fetcher = vi.fn<typeof fetch>().mockImplementation(async (url) =>
+      String(url).endsWith('/agent-requests')
+        ? response({
+            version: TASK_ROOM_WORK_VERSION,
+            kind: 'available',
+            records: [],
+          })
+        : response({ kind: 'recorded', record: recorded, replayed: true }),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    await expect(
+      submitTaskRoomAgentRequest(
+        'http://station.test',
+        'task-1',
+        'demo',
+        incarnation,
+        request,
+      ),
+    ).resolves.toMatchObject({
+      kind: 'recorded',
+      replayed: true,
+      record: recorded,
+    });
+    const write = fetcher.mock.calls[1];
+    expect(write[0]).toBe('http://station.test/api/orchestration/delegations');
+    expect(JSON.parse(String(write[1]?.body))).toEqual({
+      prompt: input.prompt,
+      target: {
+        environment: { kind: 'current' },
+        agent: executionAgentId
+          ? {
+              kind: 'agent-execution-override',
+              agent: input.agentId,
+              executionAgent: executionAgentId,
+              expectedDefinitionFingerprint: `sha256:${'a'.repeat(64)}`,
+            }
+          : input.agentId,
+        ...(model ? { model } : {}),
+        workspace: { kind: 'project', projectSlug: 'demo' },
+      },
+      taskRoomRequest: {
+        taskId: 'task-1',
+        taskCreatedAt: incarnation,
+        operationId: input.operationId,
+      },
+    });
+  },
+);
 
 test('cross-Task history and mismatched acknowledgements are rejected rather than adopted', async () => {
   const fetcher = vi.fn<typeof fetch>().mockResolvedValue(

@@ -87,7 +87,12 @@ describe('native recovery documentation', () => {
     expect(operatorGuide).toContain(
       `${terminal} counted exit is terminal; it does not schedule a ${terminal} respawn.`,
     );
-    expect(operatorGuide).not.toContain(`${backoffBaseMs} ms`);
+    const startupHeading = '## Startup and sidecar interpretation';
+    expect(operatorGuide).toContain(startupHeading);
+    const startupSection = operatorGuide
+      .split(startupHeading)[1]
+      .split('\n## ')[0];
+    expect(startupSection).not.toContain(`${backoffBaseMs} ms`);
   });
 
   it('derives channel-specific shell and service log paths from their producers', () => {

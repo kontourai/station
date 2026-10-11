@@ -28,6 +28,7 @@ import {
   type ExecutionModelRequest,
   type ExecutionTarget,
   environmentId,
+  executionProfileAgentId,
 } from '@kontourai/station-contracts/execution-target';
 import type {
   TerminalProcessDetail,
@@ -106,6 +107,7 @@ import {
   beginActionOperationTracking,
   handoffActionOperationId,
 } from '../../services/operations/action-operation-tracker.js';
+import { ContinuationPlaceRefusedError } from '../../services/orchestration/attached-session-continuation-place.js';
 import { ConversationContextBoundaryNotFoundError } from '../../services/orchestration/conversation-lineage.js';
 import {
   DelegationAttemptCapacityError,
@@ -119,6 +121,7 @@ import type { DispatchCwdAdmission } from '../../services/orchestration/dispatch
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import {
   AdoptionContinuationInProgressError,
+  AdoptionEngineNotReadyError,
   OrchestrationCommandDispatchError,
 } from '../../services/orchestration/orchestration-service.js';
 import {
@@ -159,6 +162,8 @@ import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
 import { sseKeepalive, streamSSE } from '../sse-response.js';
+import { refuseUngrantedDirectoryWorkspace } from '../working-directory-authority.js';
+import { adoptSessionTargetSchema } from './adopt-session-target-schema.js';
 import {
   fullAccessGrantForRequest,
   fullAccessRefusalFor,
@@ -367,6 +372,7 @@ const adoptSessionCommandSchema = z.object({
   type: z.literal('adoptSession'),
   sourceThreadId: z.string().min(1).max(512),
   idempotencyKey: z.string().uuid().max(64).optional(),
+  target: adoptSessionTargetSchema.optional(),
 });
 
 const interruptTurnCommandSchema = z.object({
@@ -448,6 +454,8 @@ const respondToRequestCommandSchema = z.object({
     .max(ATTENTION_REQUEST_ID_MAX_CHARS)
     .optional(),
   decision: z.enum(['accept', 'acceptForSession', 'decline', 'cancel']),
+  // Deprecated (#3390): a pre-0.9 client's harness answer; translated to
+  // `content` by the service. Removed in 0.10.0.
   answers: z
     .record(
       z.string().min(1).max(256),
@@ -457,6 +465,27 @@ const respondToRequestCommandSchema = z.object({
           custom: z.string().max(12000).optional(),
         })
         .strict(),
+    )
+    .optional(),
+  // #3390: shape only. Whether it fits the open form is decided by the
+  // service against the form itself; nothing here coerces or cuts values.
+  content: z
+    .record(
+      z.string().min(1).max(256),
+      z.union([
+        z.string().max(12000),
+        z.number(),
+        z.boolean(),
+        z.object({ custom: z.string().max(12000) }).strict(),
+        z
+          .array(
+            z.union([
+              z.string().max(512),
+              z.object({ custom: z.string().max(12000) }).strict(),
+            ]),
+          )
+          .max(65),
+      ]),
     )
     .optional(),
 });
@@ -566,7 +595,21 @@ const workspaceTargetSchema = z.discriminatedUnion('kind', [
 
 const executionTargetSchema = z.object({
   environment: environmentRefSchema.optional(),
-  agent: z.string().min(1).max(64),
+  agent: z.union([
+    z.string().min(1).max(64),
+    z
+      .object({
+        kind: z.literal('agent-execution-override'),
+        agent: z.string().min(1).max(64),
+        executionAgent: z.string().min(1).max(64),
+        expectedDefinitionFingerprint: z
+          .string()
+          .max(71)
+          .regex(/^sha256:[0-9a-f]{64}$/)
+          .optional(),
+      })
+      .strict(),
+  ]),
   model: z
     .object({
       override: z.string().min(1).max(512).optional(),
@@ -587,7 +630,14 @@ function normalizeExecutionTarget(
       selectedEnvironment.kind === 'saved'
         ? { kind: 'saved', id: environmentId(selectedEnvironment.id) }
         : { kind: 'current' },
-    agent: agentId(target.agent),
+    agent:
+      typeof target.agent === 'string'
+        ? agentId(target.agent)
+        : {
+            ...target.agent,
+            agent: agentId(target.agent.agent),
+            executionAgent: agentId(target.agent.executionAgent),
+          },
   };
 }
 
@@ -888,11 +938,39 @@ const delegatedTaskEventsQuerySchema = z.object({
 
 export const continueDelegatedTaskBodySchema = z.object({
   message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+  // `delegatedInputAnswers`: deliver `message` only as the answer to this
+  // exact open input request on the task's current Session.
+  expectedInputRequest: inputRequestReferenceSchema.optional(),
   environmentId: z.string().min(1).max(512).optional(),
   model: z.string().min(1).max(512).optional(),
   // archive#978: per-invocation settings passthrough on a follow-up turn.
   modelOptions: z.record(z.unknown()).optional(),
 });
+
+/** Decorate a delegated-task snapshot's open request for the reading caller. */
+function withCallerCanRespond(
+  data: unknown,
+  mayAnswer: (taskId: string, requestType: string | undefined) => boolean,
+): unknown {
+  if (!data || typeof data !== 'object') return data;
+  const snapshot = data as {
+    taskId?: unknown;
+    pendingRequest?: { type?: unknown } & Record<string, unknown>;
+  };
+  if (typeof snapshot.taskId !== 'string' || !snapshot.pendingRequest)
+    return data;
+  const requestType =
+    typeof snapshot.pendingRequest.type === 'string'
+      ? snapshot.pendingRequest.type
+      : undefined;
+  return {
+    ...snapshot,
+    pendingRequest: {
+      ...snapshot.pendingRequest,
+      callerCanRespond: mayAnswer(snapshot.taskId, requestType),
+    },
+  };
+}
 
 const respondToDelegatedTaskBodySchema = z.object({
   requestId: z.string().min(1).max(512),
@@ -1572,6 +1650,19 @@ export function createOrchestrationRoutes(
     observeDelegatedTask?: (
       input: DelegatedTaskReferenceRequest,
     ) => Promise<unknown>;
+    /**
+     * `delegatedInputAnswers`: whether THIS request's caller passes this
+     * Station's gates on the route that answers a task's open request —
+     * `respond` (approve scope) for an approval, permission or
+     * confirmation, `continue` (execute scope) for an input question. Used
+     * to set `pendingRequest.callerCanRespond` on a task this Station serves
+     * itself; a model of those gates only, the handler can still refuse.
+     */
+    callerMayAnswerDelegatedRequest?: (
+      c: Context,
+      taskId: string,
+      requestType: string | undefined,
+    ) => boolean;
     refreshDelegatedTaskActivity?: (input: { userId: string }) => Promise<void>;
     observeDelegatedTaskEvents?: (
       input: DelegatedTaskEventsRequest,
@@ -1951,6 +2042,11 @@ export function createOrchestrationRoutes(
         requestedApprovalMode(body.target.model?.options),
       ]);
       if (fullAccessRefused) return fullAccessRefused;
+      const directoryRefused = refuseUngrantedDirectoryWorkspace(
+        c,
+        body.target,
+      );
+      if (directoryRefused) return directoryRefused;
       if (
         body.skillExperience &&
         (body.automaticBackground || !body.clientTurnId)
@@ -2013,7 +2109,11 @@ export function createOrchestrationRoutes(
           deps.isRequestPrincipalCurrent?.(c.req.raw) !== true ||
           context.state !== 'open' ||
           context.conversationId !== body.conversationId ||
-          context.agentId !== body.target.agent ||
+          context.agentId !== executionProfileAgentId(resolvedTarget.agent) ||
+          (typeof resolvedTarget.agent !== 'string' &&
+            (resolvedTarget.agent.executionAgent !== context.executionAgentId ||
+              resolvedTarget.agent.expectedDefinitionFingerprint !==
+                context.expectedDefinitionFingerprint)) ||
           body.target.environment?.kind !== 'current' ||
           body.target.workspace ||
           body.target.model
@@ -2028,6 +2128,19 @@ export function createOrchestrationRoutes(
             409,
           );
         }
+        resolvedTarget.agent = context.executionAgentId
+          ? {
+              kind: 'agent-execution-override',
+              agent: agentId(context.agentId),
+              executionAgent: agentId(context.executionAgentId),
+              ...(context.expectedDefinitionFingerprint
+                ? {
+                    expectedDefinitionFingerprint:
+                      context.expectedDefinitionFingerprint,
+                  }
+                : {}),
+            }
+          : agentId(context.agentId);
       }
       const stagedAttachments = body.attachmentRefs as
         | StagedAttachmentReference[]
@@ -2269,6 +2382,11 @@ export function createOrchestrationRoutes(
           requestedApprovalMode(body.target.model?.options),
         ]);
         if (fullAccessRefused) return fullAccessRefused;
+        const directoryRefused = refuseUngrantedDirectoryWorkspace(
+          c,
+          body.target,
+        );
+        if (directoryRefused) return directoryRefused;
         const { principal, userId, ownerAttribution, fullAccessGrant } =
           resolveDispatchActor(deps, c);
         const data = await deps.handoffConversation({
@@ -2605,6 +2723,11 @@ export function createOrchestrationRoutes(
         ),
       ]);
       if (fullAccessRefused) return fullAccessRefused;
+      const directoryRefused = refuseUngrantedDirectoryWorkspace(
+        c,
+        body.target,
+      );
+      if (directoryRefused) return directoryRefused;
       // #2377 slice C2a: a new task starts in the Project the body names.
       const scoped = scopeDispatch(
         c,
@@ -2804,7 +2927,21 @@ export function createOrchestrationRoutes(
           userId,
           {
             operationId: roomRequest.operationId,
-            agentId: body.target.agent,
+            ...(body.target.model ? { model: body.target.model } : {}),
+            agentId: executionProfileAgentId(
+              normalizeExecutionTarget(body.target).agent,
+            ),
+            ...(typeof body.target.agent !== 'string'
+              ? {
+                  executionAgentId: body.target.agent.executionAgent,
+                  ...(body.target.agent.expectedDefinitionFingerprint
+                    ? {
+                        expectedDefinitionFingerprint:
+                          body.target.agent.expectedDefinitionFingerprint,
+                      }
+                    : {}),
+                }
+              : {}),
             prompt: body.prompt,
             ...(roomRequest.context ? { context: roomRequest.context } : {}),
           },
@@ -3104,7 +3241,18 @@ export function createOrchestrationRoutes(
         taskId: param(c, 'taskId'),
         userId: resolveActorPrincipal(deps, c).userId,
       });
-      return c.json({ success: true, data });
+      // Only for a task this Station serves: a forwarded read carries the
+      // serving Station's own answer about this Station's credential.
+      return c.json({
+        success: true,
+        data:
+          parsed.data.environmentId === undefined &&
+          deps.callerMayAnswerDelegatedRequest
+            ? withCallerCanRespond(data, (taskId, requestType) =>
+                deps.callerMayAnswerDelegatedRequest!(c, taskId, requestType),
+              )
+            : data,
+      });
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }
@@ -3254,6 +3402,30 @@ export function createOrchestrationRoutes(
               code: portableRefusal,
             },
             403,
+          );
+        // `delegatedInputAnswers`: a bound answer whose request is gone or
+        // replaced, or a Station that cannot bind one. Closed codes only.
+        const bindingCode = errorCode(error);
+        if (bindingCode === 'input_binding_model_change')
+          return c.json(
+            { success: false, error: errorMessage(error), code: bindingCode },
+            400,
+          );
+        if (
+          bindingCode === 'input_request_changed' ||
+          bindingCode === 'request_event_changed' ||
+          bindingCode === 'input_binding_unsupported'
+        )
+          return c.json(
+            {
+              success: false,
+              error: errorMessage(error),
+              code:
+                bindingCode === 'request_event_changed'
+                  ? 'input_request_changed'
+                  : bindingCode,
+            },
+            409,
           );
         return c.json({ success: false, error: errorMessage(error) }, 400);
       }
@@ -4822,6 +4994,16 @@ export function createOrchestrationRoutes(
                 }
               : {}),
             ...(error instanceof AdoptionContinuationInProgressError
+              ? { code: error.code, retryable: error.retryable }
+              : {}),
+            // #3386: a folder Station will not continue in; the same
+            // request is refused again, so clients offer no retry.
+            ...(error instanceof ContinuationPlaceRefusedError
+              ? { code: error.code, retryable: false }
+              : {}),
+            // #3429: the engine was not ready and nothing was created; the
+            // reason is shown and the same request may be retried.
+            ...(error instanceof AdoptionEngineNotReadyError
               ? { code: error.code, retryable: error.retryable }
               : {}),
             ...(error instanceof OrchestrationCommandDispatchError

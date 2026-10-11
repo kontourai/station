@@ -1,3 +1,4 @@
+import { RelayOperatorPanel } from './RelayOperatorPanel';
 /**
  * Computers — one list, one row shape, for every computer this Station knows
  * (lane design §4; audit CI-R9, CI-R13, CI-R14, CI-R21).
@@ -343,66 +344,63 @@ export function ComputersSection() {
         )}
 
         {peerCredentialsQuery.isSuccess &&
-          (peerCredentialsQuery.data.length === 0 ? (
-            /*
-             * CI-R13: this was a card with a second empty-state grammar whose
-             * only content was a CLI command the reader could not act on.
-             * `POST /api/environments/peers` exists, but provisioning means
-             * obtaining a bearer from the OTHER Station, which the CLI owns
-             * end to end — so the honest UI action is to hand over the exact
-             * command, in the same row shape as everything else here.
-             */
+          peerCredentialsQuery.data.map((peer) => (
             <PageRow
+              key={peer.environmentId}
               className="connections-computers__row"
-              label="Outbound peer credentials"
-              description={`Not configured. Station needs one before it can delegate tasks to another Station. Add it with the CLI: ${PEER_CREDENTIAL_COMMAND}`}
-              control={
-                <Button
-                  size="sm"
-                  className={copyFailed ? 'copy-affordance--failed' : undefined}
-                  onClick={() => void copyPeerCommand()}
-                >
-                  {copied
-                    ? 'Copied'
-                    : copyFailed
-                      ? "Can't copy"
-                      : 'Copy command'}
-                </Button>
-              }
-            />
-          ) : (
-            peerCredentialsQuery.data.map((peer) => (
-              <PageRow
-                key={peer.environmentId}
-                className="connections-computers__row"
-                label={
-                  <>
-                    {peer.label ?? peer.environmentId}{' '}
-                    <span className="connections-computers__chip">
-                      Peer Station
-                    </span>
-                  </>
-                }
-                description={`${peer.apiBase} · ${peer.scope}`}
-                status={
-                  /* Derived from the row's existence: the peer list only
-                     returns entries whose stored credential validated, and the
-                     wire shape never carries the credential itself. Not
-                     "Ready" — a saved credential proves nothing about
-                     reachability, which is checked when work is sent. */
-                  <span className="connections-computers__state connections-computers__state--disabled">
-                    Credential saved
+              label={
+                <>
+                  {peer.label ?? peer.environmentId}{' '}
+                  <span className="connections-computers__chip">
+                    Peer Station
                   </span>
-                }
-              >
-                <span className="connections-computers__note">
-                  This Station can delegate tasks here — choose it under Station
-                  in the Delegate dialog. It presents the saved credential when
-                  sending work; reachability is checked at dispatch.
+                </>
+              }
+              description={`${peer.apiBase} · ${peer.scope}`}
+              status={
+                /* Derived from the row's existence: the peer list only
+                   returns entries whose stored credential validated, and the
+                   wire shape never carries the credential itself. Not
+                   "Ready" — a saved credential proves nothing about
+                   reachability, which is checked when work is sent. */
+                <span className="connections-computers__state connections-computers__state--disabled">
+                  Credential saved
                 </span>
-              </PageRow>
-            ))
+              }
+            >
+              <span className="connections-computers__note">
+                This Station can delegate tasks here — choose it under Station
+                in the Delegate dialog. It presents the saved credential when
+                sending work; reachability is checked at dispatch.
+              </span>
+            </PageRow>
           ))}
+        <RelayOperatorPanel />
+        <RelayRouteProfiles />
+        <BrowserRelayRoutes />
+        {peerCredentialsQuery.isSuccess &&
+          peerCredentialsQuery.data.length === 0 && (
+            /*
+             * CI-R13: provisioning a peer credential means obtaining a bearer
+             * from the OTHER Station, which the CLI owns end to end. That is
+             * an advanced, rarely needed task, so the command sits behind a
+             * disclosure instead of a row on the normal path.
+             */
+            <details className="relay-route-profiles__setup">
+              <summary>Advanced: delegate to another Station</summary>
+              <p className="connections-computers__note">
+                Station needs a credential from the other Station first. Add it
+                from a terminal: <code>{PEER_CREDENTIAL_COMMAND}</code>
+              </p>
+              <Button
+                size="sm"
+                className={copyFailed ? 'copy-affordance--failed' : undefined}
+                onClick={() => void copyPeerCommand()}
+              >
+                {copied ? 'Copied' : copyFailed ? "Can't copy" : 'Copy command'}
+              </Button>
+            </details>
+          )}
       </div>
 
       <ConfirmModal
@@ -418,8 +416,6 @@ export function ComputersSection() {
         onCancel={() => setRemoveTarget(null)}
         variant="danger"
       />
-      <RelayRouteProfiles />
-      <BrowserRelayRoutes />
     </>
   );
 }

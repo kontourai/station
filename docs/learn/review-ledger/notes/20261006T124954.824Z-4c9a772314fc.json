@@ -1,0 +1,9 @@
+{
+  "revision": "04e0c71131aba526d44bb5f69d8f3c6b38e33b0f",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"#3429 round 2: orchestration-service.ts only re-exports AdoptionEngineNotReadyError; the inspect-request flow in this capture is unaffected.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"#3429 round 2: orchestration-service.ts only re-exports AdoptionEngineNotReadyError; the inspect-request flow in this capture is unaffected.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

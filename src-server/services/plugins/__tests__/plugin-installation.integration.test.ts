@@ -19,6 +19,7 @@ import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { Client } from '@modelcontextprotocol/client';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
+import { bindOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import {
@@ -309,6 +310,7 @@ test('the actual install route uses transport-backed installation control and ex
     reconcile: () => request('reconcile-all', null),
   };
   const app = new Hono();
+  bindOperatorPrincipal(app);
   registerPluginInstallRoutes(app, {
     projectVisiblePlugins: () => (installed) => installed,
     ...f.deps,
@@ -376,6 +378,7 @@ test.each(['con', 'nul', 'com1', 'con.foo'])(
         .map((plugin) => plugin.manifest.name),
     ).toEqual([name]);
     const app = new Hono();
+    bindOperatorPrincipal(app);
     registerPluginInstallRoutes(app, {
       ...f.deps,
       projectVisiblePlugins: () => (installed) => installed,
@@ -438,6 +441,7 @@ test.each([false, true])(
       'Next fixture',
     );
     const app = new Hono();
+    bindOperatorPrincipal(app);
     registerPluginLifecycleRoutes(app, f.deps);
     if (removeAlias) unlinkSync(join(f.plugins, 'fixture'));
     const response = await app.request('/fixture/update', { method: 'POST' });
@@ -483,6 +487,7 @@ test('the Update route finds no source for a package without its own repository,
   expect(before.kind).toBe('incarnation');
   expect(existsSync(join(before.packageRoot, '.git'))).toBe(false);
   const app = new Hono();
+  bindOperatorPrincipal(app);
   registerPluginLifecycleRoutes(app, f.deps);
   const response = await app.request('/fixture/update', { method: 'POST' });
   const body = (await response.json()) as { error?: string };
@@ -547,6 +552,7 @@ test('the Update route completes a matching update proposal and leaves another p
     })
   ).proposal;
   const app = new Hono();
+  bindOperatorPrincipal(app);
   registerPluginLifecycleRoutes(app, { ...f.deps, proposals });
   const update = (proposalId: string) =>
     app.request('/fixture/update', {
@@ -601,6 +607,7 @@ test.each(['ready', 'pending'] as const)(
     writeFileSync(join(captured.root.dataRoot!, 'retained-value'), 'keep this');
     unlinkSync(join(f.plugins, 'fixture'));
     const app = new Hono();
+    bindOperatorPrincipal(app);
     registerPluginLifecycleRoutes(app, f.deps);
     const response = await app.request('/fixture', { method: 'DELETE' });
     expect(await response.json()).toMatchObject({
@@ -1509,6 +1516,7 @@ test.each(['registry', 'source', 'mutation'] as const)(
           },
         ]);
       const app = new Hono();
+      bindOperatorPrincipal(app);
       registerPluginLifecycleRoutes(app, {
         ...f.deps,
         ...(barrier === 'mutation'

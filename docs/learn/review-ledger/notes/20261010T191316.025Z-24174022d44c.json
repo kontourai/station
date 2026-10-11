@@ -1,0 +1,7 @@
+{
+  "revision": "6a1321cf961b8c8e8089129927a269f7c202ff1a",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Only builder change since the last review is this branch's bare-relative-link rendering fix in build-github-pages.mjs. Re-read the Pages section (source boundary, allowlist, no recursive publish, dist-pages output, emitted-HTML check) against the builder and check-generated-pages-links.mjs; all still accurate, no prose change needed. Checks: Pages build plus check-generated-pages-links. Limit: rest of the document not re-reviewed.","inputs":["docs/README.md","scripts/build-github-pages.mjs"]}
+  ]
+}

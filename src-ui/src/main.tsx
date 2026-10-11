@@ -31,6 +31,7 @@ installVisualViewportInset();
 
 import App from './App';
 import './components/editor-controls.css';
+import './components/NewChatAction.css';
 import './index.css';
 import './tailwind.css';
 import {
@@ -69,6 +70,7 @@ import {
   resolveBootTheme,
 } from './lib/device-settings-store';
 import { stationQueryDefaults } from './lib/queryDefaults';
+import { releaseInitialStartupAnimation } from './lib/startup-animation';
 import {
   PlatformBootstrap,
   usePlatformProfile,
@@ -229,6 +231,7 @@ if (_bootBrandingTheme)
   applyBrandingTheme(document.documentElement, _bootBrandingTheme);
 
 function renderApp(): void {
+  releaseInitialStartupAnimation();
   ReactDOM.createRoot(document.getElementById('root')!).render(
     isAccountPath ? (
       <React.StrictMode>
@@ -327,6 +330,7 @@ function renderApp(): void {
                               </PermissionManager>
                               <DeferredCapabilityBoundary
                                 id="extension-registry"
+                                failurePresentation="notification"
                                 load={loadPluginRegistryBootstrap}
                                 copy={{
                                   failureTitle: EXTENSIONS_UNAVAILABLE_LABEL,

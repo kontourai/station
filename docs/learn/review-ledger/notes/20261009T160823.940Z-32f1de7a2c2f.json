@@ -1,0 +1,7 @@
+{
+  "revision": "756a2840a1f5c83ab493f095de5a72c0cdcf3ff3",
+
+  "notes": [
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed the clean persisted identity/removal inventory and guide dependency against profile-preserving execution references. Both union IDs remain clean branded Agent identities; execution defaults come from the existing registry, not synthetic slugs or connection-derived manufactured profiles. Updated Agent guide qualifies strict overrides without reintroducing alias/migration support. Source inspection only; inventory scan belongs to the final gate.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agents.md"]}
+  ]
+}

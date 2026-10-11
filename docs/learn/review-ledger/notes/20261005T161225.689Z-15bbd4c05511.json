@@ -1,0 +1,7 @@
+{
+  "revision": "23d4a298aec57d622680b2ecdaeb45654cb06b6b",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"landing-automation.yml's dequeue concurrency comment now says GitHub keeps only the newest pending run per group. The guide's per-removal comment claim is narrowed to match: a burst can skip a middle report, and the last one describes the latest removal. The other dequeue claims still match the workflow.","inputs":["docs/guides/releasing.md",".github/workflows/landing-automation.yml"]}
+  ]
+}

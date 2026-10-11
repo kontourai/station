@@ -35,6 +35,8 @@ export interface ChatStatus {
 }
 
 export interface ChatStatusInput {
+  /** A history or continuation read failed; cached activity is not current proof. */
+  observationUnavailable?: boolean;
   /** This chat's open approval requests. */
   approvalCount: number;
   stream?: ChatStreamStatus;
@@ -70,6 +72,19 @@ export function deriveChatStatus(
   input: ChatStatusInput,
 ): ChatStatus | undefined {
   const { stream, activity } = input;
+  if (input.observationUnavailable)
+    return {
+      kind: 'blocked',
+      tone: 'broken',
+      glyph: 'attention',
+      label: 'Status unavailable',
+      details: [
+        {
+          text: 'Station could not verify this conversation. The remote turn may still be running.',
+        },
+      ],
+      action: 'repair',
+    };
   if (input.approvalCount > 0) {
     return {
       kind: 'approval',

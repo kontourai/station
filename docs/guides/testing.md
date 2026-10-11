@@ -6,6 +6,13 @@ Normative requirements below describe what a contribution owes; command wiring
 and retained benchmarks describe different facts. A listed test, a generated
 schedule or a prior measurement is not proof that the current revision passed.
 
+Fast CI requests Veritas readiness as JSON so its existing bounded, redacted
+output artifacts retain nested evidence-check commands, exit statuses, stdout
+and stderr. Inspect those artifacts for the causal failure rather than
+rerunning a failed gate to recover its output. Capture limits still apply;
+truncated diagnostics do not establish a complete failure inventory. The JSON
+format does not change readiness requirements or promotion evidence.
+
 The [documentation maintenance workflow](documentation.md) and its
 [repository skill](../../.agents/skills/documentation-audit/SKILL.md) apply to
 instructions and diagrams too. Structural gates check named patterns and
@@ -147,8 +154,8 @@ Use this route for weak-test cleanup, fixture repairs, and performance work. The
 ### Authoring fixtures
 
 The E2E runner confines external-session observation to temporary history roots
-using `STATION_EXTERNAL_CODEX_SOURCE_ROOT` and
-`STATION_EXTERNAL_CLAUDE_SOURCE_ROOT`. The `smoke-live` server retains the host's
+using `STATION_EXTERNAL_CODEX_SOURCE_ROOT`,
+`STATION_EXTERNAL_CLAUDE_SOURCE_ROOT` and `STATION_EXTERNAL_OPENCODE_SOURCE_ROOT`. The `smoke-live` server retains the host's
 CLI authentication configuration so installed-CLI journeys can execute real
 turns. Other suites also isolate the CLI configuration directories. Fixture
 writers always receive temporary provider directories; never seed test history
@@ -181,7 +188,7 @@ The mutation suite is deliberately focused and opt-in. Its runner safety and pol
 
 The sidebar names below describe the primary trigger or delivery family.
 `PR:` checks can also run on main pushes; `Main:` qualification is scheduled
-on main every six hours. `Repo:` identifies housekeeping even when scheduled
+after main source changes with an hourly fallback. `Repo:` identifies housekeeping even when scheduled
 or driven by PR events. `Tool:` identifies dispatch-only diagnostics and
 maintenance. Manual publication retains `Release:`; `Nightly` keeps its name.
 Schedules below are cron expressions in UTC; path filters and job admission
@@ -213,15 +220,15 @@ also serve release/Nightly callers alongside their direct PR/main triggers.
 | [`ecosystem-packaging.yml`](../../.github/workflows/ecosystem-packaging.yml) | Ecosystem packaging dry-run | **PR: Ecosystem packaging** | PR events (path filtered); manual dispatch. |
 | [`fresh-home-walkthrough.yml`](../../.github/workflows/fresh-home-walkthrough.yml) | Fresh-home walkthrough | **Nightly: Fresh-home walkthrough** | UTC schedule: `0 10 * * *`; manual dispatch. |
 | [`full-regression.yml`](../../.github/workflows/full-regression.yml) | Hosted full regression | **Main: Full qualification** | reused by `Main: Publish packages`, `Main: Qualification`, `Nightly`, `PR: CI`, `Release: Publish`, `Release: Stage`. |
-| [`gallery-pr-check.yml`](../../.github/workflows/gallery-pr-check.yml) | Gallery PR check | **PR: Gallery** | PR events. |
+| [`gallery-pr-check.yml`](../../.github/workflows/gallery-pr-check.yml) | Gallery PR check | **PR: Gallery** | PR events; merge queue. |
 | [`install-smoke.yml`](../../.github/workflows/install-smoke.yml) | Portable Install Smoke | **PR: Install smoke** | PR events (path filtered); manual dispatch. |
 | [`interactive-workspace-performance.yml`](../../.github/workflows/interactive-workspace-performance.yml) | Interactive Workspace Performance | **Tool: Interactive workspace performance** | manual dispatch. |
 | [`internal-testflight.yml`](../../.github/workflows/internal-testflight.yml) | Internal iOS TestFlight cohort | **Release: Internal TestFlight cohort** | manual dispatch. |
 | [`ios-rust-cache-warm.yml`](../../.github/workflows/ios-rust-cache-warm.yml) | Warm iOS Rust build cache | **Nightly: iOS Rust cache** | main pushes (path filtered); UTC schedule: `23 5 * * *`; manual dispatch. |
 | [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new issue comments. |
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
-| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `Main: Android tests`. |
-| [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | UTC schedule: `17 */6 * * *`; manual dispatch. |
+| [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `Main: Android tests`. |
+| [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | Main source pushes; UTC fallback: `17 * * * *`; manual dispatch. |
 | [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **PR: Merge integration** | PR events; merge queue; manual dispatch. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
 | [`nightly-fleet-staging.yml`](../../.github/workflows/nightly-fleet-staging.yml) | Nightly fleet staging | **Nightly: Fleet staging** | reused by `Nightly`. |
@@ -321,7 +328,7 @@ comments into a trend table; `--json` also works for history.
 | Jobs waiting >5 / >20 minutes; OS wait | Shares among executed and unfinished jobs using their observed wait or wait so far and strict thresholds. Linux/Windows/macOS waits have median/p90 minutes; labels containing macOS or Windows identify those systems, other labels count as Linux as in the baseline. |
 | Per PR push / per merge group | Executed jobs, summed runner-minutes, and creation-to-last-completion wall minutes, each median/p90. The baseline approximates a PR push by PR number and ten-minute creation bucket, combining `pull_request` and `pull_request_target` workflows. Queue branches group merge workflows. Groups with fewer than five executed jobs or any unfinished run/job are excluded, so an in-progress merge group is never a completed wall-time sample. |
 | Shard setup versus tests | Up to 20 executed jobs per family: `fast-checks shard`, `Ordinary corpus`, `Process-heavy corpus`. Named test/corpus/regression/shard steps count as tests; installation, planning, downloads and uploads do not. Remaining job duration counts as overhead, including teardown and gaps. This is a step-name estimate, not a profiler measurement. |
-| PR merges touching the review ledger | First-parent `origin/main` commits with a PR number in the subject and changed paths under `docs/learn/review-ledger/`; count, median and maximum changed record/note files. |
+| PR merges touching the review ledger | First-parent `origin/main` commits with a PR number in the subject and changed paths under `docs/learn/review-ledger/`; count, median and maximum changed record/note files. A note archive and the loose notes a baseline advance deleted into it (#3394) are not counted; notes the same merge adds are. |
 
 Runs are selected by creation time in the half-open window; all job durations
 and available attempts for those runs are counted, even when completion lies
@@ -395,6 +402,13 @@ instead of running them inline, so one shared-helper edit cannot exceed the
 the other changed files keep their related discovery and only the deferring
 file leaves the inline run. Any other deferral, such as an escalation or an
 unavailable related path, still defers the whole related selection.
+A third kind is derived per diff, from its base content: when a `package.json`
+dependency section or a `pnpm-lock.yaml` importer's resolved version changes
+for a sibling `@kontourai/*` package that is not a workspace package, the
+suites that import that package by name are selected (#3149). A version bump
+changes no source file, and both files escalate, so these explicit targets are
+what such a diff runs. Transitive lockfile changes are not followed, and a
+package imported by more than 16 suites defers them to `test-full`.
 
 Every test worker starts without the triggering event's environment:
 `vitest.setup.ts` removes each `GITHUB_*` variable except `GITHUB_ACTIONS`,
@@ -472,6 +486,14 @@ qualification but cannot publish before it passes. See [the release process](rel
 manual `workflow_dispatch` of `PR: CI` remains the explicit diagnostic escape hatch.
 The full Vitest corpus is phase-attested there, separately from the fast
 feedback loop.
+
+Hosted matrix fanout uses the repository's Free runner profile by default;
+`STATION_QUALIFICATION_RUNNER_PROFILE=expanded` selects the larger profile only
+with explicitly configured hosted capacity. Unknown profiles fail admission.
+All ordinary and process-heavy matrix legs still execute. These per-invocation
+caps reserve no organization-wide capacity and do not change evidence or
+promotion requirements. See [qualification runner profiles](releasing.md#runner-admission-and-native-delivery-recovery)
+for the caps and their limits.
 
 The `ci:fast` owner receipt requires a redacted, digest-addressed copy of the
 changed-test diagnostic under `.kontourai/verification-output/`. If the stable
@@ -594,7 +616,21 @@ Both roots must be clean, at the exact SHAs, with dependencies matching their
 lockfiles; the gate never installs anything. The suggested baseline is a
 sibling of the primary checkout under `station-worktrees/`, never nested
 inside a checkout. Because the baseline is the merge base, `origin/main`
-moving does not invalidate it; merging `origin/main` into the candidate does.
+moving does not invalidate it; merging `origin/main` into the candidate does,
+unless the push is a pure merge of main (below).
+
+**A pure merge of main skips the expensive lanes (#3101).** When every pushed
+ref only adds clean merges of `origin/main` on top of the tip the remote
+already holds, `.githooks/pre-push` skips the transfer gate, static gates, SDK
+barrel, Veritas readiness and typecheck; biome, the governance proof and the
+commit-subject gate still run. `scripts/prepush-pure-merge.mjs` owns the rule:
+the remote ref is the record of the last push the hook accepted, each merge's
+second parent must be on `main` as the remote itself reports it (`git
+ls-remote`, never a local ref such as `origin/main`), and each merge's tree
+must equal the conflict-free automatic merge of its parents. Replace objects
+and grafts are disabled for every Git read. A conflict resolution, an edit
+amended into the merge, a new non-merge commit, a new branch, a tag, or any
+Git or network failure runs every lane. The required CI checks still gate the combined head.
 
 **Slow hardware raises `STATION_TRANSFER_CAPTURE_TIMEOUT_MS` (#1279).** Each
 capture is bounded by a liveness timeout that defaults to 60 000 ms,
@@ -663,6 +699,17 @@ pulls in (listed as `desktop-rust` in `scripts/classify-ci-change.mjs`). The
 classifier is taken from the base commit, and every failure to classify
 compiles. The job, and so the required check, runs either way. TypeScript is
 not re-checked on Windows; `ci:fast`'s typecheck aggregate owns that verdict.
+
+The floor also runs the [Windows resource-staging keeper](../../scripts/__tests__/windows-resource-staging.test.ts) before Cargo. It
+executes the workflow's PowerShell staging body in a temporary directory and
+checks the configured resource-source directories at the Cargo boundary,
+including bundled examples. This proves directory staging, not Rust compilation
+or bundled file contents. The same focused step runs the
+[Tauri context caller tests](../../scripts/__tests__/tauri-context.test.ts),
+checking real installed npm/local Tauri versions and explicit missing
+prerequisites on Windows. These tooling checks do not establish native app
+startup, packaging or device behavior. A repair to this base-controlled workflow must land
+on `main` before a dependent PR's head can use it.
 
 The hosted Windows floor always uploads its existing redacted verification
 receipts and output, including failed runs. A cleanup record with one surviving
@@ -802,7 +849,7 @@ window — so that two captures of the identical build decode to identical
 pixels and exact comparison is strictly simpler, and strictly more
 trustworthy, than any threshold.
 
-Profile captures hide only the completed "Snapshot rebuilt ..." timestamp
+Profile captures hide only the completed "Updated ..." timestamp
 line. Missing-time fallbacks, usage scope, failure notices, and the rebuild
 control remain visible. These pixels do not establish accounting freshness.
 
@@ -830,6 +877,18 @@ shot. With both fixes in place, repeated full captures compared bit-for-bit
 identical across every screen, including `motion-reduced-notification`
 (previously the one hand-marked `volatile: true` exception) — its
 `volatile` marker has been removed.
+
+Before photographing, the gallery also waits up to 15 seconds for branded
+identity tiles to contain their SVG, image element or explicit glyph. An empty
+lazy-mark tile fails capture rather than becoming a reference. This checks
+artwork presence, not whether an external image has decoded. The Settings
+explanation capture records the main column's scroll metrics in `capture.json`
+so a shifted frame can be diagnosed without resetting or hiding its state.
+The Settings explanation capture also requires the application frame to stay
+at scroll position zero with its toolbar in view. Phone Settings checks at
+320px and 390px exercise real wheel scrolling in the nested content while the
+outer frame stays bounded. These are Chromium checks; the older-WebView
+fallback remains outside that execution proof.
 
 Baseline artifacts (both committed):
 
@@ -897,6 +956,11 @@ committing a new baseline until the change is intentional.
 
 #### Where the gate runs, and which renderer the baseline is bound to
 
+The gallery-wide system-status handler preserves the live status response and
+replaces only the displayed hostname with `Gallery host`. This keeps a Docker
+container's random name out of exact-pixel references without changing readiness
+or device locality. Screen-specific status fixtures retain their declared scenarios.
+
 `.github/workflows/nightly-gallery.yml` runs the capture and the exact diff
 daily, in a **digest-pinned Playwright container** on a hosted runner. That is
 not an implementation detail: the comparator hashes a decoded RGBA buffer with
@@ -922,10 +986,28 @@ repository opens a font — only that the dependency is written down. Note that
 DM Sans is published in latin and latin-ext only, so this cannot be closed by
 re-subsetting; #1704 shrinks it by replacing the icon-shaped glyphs.
 
+Gallery and Ubuntu zsh preflight callers use
+[`install-ci-ubuntu-packages.sh`](../../scripts/install-ci-ubuntu-packages.sh).
+It replaces the known Azure Ubuntu archive URI with the canonical HTTPS
+archive in legacy lists, DEB822 sources, and the hosted runner mirror list.
+The official Ubuntu security archive also uses HTTPS with the same host and
+path. Suites, components, signing keys, and mirror priorities remain intact. APT
+index retrieval must succeed before installing the required compiler or zsh
+package; an unavailable index stops the bootstrap. The Gallery renderer image
+remains pinned by digest.
+Each caller stages that helper from the immutable workflow-definition commit
+into `RUNNER_TEMP`, independently of the application checkout. Older PR heads
+therefore receive base-workflow bootstrap fixes without needing the new helper
+in their tree. Full regression uses local reusable workflow references; those
+resolve at the caller's workflow commit, while `inputs.source_sha` continues to
+select only the application source being qualified.
+
 `.github/workflows/gallery-pr-check.yml` runs the same capture and exact diff
-on pull requests, in the same container (#2428), so a PR that moves a screen
-finds out before it merges instead of reddening the next nightly. Its
-`classify` job reads `scripts/classify-ci-change.mjs` (with `--scope gallery`) from the
+on pull requests and synthesized merge-queue candidates, in the same container
+(#2428, #3342). PRs compare their exact head; the queue compares the combined
+candidate. A gallery-relevant change must carry reviewed reference images from
+that renderer. Irrelevant changes skip the capture job, producing GitHub's
+successful skipped check without a browser run. The `classify` job reads `scripts/classify-ci-change.mjs` (with `--scope gallery`) from the
 base commit and skips the capture only when every changed path is one the
 capture never reads (docs, agent instructions, other workflows, desktop Rust,
 test files). The scope is an exclusion list because the capture boots the
@@ -939,9 +1021,14 @@ diff scripts; the nightly on main, running trusted code, remains the
 authoritative check. The baseline writer refuses a capture whose screen name is
 not a slug or whose file resolves outside the gallery directory, because for a
 fork PR the artifact is produced by the fork's code. A capture that did not
-complete is reported separately and must not be re-baselined. The check
-compares the PR head against its own baseline, so combinations of PRs are
-still only caught nightly.
+complete is reported separately and must not be re-baselined. The check compares
+each PR head against its own baseline and checks combinations again on the
+merge-queue candidate. Enable `Gallery exact-pixel diff` as a main ruleset requirement after observing
+its PR and merge-queue contexts from the installed workflow;
+a red advisory check alone cannot prevent visual drift from landing.
+`Main: Health` tracks a failed `Nightly: Gallery` run as one main incident and
+clears it only when the capture and exact-diff job passes. Skipping the optional
+API image review does not hide that completed pixel check.
 
 Two consequences worth stating plainly:
 
@@ -1121,6 +1208,14 @@ is diagnostic and does not replace the final `npm run full:regression` receipt.
 
 ### Host typecheck slots and incremental compiles
 
+Station uses the pinned native TypeScript 7 compiler for type checks and
+package declaration builds. `typescript-api` is an alias for TypeScript 5.9.3,
+retained only for policy scanners and tests using its JavaScript AST API;
+TypeScript 7's package does not expose that API. Do not use the alias to compile
+Station. Package build/watch scripts retain their standalone `tsc` entry point, backed
+by TypeScript 7. Package builds do not enable incremental reuse; typecheck lanes
+keep their caches.
+
 Every `typecheck:*` lane compiles through `scripts/tsc-slot.mjs`, which holds
 one of N host-wide slots for the life of the compiler and adds `--incremental`
 with a per-project build info file under the ignored
@@ -1133,13 +1228,41 @@ pool with its own N. N is one slot per 8 GiB of RAM, rounded, between 1 and 4
 (2 on a ~15.6 GiB hosted runner, 4 on a 48 GB workstation); the `typecheck`
 aggregate prints it once per run and never runs more lanes at once than there
 are slots. `--watch`, `--help`, `--version` and similar non-compiling modes take
-no slot. A crashed or killed compiler's slot is reclaimed from its dead pid.
+no slot. On macOS and Linux the runner replaces itself with the compiler, and
+the next waiter reclaims its record after exit. On Windows an owned Job binds
+the compiler to the runner and settles before releasing the slot; a killed
+holder's record is reclaimed from its dead pid.
+
 Overrides: `STATION_TYPECHECK_SLOTS` (count), `STATION_TYPECHECK_SLOT_WAIT_MS`
 (bounded wait, default 45 minutes, then the lane fails naming the holders),
 `STATION_TYPECHECK_SLOT_DIR` (set it identically for every caller), and
 `STATION_TYPECHECK_INCREMENTAL=0` for a cold compile. A warm run reports the
 same diagnostics as a cold one: TypeScript checks every input's content hash
 and replays stored errors for unchanged files.
+
+#### Optional Bun diagnostics
+
+For a cold check with a second implementation, install Bun **1.4.3** separately
+and run an explicit project through the same host slot pool:
+
+```sh
+npm run diagnostic:typecheck:bun -- -p src-ui/tsconfig.json
+npm run diagnostic:typecheck:bun -- -p tsconfig.tests.json
+```
+
+`STATION_BUN_EXECUTABLE` may name an absolute Bun executable when it is not on
+`PATH`. The runner refuses other Bun versions or a checker other than TypeScript
+7.0.2, requires an explicit project, and caps each Bun process at four threads
+and its share of available CPUs across the host's compiler slots. It writes no
+build metadata or declaration output. Run `npm run dist:freshness` first when
+the selected project consumes package builds.
+
+This command is diagnostic; pre-push, `ci:fast`, and required hosted checks use
+TypeScript 7. Bun has no persistent incremental cache, and a single project
+check does not replace the twelve-lane aggregate or the scripts coverage gate.
+Do not add `@types/bun` to Station's Node/browser projects to make a check pass.
+Compare diagnostics before treating a disagreement as a Station defect.
+
 
 The pre-push hook and pull-request CI own the full typecheck. Locally, iterate
 with `npm run gate:for` evidence and a single `typecheck:<lane>`; do not start
@@ -1353,10 +1476,34 @@ The `PR: Merge integration` workflow retains the legacy required context
 candidate diff and the incident-owner integration pause. The separately required
 `fast-checks` owns affected tests, fixed invariants, all typecheck lanes and
 critical browser smoke; security and relevant platform checks remain required.
-The merge path does not run the full corpus.
 
-[Main: Qualification](../../.github/workflows/main-qualification.yml) runs every
-six hours outside the queue. A pass may start a Nightly for that commit
+On each merge-queue candidate the workflow also recomputes the fast-checks
+plan against the queue base, using the same planner and inputs as `fast-checks`.
+[`merge-queue-regression-decision.mjs`](../../scripts/merge-queue-regression-decision.mjs)
+then chooses a path:
+
+- **Full regression.** The plan defers to the `ci-fast` or `test-full` lane,
+  or it names a `mergeQueueRegression` path. Narrower deferred lanes, such as a
+  packaging leg, take the fast path: the owner limited the scope to keep queue
+  candidates under the shared runner cap. A deferred plan drops related discovery and
+  runs no explicit test above 32, so `fast-checks` cannot cover it. A
+  `mergeQueueRegression` path, such as the SDK transport or the orchestration
+  event store, leaves its consumers to the queue on purpose. The candidate
+  runs the hosted [full regression](../../.github/workflows/full-regression.yml)
+  on its own SHA, with exact-source reuse allowed. The required check passes
+  only when that run passes.
+- **Fast path.** Any other candidate, including one deferred only to a narrower
+  lane, skips the full regression. The check
+  reports `no deferred lane: fast path`.
+
+The decision fails closed. A missing, unreadable or invalid plan runs the full
+regression, and so does a plan for another head or base. If the planner or its
+install fails, or the decision step writes nothing, the full regression runs
+too, because it is skipped only when the decision is exactly `false`. Pull
+requests never run it. In this workflow, `pull_request_target` only reports
+the skipped required context.
+
+[Main: Qualification](../../.github/workflows/main-qualification.yml) runs after main source changes, with an hourly fallback outside the queue. A pass may start a Nightly for that commit
 ([release procedure](releasing.md#release-procedure)). A failure collects the available independent
 failures and starts one bounded repair episode instead of repeatedly dequeuing
 unrelated PRs. See [qualification and repair](releasing.md#one-repair-sweep-per-failure-episode).
@@ -1411,9 +1558,9 @@ not every way to wait.
 ### Test quarantine
 
 The historical `QUARANTINED_VITEST_FILES` list remains a diagnostic exclusion
-mechanism for explicitly requested corpus runs. Merge integration no longer
-runs the full corpus. Scheduled and release qualification never exclude these
-files: a known flake remains visible and blocks promotion until resolved.
+mechanism for explicitly requested corpus runs. The merge-queue full regression
+for deferred candidates, scheduled qualification and release qualification never
+exclude these files: a known flake remains visible and blocks promotion until resolved.
 
 **When to quarantine.** Only a test that is flaky, not broken: the *same
 commit* both passed and failed it. A test that fails every time is a defect to

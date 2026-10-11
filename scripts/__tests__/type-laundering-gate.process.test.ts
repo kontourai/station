@@ -26,12 +26,17 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { sanitizedGitEnvironment } from '../lib/git-environment.mjs';
+import { fingerprintFor } from '../type-laundering-gate.mjs';
 
 const GATE = fileURLToPath(
   new URL('../type-laundering-gate.mjs', import.meta.url),
 );
 const ENTRY_HELPER = fileURLToPath(
   new URL('../lib/module-entry.mjs', import.meta.url),
+);
+const GIT_REF_HELPER = fileURLToPath(
+  new URL('../lib/git-ref.mjs', import.meta.url),
 );
 const CAPTURE_HELPER = fileURLToPath(
   new URL('../lib/bounded-capture.mjs', import.meta.url),
@@ -58,6 +63,7 @@ function spacedCheckout(source: string): string {
     ENTRY_HELPER,
     join(checkout, 'scripts', 'lib', 'module-entry.mjs'),
   );
+  copyFileSync(GIT_REF_HELPER, join(checkout, 'scripts', 'lib', 'git-ref.mjs'));
   copyFileSync(
     CAPTURE_HELPER,
     join(checkout, 'scripts', 'lib', 'bounded-capture.mjs'),
@@ -113,5 +119,103 @@ describe('type-laundering gate invoked from a path containing a space', () => {
     expect(output).not.toContain('FAIL:');
     expect(output).toContain('[type-laundering] PASS; findings=0 errors=0');
     expect(status, output).toBe(0);
+  });
+});
+
+/**
+ * #3101 slice F: "a baseline entry may only shrink" is judged against the
+ * baseline this branch started from (its merge base with origin/main), not
+ * origin/main's tip. Main fixing a cast and dropping its entry must not fail
+ * an unmerged branch that still carries both; a branch that adds an entry
+ * must still fail. Real git, real gate process.
+ */
+describe('type-laundering baseline growth is judged against the merge base', () => {
+  const castA = 'export const a = payload as any;';
+  const castB = 'export const b = payload as any;';
+  const castC = 'export const c = payload as any;';
+  const entry = (file: string, line: string) => ({
+    file,
+    rule: 'as-any',
+    fingerprint: fingerprintFor('as-any', line),
+    reason: 'legacy-cast',
+  });
+
+  function repo() {
+    const checkout = spacedCheckout(`${castA}\n`);
+    const env = {
+      ...sanitizedGitEnvironment(process.env),
+      GIT_CEILING_DIRECTORIES: dirname(checkout),
+      GIT_CONFIG_GLOBAL: '/dev/null',
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_AUTHOR_NAME: 'Fixture',
+      GIT_AUTHOR_EMAIL: 'fixture@example.invalid',
+      GIT_COMMITTER_NAME: 'Fixture',
+      GIT_COMMITTER_EMAIL: 'fixture@example.invalid',
+    };
+    const git = (...args: string[]) => {
+      const result = spawnSync('git', args, {
+        cwd: checkout,
+        env,
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 10_000,
+      });
+      expect(result.status, result.stderr).toBe(0);
+      return result.stdout.trim();
+    };
+    const write = (files: Record<string, string>, entries: object[]) => {
+      for (const [file, text] of Object.entries(files))
+        writeFileSync(join(checkout, 'src-server', file), text);
+      writeFileSync(
+        join(checkout, 'scripts', 'type-laundering-baseline.json'),
+        `${JSON.stringify({ version: 1, entries }, null, 2)}\n`,
+      );
+      git('add', '-A');
+      git('commit', '-qm', 'step');
+      return git('rev-parse', 'HEAD');
+    };
+    git('init', '-q', '-b', 'main');
+    // Merge base: two legacy casts, both baselined.
+    const base = write({ 'sample.ts': `${castA}\n`, 'b.ts': `${castB}\n` }, [
+      entry('src-server/sample.ts', castA),
+      entry('src-server/b.ts', castB),
+    ]);
+    // Main moves on: it fixes b.ts and drops that entry.
+    const mainTip = write({ 'b.ts': 'export const b = payload;\n' }, [
+      entry('src-server/sample.ts', castA),
+    ]);
+    git('update-ref', 'refs/remotes/origin/main', mainTip);
+    git('checkout', '-q', '-b', 'feat', base);
+    return { checkout, git, write };
+  }
+
+  it('passes a branch that still carries an entry main has since removed', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const { checkout, write } = repo();
+    write({ 'unrelated.ts': 'export const u = 1;\n' }, [
+      entry('src-server/sample.ts', castA),
+      entry('src-server/b.ts', castB),
+    ]);
+    const { status, output } = runGate(checkout);
+    expect(output).not.toContain('baseline entry cannot be added');
+    expect(output).toContain('[type-laundering] PASS');
+    expect(status, output).toBe(0);
+  });
+
+  it('still refuses a branch that adds a baseline entry (exit 1)', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const { checkout, write } = repo();
+    write({ 'c.ts': `${castC}\n` }, [
+      entry('src-server/sample.ts', castA),
+      entry('src-server/b.ts', castB),
+      entry('src-server/c.ts', castC),
+    ]);
+    const { status, output } = runGate(checkout);
+    expect(output).toContain(
+      'baseline entry cannot be added: src-server/c.ts (as-any)',
+    );
+    expect(status, output).toBe(1);
   });
 });

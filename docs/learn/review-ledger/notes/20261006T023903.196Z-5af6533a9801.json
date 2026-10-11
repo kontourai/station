@@ -1,0 +1,7 @@
+{
+  "revision": "a37c1cd31038d3b88155553a036f3961efdfdb4b",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"#3406: its only session-api.md dependency is the status-note pointer for current foreground/orchestration callers. The session-api change adds an attached-session discovery paragraph (folder reads in a helper process, hung-folder deadline and back-off), which does not touch the managed-chat routing decision or its supersession note. No prose change.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

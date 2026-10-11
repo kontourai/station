@@ -20,7 +20,15 @@ export { readGitObjects } from './review-git.mjs';
 
 import { deriveReviewHistory } from './review-history.mjs';
 
-export const REVIEW_LEDGER_DIR = 'docs/learn/review-ledger';
+import {
+  isNoteArchiveFile,
+  NOTE_ARCHIVES_DIR,
+  noteArchiveFile,
+  REVIEW_LEDGER_DIR,
+  REVIEW_NOTES_DIR,
+} from './review-ledger-paths.mjs';
+
+export { isNoteArchiveFile, noteArchiveFile, REVIEW_LEDGER_DIR };
 export const REVIEW_LEDGER_INDEX = `${REVIEW_LEDGER_DIR}/ledger.json`;
 /** The single-file layout before #2936; read only from history. */
 export const LEGACY_REVIEW_LEDGER = 'docs/learn/review-ledger.json';
@@ -39,8 +47,15 @@ export const REVIEW_LEDGER_PATH_BUDGET = 178;
 
 const RECORDS = `${REVIEW_LEDGER_DIR}/records/`;
 const CAPTURES = `${REVIEW_LEDGER_DIR}/captures/`;
-const NOTES = `${REVIEW_LEDGER_DIR}/notes/`;
+const NOTES = REVIEW_NOTES_DIR;
 const NOTE_NAME = /^(\d{8}T\d{6}\.\d{3}Z)-([a-f0-9]{12})\.json$/;
+/**
+ * Immutable archives of landed notes (#3394), one per baseline advance and
+ * named for the coverage baseline the notes were added at or before. Each one
+ * maps a note's file name to that note's exact bytes, so readers see one store.
+ */
+const ARCHIVES = NOTE_ARCHIVES_DIR;
+const ARCHIVE_NAME = /^[a-f0-9]{40}\.json$/;
 const RECORD_KEYS = [
   'path',
   'kind',
@@ -152,6 +167,72 @@ export function serializeNotesFile(run) {
       })),
     ],
   ]);
+}
+
+/**
+ * A note archive: each archived note's file name with its exact bytes, one per
+ * line in name order. Archives are never edited, so no blank-line separators.
+ * @param {Map<string, string>} notes repo-relative loose note file -> bytes
+ */
+export function serializeNoteArchive(notes) {
+  const entries = [...notes]
+    .map(([file, text]) => [file.slice(NOTES.length), text])
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(
+      ([name, text]) => `    ${JSON.stringify(name)}: ${JSON.stringify(text)}`,
+    );
+  return `{\n  "notes": {\n${entries.join(',\n')}\n  }\n}\n`;
+}
+
+/**
+ * The notes an archive holds, by the loose file each one was.
+ * @param {string} file repo-relative archive path
+ * @param {string} text archive bytes
+ * @returns {Map<string, string>} repo-relative loose note file -> exact bytes
+ */
+export function parseNoteArchive(file, text) {
+  if (!ARCHIVE_NAME.test(file.slice(ARCHIVES.length)))
+    throw reviewError(
+      'unexpected-file',
+      `Unexpected review note archive name: ${file}`,
+      { file },
+    );
+  let value;
+  try {
+    value = JSON.parse(text);
+  } catch (error) {
+    throw reviewError(
+      'invalid-json',
+      `Review note archive is not valid JSON: ${file} (${error.message})`,
+      { file },
+    );
+  }
+  exactKeys(value, ['notes'], file);
+  const notes = value.notes;
+  if (
+    !notes ||
+    typeof notes !== 'object' ||
+    Array.isArray(notes) ||
+    !Object.keys(notes).length ||
+    Object.entries(notes).some(
+      ([name, bytes]) => !NOTE_NAME.test(name) || typeof bytes !== 'string',
+    )
+  )
+    throw reviewError(
+      'invalid-shape',
+      `Review note archive must map note file names to their text: ${file}`,
+      { file },
+    );
+  const archived = new Map(
+    Object.entries(notes).map(([name, bytes]) => [`${NOTES}${name}`, bytes]),
+  );
+  if (serializeNoteArchive(archived) !== text)
+    throw reviewError(
+      'not-canonical',
+      `Review note archive is not in its canonical layout: ${file}; archives are written only by npm run docs:review:record -- --advance-baseline`,
+      { file },
+    );
+  return archived;
 }
 
 /** @param {{ version?: number, coverageBaseline?: string | null }} index */
@@ -386,6 +467,24 @@ export function parseReviewLedgerFiles(
   /** @type {Map<string, { file: string, data: any }>} */
   const captures = new Map();
   const notes = [];
+  /** @type {Map<string, string>} archive file -> its bytes */
+  const archives = new Map();
+  /** @type {Map<string, string>} note file -> where it is stored */
+  const stored = new Map();
+  const addNote = (file, text, archive) => {
+    if (stored.has(file))
+      throw reviewError(
+        'duplicate-note',
+        `Review note ${file} is stored twice (${stored.get(file)} and ${archive ?? file}); a note lives either loose or in one archive`,
+        { file },
+      );
+    stored.set(file, archive ?? file);
+    notes.push({
+      file,
+      data: parseNotesFile(file, text),
+      ...(archive === undefined ? {} : { archive }),
+    });
+  };
   for (const file of files.keys())
     if (enforcePathBudget && file.length > REVIEW_LEDGER_PATH_BUDGET)
       throw reviewError(
@@ -403,8 +502,12 @@ export function parseReviewLedgerFiles(
     } else if (file.startsWith(CAPTURES)) {
       const data = parseCaptureFile(file, text);
       captures.set(data.path, { file, data });
+    } else if (file.startsWith(ARCHIVES)) {
+      archives.set(file, text);
+      for (const [note, bytes] of parseNoteArchive(file, text))
+        addNote(note, bytes, file);
     } else if (file.startsWith(NOTES)) {
-      notes.push({ file, data: parseNotesFile(file, text) });
+      addNote(file, text);
     } else
       throw reviewError(
         'unexpected-file',
@@ -412,7 +515,10 @@ export function parseReviewLedgerFiles(
         { file },
       );
   }
-  return { index, records, captures, notes };
+  // Archived notes predate every loose one but sort after notes/2…; keep the
+  // single store in file-name (time) order whatever the storage.
+  notes.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
+  return { index, records, captures, notes, archives };
 }
 
 /** Event notes by reviewed path, in file-name (time) order. */
@@ -609,34 +715,73 @@ function git(root, args, input) {
   });
 }
 
+const lsTree = (root, ref, dir) =>
+  git(root, ['ls-tree', '-r', '-z', '--name-only', ref, '--', dir])
+    .toString('utf8')
+    .split('\0')
+    .filter(Boolean);
+
 /**
- * Note files (repo-relative) at a commit.
+ * Loose note files (repo-relative) at a commit; archives are not notes.
  * @param {string} root
  * @param {string} ref
  */
 export function listReviewNoteFilesAt(root, ref) {
-  return git(root, ['ls-tree', '-r', '-z', '--name-only', ref, '--', NOTES])
-    .toString('utf8')
-    .split('\0')
-    .filter(Boolean);
+  return lsTree(root, ref, NOTES).filter((file) => !isNoteArchiveFile(file));
+}
+
+/**
+ * Note archive files (repo-relative) at a commit.
+ * @param {string} root
+ * @param {string} ref
+ */
+export function listNoteArchiveFilesAt(root, ref) {
+  return lsTree(root, ref, ARCHIVES);
+}
+
+/**
+ * Every note committed at a commit, loose or archived, by its note file name.
+ * @param {string} root
+ * @param {string} ref
+ */
+function listCommittedNoteFilesAt(root, ref) {
+  const archives = listNoteArchiveFilesAt(root, ref);
+  const blobs = readGitObjects(
+    root,
+    archives.map((file) => `${ref}:${file}`),
+  );
+  return new Set([
+    ...listReviewNoteFilesAt(root, ref),
+    ...archives.flatMap((file, index) => [
+      ...parseNoteArchive(file, blobs[index].toString('utf8')).keys(),
+    ]),
+  ]);
 }
 
 /**
  * Write a batch of ledger files, rolling every change back if one write fails
  * (#3036). Existing files get their prior bytes back and files this call
- * created are removed; anything that cannot be restored is listed.
+ * created are removed; anything that cannot be restored is listed. A file
+ * mapped to `undefined` is removed (note compaction, #3394), and restored on
+ * rollback like any other.
  * @param {string} root
- * @param {Map<string, string>} after repo-relative file -> new text
+ * @param {Map<string, string | undefined>} after repo-relative file -> new text, or undefined to remove it
  * @param {Map<string, string>} before repo-relative file -> prior text
- * @returns {string[]} files written
+ * @returns {string[]} files written or removed
  */
 export function writeReviewFiles(root, after, before) {
   const touched = [];
   try {
     for (const [file, text] of after) {
-      if (before.get(file) === text) continue;
+      if (text !== undefined && before.get(file) === text) continue;
       const target = nodePath.join(root, file);
       const prior = existsSync(target) ? readFileSync(target) : undefined;
+      if (text === undefined) {
+        if (prior === undefined) continue;
+        touched.push({ file, target, prior });
+        rmSync(target);
+        continue;
+      }
       mkdirSync(nodePath.dirname(target), { recursive: true });
       touched.push({ file, target, prior });
       writeFileSync(target, text);
@@ -662,6 +807,41 @@ export function writeReviewFiles(root, after, before) {
     );
   }
   return touched.map(({ file }) => file);
+}
+
+/**
+ * Plan the compaction that `--advance-baseline` writes (#3394): every loose
+ * note that was already in the tree at the previous coverage baseline moves,
+ * byte for byte, into one archive named for that baseline, and the loose file
+ * goes. Notes added after it stay loose, so a baseline advance archives only
+ * what the advance before it had already covered.
+ * @param {string} root clean working tree
+ * @param {ReturnType<typeof parseReviewLedgerFiles>} parsed its ledger files
+ * @returns {{ archive?: string, archived: string[], after: Map<string, string | undefined> }}
+ */
+export function planNoteCompaction(root, parsed) {
+  const baseline = parsed.index.coverageBaseline;
+  const after = new Map();
+  if (!baseline) return { archived: [], after };
+  const landed = new Set(listReviewNoteFilesAt(root, baseline));
+  const archived = parsed.notes
+    .filter(({ file, archive }) => archive === undefined && landed.has(file))
+    .map(({ file }) => file);
+  if (!archived.length) return { archived, after };
+  const archive = noteArchiveFile(baseline);
+  if (parsed.archives.has(archive))
+    throw reviewError(
+      'archive-exists',
+      `${archive} already exists and archives are never rewritten; notes still loose from that baseline need a separate review`,
+      { file: archive },
+    );
+  const reader = createLearningSourceReader(root);
+  const bytes = new Map(
+    archived.map((file) => [file, reader.read(file).toString('utf8')]),
+  );
+  after.set(archive, serializeNoteArchive(bytes));
+  for (const file of archived) after.set(file, undefined);
+  return { archive, archived, after };
 }
 
 /** Working-tree ledger files, tracked or not yet added. */
@@ -711,7 +891,10 @@ export function readReviewFiles(root) {
 export function readReviewState(root, { history = true } = {}) {
   const { parsed, manifest } = readReviewFiles(root);
   const state = compileReviewState(parsed, manifest);
-  if (history && parsed.index.version === 3) deriveReviewHistory(root, state);
+  if (history && parsed.index.version === 3)
+    deriveReviewHistory(root, state, () =>
+      listCommittedNoteFilesAt(root, 'HEAD'),
+    );
   return state;
 }
 

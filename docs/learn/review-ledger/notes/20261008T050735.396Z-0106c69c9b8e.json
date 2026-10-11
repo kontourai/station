@@ -1,0 +1,7 @@
+{
+  "revision": "04dded92fb12792e7091859330e2cce926387999",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"connection-recovery.ts delta is this PR's identical-overlay constraint for automatic recovery; checked the useEngineActivityQuery credential-profile filter claim against the merged contracts; unchanged.","inputs":["docs/reference/sdk.md","packages/connect/src/core/applicationChannel.ts","packages/sdk/src/__tests__/task-room-work-hooks.test.tsx","packages/sdk/src/client/request-inspection.ts","packages/sdk/src/device-code-login.ts","packages/sdk/src/query-domains/taskRoomWork.ts","packages/sdk/src/query-domains/workspaceConnections.ts","src-server/routes/projects/coding.ts","src-server/services/checkpoints/checkpoint-restore.ts","src-ui/src/core/pluginSharedRuntime.ts","src-ui/src/views/CredentialProfileLoginProfiles.tsx","packages/contracts/src/connection-recovery.ts"]}
+  ]
+}

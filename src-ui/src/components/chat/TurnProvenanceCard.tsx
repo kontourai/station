@@ -12,7 +12,7 @@ import {
   cacheInclusivePromptTokens,
   cacheInclusiveTotalTokens,
   providerPromptCacheInclusivity,
-} from '@kontourai/station-shared/usage-fold';
+} from '@kontourai/station-shared/usage-semantics';
 import { type ReactNode, useId, useState } from 'react';
 import {
   exactTokenCount,

@@ -85,6 +85,7 @@ import {
   configurationActivationPayload,
   configurationMutationStatus,
 } from '../system/configuration-activation.js';
+import { commandChoiceOnly } from '../working-directory-authority.js';
 import { buildPlugin } from './plugin-bundles.js';
 import { capturePluginConfigurationMutation } from './plugin-configuration-activation.js';
 import { personOnly } from './plugin-person-approval.js';
@@ -406,6 +407,10 @@ export function registerPluginInstallRoutes(
   // internal caller learns what to do instead of which field it got wrong.
   app.use('/:name/recover', personOnly('recover a plugin'));
   app.use('/install', personOnly('install a plugin'));
+  // Installing runs the package's code, so a device also needs command
+  // authority (the person check above is not that).
+  app.use('/install', commandChoiceOnly);
+  app.use('/:name/recover', commandChoiceOnly);
   app.post('/:name/recover', validate(pluginRecoverySchema), async (c) => {
     try {
       const body = getBody(c);

@@ -1,5 +1,6 @@
 /** Native, credential-free transport for Station's one public handshake. */
 
+import { withNativeDnsRetry } from './dnsRetry';
 import { readNativeCommandError } from './nativeCommandError';
 import { invokeTauri } from './tauriInvoke';
 
@@ -8,10 +9,7 @@ interface NativePublicHandshakeResponse {
   body: string;
 }
 
-export const nativePublicHandshakeTransport: typeof fetch = async (
-  input,
-  init,
-) => {
+const publicHandshakeAttempt: typeof fetch = async (input, init) => {
   const signal =
     init?.signal ?? (input instanceof Request ? input.signal : null);
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -40,5 +38,16 @@ export const nativePublicHandshakeTransport: typeof fetch = async (
   return new Response(response.body, {
     status: response.status,
     headers: { 'content-type': 'application/json' },
+  });
+};
+
+export const nativePublicHandshakeTransport: typeof fetch = async (
+  input,
+  init,
+) => {
+  const signal =
+    init?.signal ?? (input instanceof Request ? input.signal : undefined);
+  return withNativeDnsRetry(() => publicHandshakeAttempt(input, init), {
+    signal,
   });
 };

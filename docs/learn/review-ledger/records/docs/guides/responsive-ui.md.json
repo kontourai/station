@@ -120,6 +120,14 @@
 
     "src-ui/src/components/NewChatAction.tsx",
 
+    "src-ui/src/components/PageCreateAction.tsx",
+
+    "src-ui/src/components/PageCreateAction.css",
+
+    "src-ui/src/components/CreatePlusButton.tsx",
+
+    "src-ui/src/components/CreatePlusButton.css",
+
     "src-ui/src/components/chat-dock/ChatDockProjectContext.css"
   ],
 

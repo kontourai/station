@@ -1,0 +1,11 @@
+{
+  "revision": "d5ced853347c6b1221aacd21434f9c99b20b6d3c",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Reviewed the inventory addition for the grouped RequestSheet compositor against public design variables and local surface ownership. The record names executed caller geometry evidence and adds no theme change or exception.","inputs":["docs/guides/theming.md","docs/ui/responsive-surfaces.json"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the responsive inventory entry against backend pattern evidence limits and approval ownership. It records a client surface compositor and its caller tests; server API and permission ownership remain intact.","inputs":["docs/patterns/backend.md","docs/ui/responsive-surfaces.json"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed inventory evidence for the covered RequestSheet composition and shared pending Button control. The added entry preserves canonical modal behavior and named caller tests, without a new styling primitive or raised ceiling.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-surfaces.json"]}
+  ]
+}

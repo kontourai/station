@@ -1,0 +1,7 @@
+{
+  "revision": "cc4357355b6931968876ec6a18a08ba7f790105a",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Reviewed final direct stored-field reader and request-only schema conversion, one-pass option admission, and facade export compatibility. A diagnostic compared 2988 request and stored-form outcomes with c300 and matched all. Existing field-kind, finite/count/text bounds, required/name and option/default refusal behavior remains enforced synchronously in every event/pending caller. No async admission shift, browser/device qualification or policy waiver is claimed.","inputs":["docs/reference/shared.md","packages/shared/package.json","packages/shared/src/mcp-elicitation-form.ts"]}
+  ]
+}

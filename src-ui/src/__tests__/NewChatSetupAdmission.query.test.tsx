@@ -175,6 +175,7 @@ test('real SDK observers cannot admit stale ready rows when notifications lag fa
     <QueryClientProvider client={client}>
       <NavigationProvider>
         <NewChatModal
+          projectIconBySlug={new Map()}
           agents={[NEEDS, OLD_READY]}
           projects={[PROJECT]}
           activeProjectSlug="alpha"

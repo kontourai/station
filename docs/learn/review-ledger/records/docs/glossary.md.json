@@ -136,7 +136,9 @@
 
     "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
 
-    "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts"
+    "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
+
+    "src-ui/src/views/activity/activity-list-model.ts"
   ],
 
   "checks": [

@@ -90,7 +90,7 @@ const ITEMS: HomeWorkItem[] = [
     environmentLabel: 'a-remote-machine-name-long-enough-to-truncate-in-a-rail',
   }),
   item({ id: 'running', lifecycleLabel: 'Running' }),
-  item({ id: 'idle', environmentLabel: 'brian-media' }),
+  item({ id: 'idle', environmentLabel: 'home-media' }),
   item({
     id: 'failed',
     lifecycleLabel: 'Failed',

@@ -100,11 +100,8 @@
  *    diagnostics — never by matching error message text, which would be a
  *    stringly-typed join across a package boundary.
  *
- * DISCLOSED GAP: the composed manifest's `integrations` is always `[]`.
- * Station's integrations are global (`<home>/integrations/<id>/`) and
- * `ProjectConfig` carries no per-project integration list, so no producer for
- * that field exists yet. It is reported as empty rather than invented, and
- * nothing in this slice exports a manifest to a peer.
+ * Project tool defaults project live integration references from `project.json`.
+ * Credentials remain Station-owned; this projection grants no execution authority.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -449,8 +446,12 @@ export class ProjectManifestStore {
           : { kind: 'station-managed' as const },
       })),
       agents: [...(project.agents ?? [])],
-      // Disclosed gap (see the module docblock): no producer exists yet.
-      integrations: [],
+      // Project tool defaults are live references to Station-owned integrations.
+      integrations: (project.toolDefaults?.mcpServers ?? []).map((id) => ({
+        id,
+        kind: 'mcp' as const,
+        auth: { station: id },
+      })),
       layouts: this.source.listLayouts(project.slug).map((layout) => layout.id),
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,

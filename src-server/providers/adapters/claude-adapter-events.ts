@@ -11,6 +11,7 @@ import { sanitizeUntrustedDisplayText } from '@kontourai/station-contracts/orche
 import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
+  NATIVE_RESUME_IDENTITY_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
 import type {
   CanonicalRuntimeEvent,
@@ -209,6 +210,7 @@ function claudeDeferredToolUse(
 
 export interface ClaudeMessageState extends ClaudeUsageLimitState {
   session: ProviderSession;
+  requireNativeResumeIdentity?: true;
   /** Live SDK permission mode; unset until Station sent one or init reported it. */
   currentPermissionMode?: PermissionMode;
   allowsBypassPermissions?: boolean;
@@ -432,6 +434,12 @@ export function reportClaudePermissionMode(
   });
 }
 
+export function isClaudeInitMessage(
+  message: SDKMessage,
+): message is Extract<SDKMessage, { type: 'system'; subtype: 'init' }> {
+  return message.type === 'system' && message.subtype === 'init';
+}
+
 export function mapClaudeSdkMessage({
   provider,
   record,
@@ -458,7 +466,30 @@ export function mapClaudeSdkMessage({
       observeClaudeBackgroundChildSettling(turnContext),
   };
 
-  if (message.type === 'system' && message.subtype === 'init') {
+  if (isClaudeInitMessage(message)) {
+    if (
+      record.requireNativeResumeIdentity &&
+      message.session_id !== record.attemptedResumeCursor
+    ) {
+      record.terminalResultObserved = 'binding-dead';
+      record.session.status = 'dead';
+      clearClaudeSdkTurns(turnContext);
+      publish({
+        eventId: crypto.randomUUID(),
+        provider,
+        threadId: record.session.threadId,
+        createdAt,
+        method: 'runtime.error',
+        severity: 'error',
+        code: ENGINE_SESSION_BINDING_DEAD_CODE,
+        retriable: false,
+        message:
+          'The engine opened a different native conversation; the requested resume was refused.',
+        metadata: { [NATIVE_RESUME_IDENTITY_METADATA_KEY]: 'mismatch' },
+      });
+      interruptEngine?.();
+      return;
+    }
     const sourceCursor = claudeSourceResumeCursor(record.session.resumeCursor);
     record.session.resumeCursor = sourceCursor
       ? { ...sourceCursor, claudeSessionId: message.session_id }
@@ -486,6 +517,9 @@ export function mapClaudeSdkMessage({
       model: message.model,
       cwd: message.cwd,
       metadata: {
+        ...(record.attemptedResumeCursor === message.session_id
+          ? { [NATIVE_RESUME_IDENTITY_METADATA_KEY]: 'matched' }
+          : {}),
         ...(message.permissionMode
           ? { permissionMode: message.permissionMode }
           : {}),

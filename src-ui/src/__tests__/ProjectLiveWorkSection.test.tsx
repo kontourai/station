@@ -407,6 +407,40 @@ describe('ProjectLiveWorkSection', () => {
     });
   });
 
+  // A delegated task running on a PAIRED Station: its record names the
+  // peer's agent and conversation, so opening it must not rehydrate a chat
+  // on them, and its Needs-you row invites opening rather than replying here.
+  test('a paired-Station record opens without a chat target and does not invite a reply', () => {
+    mocks.sessions.push(
+      session({
+        threadId: 'peer-delegation:abc',
+        assignedAgentSlug: 'codex',
+        conversationId: 'conv-on-peer',
+        lifecycleState: 'needs_input',
+        pendingReview: true,
+        displayTitle: 'Peer question',
+        delegation: {
+          taskId: 'task:peer',
+          environmentId: 'environment-peer',
+          environmentName: 'Station B',
+          environmentKind: 'peer',
+          targetKind: 'agent',
+          targetId: 'codex',
+        },
+      }),
+    );
+    const { container } = render(<ProjectLiveWorkSection slug="station" />);
+    const cta = container.querySelector('.project-page__live-work-cta');
+    expect(cta?.textContent).toBe('Open');
+    expect(screen.queryByRole('button', { name: 'Chat' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Jump in' }));
+    // A `navigate` action: the thread alone, no conversation or agent to
+    // rehydrate, so the dock reveals Activity rather than opening a chat.
+    expect(mocks.focus).toHaveBeenCalledWith({
+      threadId: 'peer-delegation:abc',
+    });
+  });
+
   test('external history is not presented as live project work', () => {
     mocks.sessions.push(
       session({

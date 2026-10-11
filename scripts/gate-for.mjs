@@ -42,7 +42,7 @@ function resolveBaseSha(base) {
   }
 }
 
-/** What `.githooks/pre-push` runs on every push, whatever the change. */
+/** Unscoped commands in the hook's normal source-edit push path. */
 export const EVERY_PUSH_CHECKS = Object.freeze([
   Object.freeze({
     command: 'npm run lint:check',
@@ -53,8 +53,12 @@ export const EVERY_PUSH_CHECKS = Object.freeze([
     note: 'governance proof (~4s)',
   }),
   Object.freeze({
+    command: 'node scripts/prepush-pure-merge.mjs',
+    note: 'classifies actual pushed refs against remote main (#3101)',
+  }),
+  Object.freeze({
     command: 'npm run veritas:readiness',
-    note: 'Veritas readiness (~15-35s)',
+    note: 'Veritas readiness; pure merges defer this check to required CI',
   }),
   Object.freeze({
     command: 'node scripts/commit-message-gate.mjs --prepush-stdin',
@@ -148,10 +152,12 @@ export function gateReport({ changedPaths, baseSha }) {
   const lines = [
     `gate:for — ${plan.changedPaths.length} changed path(s)`,
     '',
-    'Every push (armed in .githooks/pre-push):',
+    'Normal source-edit push (armed in .githooks/pre-push):',
     ...plan.everyPush.map(
       ({ command, note }) => `  ${command.padEnd(46)} # ${note}`,
     ),
+    '',
+    'The hook classifies pure merges from actual push refs; only verified clean merges take its lighter path.',
     '',
     'Scoped to this change surface:',
   ];

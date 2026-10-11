@@ -7,7 +7,7 @@ import { resolveHomeDir } from '../../utils/paths.js';
  * bundled binary, Codex's `app-server`, and ACP-connected command-backed
  * engines such as OpenCode — self-extracts working files into whatever
  * `TMPDIR`/`os.tmpdir()` resolves to for the child. Measured on the
- * brian-media dogfood host: OpenCode's Bun-embedded `.so` payload leaked at
+ * media-server dogfood host: OpenCode's Bun-embedded `.so` payload leaked at
  * ~2 spawns/minute × ~7.9MB, ~22GB/day, none of it ever reclaimed — under
  * systemd's `PrivateTmp`, that directory is a namespace nothing outside the
  * service can see or clean, so it filled silently until the tmpfs was full

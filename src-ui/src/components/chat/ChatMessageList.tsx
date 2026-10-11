@@ -11,6 +11,8 @@ import { createPortal } from 'react-dom';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import type { ChatContentPart } from '../../contexts/active-chats-state';
+import { activeChatsStore } from '../../contexts/active-chats-store';
+import { chatFormDraftsStore } from '../../contexts/chat-form-drafts-store';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import { useSendMessage } from '../../hooks/useActiveChatSessions';
 import { useCopyToClipboardToast } from '../../hooks/useCopyToClipboardToast';
@@ -30,6 +32,7 @@ import {
   REVEAL_APPROVAL_EVENT,
   type RevealApprovalDetail,
 } from '../status/approvalReveal';
+import { ApprovalSheetProvider } from './ApprovalSheetProvider';
 import { ChatEmptyState } from './ChatEmptyState';
 import {
   CHAT_READER_RESTORE_EVENT,
@@ -226,6 +229,24 @@ function ChatMessageListComponent({
     ],
   );
   const sendMessage = useSendMessage(apiBase);
+  const sheetRequests = useMemo(
+    () =>
+      activeSession.replay
+        ? []
+        : unansweredApprovalRequests(
+            [],
+            (approvalEvents ?? [])
+              .map((item) => item.event)
+              .filter((event) => Boolean(event.eventId)),
+          ).filter(
+            (request) =>
+              !request.inputRequest &&
+              !activeSession.answeredApprovals?.includes(
+                request.approvalId ?? '',
+              ),
+          ),
+    [activeSession.replay, activeSession.answeredApprovals, approvalEvents],
+  );
   // The store is already live at the shell; reading its scalar snapshot here
   // avoids adding a second subscription/allocation to every streaming row.
   // A mid-stream toggle is observed on the next existing 80 ms stream flush.
@@ -253,8 +274,10 @@ function ChatMessageListComponent({
       ? readerRestoreRequest
       : null;
   const [streamingContentRevision, setStreamingContentRevision] = useState(0);
-  const [submittedBlockIds, setSubmittedBlockIds] = useState<Set<string>>(
-    () => new Set(),
+  const formScope = chatFormDraftsStore.scope(
+    apiBase,
+    activeSession.id,
+    activeSession.conversationId,
   );
   const loadingOlderRef = useRef(false);
   const olderCommitPendingRef = useRef(false);
@@ -301,34 +324,60 @@ function ChatMessageListComponent({
   }, [layoutHeight, noteProgrammaticScroll, writeProgrammaticScroll]);
 
   const submitForm = useCallback(
-    (submission: UIBlockFormSubmission) => {
-      if (activeSession.replay || submittedBlockIds.has(submission.blockId))
-        return;
-      setSubmittedBlockIds((prev) => new Set(prev).add(submission.blockId));
+    (submission: UIBlockFormSubmission, formKey: string) => {
+      if (activeSession.replay) return;
+      const pending = chatFormDraftsStore.beginSubmit(
+        formScope,
+        formKey,
+        Object.fromEntries(
+          submission.values.map((field) => [field.name, field.value]),
+        ),
+      );
+      if (!pending) return;
+      let admissionReported = false;
+      const onAdmission = (
+        status: 'accepted' | 'not-invoked' | 'indeterminate',
+      ) => {
+        admissionReported = true;
+        chatFormDraftsStore.finishSubmit(formScope, formKey, pending, status);
+      };
       void sendMessage(
         activeSession.id,
         activeSession.agentSlug,
         activeSession.conversationId,
         formatFormSubmission(submission),
+        undefined,
+        undefined,
+        undefined,
+        {
+          queueOnBusy: true,
+          onAdmission,
+          claimRetry: () =>
+            chatFormDraftsStore.claimRetry(formScope, formKey, pending),
+        },
+      ).then(
+        (accepted) => {
+          if (!admissionReported)
+            onAdmission(accepted === true ? 'accepted' : 'indeterminate');
+        },
+        () => {
+          if (!admissionReported) onAdmission('indeterminate');
+        },
       );
     },
     [
       sendMessage,
+      formScope,
       activeSession.id,
       activeSession.agentSlug,
       activeSession.conversationId,
-      submittedBlockIds,
       activeSession.replay,
     ],
   );
 
   const uiBlockActions = useMemo(
-    () => ({
-      submitForm,
-      submittedBlockIds,
-      readOnly: Boolean(activeSession.replay),
-    }),
-    [submitForm, submittedBlockIds, activeSession.replay],
+    () => ({ submitForm, formScope, readOnly: Boolean(activeSession.replay) }),
+    [submitForm, formScope, activeSession.replay],
   );
 
   const messages = activeSession.messages || EMPTY_MESSAGES;
@@ -800,8 +849,20 @@ function ChatMessageListComponent({
       isThinking: activeSession.isThinking,
       pendingApprovalCount: waitingApprovalCount,
       activityShownElsewhere: statusShownElsewhere,
+      foldSettledWork: true,
+      // The server's open turn decides liveness (`isTurnStreamLive`), so it
+      // also names the live turn; `openTurnId` is the pre-record fallback.
+      liveTurnId: turnLive
+        ? (activeSession.conversationActivity?.openTurn?.turnId ??
+          activeSession.openTurnId)
+        : undefined,
+      liveTailRow: turnLive && Boolean(suppressStreamingRow),
     }),
     [
+      turnLive,
+      activeSession.conversationActivity?.openTurn?.turnId,
+      activeSession.openTurnId,
+      suppressStreamingRow,
       activeSession.id,
       activeSession.agentSlug,
       activeSession.agentName,
@@ -826,6 +887,9 @@ function ChatMessageListComponent({
       showToolDetails={showToolDetails}
       onCopy={handleCopy}
       onForkFromTurn={onForkFromTurn}
+      continuesTurn={
+        msg.turnId !== undefined && messages[idx - 1]?.turnId === msg.turnId
+      }
       userForkSource={
         msg.role === 'user' ? precedingForkSource(messages, idx) : undefined
       }
@@ -942,196 +1006,241 @@ function ChatMessageListComponent({
   );
 
   return (
-    <UIBlockActionsContext.Provider value={uiBlockActions}>
-      {onQuote && !activeSession.replay && (
-        <QuoteSelectionToolbar
-          container={messagesContainerRef}
-          messages={messages}
-          onQuote={onQuote}
-        />
-      )}
-      <SessionSummaryCard
-        activeSession={activeSession}
-        hasSettingsEntryPoint={hasSettingsEntryPoint}
-      />
-      <div
-        className="chat-messages"
-        ref={messagesContainerRef}
-        role="log"
-        aria-label="Conversation transcript"
-        data-chat-session-id={activeSession.id}
-        aria-live="polite"
-        style={{ fontSize: `${fontSize}px` }}
-        onScroll={handleScroll}
-        onWheel={endOlderRestoreSuppression}
-        onTouchStart={endOlderRestoreSuppression}
-        onPointerDown={endOlderRestoreSuppression}
-        onKeyDown={endOlderRestoreSuppression}
-      >
-        {hasOlderMessages && (
-          <div className="session-history-controls">
-            <button
-              type="button"
-              className="button button--secondary session-history-controls__more"
-              disabled={historyLoading}
-              onClick={() => void loadOlder()}
-            >
-              {historyLoading
-                ? 'Loading earlier messages…'
-                : 'Earlier messages'}
-            </button>
-          </div>
+    <ApprovalSheetProvider
+      apiBase={apiBase}
+      requests={sheetRequests}
+      onCheck={async (request) => {
+        if (
+          !request.approvalThreadId ||
+          !request.approvalId ||
+          !request.approvalEventId
+        )
+          throw new Error('This request has no current inspection reference.');
+        const { inspectApprovalAnswer } = await import(
+          '../../hooks/orchestration/answerRequest'
+        );
+        const outcome = await inspectApprovalAnswer(apiBase, {
+          threadId: request.approvalThreadId,
+          requestId: request.approvalId,
+          requestEventId: request.approvalEventId,
+        });
+        if (outcome === 'already-settled') {
+          const current = activeChatsStore.getSnapshot()[activeSession.id];
+          if (current)
+            activeChatsStore.updateChat(activeSession.id, {
+              pendingApprovals: current.pendingApprovals?.filter(
+                (id) => id !== request.approvalId,
+              ),
+              orchestrationHistoryRevision:
+                (current.orchestrationHistoryRevision ?? 0) + 1,
+            });
+        }
+        return outcome;
+      }}
+      onApprove={(request, action) =>
+        handleToolApproval(
+          activeSession.id,
+          activeSession.agentSlug,
+          request.approvalId ?? '',
+          request.toolName || request.name || '',
+          action,
+          request.approvalThreadId,
+          request.approvalEventId,
+        )
+      }
+    >
+      <UIBlockActionsContext.Provider value={uiBlockActions}>
+        {onQuote && !activeSession.replay && (
+          <QuoteSelectionToolbar
+            container={messagesContainerRef}
+            messages={messages}
+            onQuote={onQuote}
+          />
         )}
-        {historyNotice}
-        {messages.length === 0 && !isStreaming ? (
-          (emptyState ?? (
-            <ChatEmptyState
-              agentSlug={activeSession.agentSlug}
-              agentName={activeSession.agentName}
-            />
-          ))
-        ) : (
-          <>
-            {messages.length > 0 &&
-              (messages.length > VIRTUALIZE_AFTER_MESSAGE_COUNT ? (
-                <TranscriptVirtualizer
-                  rows={transcriptRows}
-                  scrollElement={messagesContainerRef}
-                  renderRow={renderTranscriptRow}
-                  followTail={!isUserScrolledUp && !requestedMessageRowId}
-                  followTick={`${tailContentLength}:${tailPartsLength}`}
-                  anchorVersion={scrollAnchorVersion}
-                  revealRowId={
-                    requestedMessageRowId ??
-                    approvalRevealRowId ??
-                    currentReaderRestoreRequest?.anchor?.key
-                  }
-                  restoreAnchor={currentReaderRestoreRequest?.anchor}
-                  restoreAnchorVersion={currentReaderRestoreRequest?.version}
-                />
-              ) : (
-                transcriptRows.map((row) => (
-                  <React.Fragment key={row.id}>
-                    {renderTranscriptRow(row)}
-                  </React.Fragment>
-                ))
-              ))}
-            {isStreaming && (
-              <div
-                className="chat-message-anchor"
-                data-chat-message-key={`${activeSession.id}:streaming`}
+        <SessionSummaryCard
+          activeSession={activeSession}
+          hasSettingsEntryPoint={hasSettingsEntryPoint}
+        />
+        <div
+          className="chat-messages"
+          ref={messagesContainerRef}
+          role="log"
+          aria-label="Conversation transcript"
+          data-chat-session-id={activeSession.id}
+          aria-live="polite"
+          style={{ fontSize: `${fontSize}px` }}
+          onScroll={handleScroll}
+          onWheel={endOlderRestoreSuppression}
+          onTouchStart={endOlderRestoreSuppression}
+          onPointerDown={endOlderRestoreSuppression}
+          onKeyDown={endOlderRestoreSuppression}
+        >
+          {hasOlderMessages && (
+            <div className="session-history-controls">
+              <button
+                type="button"
+                className="button button--secondary session-history-controls__more"
+                disabled={historyLoading}
+                onClick={() => void loadOlder()}
               >
-                <ActiveStreamingMessage
-                  sessionId={activeSession.id}
-                  agentIcon={agentIcon}
-                  agentIconStyle={EMPTY_STYLE}
-                  fontSize={fontSize}
-                  showReasoning={showReasoning}
-                  renderReasoning={renderReasoning}
-                  renderToolCall={renderToolCall}
-                  activityHint={activeSession.activityHint}
-                  elapsedMs={activeSession.replay?.elapsedMs}
-                  conversationActivity={activeSession.conversationActivity}
-                  turnStartedAt={activeSession.openTurnStartedAt}
-                  suppressActivity={suppressActivity}
-                  hideProgressSilence={progressSilenceShownElsewhere}
-                  statusLabel={
-                    activeSession.orchestrationStatus === 'awaiting-approval' &&
-                    chatWaitsOnUser(activeSession)
-                      ? // station#2235: the status alone asserts nothing about
-                        // an approval — a crashed turn's needs_input folds to
-                        // this status with no request behind it. Name the
-                        // approval only when a request is still waiting on
-                        // the user; without one the session is waiting on the
-                        // user, not on a decision. A session whose requests
-                        // are all answered is waiting on the engine, and says
-                        // nothing here.
-                        waitingApprovalCount > 0
-                        ? 'Waiting for approval'
-                        : 'Waiting on you'
-                      : undefined
-                  }
-                  attributionAgent={streamingAttributionAgent}
-                  owner={owner}
-                  onContentChange={handleStreamingContentChange}
-                />
-              </div>
-            )}
-            {/* Backgrounded provider tasks outlive the assistant turn: the
+                {historyLoading
+                  ? 'Loading earlier messages…'
+                  : 'Earlier messages'}
+              </button>
+            </div>
+          )}
+          {historyNotice}
+          {messages.length === 0 && !isStreaming ? (
+            (emptyState ?? (
+              <ChatEmptyState
+                agentSlug={activeSession.agentSlug}
+                agentName={activeSession.agentName}
+              />
+            ))
+          ) : (
+            <>
+              {messages.length > 0 &&
+                (messages.length > VIRTUALIZE_AFTER_MESSAGE_COUNT ? (
+                  <TranscriptVirtualizer
+                    rows={transcriptRows}
+                    scrollElement={messagesContainerRef}
+                    renderRow={renderTranscriptRow}
+                    followTail={!isUserScrolledUp && !requestedMessageRowId}
+                    followTick={`${tailContentLength}:${tailPartsLength}`}
+                    anchorVersion={scrollAnchorVersion}
+                    revealRowId={
+                      requestedMessageRowId ??
+                      approvalRevealRowId ??
+                      currentReaderRestoreRequest?.anchor?.key
+                    }
+                    restoreAnchor={currentReaderRestoreRequest?.anchor}
+                    restoreAnchorVersion={currentReaderRestoreRequest?.version}
+                  />
+                ) : (
+                  transcriptRows.map((row) => (
+                    <React.Fragment key={row.id}>
+                      {renderTranscriptRow(row)}
+                    </React.Fragment>
+                  ))
+                ))}
+              {isStreaming && (
+                <div
+                  className="chat-message-anchor"
+                  data-chat-message-key={`${activeSession.id}:streaming`}
+                >
+                  <ActiveStreamingMessage
+                    sessionId={activeSession.id}
+                    agentIcon={agentIcon}
+                    agentIconStyle={EMPTY_STYLE}
+                    fontSize={fontSize}
+                    showReasoning={showReasoning}
+                    renderReasoning={renderReasoning}
+                    renderToolCall={renderToolCall}
+                    activityHint={activeSession.activityHint}
+                    elapsedMs={activeSession.replay?.elapsedMs}
+                    conversationActivity={activeSession.conversationActivity}
+                    turnStartedAt={activeSession.openTurnStartedAt}
+                    suppressActivity={suppressActivity}
+                    hideProgressSilence={progressSilenceShownElsewhere}
+                    statusLabel={
+                      activeSession.orchestrationStatus ===
+                        'awaiting-approval' && chatWaitsOnUser(activeSession)
+                        ? // station#2235: the status alone asserts nothing about
+                          // an approval — a crashed turn's needs_input folds to
+                          // this status with no request behind it. Name the
+                          // approval only when a request is still waiting on
+                          // the user; without one the session is waiting on the
+                          // user, not on a decision. A session whose requests
+                          // are all answered is waiting on the engine, and says
+                          // nothing here.
+                          waitingApprovalCount > 0
+                          ? 'Waiting for approval'
+                          : 'Waiting on you'
+                        : undefined
+                    }
+                    attributionAgent={streamingAttributionAgent}
+                    owner={owner}
+                    onContentChange={handleStreamingContentChange}
+                  />
+                </div>
+              )}
+              {/* Backgrounded provider tasks outlive the assistant turn: the
                 session is honestly idle, but work continues. Keep a live
                 affordance so the chat never looks done while it isn't. */}
-            {!turnLive &&
-              (localBackgroundTasks.length > 0 || serverBackgroundCount > 0) &&
-              (onOpenBackgroundTasks && localBackgroundTasks.length > 0 ? (
-                // archive#1301: a `<button>` cannot
-                // also carry `role="status"` (an interactive element and a
-                // live region are mutually exclusive ARIA roles) — a visually
-                // hidden sibling carries the exact live-region semantics the
-                // plain `<div>` below has, so the wording still auto-announces
-                // as it changes, while the button itself stays the one
-                // accessible interactive element (name via `aria-label`).
-                <>
-                  <button
-                    type="button"
-                    className="background-tasks-banner"
-                    onClick={onOpenBackgroundTasks}
-                    aria-label={`${backgroundBannerLabel} — open background tasks`}
-                  >
-                    <LoadingDots />
+              {!turnLive &&
+                (localBackgroundTasks.length > 0 ||
+                  serverBackgroundCount > 0) &&
+                (onOpenBackgroundTasks && localBackgroundTasks.length > 0 ? (
+                  // archive#1301: a `<button>` cannot
+                  // also carry `role="status"` (an interactive element and a
+                  // live region are mutually exclusive ARIA roles) — a visually
+                  // hidden sibling carries the exact live-region semantics the
+                  // plain `<div>` below has, so the wording still auto-announces
+                  // as it changes, while the button itself stays the one
+                  // accessible interactive element (name via `aria-label`).
+                  <>
+                    <button
+                      type="button"
+                      className="background-tasks-banner"
+                      onClick={onOpenBackgroundTasks}
+                      aria-label={`${backgroundBannerLabel} — open background tasks`}
+                    >
+                      <LoadingDots />
+                      <span
+                        className="background-tasks-banner__label"
+                        aria-hidden="true"
+                      >
+                        {backgroundBannerLabel}
+                      </span>
+                    </button>
                     <span
-                      className="background-tasks-banner__label"
-                      aria-hidden="true"
+                      className="background-tasks-banner__sr-status"
+                      role="status"
                     >
                       {backgroundBannerLabel}
                     </span>
-                  </button>
-                  <span
-                    className="background-tasks-banner__sr-status"
-                    role="status"
-                  >
-                    {backgroundBannerLabel}
-                  </span>
-                </>
-              ) : (
-                <div className="background-tasks-banner" role="status">
-                  <LoadingDots />
-                  <span className="background-tasks-banner__label">
-                    {backgroundBannerLabel}
-                  </span>
-                </div>
-              ))}
-          </>
-        )}
-        {/* Mounted while empty too: its live region must exist before the
+                  </>
+                ) : (
+                  <div className="background-tasks-banner" role="status">
+                    <LoadingDots />
+                    <span className="background-tasks-banner__label">
+                      {backgroundBannerLabel}
+                    </span>
+                  </div>
+                ))}
+            </>
+          )}
+          {/* Mounted while empty too: its live region must exist before the
             first request arrives (#2344). */}
-        {!activeSession.replay && (
-          <PendingApprovalStrip
-            requests={pendingApprovalRequests}
-            settled={approvalEventsSettled !== false}
-            onApprove={(request, action) =>
-              handleToolApproval(
-                activeSession.id,
-                activeSession.agentSlug,
-                request.approvalId ?? '',
-                request.toolName || request.name || '',
-                action,
-                request.approvalThreadId,
-                request.approvalEventId,
-              )
-            }
-          />
-        )}
-      </div>
-      {isUserScrolledUp &&
-        (scrollControlsTarget ? (
-          createPortal(
-            <ScrollToBottomButton onClick={handleScrollToBottom} />,
-            scrollControlsTarget,
-          )
-        ) : (
-          <ScrollToBottomButton onClick={handleScrollToBottom} />
-        ))}
-    </UIBlockActionsContext.Provider>
+          {!activeSession.replay && (
+            <PendingApprovalStrip
+              requests={pendingApprovalRequests}
+              settled={approvalEventsSettled !== false}
+              onApprove={(request, action) =>
+                handleToolApproval(
+                  activeSession.id,
+                  activeSession.agentSlug,
+                  request.approvalId ?? '',
+                  request.toolName || request.name || '',
+                  action,
+                  request.approvalThreadId,
+                  request.approvalEventId,
+                )
+              }
+            />
+          )}
+        </div>
+        {isUserScrolledUp &&
+          (scrollControlsTarget ? (
+            createPortal(
+              <ScrollToBottomButton onClick={handleScrollToBottom} />,
+              scrollControlsTarget,
+            )
+          ) : (
+            <ScrollToBottomButton onClick={handleScrollToBottom} />
+          ))}
+      </UIBlockActionsContext.Provider>
+    </ApprovalSheetProvider>
   );
 }
 

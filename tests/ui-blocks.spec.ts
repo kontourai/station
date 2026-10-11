@@ -2,8 +2,9 @@ import {
   agentId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
-import { expect, test } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
+import { test } from './helpers/fixture-audit';
 import {
   emitMockOrchestrationEvent,
   installMockOrchestrationSse,
@@ -134,7 +135,7 @@ test.describe('Structured UI blocks', () => {
     ).toBeVisible();
   });
 
-  test('submitting a form block re-enters the conversation as a tagged user turn', async ({
+  test('retains form input across responsive reparenting and submits a tagged user turn', async ({
     page,
   }) => {
     await seedActiveChats(page, [
@@ -242,15 +243,6 @@ test.describe('Structured UI blocks', () => {
         },
       },
     });
-    await emitMockOrchestrationEvent(page, 'orchestration:event', {
-      event: {
-        provider: 'codex',
-        threadId: 'session-1',
-        createdAt: '2026-04-05T12:00:02.000Z',
-        method: 'turn.completed',
-        turnId: 'turn-1',
-      },
-    });
 
     await expect(
       page.getByRole('heading', { name: 'Approve gate', exact: true }),
@@ -271,19 +263,38 @@ test.describe('Structured UI blocks', () => {
     await expect(gateForm.getByText('"Reviewer" is required.')).toBeVisible();
     expect(sentBody).toBeNull();
 
-    // Fill and submit.
-    await gateForm.getByLabel('Reviewer').fill('casey');
+    // Fill before settlement, then move Chat between its workspace pane and dock.
+    const reviewer = gateForm.getByLabel('Reviewer');
+    await reviewer.fill('casey');
     await gateForm.getByText('Sign off').click();
-    // Name lost input where it is lost. Under heavy load the block can
-    // re-mount after the fill and come back empty; a re-mount after these
-    // checks still shows up below as a missing "Submitted" button.
-    await expect(gateForm.getByLabel('Reviewer')).toHaveValue('casey');
+    await emitMockOrchestrationEvent(page, 'orchestration:event', {
+      event: {
+        provider: 'codex',
+        threadId: 'session-1',
+        createdAt: '2026-04-05T12:00:02.000Z',
+        method: 'turn.completed',
+        turnId: 'turn-1',
+      },
+    });
+    await expect(page.locator('.streaming-message')).toHaveCount(0);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(
+      page
+        .locator('#chat-dock')
+        .getByRole('heading', { name: 'Approve gate', exact: true }),
+    ).toBeVisible();
+    const notifications = page.getByRole('button', {
+      name: /^Dismiss notifications/,
+    });
+    if (await notifications.isVisible()) await notifications.click();
+    await expect(gateForm).toBeVisible();
+    await expect(reviewer).toHaveValue('casey');
     await expect(gateForm.getByLabel('Sign off')).toBeChecked();
     await approveButton.click();
 
-    // Form locks after submit, and the tagged structured turn was sent.
+    // The pending send locks the form; acknowledgement alone marks it Submitted.
     await expect(
-      gateForm.getByRole('button', { name: 'Submitted' }),
+      gateForm.getByRole('button', { name: 'Sending…' }),
     ).toBeVisible();
     await expect.poll(() => sentBody).not.toBeNull();
     const turn = JSON.parse(sentBody as unknown as string).message as string;
@@ -295,6 +306,9 @@ test.describe('Structured UI blocks', () => {
 
     releaseResponse();
     await responseFulfilled;
+    await expect(
+      gateForm.getByRole('button', { name: 'Submitted' }),
+    ).toBeVisible();
   });
 
   // archive#1399 — a claiming table block with

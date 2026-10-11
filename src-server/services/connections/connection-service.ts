@@ -45,18 +45,26 @@ import { type AgentRegistry } from '../../domain/agent-registry.js';
 import {
   connectionIdForAdapter,
   engineIdForAdapter,
+  nativeRuntimeConnectionIds,
 } from '../../providers/adapter-identity.js';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
+import { credentialProfilesRouteAlike } from '../../providers/app-home/credential-profile-env.js';
 import type { LegacyCredentialProfileRegistryState } from '../../providers/app-home/credential-profile-registry.js';
 import {
   deleteCredentialProfile,
   normalizeCredentialProfileRegistry,
   projectCredentialProfileRegistry,
   setCredentialProfileEnrollment,
+  setCredentialProfileEnv,
   setCredentialRecoveryAutomaticPolicy,
   upsertCredentialProfile,
 } from '../../providers/app-home/credential-profile-registry.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { createLogger } from '../../utils/logger.js';
+import {
+  type EngineProxyRoute,
+  resolveEngineProxy,
+} from './engine-proxy-routing.js';
 
 type CredentialProfileApplicationSettlement =
   | { kind: 'staged' }
@@ -255,6 +263,17 @@ function adapterEngineIdOrUndefined(
   }
 }
 
+const logger = createLogger({ name: 'connection-service' });
+
+/** An Adapter's `provider` key for a log line, never throwing. */
+function adapterProviderLabel(adapter: ProviderAdapterShape): string {
+  try {
+    return String(adapter.provider);
+  } catch {
+    return 'unknown';
+  }
+}
+
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
   if (!value || typeof value !== 'object') return value;
@@ -446,7 +465,10 @@ function applyRuntimeAuthenticationFailure<
     typeof runtime.config.providerLabel === 'string'
       ? runtime.config.providerLabel
       : runtime.name;
-  const readinessReason = `${providerLabel} rejected a real runtime request. Sign in again; Station will automatically recheck this client shortly.`;
+  const readinessReason =
+    typeof runtime.config.proxyConnectionId === 'string'
+      ? 'The last request could not sign in through this proxy. Check the address and key in Models, then choose Check connection.'
+      : `${providerLabel} rejected a real runtime request. Sign in again; Station will automatically recheck this client shortly.`;
   return {
     ...runtime,
     status: 'missing_prerequisites',
@@ -1271,13 +1293,31 @@ export class ConnectionService {
           engineId: adapterEngineId,
           type: adapterEngineId,
         });
-      } catch {}
+      } catch (error: unknown) {
+        logger.debug(
+          'Engine identity unavailable for one Adapter; its Agents lose only their own engine attribution',
+          {
+            adapter: adapterProviderLabel(adapter),
+            error: sanitizeFreeText(String(error)),
+          },
+        );
+      }
     }
+    const nativeIds = nativeRuntimeConnectionIds(adapters);
     for (const config of acpConnections) {
       // Parsed, never assumed: a config id that is not a clean identity has
       // no public connection, and must not abort its siblings' attribution.
       const configEngineId = parseEngineId(config.id);
       if (!configEngineId) continue;
+      // A stored ACP connection that shares a native engine's id (written
+      // before the ACP routes refused such ids) resolves to that engine's
+      // public connection. Keyed by connection id, the ACP entry would then
+      // relabel every native Agent as `acp`; the native engine keeps the id,
+      // and the collision is logged once per id so it can be repaired.
+      if (nativeIds.has(config.id)) {
+        this.reportAcpNativeIdCollision(config.id);
+        continue;
+      }
       const identity = publicEngineConnection(
         adapters,
         registry,
@@ -1291,6 +1331,17 @@ export class ConnectionService {
       });
     }
     return identities;
+  }
+
+  private readonly reportedAcpNativeIdCollisions = new Set<string>();
+
+  private reportAcpNativeIdCollision(id: string): void {
+    if (this.reportedAcpNativeIdCollisions.has(id)) return;
+    this.reportedAcpNativeIdCollisions.add(id);
+    logger.warn(
+      'An ACP connection shares its id with a native engine; engine attribution keeps the native engine. Delete the ACP connection and add it again under a different id.',
+      { connectionId: id },
+    );
   }
 
   /**
@@ -1424,6 +1475,37 @@ export class ConnectionService {
         typeof provider === 'string'
           ? this.runtimeAuthHealth?.getFailure(provider)
           : null;
+      let proxyRoute: EngineProxyRoute | undefined;
+      try {
+        proxyRoute = resolveEngineProxy(
+          engineRuntime.config,
+          this.providerService.listProviderConnections(),
+        )?.route;
+      } catch {
+        /* Setup and launch report invalid proxy settings. */
+      }
+      if (proxyRoute) {
+        engineRuntime.config = {
+          ...engineRuntime.config,
+          modelRoute: proxyRoute,
+        };
+        engineRuntime.prerequisites = engineRuntime.prerequisites.map((item) =>
+          ['claude-auth', 'codex-auth'].includes(item.id)
+            ? {
+                ...item,
+                name: 'Proxy key',
+                status: 'installed' as const,
+                description: `A key is saved for ${proxyRoute.label}. Check the connection to verify an answer.`,
+              }
+            : item,
+        );
+        if (
+          engineRuntime.enabled &&
+          engineRuntime.status === 'missing_prerequisites' &&
+          !hasRequiredMissing(engineRuntime.prerequisites)
+        )
+          engineRuntime.status = 'ready';
+      }
       const projected = failure
         ? applyRuntimeAuthenticationFailure(engineRuntime, failure)
         : engineRuntime;
@@ -1804,6 +1886,11 @@ export class ConnectionService {
         this.getProviderAdapters(),
       );
       const settingsId = binding?.settingsId ?? current.id;
+      if (connection.config.proxyConnectionId)
+        resolveEngineProxy(
+          connection.config,
+          this.providerService.listProviderConnections(),
+        );
 
       await this.mutateRuntimeConnections((agentConnections) => ({
         ...agentConnections,
@@ -2256,6 +2343,18 @@ export class ConnectionService {
     });
   }
 
+  /** Replaces a profile's non-secret env overlay; `{}` clears it. */
+  async setCredentialProfileEnv(
+    connectionId: string,
+    ref: string,
+    env: Record<string, string>,
+  ): Promise<CredentialRecoveryGroupProjection> {
+    return this.mutateCredentialRecovery(
+      connectionId,
+      (state) => setCredentialProfileEnv(state, ref, env).state,
+    );
+  }
+
   async setCredentialProfileEnrollment(
     connectionId: string,
     ref: string,
@@ -2521,9 +2620,19 @@ export class ConnectionService {
     attemptId: ReturnType<typeof randomUUID>,
   ): Promise<AutomaticCredentialProfileStageResult> {
     const state = await this.readCredentialRecoveryState(connectionId);
-    const candidateProfileRef = state.group?.enrolledProfileRefs.find(
+    const candidates = (state.group?.enrolledProfileRefs ?? []).filter(
       (ref) => ref !== state.activeProfileRef,
     );
+    // #2966: prefer the first enrolled candidate that routes like the active
+    // profile. When none does, offer the first anyway so the selector refuses
+    // it as `environment_mismatch` rather than reporting "not enrolled".
+    const profileOf = (ref: string | undefined) =>
+      state.profiles.find((profile) => profile.ref === ref);
+    const active = profileOf(state.activeProfileRef);
+    const candidateProfileRef =
+      candidates.find((ref) =>
+        credentialProfilesRouteAlike(profileOf(ref), active),
+      ) ?? candidates[0];
     const selection = selectCredentialRecoveryCandidate({
       capability:
         this.credentialRecoveryAdapter(connectionId)?.metadata.recovery,
@@ -2532,6 +2641,7 @@ export class ConnectionService {
       group: state.group,
       activeProfileRef: state.activeProfileRef,
       candidateProfileRef,
+      profiles: state.profiles,
     });
     if (selection.outcome !== 'selected')
       return { refusalReason: selection.reason };
@@ -3224,7 +3334,18 @@ export class ConnectionService {
         'This connection is disabled.',
         'Enable it before running the smoke.',
       );
-    } else if (hasRequiredMissing(connection.prerequisites)) {
+    } else if (
+      hasRequiredMissing(
+        connection.prerequisites.filter(
+          (item) =>
+            ![
+              RUNTIME_AUTH_PREREQUISITE_ID,
+              'claude-auth',
+              'codex-auth',
+            ].includes(item.id),
+        ),
+      )
+    ) {
       result = this.localSmokeFailure(
         'missing-prerequisites',
         'Required connection prerequisites are missing.',
@@ -3264,6 +3385,7 @@ export class ConnectionService {
         } else if (
           configuredModel &&
           runtimeModels &&
+          runtimeModels.length > 0 &&
           !runtimeModels.some((model) => model.id === configuredModel)
         ) {
           result = this.localSmokeFailure(
@@ -3413,6 +3535,15 @@ export class ConnectionService {
       provider: adapter?.provider ?? connection.type,
       engineId: adapter ? engineIdForAdapter(adapter) : engineIdentity,
       settings: appConfig.agentConnections?.[engineIdentity] ?? null,
+      proxy:
+        this.providerService
+          .listProviderConnections()
+          .find(
+            (candidate) =>
+              candidate.id ===
+              appConfig.agentConnections?.[engineIdentity]?.config
+                ?.proxyConnectionId,
+          ) ?? null,
     });
   }
 

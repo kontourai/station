@@ -82,7 +82,13 @@
 
     "src-ui/src/tokens.css",
 
-    "src-ui/src/utils/logger.ts"
+    "src-ui/src/utils/logger.ts",
+
+    "src-ui/src/lib/startup-animation.ts",
+
+    "src-ui/src/components/StartupScreen.tsx",
+
+    "src-ui/index.html"
   ],
 
   "checks": [
