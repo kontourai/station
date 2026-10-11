@@ -86,6 +86,23 @@ updater payloads; it is not the Android upload key.
    without the file reaching the artefact.
 8. **Upload** — debug APK/AAB uploaded as a workflow artifact
 
+### Release size
+
+Release builds use the `[profile.release]` in `src-desktop/Cargo.toml`: strip,
+fat LTO and one codegen unit. On the aarch64 Nightly build that takes
+`libstation_ai_lib.so` from 32.7 MB unstripped to 20.9 MB, and the APK from
+35.4 MB to 23.7 MB. The library is stored uncompressed, so installed size
+follows it closely.
+
+The Nightly and release lanes run `node scripts/check-android-native-size.mjs
+<apk>` beside the 16 KB check. It rejects any native library that still has
+`.symtab` or `.debug_*` sections, for every ABI the APK carries (release
+builds package all four, two of them 32-bit). Ceilings in
+`config/android-native-size-budget.json` are per ABI; only arm64-v8a, the
+measured ABI that phones install, carries one. It has about 15% headroom and
+fails only on growth past it; raise it in a reviewed change that names what
+grew. Debug builds are unstripped by design and are not gated.
+
 ### Triggers
 
 - Manual dispatch and path-filtered pushes to `main`; no tag or PR trigger.

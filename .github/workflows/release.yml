@@ -709,10 +709,11 @@ jobs:
         if: always()
         continue-on-error: true
         run: df -h /
-      - name: Verify Android native library 16 KB ELF and APK alignment
+      - name: Verify Android native library alignment, stripping and size
         run: |
           apk=$(find src-desktop/gen/android/app/build/outputs/apk/universal/release -name '*.apk' -print -quit)
           node scripts/check-android-16kb-alignment.mjs "$apk"
+          node scripts/check-android-native-size.mjs "$apk"
       # Read the stamp back out of the artefact: staging it can succeed and
       # still not reach the APK, and a released build that cannot name its
       # commit is exactly the hole station#3592 closes.

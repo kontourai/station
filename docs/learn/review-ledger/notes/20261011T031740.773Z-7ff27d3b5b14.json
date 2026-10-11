@@ -1,0 +1,7 @@
+{
+  "revision": "84cc8f1539492198d8063d065a1a9d4d3bd3a9d9",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Reviewed against this branch: src-desktop/Cargo.toml gains [profile.release] strip, fat LTO, codegen-units 1; nightly-native-stage.yml and release.yml run scripts/check-android-native-size.mjs beside the 16 KB gate on the staged APK. Searched this document for release-profile, symbol, strip, LTO, size, alignment and Android stage-check claims; none depend on the changed values. No prose change.","inputs":["docs/guides/releasing.md",".github/workflows/release.yml"]}
+  ]
+}
