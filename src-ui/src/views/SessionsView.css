@@ -541,17 +541,17 @@
   color: var(--k-text);
 }
 
-/* Opens over the conversation rather than pushing it down. */
+/* Drops down from the header as part of it, over the conversation rather
+   than pushing it down: full width, opaque, edged like the header. */
 .sessions-detail__details-body {
   position: absolute;
   top: 100%;
-  right: var(--chat-message-gutter);
-  left: var(--chat-message-gutter);
+  right: 0;
+  left: 0;
   z-index: 3;
-  padding: var(--k-space-2) var(--k-space-3);
-  border: var(--k-border-thin) solid var(--k-line);
-  border-radius: var(--k-radius-md);
-  background: var(--k-panel-raised);
+  padding: var(--k-space-2) var(--chat-message-gutter) var(--k-space-3);
+  border-bottom: var(--k-border-thin) solid var(--k-line);
+  background: var(--k-bg);
   box-shadow: var(--k-shadow);
 }
 
@@ -592,7 +592,8 @@
 }
 
 .external-chat-composer__note {
-  margin: 0 var(--chat-message-gutter) var(--k-space-2);
+  /* The composer already sits on the chat gutter. */
+  margin: 0 0 var(--k-space-2);
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
 }
