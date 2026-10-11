@@ -54,6 +54,56 @@ const DEEP_LINK_ACTIVATION = 'app.handle().deep_link().on_open_url';
 
 const DEADLINE_ARM = '&& now_ms >= next.deadline_ms =>';
 
+/** Source with all whitespace removed, for exact-shape pins. */
+function shape(source: string) {
+  return source.replace(/\s+/g, '');
+}
+
+/**
+ * The two timer threads may only wait, build the production host and call
+ * the tested decision function. An exact-shape pin (not a deny-list of names)
+ * fails on any added statement: an unlisted helper that restarts the sidecar,
+ * an automatic exit, or a direct resolve.
+ */
+const DEADLINE_THREAD_SHAPE =
+  shape(`fn arm_startup_deadline(app: AppHandle, epoch: u64) {
+    let _ = thread::Builder::new()
+        .name(format!("station-startup-readiness-{epoch}"))
+        .spawn(move || {
+            thread::sleep(Duration::from_secs(30));
+            let Some(state) = app.try_state::<DesktopServerState>() else {
+                return;
+            };
+            startup_deadline_elapsed_with(
+                &AppStartupRecoveryHost {
+                    app: &app,
+                    state: state.inner(),
+                },
+                epoch,
+            );
+        });
+}`);
+const REOFFER_THREAD_SHAPE =
+  shape(`fn arm_slow_start_reoffer(&self, epoch: u64, attempt: u32) {
+        let app = self.app.clone();
+        let _ = thread::Builder::new()
+            .name(format!("station-startup-recovery-reoffer-{epoch}"))
+            .spawn(move || {
+                let Some(state) = app.try_state::<DesktopServerState>() else {
+                    return;
+                };
+                run_slow_start_reoffer(
+                    &AppStartupRecoveryHost {
+                        app: &app,
+                        state: state.inner(),
+                    },
+                    epoch,
+                    attempt,
+                    thread::sleep,
+                );
+            });
+    }`);
+
 /** Calls that restart or signal the owned sidecar process. */
 function processRestartPrimitives(body: string) {
   return [
@@ -290,7 +340,7 @@ describe('desktop startup readiness static boundary', () => {
     }
 
     const deadlineThread = rustBlock(lib, 'fn arm_startup_deadline(');
-    expect(deadlineThread).toContain('startup_deadline_elapsed_with(');
+    expect(shape(deadlineThread)).toBe(DEADLINE_THREAD_SHAPE);
     const deadline = rustBlock(lib, 'fn startup_deadline_elapsed_with(');
     const offer = rustBlock(lib, 'fn offer_slow_start_dialog_with(');
     const reoffer = rustBlock(lib, 'fn run_slow_start_reoffer(');
@@ -355,15 +405,9 @@ describe('desktop startup readiness static boundary', () => {
     }
     // The re-offer timer only schedules the tested decision; choosing for the
     // user there would turn Keep Waiting into a delayed Restart or Quit.
-    const reofferTimer = hostMethods.arm_slow_start_reoffer ?? '';
-    expect(reofferTimer).toContain('run_slow_start_reoffer(');
-    for (const forbidden of [
-      'resolve_slow_startup',
-      'answer_slow_start_dialog',
-      'offer_slow_start_dialog_with',
-    ]) {
-      expect(reofferTimer).not.toContain(forbidden);
-    }
+    expect(shape(hostMethods.arm_slow_start_reoffer ?? '')).toBe(
+      REOFFER_THREAD_SHAPE,
+    );
     expect(rustBlock(host, 'fn exit')).toContain('self.app.exit(1)');
 
     const activation = rustBlock(
