@@ -525,8 +525,8 @@ test('new chat lists persisted engine defaults and keeps selected and hovered te
   const selected = modal.locator('.new-chat-modal__agent--selected');
   await expect(selected).toContainText('Codex');
   // archive#3721 deleted the row description, and neither of the two remaining
-  // trailing elements is a replacement rung: the readiness badge
-  // (`@kontourai/ui` `.tone-*`) and the engine chip
+  // trailing elements is a replacement rung: the readiness badge, shown only
+  // on a blocked row with no fix (`@kontourai/ui` `.tone-*`), and the engine pill
   // (`components/badges/EngineChip.css:26-36`) each paint their own opaque
   // background, so their ratio is fixed by a token pair and cannot vary with
   // the row's selected/hover surface — measuring them would assert nothing.

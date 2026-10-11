@@ -27,6 +27,9 @@
   justify-self: start;
   min-width: 0;
   max-width: 100%;
+  /* A track squeezed to nothing must clip the pill's own padding too, or a
+     grey stub of it paints past the line's edge. */
+  overflow: hidden;
 }
 /* The shared quiet pill (EngineChip.css), allowed to ellipsize here. */
 .new-chat-modal__agent-engine > .engine-chip__pill {

@@ -85,9 +85,9 @@ function AgentPickerRow({
   const repeatsAgent =
     normalizedDisplayLabel(engineChipLabel(chipEngine)) ===
     normalizedDisplayLabel(agent.name);
-  // What runs this Agent, as quiet text after its name rather than a pill
-  // on a line of its own: that line doubled every such row's height for one
-  // short label. A label that only repeats the name is the engine word
+  // What runs this Agent, as the quiet engine pill right after its name
+  // rather than on a line of its own: that line doubled every such row's
+  // height for one short label. A label that only repeats the name is the engine word
   // printed twice, so it is left out.
   const engineLabel =
     chipEngine && !repeatsAgent ? engineChipLabel(chipEngine) : undefined;
@@ -96,7 +96,9 @@ function AgentPickerRow({
   // still one to choose, so the trigger stays and asks for it; without one
   // there is nothing to show.
   const modelReported = modelLabel !== MODEL_NOT_REPORTED;
-  const showModel = modelReported || !modelUnavailable;
+  // A row that cannot start has no model to choose: the trigger only took the
+  // width its name and its fix needed.
+  const showModel = runnable && (modelReported || !modelUnavailable);
   const modelText = modelReported ? modelLabel : 'Choose model';
   return (
     <div
@@ -104,7 +106,7 @@ function AgentPickerRow({
       // The full server sentence, on the ROW rather than the button: the row
       // button is disabled whenever there is a reason to show, and a disabled
       // button receives no hover in Chromium, so a title there would never
-      // appear. Sighted parity for the sentence the chip stands in for.
+      // appear. Sighted parity for the sentence the row cannot show.
       title={unavailability?.description}
     >
       <button
@@ -141,21 +143,15 @@ function AgentPickerRow({
               <span className="engine-chip__pill">{engineLabel}</span>
             </span>
           )}
-          {/* archive#4521's compact rule, at the row that proved why: the
-              header badge carries the SHORT state ("Not set up", caution
-              tone), never the server's full sentence — that badge label IS a
-              paragraph, and inline beside the name it squeezed the name to
-              one ellipsized letter while the sentence's own remedy link sat
-              below. The complete sentence stays on the row (assistive node +
-              title) and at this width the Agents list row reads the same
-              compact badge, so §5's one-wording contract keeps holding. */}
           {/* A state only when nothing else on the row says it. "Ready" is
               what an enabled row says by being choosable, and a row that
               cannot start is already disabled, dimmed, and carries its one
               fixing button (Enable, Connect, Set up, Edit agent) at the end.
-              Only a row with no fix of its own (a policy, an unknown reason)
-              keeps the badge, so it is never a dead row with no reason. The
-              wording, when shown, is the cell's own: the Agents list's word. */}
+              Only a row with no fix of its own (a policy, or no fix kind at
+              all) keeps the badge, so it is never a dead row with no reason.
+              When shown it is the SHORT state (archive#4521), the Agents
+              list's own word, never the server's paragraph, which stays on
+              the row's title and assistive node. */}
           {!runnable && !agentFixLabel(agent) && (
             <AgentReadinessCell agent={agent} part="status" compact />
           )}
@@ -173,10 +169,9 @@ function AgentPickerRow({
           // VISUALLY, never in the accessibility tree. `--assistive` clips this
           // node to a screen-reader-only box so the aria-describedby target
           // still resolves to the whole sentence.
-          // ALWAYS assistive now: `AgentReadinessCell` is the visible
-          // statement of this row's state, so painting the sentence here too
-          // printed the same refusal twice (the badge read `Needs: connection
-          // offline` beside a paragraph reading `connection offline`).
+          // ALWAYS assistive: the row's visible statement is its dimmed name
+          // and fix button (or, with no fix, the short state badge), and
+          // painting the sentence too printed the same refusal twice.
           <div
             id={`agent-${agent.slug}-unavailable`}
             className="new-chat-modal__agent-reason new-chat-modal__agent-reason--assistive"

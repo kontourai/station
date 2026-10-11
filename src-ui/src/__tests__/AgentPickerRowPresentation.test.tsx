@@ -146,6 +146,13 @@ describe('Agent picker row presentation', () => {
       within(row(fixable.slug)).getByRole('button', { name: /Set up/ }),
     ).toBeTruthy();
     expect(badge(fixable.slug)).toBeNull();
+    // A row that cannot start offers no model to choose.
+    expect(
+      within(row(fixable.slug)).queryByRole('button', { name: /^Model:/ }),
+    ).toBeNull();
+    expect(
+      within(row(policy.slug)).queryByRole('button', { name: /^Model:/ }),
+    ).toBeNull();
     // Blocked with no fix: the badge is the row's only stated reason.
     expect(badge(policy.slug)?.textContent).toBe('Not set up');
     // The engine pill follows the name on its line.
