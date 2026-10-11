@@ -384,37 +384,24 @@
   font-size: var(--k-text-sm);
 }
 
-/* On a phone a chip menu is a sheet over the start screen, and the shared
-   popover scrim (black at 32%) barely separated it from a dark page: the
-   page's own rows read as part of the sheet. The modal scrim does. Declared
-   after the base menu rules above so it wins at equal specificity. */
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .composer-popover-overlay.start-menu__overlay {
-    background: var(--overlay-modal);
-    /* The shared phone popover overlay zeroes the surface's safe-area
-       padding; a landscape notch or home indicator would cover the menu. */
-    padding: max(8px, var(--safe-top, 0px)) max(8px, var(--safe-right, 0px))
-      max(8px, var(--safe-bottom, 0px)) max(8px, var(--safe-left, 0px));
-  }
+/* As a sheet (the dialog surface's phone presentation) a chip menu docks to
+   the bottom and side edges like a native sheet: the shared surface's 8px
+   float left a strip of page under it. The side safe-area insets stay (a notch
+   or cutout); the home-indicator inset moves into the list's own padding so
+   the last row scrolls clear of it. The modal scrim replaces the shared
+   popover scrim (black at 32%), which barely separated the sheet from a dark
+   page. Declared after the base menu rules so it wins at equal specificity. */
+.composer-popover-overlay.start-menu__overlay[data-sheet] {
+  padding: var(--safe-top, 0px) var(--safe-right, 0px) 0 var(--safe-left, 0px);
+  background: var(--overlay-modal);
 }
-/* A portrait phone docks the sheet to the bottom and side edges like a native
-   sheet: the shared surface's 8px float left a strip of page under it. The
-   side insets stay (a notch or cutout); the home-indicator inset moves into
-   the list's own padding so the last row scrolls clear of it. The landscape
-   branch keeps the shared floating panel, which is narrower than the screen. */
-@media (max-width: 768px) {
-  .composer-popover-overlay.start-menu__overlay {
-    padding: var(--safe-top, 0px) var(--safe-right, 0px) 0 var(--safe-left, 0px);
-  }
-  .composer-popover-panel.start-menu__panel {
-    --start-menu-inset: var(--k-space-4);
-    /* Docked means edge to edge: the shared phone panel caps at 720px, which
-       left a strip of page beside a borderless edge from 721px to 768px. */
-    width: 100% !important;
-    border-width: 1px 0 0;
-    border-radius: var(--k-radius-overlay) var(--k-radius-overlay) 0 0;
-  }
-  .start-menu__panel .start-menu__list {
-    padding-bottom: max(var(--k-space-2), var(--safe-bottom, 0px));
-  }
+.start-menu__overlay[data-sheet] .composer-popover-panel.start-menu__panel {
+  --start-menu-inset: var(--k-space-4);
+  /* Docked means edge to edge: the shared sheet panel caps at 720px. */
+  width: 100% !important;
+  border-width: 1px 0 0;
+  border-radius: var(--k-radius-overlay) var(--k-radius-overlay) 0 0;
+}
+.start-menu__overlay[data-sheet] .start-menu__list {
+  padding-bottom: max(var(--k-space-2), var(--safe-bottom, 0px));
 }
