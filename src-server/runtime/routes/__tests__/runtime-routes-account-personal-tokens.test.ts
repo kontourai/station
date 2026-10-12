@@ -11,13 +11,12 @@
  * enrollment policy (registration is not under test); Project membership is
  * granted over the real invitation routes.
  */
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { dirname, join, resolve, sep } from 'node:path';
-import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
@@ -73,27 +72,17 @@ const STATION_ID = 'account-token-fixture';
 const GRANT = 'orchestration:read orchestration:operate';
 const operatorApproval = { kind: 'presented-credential' } as const;
 
-function ownedTempRoot(prefix: string): string {
-  const ambientRoot = resolveStationRoot();
-  const base = resolve(tmpdir());
-  const insideSharedRoot =
-    ambientRoot === base ||
-    base.startsWith(
-      ambientRoot.endsWith(sep) ? ambientRoot : ambientRoot + sep,
-    );
-  return mkdtempSync(
-    join(insideSharedRoot ? dirname(ambientRoot) : base, prefix),
-  );
-}
-
 describe('account-tied personal access tokens over the production composition', () => {
+  // Created first, so its after-hook removes the homes after the account
+  // stores below have closed.
+  const makeTempDir = trackTempDirs();
   const directories: string[] = [];
   const loaded: LoadedLocalAccounts[] = [];
   const ambientHome = process.env.STATION_HOME;
   const ambientRoot = process.env.STATION_ROOT;
   const ambientOrigins = process.env.ALLOWED_ORIGINS;
   beforeEach(() => {
-    const owned = ownedTempRoot('station-account-tokens-');
+    const owned = makeTempDir('station-account-tokens-');
     directories.push(owned);
     mkdirSync(join(owned, 'home'));
     mkdirSync(join(owned, 'root'));
@@ -111,8 +100,7 @@ describe('account-tied personal access tokens over the production composition', 
     if (ambientOrigins === undefined) delete process.env.ALLOWED_ORIGINS;
     else process.env.ALLOWED_ORIGINS = ambientOrigins;
     vi.restoreAllMocks();
-    for (const directory of directories.splice(0))
-      rmSync(directory, { recursive: true, force: true });
+    directories.splice(0);
   });
 
   async function setup() {
