@@ -52,7 +52,8 @@ describe('OrchestrationService', () => {
      * #3561: the settle used to precede the gate. It now follows the append,
      * so a failed append leaves the stop pending, and the gate no longer
      * returns early: the decline is a flag, and the body returns `false` for
-     * it only after the settle. The #3561 integration tests own the "not
+     * it only after the settle. The settle also precedes the in-memory
+     * observers (#3561 review F3). The #3561 integration tests own the "not
      * before the append" half behaviorally.
      */
     test('publishCanonicalEvent settles a completed stop after the append and before it can decline the event', () => {
@@ -64,11 +65,16 @@ describe('OrchestrationService', () => {
       const gate = body.indexOf('this.quarantinedThreads.has(');
       const append = body.indexOf('this.appendCanonicalEvent(');
       const settle = body.indexOf('.settleCompletedTurn(');
-      const decline = body.indexOf('if (!projectedEvent) return false;');
+      const decline = body.indexOf('if (!committed) return false;');
       expect(gate).toBeGreaterThanOrEqual(0);
       expect(append).toBeGreaterThan(gate);
       expect(settle).toBeGreaterThan(append);
       expect(decline).toBeGreaterThan(settle);
+      // #3561 review F3: the settle precedes the in-memory observers, so one
+      // that throws after the commit cannot strand the stop.
+      expect(body.indexOf('this.observeCommittedEvent(')).toBeGreaterThan(
+        decline,
+      );
       // Nothing between the gate and the settle may return: a return there
       // would let a declined event skip the settle.
       expect(body.slice(gate, settle)).not.toMatch(/\breturn\b/);

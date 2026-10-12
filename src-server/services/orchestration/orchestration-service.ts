@@ -706,6 +706,15 @@ const DISCARDED_DRAFT_GATE_MAX = 256;
  */
 const OBSERVED_EVENT_RETRY_DELAYS_MS = [25, 100] as const;
 
+/** What {@link OrchestrationService}'s append half hands its observer half. */
+interface CommittedEvent {
+  projectedEvent: CanonicalRuntimeEvent;
+  session: ProviderSession | null;
+  /** Whether this event was a provider-started turn's `turn.started`. */
+  providerTurn: boolean;
+  providerTurnRecorded: SessionTurnBoundaryTransition | undefined;
+}
+
 /** The lifecycle fields `normalizeCanonicalRuntimeEventLifecycle` stamps. */
 const LIFECYCLE_STAMP_FIELDS = [
   'sessionState',
@@ -11348,22 +11357,27 @@ export class OrchestrationService {
     // #3561: store before show. Nothing a client or recovery can observe
     // changes before the append commits, so a throw from it propagates from
     // here with everything below unapplied, and a retry applies it once.
-    const projectedEvent = declined
-      ? undefined
-      : this.appendCanonicalEvent(event, quarantined);
+    const committed = declined ? undefined : this.appendCanonicalEvent(event);
     // T5 ordering, pinned by the source invariant in this file's test
     // suite: a stop must settle even for an event the quarantine gate
     // declines, or a stop on a quarantined thread never settles and rides
     // its full budget into a forced teardown of a completed turn. For an
     // event that is published, it settles only once that event's append has
     // committed (#3561): a failed append leaves the stop pending, as the log
-    // still shows the turn running.
+    // still shows the turn running. It settles before the in-memory
+    // observers run, so one that throws cannot strand a stop whose terminal
+    // is already stored (#3561 review F3).
     this.cooperativeStop.settleCompletedTurn(
       event.threadId,
       event.turnId,
       event.method,
     );
-    if (!projectedEvent) return false;
+    if (!committed) return false;
+    const projectedEvent = this.observeCommittedEvent(
+      event,
+      committed,
+      quarantined,
+    );
     // The event-store append is the retirement boundary. Do not use an
     // adapter's cleared activeTurnId or a queue-drain edge: a bound native
     // scope remains valid until its ordered durable terminal is committed.
@@ -11498,12 +11512,10 @@ export class OrchestrationService {
    * derivation, declared-output admissions (rolled back on failure) and the
    * provider turn boundary's preparation. The session row and a provider
    * turn's boundary row are co-commit participants of the append. In-memory
-   * observers run only after it has committed. Returns the persisted shape.
+   * observers run only after it has committed, in
+   * {@link observeCommittedEvent}.
    */
-  private appendCanonicalEvent(
-    event: CanonicalRuntimeEvent,
-    quarantined: boolean,
-  ): CanonicalRuntimeEvent {
+  private appendCanonicalEvent(event: CanonicalRuntimeEvent): CommittedEvent {
     const eventStore = this.options.eventStore;
     const projectedEvent = eventStore
       ? eventStore.projectLiveEvent(event)
@@ -11552,8 +11564,30 @@ export class OrchestrationService {
       this.stationControlPullRequests?.rollback(handles);
       throw error;
     }
-    if (providerTurn)
-      this.reportProviderTurnBoundary(projectedEvent, providerTurnRecorded);
+    return {
+      projectedEvent,
+      session,
+      providerTurn: providerTurn !== undefined,
+      providerTurnRecorded,
+    };
+  }
+
+  /**
+   * #3561: the in-memory half of a committed publish. Runs only once the
+   * event is durable; the cooperative stop has already settled. Returns the
+   * persisted shape of the event.
+   */
+  private observeCommittedEvent(
+    event: CanonicalRuntimeEvent,
+    committed: CommittedEvent,
+    quarantined: boolean,
+  ): CanonicalRuntimeEvent {
+    const { projectedEvent, session } = committed;
+    if (committed.providerTurn)
+      this.reportProviderTurnBoundary(
+        projectedEvent,
+        committed.providerTurnRecorded,
+      );
     // A quarantined thread's exit is what lifts its quarantine, once stored.
     if (quarantined) this.quarantinedThreads.delete(event.threadId);
     // archive#2959: every canonical event this service actually persists and

@@ -22393,7 +22393,9 @@ describe('OrchestrationService', () => {
       const threadId = 'store-before-show-lost-transaction';
       const turnId = 'turn-lost-transaction';
       const { events, isolated, emitted } = await startService(threadId);
-      const rowBefore = eventStore.readSessionByThread(threadId);
+      // A distinct time, so the session row can be checked for this event
+      // alone: the interruption warning that follows touches it too.
+      const startedAt = new Date(Date.now() + 60_000).toISOString();
       const db = (eventStore as any).db;
       const prepare = db.prepare.bind(db);
       let failed = false;
@@ -22418,7 +22420,7 @@ describe('OrchestrationService', () => {
             },
           };
         });
-      events.push(providerStart(threadId, turnId));
+      events.push({ ...providerStart(threadId, turnId), createdAt: startedAt });
       await vi.waitFor(() =>
         expect(
           stored(threadId).some(
@@ -22437,7 +22439,9 @@ describe('OrchestrationService', () => {
         false,
       );
       expect(boundaryRows(threadId)).toBe(0);
-      expect(eventStore.readSessionByThread(threadId)).toEqual(rowBefore);
+      expect(eventStore.readSessionByThread(threadId)?.updatedAt).not.toBe(
+        startedAt,
+      );
       prepareSpy.mockRestore();
       await isolated.shutdown();
     });

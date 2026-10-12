@@ -257,6 +257,8 @@ export interface SessionTurnBoundaryAuthority {
    * or rolls back with that event. Preparing retries pending transitions,
    * which open transactions of their own, so it runs BEFORE that append;
    * `record` writes only the row and joins the caller's open transaction.
+   * `record` reports a row it could not write as `unavailable`, and throws
+   * only when the caller's transaction itself was rolled back.
    */
   prepareProviderTurn(
     threadId: string,
@@ -322,26 +324,24 @@ export function createSessionTurnBoundaryAuthority(options: {
   ): { record(): SessionTurnBoundaryTransition } => {
     retryPendingTransitions();
     return {
-      record: () => {
-        try {
-          return options.coordinator.recordAccepted({
-            boundaryId: `${PROVIDER_TURN_BOUNDARY_PREFIX}${randomUUID()}`,
-            threadId,
-            state: 'accepted',
-            providerTurnId,
-            ownerId: options.owner.id,
-            ownerPid: options.owner.pid,
-            ...(options.owner.identityKind === 'exact'
-              ? { ownerBirth: options.owner.birth }
-              : {}),
-            ownerIdentityKind: options.owner.identityKind,
-            createdAt: now,
-            updatedAt: now,
-          });
-        } catch {
-          return { kind: 'unavailable' };
-        }
-      },
+      // Not caught (#3561 review F1): inside a caller's append, a throw here
+      // means the caller's transaction is gone, and the caller must fail. A
+      // lost row alone is reported as `unavailable` by the coordinator.
+      record: () =>
+        options.coordinator.recordAccepted({
+          boundaryId: `${PROVIDER_TURN_BOUNDARY_PREFIX}${randomUUID()}`,
+          threadId,
+          state: 'accepted',
+          providerTurnId,
+          ownerId: options.owner.id,
+          ownerPid: options.owner.pid,
+          ...(options.owner.identityKind === 'exact'
+            ? { ownerBirth: options.owner.birth }
+            : {}),
+          ownerIdentityKind: options.owner.identityKind,
+          createdAt: now,
+          updatedAt: now,
+        }),
     };
   };
   const reconcileDeadOwners = (
@@ -824,7 +824,11 @@ export function createSessionTurnBoundaryAuthority(options: {
       });
     },
     recordProviderTurn(threadId, providerTurnId, now) {
-      return prepareProviderTurn(threadId, providerTurnId, now).record();
+      try {
+        return prepareProviderTurn(threadId, providerTurnId, now).record();
+      } catch {
+        return { kind: 'unavailable' };
+      }
     },
     prepareProviderTurn,
     reconcile(now) {

@@ -315,6 +315,21 @@ import {
 
 const require = createRequire(import.meta.url);
 const logger = createLogger({ name: 'event-store' });
+
+/**
+ * #3561 review F1: an append's transaction ended while a co-commit
+ * participant ran, so nothing of the append may be written. Thrown instead of
+ * letting the remaining statements autocommit.
+ */
+export class EventAppendTransactionLostError extends Error {
+  constructor(options?: { cause?: unknown }) {
+    super(
+      'The event append transaction was rolled back by SQLite during a co-commit participant',
+      options,
+    );
+    this.name = 'EventAppendTransactionLostError';
+  }
+}
 const SQLITE_BUSY_TIMEOUT_MS = 5_000;
 /** Last-resort ingress ceiling; upstream adapters own useful projection. */
 export const MAX_EVENT_STORE_INGRESS_BYTES = 64 * 1024;
@@ -3547,6 +3562,12 @@ export class EventStore {
     try {
       this.reserveEventAppendWriter();
       coCommit?.();
+      // A participant that swallowed an error SQLite answered by rolling
+      // back the whole transaction (SQLITE_FULL, IOERR, NOMEM) returns into
+      // autocommit mode: every statement below would commit on its own and
+      // RELEASE would then report the stored event as failed. Fail it here,
+      // while nothing has been written (#3561 review F1).
+      if (!this.db.isTransaction) throw new EventAppendTransactionLostError();
       // Persisted event time is the sole replay authority. A new terminal gets
       // exactly one host observation time, shared by its event and association.
       const observedAt =
@@ -3682,9 +3703,12 @@ export class EventStore {
       }
     } catch (error) {
       try {
-        this.db.exec(
-          'ROLLBACK TO SAVEPOINT append_event_history; RELEASE SAVEPOINT append_event_history',
-        );
+        // SQLite may already have rolled the whole transaction back; a
+        // ROLLBACK TO would then fail and mask the original error.
+        if (this.db.isTransaction)
+          this.db.exec(
+            'ROLLBACK TO SAVEPOINT append_event_history; RELEASE SAVEPOINT append_event_history',
+          );
       } finally {
         // A SQLite rollback error cannot strand a claim; its candidate must be
         // retryable unless the savepoint release above already committed it.
@@ -11350,16 +11374,17 @@ export class EventStore {
             return rows < SESSION_TURN_ACCEPTED_CAPACITY
               ? { kind: 'applied' }
               : { kind: 'busy' };
-          } catch {
-            // The row is lost and the caller's event still commits: a missing
-            // crash banner is better than a lost turn.
-            try {
-              this.db.exec(
-                'ROLLBACK TO SAVEPOINT record_accepted_turn_boundary; RELEASE SAVEPOINT record_accepted_turn_boundary',
-              );
-            } catch {
-              // Nothing to undo if the savepoint never opened.
-            }
+          } catch (error) {
+            // SQLite answered with a rollback of the caller's whole
+            // transaction: the event cannot commit either, so this is the
+            // caller's failure, not a lost row (#3561 review F1).
+            if (!this.db.isTransaction)
+              throw new EventAppendTransactionLostError({ cause: error });
+            // Otherwise the row is lost and the caller's event still
+            // commits: a missing crash banner is better than a lost turn.
+            this.db.exec(
+              'ROLLBACK TO SAVEPOINT record_accepted_turn_boundary; RELEASE SAVEPOINT record_accepted_turn_boundary',
+            );
             return { kind: 'unavailable' };
           }
         }
