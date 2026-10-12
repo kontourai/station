@@ -146,13 +146,11 @@ describe('Agent picker row presentation', () => {
       within(row(fixable.slug)).getByRole('button', { name: /Set up/ }),
     ).toBeTruthy();
     expect(badge(fixable.slug)).toBeNull();
-    // A row that cannot start offers no model to choose.
+    // A row that cannot start still offers its Model: a choice made before
+    // the repair survives it (NewChatModalSetupReturn).
     expect(
-      within(row(fixable.slug)).queryByRole('button', { name: /^Model:/ }),
-    ).toBeNull();
-    expect(
-      within(row(policy.slug)).queryByRole('button', { name: /^Model:/ }),
-    ).toBeNull();
+      within(row(fixable.slug)).getByRole('button', { name: 'Model: Opus' }),
+    ).toBeTruthy();
     // Blocked with no fix: the badge is the row's only stated reason.
     expect(badge(policy.slug)?.textContent).toBe('Not set up');
     // The engine pill follows the name on its line.
