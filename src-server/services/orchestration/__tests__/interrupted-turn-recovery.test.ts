@@ -2106,6 +2106,64 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
       });
     });
 
+    test('M3: turns from before the claim do not use up the start scan — a long thread still finds the dispatch’s own turn', async () => {
+      const path = databasePath();
+      const threadId = 'thread-long-history';
+      const dying = new EventStore(path);
+      dying.appendEvent(sessionStartedEvent({ threadId, provider: 'acp' }));
+      for (let index = 0; index < 70; index += 1) {
+        const at = new Date(Date.UTC(2026, 7, 15, 0, 0, index)).toISOString();
+        dying.appendEvent(startOf(threadId, `old-${index}`, at));
+        dying.appendEvent(completionOf(threadId, `old-${index}`, at));
+      }
+      const r1 = dying
+        .sessionTurnBoundaryAuthority()
+        .claim(threadId, '2026-08-16T00:00:01.000Z');
+      if (r1.kind !== 'owner') throw new Error('expected R1 owner');
+      r1.claim.beginInvocation('2026-08-16T00:00:01.050Z');
+      dying.appendEvent(
+        startOf(threadId, 'turn-1', '2026-08-16T00:00:01.100Z'),
+      );
+      dying.close();
+      const eventStore = reboot(path, threadId);
+
+      await (serviceOn(eventStore) as any).interruptedTurns.consume();
+
+      expect(summarize(eventStore, threadId)).toEqual({
+        aborts: ['turn-1'],
+        banners: 1,
+      });
+    });
+
+    test('past the start-scan bound the owner is not guessed: banner, no abort', async () => {
+      // 65 fresh starts after the claim, one past OWN_TURN_START_SCAN_LIMIT
+      // (64): the bound refuses rather than truncates.
+      const path = databasePath();
+      const threadId = 'thread-start-scan-overflow';
+      const dying = new EventStore(path);
+      dying.appendEvent(sessionStartedEvent({ threadId, provider: 'acp' }));
+      const r1 = dying
+        .sessionTurnBoundaryAuthority()
+        .claim(threadId, '2026-08-16T00:00:01.000Z');
+      if (r1.kind !== 'owner') throw new Error('expected R1 owner');
+      r1.claim.beginInvocation('2026-08-16T00:00:01.050Z');
+      for (let index = 0; index < 65; index += 1) {
+        const at = new Date(
+          Date.UTC(2026, 7, 16, 0, 0, 2 + index),
+        ).toISOString();
+        dying.appendEvent(startOf(threadId, `fresh-${index}`, at));
+      }
+      dying.close();
+      const eventStore = reboot(path, threadId);
+
+      await (serviceOn(eventStore) as any).interruptedTurns.consume();
+
+      expect(summarize(eventStore, threadId)).toEqual({
+        aborts: [],
+        banners: 1,
+      });
+    });
+
     test('two fresh non-provider starts after the claim: the LATEST is the dispatch’s own (closed), never read as moved on', async () => {
       const path = databasePath();
       const threadId = 'thread-two-fresh-starts';
