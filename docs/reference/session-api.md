@@ -198,10 +198,11 @@ error that carries no code.
 
 A send that starts a new ACP session on a model the engine's fresh session
 options did not offer is refused with `code: "model_not_advertised"`. The start
-is settled, not uncertain: the thread is not fenced behind an inspection, its
-session ended with the engine's refusal as the cause, and the receipt is
-`rejected`. Start a new conversation to choose another model; a start on the
-same thread with a different model is a `session-reattach-conflict`.
+is settled, not uncertain: the thread is not fenced behind an inspection and the
+receipt is `rejected`. It is not a retry candidate as sent. Sending again in the
+same conversation with another model continues in a successor session; a start
+naming a different model on the refused session id itself is a
+`session-reattach-conflict`.
 
 A completed turn does not discard the conversation. If the next turn needs a new
 execution Session, it remains linked beneath the same Conversation. Station-native

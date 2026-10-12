@@ -8578,9 +8578,6 @@ export class OrchestrationService {
         ...receipt,
         status:
           error instanceof ModelLaunchPlanUnavailableError ||
-          // A lazy engine start inside a send (a restart without a resume
-          // cursor) can be refused by the engine the same way a start is.
-          error instanceof SessionStartRefusedError ||
           error instanceof SendTurnRefusedError ||
           error instanceof SessionReattachConflictError ||
           error instanceof SessionEndedError ||
@@ -8645,7 +8642,6 @@ export class OrchestrationService {
           error instanceof DraftDiscardBusyError ||
           error instanceof RequestEventGuardError ||
           error instanceof ReceiverExecutionRefusal ||
-          error instanceof SessionStartRefusedError ||
           error instanceof AttachmentInputUnsupportedError
           ? error.code
           : retryableAdapterRefusalCode(error),

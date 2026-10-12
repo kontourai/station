@@ -394,14 +394,13 @@ the boundary is released and the receipt is `rejected`, where every other
 adapter failure at start stays an indeterminate start that fences the thread. An
 adapter throws it only once the engine has answered with a refusal and what it
 spawned is torn down (an unconfirmed teardown is an `AggregateError`, an
-uncertain start), and it owes the service a `runtime.error` carrying the cause
-and a `session.exited` for the `session.started` it already sent; the session
-is then an ended session whose lifecycle reads `failed` with the engine's own
-words, and a start on that thread is refused (a different model is a
-`session-reattach-conflict`), so the next attempt is a new conversation. A model
-the engine was asked to apply and answered differently (`ACP model application
-unverified`) stays an uncertain start. The nested start claim of a task dispatch
-and delegation keep their own conservative uncertainty handling. An ACP steer delivered by the cancel + re-prompt fallback, for
+uncertain start). A model the engine was asked to apply and answered
+differently (`ACP model application unverified`) stays an uncertain start. The
+nested start claim of a task dispatch and delegation keep their own
+conservative uncertainty handling. A resend in the same conversation continues
+in a successor session started with the model then requested; a start naming a
+different model on the refused session id itself is a
+`session-reattach-conflict`. An ACP steer delivered by the cancel + re-prompt fallback, for
 an engine without a native steer method, cancels the running prompt and any
 tool it was running. Its steer `turn.started` carries
 `steerInterruptedRun: true` so a client can say why that step shows as

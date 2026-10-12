@@ -384,19 +384,19 @@ export function translateChatError(
   }
 
   // The engine this chat resolved to refused the model the composer showed.
-  // The start is over: the chat's session ended with the refusal and cannot
-  // be started on another model, so this is a terminal-session failure, which
-  // the dock answers with "New chat" carrying the draft forward. Deterministic
-  // (the same model is refused again), so no "temporary" hint and no Retry.
-  // This is also what a composer working from a stale snapshot looks like once
-  // the engine behind an Agent changed; the client re-reads those snapshots.
+  // The refused session has ended, and the conversation continues in a
+  // successor session on the next send (the continuation seam starts it with
+  // the model then requested), so this is not a terminal chat: the user picks
+  // another model and sends again. Deterministic (the same model is refused
+  // again), so no "temporary" hint and no Retry. This is also what a composer
+  // working from a stale snapshot looks like once the engine behind an Agent
+  // changed; the client re-reads those snapshots.
   if (code === MODEL_NOT_ADVERTISED_CODE) {
     return {
       title: "This engine doesn't offer that model",
       body: `${text || 'The engine did not offer the selected model.'} Nothing was sent.`,
-      hint: 'Start a new chat and choose one of the models this engine offers. The engine behind this Agent may have changed; Station has re-read its list.',
+      hint: 'Choose one of the models this engine offers and send again. The engine behind this Agent may have changed; Station has re-read its list.',
       retryable: false,
-      terminalSession: true,
     };
   }
 

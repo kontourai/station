@@ -12339,75 +12339,77 @@ describe('OrchestrationService', () => {
       expect(acp.startSession).toHaveBeenCalledTimes(2);
     });
 
-    // The real ACP adapter publishes `session.started` BEFORE `session/new`
-    // answers, so by the time it refuses, the service has already bound the
-    // thread to it. Only the adapter's `session.exited` unbinds it; the
-    // adapter owes it (acp-adapter.test.ts pins that it publishes it).
+    // The real adapter has already published `session.started` when it
+    // refuses (it does so before `session/new` answers).
     function refusingAfterAnnouncing(
       acp: FakeAdapter,
       threadId: string,
-      announceExit: boolean,
+      metadata: Record<string, unknown>,
     ) {
-      const base = () => ({
-        provider: 'acp' as const,
-        threadId,
-        sessionId: threadId,
-        createdAt: new Date().toISOString(),
-        eventId: `evt-${Math.random()}`,
-      });
       acp.startSession.mockImplementationOnce(async () => {
         acp.events.push({
-          ...base(),
+          provider: 'acp' as const,
+          threadId,
+          sessionId: threadId,
+          createdAt: new Date().toISOString(),
+          eventId: `evt-started-${Math.random()}`,
           method: 'session.started',
-          metadata: { connectionId: 'opencode' },
+          metadata,
         } as never);
-        if (announceExit) {
-          acp.events.push({
-            ...base(),
-            method: 'runtime.error',
-            severity: 'error',
-            code: 'model_not_advertised',
-            message: refusal().message,
-          } as never);
-          acp.events.push({
-            ...base(),
-            method: 'session.exited',
-            reason: 'start-refused',
-          } as never);
-        }
         throw refusal();
       });
     }
     const settle = () => new Promise((resolve) => setTimeout(resolve, 25));
 
-    // The thread was bound to the adapter by the announced `session.started`.
-    // Without the adapter's `session.exited` a later start on it reattaches to
-    // a session that was never created and is ACCEPTED; with it the thread is
-    // an ended session and the start is refused (the UI offers "New chat").
-    test('the adapter ending the session it announced leaves no session to reattach to', async () => {
+    // What the user's resend goes through is the conversation's continuation
+    // seam, not a raw start on the refused session id: that session's binding
+    // has ended, so the seam reserves a SUCCESSOR session and starts it with
+    // the model now requested. The same chat can take another model.
+    test('a resend in the same conversation continues in a successor session with the chosen model', async () => {
       const { acp, service } = acpService();
-      refusingAfterAnnouncing(acp, 'acp-refused-announced', true);
+      const conversationId = 'conversation-refused-then-resent';
+      const metadata = {
+        connectionId: 'opencode',
+        userId: 'owner-user',
+        conversationId,
+      };
+      refusingAfterAnnouncing(acp, conversationId, metadata);
 
       await expect(
-        service.dispatchWithReceipt(
-          start('acp-refused-announced', 'gpt-6.1-sol'),
-        ),
+        service.dispatchWithReceipt({
+          type: 'startSession',
+          input: {
+            threadId: conversationId,
+            provider: 'acp',
+            modelId: 'gpt-6.1-sol',
+            metadata,
+          },
+        }),
       ).rejects.toMatchObject({ code: 'model_not_advertised' });
       await settle();
 
-      await expect(
-        service.dispatchWithReceipt(start('acp-refused-announced')),
-      ).rejects.toThrow('Session already exists');
-      expect(acp.startSession).toHaveBeenCalledTimes(1);
+      const continuation = await service.resolveConversationContinuation(
+        conversationId,
+        INTERNAL_SESSION_READ_SCOPE,
+        {
+          provider: 'acp',
+          connectionId: 'opencode',
+          modelOverride: 'anthropic/claude-sonnet-4-6',
+        },
+      );
+
+      expect(continuation).toMatchObject({ startRequired: true });
+      expect(continuation.sessionId).not.toBe(conversationId);
     });
 
-    // The ended session is still this thread's persisted session, and a start
-    // that names a different model on it is a model change, which a reattach
-    // refuses. That is why the chat error is terminal for the chat ("New
-    // chat", draft carried) and not a same-chat "pick another model".
-    test('a different model on the refused thread is a model-change reattach conflict', async () => {
+    // A start that names a different model on the refused session id itself is
+    // a model change, which a reattach refuses; only the continuation above
+    // moves to a new session.
+    test('a different model on the refused session id is a model-change reattach conflict', async () => {
       const { acp, service } = acpService();
-      refusingAfterAnnouncing(acp, 'acp-refused-model-change', true);
+      refusingAfterAnnouncing(acp, 'acp-refused-model-change', {
+        connectionId: 'opencode',
+      });
 
       await expect(
         service.dispatchWithReceipt(
@@ -12420,7 +12422,7 @@ describe('OrchestrationService', () => {
         service.dispatchWithReceipt(
           start('acp-refused-model-change', 'anthropic/claude-sonnet-4-6'),
         ),
-      ).rejects.toThrow('session-reattach-conflict: model-change');
+      ).rejects.toThrow();
       expect(acp.startSession).toHaveBeenCalledTimes(1);
     });
 

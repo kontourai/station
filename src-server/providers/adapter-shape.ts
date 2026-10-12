@@ -86,9 +86,7 @@ export class AttachmentInputUnsupportedError extends SendTurnRefusedError {
  * answered with a refusal and the adapter has torn down what it spawned, so
  * there is no session Station can address or inspect. The expected source is a
  * requested model the engine's own fresh session options did not offer
- * ({@link MODEL_NOT_ADVERTISED_CODE}). Throwing it is also a promise to publish
- * `session.exited` for a `session.started` already sent (the ACP adapter does):
- * the service binds the thread to the adapter on the first event.
+ * ({@link MODEL_NOT_ADVERTISED_CODE}).
  *
  * Throw ONLY when that is true. The start boundary otherwise records every
  * adapter failure as an indeterminate start and keeps the thread fenced until
