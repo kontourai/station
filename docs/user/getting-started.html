@@ -28,8 +28,31 @@
 <h2>Ways To Run Station Today</h2>
 <p>Station is open source and under active development. Check the <a href="https://github.com/kontourai/station/releases">release list</a> for current artifacts. Desktop updater channel tags and npm packages are separate from the signed portable release rings used by the installer below.</p>
 <div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr><th>Path</th><th>Platforms</th><th>Use it when</th></tr></thead><tbody><tr><td>Run from source</td><td>macOS, Linux</td><td>You want the current <code>main</code> branch and are comfortable with a Node.js checkout. Follow the <a href="https://github.com/kontourai/station/blob/main/docs/guides/development.md#local-runtime">developer guide</a>.</td></tr>
-<tr><td>Nightly desktop build</td><td>macOS (Apple silicon), Windows (x64)</td><td>You want a native app for testing. Choose a matching asset from the <a href="https://github.com/kontourai/station/releases/tag/nightly-desktop">Nightly desktop pre-release</a> and check its version. Retained assets may be older builds.</td></tr></tbody></table></div>
+<tr><td>Nightly server install</td><td>macOS, Linux, Windows (x64)</td><td>You want the newest signed <code>main</code> build as a local server you open in a browser. Use the one-line <a href="#install-nightly">Nightly install</a>.</td></tr>
+<tr><td>Nightly desktop build</td><td>macOS (Apple silicon), Windows (x64)</td><td>You want a native app for testing. Download it from the <a href="https://github.com/kontourai/station/releases/tag/nightly-desktop">Nightly desktop pre-release</a>; see <a href="#nightly-desktop-downloads">Nightly desktop downloads</a>.</td></tr></tbody></table></div>
 <p>When a signed stable or beta portable ring is available, <a href="#install-or-upgrade">Install Or Upgrade</a> is the macOS/Linux installer path. The remaining sections cover that install and the first-run UI.</p>
+<h2>Install Nightly</h2>
+<p>Nightly is built from <code>main</code> and published as signed prebuilt server archives. On macOS or Linux:</p>
+<pre><code>
+curl -fsSL https://raw.githubusercontent.com/kontourai/station/main/install.sh | STATION_CHANNEL=nightly sh
+</code></pre>
+<p>On Windows, in PowerShell:</p>
+<pre><code>
+$env:STATION_CHANNEL = 'nightly'; irm https://raw.githubusercontent.com/kontourai/station/main/install.ps1 | iex
+</code></pre>
+<p><code>STATION_CHANNEL=nightly</code> is enough: the installer reads the rolling <a href="https://github.com/kontourai/station/releases/tag/portable-nightly"><code>portable-nightly</code></a> manifest, verifies its Ed25519 signature against the keys pinned in the script, and checks the size and SHA-256 of the archive it selects for this host. Nothing unsigned is installed. It needs <code>curl</code> and <code>tar</code> on macOS and Linux; with no Node.js 24 on the host it downloads a pinned, digest-checked Node.js only to verify and extract. Neither a GitHub login nor a build is needed.</p>
+<p>The install lives under <code>~/.station/installs/nightly</code>, keeps its data in <code>~/.station/instances/nightly</code>, and owns the <code>station-nightly</code> launcher (<code>~/.local/bin/station-nightly</code>, or <code>station-nightly.cmd</code> on Windows). Open <code>http://localhost:38000</code> when it finishes. Run the same command again to upgrade, and <code>station-nightly --version</code> to see the installed build. Set <code>STATION_INSTALL_PUBLIC_MANIFEST_URL</code> to install from a different signed manifest instead. The Station Nightly desktop app uses the same ports and data directory; the installer refuses to share them silently (see <a href="https://github.com/kontourai/station/blob/main/docs/guides/release-channel-ports.md">channel identity and coexistence</a>).</p>
+<p>Each Nightly's own <code>install.sh</code> and <code>install.ps1</code> are also attached to its immutable <code>v&lt;version&gt;</code> release, next to its archives.</p>
+<h3>Nightly desktop downloads</h3>
+<p>Each Nightly desktop publication also uploads its installers under fixed names, so these links always serve the newest published build:</p>
+<ul>
+<li>macOS (Apple silicon): <code>https://github.com/kontourai/station/releases/download/nightly-desktop/station-nightly-macos-aarch64.dmg</code>
+</li>
+<li>Windows (x64): <code>https://github.com/kontourai/station/releases/download/nightly-desktop/station-nightly-windows-x86_64-setup.exe</code>
+</li>
+</ul>
+<p>The release also carries the same builds under versioned names (<code>station-&lt;version&gt;-…</code>), and older retained builds. Its <code>SHA256SUMS</code> lists the newest build's downloads under both names. Download it next to the installer and check it, for example <code>shasum -a 256 --ignore-missing -c SHA256SUMS</code> on macOS, <code>sha256sum --ignore-missing -c SHA256SUMS</code> on Linux, or compare <code>(Get-FileHash &lt;file&gt;).Hash</code> on Windows. A mismatch right after a new build is published means the two files are from different builds; download both again.</p>
+<p>The Windows installer is not publisher-signed yet (<a href="https://github.com/kontourai/station/issues/3591">#3591</a>). When you run the downloaded installer, Microsoft Defender SmartScreen therefore shows &quot;Windows protected your PC&quot; with an unknown publisher; choose <strong>More info</strong>, then <strong>Run anyway</strong>. On Windows 11 with Smart App Control turned on, Windows can block the unsigned installer with no such option. The app's own updates are verified with Station's updater signing key.</p>
 <h2>Before You Install</h2>
 <p>You need:</p>
 <ul>
