@@ -22466,8 +22466,8 @@ describe('OrchestrationService', () => {
       const observe = internals.childWork.observe.bind(internals.childWork);
       const observeSpy = vi
         .spyOn(internals.childWork, 'observe')
-        .mockImplementation((event: CanonicalRuntimeEvent) => {
-          if (event.eventId === terminalId)
+        .mockImplementation((event: unknown) => {
+          if ((event as CanonicalRuntimeEvent).eventId === terminalId)
             throw new Error('injected post-commit observer failure');
           return observe(event);
         });
