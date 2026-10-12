@@ -1024,6 +1024,70 @@ describe('SchedulerLedger', () => {
       }
     });
 
+    // #3563 fix round 1: the dead owner had begun invocation, so
+    // reconciliation records it indeterminate and advances the job's cursor.
+    // That cursor write must not parse the record's unreadable bytes, or the
+    // whole claim transaction rolls back and nothing is quarantined.
+    test('an invoked dead claim on an unreadable record still lets every other job claim', () => {
+      const dueAt = Date.parse('2026-01-01T01:00:00.000Z');
+      const { claim } = strandForeignClaim(true);
+      const seed = createSchedulerLedger({ directory: tempDir });
+      seed.create({
+        name: 'healthy',
+        schedule: { kind: 'every', everyMs: 1_000 },
+        prompt: 'run',
+        enabled: true,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      });
+      seed.close();
+      const database = new DatabaseSync(join(tempDir, 'scheduler.sqlite'));
+      try {
+        database
+          .prepare(
+            `UPDATE scheduler_jobs SET data = '{"name":' WHERE job_id = ?`,
+          )
+          .run(claim.jobId);
+      } finally {
+        database.close();
+      }
+      const quarantined: string[] = [];
+      const restarted = createSchedulerLedger({
+        directory: tempDir,
+        processIdentity: foreignIdentity('dead'),
+        onQuarantinedJob: (job) => quarantined.push(job.jobId),
+      });
+      try {
+        const receipts = read(restarted.claimDue(dueAt));
+        expect(receipts.map((receipt) => receipt.job.name)).toEqual([
+          'healthy',
+        ]);
+        expect(quarantined).toEqual([claim.jobId]);
+        expect(read(restarted.allLogs())).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: `${claim.id}-1`,
+              state: 'indeterminate',
+            }),
+          ]),
+        );
+      } finally {
+        restarted.close();
+      }
+      const inspection = new DatabaseSync(join(tempDir, 'scheduler.sqlite'));
+      try {
+        // The bytes stay for an operator; the cursor column still advances.
+        expect(
+          inspection
+            .prepare(
+              'SELECT data, last_run_ms FROM scheduler_jobs WHERE job_id = ?',
+            )
+            .get(claim.jobId),
+        ).toEqual({ data: '{"name":', last_run_ms: claim.scheduledForMs });
+      } finally {
+        inspection.close();
+      }
+    });
+
     test.each(['exact', 'unavailable'] as const)(
       'control: a live (%s) foreign owner with no birth keeps its fence',
       (state) => {
