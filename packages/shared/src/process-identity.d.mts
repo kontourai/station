@@ -115,3 +115,15 @@ export function probeExactProcessIdentityAsync(
   pid: number,
   dependencies?: ProcessIdentityAsyncProbeDependencies,
 ): Promise<ExactProcessIdentityProbe>;
+/**
+ * True when the fingerprint's process was born before the current boot,
+ * false when within it, null when either side cannot be read.
+ */
+export function processBirthPredatesCurrentBoot(
+  fingerprint: string | null | undefined,
+  dependencies?: {
+    platform?: NodeJS.Platform;
+    exec?: ProcessIdentityDependencies['exec'];
+    readFile?: (path: string, encoding: 'utf8') => string;
+  },
+): boolean | null;
