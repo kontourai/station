@@ -461,7 +461,7 @@ describe('monument import boundary gate', () => {
       ...CLEAN,
       'src-server/strings.ts': [
         "import { vi } from 'vitest';",
-        "export const a = await vi.importActual('../packages/monument/src/index.ts');",
+        "export const a = await vi.importActual('../packages/monument/src/step.ts');",
         "import { createRequire } from 'node:module'; const req = createRequire(import.meta.url); export const b = req('../packages/monument/src/local.ts');",
         "export const w = new URL('../packages/monument/src/worker.ts', import.meta.url);",
         "export const m = '@kontourai/monument/src/step';",
@@ -473,7 +473,7 @@ describe('monument import boundary gate', () => {
     });
     expect(result.status, result.output).toBe(1);
     for (const line of [
-      'monument-internal-reference: src-server/strings.ts:2 ../packages/monument/src/index.ts',
+      'monument-internal-reference: src-server/strings.ts:2 ../packages/monument/src/step.ts',
       'monument-internal-reference: src-server/strings.ts:3 ../packages/monument/src/local.ts',
       'monument-internal-reference: src-server/strings.ts:4 ../packages/monument/src/worker.ts',
       'monument-internal-reference: src-server/strings.ts:5 @kontourai/monument/src/step',
@@ -525,6 +525,100 @@ describe('monument import boundary gate', () => {
       ...CLEAN,
       'src-server/comment.ts':
         "// Later this will use the Monument kernel.\nconst name = 'x';\nexport const m = import(name);\n",
+    });
+    expect(result.status, result.output).toBe(0);
+  });
+
+  it('alias-scans every tsconfig and jsconfig, and resolves bare paths targets against baseUrl', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const result = run({
+      ...CLEAN,
+      'scripts/capture.tsconfig.json': JSON.stringify({
+        compilerOptions: { paths: { 'x/*': ['../packages/monument/src/*'] } },
+      }),
+      'jsconfig.json': JSON.stringify({
+        compilerOptions: { paths: { 'j/*': ['./packages/monument/src/*'] } },
+      }),
+      'config/tsconfig.base.json': JSON.stringify({
+        compilerOptions: {
+          baseUrl: '..',
+          paths: { '@kontourai/monument/*': ['packages/monument/src/*'] },
+        },
+      }),
+      'config/tsconfig.nobase.json': JSON.stringify({
+        compilerOptions: { paths: { 'n/*': ['../packages/monument/src/*'] } },
+      }),
+    });
+    expect(result.status, result.output).toBe(1);
+    for (const line of [
+      'monument-alias: scripts/capture.tsconfig.json:1 compilerOptions.paths.x/*',
+      'monument-alias: jsconfig.json:1 compilerOptions.paths.j/*',
+      'monument-alias: config/tsconfig.base.json:1 compilerOptions.paths.@kontourai/monument/*',
+      'monument-alias: config/tsconfig.nobase.json:1 compilerOptions.paths.n/*',
+    ])
+      expect(result.stderr).toContain(line);
+  });
+
+  it('counts a template literal as naming the package', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const result = run({
+      ...CLEAN,
+      // The fixture's source text holds a template literal with a substitution.
+      'src-server/template.ts':
+        "const name = 'step';\nexport const m = import(`../packages/monument/src/$" +
+        '{name}.ts`);\n',
+    });
+    expect(result.status, result.output).toBe(1);
+    expect(result.stderr).toContain(
+      'monument-unverifiable-import: src-server/template.ts:2',
+    );
+  });
+
+  it('resolves repo-relative strings in path.resolve/join calls and vite or vitest configs', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const result = run({
+      ...CLEAN,
+      'src-server/paths.ts': [
+        "import path from 'node:path';",
+        "export const p = path.resolve(__dirname, '..', 'packages/monument/src');",
+        "export const q = path.join(process.cwd(), 'packages/monument/src/step.ts');",
+        "export const listed = ['packages/monument/src/__tests__/x.test.ts'];",
+        '',
+      ].join('\n'),
+      'vitest.config.ts':
+        "export default { resolve: { alias: { k: 'packages/monument/src/step.ts' } } };\n",
+    });
+    expect(result.status, result.output).toBe(1);
+    for (const line of [
+      'monument-internal-reference: src-server/paths.ts:2 packages/monument/src',
+      'monument-internal-reference: src-server/paths.ts:3 packages/monument/src/step.ts',
+      'monument-internal-reference: vitest.config.ts:1 packages/monument/src/step.ts',
+    ])
+      expect(result.stderr).toContain(line);
+    // A plain list entry is not a path the file loads.
+    expect(result.stderr).not.toContain('src-server/paths.ts:4');
+  });
+
+  it('does not fail ordinary strings in a file that names the package (controls)', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const result = run({
+      ...CLEAN,
+      'src-server/gate-name.ts':
+        "export const script = 'monument-import-boundary:gate';\nconst n = 'x';\nexport const m = import(n);\n",
+      'src-server/ordinary.ts': [
+        "export const entry = '@kontourai/monument';",
+        "export const coverage = '/coverage/100%';",
+        "export const format = './%s.json';",
+        "export const readme = new URL('../packages/monument/README.md', import.meta.url);",
+        "export const context = new URL('../packages/monument/CONTEXT.md', import.meta.url);",
+        "export const licence = new URL('../packages/monument/LICENSE', import.meta.url);",
+        "export const index = '../packages/monument/src/index.ts';",
+        '',
+      ].join('\n'),
     });
     expect(result.status, result.output).toBe(0);
   });
