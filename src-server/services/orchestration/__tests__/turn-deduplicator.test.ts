@@ -19,10 +19,13 @@ describe('TurnDeduplicator', () => {
       .forEach((path) => rmSync(path, { recursive: true, force: true })),
   );
 
-  function open() {
+  function open(maxEntries?: number) {
     const directory = mkdtempSync(join(tmpdir(), 'station-turn-dedup-'));
     directories.push(directory);
-    const store = new EventStore(join(directory, 'orchestration.sqlite'));
+    const store = new EventStore(
+      join(directory, 'orchestration.sqlite'),
+      maxEntries,
+    );
     return { store, ledger: store.createTurnDeduplicator(), directory };
   }
 
@@ -259,11 +262,8 @@ describe('TurnDeduplicator', () => {
 
   // #3559: eviction must never make a key claimable again.
   test('an evicted resolved key answers expired, never owner, across restart; tombstones do not count toward the cap', () => {
-    const directory = mkdtempSync(join(tmpdir(), 'station-turn-dedup-'));
-    directories.push(directory);
+    const { store, ledger, directory } = open(2);
     const path = join(directory, 'orchestration.sqlite');
-    const store = new EventStore(path, 2);
-    const ledger = store.createTurnDeduplicator();
     const keys = ['k1', 'k2', 'k3', 'k4', 'k5'];
     for (const clientTurnId of keys) {
       const owner = ledger.claim({ threadId: 'thread', clientTurnId });
@@ -287,12 +287,7 @@ describe('TurnDeduplicator', () => {
 
     // A /chat key evicted the same way answers expired too. Rows created in
     // the same millisecond are evicted in key order, so `chat-a` goes first.
-    const chatDirectory = mkdtempSync(join(tmpdir(), 'station-turn-dedup-'));
-    directories.push(chatDirectory);
-    const chatStore = new EventStore(
-      join(chatDirectory, 'orchestration.sqlite'),
-      2,
-    );
+    const { store: chatStore } = open(2);
     for (const clientTurnId of ['chat-a', 'chat-b', 'chat-c']) {
       expect(chatStore.claimChatTurn(clientTurnId)).toEqual({ claimed: true });
       chatStore.resolveChatTurn(clientTurnId, `conversation-${clientTurnId}`);
