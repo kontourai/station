@@ -230,7 +230,7 @@ function session(
     updatedAt: 1,
     hasUnread: false,
     ...(conversationOpenState ? { conversationOpenState } : {}),
-  } as ChatSession;
+  } as unknown as ChatSession;
 }
 
 async function renderPane(active: ChatSession) {
@@ -254,7 +254,10 @@ async function renderPane(active: ChatSession) {
     </QueryClientProvider>,
   );
   await screen.findByTestId('content-area');
-  return contentArea.props;
+  // Re-read through the holder's declared type: the reset above narrowed the
+  // field to `null`, but the mocked area has assigned it since.
+  return (contentArea as { props: null | { onExecutionModelSelect?: unknown } })
+    .props;
 }
 
 beforeEach(() => {
