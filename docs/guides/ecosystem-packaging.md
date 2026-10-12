@@ -4,10 +4,10 @@ Station has tools for signed ecosystem manifests, portable-archive installation
 and Homebrew cask generation. Those tools do not establish a live public
 distribution, an approved tap or production signing-key custody.
 
-The installer selects the public-manifest path only when
-`STATION_INSTALL_PUBLIC_MANIFEST_URL` is set; its default stable/beta path uses
-GitHub release attestation and a GitHub credential. Nightly requires the explicit
-public-manifest path. Normal manifest verification uses pinned,
+The installer selects the public-manifest path when
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` is set, and for `STATION_CHANNEL=nightly`,
+which defaults it to the rolling `portable-nightly` manifest. Its default
+stable/beta path uses GitHub release attestation and a GitHub credential. Normal manifest verification uses pinned,
 channel-scoped keys. It does not require different manifest/artifact origins or
 fetch a trust key from a third authority. Signature and hash checks identify the
 signer and artifact bytes, not every aspect of freshness or safe execution.
@@ -37,10 +37,10 @@ accepted. Only v1 can produce a Homebrew cask. The
 the [archive install contract](release-channel-ports.md#prebuilt-archives-and-source-releases)
 covers upgrade, rollback and service limits.
 
-The [portable Nightly publication workflow](nightly.md#portable-server-nightly-dry-run-until-the-owner-enables-it)
-uses this platform-array payload. It defaults to a dry run; its separately
-enabled publication path and installer support are not receipts for a live
-public distribution.
+The [portable Nightly publication workflow](nightly.md#portable-server-nightly)
+uses this platform-array payload. It is a dry run unless the owner gate is
+enabled, which it now is for scheduled Nightlies. A published Nightly and
+installer support are still not receipts that any given host installs it.
 
 The [packaging workflow](../../.github/workflows/ecosystem-packaging.yml) is
 configured to run a macOS fixture dry-run: it generates ephemeral signing

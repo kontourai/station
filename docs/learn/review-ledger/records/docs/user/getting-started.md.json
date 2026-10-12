@@ -214,7 +214,11 @@
 
     "src-server/providers/sessions/grok-session-source.ts",
 
-    "src-ui/src/__tests__/StartComposerParity.test.tsx"
+    "src-ui/src/__tests__/StartComposerParity.test.tsx",
+
+    "install.ps1",
+
+    "scripts/lib/publish-nightly-desktop.mjs"
   ],
 
   "checks": [
