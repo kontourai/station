@@ -156,6 +156,14 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   // thirty other gates, and no path edge can select that for any src-ui change,
   // so #3114 first failed it in scheduled qualification. Under a second.
   Object.freeze(['npm', Object.freeze(['run', 'native-platform:ratchet'])]),
+  // #3565: @kontourai/monument is a Tier 1 package (ADR 0005) and may import
+  // nothing of Station's. A source read with the TypeScript parser, under a
+  // second; here so a planted Station import fails the pull request, not
+  // only the merge queue.
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'monument-import-boundary:gate']),
+  ]),
   Object.freeze([
     'npm',
     Object.freeze(['run', 'agent-plugin:validators:gate']),

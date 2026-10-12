@@ -7,6 +7,7 @@ packages:
   - packages/cli
   - packages/connect
   - packages/telemetry-broker
+  - packages/monument
   - examples/builder-delivery-viewer
   - examples/fieldwork-review
 linkWorkspacePackages: true
