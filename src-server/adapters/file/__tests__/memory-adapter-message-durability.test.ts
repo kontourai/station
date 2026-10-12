@@ -21,16 +21,11 @@
  */
 
 import { readdirSync } from 'node:fs';
-import {
-  appendFile as appendRaw,
-  mkdtemp,
-  readFile,
-  rm,
-} from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { appendFile as appendRaw, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { UIMessage } from 'ai';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 interface FsEvent {
   op: string;
@@ -141,6 +136,7 @@ function message(id: string): UIMessage {
 }
 
 describe('transcript appends and rewrites survive a crash (#3564)', () => {
+  const tempDir = trackTempDirs();
   let projectHomeDir: string;
   let adapter: InstanceType<typeof FileMemoryAdapter>;
 
@@ -148,7 +144,7 @@ describe('transcript appends and rewrites survive a crash (#3564)', () => {
     crashAtRename = false;
     events.length = 0;
     messageLoggerWarnings.length = 0;
-    projectHomeDir = await mkdtemp(join(tmpdir(), 'station-memory-durable-'));
+    projectHomeDir = tempDir('station-memory-durable-');
     adapter = new FileMemoryAdapter({ projectHomeDir });
     await adapter.createConversation({
       id: CONVERSATION,
@@ -159,9 +155,8 @@ describe('transcript appends and rewrites survive a crash (#3564)', () => {
     });
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     crashAtRename = false;
-    await rm(projectHomeDir, { recursive: true, force: true });
   });
 
   async function messagesPath(): Promise<string> {
