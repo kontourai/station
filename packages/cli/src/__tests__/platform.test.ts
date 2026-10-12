@@ -546,6 +546,8 @@ describe('inspectProcessFingerprint on Windows', () => {
       // 'QzpceA==' is canonical for C:\x; 'QzpceB==' decodes to it too.
       `${BORN}\r\nQzpceB==\r\n`,
       `${BORN}\r\n${Buffer.from([0x43, 0x3a, 0x5c, 0xe9]).toString('base64')}\r\n`,
+      // A UTF-8 byte-order mark before the path.
+      `${BORN}\r\n${Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(NODE)]).toString('base64')}\r\n`,
       `10/11/2026 09:15:02\r\n${base64(NODE)}\r\n`,
       `${BORN}\r\n${base64(NODE)}\r\nextra\r\n`,
       '',

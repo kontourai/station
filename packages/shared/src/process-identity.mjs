@@ -317,7 +317,11 @@ function decodeStrictBase64Utf8(value) {
   const bytes = Buffer.from(value, 'base64');
   if (bytes.toString('base64') !== value) return null;
   try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    // ignoreBOM keeps a leading BOM in the text, so it fails the path check
+    // instead of being stripped into a second spelling of the same path.
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
+      bytes,
+    );
   } catch {
     return null;
   }

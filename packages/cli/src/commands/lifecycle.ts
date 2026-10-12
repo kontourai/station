@@ -1894,9 +1894,11 @@ function stopRecord(
       [record.uiPid, record.uiFingerprint, 'ui'],
     ] as const;
     let anyAlive = false;
-    let unverifiable:
-      | { label: string; pid: number; unrecorded: boolean }
-      | undefined;
+    const unverifiable: Array<{
+      label: string;
+      pid: number;
+      unrecorded: boolean;
+    }> = [];
     for (const [pid, expected, label] of identities) {
       if (!pid) continue;
       // Liveness is decided by `isProcessAlive` (signal-0 + a zombie check),
@@ -1919,13 +1921,13 @@ function stopRecord(
         // wrong for a live Station; this refuses both and names the way out
         // (check the pid, then remove the state file), since only the
         // operator can tell them apart.
-        unverifiable = { label, pid, unrecorded: false };
+        unverifiable.push({ label, pid, unrecorded: false });
         continue;
       }
       if (!expected) {
         // A record without a fingerprint (one whose start could not capture
         // it) has nothing to match: unverified, not a proven mismatch.
-        unverifiable = { label, pid, unrecorded: true };
+        unverifiable.push({ label, pid, unrecorded: true });
         continue;
       }
       if (!fingerprintMatchesRecorded(actual, expected)) {
@@ -1963,14 +1965,24 @@ function stopRecord(
       );
       return;
     }
-    if (unverifiable) {
+    if (unverifiable.length > 0) {
       appendStopResult('failed');
+      // Every unverified process is named, so the operator checks the right
+      // ones; none was signalled.
+      const several = unverifiable.length > 1;
       throw new Error(
         [
-          `Refusing to stop Station instance ${record.instanceId}: its ${unverifiable.label} PID ${unverifiable.pid} is running, but its identity could not be verified (${unverifiable.unrecorded ? 'its start recorded no fingerprint to check it against' : 'unreadable /proc, unsupported ps output, a missing boot id, or a failed Windows PowerShell probe'}), so it was not signalled and the recorded state was kept.`,
-          `Check what PID ${unverifiable.pid} is (for example \`${processCheckCommand(unverifiable.pid)}\`).`,
-          `If it is this Station, stop it with your OS tools and run \`station stop\` again.`,
-          `If it is an unrelated process that reused the PID, do not signal it; remove ${record.statePath} to forget this instance.`,
+          `Refusing to stop Station instance ${record.instanceId}: ${unverifiable
+            .map(
+              (entry) =>
+                `its ${entry.label} PID ${entry.pid} is running, but its identity could not be verified (${entry.unrecorded ? 'its start recorded no fingerprint to check it against' : 'unreadable /proc, unsupported ps output, a missing boot id, or a failed Windows PowerShell probe'})`,
+            )
+            .join(
+              '; ',
+            )}, so ${several ? 'none was' : 'it was not'} signalled and the recorded state was kept.`,
+          `Check what ${unverifiable.map((entry) => `PID ${entry.pid}`).join(' and ')} ${several ? 'are' : 'is'} (for example ${unverifiable.map((entry) => `\`${processCheckCommand(entry.pid)}\``).join(', ')}).`,
+          `If ${several ? 'they are' : 'it is'} this Station, stop ${several ? 'them' : 'it'} with your OS tools and run \`station stop\` again.`,
+          `If ${several ? 'every one is an unrelated process' : 'it is an unrelated process'} that reused the PID, do not signal it; remove ${record.statePath} to forget this instance.`,
         ].join(' '),
       );
     }

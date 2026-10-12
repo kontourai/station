@@ -1522,6 +1522,63 @@ describe('lifecycle instance state', () => {
       }
     });
 
+    it('a supervised stop names every process it could not verify', async () => {
+      ensureDir(TEST_CWD);
+      const journal = join(TEST_ROOT, 'win-both-unread-lifecycle.jsonl');
+      const table = new Map<number, Entry>([
+        [47041, { birth: '2026-10-11T09:15:02.1000000Z', image: NODE }],
+        [47042, { birth: '2026-10-11T09:15:02.3000000Z', image: NODE }],
+      ]);
+      const probe = await windowsProbe(table);
+      const statePath = writeInstanceState({
+        instanceName: 'win-both-unread',
+        serverPid: 47041,
+        uiPid: 47042,
+        bootId: '11111111-1111-4111-8111-111111111111',
+        lifecycleJournal: journal,
+        serverFingerprint: probe.capture(47041) ?? undefined,
+        uiFingerprint: probe.capture(47042) ?? undefined,
+        build: {
+          branch: 'main',
+          builtAt: '2026-07-10T12:00:00.000Z',
+          sha: 'a'.repeat(40),
+        },
+      });
+      const killSpy = vi
+        .spyOn(process, 'kill')
+        .mockImplementation((() => true) as typeof process.kill);
+      const killProcessTree = vi.fn();
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => '') },
+        platformOverrides: {
+          killProcessTree,
+          sleepSync: vi.fn(),
+          inspectProcessFingerprint: probe.inspect,
+        },
+      });
+      try {
+        // Both still alive, neither readable now.
+        table.clear();
+        let refusal = '';
+        try {
+          lifecycle.stop({ instanceName: 'win-both-unread' });
+        } catch (error) {
+          refusal = (error as Error).message;
+        }
+        expect(refusal).toContain(
+          'its server PID 47041 is running, but its identity could not be verified',
+        );
+        expect(refusal).toContain(
+          'its ui PID 47042 is running, but its identity could not be verified',
+        );
+        expect(refusal).toContain('Check what PID 47041 and PID 47042 are');
+        expect(killProcessTree).not.toHaveBeenCalled();
+        expect(existsSync(statePath)).toBe(true);
+      } finally {
+        killSpy.mockRestore();
+      }
+    });
+
     it("a supervised stop proves its server and UI and ends both (#3361's refusal)", async () => {
       ensureDir(TEST_CWD);
       const journal = join(TEST_ROOT, 'win-supervised-lifecycle.jsonl');
