@@ -661,6 +661,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2675: runs the manifest signer CLI (sign, verify, assemble) as bounded
   // single-shot children for each golden vector.
   'scripts/__tests__/release-manifest-vectors.test.ts',
+  // #187: runs install.sh's accepted-release functions (cut from the shipped
+  // script) as bounded single-shot `sh -c` children, two per parity case.
+  'scripts/__tests__/accepted-release-parity.test.ts',
   // #2675 slice E: drives the manifest signer and the Nightly publication
   // helper CLIs as bounded single-shot children (dry-run sign and verify).
   'scripts/__tests__/portable-nightly-publish-workflow.test.ts',
