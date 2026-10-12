@@ -150,6 +150,11 @@ vi.mock('../hooks/useChatInput', () => ({
     selectAttachmentFiles: vi.fn(async () => {}),
   }),
 }));
+// The real snapshot lazily imports the outbound queue, which can land after
+// a short test tears its environment down. No queued turns is the case here.
+vi.mock('../hooks/useOutboundQueueSnapshot', () => ({
+  useOutboundQueueSnapshot: () => ({ status: 'ready', turns: [] }),
+}));
 vi.mock('../hooks/useDerivedSessions', () => ({
   useDerivedSessions: () => [],
 }));
