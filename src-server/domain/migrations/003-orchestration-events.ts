@@ -268,11 +268,13 @@ CREATE TABLE IF NOT EXISTS orchestration_turn_dedup (
 );
 
 -- #3559: keys whose resolved dedup row capacity retention evicted. A retry of
--- one answers expired instead of claiming the key afresh.
+-- one answers expired instead of claiming the key afresh, for 30 days.
 CREATE TABLE IF NOT EXISTS orchestration_turn_dedup_expired (
   dedup_key TEXT PRIMARY KEY,
   expired_at INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS orchestration_turn_dedup_expired_at
+  ON orchestration_turn_dedup_expired(expired_at);
 
 CREATE TABLE IF NOT EXISTS provider_session_adoptions (
   source_thread_id TEXT PRIMARY KEY,
