@@ -1032,6 +1032,68 @@ describe('SchedulerLedger', () => {
     });
   });
 
+  // #3563: one unreadable job record used to throw out of claimDue's
+  // transaction, so every job missed its tick and the same transaction's
+  // dead-claim reconciliation rolled back with it.
+  test('quarantines one malformed job record instead of blocking every due job', () => {
+    const quarantined: Array<{ name: string; jobId: string; revision: number }> =
+      [];
+    const ledger = createSchedulerLedger({
+      directory: tempDir,
+      onQuarantinedJob: (job) =>
+        quarantined.push({
+          name: job.name,
+          jobId: job.jobId,
+          revision: job.revision,
+        }),
+    });
+    try {
+      ledger.create({
+        name: 'healthy',
+        schedule: { kind: 'every', everyMs: 1_000 },
+        prompt: 'run',
+        enabled: true,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      });
+      const database = new DatabaseSync(join(tempDir, 'scheduler.sqlite'));
+      try {
+        // Ordered first, so it is read before the healthy job.
+        database
+          .prepare(
+            `INSERT INTO scheduler_jobs(name, job_id, revision, data, created_at, last_run_ms)
+             VALUES ('damaged', 'damaged-job-id', 3, '{"name":', '2025-01-01T00:00:00.000Z', NULL)`,
+          )
+          .run();
+      } finally {
+        database.close();
+      }
+
+      const now = Date.parse('2026-01-01T01:00:00.000Z');
+      const receipts = read(ledger.claimDue(now));
+      expect(receipts.map((receipt) => receipt.job.name)).toEqual(['healthy']);
+      expect(quarantined).toEqual([
+        { name: 'damaged', jobId: 'damaged-job-id', revision: 3 },
+      ]);
+
+      // Reported once per record revision, not on every tick, and the bytes
+      // stay in place for an operator to repair or remove.
+      read(ledger.claimDue(now + 60_000));
+      expect(quarantined).toHaveLength(1);
+      const inspection = new DatabaseSync(join(tempDir, 'scheduler.sqlite'));
+      try {
+        expect(
+          inspection
+            .prepare("SELECT data FROM scheduler_jobs WHERE job_id = 'damaged-job-id'")
+            .get(),
+        ).toEqual({ data: '{"name":' });
+      } finally {
+        inspection.close();
+      }
+    } finally {
+      ledger.close();
+    }
+  });
+
   test('returns a reclaimed manual retry to the manual caller with its immutable claimed job snapshot', () => {
     const owner = createSchedulerLedger({ directory: tempDir });
     owner.create({
