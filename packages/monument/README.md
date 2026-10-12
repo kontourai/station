@@ -62,8 +62,10 @@ const { interrupted } = await storage.execute(command, context);
 ```
 
 `planTurnBoundaryReconcile` probes each process once. Inside the transaction
-a verdict applies only to a row that still has the owner and `updatedAt` it
-was planned for.
+a verdict applies only to a row that still has the exact owner (id, pid,
+identity kind, birth), `createdAt` and `updatedAt` it was planned for. The
+kernel trusts the verdicts it is given: a command built by hand rather than by
+the planner decides for itself who is dead.
 
 ## Participants
 
@@ -71,7 +73,10 @@ A `CommitParticipant` joins every writing command. For read-only commands
 (`turnDedup.read`, `turnBoundary.list`, `turnBoundary.hasPossibleEffect`) it
 is called only if it sets `observeReads`. On node:sqlite, a read with such a
 participant takes the write lock. A refusal from `admit` rolls the whole
-transaction back, including any earlier participant's writes.
+transaction back, including any earlier participant's writes. A kernel result
+that happens to be `refused` (`turnDedup.beginInvocation` on a claim the
+caller does not own) is an ordinary answer: it commits, with every
+participant's writes.
 
 ## Conformance
 

@@ -16,7 +16,11 @@ import type {
   TurnClaimInvocation,
   TurnDedupRecord,
 } from './records.js';
-import { isReadOnlyKernelCommand, runKernelTransactionStep } from './step.js';
+import {
+  isParticipantRefusal,
+  isReadOnlyKernelCommand,
+  runKernelTransactionStep,
+} from './step.js';
 
 /**
  * The structural slice of a `node:sqlite` `DatabaseSync` this adapter uses,
@@ -557,7 +561,7 @@ export function openSqliteKernelStorage(
         ? 'DEFERRED'
         : 'IMMEDIATE',
       // A refusal keeps nothing, not even an earlier participant's admission.
-      (result) => result.kind !== 'refused',
+      (result) => !isParticipantRefusal(result),
     );
   };
 

@@ -50,8 +50,10 @@ describe('memory adapter', () => {
 
   it('accepts only a real volume', () => {
     // @ts-expect-error a plain object is not a volume.
-    openMemoryKernelStorage({ volume: {} });
+    expect(() => openMemoryKernelStorage({ volume: {} })).toThrow(TypeError);
     // @ts-expect-error nor is a string.
-    openMemoryKernelStorage({ volume: 'volume' });
+    expect(() => openMemoryKernelStorage({ volume: 'volume' })).toThrow(
+      TypeError,
+    );
   });
 });

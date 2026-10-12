@@ -172,12 +172,18 @@ export type TurnBoundaryListResult = {
 
 /**
  * One liveness verdict, taken outside the transaction for the row as it was
- * listed. Inside, the verdict applies only if the row still has this owner
- * and `updatedAt`; a row that moved on since is left alone.
+ * listed. Inside, the verdict applies only if the row still has this exact
+ * owner, `createdAt` and `updatedAt`; a row that moved on, or was recreated,
+ * since is left alone.
+ *
+ * The kernel trusts these verdicts: a caller that builds the command by hand
+ * instead of with `planTurnBoundaryReconcile` decides who is dead.
  */
 export interface TurnBoundaryReconcileObservation {
   readonly boundaryId: string;
-  readonly ownerId: string;
+  /** The whole owner: id, pid, identity kind and birth. */
+  readonly owner: OwnerIdentity;
+  readonly createdAt: string;
   readonly updatedAt: string;
   readonly verdict: OwnerLivenessVerdict;
 }

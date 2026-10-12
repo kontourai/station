@@ -11,6 +11,7 @@ import type {
   TurnBoundaryTransitionResult,
 } from '../commands.js';
 import {
+  type OwnerIdentity,
   type OwnerLiveness,
   type OwnerLivenessOptions,
   ownerFields,
@@ -229,6 +230,16 @@ export function decideTurnBoundaryObserveTerminal(
   };
 }
 
+function sameOwner(a: OwnerIdentity, b: OwnerIdentity): boolean {
+  return (
+    a.id === b.id &&
+    a.pid === b.pid &&
+    a.identityKind === b.identityKind &&
+    (a.identityKind !== 'exact' ||
+      (b.identityKind === 'exact' && a.birth === b.birth))
+  );
+}
+
 /**
  * Dead owners' rows after a crash:
  *
@@ -240,7 +251,8 @@ export function decideTurnBoundaryObserveTerminal(
  *   them once it has told the user.
  *
  * The verdicts were taken outside the transaction. A row is acted on only if
- * it was observed `dead` and still has the observed owner and `updatedAt`.
+ * it was observed `dead` and still has the observed owner (id, pid, identity
+ * kind and birth), `createdAt` and `updatedAt`.
  * Rows whose owner is live or unknown, rows that moved on, and rows created
  * after the listing are untouched.
  */
@@ -263,7 +275,8 @@ export function decideTurnBoundaryReconcile(
     const observation = verdicts.get(row.boundaryId);
     if (
       observation?.verdict !== 'dead' ||
-      observation.ownerId !== row.owner.id ||
+      !sameOwner(observation.owner, row.owner) ||
+      observation.createdAt !== row.createdAt ||
       observation.updatedAt !== row.updatedAt
     )
       continue;
@@ -316,7 +329,8 @@ export function planTurnBoundaryReconcile(
     now,
     observed: rows.map((row) => ({
       boundaryId: row.boundaryId,
-      ownerId: row.owner.id,
+      owner: ownerFields(row.owner),
+      createdAt: row.createdAt,
       updatedAt: row.updatedAt,
       verdict: verdictOf(row.owner),
     })),

@@ -292,15 +292,48 @@ function dispatch(
   }
 }
 
-const READ_ONLY_COMMANDS: ReadonlySet<KernelCommand['type']> = new Set([
-  'turnDedup.read',
-  'turnBoundary.list',
-  'turnBoundary.hasPossibleEffect',
-]);
+/**
+ * Whether each command type only reads. A record, not a set, so adding a
+ * command type does not compile until someone decides which it is.
+ */
+export const KERNEL_COMMAND_READ_ONLY: Readonly<
+  Record<KernelCommand['type'], boolean>
+> = Object.freeze({
+  'turnDedup.claim': false,
+  'turnDedup.beginInvocation': false,
+  'turnDedup.resolve': false,
+  'turnDedup.release': false,
+  'turnDedup.read': true,
+  'turnDedup.forgetPrefix': false,
+  'turnBoundary.create': false,
+  'turnBoundary.transition': false,
+  'turnBoundary.remove': false,
+  'turnBoundary.recordAccepted': false,
+  'turnBoundary.observeTerminal': false,
+  'turnBoundary.hasPossibleEffect': true,
+  'turnBoundary.list': true,
+  'turnBoundary.reconcile': false,
+  'turnBoundary.forgetThread': false,
+  'requestKeys.claim': false,
+  'requestKeys.recordDecision': false,
+  'requestKeys.complete': false,
+  'requestKeys.release': false,
+});
 
 /** Commands that write nothing, whatever their result. */
 export function isReadOnlyKernelCommand(command: KernelCommand): boolean {
-  return READ_ONLY_COMMANDS.has(command.type);
+  return KERNEL_COMMAND_READ_ONLY[command.type];
+}
+
+/**
+ * A participant's refusal, as opposed to a kernel answer that happens to be
+ * named `refused` (`turnDedup.beginInvocation`). Only the former may make an
+ * adapter roll back.
+ */
+export function isParticipantRefusal(
+  result: KernelResult<KernelCommand>,
+): result is ParticipantRefusal {
+  return result.kind === 'refused' && 'participant' in result;
 }
 
 /**
@@ -309,8 +342,9 @@ export function isReadOnlyKernelCommand(command: KernelCommand): boolean {
  * participants that set `observeReads`.
  *
  * The adapter must roll the whole transaction back when this throws, and
- * also when it returns a `refused` result: an earlier participant's `admit`
- * may already have written through the host handle.
+ * also when it returns a participant refusal ({@link isParticipantRefusal}):
+ * an earlier participant's `admit` may already have written through the host
+ * handle. A kernel answer of `refused` is an ordinary result and commits.
  */
 export function runKernelTransactionStep<C extends KernelCommand, Host>(
   command: C,

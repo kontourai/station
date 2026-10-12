@@ -13,7 +13,7 @@ import type {
   TurnBoundaryRecord,
   TurnDedupRecord,
 } from './records.js';
-import { runKernelTransactionStep } from './step.js';
+import { isParticipantRefusal, runKernelTransactionStep } from './step.js';
 
 interface MemoryImage {
   readonly turnDedup: Map<string, TurnDedupRecord>;
@@ -37,7 +37,15 @@ function emptyImage(): MemoryImage {
  * same volume again is the in-memory equivalent of reopening a database file.
  * A volume holds nothing a transaction did not commit.
  */
-export class MemoryKernelVolume {}
+export class MemoryKernelVolume {
+  /** Brands the class: a plain object or a string is not a volume. */
+  readonly #volume = true;
+
+  /** Whether `value` is a volume this module made. */
+  static isVolume(value: unknown): value is MemoryKernelVolume {
+    return typeof value === 'object' && value !== null && #volume in value;
+  }
+}
 
 interface VolumeState {
   /** Replaced wholesale at each commit; never mutated in place. */
@@ -193,6 +201,8 @@ export function openMemoryKernelStorage(
   options: MemoryKernelStorageOptions = {},
 ): KernelStorage {
   const volume = options.volume ?? new MemoryKernelVolume();
+  if (!MemoryKernelVolume.isVolume(volume))
+    throw new TypeError('volume must be a MemoryKernelVolume.');
   const participants = options.participants ?? [];
   let closed = false;
   return {
@@ -217,7 +227,7 @@ export function openMemoryKernelStorage(
           undefined,
         );
         // A refusal keeps nothing.
-        if (result.kind !== 'refused') state.committed = working;
+        if (!isParticipantRefusal(result)) state.committed = working;
         return copy(result);
       } finally {
         state.inFlight = false;

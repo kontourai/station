@@ -44,7 +44,9 @@
  *
  *   node scripts/monument-import-boundary-gate.mjs
  */
-import { lstatSync, readFileSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import ts from 'typescript-api';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -342,7 +344,9 @@ export function classifyReference(file, reference, declared) {
     // Through node_modules, a relative path reaches whatever is linked there.
     return (resolved === MONUMENT_ROOT ||
       resolved.startsWith(`${MONUMENT_ROOT}/`)) &&
-      !resolved.split('/').includes('node_modules')
+      !resolved
+        .split('/')
+        .some((segment) => segment.toLowerCase() === 'node_modules')
       ? null
       : 'escapes-package';
   }
@@ -382,6 +386,22 @@ export function scanMonument({ files, readText }) {
   return findings;
 }
 
+/**
+ * What may live in the package: source, Markdown, the licence, and the root
+ * manifest and tsconfig. Anything else is refused, because Node and the
+ * published `files` list would load or ship it without the gate reading it
+ * (an extensionless module beside a `.d.ts`, for one).
+ */
+export function allowedPackageFile(file) {
+  return (
+    SOURCE_EXTENSION.test(file) ||
+    file.endsWith('.md') ||
+    file === `${MONUMENT_ROOT}/LICENSE` ||
+    file === `${MONUMENT_ROOT}/package.json` ||
+    file === `${MONUMENT_ROOT}/tsconfig.json`
+  );
+}
+
 function listPackageFiles() {
   // Untracked files count too, ignored ones included: a planted import or
   // link must fail before it is added, wherever .gitignore would hide it.
@@ -406,23 +426,124 @@ function listPackageFiles() {
  * Station's side of the boundary: code outside the package reaches it only
  * through `@kontourai/monument` and the subpaths its manifest exports.
  */
-export function scanMonumentConsumers({ files, readText, exports }) {
+/**
+ * The text a specifier could be spelled with, undone: percent escapes and
+ * JavaScript string escapes decoded, case folded. Used only to choose which
+ * files to parse, so it may over-match but must not under-match.
+ */
+export function mentionsMonument(content) {
+  const decoded = content
+    .replace(/%([0-9a-f]{2})/gi, (_, hex) =>
+      String.fromCharCode(Number.parseInt(hex, 16)),
+    )
+    .replace(
+      /\\u\{([0-9a-f]+)\}|\\u([0-9a-f]{4})|\\x([0-9a-f]{2})/gi,
+      (match, a, b, c) => {
+        const code = Number.parseInt(a ?? b ?? c, 16);
+        return code <= 0x10ffff ? String.fromCodePoint(code) : match;
+      },
+    );
+  return decoded.toLowerCase().includes('monument');
+}
+
+/**
+ * Where an absolute path really is: the real path of its deepest existing
+ * ancestor, with the rest appended. Symlinks along the way are followed.
+ */
+function canonicalPath(absolute) {
+  let existing = absolute;
+  const rest = [];
+  while (!existsSync(existing)) {
+    const parent = dirname(existing);
+    if (parent === existing) break;
+    rest.unshift(basename(existing));
+    existing = parent;
+  }
+  let real = existing;
+  try {
+    real = realpathSync.native(existing);
+  } catch {}
+  return join(real, ...rest);
+}
+
+/** Compared case-insensitively, so a differently cased path is not a way in. */
+function within(path, root) {
+  const a = path.toLowerCase();
+  const b = root.toLowerCase();
+  return a === b || a.startsWith(b + sep);
+}
+
+/**
+ * Station's side of the boundary: code outside the package reaches it only
+ * through `@kontourai/monument` and the subpaths its manifest exports.
+ *
+ * - a relative, absolute or `file:` specifier is resolved as Node resolves
+ *   it, through symlinks, and refused if it lands in the package, or in a
+ *   `node_modules/@kontourai/monument` path the exports do not name;
+ * - a symlink outside the package that points into it is refused;
+ * - in a file that mentions the package under any spelling, a module
+ *   reference the gate cannot read (a non-constant `import()`) is refused.
+ */
+export function scanMonumentConsumers({
+  files,
+  readText,
+  exports,
+  root = process.cwd(),
+  isSymlink = () => false,
+}) {
   const allowed = new Set(
     typeof exports === 'string' ? ['.'] : Object.keys(exports),
   );
+  const packageRoot = canonicalPath(resolve(root, MONUMENT_ROOT));
+  const internalPath = (absolute) => {
+    const canonical = canonicalPath(absolute);
+    if (within(canonical, packageRoot)) return true;
+    const modules = relative(root, canonical)
+      .split(sep)
+      .join('/')
+      .toLowerCase()
+      .match(/(?:^|\/)node_modules\/@kontourai\/monument(\/.*)?$/);
+    return modules !== null && !allowed.has(`.${modules[1] ?? ''}`);
+  };
   const findings = [];
   for (const file of files) {
+    if (isSymlink(file)) {
+      if (internalPath(resolve(root, file)))
+        findings.push({
+          kind: 'monument-symlink',
+          file,
+          line: 1,
+          specifier: '',
+        });
+      continue;
+    }
     if (!SOURCE_EXTENSION.test(file)) continue;
     const content = readText(file);
-    if (!content.includes('monument')) continue;
-    for (const { specifier, line } of moduleReferences(file, content)) {
-      if (typeof specifier !== 'string') continue;
+    if (!mentionsMonument(content)) continue;
+    for (const { specifier, line, how } of moduleReferences(file, content)) {
+      if (typeof specifier !== 'string') {
+        findings.push({
+          kind: 'monument-unverifiable-import',
+          file,
+          line,
+          specifier: `<non-constant ${how}>`,
+        });
+        continue;
+      }
+      if (how === 'module-loader') continue;
       let internal = false;
-      if (specifier.startsWith('.')) {
-        const resolved = resolveRelative(file, specifier);
-        internal =
-          resolved === MONUMENT_ROOT ||
-          resolved.startsWith(`${MONUMENT_ROOT}/`);
+      if (specifier.startsWith('file:')) {
+        try {
+          internal = internalPath(fileURLToPath(specifier));
+        } catch {
+          internal = true;
+        }
+      } else if (specifier.startsWith('.') || specifier.startsWith('/')) {
+        internal = internalPath(
+          specifier.startsWith('/')
+            ? resolve(root, decodeURIComponent(specifier))
+            : resolve(root, resolveRelative(file, specifier)),
+        );
       } else if (packageNameOf(specifier) === MONUMENT_PACKAGE) {
         internal = !allowed.has(`.${specifier.slice(MONUMENT_PACKAGE.length)}`);
       }
@@ -469,7 +590,10 @@ function main() {
       : file.endsWith('/package.json') &&
           file !== `${MONUMENT_ROOT}/package.json`
         ? [{ kind: 'nested-manifest', file, line: 1, specifier: '' }]
-        : [],
+        : allowedPackageFile(file) ||
+            symlinks.some((link) => link.file === file)
+          ? []
+          : [{ kind: 'unexpected-file', file, specifier: '' }],
   );
   const files = listed.filter(
     (file) =>
@@ -495,6 +619,8 @@ function main() {
           ? readFileSync(path, 'utf8')
           : '',
       exports: manifest.exports ?? {},
+      isSymlink: (path) =>
+        lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() ?? false,
     }),
     ...scanMonument({
       files,
@@ -507,7 +633,7 @@ function main() {
     );
     for (const finding of findings)
       console.error(
-        `  ${finding.kind}: ${finding.file}:${finding.line} ${finding.specifier}`,
+        `  ${finding.kind}: ${finding.file}${finding.line === undefined ? '' : `:${finding.line}`} ${finding.specifier}`,
       );
     process.exit(1);
   }

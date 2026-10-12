@@ -4,4 +4,8 @@
  * kernel use `@kontourai/monument` instead.
  */
 export type { KernelTransaction } from './port.js';
-export { isReadOnlyKernelCommand, runKernelTransactionStep } from './step.js';
+export {
+  isParticipantRefusal,
+  isReadOnlyKernelCommand,
+  runKernelTransactionStep,
+} from './step.js';
