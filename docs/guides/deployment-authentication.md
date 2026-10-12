@@ -50,7 +50,8 @@ disable sign-in, revoke account sessions or create a password-recovery link.
 Confirm the person's identity before sharing that recovery link privately. The
 link expires after 20 minutes and can reset the password once; reset revokes old
 account sessions. These controls do not delete Project membership or device
-grants. A Project administrator does not inherit Station operator authority.
+grants. Disabling an account, or revoking its sessions, also stops every
+personal access token made for it before then (#3586). A Project administrator does not inherit Station operator authority.
 
 The authentication secret and account store live in private SQLite files beneath
 this Station home's `authentication` directory. Restart preserves existing
