@@ -217,13 +217,24 @@ describe('ServerOlderLaunchCheck', () => {
     expect(bannerStore.getSnapshot()).toHaveLength(0);
   });
 
-  test("stays silent for the server's own web UI", () => {
+  test("stays silent for the server's own web UI and asks it nothing", () => {
     connected.current = {
       ...connected.current,
       apiBase: window.location.origin,
     };
+    // Another reader of the same query key may already hold the answer.
+    sdk.useCoreUpdateStatusQuery.mockImplementation(() => ({
+      data: status,
+      error: null,
+      refetch: vi.fn(),
+    }));
     renderWithChrome(NEWER_CLIENT);
     expect(bannerStore.getSnapshot()).toHaveLength(0);
+    expect(sdk.useCoreUpdateStatusQuery).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({ enabled: false }),
+      expect.anything(),
+    );
   });
 
   test('stays silent for the built-in server a desktop app updates itself', () => {
