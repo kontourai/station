@@ -1,0 +1,41 @@
+{
+  "svg": {
+    "stable-macos": "4c247e35e708a5e51bbaf2e3e5366b20a57049c8fc595d58d50b824868668f6c",
+    "stable-desktop": "f08e38938d5c10e0dc77247399e0c585011bafc42ccd85e25e7cbf74e21565ed",
+    "stable-square": "6fde67277ea95b38c92c58fcf59f5551028e80e4c17cc0a8bb364ba4dd113f20",
+    "stable-android": "66fb4ef851d825b3daf8ef274242dee9ab838f92f343fa7e1964e0cc5420ddfd",
+    "stable-mark": "47b4717a6a929602eab6420c4f34fc3527af6a57fae72aa76458eb508b349323",
+    "beta-macos": "98efb01906ff3eaaed45600286ebcdf654113fdc9e8142f9938f424e4dee0324",
+    "beta-desktop": "422dcc1f33b09f3658c7414f4e338c16a2fa0b2792307db4281443e389ccc2e7",
+    "beta-square": "843adc0437688484f0fe5f10302a13d10e757eca9224e9ec78517638d9d38b0c",
+    "beta-android": "f5b8618acbb3257a6ee364632fecc25b35e813eb18c2a5df6018111575ba73f2",
+    "beta-mark": "1b24633e6fb0e425f57eccc54849553b2148db367bd721dcddbf5d4f8e511fe3",
+    "nightly-macos": "b9edd444177a1d436ad4dc7f8ee1a68e5bd95595ff615d3bb00865586059fdd0",
+    "nightly-desktop": "41d06a3ccf93319be8ea9acbccc744638fefd1c35f90e306d7b658b810e66204",
+    "nightly-square": "cc18148e51b2bbc196136a1877b97f472e45ad43cf71769c5bbe55cbed3a18fc",
+    "nightly-android": "4c70068e593eaa1aa2166ccfabd74819cd073e5becf9b4bcb97d07d12a41757d",
+    "nightly-mark": "bc5465d5bce2d2864275b249d56ed7d443f3fe23c3d919481f7702b495f5f1eb",
+    "dev-macos": "104259d5249df0b5f8754de0fef780e50c5b6e5ce90fcc4c59f730442bfbd6e8",
+    "dev-desktop": "7a3e07f28f208d3d3f53d51279f9dfc55a74430490c8f8c3311dfb3ebd850065",
+    "dev-square": "bd8bcf101e3b5e42cf30d832357bb8d019596128ea4fc878cef481130ec43554",
+    "dev-android": "e196c1fd2973c4590dc51783903154a21904fb6827055c7c0ec18c505c9e985e",
+    "dev-mark": "8abe86d6a4bb3430670c44ebaeb18995530db08f782169edbda9c7b7e2b6971c"
+  },
+  "outputs": {
+    "assets/brand/icon-1024.png": "900130274e460fc7469000d28eed610f508f4bcb99efcf699c5e078a4dbac18f",
+    "assets/brand/icon-square-1024.png": "5218d8f4ebb8033c9c264b573964cc9b16c70b937f5e7767f2262b28559f1527",
+    "src-ui/public/favicon.png": "419380e12cbdd3fcbd51017c9c235059dffbab51aeaa1c937bf1412b0589b087",
+    "src-ui/public/favicon-beta.png": "240a7ec64318b212059ef3544580466ca2627a8e9054c4b2c95b864e603324a8",
+    "src-ui/public/favicon-nightly.png": "7a9bdb237a4242b95b3320129c66ea8ffcc28c9f85214b3994b21184ac04c32e",
+    "src-ui/public/favicon-dev.png": "dcd15175cc256ea6cb93e8764e70a990d2029ed28119a282aba429981e9ff838",
+    "src-ui/src/lib/startup-mark-geometry.ts": "499ac2a14ede59f2bd3f2339078635c600ecef15ad7c581e6e2aa5bd5778bce5",
+    "src-desktop/plugins/agent-activity/android/src/main/res/drawable/agent_activity_mark.xml": "e724a5a62933b8fcd8b024fae6472eddad459d162cfd23ee652b6b731e687aae",
+    "src-desktop/ios/StationAgentActivity/Assets.xcassets/StationAppIcon.imageset/StationAppIcon@1x.png": "bfeae86fac66c8c54e42286d857454012020ea16670122ff176f09e115945300",
+    "src-desktop/ios/StationAgentActivity/Assets.xcassets/StationAppIcon.imageset/StationAppIcon@2x.png": "78457ef72770853c7e0b8cfa8ef47c0665d4e7e48b38773e728c9a597f7abf37",
+    "src-desktop/ios/StationAgentActivity/Assets.xcassets/StationAppIcon.imageset/StationAppIcon@3x.png": "25a2214a5865fe6faf4d920be7a3ceb1400d6aa9a88f26c302aef3f9f428907f",
+    "src-desktop/icons/icon.png": "3d5482d6db420ba9867b535915e9a769583d90c4c3fa472b8c3e039193bd56c2",
+    "src-desktop/icons/beta/icon.png": "f2371c3072213a5a0f6a59e08eec2b9c4bb92926aec2f3c99ad2c587eb15d4d5",
+    "src-desktop/icons/nightly/icon.png": "c71e0b62f0293e146ae9fdf713c1944e9ee4a17f0b2e7db817523f9c80d83ba0",
+    "src-desktop/icons/dev/icon.png": "e163b2e37b339c51709c7a34e6ed0f6a3ed950279d71aaf776552c01a18ec189"
+  }
+}

@@ -83,10 +83,11 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
 
   function loadMark() {
     const next = new Image();
-    const channel = document.documentElement.dataset.appChannel;
-    const variant = document.documentElement.classList.contains('is-dev-build')
+    const root = document.documentElement;
+    // Before the host report arrives, the mark startup-theme.js remembered.
+    const variant = root.classList.contains('is-dev-build')
       ? 'dev'
-      : channel;
+      : (root.dataset.appChannel ?? root.dataset.startupMark);
     next.src = ['dev', 'beta', 'nightly'].includes(variant ?? '')
       ? `/favicon-${variant}.png`
       : '/favicon.png';

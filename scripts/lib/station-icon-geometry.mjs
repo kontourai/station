@@ -207,6 +207,21 @@ export function runData({ segs, from, to }, d = 2) {
   return data;
 }
 
+/** Points along one run, about `step` apart, ends included. */
+export function runPoints({ segs, from, to }, step) {
+  const out = [];
+  for (let i = from.i; i <= to.i; i += 1) {
+    const s = segs[i];
+    if (!s) continue;
+    const t0 = i === from.i ? from.t : 0;
+    const t1 = i === to.i ? to.t : 1;
+    const n = Math.max(1, Math.ceil((segLength(s) * (t1 - t0)) / step));
+    for (let k = out.length ? 1 : 0; k <= n; k += 1)
+      out.push(evalSeg(s, t0 + ((t1 - t0) * k) / n).p);
+  }
+  return out;
+}
+
 /** Minimum distance from p to a chain (exact per primitive). */
 export function distTo(segs) {
   return (p) => {

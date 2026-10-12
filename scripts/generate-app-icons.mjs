@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 /**
  * Generate every Station app-icon surface from the vector icon source,
  * `scripts/lib/station-icon.mjs`: a square topographic map tile carved by the
@@ -10,8 +11,8 @@ import { execFileSync } from 'node:child_process';
  *
  * Masters rendered here (committed):
  *   assets/brand/icon-1024.png        — Stable on the macOS icon grid (824
- *                                       body, alpha outside it); the desktop
- *                                       set (icns/ico/pngs) comes from this
+ *                                       body, drop shadow, alpha outside it);
+ *                                       only the .icns comes from this
  *   assets/brand/icon-square-1024.png — Stable full-bleed opaque square; iOS
  *                                       rejects alpha in App Store icons and
  *                                       Android/Windows launchers apply their
@@ -29,10 +30,24 @@ import { execFileSync } from 'node:child_process';
  *                                     — where the startup animation finds the
  *                                       river in that mark, derived from the
  *                                       same geometry so the two cannot drift
+ *   src-desktop/ios/StationAgentActivity/.../StationAppIcon@{1,2,3}x.png
+ *                                     — the iOS Live Activity icon, the Stable
+ *                                       square at 32/64/96px (SwiftUI masks it)
+ *   src-desktop/plugins/agent-activity/android/.../agent_activity_mark.xml
+ *                                     — the monochrome Android status-bar mark
+ *   assets/brand/station-icon-manifest.json
+ *                                     — sha256 of every source SVG and every
+ *                                       file above; station-icon.test.ts
+ *                                       holds the committed files to it
  *
  * Platform fan-out (also run by this script, via `tauri icon`):
- *   src-desktop/icons/{icon.icns,icon.ico,icon.png,32x32,64x64,128x128*}
- *                                     — from the rounded master. Every `.icns`
+ *   src-desktop/icons/{icon.ico,icon.png,32x32,64x64,128x128*} and each
+ *   channel's                         — from the desktop master: rounded, no
+ *                                       grid inset or shadow, artwork
+ *                                       enlarged, for Windows, Linux and the
+ *                                       tray at 16-32px
+ *   src-desktop/icons/icon.icns and each channel's
+ *                                     — from the macOS-grid master. Every `.icns`
  *                                       is rewritten into canonical member
  *                                       order on the way out (lib/icns.mjs):
  *                                       tauri's icns writer emits the same
@@ -92,8 +107,10 @@ import { canonicalizeIcns } from './lib/icns.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   CHANNEL_PALETTES,
+  ICON_TARGETS,
   startupMarkGeometry,
   stationIconSvg,
+  statusBarMarkPathData,
 } from './lib/station-icon.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -118,6 +135,32 @@ export const IOS_ICON_SET_CHANNELS = Object.freeze([
 ]);
 export const iosIconSetDir = (channel) => join(ICONS_DIR, channel, 'ios');
 const ICON_CHANNELS = Object.keys(CHANNEL_PALETTES);
+const LIVE_ACTIVITY_ICON_DIR = join(
+  DESKTOP_DIR,
+  'ios',
+  'StationAgentActivity',
+  'Assets.xcassets',
+  'StationAppIcon.imageset',
+);
+const LIVE_ACTIVITY_ICON_SCALES = [1, 2, 3];
+const STARTUP_MARK_GEOMETRY = join(
+  ROOT,
+  'src-ui',
+  'src',
+  'lib',
+  'startup-mark-geometry.ts',
+);
+const STATUS_BAR_MARK = join(
+  DESKTOP_DIR,
+  'plugins',
+  'agent-activity',
+  'android',
+  'src',
+  'main',
+  'res',
+  'drawable',
+  'agent_activity_mark.xml',
+);
 
 const ICON_SIZE = 1024;
 const FAVICON_SIZE = 192;
@@ -172,66 +215,128 @@ export const STARTUP_MARK_LIP = [${lip.join(', ')}] as const;
 }
 
 async function renderMasters() {
-  // Stable's desktop and square masters are the committed ones above; the
-  // square master only feeds iOS, which dev does not ship on.
+  // Stable's macOS and square masters are committed (ROUNDED_MASTER and
+  // icon-square-1024.png); the other channels' masters live in a temp dir
+  // for the fan-out. The square master only feeds iOS, which dev does not
+  // ship on.
   const masters = ICON_CHANNELS.flatMap((channel) => [
-    ...(channel === 'stable'
-      ? []
-      : [{ channel, target: 'macos', size: ICON_SIZE }]),
+    ...(channel === 'stable' ? [] : [{ channel, target: 'macos' }]),
     ...(channel !== 'stable' && IOS_ICON_SET_CHANNELS.includes(channel)
-      ? [{ channel, target: 'square', size: ICON_SIZE }]
+      ? [{ channel, target: 'square' }]
       : []),
-    { channel, target: 'android', size: ICON_SIZE },
-  ]);
+    { channel, target: 'desktop' },
+    { channel, target: 'android' },
+  ]).map((master) => ({ ...master, size: ICON_SIZE }));
   const requests = [
-    { channel: 'stable', target: 'macos', size: ICON_SIZE },
-    { channel: 'stable', target: 'square', size: ICON_SIZE },
+    {
+      channel: 'stable',
+      target: 'macos',
+      size: ICON_SIZE,
+      path: ROUNDED_MASTER,
+    },
+    {
+      channel: 'stable',
+      target: 'square',
+      size: ICON_SIZE,
+      path: join(BRAND_DIR, 'icon-square-1024.png'),
+    },
     ...ICON_CHANNELS.map((channel) => ({
       channel,
       target: 'mark',
       size: FAVICON_SIZE,
+      path: join(
+        ROOT,
+        'src-ui',
+        'public',
+        channel === 'stable' ? 'favicon.png' : `favicon-${channel}.png`,
+      ),
     })),
-    ...masters,
+    // The iOS Live Activity draws this beside the agent status; SwiftUI
+    // applies the rounded mask, so it is the opaque square.
+    ...LIVE_ACTIVITY_ICON_SCALES.map((scale) => ({
+      channel: 'stable',
+      target: 'square',
+      size: 32 * scale,
+      path: join(LIVE_ACTIVITY_ICON_DIR, `StationAppIcon@${scale}x.png`),
+    })),
   ];
+  const variantDir = mkdtempSync(join(tmpdir(), 'station-variant-masters-'));
+  const paths = {};
+  for (const master of masters) {
+    const key = `${master.channel}-${master.target}`;
+    paths[key] = join(variantDir, `${key}.png`);
+    requests.push({ ...master, path: paths[key] });
+  }
   const pngs = await rasterize(
     requests.map(({ channel, target, size }) => ({
       svg: stationIconSvg(channel, target),
       size,
     })),
   );
-  const png = (channel, target) =>
-    pngs[
-      requests.findIndex((r) => r.channel === channel && r.target === target)
-    ];
-
-  writeFileSync(ROUNDED_MASTER, png('stable', 'macos'));
-  writeFileSync(
-    join(BRAND_DIR, 'icon-square-1024.png'),
-    png('stable', 'square'),
-  );
-  for (const channel of ICON_CHANNELS)
-    writeFileSync(
-      join(
-        ROOT,
-        'src-ui',
-        'public',
-        channel === 'stable' ? 'favicon.png' : `favicon-${channel}.png`,
-      ),
-      png(channel, 'mark'),
-    );
-  writeFileSync(
-    join(ROOT, 'src-ui', 'src', 'lib', 'startup-mark-geometry.ts'),
-    startupMarkGeometryModule(),
-  );
-
-  const variantDir = mkdtempSync(join(tmpdir(), 'station-variant-masters-'));
-  const paths = {};
-  for (const { channel, target } of masters) {
-    const path = join(variantDir, `${channel}-${target}.png`);
-    writeFileSync(path, png(channel, target));
-    paths[`${channel}-${target}`] = path;
-  }
+  requests.forEach(({ path }, index) => writeFileSync(path, pngs[index]));
+  writeFileSync(STARTUP_MARK_GEOMETRY, startupMarkGeometryModule());
+  writeFileSync(STATUS_BAR_MARK, statusBarMarkXml());
   return { variantDir, paths };
+}
+
+/** The Android status-bar mark resource, from the same river geometry. */
+export function statusBarMarkXml() {
+  return `<!-- Status-bar mark for agent activity: Station's square map tile with the
+     S-shaped river of the app icon cut through it. Generated by
+     scripts/generate-app-icons.mjs from scripts/lib/station-icon.mjs; do not
+     edit. Monochrome, so it renders at the same visual weight as other apps'
+     icons. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
+        android:pathData="${statusBarMarkPathData()}" />
+</vector>
+`;
+}
+
+const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
+
+/**
+ * The icon manifest: the sha256 of every SVG the source builds and of every
+ * file this script writes from them (plus each channel's desktop icon.png
+ * fan-out). It ties the committed rasters to the vector source: a source
+ * edit without a regeneration changes an SVG digest, and a hand-edited or
+ * stale raster changes an output digest.
+ */
+export function iconSourceDigests() {
+  const svg = {};
+  for (const channel of ICON_CHANNELS)
+    for (const target of ICON_TARGETS)
+      svg[`${channel}-${target}`] = sha256(stationIconSvg(channel, target));
+  return svg;
+}
+export const MANIFEST_OUTPUTS = Object.freeze([
+  'assets/brand/icon-1024.png',
+  'assets/brand/icon-square-1024.png',
+  'src-ui/public/favicon.png',
+  'src-ui/public/favicon-beta.png',
+  'src-ui/public/favicon-nightly.png',
+  'src-ui/public/favicon-dev.png',
+  'src-ui/src/lib/startup-mark-geometry.ts',
+  'src-desktop/plugins/agent-activity/android/src/main/res/drawable/agent_activity_mark.xml',
+  'src-desktop/ios/StationAgentActivity/Assets.xcassets/StationAppIcon.imageset/StationAppIcon@1x.png',
+  'src-desktop/ios/StationAgentActivity/Assets.xcassets/StationAppIcon.imageset/StationAppIcon@2x.png',
+  'src-desktop/ios/StationAgentActivity/Assets.xcassets/StationAppIcon.imageset/StationAppIcon@3x.png',
+  'src-desktop/icons/icon.png',
+  'src-desktop/icons/beta/icon.png',
+  'src-desktop/icons/nightly/icon.png',
+  'src-desktop/icons/dev/icon.png',
+]);
+export const ICON_MANIFEST = join(BRAND_DIR, 'station-icon-manifest.json');
+function writeManifest() {
+  const outputs = {};
+  for (const path of MANIFEST_OUTPUTS)
+    outputs[path] = sha256(readFileSync(join(ROOT, path)));
+  writeFileSync(
+    ICON_MANIFEST,
+    `${JSON.stringify({ svg: iconSourceDigests(), outputs }, null, 2)}\n`,
+  );
 }
 
 /**
@@ -343,8 +448,17 @@ async function main() {
       assertOpaqueIosPngs(destinationDir);
     };
 
-    // Rounded master drives the whole default fan-out first...
-    tauriIcon(ROUNDED_MASTER);
+    // The desktop master drives the whole default fan-out first (ico, the
+    // Linux/tray PNGs); the icns is then replaced from the macOS-grid
+    // master, the one surface that wants the grid inset and shadow...
+    tauriIcon(paths['stable-desktop']);
+    const icnsOut = (master) => {
+      const outDir = mkdtempSync(join(tmpdir(), 'station-icns-'));
+      tempDirs.push(outDir);
+      tauriIcon(master, outDir);
+      return join(outDir, 'icon.icns');
+    };
+    copyFileSync(icnsOut(ROUNDED_MASTER), join(ICONS_DIR, 'icon.icns'));
 
     // ...then the surfaces whose platforms mask or reject alpha themselves
     // are overwritten from the full-bleed square master.
@@ -379,14 +493,15 @@ async function main() {
 
     const writeChannelSet = ({ channel, rounded, square }) => {
       const channelDir = join(ICONS_DIR, channel);
-      const roundedOut = mkdtempSync(
+      const desktopOut = mkdtempSync(
         join(tmpdir(), `station-${channel}-icons-`),
       );
-      tempDirs.push(roundedOut);
-      tauriIcon(rounded, roundedOut);
-      copyInto(roundedOut, channelDir, (name) =>
-        /^(32x32|64x64|128x128|128x128@2x|icon)\.(png|icns|ico)$/.test(name),
+      tempDirs.push(desktopOut);
+      tauriIcon(paths[`${channel}-desktop`], desktopOut);
+      copyInto(desktopOut, channelDir, (name) =>
+        /^(32x32|64x64|128x128|128x128@2x|icon)\.(png|ico)$/.test(name),
       );
+      copyFileSync(icnsOut(rounded), join(channelDir, 'icon.icns'));
       copyAndroidMipmaps(
         channel === 'dev' ? devAndroid : androidOut(channel),
         join(channelDir, 'android'),
@@ -415,6 +530,7 @@ async function main() {
       rounded: paths['nightly-macos'],
       square: paths['nightly-square'],
     });
+    writeManifest();
   } finally {
     for (const dir of tempDirs) {
       rmSync(dir, { recursive: true, force: true });

@@ -1,11 +1,17 @@
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { PNG } from 'pngjs';
 import { describe, expect, it } from 'vitest';
 import { ANDROID_CHANNEL_IDENTITY } from '../apply-android-channel-icons.mjs';
-import { startupMarkGeometryModule } from '../generate-app-icons.mjs';
+import {
+  iconSourceDigests,
+  MANIFEST_OUTPUTS,
+  startupMarkGeometryModule,
+} from '../generate-app-icons.mjs';
 import {
   CHANNEL_PALETTES,
+  ICON_TARGETS,
   startupMarkGeometry,
   stationIconSvg,
 } from '../lib/station-icon.mjs';
@@ -101,12 +107,38 @@ describe('channel colours stay clear of the brand purple', () => {
 });
 
 describe('the vector icon source', () => {
-  it('emits the same SVG text on every build', () => {
-    for (const channel of Object.keys(CHANNEL_PALETTES))
-      for (const target of ['macos', 'square', 'android', 'mark'])
-        expect(stationIconSvg(channel, target)).toBe(
-          stationIconSvg(channel, target),
-        );
+  const manifest = JSON.parse(
+    readFileSync(
+      resolve(root, 'assets/brand/station-icon-manifest.json'),
+      'utf8',
+    ),
+  ) as { svg: Record<string, string>; outputs: Record<string, string> };
+
+  // The manifest was written by the run that produced the committed rasters.
+  // Rebuilding the SVG here, in a fresh process, and matching its digest is
+  // the determinism check, and it fails when the source changes without a
+  // regeneration.
+  it('builds exactly the SVG the committed icons were rendered from', () => {
+    const svgKeys = Object.keys(manifest.svg).sort();
+    expect(svgKeys).toHaveLength(4 * ICON_TARGETS.length);
+    expect(iconSourceDigests()).toEqual(manifest.svg);
+  });
+
+  it.each(Object.entries(manifest.outputs))(
+    'commits %s as that regeneration wrote it',
+    (path, digest) => {
+      expect(
+        createHash('sha256')
+          .update(readFileSync(resolve(root, path)))
+          .digest('hex'),
+      ).toBe(digest);
+    },
+  );
+
+  it('records every file the generator writes directly', () => {
+    expect(Object.keys(manifest.outputs).sort()).toEqual(
+      [...MANIFEST_OUTPUTS].sort(),
+    );
   });
 
   it('draws each channel in its own water colour only', () => {
@@ -133,8 +165,13 @@ describe('startup animation geometry', () => {
     ).toBe(startupMarkGeometryModule());
   });
 
-  // The animation samples its water colour from the mark at this point; a
-  // point on the parchment would paint the drop and track cream.
+  const rgb = (hex: string) =>
+    [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16));
+
+  // The animation paints its falling drop and track in the colour it samples
+  // from the mark here. The river is a vertical water/waterLow gradient and
+  // the sample sits mid-tile, so it must read as their midpoint; the base
+  // layer, bank or parchment are 70+ away in RGB.
   it.each([
     ['stable', 'favicon.png'],
     ['beta', 'favicon-beta.png'],
@@ -153,11 +190,15 @@ describe('startup animation geometry', () => {
       const px = Math.round((x * png.width) / size);
       const py = Math.round((y * png.height) / size);
       const i = (py * png.width + px) * 4;
-      const sampled = `#${[0, 1, 2].map((k) => png.data[i + k].toString(16).padStart(2, '0')).join('')}`;
       expect(png.data[i + 3]).toBe(255);
-      const water = hsl(CHANNEL_PALETTES[channel].water);
-      expect(hueDistance(hsl(sampled).h, water.h)).toBeLessThan(15);
-      expect(hsl(sampled).s).toBeGreaterThan(0.3);
+      const palette = CHANNEL_PALETTES[channel];
+      const river = rgb(palette.water).map(
+        (value, k) => (value + rgb(palette.waterLow)[k]) / 2,
+      );
+      const sampled = [0, 1, 2].map((k) => png.data[i + k]);
+      expect(
+        Math.hypot(...sampled.map((value, k) => value - river[k])),
+      ).toBeLessThan(10);
     },
   );
 });

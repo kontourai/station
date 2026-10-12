@@ -17,6 +17,7 @@ import {
   offsetChain,
   pieces,
   runData,
+  runPoints,
   TILE,
   tileSdf,
 } from './station-icon-geometry.mjs';
@@ -383,6 +384,10 @@ function markBox() {
 // the centre of the artwork; at this scale that is 318, inside the 341-unit
 // radius (72 of 108dp) a circular launcher mask keeps.
 const ANDROID_SCALE = 0.75;
+// The desktop master enlarges the artwork so the tile spans about two thirds
+// of the icon (it is 57% in the square master); its farthest corner, 424 x
+// 1.15 = 488 units out, stays inside the rounded body (629 units at 45deg).
+const DESKTOP_SCALE = 1.15;
 
 const svg = (viewBox, inner) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="1024" height="1024">${inner}</svg>\n`;
@@ -399,9 +404,20 @@ const svg = (viewBox, inner) =>
  *            108dp and the Android 12 splash to a circle inside that, so the
  *            full-bleed square would lose the tile's edges and the channel
  *            background; here the whole tile stays inside the circle.
+ *   desktop - the square with rounded corners and no drop shadow or grid
+ *            inset, the artwork enlarged about its centre: Windows and Linux
+ *            draw this at 16-32px in taskbars, title bars and the tray, where
+ *            the macOS grid's padding would leave the tile a few pixels wide.
  *   mark   - the tile and base layer cut out on transparency, cropped square:
  *            the in-app mark and the native launch-screen logo.
  */
+export const ICON_TARGETS = Object.freeze([
+  'macos',
+  'desktop',
+  'square',
+  'android',
+  'mark',
+]);
 export function stationIconSvg(channel, target) {
   const pal = CHANNEL_PALETTES[channel];
   if (!pal) throw new Error(`Unknown Station icon channel ${channel}`);
@@ -410,13 +426,17 @@ export function stationIconSvg(channel, target) {
     const { defs, art } = body(pal, id);
     return svg(`0 0 ${S} ${S}`, `<defs>${defs}</defs>${art}`);
   }
-  if (target === 'android') {
+  if (target === 'android' || target === 'desktop') {
     const { defs, art } = body(pal, id, { backdrop: false });
     const box = markBox();
     const [cx, cy] = [box.x + box.side / 2, box.y + box.side / 2];
+    const scale = target === 'android' ? ANDROID_SCALE : DESKTOP_SCALE;
+    const placed = `<rect width="${S}" height="${S}" fill="url(#bg-${id})"/><g transform="translate(${S / 2} ${S / 2}) scale(${scale}) translate(${fmt(-cx, 3)} ${fmt(-cy, 3)})">${art}</g>`;
+    if (target === 'android')
+      return svg(`0 0 ${S} ${S}`, `<defs>${defs}</defs>${placed}`);
     return svg(
       `0 0 ${S} ${S}`,
-      `<defs>${defs}</defs><rect width="${S}" height="${S}" fill="url(#bg-${id})"/><g transform="translate(${S / 2} ${S / 2}) scale(${ANDROID_SCALE}) translate(${fmt(-cx, 3)} ${fmt(-cy, 3)})">${art}</g>`,
+      `<defs>${defs}<clipPath id="body-${id}"><rect width="${S}" height="${S}" rx="230.4"/></clipPath></defs><g clip-path="url(#body-${id})">${placed}</g>`,
     );
   }
   if (target === 'mark') {
@@ -439,6 +459,40 @@ export function stationIconSvg(channel, target) {
     );
   }
   throw new Error(`Unknown Station icon target ${target}`);
+}
+
+/**
+ * The Android status-bar mark as VectorDrawable path data in a 24-unit
+ * frame: the tile, reduced to leave the status bar's padding, with the river
+ * cut through it (even-odd). Status-bar icons are alpha masks, so the cut is
+ * the only way to show the river. Each bank is sampled along its exact
+ * offset curve, inside the tile.
+ */
+export function statusBarMarkPathData() {
+  const half = 9.6;
+  const k = half / TILE.half;
+  const at = ([x, y]) => [C[0] + (x - C[0]) * k, C[1] + (y - C[1]) * k];
+  const xy = (p) => `${fmt(p[0], 2)},${fmt(p[1], 2)}`;
+  const a = C[0] - half;
+  const b = C[0] + half;
+  const r = TILE.corner * k;
+  const f = (v) => fmt(v, 2);
+  const tile = `M${f(a + r)},${f(a)}L${f(b - r)},${f(a)}A${f(r)},${f(r)} 0 0 1 ${f(b)},${f(a + r)}L${f(b)},${f(b - r)}A${f(r)},${f(r)} 0 0 1 ${f(b - r)},${f(b)}L${f(a + r)},${f(b)}A${f(r)},${f(r)} 0 0 1 ${f(a)},${f(b - r)}L${f(a)},${f(a + r)}A${f(r)},${f(r)} 0 0 1 ${f(a + r)},${f(a)}Z`;
+  const segs = centreline();
+  const bank = (d) => {
+    const runs = pieces(offsetChain(segs, d), (p) => tileSdf(p) < 0, {
+      min: 0.1,
+    });
+    if (runs.length !== 1)
+      throw new Error(
+        `status-bar mark: bank ${d} crosses the tile ${runs.length} times`,
+      );
+    return runPoints(runs[0], 0.25).map(at);
+  };
+  const left = bank(V.riverW / 2);
+  const right = bank(-V.riverW / 2).reverse();
+  const river = `M${[...left, ...right].map(xy).join('L')}Z`;
+  return `${tile}${river}`;
 }
 
 /**
