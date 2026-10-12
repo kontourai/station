@@ -29,7 +29,7 @@ import {
   type KernelTransaction,
 } from './port.js';
 
-export function resolveKernelLimits(
+function resolveKernelLimits(
   limits: Partial<KernelLimits> | undefined,
 ): KernelLimits {
   const resolved = { ...DEFAULT_KERNEL_LIMITS, ...limits };
@@ -60,7 +60,7 @@ function applyTurnDedup<Result>(
  * adapter calls this (through {@link runKernelTransactionStep}) inside its own
  * transaction; it never commits or rolls back itself.
  */
-export function runKernelCommand<C extends KernelCommand>(
+function runKernelCommand<C extends KernelCommand>(
   command: C,
   context: KernelContext,
   tx: KernelTransaction,
