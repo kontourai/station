@@ -611,7 +611,7 @@ describe('lookupWindowsProcessImageIdentity (#2675)', () => {
       env: MINIMAL_WINDOWS_ENV,
       exec: (command, _args, options) => {
         calls.push({ command, options: options ?? {} });
-        return '2026-10-11T09:15:02.1234560Z\r\nD:\\Station\\runtime\\node.exe\r\n';
+        return `2026-10-11T09:15:02.1234560Z\r\n${Buffer.from('D:\\Station\\runtime\\node.exe').toString('base64')}\r\n`;
       },
     });
     expect(identity).toEqual({
@@ -621,6 +621,30 @@ describe('lookupWindowsProcessImageIdentity (#2675)', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].command).toBe(MINIMAL_ENV_POWERSHELL);
     expect(calls[0].options.timeout).toBe(10_000);
+  });
+
+  test('reads the start time with exactly the birth probe statements', () => {
+    let birthScript = '';
+    lookupProcessBirthFingerprint(4244, {
+      platform: 'win32',
+      env: MINIMAL_WINDOWS_ENV,
+      exec: (_command, args) => {
+        birthScript = String(args.at(-1));
+        return '2026-10-11T09:15:02.1234560Z';
+      },
+    });
+    let imageScript = '';
+    lookupWindowsProcessImageIdentity(4244, {
+      env: MINIMAL_WINDOWS_ENV,
+      exec: (_command, args) => {
+        imageScript = String(args.at(-1));
+        return '';
+      },
+    });
+    expect(birthScript).toContain('GetProcessById(4244)');
+    expect(imageScript).toContain(
+      `function Read-StationBirth { ${birthScript} }`,
+    );
   });
 
   test('records why a probe produced nothing', () => {

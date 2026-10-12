@@ -63,7 +63,10 @@ export function isWindowsRoundTripUtcIso(value) {
   return day <= daysInMonth[month - 1];
 }
 
-function windowsCreationDateCommand(pid) {
+// The one PowerShell rendering of a Windows process birth: the birth probe
+// below and `lookupWindowsProcessImageIdentity` both run these statements, so
+// a birth either one records reads the same.
+function windowsBirthStatements(pid) {
   // System.Diagnostics.Process.StartTime reads the process handle directly;
   // unlike Win32_Process through CIM, it does not depend on an eventually
   // visible management projection for the coordinator's newly started PID.
@@ -75,7 +78,11 @@ function windowsCreationDateCommand(pid) {
     '$ticks = $created.Ticks - ($created.Ticks % 10)',
     '$normalized = [datetime]::new([long]$ticks, [System.DateTimeKind]::Utc)',
     "$normalized.ToString('yyyy-MM-ddTHH:mm:ss.fffffffZ', [System.Globalization.CultureInfo]::InvariantCulture)",
-  ].join('; ');
+  ];
+}
+
+function windowsCreationDateCommand(pid) {
+  return windowsBirthStatements(pid).join('; ');
 }
 
 // The retry shell's logical name in `ownProcessBirthProbeSchedule`. The probe
@@ -287,17 +294,33 @@ function windowsImageIdentityCommand(pid) {
   // process object: a pid that exited and was reused between the reads has
   // another start time and fails, as the Linux fingerprint's two procfs
   // reads do. `Stop` makes a .NET exception end the script with a non-zero
-  // exit instead of continuing to the next statement.
+  // exit instead of continuing to the next statement. The image is printed
+  // as Base64 of its UTF-8 bytes: Windows PowerShell writes a pipe in the
+  // OEM code page, so a non-ASCII path (C:\Users\José) would otherwise read
+  // differently from callers whose console code pages differ.
   return [
     "$ErrorActionPreference = 'Stop'",
-    `function Read-StationBirth { $p = [System.Diagnostics.Process]::GetProcessById(${pid}); try { $c = $p.StartTime.ToUniversalTime() } finally { $p.Dispose() }; $t = $c.Ticks - ($c.Ticks % 10); [datetime]::new([long]$t, [System.DateTimeKind]::Utc).ToString('yyyy-MM-ddTHH:mm:ss.fffffffZ', [System.Globalization.CultureInfo]::InvariantCulture) }`,
+    `function Read-StationBirth { ${windowsBirthStatements(pid).join('; ')} }`,
     '$before = Read-StationBirth',
     `$p = [System.Diagnostics.Process]::GetProcessById(${pid}); try { $image = $p.MainModule.FileName } finally { $p.Dispose() }`,
     '$after = Read-StationBirth',
     'if ($before -ne $after) { exit 3 }',
     '$before',
-    '$image',
+    '[Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($image))',
   ].join('; ');
+}
+
+/** Canonical Base64 of valid UTF-8 only; anything else is null. */
+function decodeStrictBase64Utf8(value) {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(value))
+    return null;
+  const bytes = Buffer.from(value, 'base64');
+  if (bytes.toString('base64') !== value) return null;
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -345,10 +368,12 @@ export function lookupWindowsProcessImageIdentity(pid, dependencies = {}) {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
-  const [birth, image] = lines;
+  const [birth, encodedImage] = lines;
+  const image = decodeStrictBase64Utf8(encodedImage);
   if (
     lines.length !== 2 ||
     !isWindowsRoundTripUtcIso(birth) ||
+    image === null ||
     !win32.isAbsolute(image)
   ) {
     recordProbeFailure(

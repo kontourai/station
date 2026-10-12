@@ -1341,7 +1341,7 @@ describe('lifecycle instance state', () => {
         );
         const entry = table.get(pid);
         if (!entry) throw Object.assign(new Error('exited 1'), { status: 1 });
-        return `${entry.birth}\r\n${entry.image}\r\n`;
+        return `${entry.birth}\r\n${Buffer.from(entry.image, 'utf8').toString('base64')}\r\n`;
       };
       const inspect = (pid: number) =>
         real.inspectProcessFingerprint(pid, {
@@ -1397,9 +1397,17 @@ describe('lifecycle instance state', () => {
           birth: '2026-10-11T10:02:44.5000000Z',
           image: NODE,
         });
-        expect(() => lifecycle.stop({ instanceName: 'win-reused' })).toThrow(
-          /Refusing to signal PID 47001: it no longer matches/,
+        // Proven to be another process, so forgetting the record is safe.
+        let refusal = '';
+        try {
+          lifecycle.stop({ instanceName: 'win-reused' });
+        } catch (error) {
+          refusal = (error as Error).message;
+        }
+        expect(refusal).toContain(
+          'Refusing to signal PID 47001: it no longer matches',
         );
+        expect(refusal).toContain(`remove ${statePath} to forget`);
         expect(killProcessTree).not.toHaveBeenCalled();
         expect(existsSync(statePath)).toBe(true);
 
@@ -1411,6 +1419,104 @@ describe('lifecycle instance state', () => {
         lifecycle.stop({ instanceName: 'win-reused' });
         expect(killProcessTree).toHaveBeenCalledWith(47001);
         expect(existsSync(statePath)).toBe(false);
+      } finally {
+        killSpy.mockRestore();
+      }
+    });
+
+    it('a stop by record that cannot read a live process keeps it and never says to forget it', async () => {
+      ensureDir(TEST_CWD);
+      const table = new Map<number, Entry>([
+        [47021, { birth: '2026-10-11T09:15:02.1234560Z', image: NODE }],
+      ]);
+      const probe = await windowsProbe(table);
+      const recorded = probe.capture(47021);
+      expect(recorded).not.toBeNull();
+      const statePath = writeInstanceState({
+        instanceName: 'win-unread',
+        serverPid: 47021,
+        uiPid: null,
+        serverFingerprint: recorded!,
+      });
+      const killSpy = vi
+        .spyOn(process, 'kill')
+        .mockImplementation((() => true) as typeof process.kill);
+      const killProcessTree = vi.fn();
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => '') },
+        platformOverrides: {
+          killProcessTree,
+          sleepSync: vi.fn(),
+          inspectProcessFingerprint: probe.inspect,
+        },
+      });
+      try {
+        // Still alive by signal 0, but the probe now fails (a blocked or
+        // timed-out PowerShell, access refused).
+        table.delete(47021);
+        let refusal = '';
+        try {
+          lifecycle.stop({ instanceName: 'win-unread' });
+        } catch (error) {
+          refusal = (error as Error).message;
+        }
+        expect(refusal).toContain(
+          'Refusing to signal PID 47021: it is running, but its identity could not be read',
+        );
+        expect(refusal).toContain('Run `station stop` again.');
+        expect(refusal).not.toContain('remove');
+        expect(refusal).not.toContain(statePath);
+        expect(killProcessTree).not.toHaveBeenCalled();
+        expect(existsSync(statePath)).toBe(true);
+      } finally {
+        killSpy.mockRestore();
+      }
+    });
+
+    it('a supervised stop of a record with no fingerprint says unverified, not mismatch', async () => {
+      ensureDir(TEST_CWD);
+      const journal = join(TEST_ROOT, 'win-unrecorded-lifecycle.jsonl');
+      const table = new Map<number, Entry>([
+        [47031, { birth: '2026-10-11T09:15:02.1000000Z', image: NODE }],
+      ]);
+      const probe = await windowsProbe(table);
+      const statePath = writeInstanceState({
+        instanceName: 'win-unrecorded',
+        serverPid: 47031,
+        uiPid: null,
+        bootId: '11111111-1111-4111-8111-111111111111',
+        lifecycleJournal: journal,
+        build: {
+          branch: 'main',
+          builtAt: '2026-07-10T12:00:00.000Z',
+          sha: 'a'.repeat(40),
+        },
+      });
+      const killSpy = vi
+        .spyOn(process, 'kill')
+        .mockImplementation((() => true) as typeof process.kill);
+      const killProcessTree = vi.fn();
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => '') },
+        platformOverrides: {
+          killProcessTree,
+          sleepSync: vi.fn(),
+          inspectProcessFingerprint: probe.inspect,
+        },
+      });
+      try {
+        let refusal = '';
+        try {
+          lifecycle.stop({ instanceName: 'win-unrecorded' });
+        } catch (error) {
+          refusal = (error as Error).message;
+        }
+        expect(refusal).toContain(
+          'its server PID 47031 is running, but its identity could not be verified (its start recorded no fingerprint to check it against)',
+        );
+        expect(refusal).not.toContain('mismatch');
+        expect(killProcessTree).not.toHaveBeenCalled();
+        expect(existsSync(statePath)).toBe(true);
       } finally {
         killSpy.mockRestore();
       }

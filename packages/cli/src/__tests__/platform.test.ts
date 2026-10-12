@@ -454,6 +454,7 @@ describe('captureStableProcessFingerprint', () => {
 describe('inspectProcessFingerprint on Windows', () => {
   const NODE = 'C:\\Station\\versions\\1.0.0\\runtime\\node.exe';
   const BORN = '2026-10-11T09:15:02.1234560Z';
+  const base64 = (text: string) => Buffer.from(text, 'utf8').toString('base64');
 
   /** A fake PowerShell: answers each pid's probe from `table`. */
   function powershell(
@@ -469,7 +470,7 @@ describe('inspectProcessFingerprint on Windows', () => {
       if (!entry || entry === 'gone') {
         throw Object.assign(new Error('exited 1'), { status: 1 });
       }
-      return `${entry.birth}\r\n${entry.image}\r\n`;
+      return `${entry.birth}\r\n${base64(entry.image)}\r\n`;
     });
   }
 
@@ -538,9 +539,15 @@ describe('inspectProcessFingerprint on Windows', () => {
       Object.assign(new Error('exited 3'), { status: 3 }),
       Object.assign(new Error('timed out'), { code: 'ETIMEDOUT' }),
       `${BORN}\r\n`,
-      `${BORN}\r\nnode.exe\r\n`,
-      `10/11/2026 09:15:02\r\n${NODE}\r\n`,
-      `${BORN}\r\n${NODE}\r\nextra\r\n`,
+      // A relative image, or an image printed raw rather than as Base64.
+      `${BORN}\r\n${base64('node.exe')}\r\n`,
+      `${BORN}\r\n${NODE}\r\n`,
+      // Not canonical Base64, or not UTF-8 underneath.
+      // 'QzpceA==' is canonical for C:\x; 'QzpceB==' decodes to it too.
+      `${BORN}\r\nQzpceB==\r\n`,
+      `${BORN}\r\n${Buffer.from([0x43, 0x3a, 0x5c, 0xe9]).toString('base64')}\r\n`,
+      `10/11/2026 09:15:02\r\n${base64(NODE)}\r\n`,
+      `${BORN}\r\n${base64(NODE)}\r\nextra\r\n`,
       '',
     ];
     for (const answer of answers) {
@@ -555,6 +562,22 @@ describe('inspectProcessFingerprint on Windows', () => {
         }),
       ).toBeNull();
     }
+  });
+
+  it('reads a non-ASCII image the same whatever code page the caller runs under', () => {
+    // The probe prints the image as Base64 of its UTF-8 bytes, so the output
+    // is ASCII and no console code page can change what is digested.
+    const image = 'C:\\Users\\José\\Station\\runtime\\node.exe';
+    const exec = powershell(new Map([[41, { birth: BORN, image }]]));
+    const probed = inspectProcessFingerprint(41, {
+      platform: 'win32',
+      exec: exec as never,
+    });
+    expect(probed?.commandDigest).toBe(createHashHex(image));
+    const script = (exec.mock.calls[0][1] as string[]).at(-1) ?? '';
+    expect(script).toContain(
+      '[Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($image))',
+    );
   });
 
   it('captures the identity of a just-started child in one observation', () => {
