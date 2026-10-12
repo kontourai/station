@@ -8,6 +8,7 @@
  */
 import { generateKeyPairSync, type KeyObject, sign } from 'node:crypto';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -391,8 +392,12 @@ describe('a manifest older than a release this install already accepted (#187)',
       updateAvailable: false,
     });
     expect(body.latestVersion).toBeUndefined();
+    const record = join(install.installRoot, '.station-release-accepted.json');
+    expect(body.message).toBe(
+      'The preview release manifest offers 0.8.0-preview.3, older than 0.8.0-preview.5 which this install already accepted, so it is not offered.',
+    );
     expect(body.technicalDetail).toBe(
-      'the manifest offers 0.8.0-preview.3, older than 0.8.0-preview.5 which this install already accepted; it is stale or replayed',
+      `the manifest is stale or replayed (accepted release recorded in ${record})`,
     );
     const post = await createApp(install).request('/core-update', {
       method: 'POST',
@@ -419,20 +424,33 @@ describe('a manifest older than a release this install already accepted (#187)',
     }
   });
 
-  test('an unreadable mark or one for another ring offers nothing', async () => {
-    for (const text of [
-      'not json',
-      `${JSON.stringify({ schemaVersion: 1, releaseChannel: 'nightly', version: '0.8.0-nightly.1' })}\n`,
-    ]) {
+  test('an unreadable, foreign-ring or group-readable record offers nothing, and says how to recover', async () => {
+    for (const [text, mode] of [
+      ['not json', 0o600],
+      [
+        `${JSON.stringify({ schemaVersion: 1, releaseChannel: 'nightly', version: '0.8.0-nightly.1' })}\n`,
+        0o600,
+      ],
+      [mark('0.8.0-preview.1'), 0o644],
+    ] as const) {
       const install = makeInstall();
       acceptRelease(install, text);
+      chmodSync(
+        join(install.installRoot, '.station-release-accepted.json'),
+        mode,
+      );
       const body = await json(await createApp(install).request('/core-update'));
       expect(body).toMatchObject({
         releaseCheck: 'unverified',
         updateAvailable: false,
-        technicalDetail:
-          'the record of the newest release this install accepted is unreadable',
       });
+      // Not the stale-manifest wording: the record is the problem.
+      expect(body.message).toBe(
+        "This install's record of the newest release it accepted is unreadable, so no update is offered. On the host, fix its owner and permissions or remove it, then check again.",
+      );
+      expect(body.technicalDetail).toBe(
+        `${join(install.installRoot, '.station-release-accepted.json')} is not a private file of this user holding a preview release record`,
+      );
     }
   });
 });

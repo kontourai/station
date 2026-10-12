@@ -8,14 +8,22 @@
  * directory".
  */
 import {
+  closeSync,
   existsSync,
   lstatSync,
+  openSync,
   readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
+import {
+  type AcceptedReleaseDecision,
+  type AcceptedReleaseMark,
+  type AcceptedReleaseRelation,
+  acceptedReleaseRules,
+} from './accepted-release.mjs';
 import { renamePathSyncRetrying } from './fs-windows-compat.js';
 import { STATION_RELEASE_RINGS, type StationReleaseRing } from './ports.js';
 import { windowsSystemUtilityPath } from './windows-system-utility.mjs';
@@ -325,140 +333,67 @@ export function packagedInstallerCommand(
 }
 
 /**
- * The newest signed release an install root has accepted from its public
- * manifest (#187): the downgrade high-water mark. install.sh and the Windows
- * installer core refuse a manifest older than it (unless the caller names the
- * exact version with STATION_INSTALL_ALLOW_ROLLBACK=1) and raise it after
- * each verified release they stage or install; the server's release check
- * reports such a manifest as unverified instead of offering it.
- *
- * Comparing with `current` alone is not enough: after the launcher rolls a
- * failed trial back, or an operator rolls back on purpose, `current` names an
- * older release, and a replayed manifest between the two would look newer.
- * The mark lives in the install root, beside the install state, and not in
- * the Station home: a launcher rollback restores the home from its backup,
- * which would lower a mark kept there. Like `current`, it is writable by the
- * installing user and defends against a hostile manifest host, not a local
- * actor running as that user.
+ * The accepted-release record of an install root (#187), through the one
+ * implementation install.sh also carries (accepted-release.mjs).
  */
-export const ACCEPTED_RELEASE_FILENAME = '.station-release-accepted.json';
+const ACCEPTED_RELEASE = acceptedReleaseRules(
+  STATION_RELEASE_RINGS,
+  { closeSync, lstatSync, openSync, readFileSync, rmSync, writeFileSync },
+  renamePathSyncRetrying,
+);
+export const ACCEPTED_RELEASE_FILENAME = ACCEPTED_RELEASE.FILENAME;
+export type { AcceptedReleaseMark, AcceptedReleaseRelation };
 
-export type AcceptedReleaseMark =
-  | { state: 'absent' }
-  /**
-   * Present but not a safe mark for this ring (a symlink, another owner,
-   * group- or world-accessible, malformed, another ring, or a version of
-   * another ring's shape): callers refuse, never guess.
-   */
-  | { state: 'invalid' }
-  | { state: 'recorded'; version: string };
-
-/** Whether `version` has `ring`'s own shape (X.Y.Z, or X.Y.Z-<ring>.N). */
-function isRingVersion(ring: string, version: unknown): version is string {
-  return (
-    isPackagedReleaseChannel(ring) &&
-    typeof version === 'string' &&
-    packagedReleaseTag(ring).test(`v${version}`)
-  );
+export function acceptedReleasePath(installRoot: string): string {
+  return join(installRoot, ACCEPTED_RELEASE_FILENAME);
 }
 
 export function readAcceptedRelease(
   installRoot: string,
   releaseChannel: string,
 ): AcceptedReleaseMark {
-  const path = join(installRoot, ACCEPTED_RELEASE_FILENAME);
-  let text: string;
-  try {
-    // The checks install.sh and the installer core apply to the install
-    // state beside it: a regular file this user owns, private to it (the
-    // mode and owner are not meaningful on Windows).
-    const info = lstatSync(path);
-    const owner =
-      typeof process.getuid === 'function' ? process.getuid() : null;
-    if (
-      !info.isFile() ||
-      info.isSymbolicLink() ||
-      (owner !== null && (info.uid !== owner || (info.mode & 0o077) !== 0))
-    )
-      return { state: 'invalid' };
-    text = readFileSync(path, 'utf8');
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'ENOENT'
-      ? { state: 'absent' }
-      : { state: 'invalid' };
-  }
-  let value: unknown;
-  try {
-    value = JSON.parse(text);
-  } catch {
-    return { state: 'invalid' };
-  }
-  const mark = value as Record<string, unknown> | null;
-  if (
-    !mark ||
-    typeof mark !== 'object' ||
-    Array.isArray(mark) ||
-    JSON.stringify(Object.keys(mark).sort()) !==
-      JSON.stringify(['releaseChannel', 'schemaVersion', 'version']) ||
-    mark.schemaVersion !== 1 ||
-    mark.releaseChannel !== releaseChannel ||
-    !isRingVersion(releaseChannel, mark.version)
-  )
-    return { state: 'invalid' };
-  return { state: 'recorded', version: mark.version };
+  return ACCEPTED_RELEASE.read(
+    acceptedReleasePath(installRoot),
+    releaseChannel,
+  );
 }
 
-/**
- * How `version` relates to the mark: `older` is refused, `incomparable`
- * (not a version of the mark's ring) is refused too, and anything else
- * passes. Both installers word each outcome the same way.
- */
 export function compareWithAcceptedRelease(
   releaseChannel: string,
   version: string,
   accepted: string,
-): 'older' | 'not-older' | 'incomparable' {
-  if (!isRingVersion(releaseChannel, version)) return 'incomparable';
-  const order = compareStationReleaseVersions(version, accepted);
-  if (order === null) return 'incomparable';
-  return order < 0 ? 'older' : 'not-older';
+): AcceptedReleaseRelation {
+  return ACCEPTED_RELEASE.relation(releaseChannel, version, accepted);
 }
 
-/**
- * Raises the mark to `version`, atomically, and never lowers it: a valid
- * mark is kept unless `version` is newer. A missing or invalid mark is
- * replaced, since a caller reaches this only after its own check of the mark
- * passed or was explicitly overridden. Throws for a `version` that is not of
- * the ring's shape (it would write a mark every later check refuses).
- */
+/** What an installer does with `version` against the record (see decide). */
+export function decideAgainstAcceptedRelease(
+  installRoot: string,
+  releaseChannel: string,
+  version: string,
+  explicit: boolean,
+): AcceptedReleaseDecision {
+  return ACCEPTED_RELEASE.decide(
+    acceptedReleasePath(installRoot),
+    releaseChannel,
+    version,
+    explicit,
+  );
+}
+
+/** Raises the record, never lowers it; `onlyIfAbsent` seeds a missing one. */
 export function recordAcceptedRelease(
   installRoot: string,
   releaseChannel: string,
   version: string,
+  onlyIfAbsent = false,
 ): void {
-  if (!isRingVersion(releaseChannel, version))
-    throw new Error(
-      `${version} is not a ${releaseChannel} release version; the accepted release was not recorded`,
-    );
-  const existing = readAcceptedRelease(installRoot, releaseChannel);
-  if (
-    existing.state === 'recorded' &&
-    compareStationReleaseVersions(version, existing.version) !== 1
-  )
-    return;
-  const path = join(installRoot, ACCEPTED_RELEASE_FILENAME);
-  const stage = `${path}.${process.pid}.tmp`;
-  try {
-    writeFileSync(
-      stage,
-      `${JSON.stringify({ schemaVersion: 1, releaseChannel, version })}\n`,
-      { mode: 0o600 },
-    );
-    renamePathSyncRetrying(stage, path);
-  } catch (error) {
-    rmSync(stage, { force: true });
-    throw error;
-  }
+  ACCEPTED_RELEASE.record(
+    acceptedReleasePath(installRoot),
+    releaseChannel,
+    version,
+    onlyIfAbsent,
+  );
 }
 
 /**
@@ -472,28 +407,5 @@ export function compareStationReleaseVersions(
   left: string,
   right: string,
 ): -1 | 0 | 1 | null {
-  const shape =
-    /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([a-z]+)\.([1-9][0-9]*))?$/;
-  const read = (version: string) => {
-    const match = shape.exec(version);
-    if (!match) return null;
-    return {
-      release: match.slice(1, 4).map((part) => BigInt(part)),
-      ring: match[4] ?? null,
-      build: match[5] === undefined ? null : BigInt(match[5]),
-    };
-  };
-  const a = read(left);
-  const b = read(right);
-  if (!a || !b) return null;
-  const order = (x: bigint | null, y: bigint | null): -1 | 0 | 1 =>
-    x === y ? 0 : (x ?? 0n) < (y ?? 0n) ? -1 : 1;
-  for (let part = 0; part < 3; part += 1) {
-    const result = order(a.release[part] ?? 0n, b.release[part] ?? 0n);
-    if (result !== 0) return result;
-  }
-  if (a.ring === b.ring) return a.ring === null ? 0 : order(a.build, b.build);
-  if (a.ring === null) return 1;
-  if (b.ring === null) return -1;
-  return null;
+  return ACCEPTED_RELEASE.compareVersions(left, right);
 }

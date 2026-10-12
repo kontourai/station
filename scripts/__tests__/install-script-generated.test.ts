@@ -354,6 +354,7 @@ describe('install-script:check as a process', () => {
       'config/release-manifest-keys.json',
       'config/portable-server-node-runtime.json',
       'packages/shared/src/portable-server-targets.mjs',
+      'packages/shared/src/accepted-release.mjs',
     ]) {
       copyFileSync(join(root, file), join(copy, file));
     }
@@ -391,6 +392,8 @@ describe('install-script:check as a process', () => {
       'packages/shared/src/fs-windows-compat.ts',
       'packages/shared/src/service-launcher-protocol.ts',
       'packages/shared/src/prebuilt-archive.ts',
+      'packages/shared/src/accepted-release.mjs',
+      'packages/shared/src/accepted-release.d.mts',
       'packages/shared/src/ports.ts',
       'packages/shared/src/installer',
       'install.sh',

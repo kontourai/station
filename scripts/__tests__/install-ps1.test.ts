@@ -250,6 +250,17 @@ describe('install.ps1 installer core: stage-only (#2675 W1)', () => {
       join(f.installRoot, 'current'),
     );
     rmSync(mark);
+    // Not into an install root that fails the trust checks: nothing to do,
+    // and nothing written.
+    const untrusted = stage(f, signed(f, archive), {
+      STATION_INSTALL_TEST_UNTRUSTED_ROOT: '1',
+    });
+    expect(untrusted.status, untrusted.stderr).toBe(0);
+    expect(untrusted.stdout).toContain(
+      'Station v0.7.0-nightly.12 is already installed; nothing to do.',
+    );
+    expect(existsSync(mark)).toBe(false);
+
     const same = stage(f, signed(f, archive));
     expect(same.status, same.stderr).toBe(0);
     expect(same.stdout).toContain(

@@ -2,6 +2,7 @@ import { realpathSync } from 'node:fs';
 import type { ServiceUpdateProgress } from '@kontourai/station-contracts/system-status';
 import {
   type ArchiveInstallState,
+  acceptedReleasePath,
   compareStationReleaseVersions,
   compareWithAcceptedRelease,
   readAcceptedRelease,
@@ -255,16 +256,27 @@ function acceptedReleaseRefusal(
   installRoot: string,
   ring: string,
   version: string,
-): string | null {
+): { message: string; technicalDetail: string } | null {
+  const path = acceptedReleasePath(installRoot);
   const mark = readAcceptedRelease(installRoot, ring);
   if (mark.state === 'absent') return null;
   if (mark.state === 'invalid')
-    return 'the record of the newest release this install accepted is unreadable';
+    return {
+      message:
+        "This install's record of the newest release it accepted is unreadable, so no update is offered. On the host, fix its owner and permissions or remove it, then check again.",
+      technicalDetail: `${path} is not a private file of this user holding a ${ring} release record`,
+    };
   const relation = compareWithAcceptedRelease(ring, version, mark.version);
   if (relation === 'not-older') return null;
   return relation === 'older'
-    ? `the manifest offers ${version}, older than ${mark.version} which this install already accepted; it is stale or replayed`
-    : `the manifest offers ${version}, which cannot be compared with ${mark.version}, the newest release this install accepted`;
+    ? {
+        message: `The ${ring} release manifest offers ${version}, older than ${mark.version} which this install already accepted, so it is not offered.`,
+        technicalDetail: `the manifest is stale or replayed (accepted release recorded in ${path})`,
+      }
+    : {
+        message: `The ${ring} release manifest offers ${version}, which cannot be compared with ${mark.version}, the newest release this install accepted, so it is not offered.`,
+        technicalDetail: `incomparable with the accepted release recorded in ${path}`,
+      };
 }
 
 export interface ArchiveUpdateStatus {
@@ -355,8 +367,7 @@ export async function archiveUpdateStatus(
       ...base,
       releaseCheck: 'unverified',
       updateAvailable: false,
-      message: `The ${ring} release manifest is older than a release this install already accepted, so it is not offered.`,
-      technicalDetail: replayRefusal,
+      ...replayRefusal,
       selfUpdateUnavailableReason: refusal,
     };
   }

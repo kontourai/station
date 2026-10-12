@@ -2114,6 +2114,20 @@ describe('prebuilt archive installs (#2675 B2)', {
     const manifest = archiveManifest(harness, archive);
     expect(runArchiveInstaller(harness, manifest).status).toBe(0);
     rmSync(mark);
+    // Not into an install root that fails the owned-root checks (here, it
+    // lost its installer marker): nothing to do, and nothing written.
+    const marker = join(harness.installRoot, '.station-portable-install-root');
+    const markerText = readFileSync(marker, 'utf8');
+    chmodSync(marker, 0o600);
+    rmSync(marker);
+    const unowned = runArchiveInstaller(harness, manifest);
+    expect(unowned.status, unowned.stderr).toBe(0);
+    expect(unowned.stdout).toContain(
+      'Station v1.2.3 is already installed; nothing to do.',
+    );
+    expect(existsSync(mark)).toBe(false);
+    writeFileSync(marker, markerText, { mode: 0o600 });
+
     const again = runArchiveInstaller(harness, manifest);
     expect(again.status, again.stderr).toBe(0);
     expect(again.stdout).toContain(

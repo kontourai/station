@@ -284,6 +284,18 @@ or replayed, the same as a hostile replay. So:
   does not lower the record, so later updates still need a release at least
   as new as the withdrawn one.
 
+The installers trust the record only if it is a regular file, owned by the
+installing user and readable by nobody else (`0600`), and names a release of
+the install's own ring. Anything else is treated as unreadable: installs and
+updates are refused, and the server's update check offers nothing and says
+why. To recover on the host, do one of these:
+
+- fix the record's owner or permissions,
+- remove `.station-release-accepted.json` from the install root (the next
+  verified install writes a fresh one), or
+- install a release explicitly with `STATION_VERSION=v<x.y.z>` and
+  `STATION_INSTALL_ALLOW_ROLLBACK=1`, which rewrites the record.
+
 One accepted edge: the record compares versions, not bytes. After a launcher
 rollback from vN, a manifest for different bytes signed as the same vN is not
 older than the record, and it is newer than the active release, so it
