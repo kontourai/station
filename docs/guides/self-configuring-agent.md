@@ -300,9 +300,9 @@ Session by its `sessionId`, without creating a task.
   Once a completed key has been dropped (more than 300 later sends from that
   session, or seven days), a retry under it acts again unless the downstream
   client-turn claim still answers it: a start's claim is kept as a replay row
-  or, once evicted from the 2,000-row table, as an `expired` tombstone for 30
-  days that refuses the resend; a retry from another branch of the work is not
-  caught at all. A start whose turn may already have reached the engine can
+  or, once evicted from the 2,000-row table, as an `expired` tombstone that
+  refuses the resend until the target Session is deleted; a retry from another
+  branch of the work is not caught at all. A start whose turn may already have reached the engine can
   stay `indeterminate` on every repeat, so 300 such keys block that session's
   new requestKeys until the oldest passes seven days. A re-driven attempt
   that is refused answers with `pinned: true`; its key stays tied to its first

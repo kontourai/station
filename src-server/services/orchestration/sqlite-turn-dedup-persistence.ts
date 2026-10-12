@@ -14,12 +14,16 @@ import type { SqliteDatabase } from './sqlite-database.js';
 export const TURN_DEDUP_MAX_ENTRIES = 2000;
 
 /**
- * #3559 / #3606 review F2: how long an evicted key's tombstone answers
- * `expired`. Far past every retry window Station has (the longest, the UI
- * outbound queue and the session-control request-key TTL, are seven days);
- * after it the key is new again. Bounded because a relayed station-agent turn
- * writes a thread key AND a `chat:` key, and `chat:` tombstones have no thread
- * whose deletion would remove them.
+ * #3559 / #3606 review: how long an evicted `chat:` key's tombstone answers
+ * `expired`. Far past every client retry window Station has (the longest,
+ * the UI outbound queue, is seven days); after it the key is new again. The
+ * bound exists because a relayed station-agent turn writes a thread key AND a
+ * `chat:` key, and `chat:` tombstones have no thread whose deletion would
+ * remove them. They go on the first dedup write after the bound, not at it.
+ *
+ * Thread tombstones are NOT time-bounded: a session-control start re-drives
+ * its unresolved request key forever with the same clientTurnId, so its
+ * thread tombstone must last as long. Both leave with `deleteThread`.
  */
 export const TURN_DEDUP_TOMBSTONE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -122,8 +126,9 @@ export function createSqliteTurnDedupPersistence({
     //
     // #3559: an evicted row leaves a tombstone, so a late retry of its key
     // answers `expired` instead of claiming it afresh and sending the turn
-    // again. Tombstones hold only the key, do not count toward the cap, and
-    // are removed once older than TURN_DEDUP_TOMBSTONE_RETENTION_MS.
+    // again. Tombstones hold only the key and do not count toward the cap.
+    // `chat:` tombstones are removed once older than
+    // TURN_DEDUP_TOMBSTONE_RETENTION_MS; thread tombstones only by deleteThread.
     // Both statements select the same overflow: nothing writes the dedup
     // table between them inside this transaction, and the order is total.
     const overflow = `SELECT dedup_key FROM orchestration_turn_dedup
@@ -138,7 +143,8 @@ export function createSqliteTurnDedupPersistence({
       `DELETE FROM orchestration_turn_dedup WHERE dedup_key IN (${overflow})`,
     ).run(maxEntries);
     db.prepare(
-      'DELETE FROM orchestration_turn_dedup_expired WHERE expired_at < ?',
+      `DELETE FROM orchestration_turn_dedup_expired
+       WHERE expired_at < ? AND substr(dedup_key, 1, 5) = 'chat:'`,
     ).run(now - TURN_DEDUP_TOMBSTONE_RETENTION_MS);
   }
 
