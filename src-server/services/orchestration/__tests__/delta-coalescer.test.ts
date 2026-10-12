@@ -472,6 +472,34 @@ describe('DeltaCoalescer', () => {
     expect(texts(emitted)).toEqual(['paint', '-held-more']);
   });
 
+  test('a later delta a listener buffers during the size-cap flush cannot overtake the offered delta', () => {
+    const emitted: CanonicalRuntimeEvent[] = [];
+    let coalescer!: DeltaCoalescer;
+    coalescer = new DeltaCoalescer(
+      (event) => {
+        emitted.push(event);
+        // A synchronous fan-out that publishes a later delta for the same
+        // thread while the flush ahead of the offered delta is on the stack.
+        if ((event as unknown as { delta: string }).delta === '12345')
+          coalescer.offer(delta('t1', 'LATER'));
+      },
+      {
+        windowMs: 1_000_000,
+        maxChars: 10,
+        setTimer: () => 'timer',
+        clearTimer: () => {},
+        logger: { warn: vi.fn() },
+      },
+    );
+    coalescer.offer(delta('t1', 'paint'));
+    coalescer.offer(delta('t1', '12345'));
+    coalescer.offer(delta('t1', '67890'));
+    coalescer.flushAll();
+
+    // '67890' was produced before 'LATER', so it must not be appended after it.
+    expect(texts(emitted)).toEqual(['paint', '12345', '67890', 'LATER']);
+  });
+
   test('a failed flush the owner declines to retain is dropped, as before', () => {
     let failNext = false;
     const coalescer = new DeltaCoalescer(

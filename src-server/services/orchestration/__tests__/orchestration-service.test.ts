@@ -21457,6 +21457,88 @@ describe('OrchestrationService', () => {
       await isolated.shutdown();
     });
 
+    test('overlapping observed retries on one thread keep retained text untimed until the last one finishes', async () => {
+      const threadId = 'overlapping-retries-thread';
+      const turnId = 'turn-overlap';
+      const { isolated } = await startObservedTurn(threadId, turnId);
+      const coalescer = (isolated as any).deltaCoalescer;
+      const delta = (eventId: string, text: string) =>
+        ({
+          eventId,
+          provider: 'claude',
+          threadId,
+          turnId,
+          itemId: 'overlap-item',
+          createdAt: new Date().toISOString(),
+          method: 'content.text-delta',
+          delta: text,
+        }) as CanonicalRuntimeEvent;
+      const warning = (eventId: string) =>
+        ({
+          eventId,
+          provider: 'claude',
+          threadId,
+          createdAt: new Date().toISOString(),
+          method: 'runtime.warning',
+          severity: 'warning',
+          code: 'test-overlap',
+          message: eventId,
+        }) as CanonicalRuntimeEvent;
+      // Buffer text directly, so no window timer races the scenario below.
+      coalescer.offer(delta('overlap-0', 'Hello'));
+      coalescer.offer(delta('overlap-1', ', world'));
+      const appendEvent = eventStore.appendEvent.bind(eventStore);
+      let locked = true;
+      let heldAttempts = 0;
+      const first = new AbortController();
+      const appendSpy = vi
+        .spyOn(eventStore, 'appendEvent')
+        .mockImplementation((event, declaredOutputs) => {
+          if (event.eventId === 'overlap-1') {
+            heldAttempts += 1;
+            // The first retry's consumer is stopped (an adapter swap, say)
+            // while both retries are asleep.
+            if (heldAttempts === 1) first.abort();
+            if (locked) throw busy();
+          }
+          return appendEvent(event, declaredOutputs);
+        });
+      // Two retries of different events on the same thread, overlapping:
+      // both flushes of the retained text fail and both go to sleep.
+      const publish = (
+        event: CanonicalRuntimeEvent,
+        controller: AbortController,
+      ) =>
+        (isolated as any).publishObservedEvent(
+          event,
+          claude,
+          controller,
+        ) as Promise<boolean>;
+      let timedAfterFirst: boolean | undefined;
+      const firstDone = publish(warning('overlap-first'), first).catch(() => {
+        // The first retry is over; the second is still asleep.
+        timedAfterFirst = coalescer.pending.get(threadId)?.timer !== undefined;
+        locked = false;
+      });
+      const second = publish(warning('overlap-second'), new AbortController());
+      await firstDone;
+      expect(await second).toBe(true);
+
+      expect(timedAfterFirst).toBe(false);
+      expect(heldAttempts).toBe(3);
+      expect(
+        payloads(threadId)
+          .filter((event) =>
+            ['overlap-0', 'overlap-1', 'overlap-second'].includes(
+              event.eventId,
+            ),
+          )
+          .map((event) => event.eventId),
+      ).toEqual(['overlap-0', 'overlap-1', 'overlap-second']);
+      appendSpy.mockRestore();
+      await isolated.shutdown();
+    });
+
     test('a failed size-cap flush keeps the text buffered before the offered delta', async () => {
       const threadId = 'cap-flush-thread';
       const turnId = 'turn-cap';
