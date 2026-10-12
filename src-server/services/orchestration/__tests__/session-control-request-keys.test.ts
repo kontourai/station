@@ -266,6 +266,44 @@ describe('session control request keys (real SQLite table)', () => {
     }
   });
 
+  // #3559: an unresolved claim may already have had its effect; forgetting it
+  // would let a late retry run the request again.
+  test('the TTL purge keeps an unresolved claim, which is still re-driven with its recorded decision', async () => {
+    const { store } = open();
+    const keys = store.sessionControlRequestKeys();
+    const digest = sessionControlRequestDigest(['x']);
+    await runWithSessionControlKey(keys, id(), digest, async (resume) => {
+      resume.recordDecision('steer:thread-1');
+      return { settle: 'pending' as const, result: 'indeterminate' };
+    });
+    const realNow = Date.now;
+    Date.now = () => realNow() + SESSION_CONTROL_REQUEST_KEY_TTL_MS + 1000;
+    const seen: Array<string | undefined> = [];
+    try {
+      // A claim of ANOTHER key runs the purge first.
+      await runWithSessionControlKey(
+        keys,
+        id('key-other-001'),
+        digest,
+        async () => ({ settle: 'final' as const, result: 'other' }),
+      );
+      const outcome = await runWithSessionControlKey(
+        keys,
+        id(),
+        digest,
+        async (resume) => {
+          seen.push(resume.decision);
+          return { settle: 'final' as const, result: 'done' };
+        },
+      );
+      expect(outcome).toEqual({ kind: 'executed', result: 'done' });
+    } finally {
+      Date.now = realNow;
+    }
+    // Re-driven as the same attempt, never claimed afresh.
+    expect(seen).toEqual(['steer:thread-1']);
+  });
+
   describe('quotas', () => {
     const digest = sessionControlRequestDigest(['x']);
     const done = async () => ({ settle: 'final' as const, result: 'ok' });

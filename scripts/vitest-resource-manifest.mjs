@@ -977,6 +977,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#2238: starts real Station children against one SQLite claims
   // store to prove construction preserves live ownership.
   'src-server/routes/chat/__tests__/chat-turn-dedup.test.ts',
+  // #3581: runs the real `/chat` stream as an owner process over SQLite,
+  // SIGKILLs it before or after its agent call, and retries the same client
+  // turn from a reopened store. Single-shot children; no wall-clock bound.
+  'src-server/routes/chat/__tests__/chat-turn-dedup-crash.process.test.ts',
   // #3559: runs a real OrchestrationService owner process over SQLite,
   // SIGKILLs it before or after its engine call, and retries the same client
   // turn from a restarted store. Single-shot children; no wall-clock bound.

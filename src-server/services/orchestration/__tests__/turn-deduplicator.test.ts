@@ -199,6 +199,130 @@ describe('TurnDeduplicator', () => {
     restarted.close();
   });
 
+  // #3581: a /chat claim records invocation like a thread claim does.
+  test('a /chat claim whose dead owner began invoking is indeterminate on every retry; one that never began is reclaimed', () => {
+    const first = open();
+    expect(first.store.claimChatTurn('chat-invoked')).toEqual({
+      claimed: true,
+    });
+    first.store.beginChatTurnInvocation('chat-invoked');
+    expect(first.store.claimChatTurn('chat-pending')).toEqual({
+      claimed: true,
+    });
+    first.store.close();
+
+    const restarted = restartWithDeadOwners(first.directory);
+    expect(restarted.claimChatTurn('chat-invoked')).toEqual({
+      claimed: false,
+      outcome: 'indeterminate',
+    });
+    expect(restarted.claimChatTurn('chat-invoked')).toEqual({
+      claimed: false,
+      outcome: 'indeterminate',
+    });
+    expect(restarted.claimChatTurn('chat-pending')).toEqual({ claimed: true });
+    restarted.close();
+  });
+
+  test('a /chat row carrying an unrecognised invocation record fails closed', () => {
+    const first = open();
+    first.store.close();
+    const database = new DatabaseSync(
+      join(first.directory, 'orchestration.sqlite'),
+    );
+    try {
+      database
+        .prepare(
+          `INSERT INTO orchestration_turn_dedup
+             (dedup_key, value, created_at, owner_json) VALUES (?, NULL, 0, ?)`,
+        )
+        .run(
+          chatTurnDedupKey('chat-future'),
+          JSON.stringify({
+            pid: 999_999_999,
+            birth: 'dead-birth',
+            token: 'future-owner',
+            identityKind: 'exact',
+            invocation: 'a-later-state',
+          }),
+        );
+    } finally {
+      database.close();
+    }
+    const restarted = restartWithDeadOwners(first.directory);
+    expect(restarted.claimChatTurn('chat-future')).toEqual({
+      claimed: false,
+      outcome: 'indeterminate',
+    });
+    restarted.close();
+  });
+
+  // #3559: eviction must never make a key claimable again.
+  test('an evicted resolved key answers expired, never owner, across restart; tombstones do not count toward the cap', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-turn-dedup-'));
+    directories.push(directory);
+    const path = join(directory, 'orchestration.sqlite');
+    const store = new EventStore(path, 2);
+    const ledger = store.createTurnDeduplicator();
+    const keys = ['k1', 'k2', 'k3', 'k4', 'k5'];
+    for (const clientTurnId of keys) {
+      const owner = ledger.claim({ threadId: 'thread', clientTurnId });
+      if (owner.kind !== 'owner') throw new Error('expected owner');
+      owner.claim.resolve(`turn-${clientTurnId}`);
+    }
+    for (const clientTurnId of ['k1', 'k2', 'k3'])
+      expect(ledger.claim({ threadId: 'thread', clientTurnId })).toEqual({
+        kind: 'expired',
+      });
+    // The two newest stay full rows: the cap counts live rows, not tombstones.
+    expect(ledger.claim({ threadId: 'thread', clientTurnId: 'k4' })).toEqual({
+      kind: 'contended',
+      turnId: 'turn-k4',
+    });
+    expect(ledger.claim({ threadId: 'thread', clientTurnId: 'k5' })).toEqual({
+      kind: 'contended',
+      turnId: 'turn-k5',
+    });
+    store.close();
+
+    // A /chat key evicted the same way answers expired too. Rows created in
+    // the same millisecond are evicted in key order, so `chat-a` goes first.
+    const chatDirectory = mkdtempSync(join(tmpdir(), 'station-turn-dedup-'));
+    directories.push(chatDirectory);
+    const chatStore = new EventStore(
+      join(chatDirectory, 'orchestration.sqlite'),
+      2,
+    );
+    for (const clientTurnId of ['chat-a', 'chat-b', 'chat-c']) {
+      expect(chatStore.claimChatTurn(clientTurnId)).toEqual({ claimed: true });
+      chatStore.resolveChatTurn(clientTurnId, `conversation-${clientTurnId}`);
+    }
+    expect(chatStore.claimChatTurn('chat-a')).toEqual({
+      claimed: false,
+      outcome: 'expired',
+    });
+    expect(chatStore.claimChatTurn('chat-c')).toEqual({
+      claimed: false,
+      conversationId: 'conversation-chat-c',
+    });
+    chatStore.close();
+
+    const restarted = new EventStore(path, 2);
+    expect(
+      restarted
+        .createTurnDeduplicator()
+        .claim({ threadId: 'thread', clientTurnId: 'k1' }),
+    ).toEqual({ kind: 'expired' });
+    // Tombstones leave with their thread.
+    restarted.deleteThread('thread');
+    expect(
+      restarted
+        .createTurnDeduplicator()
+        .claim({ threadId: 'thread', clientTurnId: 'k1' }),
+    ).toMatchObject({ kind: 'owner' });
+    restarted.close();
+  });
+
   test('keeps an owner handle usable when its first durable resolve rolls back', () => {
     let record: { value: string | null; createdAt: number } | undefined;
     let failResolve = true;
