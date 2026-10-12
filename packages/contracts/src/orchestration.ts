@@ -283,6 +283,13 @@ export function groupLimitedCommandStep(cli: string): string {
 }
 
 /**
+ * The longest `groupLimited.cli` kept: its appended step must also fit the
+ * 256-character step bound, or the whole refusal would fail to parse.
+ */
+export const GROUP_LIMITED_CLI_MAX_LENGTH =
+  256 - groupLimitedCommandStep('').length;
+
+/**
  * #3557: a group-limited refusal's People steps, without the appended
  * command step (a client that reads `groupLimited.cli` shows that itself).
  */
@@ -343,7 +350,9 @@ function parseGroupLimited(value: unknown): {
   return {
     groupLimited: {
       group: 'member',
-      ...(isBoundedString(raw.cli, 256) ? { cli: raw.cli } : {}),
+      ...(isBoundedString(raw.cli, GROUP_LIMITED_CLI_MAX_LENGTH)
+        ? { cli: raw.cli }
+        : {}),
     },
   };
 }

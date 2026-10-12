@@ -4,6 +4,7 @@
  */
 import { describe, expect, test } from 'vitest';
 import {
+  GROUP_LIMITED_CLI_MAX_LENGTH,
   groupLimitedCommandStep,
   groupLimitedPeopleSteps,
   parseApprovalFullAccessRefusalDetails,
@@ -111,9 +112,28 @@ describe('parseApprovalFullAccessRefusalDetails', () => {
       limited({ group: 'member', cli: 'station x' })?.groupLimited,
     ).toEqual({ group: 'member', cli: 'station x' });
     // A command past the bound, or not a string, is dropped, not trusted.
+    // Literal: 256 minus the 34-character "Then, on the Station's host, run: ".
+    expect(GROUP_LIMITED_CLI_MAX_LENGTH).toBe(222);
     expect(
-      limited({ group: 'member', cli: 'x'.repeat(257) })?.groupLimited,
+      limited({ group: 'member', cli: 'x'.repeat(223) })?.groupLimited,
     ).toEqual({ group: 'member' });
+    // At the bound, the refusal still parses with its appended step.
+    const longest = 'x'.repeat(222);
+    const parsed = parseApprovalFullAccessRefusalDetails({
+      ...deviceRefusal('Phone'),
+      grant: {
+        ...deviceRefusal('Phone').grant,
+        uiSteps: [
+          'As the operator, open People.',
+          groupLimitedCommandStep(longest),
+        ],
+        groupLimited: { group: 'member', cli: longest },
+      },
+    });
+    expect(parsed?.grant?.groupLimited).toEqual({
+      group: 'member',
+      cli: longest,
+    });
     expect(limited({ group: 'member', cli: 7 })?.groupLimited).toEqual({
       group: 'member',
     });
