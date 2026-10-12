@@ -1,0 +1,7 @@
+{
+  "revision": "1e6b3c706c4ccf3493b43204cf10259760deb885",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"vitest-resource-manifest.mjs adds ios-web-build-version.test.ts to the process-heavy group; the guide's description of resource groups and child-process classification is unchanged and still accurate.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}
