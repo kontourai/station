@@ -496,3 +496,8 @@
   color: var(--k-text-muted);
   font-size: var(--k-text-xs);
 }
+
+.button.people__compact[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

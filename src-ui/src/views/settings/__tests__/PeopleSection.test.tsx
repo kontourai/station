@@ -694,8 +694,20 @@ describe('People section', () => {
     const meiNew = within(
       personItem('human:tailscale-serve:mei@example.com'),
     ).getByRole('button', { name: 'New token for mei@example.com' });
-    expect((meiNew as HTMLButtonElement).disabled).toBe(true);
-    expect(meiNew.getAttribute('title')).toContain('showing');
+    // Waiting, not disabled: focusable, and described by a visible reason.
+    expect(meiNew.getAttribute('aria-disabled')).toBe('true');
+    expect((meiNew as HTMLButtonElement).disabled).toBe(false);
+    expect(
+      within(personItem('human:tailscale-serve:mei@example.com')).getByRole(
+        'button',
+        {
+          name: 'New token for mei@example.com',
+          description: 'Finish with the token that is showing first.',
+        },
+      ),
+    ).toBe(meiNew);
+    meiNew.focus();
+    expect(document.activeElement).toBe(meiNew);
     fireEvent.click(meiNew);
     expect(screen.queryByLabelText('Name')).toBeNull();
     expect(screen.getByDisplayValue('stp_first')).toBeTruthy();
@@ -704,13 +716,10 @@ describe('People section', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     await waitFor(() =>
       expect(
-        (
-          within(personItem('human:tailscale-serve:mei@example.com')).getByRole(
-            'button',
-            { name: 'New token for mei@example.com' },
-          ) as HTMLButtonElement
-        ).disabled,
-      ).toBe(false),
+        within(personItem('human:tailscale-serve:mei@example.com'))
+          .getByRole('button', { name: 'New token for mei@example.com' })
+          .getAttribute('aria-disabled'),
+      ).toBeNull(),
     );
   });
 

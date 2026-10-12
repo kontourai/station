@@ -25,6 +25,7 @@ import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
   type ApprovalFullAccessRefusalDetails,
   type ApprovalFullAccessRequester,
+  groupLimitedCommandStep,
   sanitizeRefusalDeviceName,
 } from '@kontourai/station-contracts/orchestration';
 import { requestMayBeAnAgent } from './coding-authority.js';
@@ -87,11 +88,11 @@ const FULL_ACCESS_GRANT_UI_STEPS: readonly string[] = [
 /**
  * #3557: the path when the person's group stops full access. Their group
  * must allow it first; when the device's own grant does not carry it either,
- * `cli` follows as the SECOND step (`grant.groupLimited` says so), never as
- * an alternative.
+ * the host command (`grant.groupLimited.cli`) is the step AFTER these, never
+ * an alternative. People is reachable wherever the operator is signed in.
  */
 const GROUP_GRANT_UI_STEPS: readonly string[] = [
-  "On the Station's host, open Settings, then Devices, then People.",
+  'As the operator, open Settings, then Devices, then People.',
   'Find the person this device is tied to and set their group to Admin.',
 ];
 
@@ -164,10 +165,32 @@ function detailsFor(
       ? getRuntimeAuthenticatedRequestPrincipal(request)?.deviceId
       : undefined;
   const limit = fullDeviceId ? groupLimitOf(request, fullDeviceId) : undefined;
-  // A group-limited refusal lists only the People steps: the device grant,
-  // when still needed, is the host command that follows them.
-  const uiSteps = limit ? GROUP_GRANT_UI_STEPS : FULL_ACCESS_GRANT_UI_STEPS;
   const needsDeviceGrant = !limit || !limit.hasGrant;
+  const command =
+    fullDeviceId && needsDeviceGrant
+      ? fullAccessGrantCommand(fullDeviceId, operatorHostCli(request))
+      : undefined;
+  if (limit && requester.kind !== 'agent')
+    // #3557: the People steps, then (when the device's own grant lacks it
+    // too) the host command as the step AFTER them. The command is never
+    // the top-level `cli`, which older clients offer as an alternative.
+    return {
+      requested: 'never',
+      requester,
+      station,
+      grant: {
+        by: 'operator',
+        scope: 'approval:full-access',
+        uiSteps: command
+          ? [...GROUP_GRANT_UI_STEPS, groupLimitedCommandStep(command)]
+          : GROUP_GRANT_UI_STEPS,
+        groupLimited: {
+          group: 'member',
+          ...(command ? { cli: command } : {}),
+        },
+      },
+    };
+  const uiSteps = FULL_ACCESS_GRANT_UI_STEPS;
   return {
     requested: 'never',
     requester,
@@ -179,15 +202,7 @@ function detailsFor(
             by: 'operator',
             scope: 'approval:full-access',
             uiSteps,
-            ...(limit ? { groupLimited: { group: 'member' as const } } : {}),
-            ...(fullDeviceId && needsDeviceGrant
-              ? {
-                  cli: fullAccessGrantCommand(
-                    fullDeviceId,
-                    operatorHostCli(request),
-                  ),
-                }
-              : {}),
+            ...(command ? { cli: command } : {}),
           },
   };
 }
@@ -206,7 +221,9 @@ function messageFor(
   if (groupLimited)
     return (
       `Full access was not applied. ${who.charAt(0).toUpperCase()}${who.slice(1)} belongs to a person in the Member group, which does not allow full access. The operator can make them Admin under Settings, Devices, People` +
-      (grant.cli ? `, then on the Station's host run: ${grant.cli}` : '.')
+      (grant.groupLimited?.cli
+        ? `, then on the Station's host run: ${grant.groupLimited.cli}`
+        : '.')
     );
   return (
     `Full access was not applied. Only this Station's operator can allow full access, for ${who}.` +
