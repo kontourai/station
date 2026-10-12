@@ -3275,15 +3275,18 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     if (claim.owner_pid === process.pid) {
       return LIVE_OWNER_IDS.has(claim.owner_id);
     }
-    // A DIFFERENT pid with no recorded birth is genuinely undecidable: keep
-    // the fence rather than risk double-running a live owner's occurrence.
-    if (!claim.owner_birth) return true;
+    // Probe before consulting the birth: a pid the kernel reports gone is
+    // decidable without one (#3563). Reading a NULL `owner_birth` first kept a
+    // dead foreign owner's occurrence fenced forever.
     const probe = this.identity.probe(claim.owner_pid);
+    if (probe.state === 'dead') return false;
+    if (probe.state === 'unavailable') return true;
+    // A live pid with no recorded birth is genuinely undecidable: keep the
+    // fence rather than risk double-running a live owner's occurrence.
+    if (!claim.owner_birth) return true;
     return (
-      probe.state === 'unavailable' ||
-      (probe.state === 'exact' &&
-        probe.identity.start === claim.owner_birth &&
-        probe.identity.pid === claim.owner_pid)
+      probe.identity.start === claim.owner_birth &&
+      probe.identity.pid === claim.owner_pid
     );
   }
 

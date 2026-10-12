@@ -988,8 +988,14 @@ describe('SchedulerLedger', () => {
       });
       try {
         const recovered = read(restarted.claimDue(dueAt));
+        // An attempt-1 pre-invocation claim has no retry lineage, so recovery
+        // releases it and claims the SAME occurrence afresh.
         expect(recovered).toHaveLength(1);
-        expect(recovered[0]).toMatchObject({ id: claim.id, attempt: 1 });
+        expect(recovered[0]).toMatchObject({
+          jobId: claim.jobId,
+          scheduledForMs: claim.scheduledForMs,
+          attempt: 1,
+        });
       } finally {
         restarted.close();
       }
