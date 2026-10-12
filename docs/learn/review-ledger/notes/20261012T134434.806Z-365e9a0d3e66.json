@@ -1,0 +1,7 @@
+{
+  "revision": "17a0855071a8cbb22e95945f533cddeaeff3ace1",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"#3563: builtin-scheduler gains an onQuarantinedJob error log with job/jobId/revision/reason fields; no configuration or correlation-binding keys change. No prose change.","inputs":["docs/reference/config.md","src-server/services/scheduling/builtin-scheduler.ts"]}
+  ]
+}

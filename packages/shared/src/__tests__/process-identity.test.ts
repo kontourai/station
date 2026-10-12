@@ -20,6 +20,7 @@ import {
   lookupProcessBirthFingerprintAsync,
   lookupWindowsProcessImageIdentity,
   probeExactProcessIdentity,
+  probeExactProcessIdentityAsync,
   processBirthPredatesCurrentBoot,
   resolveOwnProcessIdentity,
   WINDOWS_OWN_PROCESS_BIRTH_DEADLINE_MS,
@@ -53,12 +54,134 @@ describe('birthProvesReuse (station#2904)', () => {
     expect(probeExactProcessIdentity(42, { kill: failure('ESRCH') })).toEqual({
       state: 'dead',
     });
-    expect(probeExactProcessIdentity(42, { kill: failure('EPERM') })).toEqual({
+    // EPERM with an unreadable birth stays unavailable: nothing proves reuse.
+    expect(
+      probeExactProcessIdentity(42, {
+        kill: failure('EPERM'),
+        lookup: () => null,
+      }),
+    ).toEqual({ state: 'unavailable' });
+    expect(
+      probeExactProcessIdentity(42, {
+        kill: failure(),
+        lookup: () => 'birth-never-read',
+      }),
+    ).toEqual({
       state: 'unavailable',
     });
-    expect(probeExactProcessIdentity(42, { kill: failure() })).toEqual({
-      state: 'unavailable',
+  });
+
+  // #3563: EPERM proves the pid EXISTS (it belongs to another user), so it is
+  // not a reason to skip the birth lookup. A dead owner's pid reused by a
+  // foreign process used to read as `unavailable`, which every birth-aware
+  // caller treats as live, so it fenced the owner's work until a later boot.
+  test('EPERM still reads the birth, so a foreign reused pid is decidable', async () => {
+    const eperm = () => {
+      const error = new Error('injected EPERM') as NodeJS.ErrnoException;
+      error.code = 'EPERM';
+      throw error;
+    };
+    const lookups: number[] = [];
+    expect(
+      probeExactProcessIdentity(42, {
+        platform: 'darwin',
+        kill: eperm,
+        lookup: (pid: number) => {
+          lookups.push(pid);
+          return 'foreign-birth';
+        },
+      }),
+    ).toEqual({
+      state: 'exact',
+      identity: { pid: 42, start: 'foreign-birth' },
     });
+    expect(lookups).toEqual([42]);
+    await expect(
+      probeExactProcessIdentityAsync(42, {
+        platform: 'darwin',
+        kill: eperm,
+        lookup: async () => 'foreign-birth',
+      }),
+    ).resolves.toEqual({
+      state: 'exact',
+      identity: { pid: 42, start: 'foreign-birth' },
+    });
+    await expect(
+      probeExactProcessIdentityAsync(42, {
+        platform: 'darwin',
+        kill: eperm,
+        lookup: async () => null,
+      }),
+    ).resolves.toEqual({ state: 'unavailable' });
+  });
+
+  // #3563 fix round 1: on Windows libuv reports EPERM for elevated,
+  // other-user and service processes, and a denied StartTime read cannot be
+  // told apart from a real birth by the caller. Until a real non-elevated
+  // caller proves the lookup there, EPERM stays `unavailable` on win32.
+  test('EPERM on win32 stays unavailable without trusting a birth lookup', async () => {
+    const eperm = () => {
+      const error = new Error('injected EPERM') as NodeJS.ErrnoException;
+      error.code = 'EPERM';
+      throw error;
+    };
+    const lookups: number[] = [];
+    expect(
+      probeExactProcessIdentity(42, {
+        platform: 'win32',
+        kill: eperm,
+        lookup: (pid: number) => {
+          lookups.push(pid);
+          return '2026-01-01T00:00:00.0000000Z';
+        },
+      }),
+    ).toEqual({ state: 'unavailable' });
+    await expect(
+      probeExactProcessIdentityAsync(42, {
+        platform: 'win32',
+        kill: eperm,
+        lookup: async (pid: number) => {
+          lookups.push(pid);
+          return '2026-01-01T00:00:00.0000000Z';
+        },
+      }),
+    ).resolves.toEqual({ state: 'unavailable' });
+    expect(lookups).toEqual([]);
+  });
+
+  // DateTime.MinValue is what a PowerShell probe prints when StartTime throws
+  // and the script carries on. It is no process's birth (FILETIME starts in
+  // 1601), so it must read as an unreadable birth, never as a reused pid.
+  test('a Windows DateTime.MinValue birth is unreadable, not a different birth', () => {
+    const exec = () => '0001-01-01T00:00:00.0000000Z\r\n';
+    expect(
+      lookupProcessBirthFingerprint(42, {
+        platform: 'win32',
+        exec,
+        env: { SystemRoot: 'C:\\Windows' },
+      }),
+    ).toBeNull();
+    expect(
+      probeExactProcessIdentity(42, {
+        platform: 'win32',
+        exec,
+        env: { SystemRoot: 'C:\\Windows' },
+        alive: () => 'alive',
+      }),
+    ).toEqual({ state: 'unavailable' });
+  });
+
+  test('the Windows birth command stops on its first error', () => {
+    let script = '';
+    lookupProcessBirthFingerprint(42, {
+      platform: 'win32',
+      exec: (_file: string, args: readonly string[]) => {
+        script = args[args.length - 1] ?? '';
+        return '2026-01-01T00:00:00.0000000Z';
+      },
+      env: { SystemRoot: 'C:\\Windows' },
+    });
+    expect(script.startsWith("$ErrorActionPreference = 'Stop'; ")).toBe(true);
   });
 
   test('a probe FAILURE is not proof of reuse — fail-open', () => {
