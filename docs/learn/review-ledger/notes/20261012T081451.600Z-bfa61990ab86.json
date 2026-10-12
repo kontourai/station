@@ -1,0 +1,23 @@
+{
+  "revision": "b8c6b2922ebe1f2c9cdb90269a4afc798c304502",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Added the operate requirement (authority observation grant: operator, or a device with orchestration:operate) for offering another Station, and the dock's Task started on <Station> toast with Open task after a remote start. Checked against useExecutionStations, NewChatModal onDelegated, ChatDock onNewTaskStarted and useTaskStartedNotice, with tests reaching each.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/NewChatModalSelectDispatch.test.tsx","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/hooks/useExecutionStationCatalog.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Added that remote Stations need permission to start tasks and that a started task shows Task started on <Station> with Open task. Matches useExecutionStations and useTaskStartedNotice; the project and Project page composer claims are unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockModalStack.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"No prose change. NewChatModal now passes the task and Station to onTaskStarted; nothing here describes that callback or the start composer's Station control.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"No prose change. ChatDock gains a toast hook after a remote start; the placement claims (regions, surfaces, Activity reveal through useShowSurface) still hold and the toast uses that same reveal.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"No prose change. The ChatDock edit adds a remote-start toast and changes no layout, breakpoint or mobile behavior this guide describes.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"No prose change. The ChatDock edit calls no new endpoint; POST /api/orchestration/delegations still needs orchestration:operate, which the UI now reads from the authority observation before offering remote Stations.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"No prose change. The ChatDock edit adds a toast and reads no configuration key.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Dated capture of the earlier start redesign, bytes unchanged. The NewChatModal edit only forwards the task and Station after a remote start; the capture stays revision-bound evidence.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Dated capture of the earlier start redesign, bytes unchanged. The NewChatModal edit only forwards the task and Station after a remote start; the capture stays revision-bound evidence.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}
