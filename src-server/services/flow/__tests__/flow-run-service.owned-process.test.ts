@@ -91,6 +91,29 @@ async function waitFor(check: () => boolean, ms = 5_000): Promise<boolean> {
   return check();
 }
 
+/**
+ * Only a positive pid other than 1 and this process names one process.
+ * `process.kill(0, …)` signals this runner's whole process group, and an
+ * empty pid file parses as `Number('') === 0`: an attached CI shell would
+ * be killed and the failure hidden.
+ */
+function isSignalablePid(pid: number): boolean {
+  return Number.isInteger(pid) && pid > 1 && pid !== process.pid;
+}
+
+/** Wait for a stub's pid file to hold one complete, signalable pid. */
+async function readPidFile(file: string): Promise<number> {
+  let pid = Number.NaN;
+  await waitFor(() => {
+    if (!existsSync(file)) return false;
+    const text = readFileSync(file, 'utf8');
+    pid = /^\d+\n$/.test(text) ? Number(text.trim()) : Number.NaN;
+    return isSignalablePid(pid);
+  });
+  expect(isSignalablePid(pid), `pid file ${file}`).toBe(true);
+  return pid;
+}
+
 function processGroupOf(pid: number): number {
   return Number(
     execFileSync('ps', ['-o', 'pgid=', '-p', String(pid)], {
@@ -117,6 +140,7 @@ describe.skipIf(process.platform === 'win32')(
     afterEach(async () => {
       // Kill by exact pid: the stub shell, its grandchild, any helper.
       for (const pid of pids.splice(0)) {
+        if (!isSignalablePid(pid)) continue;
         try {
           process.kill(pid, 'SIGKILL');
         } catch {
@@ -127,7 +151,7 @@ describe.skipIf(process.platform === 'win32')(
       // command would otherwise make cleanup SIGKILL this test process.
       const ownGroup = processGroupOf(process.pid);
       for (const pgid of groups.splice(0)) {
-        if (pgid === ownGroup) continue;
+        if (!isSignalablePid(pgid) || pgid === ownGroup) continue;
         try {
           process.kill(-pgid, 'SIGKILL');
         } catch {
@@ -177,10 +201,13 @@ describe.skipIf(process.platform === 'win32')(
         stub,
         [
           '#!/bin/sh',
-          `echo $$ > '${stubDir}/shell.pid'`,
-          'sleep 600 >/dev/null 2>&1 &',
-          `echo $! > '${stubDir}/grandchild.pid'`,
-          `while [ ! -e '${stubDir}/release' ]; do sleep 0.05; done`,
+          // Pid files are renamed into place, never read half-written.
+          `echo $$ > '${stubDir}/shell.tmp' && mv '${stubDir}/shell.tmp' '${stubDir}/shell.pid'`,
+          // Bounded, so a cleanup that never ran leaks nothing for long.
+          'sleep 120 >/dev/null 2>&1 &',
+          `echo $! > '${stubDir}/grandchild.tmp' && mv '${stubDir}/grandchild.tmp' '${stubDir}/grandchild.pid'`,
+          'i=0',
+          `while [ ! -e '${stubDir}/release' ] && [ $i -lt 1200 ]; do sleep 0.05; i=$((i + 1)); done`,
           'exit 0',
         ].join('\n'),
       );
@@ -194,13 +221,10 @@ describe.skipIf(process.platform === 'win32')(
         claimType: 'quality.tests',
         timeoutMs: 30_000,
       });
-      const grandchildFile = join(stubDir, 'grandchild.pid');
-      expect(await waitFor(() => existsSync(grandchildFile))).toBe(true);
-      const shellPid = Number(
-        readFileSync(join(stubDir, 'shell.pid'), 'utf8').trim(),
-      );
-      const grandchildPid = Number(readFileSync(grandchildFile, 'utf8').trim());
-      pids.push(grandchildPid, shellPid);
+      const shellPid = await readPidFile(join(stubDir, 'shell.pid'));
+      pids.push(shellPid);
+      const grandchildPid = await readPidFile(join(stubDir, 'grandchild.pid'));
+      pids.push(grandchildPid);
       const pgid = processGroupOf(grandchildPid);
       // Assert BEFORE the group is handed to cleanup.
       expect(pgid).not.toBe(processGroupOf(process.pid));

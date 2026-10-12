@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
@@ -64,8 +64,29 @@ function groupAlive(pgid: number): boolean {
   }
 }
 
-/** Group-SIGKILL a whole process group, best-effort, for test cleanup. */
+let runnerGroup: number | undefined;
+
+/** This runner's own process group id, read once. */
+function ownProcessGroup(): number {
+  runnerGroup ??= Number(
+    execFileSync('ps', ['-o', 'pgid=', '-p', String(process.pid)], {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 5_000,
+    }).trim(),
+  );
+  return runnerGroup;
+}
+
+/**
+ * Group-SIGKILL a whole process group, best-effort, for test cleanup. Never
+ * 0, 1, this process or this runner's own group: `kill(-0)` signals the
+ * caller's group, so a pid misread as 0 (an empty pid file) would kill an
+ * attached CI shell and hide the failure.
+ */
 function reapGroup(pid: number): void {
+  if (!Number.isInteger(pid) || pid <= 1 || pid === process.pid) return;
+  if (process.platform !== 'win32' && pid === ownProcessGroup()) return;
   try {
     process.kill(-pid, 'SIGKILL');
   } catch {
@@ -91,7 +112,7 @@ function spawnOwnerFixture(gcFile: string): {
   const enginePid = new Promise<number>((resolve, reject) => {
     owner.stdout!.on('data', (chunk: Buffer) => {
       buffer += chunk.toString();
-      const match = buffer.match(/ENGINE_PID=(\d+)/);
+      const match = buffer.match(/ENGINE_PID=(\d+)\n/);
       if (match && !resolved) {
         resolved = true;
         resolve(Number(match[1]));

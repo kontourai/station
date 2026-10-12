@@ -154,15 +154,28 @@ describe.skipIf(process.platform === 'win32')(
  */
 const OWNED_STUB_SCRIPT = `
 const { spawn } = require('node:child_process');
-const { existsSync, writeFileSync } = require('node:fs');
+const { existsSync, renameSync, writeFileSync } = require('node:fs');
 const { join } = require('node:path');
 const dir = process.argv[2];
-const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 86400000)'], { stdio: 'ignore' });
-writeFileSync(join(dir, 'pids.json'), JSON.stringify({ leaderPid: process.pid, grandchildPid: grandchild.pid }));
+// Bounded, so a cleanup that never ran leaks nothing for long.
+const grandchild = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 120000)'], { stdio: 'ignore' });
+// Renamed into place, so the test never reads a half-written file.
+writeFileSync(join(dir, 'pids.tmp'), JSON.stringify({ leaderPid: process.pid, grandchildPid: grandchild.pid }));
+renameSync(join(dir, 'pids.tmp'), join(dir, 'pids.json'));
+const deadline = Date.now() + 60000;
 const poll = setInterval(() => {
-  if (existsSync(join(dir, 'release'))) { clearInterval(poll); process.exit(0); }
+  if (existsSync(join(dir, 'release')) || Date.now() > deadline) { clearInterval(poll); process.exit(0); }
 }, 20);
 `;
+
+/**
+ * Only a positive pid other than 1 and this process names one process.
+ * `process.kill(0, …)` signals this runner's whole process group, so a pid
+ * misread as 0 would kill an attached CI shell and hide the failure.
+ */
+function isSignalablePid(pid: number): boolean {
+  return Number.isInteger(pid) && pid > 1 && pid !== process.pid;
+}
 
 describe.skipIf(process.platform === 'win32')(
   'createDefaultFlowAgentsCliRunner (owned-process registration, #561)',
@@ -178,6 +191,7 @@ describe.skipIf(process.platform === 'win32')(
 
     afterEach(async () => {
       for (const pid of pids.splice(0)) {
+        if (!isSignalablePid(pid)) continue;
         try {
           process.kill(pid, 'SIGKILL');
         } catch {
@@ -238,8 +252,9 @@ describe.skipIf(process.platform === 'win32')(
         [
           "const { existsSync } = require('node:fs');",
           "const release = require('node:path').join(process.argv[2], 'release');",
+          'const deadline = Date.now() + 60000;',
           'const poll = setInterval(() => {',
-          '  if (existsSync(release)) { clearInterval(poll); process.exit(0); }',
+          '  if (existsSync(release) || Date.now() > deadline) { clearInterval(poll); process.exit(0); }',
           '}, 20);',
         ].join('\n'),
       );
@@ -286,6 +301,8 @@ describe.skipIf(process.platform === 'win32')(
         readFileSync(pidFile, 'utf8'),
       ) as { leaderPid: number; grandchildPid: number };
       pids.push(grandchildPid, leaderPid);
+      expect(isSignalablePid(leaderPid)).toBe(true);
+      expect(isSignalablePid(grandchildPid)).toBe(true);
 
       // While the CLI runs, its record names it.
       const recordFile = join(registryDir, `engine-${leaderPid}.json`);
