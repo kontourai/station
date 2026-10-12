@@ -22392,7 +22392,7 @@ describe('OrchestrationService', () => {
     test('a boundary INSERT that SQLite answers by rolling back the whole transaction stores nothing of the turn.started (review F1)', async () => {
       const threadId = 'store-before-show-lost-transaction';
       const turnId = 'turn-lost-transaction';
-      const { events, isolated, emitted } = await startService(threadId);
+      const { events, isolated, emitted, warn } = await startService(threadId);
       // A distinct time, so the session row can be checked for this event
       // alone: the interruption warning that follows touches it too.
       const startedAt = new Date(Date.now() + 60_000).toISOString();
@@ -22431,6 +22431,12 @@ describe('OrchestrationService', () => {
         ).toBe(true),
       );
       expect(failed).toBe(true);
+      // The observation-loss warning names the SQLite error behind the lost
+      // transaction, not only the wrapper (delta review).
+      expect(warn).toHaveBeenCalledWith(
+        'Provider adapter event stream stopped',
+        expect.objectContaining({ cause: 'database or disk is full' }),
+      );
       // Stored and shown, or neither: here neither.
       expect(
         stored(threadId).some((event) => event.method === 'turn.started'),
