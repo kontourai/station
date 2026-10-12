@@ -195,7 +195,11 @@ function deriveOwnTurn(
   if (starts.length > OWN_TURN_START_SCAN_LIMIT) return undefined;
   const otherRowTurnIds = new Set(
     interrupted
-      .filter((other) => other.boundaryId !== record.boundaryId)
+      .filter(
+        (other) =>
+          other.threadId === record.threadId &&
+          other.boundaryId !== record.boundaryId,
+      )
       .map((other) => other.providerTurnId)
       .filter((turnId): turnId is string => turnId !== undefined),
   );
@@ -220,37 +224,51 @@ function deriveOwnTurn(
 }
 
 /**
- * #3562: whether a derived own turn already reached a terminal of its own
- * after its first start. Read per turn, not as the thread's latest terminal:
- * a later terminal of a different turn must not hide this one's. Not a
- * finish: this module's own recovery abort from an earlier, unfinished pass
- * (`recoveryTerminal`), or a codex deferred-retriable `runtime.error`, after
- * which the same turn may resume. Past the page bound the answer is "not
- * finished", which recovers (banner and abort) rather than resolve silently.
+ * #3562: how a derived own turn already ended, read from that turn's own
+ * terminals after its first start (never the thread's latest terminal: a
+ * later terminal of a different turn must not hide this one's).
+ *
+ * `completed`: a real `turn.completed` that was not a cancellation — the
+ * dispatch's turn ran to its end, so nothing was interrupted. `ended`: any
+ * other terminal (an abort, a cancelled completion, a non-retriable error).
+ * Those prove the turn is closed but not that THIS dispatch's work happened:
+ * Claude's Stop-while-queued publishes an accepted row's held start and its
+ * abort after a later claim and retires that row, and the turn is then
+ * indistinguishable from the later dispatch's own. So `ended` still banners,
+ * without an abort (the turn is already closed). This module's own
+ * `recoveryTerminal` abort from an unfinished earlier pass reads as `ended`
+ * too, which finishes that pass with its banner. Not a terminal: a codex
+ * deferred-retriable `runtime.error`, after which the same turn may resume.
+ * Past the page bound the answer is `undefined` (still open), which recovers
+ * rather than resolve silently.
  */
-function ownTurnFinished(
+function ownTurnEnding(
   eventStore: EventStore,
   threadId: string,
   own: { turnId: string; start: PersistedRuntimeEvent },
-): boolean {
-  return eventStore
-    .listEventsByMethodsAfterSequence(
-      threadId,
-      ['turn.completed', 'turn.aborted', 'runtime.error'],
-      own.start.sequence,
-      1_000,
-    )
-    .some((event) => {
-      if (event.turnId !== own.turnId) return false;
-      const terminal = event.payload;
-      if (terminal.method === 'turn.aborted') {
-        return terminal.recoveryTerminal !== true;
-      }
-      if (terminal.method === 'runtime.error') {
-        return !isDeferredRetriableTurnError(terminal);
-      }
-      return terminal.method === 'turn.completed';
-    });
+): 'completed' | 'ended' | undefined {
+  let ending: 'completed' | 'ended' | undefined;
+  for (const event of eventStore.listEventsByMethodsAfterSequence(
+    threadId,
+    ['turn.completed', 'turn.aborted', 'runtime.error'],
+    own.start.sequence,
+    1_000,
+  )) {
+    if (event.turnId !== own.turnId) continue;
+    const terminal = event.payload;
+    if (terminal.method === 'turn.completed') {
+      if (terminal.finishReason !== 'cancelled') return 'completed';
+      ending = 'ended';
+    } else if (terminal.method === 'turn.aborted') {
+      ending = 'ended';
+    } else if (
+      terminal.method === 'runtime.error' &&
+      !isDeferredRetriableTurnError(terminal)
+    ) {
+      ending = 'ended';
+    }
+  }
+  return ending;
 }
 
 /**
@@ -463,16 +481,18 @@ export class InterruptedTurnRecovery {
           return false;
         };
         if (movedOn()) continue;
-        if (
-          derivedOwn !== undefined &&
-          ownTurnFinished(eventStore, record.threadId, derivedOwn)
-        ) {
+        const ownEnding =
+          derivedOwn === undefined
+            ? undefined
+            : ownTurnEnding(eventStore, record.threadId, derivedOwn);
+        if (ownEnding === 'completed') {
           // #3562: `sendTurn` can find its turn already terminal when the
           // adapter resolves (`markTurnAccepted` → `terminalObserved`); a
           // death before that leaves this row `invoking` over a turn that
           // finished. Boot retires such rows only once `accepted` (it is
           // never told the turn id otherwise), so check here: nothing was
-          // interrupted, so resolve silently.
+          // interrupted, so resolve silently. Only a real completion earns
+          // that; any other ending banners below (see `ownTurnEnding`).
           this.deps.logger.warn(
             'Interrupted-turn boundary names a turn that already finished — resolving without recovery events',
             { threadId: record.threadId, boundaryId: record.boundaryId },
@@ -553,7 +573,9 @@ export class InterruptedTurnRecovery {
         // meanwhile, this boundary is stale now even though it was not when
         // first asked; publish nothing, exactly as the first check would.
         if (movedOn()) continue;
-        const providerTurnId = ownTurnId;
+        // #3562: a derived turn that already ended is closed; recovery
+        // banners it but neither settles its requests nor aborts it again.
+        const providerTurnId = ownEnding === 'ended' ? undefined : ownTurnId;
         if (providerTurnId !== undefined) {
           // #3071: settle what the dead turn was waiting on, BEFORE the
           // abort. Every live abort path has an adapter holding the pending
