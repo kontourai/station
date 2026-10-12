@@ -676,7 +676,9 @@ CI artifacts, logs, or local files alone do not establish a visual claim.
 
 The Windows portable floor is deliberately not named or treated as
 `test:full`. It combines the physically proven pre-push tier with the portable
-OpenSSH argv, cleanup, and broken-pipe contracts. Full Windows Vitest parity
+OpenSSH argv, cleanup, and broken-pipe contracts, and with the Windows process
+identity probe run against real processes (the one test of that PowerShell
+probe that does not fake it; skipped off Windows). Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or
 `continue-on-error` to relabel that gap green.
 
