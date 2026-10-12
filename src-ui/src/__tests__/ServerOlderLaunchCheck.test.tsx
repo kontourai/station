@@ -131,7 +131,7 @@ describe('ServerOlderLaunchCheck', () => {
     const view = renderWithChrome(NEWER_CLIENT);
     expect(
       screen.getByText(
-        'The Station server (Nightly Sep 29 (build 3)) is older than this app (Nightly Oct 1).',
+        'This Station server runs Nightly Sep 29, build 3, which is older than this app (Nightly Oct 1).',
       ),
     ).toBeTruthy();
 
@@ -283,7 +283,7 @@ describe('ServerOlderLaunchCheck', () => {
     });
     renderWithChrome(NEWER_CLIENT);
     expect(
-      screen.getByText(/is older than this app \(Nightly Oct 1\)/),
+      screen.getByText(/which is older than this app \(Nightly Oct 1\)/),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Update server/ })).toBeNull();
     const details = screen.getByRole('link', {

@@ -52,7 +52,7 @@ describe('deriveServerOlderOffer: when the server is older', () => {
       server: '0.1.11-nightly.246303',
       // Day 2463 is 2026-09-29, day 2465 is 2026-10-01.
       clientLabel: 'Nightly Oct 1',
-      serverLabel: 'Nightly Sep 29 (build 3)',
+      serverLabel: 'Nightly Sep 29, build 3',
       serverKey: 'inst',
       target: '0.1.11-nightly.246500',
       targetLabel: 'Nightly Oct 1',
@@ -372,7 +372,7 @@ describe('serverOlderBannerContent: the offer', () => {
     expect(content).toMatchObject({
       tone: 'info',
       message:
-        'The Station server (Nightly Sep 29 (build 3)) is older than this app (Nightly Oct 1).',
+        'This Station server runs Nightly Sep 29, build 3, which is older than this app (Nightly Oct 1).',
       actions: [{ kind: 'apply', label: 'Update server to Nightly Oct 1' }],
     });
     expect(content?.detail).toMatch(
@@ -401,25 +401,25 @@ describe('readableVersions', () => {
     [
       '0.1.11-nightly.246500',
       '0.1.11-nightly.246303',
-      ['Nightly Oct 1', 'Nightly Sep 29 (build 3)'],
+      ['Nightly Oct 1', 'Nightly Sep 29, build 3'],
     ],
     // The release is named only when the two differ in it.
     [
       '0.1.12-nightly.246500',
       '0.1.11-nightly.246303',
-      ['0.1.12 Nightly Oct 1', '0.1.11 Nightly Sep 29 (build 3)'],
+      ['0.1.12 Nightly Oct 1', '0.1.11 Nightly Sep 29, build 3'],
     ],
     // The year only when the two dates differ in it.
     [
       '0.1.11-nightly.256500',
       '0.1.11-nightly.246303',
-      ['Nightly Jan 9, 2027', 'Nightly Sep 29, 2026 (build 3)'],
+      ['Nightly Jan 9, 2027', 'Nightly Sep 29, 2026, build 3'],
     ],
     // The dated shape #2962 introduces reads the same way.
     [
       '0.1.11-nightly.20261011.2',
       '0.1.11-nightly.246303',
-      ['Nightly Oct 11 (build 2)', 'Nightly Sep 29 (build 3)'],
+      ['Nightly Oct 11, build 2', 'Nightly Sep 29, build 3'],
     ],
     // Releases and previews keep their version.
     ['0.2.0', '0.1.11-preview.3', ['0.2.0', '0.1.11-preview.3']],

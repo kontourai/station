@@ -185,7 +185,7 @@ const MONTHS = [
 
 /**
  * Two host-order versions in one readable form, so they read side by side: a
- * Nightly as its build date ("Nightly Oct 9 (build 3)"), anything else as its
+ * Nightly as its build date ("Nightly Oct 9, build 3"), anything else as its
  * version. The release (X.Y.Z) is named only when the two differ in it, and
  * the year only when the two dates differ in it.
  */
@@ -208,7 +208,7 @@ export function readableVersions(
       showYear ? `, ${date.getUTCFullYear()}` : ''
     }`;
     const core = showCore ? `${releaseCore(version)} ` : '';
-    return `${core}Nightly ${day}${build > 0 ? ` (build ${build})` : ''}`;
+    return `${core}Nightly ${day}${build > 0 ? `, build ${build}` : ''}`;
   };
   return [label(left, a), label(right, b)];
 }
@@ -419,7 +419,7 @@ export function serverOlderBannerContent(
       break;
   }
   if (offer.kind === 'none') return null;
-  const message = `The Station server (${offer.serverLabel}) is older than this app (${offer.clientLabel}).`;
+  const message = `This Station server runs ${offer.serverLabel}, which is older than this app (${offer.clientLabel}).`;
   const versions = `Server ${offer.server}, app ${offer.client}.`;
   // Names the server too: dismissing it for one server must not hide it for
   // another that runs the same version.

@@ -182,7 +182,7 @@ async function expectNoHorizontalScroll(page: Page) {
 }
 
 const OLDER =
-  'This Station server runs 0.1.11-nightly.246303, older than this app (0.1.11-nightly.2465).';
+  'This Station server runs Nightly Sep 29, build 3, which is older than this app (Nightly Oct 1).';
 
 for (const theme of ['light', 'dark'] as const) {
   for (const viewport of ['desktop', 'phone'] as const) {
@@ -192,7 +192,7 @@ for (const theme of ['light', 'dark'] as const) {
       await mount(page, theme, viewport, 'update');
       await expect(page.getByText(OLDER)).toBeVisible();
       const update = page.getByRole('button', {
-        name: 'Update server to 0.1.11-nightly.246500',
+        name: 'Update server to Nightly Oct 1',
       });
       await expect(update).toBeVisible();
       await expectNoHorizontalScroll(page);
@@ -216,20 +216,22 @@ for (const theme of ['light', 'dark'] as const) {
     });
   }
 
-  test(`explains how to update a server that cannot do it from here (${theme}, phone)`, async ({
-    page,
-  }, testInfo) => {
-    await mount(page, theme, 'phone', 'manual');
-    await expect(page.getByText(OLDER)).toBeVisible();
-    await expect(
-      page.getByRole('button', { name: /Update server/ }),
-    ).toHaveCount(0);
-    await expect(
-      page.getByRole('link', { name: 'Server update details' }),
-    ).toBeVisible();
-    await expectNoHorizontalScroll(page);
-    await page.screenshot({
-      path: testInfo.outputPath(`manual-${theme}-phone.png`),
+  for (const viewport of ['desktop', 'phone'] as const) {
+    test(`explains how to update a server that cannot do it from here (${theme}, ${viewport})`, async ({
+      page,
+    }, testInfo) => {
+      await mount(page, theme, viewport, 'manual');
+      await expect(page.getByText(OLDER)).toBeVisible();
+      await expect(
+        page.getByRole('button', { name: /Update server/ }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole('link', { name: 'Server update details' }),
+      ).toBeVisible();
+      await expectNoHorizontalScroll(page);
+      await page.screenshot({
+        path: testInfo.outputPath(`manual-${theme}-${viewport}.png`),
+      });
     });
-  });
+  }
 }
