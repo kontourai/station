@@ -367,6 +367,85 @@ describe('EventStore Session work-item associations', () => {
     }
   });
 
+  // #3561: the admission commit runs after RELEASE, so the event is already
+  // durable. A settlement failure there must not report the append as
+  // failed, and must not answer with a ROLLBACK TO a released savepoint.
+  function failNextSettlement(store: EventStore) {
+    const registry = (store as any).sessionWorkItemAdmissions as {
+      commit: (claim: unknown) => void;
+    };
+    return vi.spyOn(registry, 'commit').mockImplementationOnce(() => {
+      throw new Error('injected post-release settlement failure');
+    });
+  }
+
+  function observations(store: EventStore) {
+    return store.listSessionWorkItemObservations({
+      sessionId: 'session-a',
+      conversationId: 'session-a',
+    });
+  }
+
+  test('a settlement failure after RELEASE still reports a new event as appended and keeps it readable', () => {
+    const { store } = open();
+    try {
+      expect(
+        store.stageSessionWorkItemCandidate({
+          candidate: candidate(),
+          current: () => true,
+        }),
+      ).toEqual({ kind: 'staged' });
+      const commit = failNextSettlement(store);
+      expect(store.appendEvent(completion())).toBe(1);
+      expect(commit).toHaveBeenCalledOnce();
+      expect(
+        store.listEvents('session-a').map((event) => event.payload.eventId),
+      ).toEqual(['event-a']);
+      expect(observations(store)).toEqual([
+        expect.objectContaining({
+          associationId: 'association-a',
+          eventId: 'event-a',
+        }),
+      ]);
+      // No savepoint was left open: the next append commits on its own.
+      expect(store.appendEvent(completion('event-b'))).toBe(2);
+    } finally {
+      vi.restoreAllMocks();
+      store.close();
+    }
+  });
+
+  test('a settlement failure after RELEASE still reports an exact replay as appended', () => {
+    const { store, path } = open();
+    try {
+      store.stageSessionWorkItemCandidate({
+        candidate: candidate(),
+        current: () => true,
+      });
+      expect(store.appendEvent(completion())).toBe(1);
+    } finally {
+      store.close();
+    }
+    const reopened = new EventStore(path);
+    try {
+      expect(
+        reopened.stageSessionWorkItemCandidate({
+          candidate: candidate(),
+          current: () => true,
+        }),
+      ).toEqual({ kind: 'staged' });
+      const commit = failNextSettlement(reopened);
+      expect(reopened.appendEvent(completion())).toBe(1);
+      expect(commit).toHaveBeenCalledOnce();
+      expect(reopened.listEvents('session-a')).toHaveLength(1);
+      expect(observations(reopened)).toHaveLength(1);
+      expect(reopened.appendEvent(completion('event-b'))).toBe(2);
+    } finally {
+      vi.restoreAllMocks();
+      reopened.close();
+    }
+  });
+
   test('commits failed terminal closure only after append and restores it after rollback', () => {
     let fail = true;
     const { store } = open({

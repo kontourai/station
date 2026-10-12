@@ -32,6 +32,7 @@ import {
 import {
   type CanonicalRuntimeEvent,
   PROVIDER_TURN_TRIGGER,
+  SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import {
@@ -20862,7 +20863,7 @@ describe('OrchestrationService', () => {
       const appendEvent = eventStore.appendEvent.bind(eventStore);
       const appendSpy = vi
         .spyOn(eventStore, 'appendEvent')
-        .mockImplementation((event) => {
+        .mockImplementation((event, ...rest) => {
           if (
             event.method === 'runtime.warning' &&
             event.threadId === 'surfacing-blocked-thread'
@@ -20871,7 +20872,7 @@ describe('OrchestrationService', () => {
               errcode: 5,
             });
           }
-          return appendEvent(event);
+          return appendEvent(event, ...rest);
         });
       expect(
         events.push({
@@ -20988,12 +20989,12 @@ describe('OrchestrationService', () => {
       const terminalAttempts: string[] = [];
       const appendSpy = vi
         .spyOn(eventStore, 'appendEvent')
-        .mockImplementation((event, declaredOutputs) => {
+        .mockImplementation((event, ...rest) => {
           if (event.method === 'turn.completed') {
             terminalAttempts.push(event.eventId);
             if (terminalAttempts.length === 1) throw busy();
           }
-          return appendEvent(event, declaredOutputs);
+          return appendEvent(event, ...rest);
         });
       // Admission (client-origin attribution, which consumes a send's
       // accepted attribution, and the raw progress observation) is once per
@@ -21092,13 +21093,13 @@ describe('OrchestrationService', () => {
       let failedFlushes = 0;
       const appendSpy = vi
         .spyOn(eventStore, 'appendEvent')
-        .mockImplementation((event, declaredOutputs) => {
+        .mockImplementation((event, ...rest) => {
           // The merged delta keeps the identity of the first delta it holds.
           if (event.eventId === 'flush-delta-1' && failedFlushes === 0) {
             failedFlushes += 1;
             throw busy();
           }
-          return appendEvent(event, declaredOutputs);
+          return appendEvent(event, ...rest);
         });
       // The first delta paints at once; the next two buffer and are flushed
       // by the terminal, synchronously and well inside the 60ms window.
@@ -21175,10 +21176,10 @@ describe('OrchestrationService', () => {
       const attempts = new Map<string, number>();
       const appendSpy = vi
         .spyOn(eventStore, 'appendEvent')
-        .mockImplementation((event, declaredOutputs) => {
+        .mockImplementation((event, ...rest) => {
           const attempt = (attempts.get(event.eventId) ?? 0) + 1;
           attempts.set(event.eventId, attempt);
-          const sequence = appendEvent(event, declaredOutputs);
+          const sequence = appendEvent(event, ...rest);
           // A contention error that surfaces only AFTER the row committed,
           // as a throw from a later step of the publish body would.
           if (
@@ -21251,8 +21252,8 @@ describe('OrchestrationService', () => {
       let thrown = false;
       const appendSpy = vi
         .spyOn(eventStore, 'appendEvent')
-        .mockImplementation((event, declaredOutputs) => {
-          const sequence = appendEvent(event, declaredOutputs);
+        .mockImplementation((event, ...rest) => {
+          const sequence = appendEvent(event, ...rest);
           // Contention surfacing only after the size-cap flush committed.
           if (event.eventId === 'cap-committed-a' && !thrown) {
             thrown = true;
@@ -21322,7 +21323,7 @@ describe('OrchestrationService', () => {
       let heldAttempts = 0;
       const appendSpy = vi
         .spyOn(eventStore, 'appendEvent')
-        .mockImplementation((event, declaredOutputs) => {
+        .mockImplementation((event, ...rest) => {
           // The buffered text fails on all three flushes ahead of the
           // terminal and on the one ahead of the interruption warning; the
           // store then recovers. Counting attempts, not time, keeps the
@@ -21331,7 +21332,7 @@ describe('OrchestrationService', () => {
             heldAttempts += 1;
             if (heldAttempts <= 4) throw busy();
           }
-          return appendEvent(event, declaredOutputs);
+          return appendEvent(event, ...rest);
         });
       events.push(delta('retained-delta-0', 'Hello'));
       events.push(delta('retained-delta-1', ', world'));
@@ -21389,7 +21390,7 @@ describe('OrchestrationService', () => {
       let heldAttempts = 0;
       const appendSpy = vi
         .spyOn(eventStore, 'appendEvent')
-        .mockImplementation((event, declaredOutputs) => {
+        .mockImplementation((event, ...rest) => {
           if (event.eventId === 'retained-stopped-1') {
             heldAttempts += 1;
             if (heldAttempts === 1) {
@@ -21399,7 +21400,7 @@ describe('OrchestrationService', () => {
               throw busy();
             }
           }
-          return appendEvent(event, declaredOutputs);
+          return appendEvent(event, ...rest);
         });
       events.push(delta('retained-stopped-0', 'Hello'));
       events.push(delta('retained-stopped-1', ', world'));
@@ -21451,7 +21452,7 @@ describe('OrchestrationService', () => {
       const coalescer = (isolated as any).deltaCoalescer;
       const appendSpy = vi
         .spyOn(eventStore, 'appendEvent')
-        .mockImplementation((event, declaredOutputs) => {
+        .mockImplementation((event, ...rest) => {
           if (event.eventId === 'retained-sleep-1') {
             heldAttempts += 1;
             if (heldAttempts === 1) {
@@ -21478,7 +21479,7 @@ describe('OrchestrationService', () => {
             }
             if (heldAttempts <= 2) throw busy();
           }
-          return appendEvent(event, declaredOutputs);
+          return appendEvent(event, ...rest);
         });
       events.push(delta('retained-sleep-0', 'Hello'));
       events.push(delta('retained-sleep-1', ', world'));
@@ -21558,7 +21559,7 @@ describe('OrchestrationService', () => {
       const first = new AbortController();
       const appendSpy = vi
         .spyOn(eventStore, 'appendEvent')
-        .mockImplementation((event, declaredOutputs) => {
+        .mockImplementation((event, ...rest) => {
           if (event.eventId === 'overlap-1') {
             heldAttempts += 1;
             // The first retry's consumer is stopped (an adapter swap, say)
@@ -21566,7 +21567,7 @@ describe('OrchestrationService', () => {
             if (heldAttempts === 1) first.abort();
             if (locked) throw busy();
           }
-          return appendEvent(event, declaredOutputs);
+          return appendEvent(event, ...rest);
         });
       // Two retries of different events on the same thread, overlapping:
       // both flushes of the retained text fail and both go to sleep.
@@ -21623,13 +21624,13 @@ describe('OrchestrationService', () => {
       let failed = 0;
       const appendSpy = vi
         .spyOn(eventStore, 'appendEvent')
-        .mockImplementation((event, declaredOutputs) => {
+        .mockImplementation((event, ...rest) => {
           // The merged event keeps the first buffered delta's identity.
           if (event.eventId === 'cap-delta-a' && failed === 0) {
             failed += 1;
             throw busy();
           }
-          return appendEvent(event, declaredOutputs);
+          return appendEvent(event, ...rest);
         });
       // The B delta takes the buffer past the 8,000-character cap, so the
       // flush that fails is the size-cap flush inside B's own offer.
@@ -21683,12 +21684,12 @@ describe('OrchestrationService', () => {
         () => {
           appendSpy = vi
             .spyOn(eventStore, 'appendEvent')
-            .mockImplementation((event, declaredOutputs) => {
+            .mockImplementation((event, ...rest) => {
               if (event.eventId === 'turn-retried-start-started') {
                 startAttempts += 1;
                 if (startAttempts === 1) throw busy();
               }
-              return appendEvent(event, declaredOutputs);
+              return appendEvent(event, ...rest);
             });
         },
       );
@@ -21722,12 +21723,12 @@ describe('OrchestrationService', () => {
       let terminalAttempts = 0;
       const appendSpy = vi
         .spyOn(eventStore, 'appendEvent')
-        .mockImplementation((event, declaredOutputs) => {
+        .mockImplementation((event, ...rest) => {
           if (event.method === 'turn.completed') {
             terminalAttempts += 1;
             throw busy();
           }
-          return appendEvent(event, declaredOutputs);
+          return appendEvent(event, ...rest);
         });
       events.push({
         eventId: 'sustained-terminal',
@@ -21764,7 +21765,7 @@ describe('OrchestrationService', () => {
       let terminalAttempts = 0;
       const appendSpy = vi
         .spyOn(eventStore, 'appendEvent')
-        .mockImplementation((event, declaredOutputs) => {
+        .mockImplementation((event, ...rest) => {
           if (event.method === 'turn.completed') {
             terminalAttempts += 1;
             // Stop this adapter's consumer, as a shutdown or adapter swap
@@ -21772,7 +21773,7 @@ describe('OrchestrationService', () => {
             (isolated as any).adapterEventControllers.get(claude)?.abort();
             throw busy();
           }
-          return appendEvent(event, declaredOutputs);
+          return appendEvent(event, ...rest);
         });
       events.push({
         eventId: 'stopped-terminal',
@@ -21803,7 +21804,7 @@ describe('OrchestrationService', () => {
       let terminalAttempts = 0;
       const appendSpy = vi
         .spyOn(eventStore, 'appendEvent')
-        .mockImplementation((event, declaredOutputs) => {
+        .mockImplementation((event, ...rest) => {
           if (event.method === 'turn.completed') {
             terminalAttempts += 1;
             // A constraint failure is a fact about the row, not about a
@@ -21813,7 +21814,7 @@ describe('OrchestrationService', () => {
               { errcode: 2067, code: 'ERR_SQLITE_ERROR' },
             );
           }
-          return appendEvent(event, declaredOutputs);
+          return appendEvent(event, ...rest);
         });
       events.push({
         eventId: 'nonretryable-terminal',
@@ -21850,6 +21851,437 @@ describe('OrchestrationService', () => {
       expect(await isolated.readSession(threadId)).toMatchObject({
         session: { lifecycleState: 'running' },
       });
+      appendSpy.mockRestore();
+      await isolated.shutdown();
+    });
+  });
+
+  // #3561: `publishCanonicalEvent` changed live and durable state before the
+  // event append that justified it, and nothing undid it when the append
+  // failed. Each test fails the append through the real service and on-disk
+  // EventStore, then reads what clients and recovery can see.
+  describe('a runtime event changes nothing observable before its append commits (#3561)', () => {
+    /** The real node:sqlite BUSY shape (errcode 5): retried by #3560. */
+    const busy = () =>
+      Object.assign(new Error('database is locked'), {
+        errcode: 5,
+        code: 'ERR_SQLITE_ERROR',
+      });
+    /** Not contention, so not retried: the event is never stored. */
+    const permanent = () => new Error('injected permanent append failure');
+
+    function boundaryRows(threadId: string): number {
+      return (
+        (eventStore as any).db
+          .prepare(
+            'SELECT COUNT(*) AS n FROM orchestration_turn_boundaries WHERE thread_id = ?',
+          )
+          .get(threadId) as { n: number }
+      ).n;
+    }
+
+    function stored(threadId: string): CanonicalRuntimeEvent[] {
+      return eventStore.listEvents(threadId).map((entry) => entry.payload);
+    }
+
+    async function startService(threadId: string) {
+      const events = new AsyncEventQueue<CanonicalRuntimeEvent>(16);
+      (claude as any).events = events;
+      const warn = vi.fn();
+      const emitted: CanonicalRuntimeEvent[] = [];
+      eventBus.subscribe((frame) => {
+        if (frame.event === SERVER_EVENTS.ORCHESTRATION_EVENT)
+          emitted.push((frame.data as { event: CanonicalRuntimeEvent }).event);
+      });
+      const isolated = new OrchestrationService({
+        adapterRegistry: createRegistry([claude]),
+        eventBus,
+        eventStore,
+        cooperativeStopBudgetMs: 60_000,
+        logger: { debug: vi.fn(), warn },
+      });
+      isolated.initialize();
+      await isolated.dispatch({
+        type: 'startSession',
+        input: { threadId, provider: 'claude', modelId: 'claude-sonnet' },
+      });
+      return { events, isolated, warn, emitted, internals: isolated as any };
+    }
+
+    function providerStart(threadId: string, turnId: string) {
+      return {
+        eventId: `${turnId}-started`,
+        provider: 'claude',
+        threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+        method: 'turn.started',
+        metadata: { trigger: PROVIDER_TURN_TRIGGER },
+      } as CanonicalRuntimeEvent;
+    }
+
+    async function startTurn(threadId: string, turnId: string) {
+      const started = await startService(threadId);
+      started.events.push(providerStart(threadId, turnId));
+      await vi.waitFor(async () =>
+        expect(await started.isolated.readSession(threadId)).toMatchObject({
+          session: { lifecycleState: 'running' },
+        }),
+      );
+      return started;
+    }
+
+    /** Calls a spied observer made with this event. */
+    const callsFor = (
+      spy: { mock: { calls: unknown[][] } },
+      match: (args: unknown[]) => boolean,
+    ) => spy.mock.calls.filter(match).length;
+
+    test('a failed turn.completed append shows and settles nothing until its retry commits, then applies each effect once', async () => {
+      const threadId = 'store-before-show-terminal';
+      const turnId = 'turn-store-before-show';
+      const terminalId = 'store-before-show-completed';
+      const { events, isolated, emitted, internals } = await startTurn(
+        threadId,
+        turnId,
+      );
+      // A pending cooperative stop for the turn: the engine never answers the
+      // interrupt, so only the turn's own completion can settle it.
+      claude.interruptTurn.mockImplementationOnce(() => new Promise(() => {}));
+      let stopResult: unknown;
+      const stop = isolated
+        .dispatch({ type: 'interruptTurn', threadId })
+        .then((result) => {
+          stopResult = result;
+        });
+      await vi.waitFor(() => expect(claude.interruptTurn).toHaveBeenCalled());
+
+      const progress = vi.spyOn(internals.turnProgress, 'observe');
+      const childWork = vi.spyOn(internals.childWork, 'observe');
+      const retire = vi.spyOn(internals.clientOriginTurns, 'retire');
+      const isTerminal = ([event]: unknown[]) =>
+        (event as CanonicalRuntimeEvent).eventId === terminalId;
+      const isTerminalTurn = (args: unknown[]) =>
+        args[0] === threadId && args[1] === turnId;
+      const readModelBefore = structuredClone(
+        internals.sessionReadModel.get(threadId),
+      );
+      const rowBefore = eventStore.readSessionByThread(threadId);
+      expect(boundaryRows(threadId)).toBe(1);
+
+      const snapshot = () => ({
+        emitted: emitted.filter((event) => event.eventId === terminalId).length,
+        readModel: structuredClone(internals.sessionReadModel.get(threadId)),
+        row: eventStore.readSessionByThread(threadId),
+        stopResult,
+        progress: callsFor(progress, isTerminal),
+        childWork: callsFor(childWork, isTerminal),
+        retire: callsFor(retire, isTerminalTurn),
+        boundaries: boundaryRows(threadId),
+      });
+      let duringFailure: ReturnType<typeof snapshot> | undefined;
+      const appendEvent = eventStore.appendEvent.bind(eventStore);
+      let attempts = 0;
+      const appendSpy = vi
+        .spyOn(eventStore, 'appendEvent')
+        .mockImplementation((event, ...rest) => {
+          if (event.eventId === terminalId && ++attempts === 1) {
+            // Read while the retry sleeps: after every synchronous and
+            // microtask effect of the failed attempt has run.
+            setTimeout(() => {
+              duringFailure = snapshot();
+            }, 0);
+            throw busy();
+          }
+          return appendEvent(event, ...rest);
+        });
+      const completedAt = new Date(Date.now() + 60_000).toISOString();
+      events.push({
+        eventId: terminalId,
+        provider: 'claude',
+        threadId,
+        turnId,
+        createdAt: completedAt,
+        method: 'turn.completed',
+        finishReason: 'stop',
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(
+          stored(threadId).some((event) => event.eventId === terminalId),
+        ).toBe(true),
+      );
+      await stop;
+
+      expect(attempts).toBe(2);
+      expect(duringFailure).toEqual({
+        emitted: 0,
+        readModel: readModelBefore,
+        row: rowBefore,
+        stopResult: undefined,
+        progress: 0,
+        childWork: 0,
+        retire: 0,
+        boundaries: 1,
+      });
+      const after = snapshot();
+      expect(after).toMatchObject({
+        emitted: 1,
+        stopResult: { outcome: 'turn-completed', threadId, turnId },
+        progress: 1,
+        childWork: 1,
+        retire: 1,
+        boundaries: 0,
+      });
+      expect(after.readModel?.updatedAt).toBe(completedAt);
+      expect(after.row?.updatedAt).toBe(completedAt);
+      expect(
+        stored(threadId).filter((event) => event.eventId === terminalId),
+      ).toHaveLength(1);
+      appendSpy.mockRestore();
+      await isolated.shutdown();
+    });
+
+    test('a failed session.exited append leaves the session open in the read model and its row until the retry commits', async () => {
+      const threadId = 'store-before-show-exit';
+      const exitId = 'store-before-show-exited';
+      const { events, isolated, emitted, internals } =
+        await startService(threadId);
+      const clearThread = vi.spyOn(internals.clientOriginTurns, 'clearThread');
+      const forgetPosture = vi.spyOn(internals.approvalPosture, 'forgetThread');
+      const forgetConfinement = vi.spyOn(
+        internals.acceptedTurnConfinement,
+        'delete',
+      );
+      const forThread = (args: unknown[]) => args[0] === threadId;
+      const statusBefore = internals.sessionReadModel.get(threadId)?.status;
+      expect(statusBefore).not.toBe('closed');
+      const rowStatusBefore = eventStore.readSessionByThread(threadId)?.status;
+      expect(rowStatusBefore).not.toBe('closed');
+
+      const snapshot = () => ({
+        emitted: emitted.filter((event) => event.eventId === exitId).length,
+        readModel: internals.sessionReadModel.get(threadId)?.status,
+        row: eventStore.readSessionByThread(threadId)?.status,
+        clearThread: callsFor(clearThread, forThread),
+        forgetPosture: callsFor(forgetPosture, forThread),
+        forgetConfinement: callsFor(forgetConfinement, forThread),
+      });
+      let duringFailure: ReturnType<typeof snapshot> | undefined;
+      const appendEvent = eventStore.appendEvent.bind(eventStore);
+      let attempts = 0;
+      const appendSpy = vi
+        .spyOn(eventStore, 'appendEvent')
+        .mockImplementation((event, ...rest) => {
+          if (event.eventId === exitId && ++attempts === 1) {
+            setTimeout(() => {
+              duringFailure = snapshot();
+            }, 0);
+            throw busy();
+          }
+          return appendEvent(event, ...rest);
+        });
+      events.push({
+        eventId: exitId,
+        provider: 'claude',
+        threadId,
+        createdAt: new Date().toISOString(),
+        method: 'session.exited',
+        sessionId: threadId,
+        exitCode: 0,
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(stored(threadId).some((event) => event.eventId === exitId)).toBe(
+          true,
+        ),
+      );
+
+      expect(duringFailure).toEqual({
+        emitted: 0,
+        readModel: statusBefore,
+        row: rowStatusBefore,
+        clearThread: 0,
+        forgetPosture: 0,
+        forgetConfinement: 0,
+      });
+      expect(snapshot()).toEqual({
+        emitted: 1,
+        readModel: 'closed',
+        row: 'closed',
+        clearThread: 1,
+        forgetPosture: 1,
+        forgetConfinement: 1,
+      });
+      appendSpy.mockRestore();
+      await isolated.shutdown();
+    });
+
+    test('a session.exited that is never stored leaves the session open and its thread quarantined', async () => {
+      const threadId = 'store-before-show-lost-exit';
+      const exitId = 'store-before-show-lost-exited';
+      const { events, isolated, warn, internals } =
+        await startService(threadId);
+      // A quarantined thread admits only its exit; the exit is what lifts it.
+      internals.quarantinedThreads.add(threadId);
+      const clearThread = vi.spyOn(internals.clientOriginTurns, 'clearThread');
+      const appendEvent = eventStore.appendEvent.bind(eventStore);
+      const appendSpy = vi
+        .spyOn(eventStore, 'appendEvent')
+        .mockImplementation((event, ...rest) => {
+          if (event.eventId === exitId) throw permanent();
+          return appendEvent(event, ...rest);
+        });
+      events.push({
+        eventId: exitId,
+        provider: 'claude',
+        threadId,
+        createdAt: new Date().toISOString(),
+        method: 'session.exited',
+        sessionId: threadId,
+        exitCode: 0,
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(warn).toHaveBeenCalledWith(
+          'Provider adapter event stream stopped',
+          expect.objectContaining({
+            error: 'injected permanent append failure',
+          }),
+        ),
+      );
+
+      expect(stored(threadId).some((event) => event.eventId === exitId)).toBe(
+        false,
+      );
+      expect(internals.sessionReadModel.get(threadId)?.status).not.toBe(
+        'closed',
+      );
+      expect(eventStore.readSessionByThread(threadId)?.status).not.toBe(
+        'closed',
+      );
+      expect(internals.quarantinedThreads.has(threadId)).toBe(true);
+      expect(callsFor(clearThread, (args) => args[0] === threadId)).toBe(0);
+      appendSpy.mockRestore();
+      await isolated.shutdown();
+    });
+
+    test('a provider-started turn.started that is never stored leaves no boundary row for boot to banner', async () => {
+      const threadId = 'store-before-show-lost-start';
+      const turnId = 'turn-lost-start';
+      const { events, isolated } = await startService(threadId);
+      const appendEvent = eventStore.appendEvent.bind(eventStore);
+      const appendSpy = vi
+        .spyOn(eventStore, 'appendEvent')
+        .mockImplementation((event, ...rest) => {
+          if (event.eventId === `${turnId}-started`) throw permanent();
+          return appendEvent(event, ...rest);
+        });
+      events.push(providerStart(threadId, turnId));
+      await vi.waitFor(() =>
+        expect(
+          stored(threadId).some(
+            (event) =>
+              event.method === 'runtime.warning' &&
+              event.code === 'adapter-event-stream-interrupted',
+          ),
+        ).toBe(true),
+      );
+
+      expect(
+        stored(threadId).some((event) => event.method === 'turn.started'),
+      ).toBe(false);
+      expect(boundaryRows(threadId)).toBe(0);
+      appendSpy.mockRestore();
+      await isolated.shutdown();
+    });
+
+    test('a retried event is stamped with the lifecycle state current at its append, not at its first attempt', async () => {
+      const threadId = 'store-before-show-renormalize';
+      const turnId = 'turn-renormalize';
+      const terminalId = 'store-before-show-renormalized';
+      const { events, isolated, internals } = await startTurn(threadId, turnId);
+      const appendEvent = eventStore.appendEvent.bind(eventStore);
+      let attempts = 0;
+      const appendSpy = vi
+        .spyOn(eventStore, 'appendEvent')
+        .mockImplementation((event, ...rest) => {
+          if (event.eventId === terminalId && ++attempts === 1) {
+            // Another publisher moves the session while the retry sleeps.
+            setTimeout(() => {
+              internals.projectAndPublishEvent({
+                eventId: 'store-before-show-review',
+                provider: 'claude',
+                threadId,
+                requestId: 'review-request',
+                requestType: 'approval',
+                method: 'request.opened',
+                createdAt: new Date().toISOString(),
+              } as CanonicalRuntimeEvent);
+            }, 0);
+            throw busy();
+          }
+          return appendEvent(event, ...rest);
+        });
+      events.push({
+        eventId: terminalId,
+        provider: 'claude',
+        threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+        method: 'turn.completed',
+        finishReason: 'stop',
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(
+          stored(threadId).some((event) => event.eventId === terminalId),
+        ).toBe(true),
+      );
+
+      const ordered = stored(threadId).map((event) => event.eventId);
+      expect(ordered.indexOf('store-before-show-review')).toBeLessThan(
+        ordered.indexOf(terminalId),
+      );
+      expect(
+        stored(threadId).find((event) => event.eventId === terminalId),
+      ).toMatchObject({ previousState: 'review_pending' });
+      appendSpy.mockRestore();
+      await isolated.shutdown();
+    });
+
+    test('a provider-started turn.started whose boundary row is retired during its retry still lands with its own row', async () => {
+      const threadId = 'store-before-show-retired-boundary';
+      const turnId = 'turn-retired-boundary';
+      const { events, isolated } = await startService(threadId);
+      const appendEvent = eventStore.appendEvent.bind(eventStore);
+      let attempts = 0;
+      let rowsDuringSleep: number | undefined;
+      const appendSpy = vi
+        .spyOn(eventStore, 'appendEvent')
+        .mockImplementation((event, ...rest) => {
+          if (event.eventId === `${turnId}-started` && ++attempts === 1) {
+            // Another path retires this thread's boundary rows while the
+            // retry sleeps.
+            setTimeout(() => {
+              rowsDuringSleep = boundaryRows(threadId);
+              (eventStore as any).db
+                .prepare(
+                  'DELETE FROM orchestration_turn_boundaries WHERE thread_id = ?',
+                )
+                .run(threadId);
+            }, 0);
+            throw busy();
+          }
+          return appendEvent(event, ...rest);
+        });
+      events.push(providerStart(threadId, turnId));
+      await vi.waitFor(() =>
+        expect(
+          stored(threadId).some((event) => event.method === 'turn.started'),
+        ).toBe(true),
+      );
+
+      expect(attempts).toBe(2);
+      // Nothing was recorded for the attempt that failed.
+      expect(rowsDuringSleep).toBe(0);
+      expect(boundaryRows(threadId)).toBe(1);
       appendSpy.mockRestore();
       await isolated.shutdown();
     });
