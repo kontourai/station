@@ -620,7 +620,7 @@ describe('monument import boundary gate', () => {
     for (const line of [
       'monument-internal-reference: src-server/glob.ts:1 ../packages/monument/src/*.ts',
       'monument-internal-reference: src-server/glob.ts:2 ../packages/monument/src/**/*.ts',
-      'monument-internal-reference: src-server/glob.ts:5 ../packages/monument/src/*/100%.ts',
+      'monument-internal-reference: src-server/glob.ts:4 ../packages/monument/src/*/100%.ts',
     ])
       expect(result.stderr).toContain(line);
     expect(result.stderr).not.toContain('src-server/glob.ts:3');
