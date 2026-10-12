@@ -524,17 +524,21 @@ addressing the reported failure. A failed reconnect returns an explicit error;
 its bounded diagnostic describes the latest attempt. A missing connection
 returns not-found.
 
-A new session on a model the connection's handshake did not offer is refused
-before the engine is spawned, with the `model_not_advertised` code and a
-rejected receipt: nothing ran, so there is no "Station may already have started
-this session" to check. The chat error offers no Retry (the same model is
-refused again) and the client re-reads the Agent catalog, the ACP connection
-list and the engine inventory, because the composer's snapshot of those is what
-let the model be chosen. This is the case where the Agent's engine changed after
-the snapshot was taken (the built-in Station Agent re-binds to an external
-engine once its ACP handshake completes). An engine with no observed handshake,
-or that advertised no model option, is not refused here; the adapter's own exact
-check at `session/new` still is.
+A new session on a model the engine's fresh `session/new` options did not offer
+is refused by the adapter with the `model_not_advertised` code
+(`SessionStartRefusedError`). The start is settled rather than uncertain: the
+receipt is `rejected`, the thread is not fenced behind "Station may already have
+started this session", and the same conversation can start again with a model
+the engine offers. In the chat composer the error offers no Retry (the same
+model is refused again) and the client re-reads the Agent catalog, the ACP
+connection list and the engine inventory, because the composer's snapshot of
+those is what let the model be chosen; a follow-up refused from the queue is
+reported as a refused message without that re-read. This is the case where the
+Agent's engine changed after the snapshot was taken (the built-in Station Agent
+re-binds to an external engine once its ACP handshake completes). The engine is
+still spawned and handshaked before it can refuse: Station does not refuse from
+the connection list's cached model options, because those come from a probe
+session that can differ from the session a start actually creates.
 
 OpenCode's own model listing and Station's ACP model listing are different
 observations. Station obtains model options through its ACP connection. An

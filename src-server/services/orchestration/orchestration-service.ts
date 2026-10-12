@@ -146,6 +146,7 @@ import {
   AttachmentInputUnsupportedError,
   ProviderTurnEndedError,
   SendTurnRefusedError,
+  SessionStartRefusedError,
 } from '../../providers/adapter-shape.js';
 import type { Prerequisite } from '../../providers/provider-contracts.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
@@ -330,7 +331,6 @@ import {
   listLaunchableAdapterModels,
   ModelLaunchPlanning,
   ModelLaunchPlanUnavailableError,
-  ModelNotAdvertisedError,
   normalizeOmittedModelId,
 } from './model-launch-planning.js';
 import {
@@ -758,10 +758,7 @@ export {
   AdoptionContinuationInProgressError,
   AdoptionEngineNotReadyError,
 } from './attached-session-adoption.js';
-export {
-  ModelLaunchPlanUnavailableError,
-  ModelNotAdvertisedError,
-} from './model-launch-planning.js';
+export { ModelLaunchPlanUnavailableError } from './model-launch-planning.js';
 
 /**
  * A `sendTurn` refused because the session's folded lifecycle state is
@@ -6245,7 +6242,6 @@ export class OrchestrationService {
             startInput.resumeCursor === undefined ? 'start' : 'resume',
           );
           await this.assertAdapterReady(adapter, connectionId);
-          this.assertStartModelAdvertised(adapter, startInput, connectionId);
           startInput = await this.modelLaunch.validateConnectedCliModelSelector(
             adapter,
             startInput,
@@ -6449,7 +6445,9 @@ export class OrchestrationService {
       publicSession: publicProviderSession,
       isRejectedError: (error) =>
         error instanceof ModelLaunchPlanUnavailableError ||
-        error instanceof ModelNotAdvertisedError ||
+        // The adapter settled the start itself: the engine refused it and
+        // nothing of it is left to inspect.
+        error instanceof SessionStartRefusedError ||
         error instanceof SessionReattachConflictError ||
         error instanceof ConcurrentEngineStartCapacityError ||
         // #2873: a refusal to start, with nothing run.
@@ -8580,7 +8578,6 @@ export class OrchestrationService {
         ...receipt,
         status:
           error instanceof ModelLaunchPlanUnavailableError ||
-          error instanceof ModelNotAdvertisedError ||
           error instanceof SendTurnRefusedError ||
           error instanceof SessionReattachConflictError ||
           error instanceof SessionEndedError ||
@@ -10169,25 +10166,6 @@ export class OrchestrationService {
       });
       return [];
     }
-  }
-
-  /**
-   * A NEW session's model must be one the adapter says its engine connection
-   * offered. Only a start applies the model (a resume reattaches the engine's
-   * own session), and only an observed offer is held against, so this refuses
-   * exactly what the adapter would refuse after spawning the engine.
-   */
-  private assertStartModelAdvertised(
-    adapter: ProviderAdapterShape,
-    input: ProviderSessionStartInput,
-    connectionId?: string,
-  ): void {
-    if (input.resumeCursor !== undefined) return;
-    const requested = input.modelId?.trim();
-    if (!requested || !connectionId) return;
-    const advertised = adapter.offeredStartModelIds?.(connectionId);
-    if (!advertised || advertised.includes(requested)) return;
-    throw new ModelNotAdvertisedError(connectionId, requested);
   }
 
   private async assertAdapterReady(

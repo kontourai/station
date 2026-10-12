@@ -192,12 +192,14 @@ On either route, when the bound engine is an ACP engine, a send whose
 attachments it cannot take (its handshake did not advertise image input, or a
 non-image file) is refused before any engine effect with
 `code: "attachment_input_unsupported"`. The same request is refused again, so it
-is not a retry candidate. A send that starts a new ACP session on a model the
-engine's handshake did not offer is likewise refused before the engine is spawned
-with `code: "model_not_advertised"`, a rejected receipt and no session to
-inspect; choose a model the engine offers and send again. Staged uploads the refused send had bound are released
+is not a retry candidate. Staged uploads the refused send had bound are released
 from that turn, so the same references can be sent on another turn. Codex and Muse refuse a non-image file with a plain
 error that carries no code.
+
+A send that starts a new ACP session on a model the engine's fresh session
+options did not offer is refused with `code: "model_not_advertised"`. The start
+is settled: there is no session to inspect, and the same conversation can start
+again with a model the engine offers. It is not a retry candidate as sent.
 
 A completed turn does not discard the conversation. If the next turn needs a new
 execution Session, it remains linked beneath the same Conversation. Station-native

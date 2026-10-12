@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test } from 'vitest';
+import { SessionStartRefusedError } from '../../../providers/adapter-shape.js';
 import { EventStore } from '../event-store.js';
 import {
   createInMemorySessionTurnBoundaryAuthority,
@@ -42,6 +43,72 @@ describe('SessionTurnBoundaryAuthority', () => {
     expect(
       new SessionStartIndeterminateError(new Error('Spawn failed.')).message,
     ).toMatch(/^Spawn failed\. Provider/);
+  });
+
+  describe('a definitive start refusal', () => {
+    const refusal = () => new SessionStartRefusedError('engine refused');
+
+    test('releases the boundary: the thread is not fenced and the next start may claim it', async () => {
+      const authority = createInMemorySessionTurnBoundaryAuthority();
+
+      await expect(
+        runSessionStartWithBoundary(authority, 'refused-thread', async () => {
+          throw refusal();
+        }),
+      ).rejects.toBeInstanceOf(SessionStartRefusedError);
+
+      expect(authority.hasPossibleEffect('refused-thread')).toEqual({
+        kind: 'available',
+        active: false,
+      });
+      await expect(
+        runSessionStartWithBoundary(
+          authority,
+          'refused-thread',
+          async () => 'started',
+        ),
+      ).resolves.toBe('started');
+    });
+
+    test('any other adapter failure stays an indeterminate start and fences the thread', async () => {
+      const authority = createInMemorySessionTurnBoundaryAuthority();
+
+      await expect(
+        runSessionStartWithBoundary(authority, 'crashed-thread', async () => {
+          throw new Error('engine crashed');
+        }),
+      ).rejects.toMatchObject({ code: SESSION_START_INDETERMINATE_CODE });
+
+      expect(authority.hasPossibleEffect('crashed-thread')).toEqual({
+        kind: 'available',
+        active: true,
+      });
+    });
+
+    test('a task dispatch child claim cannot release, so it keeps the indeterminate start', async () => {
+      const authority = createInMemorySessionTurnBoundaryAuthority();
+      const owned = authority.claimTaskDispatch(
+        'dispatch-refused',
+        new Date().toISOString(),
+      );
+      if (owned.kind !== 'owner')
+        throw new Error('Expected dispatch ownership');
+
+      await expect(
+        runSessionStartWithBoundary(
+          authority,
+          'dispatch-refused',
+          async () => {
+            throw refusal();
+          },
+          owned.claim.sessionStart,
+        ),
+      ).rejects.toMatchObject({ code: SESSION_START_INDETERMINATE_CODE });
+      expect(authority.hasPossibleEffect('dispatch-refused')).toEqual({
+        kind: 'available',
+        active: true,
+      });
+    });
   });
 
   const roots: string[] = [];

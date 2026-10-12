@@ -656,7 +656,7 @@ describe('model refusal (model_not_advertised)', () => {
     // The literal the server forwards, not the constant.
     code: 'model_not_advertised',
     message:
-      "Engine connection 'opencode' did not offer the model 'gpt-6.1-sol'. Choose one of the models it offers.",
+      "ACP model value unsupported: connection 'opencode' did not advertise 'gpt-6.1-sol' for this session.",
   };
 
   it('is deterministic and names nothing as started: not retryable, no "temporary" hint', () => {

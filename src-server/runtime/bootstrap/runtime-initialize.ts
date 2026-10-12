@@ -143,7 +143,6 @@ import {
   createEventStoreWorkItemPrincipalLiveness,
   WorkItemCapture,
 } from '../work-item-capture.js';
-import { acpAdvertisedModelIds } from './acp-advertised-models.js';
 import { acpResumeCursorSupport } from './acp-resume-cursor-support.js';
 import { composeAgentExecutionConfigLoader } from './agent-execution-config-loader.js';
 import {
@@ -443,7 +442,6 @@ export async function initializeRuntime(
   const acpAdapter = new AcpAdapter({
     getConnections: async () =>
       ((await configLoader.loadACPConfig()) as ACPConfig).connections,
-    getAdvertisedModelIds: acpAdvertisedModelIds(acpBridge),
     logger,
     resolveToolServer: (id) =>
       configLoader.loadIntegration(id).catch(() => null),

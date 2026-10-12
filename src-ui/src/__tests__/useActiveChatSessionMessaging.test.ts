@@ -1375,14 +1375,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         JSON.stringify({
           success: false,
           error:
-            "Engine connection 'opencode' did not offer the model 'gpt-6.1-sol'. Choose one of the models it offers.",
-          receipt: {
-            commandId: 'cmd-1',
-            commandType: 'startSession',
-            threadId: sessionId,
-            status: 'rejected',
-          },
-          receiptStatus: 'persisted',
+            "ACP model value unsupported: connection 'opencode' did not advertise 'gpt-6.1-sol' for this session.",
           code: 'model_not_advertised',
         }),
         { status: 400, headers: { 'content-type': 'application/json' } },

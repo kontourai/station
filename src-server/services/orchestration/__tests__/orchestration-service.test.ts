@@ -65,6 +65,7 @@ import {
   ProviderTurnEndedError,
   ProviderTurnInProgressError,
   SendTurnRefusedError,
+  SessionStartRefusedError,
 } from '../../../providers/adapter-shape.js';
 import { MuseTurnSlotReleasingError } from '../../../providers/adapters/muse-adapter.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
@@ -12269,10 +12270,11 @@ describe('OrchestrationService', () => {
     );
   });
 
-  describe('a new ACP session whose model the connection did not advertise', () => {
-    // The real ACP adapter applies a model at start (`overrideAtStart`) and
-    // reports what a connection's handshake offered.
-    function acpOffering(advertised: readonly string[] | undefined) {
+  describe('an adapter that definitively refuses a session start', () => {
+    // The real ACP adapter applies a model at start and refuses, after its
+    // fresh `session/new`, one the engine did not offer. Orchestration only
+    // sees the typed refusal the adapter throws.
+    function acpService() {
       const acp = new FakeAdapter('acp');
       acp.metadata.modelLaunch = {
         defaultAtStart: 'engine-selected',
@@ -12282,90 +12284,67 @@ describe('OrchestrationService', () => {
         overrideAtResume: false,
         overridePerTurn: false,
       };
-      const offeredStartModelIds = vi.fn((connectionId: string) =>
-        connectionId === 'opencode' ? advertised : undefined,
-      );
-      Object.assign(acp, { offeredStartModelIds });
       const service = new OrchestrationService({
         adapterRegistry: createRegistry([acp]),
         eventBus,
         eventStore,
         logger: { debug: vi.fn(), warn: vi.fn() },
       });
-      return { acp, service, offeredStartModelIds };
+      return { acp, service };
     }
-    const start = (threadId: string, modelId?: string) => ({
+    const start = (threadId: string, modelId: string) => ({
       type: 'startSession' as const,
       input: {
         threadId,
         provider: 'acp' as const,
-        ...(modelId ? { modelId } : {}),
+        modelId,
         metadata: { connectionId: 'opencode' },
       },
     });
+    const refusal = () =>
+      new SessionStartRefusedError(
+        "ACP model value unsupported: connection 'opencode' did not advertise 'gpt-6.1-sol' for this session.",
+      );
 
-    test('is refused before the adapter is invoked, as a rejection, with its code', async () => {
-      const { acp, service } = acpOffering(['anthropic/claude-sonnet-4-6']);
+    test('is a rejection with its code, not an uncertain start', async () => {
+      const { acp, service } = acpService();
+      acp.startSession.mockRejectedValueOnce(refusal());
 
-      await expect(
-        service.dispatchWithReceipt(start('acp-unadvertised', 'gpt-6.1-sol')),
-      ).rejects.toMatchObject({
+      const failure = await service
+        .dispatchWithReceipt(start('acp-refused', 'gpt-6.1-sol'))
+        .catch((error: unknown) => error);
+
+      expect(failure).toMatchObject({
         code: 'model_not_advertised',
         message: expect.stringContaining("'gpt-6.1-sol'"),
         receipt: expect.objectContaining({ status: 'rejected' }),
       });
-      expect(acp.startSession).not.toHaveBeenCalled();
-    });
-
-    test('starts when the connection offered the model', async () => {
-      const { acp, service } = acpOffering(['anthropic/claude-sonnet-4-6']);
-
-      await service.dispatchWithReceipt(
-        start('acp-advertised', 'anthropic/claude-sonnet-4-6'),
+      expect(String((failure as Error).message)).not.toContain(
+        'Provider session creation may have completed',
       );
-      expect(acp.startSession).toHaveBeenCalledTimes(1);
     });
 
-    test('makes no claim without an observed offer: the adapter stays authoritative', async () => {
-      const { acp, service } = acpOffering(undefined);
+    test('does not fence the thread: the next start on it is not blocked', async () => {
+      const { acp, service } = acpService();
+      acp.startSession.mockRejectedValueOnce(refusal());
 
+      await expect(
+        service.dispatchWithReceipt(start('acp-refused-retry', 'gpt-6.1-sol')),
+      ).rejects.toMatchObject({ code: 'model_not_advertised' });
       await service.dispatchWithReceipt(
-        start('acp-no-observation', 'gpt-6.1-sol'),
+        start('acp-refused-retry', 'anthropic/claude-sonnet-4-6'),
       );
-      expect(acp.startSession).toHaveBeenCalledTimes(1);
+
+      expect(acp.startSession).toHaveBeenCalledTimes(2);
     });
 
-    test('a resume reattaches the engine session and is never held to the offer', async () => {
-      const { acp, service, offeredStartModelIds } = acpOffering([
-        'anthropic/claude-sonnet-4-6',
-      ]);
-      acp.metadata.modelLaunch = {
-        ...acp.metadata.modelLaunch!,
-        overrideAtResume: true,
-      };
+    test('an engine failure that is not a definitive refusal stays an uncertain start', async () => {
+      const { acp, service } = acpService();
+      acp.startSession.mockRejectedValueOnce(new Error('engine crashed'));
 
-      await service.dispatchWithReceipt({
-        type: 'startSession',
-        input: {
-          threadId: 'acp-resume',
-          provider: 'acp',
-          modelId: 'retired-since-first-start',
-          resumeCursor: { acpSessionId: 'native-1' },
-          metadata: { connectionId: 'opencode' },
-        },
-      });
-      expect(acp.startSession).toHaveBeenCalledTimes(1);
-      expect(offeredStartModelIds).not.toHaveBeenCalled();
-    });
-
-    test('a start naming no model never consults the offer', async () => {
-      const { acp, service, offeredStartModelIds } = acpOffering([
-        'anthropic/claude-sonnet-4-6',
-      ]);
-
-      await service.dispatchWithReceipt(start('acp-no-model'));
-      expect(acp.startSession).toHaveBeenCalledTimes(1);
-      expect(offeredStartModelIds).not.toHaveBeenCalled();
+      await expect(
+        service.dispatchWithReceipt(start('acp-crashed', 'gpt-6.1-sol')),
+      ).rejects.toMatchObject({ code: 'SESSION_START_INDETERMINATE' });
     });
   });
 

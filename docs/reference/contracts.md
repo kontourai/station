@@ -385,15 +385,17 @@ An ACP send whose attachments the engine cannot take (images when its
 non-image file) is refused before any engine effect with
 `ATTACHMENT_INPUT_UNSUPPORTED_CODE` (`attachment_input_unsupported`, from
 `provider`). Unlike the two codes above it is not retryable: the same send is
-refused again. A new ACP session whose requested model the connection's own
-`initialize` handshake did not offer is refused before the engine is spawned
-with `MODEL_NOT_ADVERTISED_CODE` (`model_not_advertised`, from `provider`),
-classed as a rejection (nothing ran) rather than an uncertain start. Only an
-observed offer is held against: an engine that has not handshaked, or that
-advertised no model option, makes no claim and the adapter's own exact check
-remains the authority. The adapter states the offer through
-`ProviderAdapterShape.offeredStartModelIds`; a resume never applies a model and
-is not held to it. An ACP steer delivered by the cancel + re-prompt fallback, for
+refused again. An ACP session whose requested model the engine's own fresh
+`session/new` options did not offer (`ACP model value unsupported`, or no model
+option at all) is refused by the adapter with `SessionStartRefusedError`,
+carrying `MODEL_NOT_ADVERTISED_CODE` (`model_not_advertised`, from `provider`).
+That type is how an adapter tells the start boundary that its start is settled:
+the boundary is released and the receipt is `rejected`, where every other
+adapter failure at start stays an indeterminate start that fences the thread. An
+adapter throws it only when the engine held nothing of the session and what it
+spawned is torn down; a model the engine was asked to apply and answered
+differently (`ACP model application unverified`) stays an uncertain start. The
+nested start claim of a task dispatch keeps its own uncertainty handling. An ACP steer delivered by the cancel + re-prompt fallback, for
 an engine without a native steer method, cancels the running prompt and any
 tool it was running. Its steer `turn.started` carries
 `steerInterruptedRun: true` so a client can say why that step shows as

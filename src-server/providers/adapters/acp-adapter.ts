@@ -85,6 +85,7 @@ import {
   ProviderTurnEndedError,
   type ProviderTurnStartResult,
   SendTurnRefusedError,
+  SessionStartRefusedError,
 } from '../adapter-shape.js';
 import { buildCliRuntimePrerequisites } from '../auth/cli-auth.js';
 import {
@@ -296,14 +297,6 @@ export function acpConnectionDefaultCwd(config: {
 
 export interface AcpAdapterOptions {
   getConnections: () => Promise<ACPConnectionConfig[]>;
-  /**
-   * The model ids a connection's observed initialize handshake offered, read
-   * from the manager's live status. Feeds `offeredStartModelIds`; the exact
-   * check inside `startSession` remains the authority.
-   */
-  getAdvertisedModelIds?: (
-    connectionId: string,
-  ) => readonly string[] | undefined;
   logger?: AcpLogger;
   processFactory?: (opts: ACPProcessOptions) => ACPProcess;
   /** Injectable Station home for private unbound-session workspaces. */
@@ -1380,7 +1373,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             sessionResult.configOptions,
           );
           if (!modelOption) {
-            throw new Error(
+            throw new SessionStartRefusedError(
               `ACP model option unavailable: connection '${config.id}' did not advertise a model configuration option for this session.`,
             );
           }
@@ -1389,7 +1382,7 @@ export class AcpAdapter implements ProviderAdapterShape {
               (option) => option.value === requestedModel,
             )
           ) {
-            throw new Error(
+            throw new SessionStartRefusedError(
               `ACP model value unsupported: connection '${config.id}' did not advertise '${requestedModel}' for this session.`,
             );
           }
@@ -1972,10 +1965,6 @@ export class AcpAdapter implements ProviderAdapterShape {
     signal?: AbortSignal;
   }): AsyncIterable<CanonicalRuntimeEvent> {
     return this.events.iterable(options);
-  }
-
-  offeredStartModelIds(connectionId: string): readonly string[] | undefined {
-    return this.options.getAdvertisedModelIds?.(connectionId);
   }
 
   async getPrerequisites(options?: {

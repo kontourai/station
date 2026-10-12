@@ -22,6 +22,7 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import {
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  MODEL_NOT_ADVERTISED_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 
@@ -78,6 +79,30 @@ export class AttachmentInputUnsupportedError extends SendTurnRefusedError {
   constructor(message: string) {
     super(message);
     this.name = 'AttachmentInputUnsupportedError';
+  }
+}
+
+/**
+ * An adapter's `startSession` refused the session DEFINITIVELY: the engine
+ * answered, held nothing of this session's, and the adapter has torn down what
+ * it spawned, so no session exists to inspect and a start that names something
+ * the engine accepts is not blocked by it. The expected source is a requested
+ * model the engine's own fresh session options did not offer
+ * ({@link MODEL_NOT_ADVERTISED_CODE}).
+ *
+ * Throw ONLY when that is true. The start boundary otherwise records every
+ * adapter failure as an indeterminate start and keeps the thread fenced until
+ * it is inspected, which is right for a start that MAY have created a session.
+ * This type is how the adapter, the only layer that knows, tells it the start
+ * is settled; the dispatch receipt is then `rejected` and `code` is forwarded.
+ */
+export class SessionStartRefusedError extends Error {
+  readonly code: string;
+
+  constructor(message: string, code: string = MODEL_NOT_ADVERTISED_CODE) {
+    super(message);
+    this.name = 'SessionStartRefusedError';
+    this.code = code;
   }
 }
 
@@ -397,17 +422,6 @@ export interface ProviderAdapterShape {
       originalId: string;
     }>
   >;
-  /**
-   * The model ids this adapter will accept as a new session's model on
-   * `connectionId`, when it has OBSERVED them (an engine's own handshake).
-   * `undefined` makes no claim: nothing observed, or an engine that does not
-   * enumerate its models. It never widens what the adapter's exact check at
-   * start accepts; its only use is letting the dispatch seam refuse a model
-   * the engine already told us it does not offer BEFORE the engine is spawned
-   * and a session created only to be thrown away. It is not a catalog for a
-   * picker (`listModelCatalog`) and is read synchronously from memory.
-   */
-  offeredStartModelIds?(connectionId: string): readonly string[] | undefined;
   listModelCatalog?(options?: {
     signal?: AbortSignal;
     maxEntries?: number;

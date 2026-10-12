@@ -392,7 +392,7 @@ export function translateChatError(
     return {
       title: "This engine doesn't offer that model",
       body: `${text || 'The engine did not offer the selected model.'} Nothing was sent.`,
-      hint: 'Choose one of the models this engine offers. The engine behind this Agent may have changed, so the list has been refreshed.',
+      hint: 'Choose one of the models this engine offers. The engine behind this Agent may have changed; Station has re-read its list.',
       retryable: false,
     };
   }

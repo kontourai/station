@@ -48,7 +48,10 @@ import {
 } from '../../services/acp/acp-process.js';
 import { normalizeCanonicalRuntimeEventLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
 import type { CanonicalRuntimeEvent } from '../adapter-shape.js';
-import { SendTurnRefusedError } from '../adapter-shape.js';
+import {
+  SendTurnRefusedError,
+  SessionStartRefusedError,
+} from '../adapter-shape.js';
 import {
   AcpAdapter,
   type AcpAdapterOptions,
@@ -4119,7 +4122,11 @@ describe('station#1182: runtime-reported model', () => {
         metadata: { connectionId: 'kiro' },
         modelId: 'model-b',
       }),
-    ).rejects.toThrow('ACP model option unavailable');
+    ).rejects.toMatchObject({
+      name: 'SessionStartRefusedError',
+      code: 'model_not_advertised',
+      message: expect.stringContaining('ACP model option unavailable'),
+    });
     expect(processes[0].setConfigOptionCalls).toEqual([]);
   });
 
@@ -4143,7 +4150,11 @@ describe('station#1182: runtime-reported model', () => {
         metadata: { connectionId: 'kiro' },
         modelId: 'model-b',
       }),
-    ).rejects.toThrow('ACP model value unsupported');
+    ).rejects.toMatchObject({
+      name: 'SessionStartRefusedError',
+      code: 'model_not_advertised',
+      message: expect.stringContaining('ACP model value unsupported'),
+    });
     expect(processes[0].setConfigOptionCalls).toEqual([]);
   });
 
@@ -4469,15 +4480,21 @@ describe('station#1182: runtime-reported model', () => {
       },
     });
 
-    await expect(
-      adapter.startSession({
+    const failure = await adapter
+      .startSession({
         provider: 'acp',
         threadId: 'thread-model-unverified',
         cwd: '/tmp/project',
         metadata: { connectionId: 'kiro' },
         modelId: 'model-b',
-      }),
-    ).rejects.toThrow('ACP model application unverified');
+      })
+      .catch((error: unknown) => error);
+    expect(String((failure as Error).message)).toContain(
+      'ACP model application unverified',
+    );
+    // The engine was asked to apply it and answered something else: not a
+    // definitive refusal, so the start stays an uncertain one.
+    expect(failure).not.toBeInstanceOf(SessionStartRefusedError);
     expect(processes[0].setConfigOptionCalls).toHaveLength(1);
     expect(processes[0].destroyCalls).toBe(1);
   });
