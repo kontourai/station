@@ -17,6 +17,7 @@ import {
   chmodSync,
   existsSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -224,6 +225,50 @@ describe.skipIf(process.platform === 'win32')(
       } finally {
         chmodSync(registryDir, 0o700);
       }
+    }, 15_000);
+
+    test('a record that cannot be removed after the group exits does not throw out of the release', async () => {
+      // The release runs from an 'exit' listener or a timer, where a throw is
+      // an uncaught exception that ends the server. Make the record
+      // unremovable (read-only registry) while the CLI runs.
+      const dir = makeTrackedDir('flow-agents-owned-unremovable-');
+      const scriptPath = join(dir, 'wait.cjs');
+      writeFileSync(
+        scriptPath,
+        [
+          "const { existsSync } = require('node:fs');",
+          "const release = require('node:path').join(process.argv[2], 'release');",
+          'const poll = setInterval(() => {',
+          '  if (existsSync(release)) { clearInterval(poll); process.exit(0); }',
+          '}, 20);',
+        ].join('\n'),
+      );
+      const escaped: unknown[] = [];
+      const onUncaught = (error: unknown) => escaped.push(error);
+      process.on('uncaughtException', onUncaught);
+      try {
+        const running = createDefaultFlowAgentsCliRunner()(scriptPath, [dir], {
+          cwd: dir,
+          timeoutMs: 10_000,
+        });
+        expect(
+          await waitUntil(() =>
+            readdirSync(registryDir).some((name) => name.startsWith('engine-')),
+          ),
+        ).toBe(true);
+        const [recordName] = readdirSync(registryDir);
+        pids.push(Number(/engine-(\d+)\.json/.exec(recordName)?.[1]));
+        chmodSync(registryDir, 0o500);
+        writeFileSync(join(dir, 'release'), '');
+        expect((await running).exitCode).toBe(0);
+        // Let the group-exit release poll run and fail.
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        expect(existsSync(join(registryDir, recordName))).toBe(true);
+      } finally {
+        process.off('uncaughtException', onUncaught);
+        chmodSync(registryDir, 0o700);
+      }
+      expect(escaped).toEqual([]);
     }, 15_000);
 
     test('a running CLI child is registered, and the record is released only after its whole group exits', async () => {
