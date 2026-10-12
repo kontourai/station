@@ -369,7 +369,10 @@ describe('chatRuntimeStream', () => {
       apiBase: 'http://example.test',
     }).catch((error: unknown) => error);
     expect(refused).toBeInstanceOf(ChatHttpError);
-    expect((refused as { outcome?: unknown }).outcome).toBeUndefined();
+    // #3606 review F3: `outcome` is a declared member of ChatHttpError.
+    const outcome: 'indeterminate' | undefined = (refused as ChatHttpError)
+      .outcome;
+    expect(outcome).toBeUndefined();
   });
 
   it('falls back to a generic HTTP status message when the error body is not JSON', async () => {

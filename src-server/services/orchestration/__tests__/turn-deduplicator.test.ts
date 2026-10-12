@@ -318,6 +318,73 @@ describe('TurnDeduplicator', () => {
     restarted.close();
   });
 
+  // #3606 review: a tombstone answers only for its own key.
+  test('evicting one /chat key never makes a different fresh /chat key answer expired', () => {
+    const { store } = open(2);
+    for (const clientTurnId of ['chat-a', 'chat-b', 'chat-c']) {
+      expect(store.claimChatTurn(clientTurnId)).toEqual({ claimed: true });
+      store.resolveChatTurn(clientTurnId, `conversation-${clientTurnId}`);
+    }
+    expect(store.claimChatTurn('chat-a')).toEqual({
+      claimed: false,
+      outcome: 'expired',
+    });
+    expect(store.claimChatTurn('chat-fresh')).toEqual({ claimed: true });
+    expect(
+      store
+        .createTurnDeduplicator()
+        .claim({ threadId: 'thread', clientTurnId: 'fresh' }),
+    ).toMatchObject({ kind: 'owner' });
+    store.close();
+  });
+
+  // #3606 review F2: tombstones are time-bounded at 30 days, far past every
+  // retry window Station has (the longest is 7 days).
+  test('a tombstone past 30 days is removed while one inside the bound still answers expired', () => {
+    const { store, ledger, directory } = open(2);
+    const settle = (clientTurnId: string) => {
+      const owner = ledger.claim({ threadId: 'thread', clientTurnId });
+      if (owner.kind !== 'owner') throw new Error('expected owner');
+      owner.claim.resolve(`turn-${clientTurnId}`);
+    };
+    // k1 and k2 are evicted to tombstones; k3 and k4 stay full rows.
+    for (const clientTurnId of ['k1', 'k2', 'k3', 'k4']) settle(clientTurnId);
+    const day = 24 * 60 * 60 * 1000;
+    const database = new DatabaseSync(join(directory, 'orchestration.sqlite'));
+    try {
+      const backdate = database.prepare(
+        'UPDATE orchestration_turn_dedup_expired SET expired_at = ? WHERE dedup_key = ?',
+      );
+      backdate.run(Date.now() - 31 * day, turnDedupKey('thread', 'k1'));
+      backdate.run(Date.now() - 29 * day, turnDedupKey('thread', 'k2'));
+    } finally {
+      database.close();
+    }
+    // Any later write runs retention.
+    settle('k5');
+    const tombstones = new DatabaseSync(
+      join(directory, 'orchestration.sqlite'),
+    );
+    try {
+      const keys = (
+        tombstones
+          .prepare('SELECT dedup_key FROM orchestration_turn_dedup_expired')
+          .all() as Array<{ dedup_key: string }>
+      ).map((row) => row.dedup_key);
+      expect(keys).not.toContain(turnDedupKey('thread', 'k1'));
+      expect(keys).toContain(turnDedupKey('thread', 'k2'));
+    } finally {
+      tombstones.close();
+    }
+    expect(ledger.claim({ threadId: 'thread', clientTurnId: 'k2' })).toEqual({
+      kind: 'expired',
+    });
+    expect(
+      ledger.claim({ threadId: 'thread', clientTurnId: 'k1' }),
+    ).toMatchObject({ kind: 'owner' });
+    store.close();
+  });
+
   test('keeps an owner handle usable when its first durable resolve rolls back', () => {
     let record: { value: string | null; createdAt: number } | undefined;
     let failResolve = true;
