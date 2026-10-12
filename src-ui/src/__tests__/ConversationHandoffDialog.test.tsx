@@ -21,6 +21,10 @@ const handoffExecutionMessage = vi.fn();
 const sendExecutionMessage = vi.fn();
 const getConversationHandoffStatus = vi.fn();
 const useNewChatSelectionModel = vi.fn();
+// The selection model the running test configured, for a test that changes
+// one member of it. Reads the mock's configured value; not a hook call.
+const currentSelection = () =>
+  useNewChatSelectionModel.getMockImplementation()?.();
 const fenceConversationHandoff = vi.fn(
   async (_input: unknown, effect: () => Promise<unknown>) => ({
     status: 'completed',
@@ -554,9 +558,82 @@ describe('ConversationHandoffDialog', () => {
     ).toBeTruthy();
   });
 
+  describe('a restored uncertain engine change', () => {
+    function EngineDialog() {
+      return (
+        <ConversationHandoffDialog
+          apiBase="http://station.test"
+          conversationId="conversation-restore"
+          sessionId="session-a"
+          currentAgentId="claude"
+          executionPreset={{ executionAgentId: 'codex', modelId: 'gpt-5' }}
+          agents={[claude, codex] as never}
+          projects={[]}
+          initialMessage="follow up"
+          attachments={[]}
+          onAccepted={() => {}}
+          onDispatchStarted={() => {}}
+          onDefiniteFailure={() => {}}
+          onClose={() => {}}
+        />
+      );
+    }
+    async function loseFirstResponse() {
+      handoffExecutionMessage.mockRejectedValueOnce(
+        new TypeError('response lost'),
+      );
+      const first = render(<EngineDialog />);
+      fireEvent.click(screen.getByRole('button', { name: 'Switch to Codex' }));
+      await waitFor(() => screen.getByRole('button', { name: 'Retry safely' }));
+      first.unmount();
+      return handoffExecutionMessage.mock.calls[0][2];
+    }
+    function catalogNow(models: Array<Record<string, unknown>>) {
+      useNewChatSelectionModel.mockReturnValue({
+        ...currentSelection(),
+        modelsForAgent: () => models,
+      });
+    }
+
+    test('still retries when the catalog now marks its model unavailable', async () => {
+      const firstRequest = await loseFirstResponse();
+      catalogNow([
+        { id: 'gpt-5', name: 'GPT-5', available: false },
+        { id: 'gpt-6', name: 'GPT-6' },
+      ]);
+      handoffExecutionMessage.mockResolvedValueOnce(receipt());
+      render(<EngineDialog />);
+      const retry = screen.getByRole('button', {
+        name: 'Retry safely',
+      }) as HTMLButtonElement;
+      expect(retry.disabled).toBe(false);
+      fireEvent.click(retry);
+      await waitFor(() =>
+        expect(handoffExecutionMessage).toHaveBeenCalledTimes(2),
+      );
+      expect(handoffExecutionMessage.mock.calls[1][2]).toEqual(firstRequest);
+    });
+
+    test('says why when its model is gone from the catalog', async () => {
+      await loseFirstResponse();
+      catalogNow([{ id: 'gpt-6', name: 'GPT-6' }]);
+      render(<EngineDialog />);
+      const retry = screen.getByRole('button', {
+        name: 'Retry safely',
+      }) as HTMLButtonElement;
+      expect(retry.disabled).toBe(true);
+      const reason = screen.getByRole('status');
+      expect(reason.textContent).toBe(
+        'This request’s Agent, engine or model is not available here. Check status, or restore that setup to retry.',
+      );
+      expect(retry.getAttribute('aria-describedby')).toBe(reason.id);
+      expect(screen.getByRole('button', { name: 'Check status' })).toBeTruthy();
+    });
+  });
+
   test('the engine Model list offers only models this client can start', () => {
     useNewChatSelectionModel.mockReturnValue({
-      ...useNewChatSelectionModel(),
+      ...currentSelection(),
       modelsForAgent: () => [
         { id: 'gpt-5', name: 'GPT-5' },
         { id: 'gpt-locked', name: 'GPT locked', available: false },

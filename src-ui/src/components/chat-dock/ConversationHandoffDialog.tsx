@@ -199,11 +199,17 @@ export function ConversationHandoffDialog({
   const retainedIntent = useRef<PendingHandoffIntent | null>(restoredIntent);
   const targetName = target?.name ?? `deleted Agent “${targetId}”`;
   // Only models this client can start are offered; a catalog entry marked
-  // unavailable is not a choice here.
+  // unavailable is not a choice here. A restored request is the exception:
+  // its retry resends the retained request unchanged under the same
+  // idempotency key (Station answers an accepted one with its receipt), so
+  // its own model stays listed even if the catalog now marks it unavailable.
   const targetModels = executionTarget
     ? selection
         .modelsForAgent(executionTarget)
-        .filter((model) => model.available !== false)
+        .filter(
+          (model) =>
+            model.available !== false || model.id === restoredIntent?.modelId,
+        )
     : [];
   const defaultModel = executionTarget
     ? selection.defaultEffectiveModelForAgent(executionTarget).id
@@ -241,12 +247,16 @@ export function ConversationHandoffDialog({
     : 'continuing with another Agent';
   // A precondition the caller must resolve outside this dialog. The submit is
   // disabled while one holds and the reason is shown beside it, so the form
-  // never offers an action it would refuse.
+  // never offers an action it would refuse. An uncertain request whose
+  // retained target no longer resolves here cannot be retried as-is either;
+  // say so rather than leave "Retry safely" greyed out without a reason.
   const preconditionReason =
     blockedReason ??
     (attachments.length > 0
       ? `Send or remove attachments before ${changeLabel}.`
-      : undefined);
+      : state === 'indeterminate' && !retryEligible
+        ? 'This request’s Agent, engine or model is not available here. Check status, or restore that setup to retry.'
+        : undefined);
   const engineLabel =
     executionTarget?.engineDisplayName ??
     (executionAgentId ? executionTarget?.name : undefined);
