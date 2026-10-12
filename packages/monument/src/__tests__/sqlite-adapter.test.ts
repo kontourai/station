@@ -228,6 +228,87 @@ describe('node:sqlite adapter locking', () => {
   });
 });
 
+describe('node:sqlite adapter on a host-owned UTF-16 database', () => {
+  it('deletes by exact prefix in the database encoding', async () => {
+    const database = new DatabaseSync(':memory:');
+    database.exec("PRAGMA encoding = 'UTF-16le'");
+    const storage = openSqliteKernelStorage({ database });
+    const processes = createFakeProcessTable();
+    const context = { liveness: processes.liveness };
+    const owner = processes.spawn();
+    for (const key of ['ab::1', 'abc::1', 'n\u0000a::1', 'n\u0000b::1'])
+      storage.executeSync(
+        { type: 'turnDedup.claim', key, owner, now: 1, tracking: 'tracked' },
+        context,
+      );
+    expect(
+      storage.executeSync(
+        { type: 'turnDedup.forgetPrefix', prefix: 'ab::' },
+        context,
+      ),
+    ).toEqual({ kind: 'applied', removed: 1 });
+    expect(
+      storage.executeSync(
+        { type: 'turnDedup.forgetPrefix', prefix: 'n\u0000a::' },
+        context,
+      ),
+    ).toEqual({ kind: 'applied', removed: 1 });
+    expect(
+      storage.executeSync({ type: 'turnDedup.read', key: 'abc::1' }, context)
+        .kind,
+    ).toBe('found');
+    await storage.close();
+    database.close();
+  });
+});
+
+describe('node:sqlite adapter read-only commands with a writing participant', () => {
+  it('a participant may write during a read even when another connection commits first', async () => {
+    const { path } = location();
+    const host = new DatabaseSync(path);
+    host.exec('CREATE TABLE IF NOT EXISTS audit (entry TEXT NOT NULL)');
+    const storage = openSqliteKernelStorage({
+      database: host,
+      busyTimeoutMs: 200,
+      participants: [
+        {
+          name: 'audit',
+          commit: ({ command }, db) => {
+            if (command.type !== 'turnDedup.read') return;
+            // Another connection tries to commit while this one reads. It
+            // may be refused (this transaction holds the write lock), but it
+            // must not invalidate this transaction's own write.
+            const other = new DatabaseSync(path);
+            try {
+              other.exec('PRAGMA busy_timeout = 20');
+              other.exec("INSERT INTO audit (entry) VALUES ('other')");
+            } catch {
+              // Refused while this transaction holds the lock: fine.
+            } finally {
+              other.close();
+            }
+            db.prepare('INSERT INTO audit (entry) VALUES (?)').run('read');
+          },
+        },
+      ],
+    });
+    const processes = createFakeProcessTable();
+    expect(
+      storage.executeSync(
+        { type: 'turnDedup.read', key: 'k' },
+        { liveness: processes.liveness },
+      ),
+    ).toEqual({ kind: 'absent' });
+    expect(
+      host
+        .prepare("SELECT COUNT(*) AS n FROM audit WHERE entry = 'read'")
+        .get(),
+    ).toEqual({ n: 1 });
+    await storage.close();
+    host.close();
+  });
+});
+
 describe('node:sqlite adapter co-commit participants', () => {
   it("commits a host projection's writes with the kernel's, or neither", async () => {
     const { path } = location();

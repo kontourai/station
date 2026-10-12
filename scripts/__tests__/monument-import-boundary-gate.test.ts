@@ -144,6 +144,69 @@ describe('monument import boundary gate', () => {
       expect(result.stderr).toContain(line);
   });
 
+  it('rejects every spelling of the loaders that bypass the import graph', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const result = run({
+      ...CLEAN,
+      [`${ROOT}/src/spellings.ts`]: [
+        "export const a = (process as any)['getBuiltinModule']('node:module');",
+        'const { getBuiltinModule } = process;',
+        "export const b = import.meta['resolve']('x');",
+        "export const c = eval('1');",
+        'export const d = (globalThis as any).createRequire;',
+        '',
+      ].join('\n'),
+      [`${ROOT}/src/legacy.cts`]:
+        "module.exports = module.require('@kontourai/station-shared');\n",
+    });
+    expect(result.status, result.output).toBe(1);
+    for (const line of [
+      `module-loader: ${ROOT}/src/spellings.ts:1 <getBuiltinModule>`,
+      `module-loader: ${ROOT}/src/spellings.ts:2 <getBuiltinModule>`,
+      `module-loader: ${ROOT}/src/spellings.ts:3 <import.meta.resolve>`,
+      `module-loader: ${ROOT}/src/spellings.ts:4 <eval>`,
+      `module-loader: ${ROOT}/src/spellings.ts:5 <createRequire>`,
+      `commonjs-source: ${ROOT}/src/legacy.cts:1`,
+    ])
+      expect(result.stderr).toContain(line);
+  });
+
+  it('inspects git-ignored paths under the package too', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const result = run(
+      {
+        ...CLEAN,
+        '.gitignore': 'dist/\n*.log\n',
+        [`${ROOT}/src/dist/evil.ts`]:
+          "export * from '@kontourai/station-shared';\n",
+      },
+      [[`${ROOT}/src/x.log`, '../../../src-server']],
+    );
+    expect(result.status, result.output).toBe(1);
+    expect(result.stderr).toContain(
+      `station-import: ${ROOT}/src/dist/evil.ts:1 @kontourai/station-shared`,
+    );
+    expect(result.stderr).toContain(`symlink: ${ROOT}/src/x.log`);
+  });
+
+  it('does not flag declarations that merely use the names (control)', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const result = run({
+      ...CLEAN,
+      [`${ROOT}/src/names.ts`]: [
+        'export class C { require = true; get resolve() { return 1; } }',
+        'export enum E { require = 1 }',
+        'export function g(require: string, { resolve }: { resolve: number }) { return [require, resolve]; }',
+        'export const o = { require: 1, resolve: Promise.resolve(1) };',
+        '',
+      ].join('\n'),
+    });
+    expect(result.status, result.output).toBe(0);
+  });
+
   it('rejects declaring a Station package as a dependency', {
     timeout: CASE_TIMEOUT,
   }, () => {
