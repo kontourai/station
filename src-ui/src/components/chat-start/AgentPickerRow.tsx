@@ -96,9 +96,9 @@ function AgentPickerRow({
   // still one to choose, so the trigger stays and asks for it; without one
   // there is nothing to show.
   const modelReported = modelLabel !== MODEL_NOT_REPORTED;
-  // A row that cannot start has no model to choose: the trigger only took the
-  // width its name and its fix needed.
-  const showModel = runnable && (modelReported || !modelUnavailable);
+  // A row that cannot start keeps its trigger: a Model chosen before the
+  // repair (Connect, Set up) is the intent the setup return carries back.
+  const showModel = modelReported || !modelUnavailable;
   const modelText = modelReported ? modelLabel : 'Choose model';
   return (
     <div
