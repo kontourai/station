@@ -1864,6 +1864,147 @@ describe('SessionRecoveryCoordinator', () => {
     vi.useRealTimers();
   });
 
+  /**
+   * #3563: the source-terminal repair is a bulk CAS that runs before timers
+   * are rebuilt. When it answers `unavailable`, reconcile cannot know which
+   * armed intent's source already ended, so it must arm none of them until
+   * the repair lands, instead of replaying a turn the user already stopped.
+   */
+  describe('a failed source-terminal repair at boot', () => {
+    function armedPair(store: EventStore, now: Date) {
+      for (const thread of ['ended', 'open'] as const) {
+        store.appendEvent({
+          eventId: `started-${thread}`,
+          provider: 'claude',
+          threadId: `thread-${thread}`,
+          turnId: `turn-${thread}`,
+          createdAt: now.toISOString(),
+          method: 'turn.started',
+          prompt: 'replayable input',
+        });
+        recoveryLedger(store).arm({
+          fingerprint: `thread-${thread}:turn-${thread}:rate-limit:server`,
+          threadId: `thread-${thread}`,
+          provider: 'claude',
+          sourceEventId: `started-${thread}`,
+          sourceTurnId: `turn-${thread}`,
+          failureKind: 'rate-limit',
+          scope: 'server',
+          decision: 'retry-now',
+          dueAt: now.toISOString(),
+          maxAttempts: 1,
+          outcome: 'armed',
+          createdAt: now.toISOString(),
+          updatedAt: now.toISOString(),
+        });
+      }
+      // The source turn of `thread-ended` reached a durable terminal while
+      // its intent stayed armed (the original cancellation CAS was lost).
+      store.appendEvent({
+        eventId: 'aborted-ended',
+        provider: 'claude',
+        threadId: 'thread-ended',
+        turnId: 'turn-ended',
+        createdAt: now.toISOString(),
+        method: 'turn.aborted',
+      });
+    }
+
+    function coordinatorWithRepairFaults(
+      store: EventStore,
+      now: Date,
+      faults: number,
+    ) {
+      const real = recoveryLedger(store);
+      let remaining = faults;
+      const repairs = vi.fn((at: string) => {
+        if (remaining > 0) {
+          remaining -= 1;
+          return { kind: 'unavailable' as const };
+        }
+        return real.cancelSourceTerminated(at);
+      });
+      const sendTurn = vi.fn(async (input: { threadId: string }) => ({
+        turnId: `recovered-${input.threadId}`,
+      }));
+      const warn = vi.fn();
+      const coordinator = new SessionRecoveryCoordinator({
+        eventStore: store,
+        recoveryLedger: { ...real, cancelSourceTerminated: repairs },
+        adapterForProvider: () =>
+          ({ metadata: { recovery: { sameSession: true } } }) as any,
+        sendTurn,
+        now: () => now,
+        logger: { warn },
+      });
+      return { coordinator, repairs, sendTurn, warn };
+    }
+
+    test('arms no timer until the repair lands, then cancels the ended source and resumes the other', async () => {
+      vi.useFakeTimers();
+      const dir = mkdtempSync(join(tmpdir(), 'recovery-coordinator-'));
+      dirs.push(dir);
+      const store = new EventStore(join(dir, 'orchestration.sqlite'));
+      const now = new Date('2026-07-29T12:00:00.000Z');
+      armedPair(store, now);
+      const { coordinator, repairs, sendTurn, warn } =
+        coordinatorWithRepairFaults(store, now, 1);
+      try {
+        coordinator.reconcile();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(sendTurn).not.toHaveBeenCalled();
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringContaining('source-terminal repair'),
+          expect.anything(),
+        );
+
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(repairs).toHaveBeenCalledTimes(2);
+        expect(
+          coordinator.latestProjection('thread-ended'),
+        ).toMatchObject({ outcome: 'canceled' });
+        expect(sendTurn.mock.calls.map(([input]) => input.threadId)).toEqual([
+          'thread-open',
+        ]);
+      } finally {
+        await coordinator.dispose().catch(() => undefined);
+        store.close();
+        vi.useRealTimers();
+      }
+    });
+
+    test('a repair that never lands stops retrying and never replays either intent', async () => {
+      vi.useFakeTimers();
+      const dir = mkdtempSync(join(tmpdir(), 'recovery-coordinator-'));
+      dirs.push(dir);
+      const store = new EventStore(join(dir, 'orchestration.sqlite'));
+      const now = new Date('2026-07-29T12:00:00.000Z');
+      armedPair(store, now);
+      const { coordinator, repairs, sendTurn } = coordinatorWithRepairFaults(
+        store,
+        now,
+        Number.POSITIVE_INFINITY,
+      );
+      try {
+        coordinator.reconcile();
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+        expect(sendTurn).not.toHaveBeenCalled();
+        const attempts = repairs.mock.calls.length;
+        expect(attempts).toBeGreaterThan(1);
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+        expect(repairs).toHaveBeenCalledTimes(attempts);
+        expect(sendTurn).not.toHaveBeenCalled();
+        expect(coordinator.latestProjection('thread-ended')).toMatchObject({
+          outcome: 'armed',
+        });
+      } finally {
+        await coordinator.dispose().catch(() => undefined);
+        store.close();
+        vi.useRealTimers();
+      }
+    });
+  });
+
   test('refuses to replay a turn whose attachment bytes are gone (#3374)', async () => {
     vi.useFakeTimers();
     const dir = mkdtempSync(join(tmpdir(), 'recovery-coordinator-'));
