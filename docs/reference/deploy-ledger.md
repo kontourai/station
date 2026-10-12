@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-12T07:56:07Z | nightly-desktop | 0.1.11-nightly.2476 | `154624a` | native cohort final receipt partial | [run](https://github.com/kontourai/station/actions/runs/38208618878) |
 | 2026-10-12T06:33:19Z | nightly-npm | 0.7.0-nightly.2476.38208618878 | `154624a` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38208618878) |
 | 2026-10-11T19:30:09Z | nightly-npm | 0.7.0-nightly.2475.38165997894 | `f5e2136` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38165997894) |
 | 2026-10-11T11:06:16Z | nightly-desktop | 0.1.11-nightly.2475.3 | `5cb1c6b` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/38129794582) |
@@ -244,6 +245,48 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-12T07:56:07Z · nightly-desktop · 0.1.11-nightly.2476
+
+- Ship SHA: `154624a8726d33e489d2c165471b876e69db76b5`
+- Artifact built at: `2026-10-12T06:58:23.742Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 38208618878)
+- Note: android: NOT_VERIFIED (android provider outcome unknown: unresolved:run:38208618878:play-upload-or-query (the provider effect may already be live))
+
+### Changelog
+
+Commits since `5cb1c6b` ([full sha](https://github.com/kontourai/station/commit/5cb1c6b57f2ed893fff22a8cd8e7777d1ec7485d)):
+
+**Features**
+
+- [#3592](https://github.com/kontourai/station/pull/3592) feat(install): one-line Nightly install, fixed-name desktop downloads and SHA256SUMS
+- [#3553](https://github.com/kontourai/station/pull/3553) feat(pairing): devices ask for full access; approvers see it and can limit it
+- [#3541](https://github.com/kontourai/station/pull/3541) feat(telemetry): add a durable scoped product receiver
+
+**Fixes**
+
+- [#3583](https://github.com/kontourai/station/pull/3583) fix(launcher): remove staging files when a write fails on a full disk
+- [#3582](https://github.com/kontourai/station/pull/3582) fix(orchestration): retry an observed event's append on store contention (#3560)
+- [#3579](https://github.com/kontourai/station/pull/3579) fix(orchestration): never resend a client turn whose dead owner may have invoked it (#3559)
+- [#3588](https://github.com/kontourai/station/pull/3588) fix(ui): keep the Model control on an Agent row that cannot start
+- [#3571](https://github.com/kontourai/station/pull/3571) fix(activity): say "this Station" while connecting (#3552)
+- [#3555](https://github.com/kontourai/station/pull/3555) fix(activity): show external conversations as the ordinary chat; outage banner only for real outages (#3552)
+- [#3556](https://github.com/kontourai/station/pull/3556) fix(ui): tidy the start composer's Agent picker and its errors
+- [#3554](https://github.com/kontourai/station/pull/3554) fix(chat): unclip the mobile @ file picker and join Send with its mode segment
+
+**CI / workflow**
+
+- [#3580](https://github.com/kontourai/station/pull/3580) ci(docs): run the org docs-kit gate on pull requests and the merge queue
+
+**Docs**
+
+- [#3577](https://github.com/kontourai/station/pull/3577) docs(adr): amend ADR 0005 into publishable-package and standalone tiers
+- [#3576](https://github.com/kontourai/station/pull/3576) docs(pages): bundle the Station Docs manual and its 16 topics for the shared docs MCP
+
+**Other**
+
+- [#3587](https://github.com/kontourai/station/pull/3587) test(atlas): find the shipped manual among search results instead of pinning a count
 
 ## 2026-10-12T06:33:19Z · nightly-npm · 0.7.0-nightly.2476.38208618878
 
