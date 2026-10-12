@@ -1,3 +1,4 @@
+import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
 import {
   usePeerCredentialsQuery,
   useSshEnvironmentsQuery,
@@ -16,10 +17,23 @@ import {
 } from '../utils/peerEnvironmentOptions';
 import { useDevicePresentation } from './useDevicePresentation';
 
-export function useExecutionStationCatalog(
-  profile: AgentData,
-  environmentId: string,
-) {
+export type ExecutionStation = {
+  id: string;
+  name: string;
+  kind: 'current' | 'ssh' | 'paired';
+};
+
+/**
+ * The Stations this caller may choose to run work on, as the server reports
+ * them: This Station, every SSH environment with a verified Project path, and
+ * every paired Station. Each list joins only when its read SUCCEEDS for this
+ * caller — a scoped Device whose `GET /api/environments/peers` is refused
+ * (`access:manage`) never sees a paired choice, and an unverified SSH
+ * environment (which the task launcher refuses) is never offered. `settled`
+ * is false until both reads have answered, so a caller can avoid offering a
+ * choice before it knows there is one.
+ */
+export function useExecutionStations() {
   const scope = useHostRequestAuthorityScope();
   const device = useDevicePresentation();
   const enabled = Boolean(scope?.isCurrent());
@@ -29,18 +43,48 @@ export function useExecutionStationCatalog(
   const paired = peers.isSuccess
     ? selectablePeerStations(peers.data, saved)
     : [];
-  const stations = [
-    { id: 'current', name: device?.hostName ?? 'This Station' },
-    ...saved.flatMap((entry) =>
-      entry.profile.environmentId
-        ? [{ id: entry.profile.environmentId, name: entry.profile.name }]
+  const stations: ExecutionStation[] = [
+    {
+      id: 'current',
+      name: device?.hostName ?? 'This Station',
+      kind: 'current',
+    },
+    ...saved.flatMap((entry): ExecutionStation[] =>
+      entry.profile.environmentId && entry.profile.verifiedProjectPath
+        ? [
+            {
+              id: entry.profile.environmentId,
+              name: entry.profile.name,
+              kind: 'ssh',
+            },
+          ]
         : [],
     ),
-    ...paired.map((entry) => ({
-      id: entry.environmentId,
-      name: peerStationLabel(entry),
-    })),
+    ...paired.map(
+      (entry): ExecutionStation => ({
+        id: entry.environmentId,
+        name: peerStationLabel(entry),
+        kind: 'paired',
+      }),
+    ),
   ];
+  return {
+    enabled,
+    stations,
+    settled:
+      enabled &&
+      (environments.isSuccess || environments.isError) &&
+      (peers.isSuccess || peers.isError),
+    stationsUnavailable: environments.isError || peers.isError,
+  };
+}
+
+export function useExecutionStationCatalog(
+  profile: AgentData,
+  environmentId: string,
+) {
+  const scope = useHostRequestAuthorityScope();
+  const { enabled, stations, stationsUnavailable } = useExecutionStations();
   const query = useQuery({
     queryKey: [
       'execution-station-catalog',
@@ -119,6 +163,18 @@ export function useExecutionStationCatalog(
     error: query.error,
     unmatched: environmentId !== 'current' && sameEnvironment && !counterpart,
     stationName,
-    stationsUnavailable: environments.isError || peers.isError,
+    stationsUnavailable,
   };
+}
+
+/**
+ * Where a start runs before anything is chosen: an explicit choice wins,
+ * else the Project's saved default environment, else This Station.
+ */
+export function effectiveExecutionStationId(
+  environmentId: string | undefined,
+  projectDefault: EnvironmentRef | undefined,
+): string {
+  if (environmentId) return environmentId;
+  return projectDefault?.kind === 'saved' ? projectDefault.id : 'current';
 }

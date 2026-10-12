@@ -1,7 +1,10 @@
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import React, { type RefObject, useCallback, useRef, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
-import { useExecutionStationCatalog } from '../../hooks/useExecutionStationCatalog';
+import {
+  type ExecutionStation,
+  useExecutionStationCatalog,
+} from '../../hooks/useExecutionStationCatalog';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import {
   type EffectiveModelSource,
@@ -14,7 +17,7 @@ import type {
 import { type AgentFixRoute, agentFixRoute } from '../AgentReadinessCell';
 import { agentRunnability } from '../agent-runnability';
 import { Button } from '../Button';
-import { WarningGlyph } from '../icons/Glyph';
+import { CheckGlyph, MonitorGlyph, WarningGlyph } from '../icons/Glyph';
 import { ProjectIcon } from '../icons/ProjectIcon';
 import {
   GLOBAL_CONTEXT,
@@ -313,6 +316,96 @@ export function StartProjectMenu({
           onSelectContext={onChoose}
         />
       </div>
+    </ResponsiveDialogSurface>
+  );
+}
+
+const STATION_KIND_DETAIL: Record<ExecutionStation['kind'], string> = {
+  current: 'This Station',
+  ssh: 'SSH',
+  paired: 'Paired Station',
+};
+
+/**
+ * The Station list behind "Runs on …": it only chooses where this start
+ * runs. Start still starts it; on another Station that is a task there,
+ * after its engine is chosen (see `StartPickerMenus`).
+ */
+export function StartStationMenu({
+  anchor,
+  layer,
+  stations,
+  selectedId,
+  stationsUnavailable,
+  onChoose,
+  onClose,
+}: {
+  anchor: HTMLElement | null;
+  layer: MenuLayer;
+  stations: ExecutionStation[];
+  selectedId: string;
+  stationsUnavailable: boolean;
+  onChoose: (station: ExecutionStation) => void;
+  onClose: () => void;
+}) {
+  const anchorRef = useRef<HTMLElement | null>(anchor);
+  return (
+    <ResponsiveDialogSurface
+      layer={layer}
+      ariaLabel="Where this work runs"
+      onClose={onClose}
+      historyMode="entry"
+      anchorRef={anchorRef}
+      returnFocusTarget={anchor}
+      initialFocusPolicy="desktop"
+      overlayClassName="composer-popover-overlay composer-popover-overlay--start start-menu__overlay"
+      panelClassName="composer-popover-panel start-menu__panel"
+    >
+      <ResponsiveDialogHeader
+        title="Where this work runs"
+        closeLabel="Close Station list"
+        onClose={onClose}
+      />
+      <p className="start-menu__hint">
+        Choose the Station whose computer runs this work. On another Station,
+        Start sends it there as a task after you choose its engine.
+      </p>
+      <div className="start-menu__list">
+        {stations.map((station) => {
+          const selected = station.id === selectedId;
+          return (
+            <button
+              type="button"
+              key={station.id}
+              className={`new-chat-modal__dropdown-item ${selected ? 'new-chat-modal__dropdown-item--active' : ''}`}
+              aria-current={selected ? 'true' : undefined}
+              onClick={() => onChoose(station)}
+            >
+              <span className="new-chat-modal__dropdown-item-main">
+                <span className="new-chat-modal__dropdown-item-label">
+                  <span className="start-menu__mark">
+                    <MonitorGlyph />
+                  </span>
+                  <span>{station.name}</span>
+                </span>
+                <span className="start-menu__detail">
+                  {STATION_KIND_DETAIL[station.kind]}
+                </span>
+              </span>
+              {selected && (
+                <span className="start-menu__mark">
+                  <CheckGlyph />
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {stationsUnavailable && (
+        <p className="start-menu__hint" role="status">
+          Some Stations could not be listed for this device.
+        </p>
+      )}
     </ResponsiveDialogSurface>
   );
 }

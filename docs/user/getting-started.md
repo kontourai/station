@@ -209,15 +209,18 @@ first; the controls show what **Start** will use:
   Station makes for the chat; the chip and list say which.
 - **⋯** holds **Use a visual skill**.
 
-**on <host>** opens **Run on a Station** with your message, Project and any explicit
-Station/engine/model/options choice kept.
-For a saved Project execution environment, the control says **on Project default**.
-Choose a Station, worker and model there, then choose **Run task** to start a
-resumable task. Available workers come from that Station; unavailable
-destinations keep their refusal instead of falling back to this computer.
-Cancel returns to your message, including edits made in the task chooser.
-Follow a started task in Activity. A foreground chat stays on its existing
-Station; choosing a remote task destination does not move that chat.
+**Runs on <Station>** says which Station runs the work. When you can run work
+on another Station (a verified SSH environment or a paired Station you are
+allowed to list), it opens **Where this work runs**, with the current one
+checked. Choosing another Station continues to its **Engine & model**, since
+that Station's own engines run the work. **Start** then opens **Run on a
+Station** with your message, Project and choices, and **Run task** starts a
+resumable task there. Unavailable destinations keep their refusal instead of
+falling back to this computer, and Cancel returns to your message, including
+edits made in the task chooser. Follow a started task in Activity. A
+foreground chat stays on its existing Station; choosing a remote task
+destination does not move that chat. With no other Station to choose, the
+control is plain text.
 
 An operator's Project page has the same composer in a compact form above its
 activity. Its Project is fixed, so starting there uses that Project even when

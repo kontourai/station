@@ -28,7 +28,6 @@ import type {
   SkillExperienceInventoryV1,
 } from '@kontourai/station-contracts/skill-experience';
 import type { ExternalEngineReadinessProjection } from '@kontourai/station-contracts/system-status';
-import type { DelegatedTaskHandle } from '@kontourai/station-sdk';
 import {
   act,
   cleanup,
@@ -40,7 +39,6 @@ import {
 } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
-import type { StartStationControl } from '../components/chat-start/StartStationControl';
 import type { AgentData } from '../contexts/AgentsContext';
 import type { ProjectMetadata } from '../contexts/ProjectsContext';
 import {
@@ -50,32 +48,10 @@ import {
 } from '../hooks/lastChosenModel';
 import { resetStartChoicesForTests } from '../hooks/useStartSelection';
 
-const remoteRun = vi.hoisted((): { complete: (() => void) | null } => ({
-  complete: null,
-}));
+// The Station control reads this caller's Station inventory; its own
+// behavior is covered in `StartStationControl.test.tsx`.
 vi.mock('../components/chat-start/StartStationControl', () => ({
-  StartStationControl: ({
-    prompt,
-    onStarted,
-  }: ComponentProps<typeof StartStationControl>) => (
-    <button
-      type="button"
-      onClick={() => {
-        const handle: DelegatedTaskHandle = {
-          conversationId: 'task:remote',
-          taskId: 'task:remote',
-          sessionId: 'session:remote',
-          currentSessionId: 'session:remote',
-          status: 'dispatched',
-          environment: { kind: 'peer', id: 'env-kontour', name: 'Kontour' },
-          target: { kind: 'agent', id: agentId('assistant') },
-        };
-        remoteRun.complete = () => onStarted(handle, 'Kontour', prompt);
-      }}
-    >
-      Stage a remote task
-    </button>
-  ),
+  StartStationControl: () => <span>Runs on this Station</span>,
 }));
 
 const AGENT: AgentData = {
@@ -1283,27 +1259,6 @@ describe('the start composer in the dock', () => {
     await screen.findByRole('dialog', { name: 'Choose agent' });
     clickAgent(slug);
   }
-
-  test.each([
-    ['new draft', 'new draft'],
-    ['submitted draft', ''],
-  ])(
-    'remote task completion preserves the latest draft (%s)',
-    (latest, expected) => {
-      remoteRun.complete = null;
-      start(undefined, { initialPrompt: 'submitted draft' });
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Stage a remote task' }),
-      );
-      fireEvent.change(message(), { target: { value: latest } });
-      expect(remoteRun.complete).not.toBeNull();
-      act(() => remoteRun.complete!());
-      expect(message().value).toBe(expected);
-      expect(screen.getByRole('status').textContent).toContain(
-        'Task started on Kontour',
-      );
-    },
-  );
 
   test('typing and choosing another Agent do not open a chat; Start starts the chosen Agent once with the message', async () => {
     selectionModelState.agents = [AGENT, AUTHORED_CODEX];
