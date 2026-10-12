@@ -1,5 +1,6 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { win32 } from 'node:path';
 import {
   windowsPowerShell7Path,
   windowsSystemUtilityPath,
@@ -62,7 +63,10 @@ export function isWindowsRoundTripUtcIso(value) {
   return day <= daysInMonth[month - 1];
 }
 
-function windowsCreationDateCommand(pid) {
+// The one PowerShell rendering of a Windows process birth: the birth probe
+// below and `lookupWindowsProcessImageIdentity` both run these statements, so
+// a birth either one records reads the same.
+function windowsBirthStatements(pid) {
   // System.Diagnostics.Process.StartTime reads the process handle directly;
   // unlike Win32_Process through CIM, it does not depend on an eventually
   // visible management projection for the coordinator's newly started PID.
@@ -74,7 +78,11 @@ function windowsCreationDateCommand(pid) {
     '$ticks = $created.Ticks - ($created.Ticks % 10)',
     '$normalized = [datetime]::new([long]$ticks, [System.DateTimeKind]::Utc)',
     "$normalized.ToString('yyyy-MM-ddTHH:mm:ss.fffffffZ', [System.Globalization.CultureInfo]::InvariantCulture)",
-  ].join('; ');
+  ];
+}
+
+function windowsCreationDateCommand(pid) {
+  return windowsBirthStatements(pid).join('; ');
 }
 
 // The retry shell's logical name in `ownProcessBirthProbeSchedule`. The probe
@@ -271,6 +279,115 @@ async function windowsCreationDateFingerprintAsync(
     throw error;
   }
   return canonicalOrRecord(pid, command, output);
+}
+
+/**
+ * The bound for `lookupWindowsProcessImageIdentity`. Its callers are CLI
+ * start and stop decisions, never the server's event loop, so it gets the
+ * cold PowerShell start budget rather than the short arbitrary-pid one.
+ */
+export const WINDOWS_PROCESS_IMAGE_IDENTITY_TIMEOUT_MS =
+  WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS;
+
+function windowsImageIdentityCommand(pid) {
+  // The birth is read before and after the image, each through a fresh
+  // process object: a pid that exited and was reused between the reads has
+  // another start time and fails, as the Linux fingerprint's two procfs
+  // reads do. `Stop` makes a .NET exception end the script with a non-zero
+  // exit instead of continuing to the next statement. The image is printed
+  // as Base64 of its UTF-8 bytes: Windows PowerShell writes a pipe in the
+  // OEM code page, so a non-ASCII path (C:\Users\José) would otherwise read
+  // differently from callers whose console code pages differ.
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    `function Read-StationBirth { ${windowsBirthStatements(pid).join('; ')} }`,
+    '$before = Read-StationBirth',
+    `$p = [System.Diagnostics.Process]::GetProcessById(${pid}); try { $image = $p.MainModule.FileName } finally { $p.Dispose() }`,
+    '$after = Read-StationBirth',
+    'if ($before -ne $after) { exit 3 }',
+    '$before',
+    '[Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($image))',
+  ].join('; ');
+}
+
+/** Canonical Base64 of valid UTF-8 only; anything else is null. */
+function decodeStrictBase64Utf8(value) {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(value))
+    return null;
+  const bytes = Buffer.from(value, 'base64');
+  if (bytes.toString('base64') !== value) return null;
+  try {
+    // ignoreBOM keeps a leading BOM in the text, so it fails the path check
+    // instead of being stripped into a second spelling of the same path.
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(
+      bytes,
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A Windows process's start time and executable image, read together: the
+ * identity Station's lifecycle records for its server and UI children and
+ * checks before it signals one (#2675). The start time has the same format
+ * as `lookupProcessBirthFingerprint`'s Windows birth. Null on any failure
+ * (no such process, access refused, timeout, unexpected output); callers
+ * fail closed on null.
+ */
+export function lookupWindowsProcessImageIdentity(pid, dependencies = {}) {
+  if (!Number.isInteger(pid) || pid < 1) return null;
+  const exec = dependencies.exec ?? execFileSync;
+  const timeoutMs =
+    dependencies.timeoutMs ?? WINDOWS_PROCESS_IMAGE_IDENTITY_TIMEOUT_MS;
+  let command;
+  try {
+    command = windowsSystemUtilityPath('powershell', dependencies.env);
+  } catch {
+    return null;
+  }
+  let output;
+  try {
+    output = exec(
+      command,
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        windowsImageIdentityCommand(pid),
+      ],
+      {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+        timeout: timeoutMs,
+        killSignal: 'SIGKILL',
+      },
+    );
+  } catch (error) {
+    recordProbeFailure(pid, command, describeProbeError(error, timeoutMs));
+    return null;
+  }
+  const lines = String(output ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const [birth, encodedImage] = lines;
+  const image = decodeStrictBase64Utf8(encodedImage);
+  if (
+    lines.length !== 2 ||
+    !isWindowsRoundTripUtcIso(birth) ||
+    image === null ||
+    !win32.isAbsolute(image)
+  ) {
+    recordProbeFailure(
+      pid,
+      command,
+      `printed no start time and image: ${clipSnippet(output)}`,
+    );
+    return null;
+  }
+  return { birth, image };
 }
 
 /**
@@ -700,4 +817,91 @@ export async function probeExactProcessIdentityAsync(pid, dependencies = {}) {
   )(pid);
   if (!birth) return { state: 'unavailable' };
   return { state: 'exact', identity: { pid, start: birth } };
+}
+
+// `ps -o lstart=` under LC_ALL=C + TZ=UTC, e.g. "Sun Oct  4 20:41:31 2026".
+const LSTART_BIRTH =
+  /^(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) +([1-9]|[12]\d|3[01]) ([01]\d|2[0-3]):([0-5]\d):([0-5]\d) (\d{4})$/;
+const LSTART_MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+// `/proc/<pid>/stat` start time (clock ticks since boot) under a boot id.
+const LINUX_BOOT_ID = /^[0-9a-f-]+$/;
+const LINUX_BIRTH = /^linux:([0-9a-f-]+):(\d+)$/;
+
+/**
+ * Parse a POSIX birth fingerprint from `lookupProcessBirthFingerprint` into a
+ * comparable instant: `{ boot, ticks }` on Linux (ticks only order within one
+ * boot), `{ boot: null, epochMs }` from `ps -o lstart=` (1-second resolution).
+ * Anything else, including the Windows format, is null.
+ */
+function parsePosixBirth(fingerprint) {
+  if (typeof fingerprint !== 'string') return null;
+  const linux = LINUX_BIRTH.exec(fingerprint);
+  if (linux) return { boot: linux[1], ticks: BigInt(linux[2]) };
+  const lstart = LSTART_BIRTH.exec(fingerprint);
+  if (!lstart) return null;
+  const epochMs = Date.UTC(
+    Number(lstart[6]),
+    LSTART_MONTHS.indexOf(lstart[1]),
+    Number(lstart[2]),
+    Number(lstart[3]),
+    Number(lstart[4]),
+    Number(lstart[5]),
+  );
+  return Number.isFinite(epochMs) ? { boot: null, epochMs } : null;
+}
+
+/**
+ * Was the process with this birth fingerprint born before the host's current
+ * boot? True means nothing it started can still be running. Linux compares
+ * the fingerprint's boot id with `/proc/sys/kernel/random/boot_id`; the
+ * `lstart` form compares against `sysctl -n kern.boottime` (whole seconds,
+ * since `lstart` has no finer resolution). Null when the fingerprint or the
+ * boot clock cannot be read: the caller must not treat that as either answer.
+ */
+export function processBirthPredatesCurrentBoot(
+  fingerprint,
+  dependencies = {},
+) {
+  const {
+    platform = process.platform,
+    exec = execFileSync,
+    readFile = readFileSync,
+  } = dependencies;
+  const birth = parsePosixBirth(fingerprint);
+  if (!birth || platform === 'win32') return null;
+  try {
+    if ('ticks' in birth) {
+      if (platform !== 'linux') return null;
+      const bootId = readFile('/proc/sys/kernel/random/boot_id', 'utf8').trim();
+      if (!LINUX_BOOT_ID.test(bootId)) return null;
+      return birth.boot !== bootId;
+    }
+    if (platform === 'linux') return null;
+    const output = exec('sysctl', ['-n', 'kern.boottime'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
+      timeout: PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
+      killSignal: 'SIGKILL',
+      env: { ...process.env, LC_ALL: 'C' },
+    });
+    const match = /^\{ sec = (\d+), usec = \d+ \}/.exec(String(output).trim());
+    if (!match) return null;
+    return birth.epochMs < Number(match[1]) * 1000;
+  } catch {
+    return null;
+  }
 }

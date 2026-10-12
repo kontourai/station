@@ -989,6 +989,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // and asserts the startup sweep reaps the orphaned group. Same process-tree
   // shape as process-utils.test.ts; must not run under the ordinary pool.
   'src-server/services/infra/__tests__/owned-process-reaping.test.ts',
+  // #561: spawns the real Codex app-server path against a stub executable
+  // that starts a grandchild in its group, then sweeps and terminates it.
+  // Same process-tree shape as owned-process-reaping.test.ts.
+  'src-server/providers/__tests__/codex-app-server-owned-process.test.ts',
   // station#1895: spawns a real node child process (through `tsx`) to prove
   // the durable log sink survives an actual uncaught exception, the same
   // resource shape as `agent-registry.test.ts`'s schema-gate child probe.
@@ -1111,6 +1115,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/ssh/__tests__/openssh-reachability.process.test.ts',
   'src-server/services/orchestration/__tests__/planned-home-transfer-store.process.test.ts',
   'src-server/services/ssh/__tests__/openssh-launch-bootstrap.test.ts',
+  // #2675: runs the Windows identity probe (System32 PowerShell) against a
+  // real child node.exe; it runs only on win32, in the Windows PR job.
+  'packages/cli/src/__tests__/windows-process-identity.process.test.ts',
   'src-server/services/ssh/__tests__/openssh-worker-probe.test.ts',
   'src-server/services/terminal/__tests__/terminal-subprocess-state.test.ts',
   // Timing-sensitive responsive-UI suites: no child_process import, kept out
