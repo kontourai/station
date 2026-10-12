@@ -1,0 +1,13 @@
+{
+  "revision": "718b14252ca8cd5c210cbbb1c59be8953105d262",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"#3565: verification-policy-gate.mjs only adds monument-import-boundary:gate to the pinned ci:fast static allowlist, matching run-ci-fast.mjs. This document's statics-job description does not enumerate the allowlist; no prose change.","inputs":[".veritas/README.md","scripts/verification-policy-gate.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"#3565: verification-policy-gate.mjs only adds monument-import-boundary:gate to the pinned ci:fast static allowlist; this guide's allowlist mentions concern the dependency lifecycle and are unaffected. No prose change.","inputs":["docs/guides/code-quality.md","scripts/verification-policy-gate.mjs"]},
+
+    {"path":"docs/guides/development.md","note":"#3565: verification-policy-gate.mjs only adds monument-import-boundary:gate to the pinned ci:fast static allowlist; the guide does not enumerate ci:fast steps. Its Monument package row was reviewed in the earlier note.","inputs":["docs/guides/development.md","scripts/verification-policy-gate.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"#3565: verification-policy-gate.mjs only adds monument-import-boundary:gate to the pinned ci:fast static allowlist. Line 1374 describes the allowlist by category (fixed runtime, lockfile, workflow, documentation, policy, typecheck, lint, governance invariants) without enumerating each gate, so a source-read boundary gate fits it; the generated lane table is unchanged. No prose change.","inputs":["docs/guides/testing.md","scripts/verification-policy-gate.mjs"]}
+  ]
+}
