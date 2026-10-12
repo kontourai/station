@@ -223,14 +223,16 @@ describe.skipIf(process.platform === 'win32')(
       });
       const shellPid = await readPidFile(join(stubDir, 'shell.pid'));
       pids.push(shellPid);
-      // The shell leads the command's group. Assert BEFORE the group is
-      // handed to cleanup, so a grandchild cleanup cannot find is still
-      // reached through its group.
+      // The shell leads the command's group. Hand that group to cleanup
+      // first, so a grandchild whose pid file is unreadable is still reached
+      // through it, but never this runner's own group (a command that was
+      // not detached); then the grandchild is killed by its exact pid.
       const pgid = processGroupOf(shellPid);
-      expect(pgid).not.toBe(processGroupOf(process.pid));
-      groups.push(pgid);
+      const ownGroup = processGroupOf(process.pid);
+      if (pgid !== ownGroup) groups.push(pgid);
       const grandchildPid = await readPidFile(join(stubDir, 'grandchild.pid'));
       pids.push(grandchildPid);
+      expect(pgid).not.toBe(ownGroup);
       expect(processGroupOf(grandchildPid)).toBe(pgid);
       return { attached, stubDir, grandchildPid, pgid };
     }
