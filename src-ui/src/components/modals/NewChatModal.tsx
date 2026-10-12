@@ -1,6 +1,9 @@
 import type { ProjectRunLocations } from '@kontourai/station-contracts/project';
 import type { InstalledSkillExperienceV1 } from '@kontourai/station-contracts/skill-experience';
-import { useSkillExperienceInventoryQuery } from '@kontourai/station-sdk';
+import {
+  type DelegatedTaskHandle,
+  useSkillExperienceInventoryQuery,
+} from '@kontourai/station-sdk';
 import {
   sameSkillExperienceIdentity,
   skillExperienceInputDefaults,
@@ -168,7 +171,8 @@ interface NewChatModalProps {
     executionOnCurrentStation?: boolean,
   ) => void | Promise<void>;
   onClose: () => void;
-  onTaskStarted?: () => void;
+  /** A remote start's task was accepted on `stationName`. */
+  onTaskStarted?: (task: DelegatedTaskHandle, stationName: string) => void;
   draftContext?: CodingChatContextDraft | null;
   mode?: NewChatModalMode;
   requestAuthority?: NewChatSetupAuthority;
@@ -2090,12 +2094,12 @@ export function NewChatModal({
               setRemoteLaunch(null);
               setShowChatOptions(true);
             }}
-            onDelegated={(_task, _target, placement) => {
+            onDelegated={(task, _target, placement) => {
               setRemoteLaunch(null);
               setPrompt((current) =>
                 current === placement.prompt ? '' : current,
               );
-              onTaskStarted?.();
+              onTaskStarted?.(task, placement.stationName);
             }}
           />
         </React.Suspense>
