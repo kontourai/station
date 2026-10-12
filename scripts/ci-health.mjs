@@ -557,7 +557,6 @@ export async function collectHealth(
     await collectWindow(since, until);
     const unique = [...new Map(runs.map((r) => [r.id, r])).values()];
     runs.length = 0;
-    const pushPRs = new Map();
     const collectRun = async (run) => {
       const collectedRuns = [];
       const collectedJobs = [];
