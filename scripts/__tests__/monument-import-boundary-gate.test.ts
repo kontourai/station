@@ -611,6 +611,8 @@ describe('monument import boundary gate', () => {
         "export const a = import.meta.glob('../packages/monument/src/*.ts');",
         "export const b = import.meta.glob(['../packages/monument/src/**/*.ts']);",
         "export const c = import.meta.glob('../packages/other/*.ts');",
+        // Undecodable only after its first '*': the fixed prefix still decodes.
+        "export const d = import.meta.glob('../packages/monument/src/*/100%.ts');",
         '',
       ].join('\n'),
     });
@@ -618,6 +620,7 @@ describe('monument import boundary gate', () => {
     for (const line of [
       'monument-internal-reference: src-server/glob.ts:1 ../packages/monument/src/*.ts',
       'monument-internal-reference: src-server/glob.ts:2 ../packages/monument/src/**/*.ts',
+      'monument-internal-reference: src-server/glob.ts:5 ../packages/monument/src/*/100%.ts',
     ])
       expect(result.stderr).toContain(line);
     expect(result.stderr).not.toContain('src-server/glob.ts:3');
