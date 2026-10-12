@@ -185,7 +185,11 @@ never. It never exceeds what the person's group allows. The operator makes and
 revokes anyone's tokens on People; a person manages their own under **Settings
 → Devices → Pairing → Your access tokens**, from a device tied to them (the
 panel does not appear on other devices). The secret is shown once, when the
-token is made. See the [API reference](../reference/api.md#people-and-station-groups).
+token is made. A person tied by a Station local account can hold tokens too
+(#3586): the token acts as the account without a browser session, sees only
+the Projects the account is a member of, and stops working when the account
+is disabled or signed out everywhere. With any other sign-in provider,
+account-tied people cannot hold tokens. See the [API reference](../reference/api.md#people-and-station-groups).
 
 ## Relationship table
 
