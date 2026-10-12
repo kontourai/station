@@ -1,5 +1,39 @@
 [
   {
+    "timestampUtc": "2026-10-12T16:24:27Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2476.38269088168",
+    "sha": "e02cc8223a912464a43b82ffb3fd07a793ee6961",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38269088168",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2476.38269088168 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "7e3267227f25a7da5544462303a8cff8441304c6",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#3600](https://github.com/kontourai/station/pull/3600) fix(ci-health): attribute pull-request runs whose PR list is empty",
+          "[#3613](https://github.com/kontourai/station/pull/3613) fix(recovery): keep a failed startup obligation scan from latching credential reconciliation",
+          "[#3604](https://github.com/kontourai/station/pull/3604) fix(cli): fingerprint Station's server and UI on Windows before signalling them (#2675)",
+          "[#3578](https://github.com/kontourai/station/pull/3578) fix(process): register the Codex app-server and retain dead-leader groups instead of reaping them",
+          "[#3603](https://github.com/kontourai/station/pull/3603) fix(memory): keep a torn transcript tail from swallowing the next message",
+          "[#3602](https://github.com/kontourai/station/pull/3602) fix(orchestration): never read a dead dispatch's own turn.started as moved on"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
     "timestampUtc": "2026-10-12T08:11:05Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2476.38209927141",
