@@ -727,3 +727,90 @@ export async function probeExactProcessIdentityAsync(pid, dependencies = {}) {
   if (!birth) return { state: 'unavailable' };
   return { state: 'exact', identity: { pid, start: birth } };
 }
+
+// `ps -o lstart=` under LC_ALL=C + TZ=UTC, e.g. "Sun Oct  4 20:41:31 2026".
+const LSTART_BIRTH =
+  /^(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) +([1-9]|[12]\d|3[01]) ([01]\d|2[0-3]):([0-5]\d):([0-5]\d) (\d{4})$/;
+const LSTART_MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+// `/proc/<pid>/stat` start time (clock ticks since boot) under a boot id.
+const LINUX_BOOT_ID = /^[0-9a-f-]+$/;
+const LINUX_BIRTH = /^linux:([0-9a-f-]+):(\d+)$/;
+
+/**
+ * Parse a POSIX birth fingerprint from `lookupProcessBirthFingerprint` into a
+ * comparable instant: `{ boot, ticks }` on Linux (ticks only order within one
+ * boot), `{ boot: null, epochMs }` from `ps -o lstart=` (1-second resolution).
+ * Anything else, including the Windows format, is null.
+ */
+function parsePosixBirth(fingerprint) {
+  if (typeof fingerprint !== 'string') return null;
+  const linux = LINUX_BIRTH.exec(fingerprint);
+  if (linux) return { boot: linux[1], ticks: BigInt(linux[2]) };
+  const lstart = LSTART_BIRTH.exec(fingerprint);
+  if (!lstart) return null;
+  const epochMs = Date.UTC(
+    Number(lstart[6]),
+    LSTART_MONTHS.indexOf(lstart[1]),
+    Number(lstart[2]),
+    Number(lstart[3]),
+    Number(lstart[4]),
+    Number(lstart[5]),
+  );
+  return Number.isFinite(epochMs) ? { boot: null, epochMs } : null;
+}
+
+/**
+ * Was the process with this birth fingerprint born before the host's current
+ * boot? True means nothing it started can still be running. Linux compares
+ * the fingerprint's boot id with `/proc/sys/kernel/random/boot_id`; the
+ * `lstart` form compares against `sysctl -n kern.boottime` (whole seconds,
+ * since `lstart` has no finer resolution). Null when the fingerprint or the
+ * boot clock cannot be read: the caller must not treat that as either answer.
+ */
+export function processBirthPredatesCurrentBoot(
+  fingerprint,
+  dependencies = {},
+) {
+  const {
+    platform = process.platform,
+    exec = execFileSync,
+    readFile = readFileSync,
+  } = dependencies;
+  const birth = parsePosixBirth(fingerprint);
+  if (!birth || platform === 'win32') return null;
+  try {
+    if ('ticks' in birth) {
+      if (platform !== 'linux') return null;
+      const bootId = readFile('/proc/sys/kernel/random/boot_id', 'utf8').trim();
+      if (!LINUX_BOOT_ID.test(bootId)) return null;
+      return birth.boot !== bootId;
+    }
+    if (platform === 'linux') return null;
+    const output = exec('sysctl', ['-n', 'kern.boottime'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
+      timeout: PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
+      killSignal: 'SIGKILL',
+      env: { ...process.env, LC_ALL: 'C' },
+    });
+    const match = /^\{ sec = (\d+), usec = \d+ \}/.exec(String(output).trim());
+    if (!match) return null;
+    return birth.epochMs < Number(match[1]) * 1000;
+  } catch {
+    return null;
+  }
+}
