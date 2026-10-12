@@ -739,6 +739,28 @@ describe('CI health collection bounds and command interface', () => {
       });
       expect(data.runs[0].pull_requests).toEqual([{ number: 200 }]);
     });
+    it('credits the latest-created PR when every candidate closed before the run', async () => {
+      const sha = 'd'.repeat(40);
+      const first = {
+        ...closedPull,
+        number: 300,
+        created_at: '2026-09-01T00:00:00Z',
+        closed_at: '2026-09-02T00:00:00Z',
+        head: head(branch, sha),
+      };
+      const second = {
+        ...first,
+        number: 301,
+        created_at: '2026-09-03T00:00:00Z',
+        closed_at: '2026-10-01T21:40:00Z',
+      };
+      // The run lands after both closed; listed oldest first so a "first
+      // candidate" pick would credit the wrong PR.
+      const { data } = await collect([pullRun(11, sha)], {
+        sha: { [sha]: [first, second] },
+      });
+      expect(data.runs[0].pull_requests).toEqual([{ number: 301 }]);
+    });
     it('does not guess when the head repository is gone', async () => {
       const orphan = pullRun(8, 'b'.repeat(40), { head_repository: null });
       const { data, calls } = await collect([orphan], { head: [closedPull] });
