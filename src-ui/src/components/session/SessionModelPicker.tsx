@@ -45,6 +45,11 @@ interface SessionModelPickerProps {
   runtimeOptions?: Record<string, unknown>;
   onSelect: (model: SelectableModel) => void;
   onReset: () => void;
+  /**
+   * Why the reset is refused right now. Set, the reset button is disabled
+   * and states the reason the same way an unavailable model row does.
+   */
+  resetDisabledReason?: string;
   onRuntimeOptionChange: (
     key: string,
     value: string | number | boolean | undefined,
@@ -76,6 +81,7 @@ export function SessionModelPicker({
   runtimeOptions = {},
   onSelect,
   onReset,
+  resetDisabledReason,
   onRuntimeOptionChange,
   onClose,
   returnFocusTarget,
@@ -452,10 +458,12 @@ export function SessionModelPicker({
             <button
               type="button"
               className="session-model-picker__reset"
+              disabled={Boolean(resetDisabledReason)}
               onClick={onReset}
             >
               Use{' '}
               {currentExecutionAgentId ? 'Agent defaults' : defaultSourceLabel}
+              {resetDisabledReason ? ` · ${resetDisabledReason}` : ''}
             </button>
           )}
         </>

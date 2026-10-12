@@ -19,6 +19,8 @@ import type { SelectableModel } from '../utils/modelCapabilities';
 const agentsMock = vi.hoisted(() => ({ current: [] as any[] }));
 const pickerModelsSeen = vi.hoisted(() => ({
   current: undefined as SelectableModel[] | undefined,
+  resetDisabledReason: undefined as string | undefined,
+  onModelReset: undefined as undefined | (() => void),
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
@@ -98,8 +100,18 @@ vi.mock('../hooks/useTTS', () => ({
 // The picker renders exactly the list ChatDockBody hands ChatInputArea, so
 // that list is the seam: capture it.
 vi.mock('../components/chat/ChatInputArea', () => ({
-  ChatInputArea: ({ pickerModels }: { pickerModels?: SelectableModel[] }) => {
+  ChatInputArea: ({
+    pickerModels,
+    modelResetDisabledReason,
+    onModelReset,
+  }: {
+    pickerModels?: SelectableModel[];
+    modelResetDisabledReason?: string;
+    onModelReset: () => void;
+  }) => {
     pickerModelsSeen.current = pickerModels;
+    pickerModelsSeen.resetDisabledReason = modelResetDisabledReason;
+    pickerModelsSeen.onModelReset = onModelReset;
     return <div data-testid="chat-input-area" />;
   },
 }));
@@ -180,9 +192,11 @@ const executionModels: SelectableModel[] = [
 async function renderBody({
   onExecutionModelSelect,
   handoffDisabledReason,
+  activeSession = session,
 }: {
   onExecutionModelSelect?: (model?: SelectableModel) => void;
   handoffDisabledReason?: string;
+  activeSession?: ChatSession;
 }) {
   agentsMock.current = [
     { slug: agentId('station'), name: 'Station', available: true },
@@ -195,7 +209,7 @@ async function renderBody({
       }
     >
       <ChatDockBody
-        activeSession={session}
+        activeSession={activeSession}
         chatFontSize={14}
         dockHeight={400}
         showStatsPanel={false}
@@ -257,5 +271,37 @@ describe('ChatDockBody engine-switch entry point', () => {
       ['sonnet', true, undefined],
       ['gpt-6', false, 'Wait for the current turn to finish.'],
     ]);
+  });
+
+  test('a turn in flight also refuses "Use Agent defaults" on an engine override', async () => {
+    const onExecutionModelSelect = vi.fn();
+    const overridden = {
+      ...session,
+      executionAgentId: 'codex-proxy',
+    } as ChatSession;
+    await renderBody({
+      onExecutionModelSelect,
+      handoffDisabledReason: 'Wait for the current turn to finish.',
+      activeSession: overridden,
+    });
+    expect(pickerModelsSeen.resetDisabledReason).toBe(
+      'Wait for the current turn to finish.',
+    );
+    pickerModelsSeen.onModelReset?.();
+    expect(onExecutionModelSelect).not.toHaveBeenCalled();
+  });
+
+  test('an unblocked "Use Agent defaults" opens the engine change', async () => {
+    const onExecutionModelSelect = vi.fn();
+    await renderBody({
+      onExecutionModelSelect,
+      activeSession: {
+        ...session,
+        executionAgentId: 'codex-proxy',
+      } as ChatSession,
+    });
+    expect(pickerModelsSeen.resetDisabledReason).toBeUndefined();
+    pickerModelsSeen.onModelReset?.();
+    expect(onExecutionModelSelect).toHaveBeenCalledWith();
   });
 });

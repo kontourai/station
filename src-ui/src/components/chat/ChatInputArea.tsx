@@ -278,6 +278,8 @@ interface ChatInputAreaProps {
   onClearAttachments: () => void;
   onModelSelect: (model: SelectableModel) => void;
   onModelReset: () => void;
+  /** Why the model/engine reset is refused right now; set, it is disabled. */
+  modelResetDisabledReason?: string;
   onModelClose: () => void;
   onModelOpen: () => void;
   onModelRuntimeOptionChange: (
@@ -433,6 +435,7 @@ export function ChatInputArea({
   onClearAttachments,
   onModelSelect,
   onModelReset,
+  modelResetDisabledReason,
   onModelClose,
   onModelOpen,
   onModelRuntimeOptionChange,
@@ -597,7 +600,13 @@ export function ChatInputArea({
   ]
     .filter(Boolean)
     .join(' ');
-  const agentAccessibleLabel = `Agent: ${agentLabel ?? 'current Agent'}. ${agentHandoffDisabled ? (agentHandoffDisabledReason ?? 'Unavailable') : 'Change Agent'}`;
+  // The shared handoff reason names no action ("Send a message first."), so
+  // the refused state names it here, where the action is known.
+  const agentAccessibleLabel = `Agent: ${agentLabel ?? 'current Agent'}. ${
+    agentHandoffDisabled
+      ? `Can’t change Agent yet.${agentHandoffDisabledReason ? ` ${agentHandoffDisabledReason}` : ''}`
+      : 'Change Agent'
+  }`;
   // A turn is in flight. Steer is the default on engines that can take
   // mid-turn input; otherwise Enter queues until this turn finishes.
   const mentionLocation =
@@ -913,6 +922,7 @@ export function ChatInputArea({
                 runtimeOptions={modelRuntimeOptions}
                 onSelect={onModelSelect}
                 onReset={onModelReset}
+                resetDisabledReason={modelResetDisabledReason}
                 onRuntimeOptionChange={onModelRuntimeOptionChange}
                 onClose={onModelClose}
               />
@@ -972,8 +982,12 @@ export function ChatInputArea({
             <button
               type="button"
               className="chat-input__model-reset"
+              disabled={Boolean(modelResetDisabledReason)}
               onClick={onModelReset}
-              title="Reset this chat to its default model"
+              title={
+                modelResetDisabledReason ??
+                'Reset this chat to its default model'
+              }
             >
               Use {modelResetSourceLabel(defaultModelSource)}
             </button>

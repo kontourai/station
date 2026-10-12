@@ -192,7 +192,8 @@
   background: var(--k-panel-raised) !important;
 }
 
-.session-model-picker__models [role="option"]:disabled {
+.session-model-picker__models [role="option"]:disabled,
+.session-model-picker__reset:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }

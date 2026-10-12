@@ -961,9 +961,15 @@ export function ChatDockBody({
   // denies changes to this conversation, and an engine this client cannot
   // start (not ready, incompatible) is left out rather than listed. While a
   // turn or queued message blocks the switch, the engines stay listed but
-  // disabled with that reason, so the dialog never opens on a form whose
-  // submit it would refuse.
+  // disabled with that reason, and so is the reset that would return an
+  // engine override to the Agent's defaults: both open the same dialog, so
+  // neither opens it only for its submit to refuse a blocked switch. Pending
+  // attachments are not known here; the dialog disables its submit for them.
   const engineChangeBlockedReason = secondaryActions?.handoffDisabledReason;
+  const engineResetBlockedReason =
+    activeSession.executionAgentId && onExecutionModelSelect
+      ? engineChangeBlockedReason
+      : undefined;
   const pickerModels = executionModels
     ?.filter(
       (model) =>
@@ -2150,12 +2156,14 @@ export function ChatDockBody({
             }}
             onModelReset={() => {
               if (activeSession.executionAgentId && onExecutionModelSelect) {
+                if (engineResetBlockedReason) return;
                 chatInput.handleModelClose();
                 onExecutionModelSelect();
               } else {
                 chatInput.handleModelReset();
               }
             }}
+            modelResetDisabledReason={engineResetBlockedReason}
             onModelClose={chatInput.handleModelClose}
             onModelOpen={
               hasExecutionAlternatives

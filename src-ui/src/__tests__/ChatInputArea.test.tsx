@@ -1043,13 +1043,13 @@ describe('ChatInputArea', () => {
     });
 
     const agent = screen.getByRole('button', {
-      name: 'Agent: Codex reviewer. Wait for the current turn to finish.',
+      name: 'Agent: Codex reviewer. Can’t change Agent yet. Wait for the current turn to finish.',
     }) as HTMLButtonElement;
     expect(agent.getAttribute('aria-disabled')).toBe('true');
     agent.focus();
     expect(document.activeElement).toBe(agent);
     expect(agent.title).toBe(
-      'Agent: Codex reviewer. Wait for the current turn to finish.',
+      'Agent: Codex reviewer. Can’t change Agent yet. Wait for the current turn to finish.',
     );
     fireEvent.click(agent);
     expect(document.activeElement).toBe(agent);
