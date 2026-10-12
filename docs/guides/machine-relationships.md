@@ -163,8 +163,8 @@ as a device, so revoking a device does not reset it.
 
 A device approved with a person's verified identity or account is tied to that
 person (#3557). **Settings → Devices → People**, shown only to the operator,
-lists everyone with a tied device or a group, what each tied device may use,
-and their personal access tokens.
+lists everyone with a tied device, a group or a token, what each tied device
+may use, and their personal access tokens.
 
 A person's **group** caps every device tied to them. **Member**, the default,
 allows Read, Operate and Terminal. **Admin** also allows `coding:exec`, full
@@ -184,8 +184,9 @@ person, with Read or Read & operate, expiring after 30 days, 90 days, a year, or
 never. It never exceeds what the person's group allows. The operator makes and
 revokes anyone's tokens on People; a person manages their own under **Settings
 → Devices → Pairing → Your access tokens**, from a device tied to them (the
-panel does not appear on other devices). The secret is shown once, when the
-token is made. See the [API reference](../reference/api.md#people-and-station-groups).
+panel does not appear on other devices). Only a person tied by a Tailscale
+identity can hold tokens; one tied by an account is refused. The secret is
+shown once, when the token is made. See the [API reference](../reference/api.md#people-and-station-groups).
 
 ## Relationship table
 
