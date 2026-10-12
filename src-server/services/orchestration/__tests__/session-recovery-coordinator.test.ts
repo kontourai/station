@@ -2018,6 +2018,50 @@ describe('SessionRecoveryCoordinator', () => {
         vi.useRealTimers();
       }
     });
+
+    // Review F4: a ledger read that throws inside a timer must neither
+    // escape as an uncaught error nor drop the recovery for good.
+    test('a throwing intent read at fire time is retried, not lost', async () => {
+      vi.useFakeTimers();
+      const dir = makeTempDir('recovery-coordinator-');
+      const store = new EventStore(join(dir, 'orchestration.sqlite'));
+      const now = new Date('2026-07-29T12:00:00.000Z');
+      armedPair(store, now);
+      const real = recoveryLedger(store);
+      let findFaults = 1;
+      const sendTurn = vi.fn(async (input: { threadId: string }) => ({
+        turnId: `recovered-${input.threadId}`,
+      }));
+      const coordinator = new SessionRecoveryCoordinator({
+        eventStore: store,
+        recoveryLedger: {
+          ...real,
+          find: (fingerprint: string) => {
+            if (fingerprint.startsWith('thread-open:') && findFaults-- > 0)
+              throw new Error('SQLITE_BUSY');
+            return real.find(fingerprint);
+          },
+        },
+        adapterForProvider: () =>
+          ({ metadata: { recovery: { sameSession: true } } }) as any,
+        sendTurn,
+        now: () => now,
+        logger: { warn: vi.fn() },
+      });
+      try {
+        coordinator.reconcile();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(sendTurn).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+        expect(sendTurn.mock.calls.map(([input]) => input.threadId)).toEqual([
+          'thread-open',
+        ]);
+      } finally {
+        await coordinator.dispose().catch(() => undefined);
+        store.close();
+        vi.useRealTimers();
+      }
+    });
   });
 
   test('refuses to replay a turn whose attachment bytes are gone (#3374)', async () => {
