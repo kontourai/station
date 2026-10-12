@@ -242,6 +242,32 @@ describe('#749 conversation open controller', () => {
       recovery: { status: 'missing-session' },
     });
   });
+
+  // The picker's recovery notice withholds Start new chat on this answer, so
+  // the recovery must carry the server's per-caller access through.
+  test('a recovery carries the server-reported caller access through', async () => {
+    const outcome = await commitConversationOpen({
+      resolution: {
+        status: 'unavailable',
+        conversation,
+        transcript: { available: false, owner: 'runtime' },
+        canContinue: false,
+        answerability: notAnswerable,
+        recoveryActions: ['retry', 'start-new'],
+        callerAccess: { continue: false, startChat: false },
+      },
+      open: vi.fn(),
+      projectName: () => 'Station',
+      findTab: () => 'conversation-tab',
+    });
+    expect(outcome).toMatchObject({
+      kind: 'recovery',
+      recovery: {
+        status: 'unavailable',
+        callerAccess: { continue: false, startChat: false },
+      },
+    });
+  });
 });
 
 test('restored Codex state adopts the current Claude child without carrying model or permission state', () => {

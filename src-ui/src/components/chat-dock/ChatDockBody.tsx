@@ -22,7 +22,6 @@ import {
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
 import { useAuth } from '../../contexts/AuthContext';
-import { useCanOperateConversations } from '../../contexts/AuthorityPersistenceContext';
 import { isTurnInFlight } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
@@ -499,14 +498,18 @@ export function ChatDockBody({
   const recoveryOpen = openPhase === 'read-only' || unverifiedOpen;
   const busyOpen = openPhase === 'busy';
   const resolvingOpen = openPhase === 'resolving';
-  // Whether this client may start a chat or send a turn at all (a paired
-  // device without the operate scope may not). Actions that need it are
-  // withheld rather than offered to fail.
-  const canOperate = useCanOperateConversations();
+  // Whether THIS caller may send into this conversation or start a chat, as
+  // the server's own boundary answered it on the open read (`callerAccess`).
+  // Actions it refuses are withheld rather than offered to fail. Absent
+  // (an older server, an unauthenticated request, or no successful open read
+  // yet) means unknown, and unknown shows: the server still enforces.
+  const callerAccess = activeSession.conversationOpenState?.callerAccess;
+  const callerMayContinue = callerAccess?.continue !== false;
+  const callerMayStartChat = callerAccess?.startChat !== false;
   // Sending is refused outright while the open is unproven, so no surface may
   // invite a send then — the failure banner's "you can send a message" note
   // contradicted the recovery notice's "sending is paused" right below it.
-  const sendInvitable = canOperate && !recoveryOpen && !resolvingOpen;
+  const sendInvitable = callerMayContinue && !recoveryOpen && !resolvingOpen;
   const transcript = useActiveChatTranscript(apiBase, activeSession);
   const streamStatus = useChatStreamStatus(apiBase, activeSession.replay);
   const windowRequests = useMemo(
@@ -1869,7 +1872,7 @@ export function ChatDockBody({
       loadingLong &&
       !recoveryOpen &&
       onNewChat &&
-      canOperate ? (
+      callerMayStartChat ? (
         <div className="session-history-controls">
           <button
             type="button"
@@ -1890,14 +1893,14 @@ export function ChatDockBody({
               activeSession.conversationOpenState?.conversation.title ??
               activeSession.title,
             state: recoveryState,
-            // Retry re-reads the open (`GET /api/conversations/:id/open`,
-            // the read tier this client already holds to see the chat);
-            // starting a chat needs the operate tier.
+            // Retry re-reads the open (`GET /api/conversations/:id/open`),
+            // the read this client already makes to see the chat. Start new
+            // chat follows the server's `callerAccess.startChat`.
             onRetry: onRetryConversationOpen
               ? () => void onRetryConversationOpen()
               : undefined,
             onStartNew:
-              onNewChat && canOperate
+              onNewChat && callerMayStartChat
                 ? () =>
                     void Promise.resolve(onNewChat()).catch(
                       surfaceRecoveryFailure,

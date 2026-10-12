@@ -9,6 +9,8 @@ import { newerConversationActivity } from '../../utils/conversation-activity';
 export type ConversationOpenRecovery = {
   conversation: ConversationListItem;
   status: 'missing-session' | 'unavailable' | 'error';
+  /** The server's answer for this caller; absent when the read failed. */
+  callerAccess?: ConversationOpenResolution['callerAccess'];
 };
 
 export type ConversationOpenCommit =
@@ -380,6 +382,9 @@ export async function commitConversationOpen({
           resolution.status === 'missing-session'
             ? 'missing-session'
             : 'unavailable',
+        ...(resolution.callerAccess
+          ? { callerAccess: resolution.callerAccess }
+          : {}),
       },
     };
   }
@@ -400,6 +405,9 @@ export async function commitConversationOpen({
       recovery: {
         conversation,
         status: 'unavailable',
+        ...(resolution.callerAccess
+          ? { callerAccess: resolution.callerAccess }
+          : {}),
       },
     };
   }

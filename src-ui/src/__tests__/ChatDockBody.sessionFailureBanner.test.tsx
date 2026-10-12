@@ -13,10 +13,6 @@
  */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
-import {
-  AUTHORITY_OBSERVATION_SCHEMA_VERSION,
-  type AuthorityObservation,
-} from '@kontourai/station-contracts/authority-observation';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -228,7 +224,6 @@ vi.mock('../components/chat/QueuedMessages', async (importOriginal) => {
 });
 
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
-import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
 import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
 import type { ChatSession } from '../types';
 
@@ -310,7 +305,6 @@ function renderDock({
   onNewChat,
   onRetryConversationOpen,
   loadingEscapeDelayMs = 0,
-  authority = null,
 }: {
   orchestrationSession?: any;
   session?: ChatSession;
@@ -320,8 +314,6 @@ function renderDock({
   onNewChat?: (input?: string) => void;
   onRetryConversationOpen?: () => void;
   loadingEscapeDelayMs?: number;
-  /** The `GET /api/auth/authority` observation; null = not yet known. */
-  authority?: AuthorityObservation | null;
 } = {}) {
   const resolvedRead = read ?? (orchestrationSession ? 'present' : 'absent');
   transcriptMock.events = events;
@@ -331,44 +323,61 @@ function renderDock({
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <AuthorityPersistenceContext.Provider
-        value={{
-          status: authority ? 'verified' : 'unavailable',
-          namespace: null,
-          observation: authority,
-        }}
-      >
-        <ChatDockBody
-          activeSession={session}
-          activeOrchestrationSession={orchestrationSession}
-          activeOrchestrationSessionRead={resolvedRead}
-          onRetryOrchestrationSessions={onRetryOrchestrationSessions}
-          onNewChat={onNewChat}
-          onRetryConversationOpen={onRetryConversationOpen}
-          loadingEscapeDelayMs={loadingEscapeDelayMs}
-          chatFontSize={14}
-          dockHeight={400}
-          showStatsPanel={false}
-          showReasoning={false}
-          showToolDetails={false}
-          modelSupportsAttachments={false}
-          fileAttachmentsSupported={false}
-          availableModels={[]}
-          chatInput={buildChatInput() as any}
-          setShowStatsPanel={vi.fn()}
-        />
-      </AuthorityPersistenceContext.Provider>
+      <ChatDockBody
+        activeSession={session}
+        activeOrchestrationSession={orchestrationSession}
+        activeOrchestrationSessionRead={resolvedRead}
+        onRetryOrchestrationSessions={onRetryOrchestrationSessions}
+        onNewChat={onNewChat}
+        onRetryConversationOpen={onRetryConversationOpen}
+        loadingEscapeDelayMs={loadingEscapeDelayMs}
+        chatFontSize={14}
+        dockHeight={400}
+        showStatsPanel={false}
+        showReasoning={false}
+        showToolDetails={false}
+        modelSupportsAttachments={false}
+        fileAttachmentsSupported={false}
+        availableModels={[]}
+        chatInput={buildChatInput() as any}
+        setShowStatsPanel={vi.fn()}
+      />
     </QueryClientProvider>,
   );
 }
 
-/** A paired device as `GET /api/auth/authority` reports it. */
-function deviceAuthority(grantedScopes: string[]): AuthorityObservation {
+/**
+ * The open read as the server returns it, with its per-caller `callerAccess`
+ * (`GET /api/conversations/:id/open`). `canContinue` is the conversation's
+ * own state; `callerAccess` is what THIS caller's credential may post.
+ */
+function openState(
+  callerAccess: { continue: boolean; startChat: boolean },
+  canContinue = true,
+) {
   return {
-    schemaVersion: AUTHORITY_OBSERVATION_SCHEMA_VERSION,
-    environmentId: 'env-test',
-    principal: { kind: 'human', id: 'user-1' },
-    grant: { kind: 'device', deviceId: 'device-1', grantedScopes },
+    status: 'resolved' as const,
+    conversation: {
+      id: 'cool',
+      source: 'runtime' as const,
+      agentSlug: agentId('codex'),
+      title: 'Cool chat',
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:01:00.000Z',
+      messageCount: 2,
+      mutable: false,
+      answerability: { answerable: true as const },
+    },
+    currentSessionId: 'cool',
+    transcript: {
+      available: true as const,
+      owner: 'runtime' as const,
+      messageCount: 2,
+    },
+    canContinue,
+    answerability: { answerable: true as const },
+    recoveryActions: [] as const,
+    callerAccess,
   };
 }
 
@@ -1038,24 +1047,27 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
   });
 
   /*
-   * Owner direction: offer only actions this client can take. A paired device
-   * without `orchestration:operate` gets a 403 from chat creation and from
-   * sends, so neither "Start new chat" nor a send invitation is shown. Retry
-   * re-reads the open over the read tier the device already holds, so it
-   * stays.
+   * Owner direction: offer only actions this client can take, as the server
+   * reports them. The open read carries `callerAccess`, computed by the same
+   * HTTP gate that would refuse the post. A caller the server says may not
+   * start a chat or continue is offered neither "Start new chat" nor a send
+   * invitation. Retry re-reads the open, which this caller is already making,
+   * so it stays.
    */
-  test('a paired device without the operate scope is offered no new chat and no send invitation', async () => {
+  test('a caller the server says may not start a chat or continue is offered neither', async () => {
     renderDock({
       orchestrationSession: buildOrchestrationSession({
         blockedReason: 'Engine crashed',
       }),
       session: buildSession({
         conversationId: 'cool',
+        // The latest re-read failed over an earlier answer that carried the
+        // caller's access: the failure is current, the access still stands.
         conversationOpenFailed: true,
+        conversationOpenState: openState({ continue: false, startChat: false }),
       }),
       onNewChat: vi.fn(),
       onRetryConversationOpen: vi.fn(),
-      authority: deviceAuthority(['orchestration:read']),
     });
 
     expect(await screen.findByRole('button', { name: 'Retry' })).toBeTruthy();
@@ -1065,19 +1077,42 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     ).not.toMatch(/send a message|send again/i);
   });
 
-  test('a paired device without the operate scope gets no send invitation on a writable chat either', () => {
+  test('a caller the server says may not continue gets no send invitation on a writable chat', async () => {
     renderDock({
       orchestrationSession: buildOrchestrationSession({
         blockedReason: 'Engine crashed',
       }),
-      authority: deviceAuthority(['orchestration:read']),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenState: openState({ continue: false, startChat: false }),
+      }),
     });
+    // The conversation itself is writable; only this caller may not post.
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.disabled).toBe(false),
+    );
     expect(
       screen.getByTestId('chat-dock-session-failure').textContent,
     ).not.toMatch(/send a message|send again/i);
   });
 
-  test('a paired device holding the operate scope keeps Start new chat', async () => {
+  test('a caller the server says may continue keeps the send invitation', () => {
+    // Mirror of the case above, so a note dropped unconditionally fails.
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        blockedReason: 'Engine crashed',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenState: openState({ continue: true, startChat: true }),
+      }),
+    });
+    expect(
+      screen.getByTestId('chat-dock-session-failure').textContent,
+    ).toContain('You can send a message to try to continue this chat.');
+  });
+
+  test('a caller the server says may start a chat keeps Start new chat', async () => {
     renderDock({
       orchestrationSession: buildOrchestrationSession({
         blockedReason: 'Engine crashed',
@@ -1085,13 +1120,10 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       session: buildSession({
         conversationId: 'cool',
         conversationOpenFailed: true,
+        conversationOpenState: openState({ continue: false, startChat: true }),
       }),
       onNewChat: vi.fn(),
       onRetryConversationOpen: vi.fn(),
-      authority: deviceAuthority([
-        'orchestration:read',
-        'orchestration:operate',
-      ]),
     });
 
     expect(
