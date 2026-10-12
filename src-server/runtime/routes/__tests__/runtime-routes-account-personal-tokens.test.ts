@@ -30,6 +30,11 @@ import { ProjectManifestStore } from '../../../services/projects/project-manifes
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import {
+  getInternalApiToken,
+  INTERNAL_API_TOKEN_HEADER,
+  INTERNAL_INGRESS_IDENTITY_HEADER,
+} from '../../../utils/internal-api-token.js';
 import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../runtime-routes.js';
 
 vi.mock('../runtime-route-support.js', () => {
@@ -199,8 +204,12 @@ describe('account-tied personal access tokens over the production composition', 
     );
     await result.kitLifecycleReady;
 
-    const request = (path: string, init: RequestInit = {}) =>
-      app.request(`${ORIGIN}${path}`, init);
+    const request = (path: string, init: RequestInit = {}, peer?: string) =>
+      app.request(
+        `${ORIGIN}${path}`,
+        init,
+        peer ? { incoming: { socket: { remoteAddress: peer } } } : undefined,
+      );
     const accountAuth = (path: string, body: unknown) =>
       localAccounts.service.handle(
         new Request(`${ORIGIN}/api/account-auth${path}`, {
@@ -487,6 +496,47 @@ describe('account-tied personal access tokens over the production composition', 
     });
     expect(conflicted.status, await conflicted.clone().text()).toBe(401);
     expect(await conflicted.json()).toEqual({
+      error: { code: 'account_identity_conflict' },
+    });
+  });
+
+  test('a token presented with its own account cookie, or behind a verified ingress identity, is an identity conflict', async () => {
+    const h = await setup();
+    const member = await h.person('member');
+    const minted = await h.mintToken(member.device);
+    expect(minted.status, await minted.clone().text()).toBe(201);
+    const { secret } = await readJson<{ secret: string }>(minted);
+    const ownCookie = await h.request('/api/projects', {
+      headers: {
+        Authorization: `Bearer ${secret}`,
+        Cookie: member.cookie,
+        Origin: ORIGIN,
+      },
+    });
+    expect(ownCookie.status, await ownCookie.clone().text()).toBe(401);
+    expect(await ownCookie.json()).toEqual({
+      error: { code: 'account_identity_conflict' },
+    });
+    // The loopback UI proxy's attested Tailscale identity, as it forwards it.
+    const ingress = await h.request(
+      '/api/projects',
+      {
+        headers: {
+          Authorization: `Bearer ${secret}`,
+          [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+          [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
+            JSON.stringify({
+              provider: 'tailscale-serve',
+              login: 'casey@example.test',
+              displayName: 'Casey',
+            }),
+          ).toString('base64url'),
+        },
+      },
+      '127.0.0.1',
+    );
+    expect(ingress.status, await ingress.clone().text()).toBe(401);
+    expect(await ingress.json()).toEqual({
       error: { code: 'account_identity_conflict' },
     });
   });
