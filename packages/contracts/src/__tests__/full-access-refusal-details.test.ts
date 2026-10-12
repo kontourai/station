@@ -95,4 +95,20 @@ describe('parseApprovalFullAccessRefusalDetails', () => {
       grant: null,
     });
   });
+
+  test('#3557: keeps a Member group limit and drops any other value', () => {
+    const limited = (groupLimited: unknown) =>
+      parseApprovalFullAccessRefusalDetails({
+        ...deviceRefusal('Phone'),
+        grant: { ...deviceRefusal('Phone').grant, groupLimited },
+      })?.grant;
+    expect(limited({ group: 'member' })?.groupLimited).toEqual({
+      group: 'member',
+    });
+    for (const value of [{ group: 'admin' }, 'member', true, { group: 1 }])
+      expect(limited(value)).not.toHaveProperty('groupLimited');
+    expect(
+      parseApprovalFullAccessRefusalDetails(deviceRefusal('Phone'))?.grant,
+    ).not.toHaveProperty('groupLimited');
+  });
 });

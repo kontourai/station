@@ -86,10 +86,12 @@ const FULL_ACCESS_GRANT_UI_STEPS: readonly string[] = [
 
 /**
  * #3557: the path when the person's group stops full access. Their group
- * must allow it first; the device's own grant still has to carry it.
+ * must allow it first; when the device's own grant does not carry it either,
+ * `cli` follows as the SECOND step (`grant.groupLimited` says so), never as
+ * an alternative.
  */
 const GROUP_GRANT_UI_STEPS: readonly string[] = [
-  'Open Settings, then Devices, then People.',
+  "On the Station's host, open Settings, then Devices, then People.",
   'Find the person this device is tied to and set their group to Admin.',
 ];
 
@@ -162,11 +164,9 @@ function detailsFor(
       ? getRuntimeAuthenticatedRequestPrincipal(request)?.deviceId
       : undefined;
   const limit = fullDeviceId ? groupLimitOf(request, fullDeviceId) : undefined;
-  const uiSteps = limit
-    ? limit.hasGrant
-      ? GROUP_GRANT_UI_STEPS
-      : [...GROUP_GRANT_UI_STEPS, ...FULL_ACCESS_GRANT_UI_STEPS]
-    : FULL_ACCESS_GRANT_UI_STEPS;
+  // A group-limited refusal lists only the People steps: the device grant,
+  // when still needed, is the host command that follows them.
+  const uiSteps = limit ? GROUP_GRANT_UI_STEPS : FULL_ACCESS_GRANT_UI_STEPS;
   const needsDeviceGrant = !limit || !limit.hasGrant;
   return {
     requested: 'never',
@@ -179,6 +179,7 @@ function detailsFor(
             by: 'operator',
             scope: 'approval:full-access',
             uiSteps,
+            ...(limit ? { groupLimited: { group: 'member' as const } } : {}),
             ...(fullDeviceId && needsDeviceGrant
               ? {
                   cli: fullAccessGrantCommand(

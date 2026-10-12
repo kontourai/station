@@ -89,10 +89,11 @@ describe('the full-access refusal and Station groups', () => {
     const body = refuse(device.id);
     expect(body.details.grant).toMatchObject({
       uiSteps: [
-        'Open Settings, then Devices, then People.',
+        "On the Station's host, open Settings, then Devices, then People.",
         'Find the person this device is tied to and set their group to Admin.',
       ],
     });
+    expect(body.details.grant?.groupLimited).toEqual({ group: 'member' });
     expect(body.details.grant).not.toHaveProperty('cli');
     expect(body.error).toContain('in the Member group');
     expect(body.error).not.toContain('--add approval:full-access');
@@ -102,9 +103,12 @@ describe('the full-access refusal and Station groups', () => {
     const { pair, refuse } = await station();
     const device = pair(STANDARD, 'casey');
     const body = refuse(device.id);
-    expect(body.details.grant?.uiSteps[0]).toBe(
-      'Open Settings, then Devices, then People.',
-    );
+    // The People steps only; the device grant is the command after them.
+    expect(body.details.grant?.uiSteps).toEqual([
+      "On the Station's host, open Settings, then Devices, then People.",
+      'Find the person this device is tied to and set their group to Admin.',
+    ]);
+    expect(body.details.grant?.groupLimited).toEqual({ group: 'member' });
     expect(body.details.grant?.cli).toBe(
       `npx @kontourai/station-cli@nightly environment access scope ${device.id.slice(0, 8)} --add approval:full-access`,
     );
@@ -122,6 +126,7 @@ describe('the full-access refusal and Station groups', () => {
         "Open the Station desktop app on the Station's host.",
       );
       expect(body.error).not.toContain('Member group');
+      expect(body.details.grant).not.toHaveProperty('groupLimited');
       expect(body.details.grant?.cli).toContain('--add approval:full-access');
     }
   });

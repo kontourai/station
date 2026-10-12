@@ -174,6 +174,11 @@ the device as **Limited by Member group**. Changing a group needs the operator
 credential: the desktop app's local grant can view People but its changes are
 refused.
 
+When a Member's device asks for full access, the refusal says the Member group
+stops it. The remedy has two steps, not two options: the operator makes the
+person Admin on People, then, if the device's own grant lacks
+`approval:full-access`, runs the host command the refusal prints.
+
 A **personal access token** (`stp_…`) lets a script or integration act as a
 person, with Read or Read & operate, expiring after 30 days, 90 days, a year, or
 never. It never exceeds what the person's group allows. The operator makes and

@@ -253,6 +253,12 @@ export interface ApprovalFullAccessRefusalDetails {
     readonly uiSteps: readonly string[];
     /** The operator command, run on the Station's own host. */
     readonly cli?: string;
+    /**
+     * #3557: the device is tied to a person whose Station group does not
+     * allow full access. The operator must make them Admin first; `cli`,
+     * when present, is still needed AFTER that (both, not either).
+     */
+    readonly groupLimited?: { readonly group: 'member' };
   } | null;
 }
 
@@ -352,6 +358,11 @@ export function parseApprovalFullAccessRefusalDetails(
       scope: 'approval:full-access',
       uiSteps: [...(rawGrant.uiSteps as string[])],
       ...(typeof rawGrant.cli === 'string' ? { cli: rawGrant.cli } : {}),
+      // Only the one known group; anything else is dropped, not trusted.
+      ...((rawGrant.groupLimited as { group?: unknown } | undefined)?.group ===
+      'member'
+        ? { groupLimited: { group: 'member' as const } }
+        : {}),
     },
   };
 }
