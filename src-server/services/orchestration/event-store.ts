@@ -6411,17 +6411,16 @@ export class EventStore {
     if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) {
       throw new Error('A turn-start page limit must be between 1 and 1000');
     }
-    return (
-      this.db
-        .prepare(
-          `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
-           FROM orchestration_events
-           WHERE thread_id = ? AND method = 'turn.started' AND created_at >= ?
-           ORDER BY sequence DESC
-           LIMIT ?`,
-        )
-        .all(threadId, sinceCreatedAt, limit) as any[]
-    ).map((row: any) => this.mapEventRow(row));
+    return this.db
+      .prepare(
+        `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+         FROM orchestration_events
+         WHERE thread_id = ? AND method = 'turn.started' AND created_at >= ?
+         ORDER BY sequence DESC
+         LIMIT ?`,
+      )
+      .all(threadId, sinceCreatedAt, limit)
+      .map((row) => this.mapEventRow(row));
   }
 
   private listRequestSettlementFacts(
