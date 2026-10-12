@@ -676,7 +676,9 @@ CI artifacts, logs, or local files alone do not establish a visual claim.
 
 The Windows portable floor is deliberately not named or treated as
 `test:full`. It combines the physically proven pre-push tier with the portable
-OpenSSH argv, cleanup, and broken-pipe contracts. Full Windows Vitest parity
+OpenSSH argv, cleanup, and broken-pipe contracts, and the file-memory
+transcript durability suite. That suite is here because torn-tail repair
+truncates through a non-append descriptor, which Windows requires. Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or
 `continue-on-error` to relabel that gap green.
 
