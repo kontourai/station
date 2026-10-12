@@ -15,6 +15,7 @@ import {
 } from '../../hooks/lastChosenModel';
 import type { ACPSelectionConnection } from '../../hooks/useNewChatSelectionModel';
 import {
+  acpAdvertisedModels,
   connectionStatusLabel,
   guaranteeConcreteModel,
   resolveEffectiveModel,
@@ -420,6 +421,7 @@ export function resolveNewChatDefaultSelection({
     runtimeCurrentMode: acpConnection?.configOptions?.find(
       (option) => option.category === 'mode',
     )?.currentValue,
+    advertisedModels: acpAdvertisedModels(acpConnection?.configOptions),
     projectDefaultModel: newChatProjectDefaultModel(agent, projectDefaultModel),
     lastChosenModel: newChatLastChosenModel(agent, lastChosenModelByBinding),
   });

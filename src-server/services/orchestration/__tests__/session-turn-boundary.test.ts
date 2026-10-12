@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { probeExactProcessIdentity } from '@kontourai/station-shared/process-identity';
 import { afterEach, describe, expect, test } from 'vitest';
+import { SessionStartRefusedError } from '../../../providers/adapter-shape.js';
 import { EventStore } from '../event-store.js';
 import {
   createInMemorySessionTurnBoundaryAuthority,
@@ -43,6 +44,121 @@ describe('SessionTurnBoundaryAuthority', () => {
     expect(
       new SessionStartIndeterminateError(new Error('Spawn failed.')).message,
     ).toMatch(/^Spawn failed\. Provider/);
+  });
+
+  describe('a definitive start refusal', () => {
+    const refusal = () =>
+      new SessionStartRefusedError('engine refused', 'model_not_advertised');
+
+    test('releases the boundary: the thread is not fenced and the next start may claim it', async () => {
+      const authority = createInMemorySessionTurnBoundaryAuthority();
+
+      await expect(
+        runSessionStartWithBoundary(authority, 'refused-thread', async () => {
+          throw refusal();
+        }),
+      ).rejects.toBeInstanceOf(SessionStartRefusedError);
+
+      expect(authority.hasPossibleEffect('refused-thread')).toEqual({
+        kind: 'available',
+        active: false,
+      });
+      await expect(
+        runSessionStartWithBoundary(
+          authority,
+          'refused-thread',
+          async () => 'started',
+        ),
+      ).resolves.toBe('started');
+    });
+
+    test('any other adapter failure stays an indeterminate start and fences the thread', async () => {
+      const authority = createInMemorySessionTurnBoundaryAuthority();
+
+      await expect(
+        runSessionStartWithBoundary(authority, 'crashed-thread', async () => {
+          throw new Error('engine crashed');
+        }),
+      ).rejects.toMatchObject({ code: SESSION_START_INDETERMINATE_CODE });
+
+      expect(authority.hasPossibleEffect('crashed-thread')).toEqual({
+        kind: 'available',
+        active: true,
+      });
+    });
+
+    test('a release the store cannot confirm falls back to the indeterminate start', async () => {
+      let record: SessionTurnBoundaryRecord | undefined;
+      const coordinator: SessionTurnBoundaryCoordinator = {
+        create(input) {
+          if (record) return { kind: 'busy' };
+          record = { ...input };
+          return { kind: 'applied' };
+        },
+        transition(input) {
+          if (!record || record.boundaryId !== input.boundaryId)
+            return { kind: 'stale' };
+          if (!input.from.includes(record.state)) return { kind: 'stale' };
+          record = { ...record, state: input.to, updatedAt: input.now };
+          return { kind: 'applied' };
+        },
+        // The release itself cannot be confirmed.
+        remove: () => ({ kind: 'unavailable' }),
+        removeTerminal: () => ({ kind: 'applied' }),
+        hasPossibleEffect: () => Boolean(record),
+        active: () => (record ? [{ ...record }] : []),
+        recordAccepted: () => ({ kind: 'unavailable' }),
+      };
+      const authority = createSessionTurnBoundaryAuthority({
+        coordinator,
+        owner: { id: 'owner', pid: process.pid, identityKind: 'unverified' },
+        processIdentity: {
+          exact: () => null,
+          probe: () => ({ state: 'unavailable' }),
+        },
+      });
+
+      await expect(
+        runSessionStartWithBoundary(
+          authority,
+          'unconfirmed-release',
+          async () => {
+            throw refusal();
+          },
+        ),
+      ).rejects.toMatchObject({ code: SESSION_START_INDETERMINATE_CODE });
+
+      expect(record?.state).toBe('indeterminate');
+      expect(authority.hasPossibleEffect('unconfirmed-release')).toEqual({
+        kind: 'available',
+        active: true,
+      });
+    });
+
+    test('a task dispatch child claim cannot release, so it keeps the indeterminate start', async () => {
+      const authority = createInMemorySessionTurnBoundaryAuthority();
+      const owned = authority.claimTaskDispatch(
+        'dispatch-refused',
+        new Date().toISOString(),
+      );
+      if (owned.kind !== 'owner')
+        throw new Error('Expected dispatch ownership');
+
+      await expect(
+        runSessionStartWithBoundary(
+          authority,
+          'dispatch-refused',
+          async () => {
+            throw refusal();
+          },
+          owned.claim.sessionStart,
+        ),
+      ).rejects.toMatchObject({ code: SESSION_START_INDETERMINATE_CODE });
+      expect(authority.hasPossibleEffect('dispatch-refused')).toEqual({
+        kind: 'available',
+        active: true,
+      });
+    });
   });
 
   const roots: string[] = [];
