@@ -290,7 +290,8 @@ export function groupLimitedPeopleSteps(
   grant: NonNullable<ApprovalFullAccessRefusalDetails['grant']>,
 ): readonly string[] {
   const cli = grant.groupLimited?.cli;
-  const last = grant.uiSteps.at(-1);
+  // Indexed, not `.at()`: the contracts compile for older library targets.
+  const last = grant.uiSteps[grant.uiSteps.length - 1];
   return cli !== undefined && last === groupLimitedCommandStep(cli)
     ? grant.uiSteps.slice(0, -1)
     : grant.uiSteps;
