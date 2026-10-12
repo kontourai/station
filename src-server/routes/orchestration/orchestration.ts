@@ -3108,6 +3108,14 @@ export function createOrchestrationRoutes(
           },
           403,
         );
+      // The caller's stated engine no longer holds: a conflict with the
+      // current binding, carrying its code so a delegating caller can tell it
+      // from malformed input. Nothing was started.
+      if (wrappedCode === EXECUTION_ENGINE_CHANGED_CODE)
+        return c.json(
+          { success: false, error: errorMessage(error), code: wrappedCode },
+          409,
+        );
       return c.json(
         {
           success: false,

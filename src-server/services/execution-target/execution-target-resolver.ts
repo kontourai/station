@@ -310,14 +310,6 @@ export function matchVerifiedRemoteProjectPath(
 }
 
 /**
- * #2377 slice C2a: a Project workspace's `cwd` must lie inside that Project.
- * The session start already refuses one outside it, lexically
- * (`resolveStartSessionCwd`); this refuses it before anything runs, and on
- * canonical paths (symlinks followed, whole segments), so a link inside the
- * Project that points at another Project's folder cannot name that folder
- * as this Project's.
- */
-/**
  * The caller's `expectedEngine` precondition did not hold. Nothing was
  * started or reserved; the message names only engine identities, which a
  * receipt already discloses.
@@ -341,6 +333,14 @@ export class ExecutionEngineChangedError extends Error {
   }
 }
 
+/**
+ * #2377 slice C2a: a Project workspace's `cwd` must lie inside that Project.
+ * The session start already refuses one outside it, lexically
+ * (`resolveStartSessionCwd`); this refuses it before anything runs, and on
+ * canonical paths (symlinks followed, whole segments), so a link inside the
+ * Project that points at another Project's folder cannot name that folder
+ * as this Project's.
+ */
 class ExecutionWorkspaceOutsideProjectError extends Error {
   readonly code = 'execution_workspace_outside_project' as const;
   constructor(projectSlug: string) {

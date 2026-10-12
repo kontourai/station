@@ -1416,6 +1416,59 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       expect(await sendFirst()).not.toHaveProperty('expectedEngine');
     });
 
+    // The exclusions of the first-send gate. Each is a place where the cache
+    // may be arbitrarily newer or older than what the send was composed on.
+    it('states nothing for a replayed (queued/offline) send, whatever the cache holds', async () => {
+      cachedAgentCatalog = catalog([{ slug: 'station' }]);
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(
+          sessionId,
+          'station',
+          undefined,
+          'hello',
+          [],
+          undefined,
+          undefined,
+          {
+            dispatch: true,
+          } as never,
+        );
+      });
+      const target = sendExecutionMessageMock.mock.calls.at(-1)?.[1].target;
+      expect(target).not.toHaveProperty('expectedEngine');
+    });
+
+    it('states nothing when the caller names an existing conversation', async () => {
+      cachedAgentCatalog = catalog([{ slug: 'station' }]);
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(
+          sessionId,
+          'station',
+          'conversation:named',
+          'hello',
+        );
+      });
+      const target = sendExecutionMessageMock.mock.calls.at(-1)?.[1].target;
+      expect(target).not.toHaveProperty('expectedEngine');
+    });
+
+    // Under an execution override the target takes the engine from the
+    // OVERRIDE's binding, so the expectation must come from that row, not the
+    // profile's. Reading the profile row would refuse every override send.
+    it('reads the override Agent row, not the profile row, under an execution override', async () => {
+      cachedAgentCatalog = catalog([
+        { slug: 'reviewer' },
+        { slug: 'codex', execution: { agentConnectionId: 'codex-connection' } },
+      ]);
+      activeChatsStore.updateChat(sessionId, { executionAgentId: 'codex' });
+      expect((await sendFirst('reviewer')).expectedEngine).toEqual({
+        kind: 'connection',
+        connectionId: 'codex-connection',
+      });
+    });
+
     it('states nothing for a Project chat, whose environment is the Project default', async () => {
       cachedAgentCatalog = catalog([{ slug: 'station' }]);
       activeChatsStore.updateChat(sessionId, { projectSlug: 'station' });

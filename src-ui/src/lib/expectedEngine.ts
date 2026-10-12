@@ -5,6 +5,7 @@ import type { ResolvedExecutionEngine } from '@kontourai/station-contracts/execu
 export interface ObservedAgentCatalog {
   agents?: ReadonlyArray<{
     slug: string;
+    kind?: string;
     execution?: { agentConnectionId?: string | null };
   }>;
   catalogState?: string;
@@ -33,8 +34,18 @@ export function observedEngine(
   }
   const agent = catalog.agents.find((entry) => entry.slug === agentSlug);
   if (!agent) return undefined;
+  // A member's view of an Agent carries no `execution` at all, so reading it
+  // as unbound would state Station's own engine for every engine-bound Agent.
+  if (agent.kind === 'member-agent') return undefined;
   const bound = agent.execution?.agentConnectionId;
-  return typeof bound === 'string' && bound.length > 0
-    ? { kind: 'connection', connectionId: engineConnectionId(bound) }
-    : { kind: 'station' };
+  if (typeof bound !== 'string' || bound.length === 0) {
+    return { kind: 'station' };
+  }
+  // An id the identity grammar rejects names no engine the target could have
+  // resolved, and an expectation must never be what fails a send.
+  try {
+    return { kind: 'connection', connectionId: engineConnectionId(bound) };
+  } catch {
+    return undefined;
+  }
 }

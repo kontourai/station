@@ -2484,6 +2484,45 @@ describe('Orchestration Routes', () => {
     },
   );
 
+  test('POST /delegations answers a stale expectedEngine with its code and 409, not an uncoded 400', async () => {
+    const { ExecutionEngineChangedError } = await import(
+      '../../../services/execution-target/execution-target-resolver.js'
+    );
+    const app = createOrchestrationRoutes({} as any, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => 'bound-user',
+      delegateTask: vi
+        .fn()
+        .mockRejectedValue(
+          new ExecutionEngineChangedError(
+            'codex',
+            { kind: 'station' },
+            { kind: 'connection', connectionId: 'opencode' as never },
+          ),
+        ),
+    });
+
+    const res = await app.request('/delegations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        prompt: 'Review the mobile shell',
+        target: {
+          environment: { kind: 'current' },
+          agent: 'codex',
+          expectedEngine: { kind: 'station' },
+        },
+      }),
+    });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({
+      success: false,
+      code: 'execution_engine_changed',
+    });
+  });
+
   test('POST /delegations binds the authenticated user and strips caller-supplied handle identities', async () => {
     const delegateTask = vi.fn().mockResolvedValue({
       taskId: 'task:1',
