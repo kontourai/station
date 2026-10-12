@@ -15,6 +15,10 @@ const ROOT = 'packages/monument';
 const CASE_TIMEOUT = 30_000;
 const MANIFEST = `${ROOT}/package.json`;
 const CLEAN = {
+  // Files the package may hold besides source: the allowlist's control.
+  [`${ROOT}/README.md`]: '# Monument\n',
+  [`${ROOT}/LICENSE`]: 'Apache-2.0\n',
+  [`${ROOT}/tsconfig.json`]: '{}\n',
   [`${ROOT}/src/index.ts`]:
     "import { DatabaseSync } from 'node:sqlite';\nexport { local } from './local.js';\nexport type Db = DatabaseSync;\n",
   [`${ROOT}/src/local.ts`]: 'export const local = 1;\n',
@@ -374,6 +378,57 @@ describe('monument import boundary gate', () => {
     ])
       expect(result.stderr).toContain(line);
     expect(result.stderr).not.toContain('uses-entry.ts');
+  });
+
+  it('refuses a file whose type is not on the allowlist (an extensionless module)', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const result = run({
+      ...CLEAN,
+      'src-server/zz-target.mjs': 'export const target = 1;\n',
+      [`${ROOT}/src/helper`]: "import '../../../src-server/zz-target.mjs';\n",
+      [`${ROOT}/src/helper.d.ts`]: 'export {};\n',
+      [`${ROOT}/src/zz.ts`]: "import './helper';\n",
+      [`${ROOT}/src/data.json`]: '{}\n',
+    });
+    expect(result.status, result.output).toBe(1);
+    expect(result.stderr).toContain(`unexpected-file: ${ROOT}/src/helper `);
+    expect(result.stderr).toContain(`unexpected-file: ${ROOT}/src/data.json`);
+  });
+
+  it('refuses Station-side routes into the package however they are spelled', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const result = run(
+      {
+        ...CLEAN,
+        'src-server/percent.ts':
+          "export * from '../packages/monu%6dent/src/index.ts';\n",
+        'src-server/escaped.ts':
+          "export * from '../packages/\\u006donument/src/index.ts';\n",
+        'src-server/cased.ts':
+          "export * from '../packages/Monument/src/index.ts';\n",
+        'src-server/linked.ts': "export * from './link/index.ts';\n",
+        'src-server/modules.ts':
+          "export * from '../node_modules/@kontourai/monument/src/index.ts';\n",
+        'src-server/dynamic.ts':
+          "// loads @kontourai/monument parts\nconst name = 'x';\nexport const m = import(name);\n",
+        [`${ROOT}/src/upper.ts`]:
+          "export * from './NODE_MODULES/@kontourai/station-shared/index.js';\n",
+      },
+      [['src-server/link', '../packages/monument/src']],
+    );
+    expect(result.status, result.output).toBe(1);
+    for (const line of [
+      'monument-internal-import: src-server/percent.ts:1',
+      'monument-internal-import: src-server/escaped.ts:1',
+      'monument-internal-import: src-server/cased.ts:1',
+      'monument-symlink: src-server/link',
+      'monument-internal-import: src-server/modules.ts:1',
+      'monument-unverifiable-import: src-server/dynamic.ts:3',
+      `escapes-package: ${ROOT}/src/upper.ts:1`,
+    ])
+      expect(result.stderr).toContain(line);
   });
 
   it('refuses an empty scope rather than reporting it clean', {

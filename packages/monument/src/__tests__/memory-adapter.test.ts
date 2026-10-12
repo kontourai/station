@@ -47,4 +47,11 @@ describe('memory adapter', () => {
       await second.execute({ type: 'turnDedup.read', key: 'inner' }, context),
     ).toEqual({ kind: 'absent' });
   });
+
+  it('accepts only a real volume', () => {
+    // @ts-expect-error a plain object is not a volume.
+    openMemoryKernelStorage({ volume: {} });
+    // @ts-expect-error nor is a string.
+    openMemoryKernelStorage({ volume: 'volume' });
+  });
 });

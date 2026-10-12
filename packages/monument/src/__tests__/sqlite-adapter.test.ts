@@ -426,6 +426,38 @@ describe('node:sqlite adapter participants and read-only commands', () => {
     }
   });
 
+  it("keeps a participant's write when the kernel itself answers refused", async () => {
+    const { path } = location();
+    const host = new DatabaseSync(path);
+    host.exec('CREATE TABLE IF NOT EXISTS audit (entry TEXT NOT NULL)');
+    const storage = openSqliteKernelStorage({
+      database: host,
+      participants: [
+        {
+          name: 'audit',
+          commit: ({ command, result }, db) => {
+            db.prepare('INSERT INTO audit (entry) VALUES (?)').run(
+              `${command.type}:${result.kind}`,
+            );
+          },
+        },
+      ],
+    });
+    const processes = createFakeProcessTable();
+    // No claim exists: beginInvocation's own answer is `refused`.
+    expect(
+      storage.executeSync(
+        { type: 'turnDedup.beginInvocation', key: 'k', ownerId: 'nobody' },
+        { liveness: processes.liveness },
+      ),
+    ).toEqual({ kind: 'refused' });
+    expect(host.prepare('SELECT entry FROM audit').all()).toEqual([
+      { entry: 'turnDedup.beginInvocation:refused' },
+    ]);
+    await storage.close();
+    host.close();
+  });
+
   it("rolls back an earlier participant's admit writes when a later one refuses", async () => {
     const { path } = location();
     const host = new DatabaseSync(path);

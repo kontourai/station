@@ -1031,6 +1031,38 @@ turnBoundary.push({
     }),
 });
 
+turnBoundary.push({
+  name: 'turn boundary: reconcile leaves alone a row recreated under the same id and timestamps by another process',
+  run: (harness) =>
+    withSession(harness, async (session) => {
+      const dead = session.processes.spawn({ identityKind: 'unverified' });
+      await session.run(create('b', 't', dead, at(1)));
+      session.processes.kill(dead);
+      const listed = await session.run({ type: 'turnBoundary.list' });
+      const plan = planTurnBoundaryReconcile(
+        listed.kind === 'records' ? listed.records : [],
+        { probe: session.processes.probe },
+        at(5),
+      );
+      // The row is removed and recreated with the same id, owner id and
+      // timestamps, but by a live process.
+      await session.run({
+        type: 'turnBoundary.remove',
+        boundaryId: 'b',
+        ownerId: dead.id,
+        from: ['prepared'],
+      });
+      const live = {
+        ...session.processes.spawn({ identityKind: 'unverified' }),
+        id: dead.id,
+      };
+      await session.run(create('b', 't', live, at(1)));
+      const result = await session.run(plan);
+      assert.deepEqual(interruptedOf(result), []);
+      assert.equal((await boundary(session, 'b'))?.owner.pid, live.pid);
+    }),
+});
+
 const requestKeys: KernelConformanceCase[] = [
   {
     name: 'request keys: same digest replays or re-drives; a different digest conflicts',
