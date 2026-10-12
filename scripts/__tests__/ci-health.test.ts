@@ -568,6 +568,132 @@ describe('CI health collection bounds and command interface', () => {
     expect(Object.keys(data.timelines)).toEqual(['3102', '3103']);
     expect(calls.filter((p) => p.includes('/jobs'))).toHaveLength(1);
   });
+  describe('attributing a pull-request run whose pull_requests list is empty', () => {
+    const branch =
+      'dependabot/npm_and_yarn/runtime-and-ui-minor-patch-75d864bfe7';
+    const head = (label: string, sha = 'f'.repeat(40)) => ({
+      label: `kontourai:${label}`,
+      ref: label,
+      sha,
+      repo: { full_name: 'kontourai/station' },
+    });
+    // Shapes captured from the GitHub REST API: PR 3085 was closed with its
+    // head branch deleted, and 3553 is contained by two later stacked PRs.
+    const closedPull = {
+      number: 3085,
+      state: 'closed',
+      created_at: '2026-10-01T11:11:45Z',
+      closed_at: '2026-10-02T18:12:53Z',
+      merged_at: null,
+      head: head(branch, '4dad606189e37f6a123c3f0b6509c8886d3ff102'),
+    };
+    const pullRun = (id: number, sha: string, overrides = {}) => ({
+      ...run(id, {
+        name: 'Secret Scan',
+        event: 'pull_request',
+        head_sha: sha,
+        head_branch: branch,
+        created_at: '2026-10-01T21:40:50Z',
+        pull_requests: [],
+        head_repository: {
+          full_name: 'kontourai/station',
+          owner: { login: 'kontourai' },
+        },
+        ...overrides,
+      }),
+    });
+    async function collect(
+      runs: unknown[],
+      routes: { sha?: Record<string, unknown[]>; head?: unknown[] },
+    ) {
+      const calls: string[] = [];
+      const data = await collectHealth(
+        { ...options, until: '2026-10-04T00:00:00.000Z' },
+        async (endpoint: string) => {
+          calls.push(endpoint);
+          if (endpoint.includes('/actions/runs?'))
+            return { total_count: runs.length, workflow_runs: runs };
+          if (endpoint.includes('/jobs')) return { total_count: 0, jobs: [] };
+          const bySha = endpoint.match(/\/commits\/([^/]+)\/pulls/);
+          if (bySha) return routes.sha?.[bySha[1]] ?? [];
+          if (endpoint.includes('/pulls?state=all&head='))
+            return routes.head ?? [];
+          throw new Error(`Unexpected REST call ${endpoint}`);
+        },
+        async (_exe: string, args: string[]) =>
+          args[0] === 'remote'
+            ? 'git@github.com:kontourai/station.git'
+            : args[0] === 'rev-parse'
+              ? 'false'
+              : '',
+      );
+      return { data, calls };
+    }
+
+    it('resolves an unreachable head, and the head a force-push replaced, from the branch and PR lifetime', async () => {
+      const current = pullRun(1, '4dad606189e37f6a123c3f0b6509c8886d3ff102');
+      const replaced = pullRun(2, '10d49bea031f8a2489951d039b3c9f3f070076bf', {
+        created_at: '2026-10-01T21:40:48Z',
+      });
+      const { data, calls } = await collect([current, replaced], {
+        head: [closedPull],
+      });
+      expect(data.reasons).toEqual([]);
+      expect(data.runs.map((r: any) => r.pull_requests)).toEqual([
+        [{ number: 3085 }],
+        [{ number: 3085 }],
+      ]);
+      // One branch lookup serves both heads.
+      expect(calls.filter((c) => c.includes('/pulls?state=all&head='))).toEqual(
+        [
+          `repos/kontourai/station/pulls?state=all&head=${encodeURIComponent(`kontourai:${branch}`)}&per_page=100&page=1`,
+        ],
+      );
+    });
+    it('credits only the PR whose head is the branch, not stacked PRs that contain the commit', async () => {
+      const sha = '51bc37b501b4b89417de61230c976aa8de4a8fd0';
+      const pairing = 't3code/32af3a2a-pairing-permissions';
+      const { data } = await collect(
+        [pullRun(1, sha, { head_branch: pairing })],
+        {
+          sha: {
+            [sha]: [
+              { number: 3553, state: 'closed', head: head(pairing) },
+              {
+                number: 3584,
+                state: 'open',
+                head: head('feat/station-groups-3557'),
+              },
+              {
+                number: 3585,
+                state: 'open',
+                head: head('feat/personal-tokens-3557'),
+              },
+            ],
+          },
+        },
+      );
+      expect(data.reasons).toEqual([]);
+      expect(data.runs[0].pull_requests).toEqual([{ number: 3553 }]);
+    });
+    it('reports the residual run when no PR used the branch while the run was live', async () => {
+      const afterClose = pullRun(7, 'a'.repeat(40), {
+        created_at: '2026-10-03T00:00:00Z',
+      });
+      const { data } = await collect([afterClose], { head: [closedPull] });
+      expect(data.runs[0].pull_requests).toEqual([]);
+      expect(data.reasons).toEqual([
+        `Cannot resolve PR push: run 7 (${'a'.repeat(12)} on kontourai/station:${branch}): no pull request lists this commit or has ever used this head branch while the run was live`,
+      ]);
+      expect(buildSnapshot(data, options).incomplete).toBe(true);
+    });
+    it('does not guess when the head repository is gone', async () => {
+      const orphan = pullRun(8, 'b'.repeat(40), { head_repository: null });
+      const { data, calls } = await collect([orphan], { head: [closedPull] });
+      expect(data.reasons).toHaveLength(1);
+      expect(calls.some((c) => c.includes('/pulls?state=all'))).toBe(false);
+    });
+  });
   it('marks rate limits and exhausted job pagination incomplete rather than complete zeroes', async () => {
     const rateLimited = await collectHealth(options, async () => {
       throw new Error('API rate limit exceeded (HTTP 403)');

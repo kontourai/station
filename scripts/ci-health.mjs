@@ -453,6 +453,53 @@ async function pages(request, endpoint, field, limit = 100) {
   }
   throw new Error(`Pagination cap at ${endpoint} (${limit} pages)`);
 }
+// Actions leaves `pull_requests` empty for forks and for runs whose head moved
+// before the run was listed, so a push is attributed through the head instead.
+// `commits/{sha}/pulls` lists every PR that merely CONTAINS the commit (a
+// stacked PR included) and returns nothing for a commit that is no longer
+// reachable from any branch (a closed PR whose branch was deleted, or a head
+// replaced by a force-push). The head ref and the PR lifetime resolve both.
+function headLabel(run) {
+  const owner = run.head_repository?.owner?.login;
+  return owner && run.head_branch ? `${owner}:${run.head_branch}` : null;
+}
+function headsRun(pull, run) {
+  const label = headLabel(run);
+  return label
+    ? pull.head?.label === label
+    : pull.head?.ref === run.head_branch;
+}
+function livedAt(pull, run) {
+  const at = time(run.created_at);
+  return (
+    time(pull.created_at) <= at &&
+    (pull.closed_at == null || at <= time(pull.closed_at))
+  );
+}
+export async function resolvePushPRs(run, repo, request, caches) {
+  const { shaPulls, branchPulls } = caches;
+  if (!shaPulls.has(run.head_sha))
+    shaPulls.set(
+      run.head_sha,
+      await pages(request, `repos/${repo}/commits/${run.head_sha}/pulls`),
+    );
+  const direct = shaPulls.get(run.head_sha).filter((p) => headsRun(p, run));
+  if (direct.length) return direct;
+  const owner = run.head_repository?.owner?.login;
+  if (!owner || !run.head_branch) return [];
+  const label = headLabel(run);
+  if (!branchPulls.has(label))
+    branchPulls.set(
+      label,
+      await pages(
+        request,
+        `repos/${repo}/pulls?state=all&head=${encodeURIComponent(label)}`,
+      ),
+    );
+  return branchPulls
+    .get(label)
+    .filter((p) => headsRun(p, run) && livedAt(p, run));
+}
 export async function collectHealth(
   options,
   request = api,
@@ -551,21 +598,22 @@ export async function collectHealth(
       const rejected = batch.find((result) => result.status === 'rejected');
       if (rejected) throw rejected.reason;
     }
+    const shaPulls = new Map();
+    const branchPulls = new Map();
     for (const run of runs.filter(
       (r) =>
         ['pull_request', 'pull_request_target'].includes(r.event) &&
         !r.pull_requests.length,
     )) {
-      if (!pushPRs.has(run.head_sha))
-        pushPRs.set(
-          run.head_sha,
-          await pages(request, `repos/${repo}/commits/${run.head_sha}/pulls`),
-        );
-      run.pull_requests = pushPRs
-        .get(run.head_sha)
-        .map((p) => ({ number: p.number }));
+      const resolved = await resolvePushPRs(run, repo, request, {
+        shaPulls,
+        branchPulls,
+      });
+      run.pull_requests = resolved.map((p) => ({ number: p.number }));
       if (!run.pull_requests.length)
-        reasons.push(`Cannot resolve PR push: run ${run.id}`);
+        reasons.push(
+          `Cannot resolve PR push: run ${run.id} (${run.head_sha?.slice(0, 12)} on ${run.head_repository?.full_name ?? 'unknown repository'}:${run.head_branch}): no pull request lists this commit or has ever used this head branch while the run was live`,
+        );
     }
     for (const group of groupRuns(runs, 'merge_group')) {
       const run = group[0];
