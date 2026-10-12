@@ -1480,6 +1480,57 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     });
   });
 
+  // The engine refuses a new session's model it did not offer
+  // (`model_not_advertised`, thrown by the REAL fetcher). Retrying sends the same model into the same refusal; the picker's
+  // snapshot of the Agent, its engine and that list is what let it be chosen.
+  it('a model the engine did not offer is not presented as transient: no Retry, snapshots re-read', async () => {
+    const actual = await vi.importActual<
+      typeof import('@kontourai/station-sdk/client')
+    >('@kontourai/station-sdk/client');
+    const previous = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          success: false,
+          error:
+            "ACP model value unsupported: connection 'opencode' did not advertise 'gpt-6.1-sol' for this session.",
+          code: 'model_not_advertised',
+        }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      )) as typeof fetch;
+    let refusal: unknown;
+    try {
+      refusal = await actual
+        .sendExecutionMessage('http://api.test', {} as never)
+        .catch((caught: unknown) => caught);
+    } finally {
+      globalThis.fetch = previous;
+    }
+    expect(refusal).toMatchObject({ code: 'model_not_advertised' });
+    sendExecutionMessageMock.mockRejectedValueOnce(refusal);
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'station', undefined, 'hello');
+    });
+
+    const chat = activeChatsStore.getSnapshot()[sessionId];
+    const notice = chat?.ephemeralMessages?.at(-1);
+    expect(notice?.content).toContain(
+      "**This engine doesn't offer that model**",
+    );
+    expect(notice?.content).toContain("'gpt-6.1-sol'");
+    expect(notice?.content).toContain('Nothing was sent.');
+    expect(notice?.content).not.toContain('Retrying may help');
+    expect(notice?.content).not.toContain('may already have started');
+    expect(notice?.action).toBeUndefined();
+    // Not terminal: the same chat takes another model on the next send.
+    expect(notice).not.toHaveProperty('terminalSession');
+    expect(invalidateMock).toHaveBeenCalledWith(['agents']);
+    expect(invalidateMock).toHaveBeenCalledWith(['acp-connections']);
+    expect(invalidateMock).toHaveBeenCalledWith(['connections', 'engines']);
+  });
+
   it('restores supervised attachments and stage refs after a definitive rejection', async () => {
     activeChatsStore.updateChat(sessionId, {
       attachments: [stagedAttachment],

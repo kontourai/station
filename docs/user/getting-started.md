@@ -236,7 +236,10 @@ Runtime options such as reasoning effort stay with the Model choice for this
 browser tab only; they are not remembered after it. A choice you make stays on
 both surfaces for this browser tab, even if another chat later runs on a
 different Model, until you change it or choose the picker's **Use …** reset,
-which names the default it returns to.
+which names the default it returns to. Station does not start a chat on a Model
+its engine does not offer: a default that an engine advertising its own model
+list left out is skipped, and a kept choice that list no longer contains is
+refused at **Start** with the message kept, so you can choose another.
 
 Until Station has loaded your projects, the chips show placeholders and
 **Start** waits, so a start never runs in a project Station has guessed. If

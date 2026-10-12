@@ -5,6 +5,7 @@ import {
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
+  MODEL_NOT_ADVERTISED_CODE,
   MUSE_TURN_IDLE_TIMEOUT_CODE,
   MUSE_TURN_TOTAL_TIMEOUT_CODE,
 } from '@kontourai/station-contracts/provider';
@@ -393,6 +394,23 @@ export function translateChatError(
       title: 'This Agent now runs somewhere else',
       body: `${text || "The Agent's engine changed after it was shown."} Nothing was sent.`,
       hint: 'Station has re-read the Agent. Check the engine and model shown, then send again.',
+      retryable: false,
+    };
+  }
+
+  // The engine this chat resolved to refused the model the composer showed.
+  // The adapter ended the refused session (with this as its cause), and the
+  // conversation continues in a successor session on the next send (the
+  // continuation seam starts it with the model then requested), so this is not
+  // a terminal chat: the user picks another model and sends again. Deterministic (the same model is refused
+  // again), so no "temporary" hint and no Retry. This is also what a composer
+  // working from a stale snapshot looks like once the engine behind an Agent
+  // changed; the client re-reads those snapshots.
+  if (code === MODEL_NOT_ADVERTISED_CODE) {
+    return {
+      title: "This engine doesn't offer that model",
+      body: `${text || 'The engine did not offer the selected model.'} Nothing was sent.`,
+      hint: 'Choose one of the models this engine offers and send again. The engine behind this Agent may have changed; Station has re-read its list.',
       retryable: false,
     };
   }

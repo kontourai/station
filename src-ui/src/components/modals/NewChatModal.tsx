@@ -798,19 +798,23 @@ export function NewChatModal({
       return;
     }
     // A Model chosen before this dialog (Home's chip, or before a setup
-    // journey) can have gone meanwhile: check it before starting on it.
+    // journey) can have gone meanwhile: check it before starting on it. A
+    // choice kept from earlier in this tab goes the same way when the engine
+    // reconnects with another catalog, so it is refused when the catalog is
+    // known and no longer lists it. Availability is not checked there: an
+    // engine that is merely not ready is reported by its own setup repair.
+    const startModels = selectionModel.executionModelsForAgent(agent);
+    const isChosen = (model: (typeof startModels)[number]) =>
+      model.id === choice?.modelId &&
+      (!choice?.providerId || model.providerId === choice.providerId) &&
+      model.executionAgentId === choice?.executionAgentId;
     if (
-      (returnedFromSetup || options.choice !== undefined) &&
       choice?.modelId &&
-      !selectionModel
-        .executionModelsForAgent(agent)
-        .some(
-          (model) =>
-            model.id === choice.modelId &&
-            model.available !== false &&
-            (!choice.providerId || model.providerId === choice.providerId) &&
-            model.executionAgentId === choice.executionAgentId,
-        )
+      (returnedFromSetup || options.choice !== undefined
+        ? !startModels.some(
+            (model) => isChosen(model) && model.available !== false,
+          )
+        : startModels.length > 0 && !startModels.some(isChosen))
     ) {
       setSelectFeedback(
         'The Model you selected is no longer available. Choose a Model to continue.',

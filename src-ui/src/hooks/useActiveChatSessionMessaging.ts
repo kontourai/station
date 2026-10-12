@@ -5,6 +5,7 @@ import type {
 } from '@kontourai/station-contracts/orchestration';
 import {
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  MODEL_NOT_ADVERTISED_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
@@ -1133,7 +1134,10 @@ export function useSendMessage(
                   err.code === SESSION_START_INDETERMINATE_CODE ||
                   // The chips changed under the user; a blind resend would run
                   // on the new engine without them having looked.
-                  err.code === EXECUTION_ENGINE_CHANGED_CODE
+                  err.code === EXECUTION_ENGINE_CHANGED_CODE ||
+                  // Refused for the same model every time; the user has to
+                  // choose another, so a blind Retry only repeats the refusal.
+                  err.code === MODEL_NOT_ADVERTISED_CODE
                 ? undefined
                 : {
                     label: 'Retry',
@@ -1167,10 +1171,16 @@ export function useSendMessage(
         if (err.code === ATTACHMENT_INPUT_UNSUPPORTED_CODE) {
           invalidate(['connections', 'engines']);
         }
-        // The Agent's binding changed under the snapshot the composer showed.
-        // Re-read what it was built from so the next send states, and the
-        // chips show, the engine the Agent is on now.
-        if (err.code === EXECUTION_ENGINE_CHANGED_CODE) {
+        // The engine answered for itself which models it offers, or the
+        // Agent's binding changed under the snapshot the composer showed: the
+        // composer's snapshot of the Agent, its engine and that list is what
+        // let the model be chosen or the engine be assumed. Re-read all three
+        // so the picker and the next send reflect the engine this chat
+        // actually resolved to.
+        if (
+          err.code === MODEL_NOT_ADVERTISED_CODE ||
+          err.code === EXECUTION_ENGINE_CHANGED_CODE
+        ) {
           invalidate(['agents']);
           invalidate(['acp-connections']);
           invalidate(['connections', 'engines']);

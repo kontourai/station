@@ -1390,7 +1390,10 @@ rebuilds the target from the authorized conversation binding and forwards that
 model choice. Whether it can apply to an existing Session or requires another
 lifecycle boundary depends on the engine. Unsupported lifecycle overrides have
 the typed `model-override-unsupported` refusal; this is not permission to invent
-an applied model after an unsuccessful request.
+an applied model after an unsuccessful request. A new ACP session whose requested
+model the engine's fresh session options did not offer is refused with the typed
+`model_not_advertised` code once the engine has answered; the start is settled,
+not uncertain.
 
 The [session projection](../../src-server/services/orchestration/orchestration-session-state.ts)
 keeps `requestedModel`, `appliedModel`, and independently reported model facts
