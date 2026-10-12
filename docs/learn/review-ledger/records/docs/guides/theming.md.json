@@ -88,7 +88,9 @@
 
     "src-ui/src/components/StartupScreen.tsx",
 
-    "src-ui/index.html"
+    "src-ui/index.html",
+
+    "src-ui/src/lib/startup-mark-geometry.ts"
   ],
 
   "checks": [
