@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import {
   type CanonicalRuntimeEvent,
+  isProviderTriggeredTurn,
   PROVIDER_TURN_TRIGGER,
 } from '@kontourai/station-contracts/runtime-events';
 import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-event-projection';
@@ -30,13 +31,14 @@ interface InterruptedTurnRecoveryDeps {
   /**
    * Called, not captured: the store is optional on the service options and a
    * swap after construction must be honoured. The handle crosses here
-   * deliberately — the seven operations this module needs
+   * deliberately — the eight operations this module needs
    * (`takeInterruptedTurnBoundaries`, `latestEventByMethod`,
+   * `latestEventByMethods`,
    * `listEventsForTurn`, `listUnresolvedRequestEvents`,
    * `firstOtherTurnStartedAfter`, `hasEventId`,
    * `resolveInterruptedTurnBoundary`) are
    * one transactional unit over the boundary table and event log, and
-   * fanning them into seven unrelated arrows would hide that. No Map crosses (T13).
+   * fanning them into eight unrelated arrows would hide that. No Map crosses (T13).
    */
   eventStore: () => EventStore | undefined;
   /**
@@ -276,15 +278,40 @@ export class InterruptedTurnRecovery {
         // but the banner still forces needs_input over a genuinely running
         // turn (and the live client would tear down that turn's shell and
         // grants). Resolve the row silently and publish nothing: the folds
-        // moved on. Compared by creation time, not by turn identity alone:
-        // the dead turn's own turn.started necessarily predates its
-        // boundary claim. Inside the per-record try like everything else:
-        // a throwing resolve must strand this row, not the whole loop.
+        // moved on. Compared by turn identity AND creation time: a start
+        // newer than the claim is evidence only when it is not this
+        // boundary's own turn (#3562, `ownTurnId` below). Inside the
+        // per-record try like everything else: a throwing resolve must
+        // strand this row, not the whole loop.
         // #3071: asked twice — here, and again after the FileMemory await
         // below. A turn can start during that await, and everything after
         // it (the request resolutions, the abort, the banner) must be
         // decided against the thread as it is then, not as it was.
         const boundaryState = record.state;
+        // #3562: the turn this boundary's dispatch opened. `accepted` records
+        // it; a row that died `invoking` never got that far, yet production
+        // persists the adapter's `turn.started` while `sendTurn` is still
+        // pending — after the claim, before `accepted`. Derived from the
+        // claim's exclusivity: while this row is `invoking`/`indeterminate`
+        // every other claim on the thread is refused (`busy`) and a steer
+        // reuses the open turn's id, so a non-provider start at or after the
+        // claim belongs to this dispatch. Only a turn the engine opened on
+        // its own (#2324) can start there without a claim, and only that is
+        // evidence the thread moved on. Ambiguous ownership therefore
+        // resolves toward the abort and banner, never toward silence.
+        // Derived once, before the await below: the owner is dead, so
+        // nothing that starts during recovery can be its turn.
+        const derivedOwnStart =
+          record.providerTurnId === undefined
+            ? eventStore.latestEventByMethod(record.threadId, 'turn.started')
+            : undefined;
+        const ownTurnId =
+          record.providerTurnId ??
+          (derivedOwnStart?.turnId !== undefined &&
+          derivedOwnStart.createdAt >= record.createdAt &&
+          !isProviderTriggeredTurn(derivedOwnStart.payload)
+            ? derivedOwnStart.turnId
+            : undefined);
         const movedOn = (): boolean => {
           const latestTurnStarted = eventStore.latestEventByMethod(
             record.threadId,
@@ -307,17 +334,17 @@ export class InterruptedTurnRecovery {
           // because the alternative loses the user's message silently, and
           // consume runs once, at boot, before live traffic normally arrives.
           const ownTurnStarted =
-            record.providerTurnId !== undefined &&
+            ownTurnId !== undefined &&
             eventStore
-              .listEventsForTurn(record.threadId, record.providerTurnId, 64)
+              .listEventsForTurn(record.threadId, ownTurnId, 64)
               .some((event) => event.payload.method === 'turn.started');
           if (
             (providerTurn &&
               latestTurnStarted?.turnId !== record.providerTurnId) ||
             (!providerTurn &&
-              (record.providerTurnId === undefined || ownTurnStarted) &&
+              (ownTurnId === undefined || ownTurnStarted) &&
               latestTurnStarted?.turnId !== undefined &&
-              latestTurnStarted.turnId !== record.providerTurnId &&
+              latestTurnStarted.turnId !== ownTurnId &&
               latestTurnStarted.createdAt > record.createdAt)
           ) {
             this.deps.logger.warn(
@@ -334,6 +361,38 @@ export class InterruptedTurnRecovery {
           return false;
         };
         if (movedOn()) continue;
+        if (derivedOwnStart !== undefined && ownTurnId !== undefined) {
+          // #3562: `sendTurn` can find its turn already terminal when the
+          // adapter resolves (`markTurnAccepted` → `terminalObserved`); a
+          // death before that leaves this row `invoking` over a turn that
+          // finished. Boot retires such rows only once `accepted` (it is
+          // never told the turn id otherwise), so check here: nothing was
+          // interrupted, so resolve silently. A recovery abort from an
+          // earlier, unfinished pass is this module's own fact, not the
+          // turn's, and does not count.
+          const latestTerminal = eventStore.latestEventByMethods(
+            record.threadId,
+            ['turn.completed', 'turn.aborted', 'runtime.error'],
+          );
+          const terminal = latestTerminal?.payload;
+          if (
+            terminal !== undefined &&
+            latestTerminal!.turnId === ownTurnId &&
+            latestTerminal!.sequence > derivedOwnStart.sequence &&
+            !(terminal.method === 'turn.aborted' && terminal.recoveryTerminal)
+          ) {
+            this.deps.logger.warn(
+              'Interrupted-turn boundary names a turn that already finished — resolving without recovery events',
+              { threadId: record.threadId, boundaryId: record.boundaryId },
+            );
+            eventStore.resolveInterruptedTurnBoundary({
+              boundaryId: record.boundaryId,
+              ownerId: record.ownerId,
+              state: boundaryState,
+            });
+            continue;
+          }
+        }
         const providerTurn = isProviderTurnBoundary(record);
         const startEvent = eventStore.latestEventByMethod(
           record.threadId,
@@ -396,13 +455,14 @@ export class InterruptedTurnRecovery {
         // the anchor both folds track), and the banner lands AFTER it, so
         // the banner's explicit `sessionState:'needs_input'` stamp is still
         // the fold's final word — the turn reads closed AND the session
-        // reads needs_input. Skipped when the boundary never accepted a
-        // turn (`record.providerTurnId` absent): there is no turn to close.
+        // reads needs_input. Skipped when the boundary names no turn —
+        // neither accepted one nor (#3562) opened one after its claim
+        // (`ownTurnId` absent): there is no turn to close.
         // #3071: the occupancy check above awaited. If a newer turn started
         // meanwhile, this boundary is stale now even though it was not when
         // first asked; publish nothing, exactly as the first check would.
         if (movedOn()) continue;
-        const providerTurnId = record.providerTurnId;
+        const providerTurnId = ownTurnId;
         if (providerTurnId !== undefined) {
           // #3071: settle what the dead turn was waiting on, BEFORE the
           // abort. Every live abort path has an adapter holding the pending
