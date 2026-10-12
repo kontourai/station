@@ -189,8 +189,23 @@ function configureConnection(
   return { journalMode, synchronous: 'FULL', busyTimeoutMs };
 }
 
-function inTransaction<T>(db: SqliteKernelDatabase, body: () => T): T {
-  db.exec('BEGIN IMMEDIATE');
+/**
+ * Commands that only read run in a deferred transaction, so they are served
+ * from a WAL snapshot while another connection holds the write lock. A
+ * participant that writes during one of them may get SQLITE_BUSY.
+ */
+const READ_ONLY_COMMANDS: ReadonlySet<KernelCommand['type']> = new Set([
+  'turnDedup.read',
+  'turnBoundary.list',
+  'turnBoundary.hasPossibleEffect',
+]);
+
+function inTransaction<T>(
+  db: SqliteKernelDatabase,
+  body: () => T,
+  mode: 'IMMEDIATE' | 'DEFERRED' = 'IMMEDIATE',
+): T {
+  db.exec(`BEGIN ${mode}`);
   let result: T;
   try {
     result = body();
@@ -354,12 +369,14 @@ function sqliteTransaction(db: SqliteKernelDatabase): KernelTransaction {
       delete: (key) => {
         run('DELETE FROM monument_turn_dedup WHERE dedup_key = ?', key);
       },
-      // `substr` and `length` both count characters, so the comparison is an
-      // exact prefix match with no wildcard semantics.
+      // Compared as UTF-8 bytes: an exact prefix match with no wildcard
+      // semantics, unaffected by NUL (where text `length()` stops) or by
+      // characters outside the BMP (where JavaScript and SQLite count
+      // differently).
       deletePrefix: (prefix) =>
         run(
-          'DELETE FROM monument_turn_dedup WHERE substr(dedup_key, 1, length(?)) = ?',
-          prefix,
+          'DELETE FROM monument_turn_dedup WHERE substr(CAST(dedup_key AS BLOB), 1, ?) = CAST(? AS BLOB)',
+          Buffer.byteLength(prefix, 'utf8'),
           prefix,
         ),
       pruneResolved: (maxEntries) => {
@@ -538,8 +555,10 @@ export function openSqliteKernelStorage(
       throw new Error(
         'monument commands cannot run inside a transaction the host already holds.',
       );
-    return inTransaction(db, () =>
-      runKernelTransactionStep(command, context, tx, participants, db),
+    return inTransaction(
+      db,
+      () => runKernelTransactionStep(command, context, tx, participants, db),
+      READ_ONLY_COMMANDS.has(command.type) ? 'DEFERRED' : 'IMMEDIATE',
     );
   };
 

@@ -58,7 +58,10 @@ export interface HeldCommit {
  * {@link failNextCommit} proves, against the adapter's real rollback.
  */
 export interface CrashPointStore {
-  /** The current incarnation's port. Read it again after {@link reopen}. */
+  /**
+   * One port for every incarnation: after {@link reopen} it routes to the
+   * new one. A test that needs to hold the old process's handle cannot.
+   */
   readonly storage: KernelStorage;
   holdNextCommit(): HeldCommit;
   failNextCommit(error?: Error): void;

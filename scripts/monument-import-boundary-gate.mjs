@@ -18,7 +18,13 @@
  * - test files may also import the workspace test runner (`vitest`), which
  *   is not published with the package;
  * - a dynamic `import()` or `require()` whose argument is not a constant
- *   string cannot be checked and is refused.
+ *   string cannot be checked and is refused, and so is every loader the
+ *   import graph cannot see: `node:module` (`createRequire`),
+ *   `getBuiltinModule`, a `require` that is referenced rather than called,
+ *   and `import.meta.resolve`;
+ * - no symlink may exist under the package: relative specifiers are checked
+ *   by path, and a link would let `./x` resolve outside it;
+ * - declaration files are scanned like any other source.
  *
  * Imports are read from the TypeScript syntax tree (static imports, re-exports,
  * `import x = require()`, `import()`, `require()`, `require.resolve()`,
@@ -27,7 +33,7 @@
  *
  *   node scripts/monument-import-boundary-gate.mjs
  */
-import { readFileSync } from 'node:fs';
+import { lstatSync, readFileSync } from 'node:fs';
 import { posix } from 'node:path';
 import ts from 'typescript-api';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
@@ -37,6 +43,7 @@ export const MONUMENT_ROOT = 'packages/monument';
 const SOURCE_EXTENSION = /\.(?:[cm]?[jt]s|tsx|jsx)$/;
 const TEST_FILE = /(^|\/)__tests__\/|\.(?:test|spec)\.[cm]?[jt]sx?$/;
 const TEST_ONLY_IMPORTS = new Set(['vitest']);
+const MODULE_LOADER_SPECIFIERS = new Set(['node:module', 'module']);
 const STATION_PACKAGE = /^@kontourai\/station(?:-[^/]+)?$/;
 const DEPENDENCY_FIELDS = [
   'dependencies',
@@ -82,6 +89,31 @@ export function readManifest(manifestText, manifestPath) {
 function constantString(node) {
   if (ts.isStringLiteralLike(node)) return node.text;
   return null;
+}
+
+/**
+ * `require(...)`, `require.resolve(...)`: the call forms the visitor checks
+ * by their argument. A property NAMED `require` is not the loader.
+ */
+function isRequireCallee(identifier) {
+  const parent = identifier.parent;
+  if (ts.isCallExpression(parent) && parent.expression === identifier)
+    return true;
+  if (ts.isPropertyAccessExpression(parent)) {
+    if (parent.name === identifier) return true;
+    return (
+      parent.expression === identifier &&
+      parent.name.text === 'resolve' &&
+      ts.isCallExpression(parent.parent) &&
+      parent.parent.expression === parent
+    );
+  }
+  return (
+    (ts.isPropertyAssignment(parent) ||
+      ts.isMethodDeclaration(parent) ||
+      ts.isPropertySignature(parent)) &&
+    parent.name === identifier
+  );
 }
 
 /** Every module reference in one file: `{ specifier | null, line, how }`. */
@@ -134,6 +166,36 @@ export function moduleReferences(file, content) {
         line: lineOf(node.getStart()),
         how: 'import-type',
       });
+    } else if (
+      ts.isIdentifier(node) &&
+      node.text === 'require' &&
+      !isRequireCallee(node)
+    ) {
+      references.push({
+        specifier: '<require reference>',
+        line: lineOf(node.getStart()),
+        how: 'module-loader',
+      });
+    } else if (
+      ts.isPropertyAccessExpression(node) &&
+      node.name.text === 'getBuiltinModule'
+    ) {
+      references.push({
+        specifier: '<getBuiltinModule>',
+        line: lineOf(node.getStart()),
+        how: 'module-loader',
+      });
+    } else if (
+      ts.isPropertyAccessExpression(node) &&
+      ts.isMetaProperty(node.expression) &&
+      node.expression.keywordToken === ts.SyntaxKind.ImportKeyword &&
+      node.name.text === 'resolve'
+    ) {
+      references.push({
+        specifier: '<import.meta.resolve>',
+        line: lineOf(node.getStart()),
+        how: 'module-loader',
+      });
     } else if (ts.isCallExpression(node)) {
       const callee = node.expression;
       const isDynamicImport = callee.kind === ts.SyntaxKind.ImportKeyword;
@@ -161,7 +223,9 @@ export function moduleReferences(file, content) {
 /** Why a reference from `file` is refused, or null when it is allowed. */
 export function classifyReference(file, reference, declared) {
   const { specifier } = reference;
+  if (reference.how === 'module-loader') return 'module-loader';
   if (specifier === null) return 'unverifiable-import';
+  if (MODULE_LOADER_SPECIFIERS.has(specifier)) return 'module-loader';
   if (specifier.startsWith('node:')) return null;
   if (specifier.startsWith('.')) {
     const resolved = posix.normalize(
@@ -188,7 +252,7 @@ export function scanMonument({ files, readText }) {
     manifestPath,
   );
   for (const file of files) {
-    if (!SOURCE_EXTENSION.test(file) || file.endsWith('.d.ts')) continue;
+    if (!SOURCE_EXTENSION.test(file)) continue;
     for (const reference of moduleReferences(file, readText(file))) {
       const kind = classifyReference(file, reference, declared);
       if (kind)
@@ -222,8 +286,16 @@ function listPackageFiles() {
 }
 
 function main() {
-  const files = listPackageFiles().filter((file) =>
-    SOURCE_EXTENSION.test(file),
+  const listed = listPackageFiles();
+  const symlinks = listed
+    .filter((file) =>
+      lstatSync(file, { throwIfNoEntry: false })?.isSymbolicLink(),
+    )
+    .map((file) => ({ kind: 'symlink', file, line: 1, specifier: '' }));
+  const files = listed.filter(
+    (file) =>
+      SOURCE_EXTENSION.test(file) &&
+      !symlinks.some((link) => link.file === file),
   );
   if (files.length === 0) {
     console.error(
@@ -231,13 +303,16 @@ function main() {
     );
     process.exit(1);
   }
-  const findings = scanMonument({
-    files,
-    readText: (path) => readFileSync(path, 'utf8'),
-  });
+  const findings = [
+    ...symlinks,
+    ...scanMonument({
+      files,
+      readText: (path) => readFileSync(path, 'utf8'),
+    }),
+  ];
   if (findings.length > 0) {
     console.error(
-      `FAIL: monument import boundary: ${findings.length} forbidden module reference(s). @kontourai/monument may import only node: builtins, its declared dependencies and its own files, and never Station (ADR 0005 Tier 1).`,
+      `FAIL: monument import boundary: ${findings.length} forbidden module reference(s). @kontourai/monument may import only node: builtins, its declared dependencies and its own files, never Station, and may contain no symlink (ADR 0005 Tier 1).`,
     );
     for (const finding of findings)
       console.error(

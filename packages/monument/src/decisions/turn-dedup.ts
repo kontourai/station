@@ -105,6 +105,9 @@ export function decideTurnDedupResolve(
   current: TurnDedupRecord | undefined,
   command: TurnDedupResolveCommand,
 ): TurnDedupDecision<TurnDedupSettleResult> {
+  // A retry after a lost acknowledgement finds its own value already there.
+  if (current?.owner?.id === command.ownerId && current.value === command.value)
+    return { write: NO_WRITE, result: { kind: 'applied' } };
   if (!ownsUnresolved(current, command.ownerId))
     return { write: NO_WRITE, result: { kind: 'stale' } };
   return {

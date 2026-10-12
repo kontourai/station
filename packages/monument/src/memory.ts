@@ -175,22 +175,32 @@ export function openMemoryKernelStorage(
   const volume = options.volume ?? new MemoryKernelVolume();
   const participants = options.participants ?? [];
   let closed = false;
+  let inFlight = false;
   return {
     async execute<C extends KernelCommand>(
       command: C,
       context: KernelContext,
     ): Promise<KernelResult<C>> {
       if (closed) throw new KernelStorageClosedError();
-      const working = copy(volume.committed);
-      const result = runKernelTransactionStep(
-        command,
-        context,
-        transactionOver(working),
-        participants,
-        undefined,
-      );
-      volume.committed = working;
-      return copy(result);
+      // A participant that issued a command from inside this one would
+      // commit first and then be overwritten by the outer commit.
+      if (inFlight)
+        throw new Error('monument commands cannot run inside another command.');
+      inFlight = true;
+      try {
+        const working = copy(volume.committed);
+        const result = runKernelTransactionStep(
+          command,
+          context,
+          transactionOver(working),
+          participants,
+          undefined,
+        );
+        volume.committed = working;
+        return copy(result);
+      } finally {
+        inFlight = false;
+      }
     },
     async close() {
       closed = true;

@@ -131,7 +131,7 @@ export function decideTurnBoundaryTransition(
       ...current,
       state: target,
       updatedAt: command.now,
-      ...(command.providerTurnId
+      ...(command.providerTurnId !== undefined
         ? { providerTurnId: command.providerTurnId }
         : {}),
     };
@@ -159,7 +159,11 @@ export function turnBoundaryAcceptCollides(
   threadRows: readonly TurnBoundaryRecord[],
   terminalSeen: boolean,
 ): boolean {
-  if (!current || command.to !== 'accepted' || !command.providerTurnId)
+  if (
+    !current ||
+    command.to !== 'accepted' ||
+    command.providerTurnId === undefined
+  )
     return false;
   return (
     terminalSeen ||
