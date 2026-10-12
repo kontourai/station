@@ -193,8 +193,17 @@ Show inbox directly, as an icon button whose pressed state is available to assis
 Pending tool requests from the loaded event window also feed Needs approval,
 whose action opens the conversation's approval sheet. Failed history or
 continuation observation shows Status unavailable and withholds the cached
-working clock; the remote turn may still be running. History Retry refreshes
-the capability observation before reloading.
+working clock; the remote turn may still be running. While the recovery notice
+above the composer already reports a failed continuation check, with its own
+Retry, the pill is not shown at all rather than repeating it. History Retry
+refreshes the capability observation before reloading.
+
+Above the composer, a failed session's banner offers its "send a message" note
+only when a send can go out: not while the conversation's continuation is
+unproven, and not for a paired device without `orchestration:operate`. That
+device is also not offered Start new chat. The agent-turn toast's session
+chord (⌘1/Ctrl+1) and the composer menu's command-launcher chord are not shown
+on a coarse primary pointer.
 
 The pill uses compact state labels such as Working, Thinking, and Reconnecting;
 it does not expand to display tool names. State changes animate its width with
