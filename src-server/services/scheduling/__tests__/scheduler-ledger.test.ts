@@ -933,6 +933,99 @@ describe('SchedulerLedger', () => {
     });
   });
 
+  /**
+   * #3563. A claim written by another process whose own birth probe failed
+   * carries a NULL `owner_birth`. That used to read as live without asking
+   * the kernel, so once its pid was gone the occurrence stayed fenced
+   * forever. `dead` needs no birth to decide; only a live pid without a
+   * recorded birth stays fenced.
+   */
+  describe('a foreign claim with no recorded birth', () => {
+    const FOREIGN_PID = 2_147_483_001;
+    const foreignIdentity = (state: 'dead' | 'unavailable') => ({
+      exact: (pid: number) => {
+        const probed = probeExactProcessIdentity(pid);
+        return probed.state === 'exact' ? probed.identity : null;
+      },
+      probe: (pid: number) =>
+        pid === FOREIGN_PID ? { state } : probeExactProcessIdentity(pid),
+    });
+
+    function strandForeignClaim(invoked: boolean) {
+      const dueAt = Date.parse('2026-01-01T01:00:00.000Z');
+      const owner = createSchedulerLedger({ directory: tempDir });
+      owner.create({
+        name: 'foreign-null-birth',
+        schedule: { kind: 'every', everyMs: 1_000 },
+        prompt: 'run',
+        enabled: true,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      });
+      const claim = read(owner.claimDue(dueAt))[0];
+      if (!claim) throw new Error('expected a due claim');
+      if (invoked) expect(claim.beginInvocation()).toEqual({ kind: 'applied' });
+      owner.close();
+      const database = new DatabaseSync(join(tempDir, 'scheduler.sqlite'));
+      try {
+        database
+          .prepare(
+            `UPDATE scheduler_claims
+                SET owner_id = 'foreign-owner', owner_pid = ?, owner_birth = NULL
+              WHERE run_id = ?`,
+          )
+          .run(FOREIGN_PID, claim.id);
+      } finally {
+        database.close();
+      }
+      return { claim, dueAt };
+    }
+
+    test('a dead foreign owner releases its uninvoked occurrence', () => {
+      const { claim, dueAt } = strandForeignClaim(false);
+      const restarted = createSchedulerLedger({
+        directory: tempDir,
+        processIdentity: foreignIdentity('dead'),
+      });
+      try {
+        const recovered = read(restarted.claimDue(dueAt));
+        expect(recovered).toHaveLength(1);
+        expect(recovered[0]).toMatchObject({ id: claim.id, attempt: 1 });
+      } finally {
+        restarted.close();
+      }
+    });
+
+    test('a dead foreign owner that began invocation is settled indeterminate, not replayed', () => {
+      const { claim, dueAt } = strandForeignClaim(true);
+      const restarted = createSchedulerLedger({
+        directory: tempDir,
+        processIdentity: foreignIdentity('dead'),
+      });
+      try {
+        expect(read(restarted.claimDue(dueAt))).toEqual([]);
+        expect(read(restarted.allLogs())).toMatchObject([
+          { id: `${claim.id}-1`, state: 'indeterminate', success: false },
+        ]);
+      } finally {
+        restarted.close();
+      }
+    });
+
+    test('control: a live foreign owner with no birth keeps its fence', () => {
+      const { dueAt } = strandForeignClaim(false);
+      const restarted = createSchedulerLedger({
+        directory: tempDir,
+        processIdentity: foreignIdentity('unavailable'),
+      });
+      try {
+        expect(read(restarted.claimDue(dueAt))).toEqual([]);
+        expect(read(restarted.allLogs())).toEqual([]);
+      } finally {
+        restarted.close();
+      }
+    });
+  });
+
   test('returns a reclaimed manual retry to the manual caller with its immutable claimed job snapshot', () => {
     const owner = createSchedulerLedger({ directory: tempDir });
     owner.create({
