@@ -596,8 +596,9 @@ the change drops the device's live terminal and voice leases. One such scope,
 device, the refusing Station and the operator's grant command, derived from
 the request's verified credential; it discloses no credential and grants
 nothing. When the device's person is in the Member group (#3557), the refusal
-says so (`grant.groupLimited`) and names People as the first step, keeping the
-grant command only when the device's own grant also lacks the scope. Removing the scope, or revoking the device, refuses the device's
+says so (`grant.groupLimited`) and names People as the first step, adding the
+grant command (as `grant.groupLimited.cli` and a final step, never as an
+alternative) only when the device's own grant also lacks the scope. Removing the scope, or revoking the device, refuses the device's
 next full-access request and resets the full access it had already granted:
 each conversation it put at full access gets a new Ask decision attributed to
 the operator. Attribution is exact, from the server-derived actor on the

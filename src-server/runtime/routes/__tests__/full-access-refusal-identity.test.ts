@@ -89,7 +89,7 @@ describe('the full-access refusal and Station groups', () => {
     const body = refuse(device.id);
     expect(body.details.grant).toMatchObject({
       uiSteps: [
-        "On the Station's host, open Settings, then Devices, then People.",
+        'As the operator, open Settings, then Devices, then People.',
         'Find the person this device is tied to and set their group to Admin.',
       ],
     });
@@ -103,15 +103,21 @@ describe('the full-access refusal and Station groups', () => {
     const { pair, refuse } = await station();
     const device = pair(STANDARD, 'casey');
     const body = refuse(device.id);
-    // The People steps only; the device grant is the command after them.
+    const command = `npx @kontourai/station-cli@nightly environment access scope ${device.id.slice(0, 8)} --add approval:full-access`;
+    // The People steps, then the command as the step AFTER them: a client
+    // that predates groupLimited still reads one sequence.
     expect(body.details.grant?.uiSteps).toEqual([
-      "On the Station's host, open Settings, then Devices, then People.",
+      'As the operator, open Settings, then Devices, then People.',
       'Find the person this device is tied to and set their group to Admin.',
+      `Then, on the Station's host, run: ${command}`,
     ]);
-    expect(body.details.grant?.groupLimited).toEqual({ group: 'member' });
-    expect(body.details.grant?.cli).toBe(
-      `npx @kontourai/station-cli@nightly environment access scope ${device.id.slice(0, 8)} --add approval:full-access`,
-    );
+    expect(body.details.grant?.groupLimited).toEqual({
+      group: 'member',
+      cli: command,
+    });
+    // Never the top-level cli, which older clients offer as an alternative.
+    expect(body.details.grant).not.toHaveProperty('cli');
+    expect(body.error).toContain(command);
     expect(body.error).toContain('in the Member group');
   });
 

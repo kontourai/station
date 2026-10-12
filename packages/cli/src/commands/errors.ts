@@ -12,6 +12,7 @@
 
 import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
+  groupLimitedPeopleSteps,
   parseApprovalFullAccessRefusalDetails,
 } from '@kontourai/station-contracts/orchestration';
 import type { ApiBaseSource, ResolvedApiBase } from './core-api.js';
@@ -126,22 +127,25 @@ export function explainFullAccessRefusal(
       details.requester.kind === 'device'
         ? `device "${safe(details.requester.deviceName)}" (${safe(details.requester.deviceId)})`
         : 'the device you are using';
-    const steps = details.grant.uiSteps.map(
-      (step, index) => `    ${index + 1}. ${safe(step)}`,
-    );
-    if (details.grant.groupLimited) {
+    const numbered = (list: readonly string[]) =>
+      list.map((step, index) => `    ${index + 1}. ${safe(step)}`);
+    const steps = numbered(details.grant.uiSteps);
+    const limited = details.grant.groupLimited;
+    if (limited) {
       // #3557: the group stops it. Making them Admin comes first; a device
       // grant, when one is still needed, is a second step, not an option.
       lines.push(
         '',
         `${who.charAt(0).toUpperCase()}${who.slice(1)} belongs to a person in the Member group, which doesn't allow full access.`,
         '  Ask the operator to make them Admin on People:',
-        ...steps,
+        // The command step the Station appended for older clients is shown
+        // as the command below instead.
+        ...numbered(groupLimitedPeopleSteps(details.grant)),
       );
-      if (details.grant.cli)
+      if (limited.cli)
         lines.push(
           "  Then, on the Station's host, run:",
-          `    ${safe(details.grant.cli)}`,
+          `    ${safe(limited.cli)}`,
         );
     } else {
       lines.push('', `Ask the operator to allow full access for ${who}:`);

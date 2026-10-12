@@ -1,4 +1,7 @@
-import type { ApprovalFullAccessRequester } from '@kontourai/station-contracts/orchestration';
+import {
+  type ApprovalFullAccessRequester,
+  groupLimitedPeopleSteps,
+} from '@kontourai/station-contracts/orchestration';
 import { useState } from 'react';
 import type { FullAccessRefusalNotice } from '../../utils/approvalMode';
 
@@ -49,16 +52,16 @@ export function FullAccessRefusalCard({
             Ask the operator to make them Admin on People:
           </p>
           <ol style={{ margin: 0, paddingLeft: '20px' }}>
-            {grant.uiSteps.map((step) => (
+            {groupLimitedPeopleSteps(grant).map((step) => (
               <li key={step}>{step}</li>
             ))}
           </ol>
-          {grant.cli && (
+          {grant.groupLimited.cli && (
             <>
               <p style={{ margin: '8px 0 4px' }}>
                 Then, on the Station&apos;s host, the operator runs:
               </p>
-              <CommandBlock command={grant.cli} />
+              <CommandBlock command={grant.groupLimited.cli} />
             </>
           )}
         </>

@@ -1,5 +1,8 @@
 /** @vitest-environment jsdom */
-import type { ApprovalFullAccessRefusalDetails } from '@kontourai/station-contracts/orchestration';
+import {
+  type ApprovalFullAccessRefusalDetails,
+  groupLimitedCommandStep,
+} from '@kontourai/station-contracts/orchestration';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
 import { FullAccessRefusalCard } from '../FullAccessRefusalCard';
@@ -13,7 +16,7 @@ import { FullAccessRefusalCard } from '../FullAccessRefusalCard';
 const CLI =
   'npx @kontourai/station-cli@nightly environment access scope e6f3f571 --add approval:full-access';
 const PEOPLE_STEPS = [
-  "On the Station's host, open Settings, then Devices, then People.",
+  'As the operator, open Settings, then Devices, then People.',
   'Find the person this device is tied to and set their group to Admin.',
 ];
 
@@ -46,8 +49,14 @@ afterEach(cleanup);
 
 describe('a group-limited full-access refusal', () => {
   test('with a device grant still needed: People first, then the command, never "Or"', () => {
-    const text = card(details({ groupLimited: { group: 'member' }, cli: CLI }))
-      .textContent as string;
+    // The wire shape: the command in groupLimited, and appended as a step
+    // for clients that predate it.
+    const text = card(
+      details({
+        groupLimited: { group: 'member', cli: CLI },
+        uiSteps: [...PEOPLE_STEPS, groupLimitedCommandStep(CLI)],
+      }),
+    ).textContent as string;
     expect(text).toContain('belongs to a person in the Member group');
     expect(text).not.toMatch(/\bOr\b/);
     const people = text.indexOf(PEOPLE_STEPS[0] as string);
@@ -56,6 +65,23 @@ describe('a group-limited full-access refusal', () => {
     expect(people).toBeGreaterThan(-1);
     expect(then).toBeGreaterThan(people);
     expect(command).toBeGreaterThan(then);
+    // The appended step is shown as the command, not twice.
+    expect(text.split(CLI)).toHaveLength(2);
+  });
+
+  test('an older client, which drops groupLimited, still reads one sequence', () => {
+    // What a pre-#3557 parser keeps of the same wire shape: no
+    // groupLimited, no top-level cli, the command as the last step.
+    const element = card(
+      details({ uiSteps: [...PEOPLE_STEPS, groupLimitedCommandStep(CLI)] }),
+    );
+    const text = element.textContent as string;
+    expect(text).not.toMatch(/\bOr\b/);
+    const steps = [...element.querySelectorAll('li')].map(
+      (item) => item.textContent,
+    );
+    expect(steps.at(-1)).toContain(CLI);
+    expect(steps.at(0)).toBe(PEOPLE_STEPS[0]);
   });
 
   test('with the device already granted: only the People steps', () => {

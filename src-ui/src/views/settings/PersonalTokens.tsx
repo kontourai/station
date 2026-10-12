@@ -405,6 +405,7 @@ export function PersonalTokens({
     setFocusNew(false);
   });
   const headingId = useId();
+  const waitHintId = useId();
 
   async function submit(input: PersonalTokenInput) {
     setError(null);
@@ -446,9 +447,13 @@ export function PersonalTokens({
             size="sm"
             className="people__compact"
             aria-label={`New token for ${ownerLabel}`}
-            disabled={newDisabledReason !== undefined}
-            {...(newDisabledReason ? { title: newDisabledReason } : {})}
+            // Waiting, not disabled: it stays focusable, and its reason is
+            // visible text it is described by.
+            {...(newDisabledReason
+              ? { 'aria-disabled': true, 'aria-describedby': waitHintId }
+              : {})}
             onClick={() => {
+              if (newDisabledReason) return;
               setError(null);
               setCreating(true);
             }}
@@ -458,6 +463,11 @@ export function PersonalTokens({
         )}
       </div>
       {description && <p className="people__meta">{description}</p>}
+      {showNew && newDisabledReason && (
+        <p className="people__meta" id={waitHintId}>
+          {newDisabledReason}
+        </p>
+      )}
       {tokens.length === 0 ? (
         <Empty className="people__none" label="None yet." />
       ) : (

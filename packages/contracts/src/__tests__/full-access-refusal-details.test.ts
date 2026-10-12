@@ -4,6 +4,8 @@
  */
 import { describe, expect, test } from 'vitest';
 import {
+  groupLimitedCommandStep,
+  groupLimitedPeopleSteps,
   parseApprovalFullAccessRefusalDetails,
   sanitizeRefusalDeviceName,
   sanitizeUntrustedDisplayText,
@@ -105,10 +107,40 @@ describe('parseApprovalFullAccessRefusalDetails', () => {
     expect(limited({ group: 'member' })?.groupLimited).toEqual({
       group: 'member',
     });
+    expect(
+      limited({ group: 'member', cli: 'station x' })?.groupLimited,
+    ).toEqual({ group: 'member', cli: 'station x' });
+    // A command past the bound, or not a string, is dropped, not trusted.
+    expect(
+      limited({ group: 'member', cli: 'x'.repeat(257) })?.groupLimited,
+    ).toEqual({ group: 'member' });
+    expect(limited({ group: 'member', cli: 7 })?.groupLimited).toEqual({
+      group: 'member',
+    });
     for (const value of [{ group: 'admin' }, 'member', true, { group: 1 }])
       expect(limited(value)).not.toHaveProperty('groupLimited');
     expect(
       parseApprovalFullAccessRefusalDetails(deviceRefusal('Phone'))?.grant,
     ).not.toHaveProperty('groupLimited');
+  });
+
+  test('#3557: the People steps omit only the command step the Station appended', () => {
+    const grant = (uiSteps: string[], cli?: string) => ({
+      by: 'operator' as const,
+      scope: 'approval:full-access' as const,
+      uiSteps,
+      groupLimited: { group: 'member' as const, ...(cli ? { cli } : {}) },
+    });
+    expect(
+      groupLimitedPeopleSteps(
+        grant(['A', groupLimitedCommandStep('run it')], 'run it'),
+      ),
+    ).toEqual(['A']);
+    // A last step that is not that command stays.
+    expect(groupLimitedPeopleSteps(grant(['A', 'B'], 'run it'))).toEqual([
+      'A',
+      'B',
+    ]);
+    expect(groupLimitedPeopleSteps(grant(['A']))).toEqual(['A']);
   });
 });

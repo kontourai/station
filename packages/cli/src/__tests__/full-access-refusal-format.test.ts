@@ -1,4 +1,7 @@
-import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
+import {
+  APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
+  groupLimitedCommandStep,
+} from '@kontourai/station-contracts/orchestration';
 import { describe, expect, test } from 'vitest';
 import { explainFullAccessRefusal } from '../commands/errors.js';
 
@@ -11,7 +14,7 @@ import { explainFullAccessRefusal } from '../commands/errors.js';
 const CLI =
   'npx @kontourai/station-cli@nightly environment access scope e6f3f571 --add approval:full-access';
 const PEOPLE_STEPS = [
-  "On the Station's host, open Settings, then Devices, then People.",
+  'As the operator, open Settings, then Devices, then People.',
   'Find the person this device is tied to and set their group to Admin.',
 ];
 
@@ -35,9 +38,15 @@ function refusal(grant: Record<string, unknown>) {
 describe('explainFullAccessRefusal for a Member', () => {
   test('with a device grant still needed: People, then the command', () => {
     const printed = explainFullAccessRefusal(
-      refusal({ groupLimited: { group: 'member' }, cli: CLI }),
+      refusal({
+        groupLimited: { group: 'member', cli: CLI },
+        uiSteps: [...PEOPLE_STEPS, groupLimitedCommandStep(CLI)],
+      }),
       undefined,
     ) as string;
+    // The appended step is printed as the command, not twice.
+    expect(printed.split(CLI)).toHaveLength(2);
+    expect(printed).not.toContain('3. ');
     expect(printed).toContain(
       'Device "Phone" (e6f3f571) belongs to a person in the Member group',
     );
@@ -59,6 +68,15 @@ describe('explainFullAccessRefusal for a Member', () => {
     expect(printed).toContain(`2. ${PEOPLE_STEPS[1]}`);
     expect(printed).not.toContain('--add approval:full-access');
     expect(printed).not.toContain('Then,');
+  });
+
+  test('an older reading of the same refusal (no groupLimited) is one sequence', () => {
+    const printed = explainFullAccessRefusal(
+      refusal({ uiSteps: [...PEOPLE_STEPS, groupLimitedCommandStep(CLI)] }),
+      undefined,
+    ) as string;
+    expect(printed).not.toMatch(/\bOr\b/);
+    expect(printed).toContain(`3. Then, on the Station's host, run: ${CLI}`);
   });
 
   test('without a group limit the two device paths stay alternatives', () => {
