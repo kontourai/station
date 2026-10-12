@@ -3,7 +3,7 @@ import { once } from 'node:events';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { EventStore } from '../event-store.js';
 import { createRecoveryDispatchAdapter } from '../recovery-dispatch-adapter.js';
 
@@ -52,6 +52,34 @@ describe('RecoveryLedger', () => {
       (snapshot as { outcome: string }).outcome = 'succeeded';
     }).toThrow();
     expect(ledger.find(intent.fingerprint)).toMatchObject({ outcome: 'armed' });
+    eventStore.close();
+  });
+
+  test('#2823: a failed startup scan is unavailable, never an empty obligation list', () => {
+    const { eventStore, ledger } = fixture();
+    // Control: storage was read and holds no prepared obligation.
+    expect(ledger.reconcilePrepared('2026-08-13T00:00:01.000Z')).toEqual({
+      kind: 'available',
+      obligations: [],
+    });
+    expect(
+      ledger.reconcilePreparedCredentials('2026-08-13T00:00:01.000Z'),
+    ).toEqual({ kind: 'available', obligations: [] });
+
+    vi.spyOn(
+      eventStore as unknown as {
+        preparedRecoveryDispatches: (...args: unknown[]) => unknown;
+      },
+      'preparedRecoveryDispatches',
+    ).mockImplementation(() => {
+      throw new Error('SQLITE_BUSY: database is locked');
+    });
+    expect(ledger.reconcilePrepared('2026-08-13T00:00:02.000Z')).toEqual({
+      kind: 'unavailable',
+    });
+    expect(
+      ledger.reconcilePreparedCredentials('2026-08-13T00:00:02.000Z'),
+    ).toEqual({ kind: 'unavailable' });
     eventStore.close();
   });
 
