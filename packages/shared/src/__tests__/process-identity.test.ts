@@ -87,7 +87,10 @@ describe('birthProvesReuse (station#2904)', () => {
           return 'foreign-birth';
         },
       }),
-    ).toEqual({ state: 'exact', identity: { pid: 42, start: 'foreign-birth' } });
+    ).toEqual({
+      state: 'exact',
+      identity: { pid: 42, start: 'foreign-birth' },
+    });
     expect(lookups).toEqual([42]);
     await expect(
       probeExactProcessIdentityAsync(42, {

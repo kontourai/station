@@ -200,9 +200,7 @@ export class SessionRecoveryCoordinator {
   }
 
   private repairSourceTerminals(): boolean {
-    const repair = this.ledger.cancelSourceTerminated(
-      this.now().toISOString(),
-    );
+    const repair = this.ledger.cancelSourceTerminated(this.now().toISOString());
     return repair.kind === 'applied' || repair.kind === 'stale';
   }
 

@@ -1907,6 +1907,7 @@ describe('SessionRecoveryCoordinator', () => {
         turnId: 'turn-ended',
         createdAt: now.toISOString(),
         method: 'turn.aborted',
+        reason: 'interrupted',
       });
     }
 
@@ -1960,9 +1961,9 @@ describe('SessionRecoveryCoordinator', () => {
 
         await vi.advanceTimersByTimeAsync(60_000);
         expect(repairs).toHaveBeenCalledTimes(2);
-        expect(
-          coordinator.latestProjection('thread-ended'),
-        ).toMatchObject({ outcome: 'canceled' });
+        expect(coordinator.latestProjection('thread-ended')).toMatchObject({
+          outcome: 'canceled',
+        });
         expect(sendTurn.mock.calls.map(([input]) => input.threadId)).toEqual([
           'thread-open',
         ]);

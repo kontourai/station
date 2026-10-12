@@ -1036,8 +1036,11 @@ describe('SchedulerLedger', () => {
   // transaction, so every job missed its tick and the same transaction's
   // dead-claim reconciliation rolled back with it.
   test('quarantines one malformed job record instead of blocking every due job', () => {
-    const quarantined: Array<{ name: string; jobId: string; revision: number }> =
-      [];
+    const quarantined: Array<{
+      name: string;
+      jobId: string;
+      revision: number;
+    }> = [];
     const ledger = createSchedulerLedger({
       directory: tempDir,
       onQuarantinedJob: (job) =>
@@ -1083,7 +1086,9 @@ describe('SchedulerLedger', () => {
       try {
         expect(
           inspection
-            .prepare("SELECT data FROM scheduler_jobs WHERE job_id = 'damaged-job-id'")
+            .prepare(
+              "SELECT data FROM scheduler_jobs WHERE job_id = 'damaged-job-id'",
+            )
             .get(),
         ).toEqual({ data: '{"name":' });
       } finally {
