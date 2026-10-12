@@ -2251,6 +2251,46 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
       }
     });
 
+    test('D1: a cancelled completion of the own turn is not the dispatch finishing — banner, no abort', async () => {
+      const path = databasePath();
+      const threadId = 'thread-own-cancelled';
+      const eventStore = crashWhileInvoking(path, threadId, (dying) => {
+        dying.appendEvent({
+          eventId: `cancelled:${threadId}`,
+          provider: 'acp',
+          threadId,
+          turnId: 'turn-1',
+          createdAt: '2026-08-16T00:00:01.500Z',
+          method: 'turn.completed',
+          finishReason: 'cancelled',
+        } as CanonicalRuntimeEvent);
+      });
+
+      await (serviceOn(eventStore) as any).interruptedTurns.consume();
+
+      expect(summarize(eventStore, threadId)).toEqual({
+        aborts: [],
+        banners: 1,
+      });
+    });
+
+    test('a late completion of a DIFFERENT turn is not the dispatch’s own turn finishing', async () => {
+      const path = databasePath();
+      const threadId = 'thread-other-turn-completes';
+      const eventStore = crashWhileInvoking(path, threadId, (dying) => {
+        dying.appendEvent(
+          completionOf(threadId, 'turn-0', '2026-08-16T00:00:01.500Z'),
+        );
+      });
+
+      await (serviceOn(eventStore) as any).interruptedTurns.consume();
+
+      expect(summarize(eventStore, threadId)).toEqual({
+        aborts: ['turn-1'],
+        banners: 1,
+      });
+    });
+
     test('two fresh non-provider starts after the claim: the LATEST is the dispatch’s own (closed), never read as moved on', async () => {
       const path = databasePath();
       const threadId = 'thread-two-fresh-starts';
