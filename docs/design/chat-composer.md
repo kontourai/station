@@ -35,7 +35,11 @@ reveal controls, but must not change bubble size or the position of later messag
 During an authorized active-turn continuation wait, the composer accepts and
 preserves a draft. Sending and queueing stay blocked until continuation is writable.
 The shared popover shell opens toward the roomier viewport edge, including when
-the dock is maximized. A narrow Activity region shows its list or its selected
+the dock is maximized. Slash commands, `/model` and `@` file results all open
+through one anchored popup outside the composer, so no composer clipping can cut
+them off. The `@` list closes when the input loses focus (pressing inside the
+list does not take focus) and reopens when focus returns with the caret in an
+`@` query. A narrow Activity region shows its list or its selected
 detail, with a Back to list control, instead of squeezing both columns.
 
 ## Starting and resuming work
@@ -63,8 +67,15 @@ New chat opens the shared start composer. Home renders it inline, and an
 operator's Project page renders a compact version above its activity with
 the Project fixed. Project and Station controls sit above the text box;
 separate Agent and Engine & model controls sit inside it beside Start and the overflow
-for visual skills. The Agent list retains each Agent's readiness and repair
-action, with a short purpose for custom Agents. The Model picker offers search, recent choices, favorites and provider
+for visual skills. The Agent list retains each Agent's repair action: a row that cannot start is
+dimmed and disabled with its one fixing button, and shows a state badge only
+when it has no fix of its own; a ready row shows none. Custom Agents keep a
+short purpose. The engine that runs an Agent
+reads as a quiet pill right after its name, not on a line of its own. A row does not repeat what the list already states: the Station every row runs on, an engine name that is only
+the Agent's name plus a qualifier (the row keeps the qualifier), or "Model not
+reported": a row with a model catalog but no reported model offers **Choose
+model**, and one with neither shows no model control. A row that cannot start
+keeps its Model control, so a choice made before its repair carries through it. The Model picker offers search, recent choices, favorites and provider
 filters; Options reveals capability filters and the selected model's supported
 runtime controls. Reviewed canonical model identities still own grouping across
 provider routes; similar names do not establish equivalence.
@@ -333,7 +344,10 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 ### Turn activity and follow-up delivery
 
 On desktop, Send remains available beside a separate Stop action during a turn.
-On mobile, Send is an arrow and its mode picker a chevron. They appear once the
+During a turn the mode picker is the trailing segment of Send, one split
+control that takes Send's accent while Send is ready. With no turn, Send alone
+sits at the row's trailing edge. On mobile, Send is an arrow and its mode
+picker a chevron. They appear once the
 composer holds text, an attachment or quoted context; their geometry stays
 reserved while hidden, so editing does not move Stop or the other toolbar
 controls. Names and the selected mode remain accessible, and the opened picker
@@ -420,7 +434,10 @@ simple per-device preference rather than claiming to detect an attached keyboard
   its action (**Upload again**, **Retry**, **Remove**). A full staging capacity
   (5 unsent uploads per login) offers no Retry: the line under the chips names
   the limit and how to free it, with **Remove attachments**, and wins over the
-  generic upload failure. Chips wrap to a second row (two per row on a phone)
+  generic upload failure. A Station that cannot tell who is uploading
+  (`principal_unresolved`) offers no Retry either: the chip reads **Couldn't
+  confirm who you are**, and the line says to remove the attachment, then
+  reconnect or pair again, with **Remove attachments**. Chips wrap to a second row (two per row on a phone)
   instead of scrolling sideways.
 - Attachment messages sit between the chips and the draft. When Send is
   blocked only by the attachments, that line carries **Remove attachments**,

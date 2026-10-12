@@ -1,4 +1,6 @@
 import type {
+  TurnClaimInvocation,
+  TurnClaimOwner,
   TurnIdempotencyPersistence,
   TurnIdempotencyRecord,
 } from '../turn-idempotency.js';
@@ -43,6 +45,10 @@ export function turnDedupThreadPrefix(threadId: string): string {
 export function chatTurnDedupKey(clientTurnId: string): string {
   return `chat:${clientTurnId.length}:${clientTurnId}`;
 }
+/** Thread keys start with the thread id's length, so they never start with `chat:`. */
+function isChatTurnDedupKey(key: string): boolean {
+  return key.startsWith('chat:');
+}
 
 /**
  * SQLite-backed `TurnIdempotencyPersistence` adapter over
@@ -68,12 +74,18 @@ export function createSqliteTurnDedupPersistence({
       | { value: string | null; createdAt: number; ownerJson: string | null }
       | undefined;
     if (!row) return undefined;
+    const claimant =
+      row.ownerJson === null ? undefined : parseTurnClaimOwner(row.ownerJson);
+    // #3559: an unmarked `chat:` row can only come from the /chat facade,
+    // which records no invocation, so it keeps the untracked reclaim rule.
+    const invocation =
+      claimant?.invocation ??
+      (isChatTurnDedupKey(key) ? 'untracked' : undefined);
     return {
       value: row.value,
       createdAt: row.createdAt,
-      ...(row.ownerJson === null
-        ? {}
-        : { owner: parseTurnClaimOwner(row.ownerJson) }),
+      ...(claimant ? { owner: claimant.owner } : {}),
+      ...(invocation ? { invocation } : {}),
     };
   }
 
@@ -112,9 +124,7 @@ export function createSqliteTurnDedupPersistence({
             key,
             decision.record.value,
             decision.record.createdAt,
-            decision.record.owner
-              ? JSON.stringify(decision.record.owner)
-              : null,
+            serializeTurnClaimOwner(decision.record),
           );
         else
           db.prepare(
@@ -133,9 +143,40 @@ export function createSqliteTurnDedupPersistence({
   };
 }
 
-function parseTurnClaimOwner(
-  raw: string,
-): import('../turn-idempotency.js').TurnClaimOwner {
+/**
+ * #3559: the invocation record lives inside `owner_json`, beside the owner it
+ * describes. A writer that replaces the owner without recording invocation
+ * (an older peer or a downgraded runtime reclaiming the row) therefore drops
+ * it, and the row reads as unknown rather than as a stale `pending` that a
+ * later claimant would reclaim after that writer invoked and died. A record
+ * with no owner cannot carry it and reads as unknown too.
+ */
+function serializeTurnClaimOwner(record: TurnIdempotencyRecord): string | null {
+  if (!record.owner) return null;
+  return JSON.stringify(
+    record.invocation
+      ? { ...record.owner, invocation: record.invocation }
+      : record.owner,
+  );
+}
+
+/**
+ * Unknown invocation values read as absent. On a thread key that means a dead
+ * owner's claim is never reclaimed; a `chat:` key falls back to `untracked`
+ * in `read` and keeps the dead-owner reclaim rule.
+ */
+function parseTurnClaimInvocation(
+  raw: unknown,
+): TurnClaimInvocation | undefined {
+  return raw === 'pending' || raw === 'begun' || raw === 'untracked'
+    ? raw
+    : undefined;
+}
+
+function parseTurnClaimOwner(raw: string): {
+  owner: TurnClaimOwner;
+  invocation?: TurnClaimInvocation;
+} {
   let value: unknown;
   try {
     value = JSON.parse(raw);
@@ -157,5 +198,18 @@ function parseTurnClaimOwner(
     )
   )
     throw new Error('Invalid orchestration turn claim owner_json');
-  return value as import('../turn-idempotency.js').TurnClaimOwner;
+  const parsed = value as TurnClaimOwner & { invocation?: unknown };
+  // Rebuilt field by field so the invocation record never rides along as an
+  // owner property.
+  const owner: TurnClaimOwner =
+    parsed.identityKind === 'exact'
+      ? {
+          pid: parsed.pid,
+          birth: parsed.birth,
+          token: parsed.token,
+          identityKind: 'exact',
+        }
+      : { pid: parsed.pid, token: parsed.token, identityKind: 'unverified' };
+  const invocation = parseTurnClaimInvocation(parsed.invocation);
+  return { owner, ...(invocation ? { invocation } : {}) };
 }

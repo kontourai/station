@@ -201,6 +201,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Epic #2323 S3: real FIFOs (`mkfifo`) as plugin inputs, and a bounded
   // child process for the tsconfig read a regression would block.
   'packages/shared/src/__tests__/plugin-build-fifo.test.ts',
+  // #699: every buildPlugin call starts esbuild's service child. The file
+  // imports no child_process itself, so the direct-import detector cannot
+  // see that seam; under the ordinary four-worker corpus two of its cases
+  // timed out at canonical phase load.
+  'packages/shared/src/__tests__/plugin-build.test.ts',
   // Epic #2323 S3: each draft build forks a disposable process that is
   // killed at its deadline; the test observes that process and a FIFO.
   'src-server/services/plugins/__tests__/plugin-draft-build-process.test.ts',
@@ -214,6 +219,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // The CLI fixture imports child_process only to forbid every launch while
   // patching builtin exports around the real read-only dispatch seam.
   'packages/cli/src/__tests__/home-recovery-plan.test.ts',
+  // #577: runs the interactive-workspace bridge spec through the real
+  // Playwright CLI as a child (a runner plus one worker) to prove a
+  // non-reference host launches no browser and provisions no Station.
+  'scripts/__tests__/interactive-workspace-performance-host-gate.test.ts',
   // Owns Chromium and esbuild children for the real exposed-binding artifact seam.
   'scripts/__tests__/interactive-workspace-driver-artifact.test.ts',
   // Real runtime identity probes and SQLite workers for source-absent recovery.
@@ -370,6 +379,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2012: a real child runtime races the home maintenance ownership fence.
   'packages/shared/src/__tests__/station-home-lifecycle.test.ts',
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
+  // #3565: a real child claims a turn through the node:sqlite adapter and is
+  // SIGKILLed; the parent reopens the file. Single-shot, no wall-clock bound.
+  'packages/monument/src/__tests__/sqlite-crash.process.test.ts',
+  // #3565: runs the monument import boundary gate as a child process against
+  // throwaway git repositories. Single-shot spawns, no wall-clock assertion.
+  'scripts/__tests__/monument-import-boundary-gate.test.ts',
   // Drives the changed-verification CLI through spawnSync against a real
   // fixture worktree to prove its dependency and selection behavior.
   'scripts/__tests__/changed-verification.test.ts',
@@ -772,6 +787,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // single-shot spawn.
   'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
   'scripts/__tests__/release-workflow.test.ts',
+  // #2783: runs release-artifacts.mjs assemble and validate as real child
+  // processes with release.yml's arguments. Single-shot spawns, no wall-clock
+  // assertion.
+  'scripts/__tests__/release-artifacts.test.ts',
   // #2977: runs release.yml's assemble-draft admission step as a real bash
   // child against a download-artifact-shaped fixture root.
   'scripts/__tests__/release-admit-producer-assets.test.ts',
@@ -957,9 +976,17 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/tools/__tests__/store-integrity-probe.test.ts',
   'src-server/services/evidence/__tests__/veritas-readiness-service.test.ts',
   'src-server/services/__tests__/flow-agents-work-item-provider.process-tree.test.ts',
+  // #776: drives the vended bash tool's real persistent shell into a stdin
+  // EPIPE (exit mid-write, and exit before 'close'). Single-shot shells, a
+  // 2s backgrounded sleep at most; nothing asserts a wall-clock bound.
+  'src-server/runtime/tools/__tests__/vended-tool-compat.stdin.process.test.ts',
   // station#2238: starts real Station children against one SQLite claims
   // store to prove construction preserves live ownership.
   'src-server/routes/chat/__tests__/chat-turn-dedup.test.ts',
+  // #3559: runs a real OrchestrationService owner process over SQLite,
+  // SIGKILLs it before or after its engine call, and retries the same client
+  // turn from a restarted store. Single-shot children; no wall-clock bound.
+  'src-server/services/orchestration/__tests__/turn-dedup-crash.process.test.ts',
   // The child process is owned by the hermetic helper rather than imported by
   // the test file; its broken-pipe proof also writes a 4 MiB stdin payload.
   'src-server/services/__tests__/helpers/hermetic-openssh.test.ts',
@@ -968,6 +995,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // and asserts the startup sweep reaps the orphaned group. Same process-tree
   // shape as process-utils.test.ts; must not run under the ordinary pool.
   'src-server/services/infra/__tests__/owned-process-reaping.test.ts',
+  // #561: spawns the real Codex app-server path against a stub executable
+  // that starts a grandchild in its group, then sweeps and terminates it.
+  // Same process-tree shape as owned-process-reaping.test.ts.
+  'src-server/providers/__tests__/codex-app-server-owned-process.test.ts',
   // station#1895: spawns a real node child process (through `tsx`) to prove
   // the durable log sink survives an actual uncaught exception, the same
   // resource shape as `agent-registry.test.ts`'s schema-gate child probe.
@@ -1090,6 +1121,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/ssh/__tests__/openssh-reachability.process.test.ts',
   'src-server/services/orchestration/__tests__/planned-home-transfer-store.process.test.ts',
   'src-server/services/ssh/__tests__/openssh-launch-bootstrap.test.ts',
+  // #2675: runs the Windows identity probe (System32 PowerShell) against a
+  // real child node.exe; it runs only on win32, in the Windows PR job.
+  'packages/cli/src/__tests__/windows-process-identity.process.test.ts',
   'src-server/services/ssh/__tests__/openssh-worker-probe.test.ts',
   'src-server/services/terminal/__tests__/terminal-subprocess-state.test.ts',
   // Timing-sensitive responsive-UI suites: no child_process import, kept out

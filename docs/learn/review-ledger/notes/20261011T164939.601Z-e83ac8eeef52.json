@@ -1,0 +1,55 @@
+{
+  "revision": "4b3075272de0dcbd5c09993557624a322900b4f5",
+
+  "notes": [
+    {"path":"docs/learn/media/connections-models.png","note":"index.css change only removes .new-chat-modal__agent-meta rules, which match nothing any more (the Agent picker stopped rendering that element). This capture does not show the Agent picker's meta line, so its pixels are unaffected.","inputs":["docs/learn/media/connections-models.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"index.css change only removes .new-chat-modal__agent-meta rules, which match nothing any more (the Agent picker stopped rendering that element). This capture does not show the Agent picker's meta line, so its pixels are unaffected.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"index.css change only removes .new-chat-modal__agent-meta rules, which match nothing any more (the Agent picker stopped rendering that element). This capture does not show the Agent picker's meta line, so its pixels are unaffected.","inputs":["docs/learn/media/inspect-request.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"index.css change only removes .new-chat-modal__agent-meta rules, which match nothing any more (the Agent picker stopped rendering that element). This capture does not show the Agent picker's meta line, so its pixels are unaffected.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"index.css change only removes .new-chat-modal__agent-meta rules, which match nothing any more (the Agent picker stopped rendering that element). This capture does not show the Agent picker's meta line, so its pixels are unaffected.","inputs":["docs/learn/media/project-with-task.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"index.css change only removes .new-chat-modal__agent-meta rules, which match nothing any more (the Agent picker stopped rendering that element). This capture does not show the Agent picker's meta line, so its pixels are unaffected.","inputs":["docs/learn/media/repository-knowledge-narrow.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"index.css change only removes .new-chat-modal__agent-meta rules, which match nothing any more (the Agent picker stopped rendering that element). This capture does not show the Agent picker's meta line, so its pixels are unaffected.","inputs":["docs/learn/media/repository-knowledge.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"index.css change only removes .new-chat-modal__agent-meta rules, which match nothing any more (the Agent picker stopped rendering that element). This capture does not show the Agent picker's meta line, so its pixels are unaffected.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/index.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"index.css change only removes .new-chat-modal__agent-meta rules (the picker no longer renders that line). Re-read: the Agent list paragraph already says the engine reads at the end of the name line; the §3 superseded engine-chip note still describes the chip concept across surfaces. Accurate.","inputs":["docs/design/chat-composer.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/collaborative-editor-pane.md","note":"index.css change only removes the .new-chat-modal__agent-meta and .new-chat-modal__agent-meta .engine-chip rules, which match nothing any more (the Agent picker stopped rendering that element). This document makes no claim about those rules or that line; its content is unaffected and accurate.","inputs":["docs/design/collaborative-editor-pane.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/placement.md","note":"index.css change only removes the .new-chat-modal__agent-meta and .new-chat-modal__agent-meta .engine-chip rules, which match nothing any more (the Agent picker stopped rendering that element). This document makes no claim about those rules or that line; its content is unaffected and accurate.","inputs":["docs/design/placement.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"index.css change only removes the .new-chat-modal__agent-meta and .new-chat-modal__agent-meta .engine-chip rules, which match nothing any more (the Agent picker stopped rendering that element). This document makes no claim about those rules or that line; its content is unaffected and accurate.","inputs":["docs/design/session-tape-replay.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/connections.md","note":"index.css change only removes the .new-chat-modal__agent-meta and .new-chat-modal__agent-meta .engine-chip rules, which match nothing any more (the Agent picker stopped rendering that element). This document makes no claim about those rules or that line; its content is unaffected and accurate.","inputs":["docs/guides/connections.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/knowledge.md","note":"index.css change only removes the .new-chat-modal__agent-meta and .new-chat-modal__agent-meta .engine-chip rules, which match nothing any more (the Agent picker stopped rendering that element). This document makes no claim about those rules or that line; its content is unaffected and accurate.","inputs":["docs/guides/knowledge.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"index.css change only removes the .new-chat-modal__agent-meta and .new-chat-modal__agent-meta .engine-chip rules, which match nothing any more (the Agent picker stopped rendering that element). This document makes no claim about those rules or that line; its content is unaffected and accurate.","inputs":["docs/guides/responsive-ui.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/starter-work.md","note":"index.css change only removes the .new-chat-modal__agent-meta and .new-chat-modal__agent-meta .engine-chip rules, which match nothing any more (the Agent picker stopped rendering that element). This document makes no claim about those rules or that line; its content is unaffected and accurate.","inputs":["docs/guides/starter-work.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/theming.md","note":"index.css change only removes the .new-chat-modal__agent-meta and .new-chat-modal__agent-meta .engine-chip rules, which match nothing any more (the Agent picker stopped rendering that element). This document makes no claim about those rules or that line; its content is unaffected and accurate.","inputs":["docs/guides/theming.md","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"index.css change only removes the .new-chat-modal__agent-meta and .new-chat-modal__agent-meta .engine-chip rules, which match nothing any more (the Agent picker stopped rendering that element). This document makes no claim about those rules or that line; its content is unaffected and accurate.","inputs":["docs/learn/walkthroughs.md","src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/backend.md","note":"index.css change only removes the .new-chat-modal__agent-meta and .new-chat-modal__agent-meta .engine-chip rules, which match nothing any more (the Agent picker stopped rendering that element). This document makes no claim about those rules or that line; its content is unaffected and accurate.","inputs":["docs/patterns/backend.md","src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/frontend.md","note":"index.css change only removes the .new-chat-modal__agent-meta and .new-chat-modal__agent-meta .engine-chip rules, which match nothing any more (the Agent picker stopped rendering that element). This document makes no claim about those rules or that line; its content is unaffected and accurate.","inputs":["docs/patterns/frontend.md","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"index.css change only removes the .new-chat-modal__agent-meta and .new-chat-modal__agent-meta .engine-chip rules, which match nothing any more (the Agent picker stopped rendering that element). This document makes no claim about those rules or that line; its content is unaffected and accurate.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"index.css change only removes the .new-chat-modal__agent-meta and .new-chat-modal__agent-meta .engine-chip rules, which match nothing any more (the Agent picker stopped rendering that element). This document makes no claim about those rules or that line; its content is unaffected and accurate.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-ui/src/index.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"index.css change only removes the .new-chat-modal__agent-meta and .new-chat-modal__agent-meta .engine-chip rules, which match nothing any more (the Agent picker stopped rendering that element). This document makes no claim about those rules or that line; its content is unaffected and accurate.","inputs":["docs/user/getting-started.md","src-ui/src/index.css"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"index.css change only removes the .new-chat-modal__agent-meta and .new-chat-modal__agent-meta .engine-chip rules, which match nothing any more (the Agent picker stopped rendering that element). This document makes no claim about those rules or that line; its content is unaffected and accurate.","inputs":["examples/knowledge-library/README.md","src-ui/src/index.css"]},
+
+    {"path":"src-desktop/icons/README.md","note":"index.css change only removes the .new-chat-modal__agent-meta and .new-chat-modal__agent-meta .engine-chip rules, which match nothing any more (the Agent picker stopped rendering that element). This document makes no claim about those rules or that line; its content is unaffected and accurate.","inputs":["src-desktop/icons/README.md","src-ui/src/index.css"]}
+  ]
+}

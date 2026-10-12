@@ -196,6 +196,15 @@ is not a retry candidate. Staged uploads the refused send had bound are released
 from that turn, so the same references can be sent on another turn. Codex and Muse refuse a non-image file with a plain
 error that carries no code.
 
+A send that starts a new ACP session on a model the engine's fresh session
+options did not offer is refused with `code: "model_not_advertised"`. The start
+is settled, not uncertain: the thread is not fenced behind an inspection, the
+receipt is `rejected`, and the refused session has ended with the engine's
+refusal as its cause. It is not a retry candidate as sent. Sending again in the
+same conversation (another model, the same one, or no override) continues in a
+successor session; a start naming a model on the refused session id itself is
+refused.
+
 A completed turn does not discard the conversation. If the next turn needs a new
 execution Session, it remains linked beneath the same Conversation. Station-native
 prompt history reads existing authorized native memory segments across that
@@ -550,8 +559,8 @@ and `stopSession` (`{ type: 'stopSession', threadId }`).
 
 External transcript observation does not grant control of the original terminal
 process. The engine capability matrix declares independent continuation support;
-known unsupported and unknown engines retain a disabled **Continue in Station**
-control with a reason. The adoption owner enforces the same declaration before
+known unsupported and unknown engines keep the conversation's message box
+disabled with a reason. The adoption owner enforces the same declaration before
 invoking an adapter, then checks current source, Project, ownership, and runtime
 requirements. A native continuation declaration does not guarantee readiness of
 any particular source.
@@ -688,6 +697,10 @@ as observed progress without inventing a verdict. Discovery and parser limits
 are reported as incomplete observations. Cursor progress is saved after the
 page's events, so an interrupted import replays through durable event-id
 deduplication.
+Import loops yield after 32 completed operations or 16 ms of elapsed work,
+whichever comes first. Each event is committed before publication, and the
+page cursor advances only after the page is stored. A single synchronous
+SQLite operation can exceed that work budget; it is not a latency guarantee.
 
 Grok observation reads `GROK_HOME/sessions` (`~/.grok/sessions` by default)
 through the same bounded, read-only follower
@@ -753,7 +766,7 @@ identity without exposing a filesystem path.
 Codex continuation forks an independent native thread at a completed turn
 observed in Station's durable history. The original terminal session remains
 read-only in Station and can keep running independently. Until a completed
-boundary exists, **Continue in Station** stays disabled with a reason. Claude
+boundary exists, the message box that continues it stays disabled with a reason. Claude
 uses its SDK's independent session snapshot; it does not claim the same native
 turn-cutoff semantics. Both paths retain the source binding in the adoption
 ledger before native child creation and retain unresolved cleanup for recovery

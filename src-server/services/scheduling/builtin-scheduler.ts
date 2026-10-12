@@ -320,6 +320,18 @@ export class BuiltinScheduler implements ISchedulerProvider {
         // so the ledger reports it here and it takes the same route to the
         // user as an invocation failure.
         onAbandonedRun: (entry) => this.announceFailedRun(entry),
+        // One unreadable job record no longer stops every other job's tick,
+        // so it must be said once rather than vanish from the schedule.
+        onQuarantinedJob: (job) =>
+          this.options.logger?.error(
+            'Scheduler job record is unreadable; it will not run until it is repaired or removed',
+            {
+              job: job.name,
+              jobId: job.jobId,
+              revision: job.revision,
+              reason: job.reason,
+            },
+          ),
       });
     this.announcementOutbox = this.ledger.announcementOutbox();
     this.monitorTerminalOutbox =

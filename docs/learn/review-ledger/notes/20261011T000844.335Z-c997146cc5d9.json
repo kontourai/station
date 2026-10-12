@@ -1,0 +1,7 @@
+{
+  "revision": "97e5ad0479fab738d715444fcfb9d7af1893b2d7",
+
+  "notes": [
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed BrowserPane.css short-height behavior: pane scrolling and minimum live-stage height now apply with the console closed as well as open. Existing guide sentence on very short panes remains accurate. Focused tests and pre-fix/restored banner controls passed at 63392ac384; runtime and CI at the new revision remain pending; no native or physical-phone claim.","inputs":["docs/guides/browser-workspace.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.css"]}
+  ]
+}

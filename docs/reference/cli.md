@@ -65,7 +65,13 @@ runs), so it behaves correctly across many worktrees on the same machine. It
 refuses a missing bundle or one older than the source timestamps it inspects,
 naming `npm run build:cli` as the remedy. This is an approximate mtime check,
 not the content-based dist-freshness gate; preserved or skewed timestamps can
-miss drift. Outside a checkout it names the `npx` form instead.
+miss drift. Outside a checkout it names the `npx` form instead. A CLI killed by
+a signal is reported as 128 plus the signal number (143 for `SIGTERM`), not 1.
+
+The installer writes a regular file and never writes through a link. It
+refuses a destination that is a symlink (for example one left by `npm link`),
+or any existing file that is not a previously installed `station-dev`, and
+names the path to remove or the `STATION_DEV_BIN` directory to use instead.
 
 ```bash
 npm run station-dev:install   # once, from any Station checkout
@@ -2275,7 +2281,7 @@ station environment operator passkeys approve <code> [--device=<id-prefix>] [--a
 station environment operator passkeys deny <code> [--api-base=<loopback-url>|--station=<name>]
 station environment operator passkeys revoke <passkey-id> [--api-base=<loopback-url>|--station=<name>]
 station environment access list [--api-base=<loopback-url>|--station=<name>]
-station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person|--bind-account|--personal-device] [--api-base=<loopback-url>|--station=<name>]
+station environment access approve [<request-id-or-offer-id>|--latest] [--scope=<scope,…>] [--force] [--bind-person|--bind-account|--personal-device] [--api-base=<loopback-url>|--station=<name>]
 station environment access deny [<request-id-or-offer-id>|--latest] [--force] [--api-base=<loopback-url>|--station=<name>]
 station environment access devices [--json] [--api-base=<loopback-url>|--station=<name>]
 station environment access scope <device-id|id-prefix|name> (--add=<scope,…>|--remove=<scope,…>|--set=<scope,…>) [--dry-run] [--api-base=<loopback-url>|--station=<name>]
@@ -2320,7 +2326,11 @@ station environment peers remove <environment-id>
   `--tailscale-serve-port` selects a strict port from 1 through 65535 (default
   443) and requires `--tailscale`; the selected port is used for the endpoint,
   mapping, and manual teardown guidance. Offer expiry
-  never changes Serve and Station never enables Funnel.
+  never changes Serve and Station never enables Funnel. The printed QR and
+  link grant **Standard** (`orchestration:read orchestration:operate
+  terminal:operate`), the same grant the **Paired devices** panel offers.
+  `--payload-only` is the desktop SSH launcher's machine flow: it names no
+  scope, so the Station issues its default grant.
 - `environment access request` is the requester side of device pairing: it asks a
   remote Station for access, waits for an operator to approve it there, then
   stores the issued bearer credential in the OS keyring and registers a
@@ -2336,14 +2346,20 @@ station environment peers remove <environment-id>
   read its operator credential from and is refused with that reason; use
   `STATION_HOME=<home> --api-base=<loopback-url>` for it instead
   (station#4515). `approve`/`deny` accept either id printed by `access list`
-  — the request id or the offer id — or `--latest`.
+  — the request id or the offer id — or `--latest`. `access list` shows what
+  each request asks for (`asksFor`), and `approve` names it before confirming.
+  `approve --scope=<scope,…>` keeps only those of the requested scopes; it can
+  only narrow the request, and cannot be combined with `--bind-account`.
+  Without `--scope`, the device gets what it asked for.
 - `access devices`/`scope`/`scopes` manage what each paired device may do, on
   the same host-only operator channel (#1796). `access devices` lists the live
   paired devices with id, name, last seen and scopes. `access scope` adds,
   removes or sets scopes on one device, named by its id, a unique id prefix,
   or its exact name (an ambiguous prefix or name is refused). Every scope is
   checked against the real vocabulary, `access:manage` is never grantable to a
-  device, the new scope is computed from the device's current one and sent
+  device (one paired by an older Station may still hold it; any real change
+  removes it and says so, as the desktop access editor does, while a change
+  that asks for nothing new leaves the device alone), the new scope is computed from the device's current one and sent
   with the scope it replaces, so a change another operator made meanwhile is
   refused rather than overwritten (rerun to apply yours). `--dry-run` prints
   before and after without changing anything. `access scopes` lists every
@@ -3231,7 +3247,7 @@ Findings are evidence input only and do not approve, reject, satisfy a gate, or 
 
 When `station start` launches the server and UI processes, it writes per-instance state to `.station/instances/<instance-id>.json` in the current working directory. Each record includes the instance id, home directory, ports, and current server/UI PIDs.
 
-`station stop` resolves the matching instance from `--instance`, `--home`/`--base`, `--port`, or `--ui-port`, then terminates only that instance: the PIDs it recorded, checked against the process fingerprint recorded at start. A process that merely listens on one of the instance's ports is never signalled, and a port listener alone does not keep an instance record alive, so a record left by a start that lost its port race is reclaimed without touching the sibling that owns the port. A recorded PID whose process no longer matches its fingerprint is not signalled and the stop refuses. `station start` refuses, before binding, a port band (server port through consent port, plus the UI port) that overlaps another live instance recorded in this checkout or published to the home's instance registry, and names that instance. If multiple instances are live and the selector is ambiguous, the CLI refuses and prints the matching records so you can choose the intended one.
+`station stop` resolves the matching instance from `--instance`, `--home`/`--base`, `--port`, or `--ui-port`, then terminates only that instance: the PIDs it recorded, checked against the process fingerprint recorded at start. A process that merely listens on one of the instance's ports is never signalled, and a port listener alone does not keep an instance record alive, so a record left by a start that lost its port race is reclaimed without touching the sibling that owns the port. A recorded PID whose process no longer matches its fingerprint is not signalled and the stop refuses. On Windows the fingerprint is the process's start time and executable image. A live recorded PID whose identity cannot be read is not signalled either: the stop refuses, keeps the record, and says how to retry or end the process by hand. `station start` refuses, before binding, a port band (server port through consent port, plus the UI port) that overlaps another live instance recorded in this checkout or published to the home's instance registry, and names that instance. If multiple instances are live and the selector is ambiguous, the CLI refuses and prints the matching records so you can choose the intended one.
 
 During rollout, Station still recognizes the prior `<cwd>/.station.pids` file when present and migrates away from it as new-format state is written.
 

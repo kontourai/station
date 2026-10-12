@@ -1,0 +1,35 @@
+{
+  "revision": "df627e10d4b04a72a3feea9b44cc80b00e88f098",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"#561: spawnCodexProcess now spawns through spawnOwnedChild (owned-process registry record, released after the group exits). Re-read the Codex row of the engine spawn table: the spawn path is still spawnCodexProcess() in codex-adapter-transport.ts, the env is still the inherited env layered with the app-home CODEX_HOME profile, PATH and Station TMPDIR. spawnOwnedChild adds only the STATION_SPAWN_OWNER_* diagnostic stamps; no claim in the table or the config-home sections changes.","inputs":["docs/design/connections-onboarding.md","src-server/providers/adapters/codex-adapter-transport.ts"]},
+
+    {"path":"docs/design/instance-registry.md","note":"#561: process-identity.mjs gained compareProcessBirthFingerprints and processBirthPredatesCurrentBoot; no existing export changed behavior. Re-read the birth-aware liveness, retain-on-unknown and lock-discipline claims; they describe lookupProcessBirthFingerprint/probe semantics that are unchanged. No prose change.","inputs":["docs/design/instance-registry.md","packages/shared/src/process-identity.mjs"]},
+
+    {"path":"docs/guides/agents.md","note":"#561: the Codex app-server spawn is now registered in the owned-process registry. Checked the guide for claims about Codex process spawning, lifetime or cleanup: none. Agent configuration, bindings and approval prose are unaffected. No prose change.","inputs":["docs/guides/agents.md","src-server/providers/adapters/codex-adapter-transport.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"#561: the Codex app-server spawn is now registered in the owned-process registry. Checked the guide for claims about the Codex process, its environment or crash cleanup: none (the fingerprint matches are connection-key fingerprints, unrelated). No prose change.","inputs":["docs/guides/connections.md","src-server/providers/adapters/codex-adapter-transport.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"#561: process-utils.ts sweep now verifies and reaps surviving members of a dead leader's process group, and spawnOwnedChild logs a failed registry write. Re-read the owned-process teardown and cleanup claims (lab teardown, owned-process cleanup on success); they concern the lab runner's own process ownership and stay accurate. No prose change.","inputs":["docs/guides/local-collaboration-lab.md","src-server/services/infra/process-utils.ts"]},
+
+    {"path":"docs/guides/native-releases.md","note":"#561: process-identity.mjs gained two additive exports (birth ordering, current-boot check); existing probes and their timeouts are unchanged. Checked the guide for process-identity or birth-probe claims: none bound to the changed functions. No prose change.","inputs":["docs/guides/native-releases.md","packages/shared/src/process-identity.mjs"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"#561: process-identity.mjs gained two additive exports; existing probe behavior unchanged. Re-read the orphan allowance, owned-process cleanup receipt and boot-ID mentions; they refer to the shell verification lanes and native bootstrap identity, not to the new functions. No prose change.","inputs":["docs/guides/native-shell-verification.md","packages/shared/src/process-identity.mjs"]},
+
+    {"path":"docs/guides/nightly.md","note":"#561: process-identity.mjs gained two additive exports; existing probe behavior unchanged. Checked the guide for process birth or identity claims: only an upload-certificate fingerprint, unrelated. No prose change.","inputs":["docs/guides/nightly.md","packages/shared/src/process-identity.mjs"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"#561: the Codex app-server spawn is now registered in the owned-process registry. Checked the guide for claims about Codex process spawning or cleanup: none. No prose change.","inputs":["docs/guides/self-configuring-agent.md","src-server/providers/adapters/codex-adapter-transport.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"#561: process-utils.ts sweep and spawnOwnedChild changes (dead-leader group verification, registry-write warning). Re-read the settled-owned-processes receipt claim; it is a dated receipt about the broker run and stays accurate. No prose change.","inputs":["docs/guides/self-hosted-broker.md","src-server/services/infra/process-utils.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"#561: vitest-resource-manifest.mjs adds codex-app-server-owned-process.test.ts to the process-heavy group. Re-read the shared Vitest worker policy and resource-group description (process-heavy at two workers, new child-process users must be classified); still accurate. No prose change.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/reference/session-api.md","note":"#561: the Codex app-server spawn is now registered in the owned-process registry. Checked the reference for claims about engine process lifetime or cleanup: none (fingerprint mentions are definition fingerprints). No prose change.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/codex-adapter-transport.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"#561: the Codex app-server spawn is now registered in the owned-process registry. Checked the example README for claims about Codex process spawning: none. No prose change.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/codex-adapter-transport.ts"]},
+
+    {"path":"scripts/AGENTS.md","note":"#561: vitest-resource-manifest.mjs adds the new child-process test to the process-heavy group. The rule that new child-process tests must be classified there is what this change follows. No prose change.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-server/services/connections/pion-peer/README.md","note":"#561: process-utils.ts sweep and spawnOwnedChild changes (dead-leader group verification, registry-write warning). Re-read the cleanup claim (closes the peer and its owned process tree); still accurate. No prose change.","inputs":["src-server/services/connections/pion-peer/README.md","src-server/services/infra/process-utils.ts"]}
+  ]
+}

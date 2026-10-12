@@ -230,9 +230,11 @@ implicitly reactivate sessions, scheduled jobs, grants, or account selection.
 | `@kontourai/station-sdk` | `packages/sdk/` | Published (npm, Apache-2.0) | Plugin SDK hooks, components, query domains, and client helpers |
 | `@kontourai/station-shared` | `packages/shared/` | Published (npm, Apache-2.0) | Shared runtime helpers and compatibility re-exports |
 | `@kontourai/station-connect` | `packages/connect/` | Private in this checkout (`private: true`) | Standalone bidirectional pairing library |
+| `@kontourai/station-telemetry-broker` | `packages/telemetry-broker/` | Private optional companion; separate Node bundle | Durable receiver for disclosed product observations; no personal accounting |
+| `@kontourai/monument` | `packages/monument/` | Tier 1 package (ADR 0005), shaped for publication but `private: true` until its first, owner-gated publish (see its README); imports nothing of Station's | Engine-neutral durability kernel: turn dedup, turn boundaries, request keys, conformance suite |
 | `@kontourai/station-cli` | `packages/cli/` | Published (npm, Apache-2.0) | Client CLI package; checkout-only host commands remain behind `./station` |
 
-The contracts, SDK, and shared packages ship raw TypeScript source, so their
+The contracts, SDK, shared, and Monument packages ship raw TypeScript source, so their
 consumers need a bundler or a TS-aware loader; each README documents that
 constraint. The CLI ships a bundled executable. Connect is marked `private: true` in this checkout; that does not imply it was
 never published historically. The repo-root `./station` launcher

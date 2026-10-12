@@ -588,16 +588,22 @@ saved credential state and configured local service. Neither reports native-wind
 Service status checks a durable installed service, not a Desktop-owned sidecar.
 The shell log can show an overdue-startup warning, the Restart/Quit choice, a
 secondary-launch request, or an invalid desktop log level; it cannot prove
-that the cover or a dialog was visible, that a window drew, or that a macOS
-Apple Event callback did not panic before output flushed.
+that the cover or a dialog was visible or that a window drew.
+
+The shell's panic hook appends each Rust panic's message, source location,
+thread and backtrace to `crash.log` beside `station.log`, synchronously and
+before chaining to the default hook, so a panic that then aborts inside a macOS
+Apple Event callback (`panic_cannot_unwind`) still leaves its payload when the
+log directory is writable. It records the panic; it does not prevent the
+abort. An Objective-C exception crossing into Rust (`__rust_foreign_exception`)
+never reaches the hook. Only the hook's recording is unit-tested; a packaged
+abort that produced a `crash.log` entry has not been observed.
 
 For the macOS abort class, record separately whether launch used Finder/Dock
 or a direct executable: [archive#3496](https://github.com/kontourai/station-archive/issues/3496)
-reports the Apple Event path as the observed distinction. There is currently
-no established app-owned persisted panic capture or current reproducible trigger,
-so preserve the package,
-system crash report, timestamp, channel, and launch method rather than claiming
-the normal shell log explains it.
+reports the Apple Event path as the observed distinction. There is no current
+reproducible trigger, so preserve the package, `crash.log`, system crash
+report, timestamp, channel, and launch method.
 
 ## Current development simulator and public fixture receipts
 

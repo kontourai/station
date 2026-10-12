@@ -1,0 +1,7 @@
+{
+  "revision": "50c2d479780caeeebc2d32e14e4d8a51e25aa4c5",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"HomeStartComposer and NewChatModal changes only restyle the start composer's setup-read failure (warning tone, plain-language sentence from describeReadFailure, a Try again link calling refreshSetup / setupReturn.retry). Re-read this document's failure and retry claims; none describe that alert's wording or controls, and its New Chat, setup-return and readiness statements are unchanged and accurate.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

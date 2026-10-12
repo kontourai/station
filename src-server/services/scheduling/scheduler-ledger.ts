@@ -673,6 +673,25 @@ interface SchedulerLedgerOptions {
    * what was already made durable.
    */
   onAbandonedRun?: (entry: SchedulerLogEntry) => void;
+  /**
+   * Called once per ledger for each job record revision that `claimDue`
+   * could not read (#3563). The record is quarantined in place: its bytes
+   * stay for an operator to repair or remove, it never receives a claim,
+   * and every other due job still runs. Observer-only, like
+   * {@link onAbandonedRun}.
+   */
+  onQuarantinedJob?: (job: SchedulerQuarantinedJob) => void;
+}
+
+/** Which derivation failed: the JSON record itself, or its stored schedule. */
+export type SchedulerQuarantineReason = 'malformed-record' | 'invalid-schedule';
+
+/** A job record `claimDue` skipped because its stored definition is unreadable. */
+export interface SchedulerQuarantinedJob {
+  readonly name: string;
+  readonly jobId: string;
+  readonly revision: number;
+  readonly reason: SchedulerQuarantineReason;
 }
 
 /**
@@ -704,6 +723,9 @@ class SqliteSchedulerLedger implements SchedulerLedger {
    * roll one back by throwing. Entries buffer here and flush after commit.
    */
   private pendingAbandonedRuns: SchedulerLogEntry[] = [];
+  private quarantinedJobListener?: (job: SchedulerQuarantinedJob) => void;
+  /** `jobId:revision` already reported; a repaired record has a new revision. */
+  private readonly reportedQuarantine = new Set<string>();
   /** One outbox per ledger; its state is the table, not this object. */
   private outbox?: SchedulerAnnouncementOutbox;
   private monitorTerminalOutbox?: MonitorTerminalAnnouncementOutbox;
@@ -724,6 +746,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     this.afterStarterIntentCommit = options.afterStarterIntentCommit;
     this.onNotInvokedUnavailable = options.onNotInvokedUnavailable;
     this.abandonedRunListener = options.onAbandonedRun;
+    this.quarantinedJobListener = options.onQuarantinedJob;
     const exact = this.identity.exact(process.pid);
     this.owner = {
       id: randomUUID(),
@@ -1081,6 +1104,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     // unattended run nothing can record the outcome of.
     const refused = this.refuseIfCorrupt();
     if (refused) return refused;
+    let quarantined: SchedulerQuarantinedJob[] = [];
     const outcome = this.read(() =>
       this.transaction(() => {
         // Recovery changes ownership only when this caller will receive and
@@ -1090,6 +1114,7 @@ class SqliteSchedulerLedger implements SchedulerLedger {
           now,
           (claim) => !claim.manual,
         );
+        quarantined = [];
         for (const row of this.db
           .prepare(
             'SELECT name, job_id, revision, data FROM scheduler_jobs ORDER BY created_at ASC',
@@ -1100,21 +1125,51 @@ class SqliteSchedulerLedger implements SchedulerLedger {
           revision: number;
           data: string;
         }>) {
-          const job = parseStoredJob(row.data);
-          const scheduled = job.enabled ? toScheduledJob(job) : null;
-          if (!scheduled || !isOverdue(scheduled, now)) continue;
+          const due = dueOccurrence(row.data, now);
+          if (due.kind === 'unreadable') {
+            // Quarantine in place (#3563): only this record's own bytes are
+            // in doubt, so they must not cost every other job its tick or
+            // roll back the dead-claim reconciliation above. SQLite failures
+            // never reach here; they still fail the whole read.
+            quarantined.push({
+              name: row.name,
+              jobId: row.job_id,
+              revision: row.revision,
+              reason: due.reason,
+            });
+            continue;
+          }
+          if (due.kind === 'not-due') continue;
           if (this.claimRow(row.job_id)) continue;
-          const scheduledForMs = this.nextDueOccurrence(scheduled, now);
-          if (scheduledForMs === undefined) continue;
           receipts.push(
-            this.insertClaim(job, row.revision, now, false, scheduledForMs),
+            this.insertClaim(
+              due.job,
+              row.revision,
+              now,
+              false,
+              due.scheduledForMs,
+            ),
           );
         }
         return receipts;
       }),
     );
     this.flushAbandonedRuns(outcome.kind === 'available');
+    if (outcome.kind === 'available') this.reportQuarantined(quarantined);
     return outcome;
+  }
+
+  private reportQuarantined(jobs: SchedulerQuarantinedJob[]): void {
+    for (const job of jobs) {
+      const key = `${job.jobId}:${job.revision}`;
+      if (this.reportedQuarantine.has(key)) continue;
+      this.reportedQuarantine.add(key);
+      try {
+        this.quarantinedJobListener?.(job);
+      } catch {
+        // Observer-only: the skip already happened either way.
+      }
+    }
   }
 
   claimManual(name: string, now: number): SchedulerClaimOutcome {
@@ -3217,11 +3272,17 @@ class SqliteSchedulerLedger implements SchedulerLedger {
       const consumedForMs =
         claim.scheduled_for_ms ?? (claim.manual ? null : now);
       if (!claim.manual && consumedForMs !== null) {
+        // The cursor column always advances. Unreadable record bytes are left
+        // as they are (#3563): json_set on them raises and would roll back
+        // this whole claim transaction, so claimDue could never quarantine
+        // the record.
         this.db
           .prepare(
             `UPDATE scheduler_jobs
              SET last_run_ms = MAX(COALESCE(last_run_ms, 0), ?),
-                 data = json_set(data, '$.lastRunMs', MAX(COALESCE(last_run_ms, 0), ?))
+                 data = CASE WHEN json_valid(data)
+                   THEN json_set(data, '$.lastRunMs', MAX(COALESCE(last_run_ms, 0), ?))
+                   ELSE data END
              WHERE job_id = ?`,
           )
           .run(consumedForMs, consumedForMs, claim.job_id);
@@ -3231,18 +3292,6 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         .run(claim.job_id, claim.run_id);
     }
     return reclaimed;
-  }
-
-  /**
-   * The private cursor is `last_run_ms`, keyed by opaque jobId. Terminal due
-   * outcomes advance it to their captured occurrence; manual runs and
-   * pre-invocation releases do not. Delete/recreate starts a new cursor.
-   */
-  private nextDueOccurrence(
-    scheduled: ScheduledJob,
-    now: number,
-  ): number | undefined {
-    return latestOccurrenceAtOrBefore(scheduled, now);
   }
 
   /**
@@ -3275,15 +3324,18 @@ class SqliteSchedulerLedger implements SchedulerLedger {
     if (claim.owner_pid === process.pid) {
       return LIVE_OWNER_IDS.has(claim.owner_id);
     }
-    // A DIFFERENT pid with no recorded birth is genuinely undecidable: keep
-    // the fence rather than risk double-running a live owner's occurrence.
-    if (!claim.owner_birth) return true;
+    // Probe before consulting the birth: a pid the kernel reports gone is
+    // decidable without one (#3563). Reading a NULL `owner_birth` first kept a
+    // dead foreign owner's occurrence fenced forever.
     const probe = this.identity.probe(claim.owner_pid);
+    if (probe.state === 'dead') return false;
+    if (probe.state === 'unavailable') return true;
+    // A live pid with no recorded birth is genuinely undecidable: keep the
+    // fence rather than risk double-running a live owner's occurrence.
+    if (!claim.owner_birth) return true;
     return (
-      probe.state === 'unavailable' ||
-      (probe.state === 'exact' &&
-        probe.identity.start === claim.owner_birth &&
-        probe.identity.pid === claim.owner_pid)
+      probe.identity.start === claim.owner_birth &&
+      probe.identity.pid === claim.owner_pid
     );
   }
 
@@ -3666,6 +3718,41 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         )
         .run(ANNOUNCEMENT_OUTBOX_MIGRATION_KEY, new Date().toISOString());
     });
+  }
+}
+
+/**
+ * Pure derivation of one stored job's due occurrence. Every failure here is a
+ * property of the record's bytes, which is what lets `claimDue` quarantine the
+ * record instead of failing the tick (#3563).
+ *
+ * The private cursor is `last_run_ms`, keyed by opaque jobId. Terminal due
+ * outcomes advance it to their captured occurrence; manual runs and
+ * pre-invocation releases do not. Delete/recreate starts a new cursor.
+ */
+function dueOccurrence(
+  data: string,
+  now: number,
+):
+  | { kind: 'due'; job: StoredSchedulerJob; scheduledForMs: number }
+  | { kind: 'not-due' }
+  | { kind: 'unreadable'; reason: SchedulerQuarantineReason } {
+  let job: StoredSchedulerJob;
+  try {
+    job = parseStoredJob(data);
+  } catch {
+    // The parser's message can quote the record's bytes (the prompt), so the
+    // report names only which derivation failed.
+    return { kind: 'unreadable', reason: 'malformed-record' };
+  }
+  try {
+    const scheduled = job.enabled ? toScheduledJob(job) : null;
+    if (!scheduled || !isOverdue(scheduled, now)) return { kind: 'not-due' };
+    const scheduledForMs = latestOccurrenceAtOrBefore(scheduled, now);
+    if (scheduledForMs === undefined) return { kind: 'not-due' };
+    return { kind: 'due', job, scheduledForMs };
+  } catch {
+    return { kind: 'unreadable', reason: 'invalid-schedule' };
   }
 }
 

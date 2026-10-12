@@ -1247,6 +1247,26 @@ function overlayDockProjectMismatchHooks(): Pick<
             exact: true,
           }),
         ).toBeVisible({ timeout: 10_000 });
+        await expect
+          .poll(() =>
+            page
+              .getByRole('button', {
+                name: 'Status unavailable — repair the connection',
+                exact: true,
+              })
+              .evaluate(
+                (pill) =>
+                  pill
+                    .getAnimations({ subtree: true })
+                    .filter(
+                      (animation) =>
+                        animation.playState === 'running' &&
+                        animation.effect?.getComputedTiming().iterations !==
+                          Infinity,
+                    ).length,
+              ),
+          )
+          .toBe(0);
         const statusBody = page.locator(
           '[data-chat-status-pill="blocked"] .chat-status-pill__body',
         );

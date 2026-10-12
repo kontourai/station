@@ -511,6 +511,52 @@ describe('EventStore', () => {
     },
   );
 
+  // #3521: the live `session.exited` projection closes the session BEFORE it
+  // appends the event. markSessionClosed read lineage first inside its
+  // savepoint, so a peer commit made the upgrade throw BUSY and the exit
+  // event was never appended. Mirror that order under a held peer writer.
+  test('closes a session and keeps its exit event after a peer writer releases', async () => {
+    store.upsertSession({
+      provider: 'codex',
+      threadId: 'peer-close',
+      status: 'running',
+      createdAt: '2026-10-10T00:00:00.000Z',
+      updatedAt: '2026-10-10T00:00:01.000Z',
+    });
+    const peer = await holdPeerWriteLock(
+      join(dir, 'orchestration.sqlite'),
+      1_000,
+    );
+    const startedAt = Date.now();
+    let returnedAt: number | undefined;
+    try {
+      expect(() => {
+        store.markSessionClosed('peer-close', 'codex');
+        store.appendEvent({
+          eventId: 'exit-after-peer-writer',
+          provider: 'codex',
+          threadId: 'peer-close',
+          method: 'session.exited',
+          sessionId: 'peer-close',
+          exitCode: 0,
+          createdAt: '2026-10-10T00:00:02.000Z',
+        });
+      }).not.toThrow();
+      returnedAt = Date.now();
+      expect(store.readSessions()).toEqual([
+        expect.objectContaining({ threadId: 'peer-close', status: 'closed' }),
+      ]);
+      expect(
+        store.listEvents('peer-close').map((event) => event.method),
+      ).toEqual(['session.exited']);
+    } finally {
+      const releasedAt = await peer.releasedAt();
+      expect(startedAt).toBeLessThan(releasedAt);
+      if (returnedAt !== undefined)
+        expect(returnedAt).toBeGreaterThanOrEqual(releasedAt);
+    }
+  });
+
   test('seeded replay cursors remain monotonic across physical Draft discard', () => {
     // The connected client has seen every append. The reconnecting client
     // must see every surviving event whose append happened after its cursor.

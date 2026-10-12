@@ -6397,6 +6397,32 @@ export class EventStore {
     return row ? this.mapEventRow(row) : undefined;
   }
 
+  /**
+   * #3562: the thread's `turn.started` rows created at or after
+   * `sinceCreatedAt`, newest first, at most `limit`. Boot recovery reads one
+   * past its own bound so it can tell "these are all of them" from "there
+   * were more" and refuse to guess an owner in the second case.
+   */
+  listTurnStartsSince(
+    threadId: string,
+    sinceCreatedAt: string,
+    limit: number,
+  ): PersistedRuntimeEvent[] {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) {
+      throw new Error('A turn-start page limit must be between 1 and 1000');
+    }
+    return this.db
+      .prepare(
+        `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+         FROM orchestration_events
+         WHERE thread_id = ? AND method = 'turn.started' AND created_at >= ?
+         ORDER BY sequence DESC
+         LIMIT ?`,
+      )
+      .all(threadId, sinceCreatedAt, limit)
+      .map((row) => this.mapEventRow(row));
+  }
+
   private listRequestSettlementFacts(
     threadId: string,
     unresolvedRequests: readonly PersistedRuntimeEvent[],
@@ -9020,6 +9046,11 @@ export class EventStore {
 
     this.db.exec('SAVEPOINT mark_session_closed_lineage');
     try {
+      // The lineage read below would otherwise open a read snapshot that a
+      // peer commit makes stale, and the INSERT's upgrade then fails BUSY
+      // without waiting. That throw lands before the caller appends
+      // `session.exited`, so the exit fact was lost (#3521).
+      this.reserveEventAppendWriter();
       const lineage =
         this.conversationSessionLineage.sessionForExecution(threadId);
       this.db
@@ -11563,6 +11594,8 @@ export class EventStore {
       awaitingUser: () => this.readUsageLimitIntentsAwaitingUser(),
       cancelSourceTerminated: (now) =>
         this.cancelSourceTerminatedRecoveries(now),
+      cancelIfSourceTerminated: (fingerprint, now) =>
+        this.cancelRecoveryIfSourceTerminated(fingerprint, now),
       cancelShutdownRequested: (now) => this.cancelShutdownRecoveries(now),
     };
     const startup = options.credentialStartup;
@@ -12202,7 +12235,7 @@ export class EventStore {
         : "outcome IN ('armed', 'manual')";
     const row = this.db
       .prepare(
-        `UPDATE orchestration_recovery_intents
+        `UPDATE orchestration_recovery_intents AS intent
          SET outcome = 'resumed', attempts = attempts + 1, outcome_reason = NULL,
              dispatch_attempt_id = ?, recovery_correlation_id = ?,
              dispatch_settlement = 'prepared', dispatch_kind = ?,
@@ -12210,6 +12243,7 @@ export class EventStore {
              dispatch_owner_birth = ?, dispatch_owner_identity_kind = ?, updated_at = ?
          WHERE fingerprint = ? AND ${eligibility} AND attempts < max_attempts
            AND dispatch_attempt_id IS NULL AND recovery_correlation_id IS NULL
+           AND NOT ${RECOVERY_SOURCE_TERMINATED}
          RETURNING fingerprint, thread_id, provider, source_event_id, source_turn_id,
                    failure_kind, scope, decision, due_at, attempts, max_attempts,
                    outcome, dispatch_attempt_id, recovery_correlation_id,
@@ -12554,17 +12588,31 @@ export class EventStore {
         `UPDATE orchestration_recovery_intents AS intent
          SET outcome = 'canceled', updated_at = ?
          WHERE intent.outcome IN ('armed', 'resumed', 'manual')
-           AND (
-             intent.shutdown_cancel_requested_at IS NOT NULL
-             OR EXISTS (
-               SELECT 1 FROM orchestration_events AS event
-               WHERE event.thread_id = intent.thread_id
-                 AND event.turn_id = intent.source_turn_id
-                 AND event.method IN ('turn.aborted', 'turn.failed')
-             )
-           )`,
+           AND ${RECOVERY_SOURCE_TERMINATED}`,
       )
       .run(now) as { changes: number | bigint };
+    return recoveryTransition(result);
+  }
+
+  /**
+   * #3563: the same rule for one intent, when its timer fires. A startup
+   * repair that answered `unavailable` cannot then replay a turn whose source
+   * already ended, and it no longer has to gate every other recovery.
+   * `applied` canceled the intent; `stale` means dispatch may proceed.
+   */
+  private cancelRecoveryIfSourceTerminated(
+    fingerprint: string,
+    now: string,
+  ): RecoveryTransition {
+    const result = this.db
+      .prepare(
+        `UPDATE orchestration_recovery_intents AS intent
+         SET outcome = 'canceled', updated_at = ?
+         WHERE intent.fingerprint = ?
+           AND intent.outcome IN ('armed', 'resumed', 'manual')
+           AND ${RECOVERY_SOURCE_TERMINATED}`,
+      )
+      .run(now, fingerprint) as { changes: number | bigint };
     return recoveryTransition(result);
   }
 
@@ -12822,6 +12870,13 @@ export class EventStore {
     conversationId?: string;
   } {
     const claim = this.turnIdempotence.claim(chatTurnDedupKey(clientTurnId));
+    // #3559: `/chat` claims are untracked and an unmarked `chat:` row reads as
+    // untracked, so no chat claim can be indeterminate. Refuse rather than
+    // report it as contended if that ever stops holding.
+    if (!claim.claimed && claim.indeterminate)
+      throw new Error(
+        'A /chat turn claim cannot be indeterminate; it records no invocation.',
+      );
     return claim.claimed
       ? { claimed: true }
       : { claimed: false, conversationId: claim.value };
@@ -13824,6 +13879,21 @@ function sqliteRunChanges(result: unknown): number {
     throw new Error('SQLite write returned an invalid change count.');
   return Number(result.changes);
 }
+
+/**
+ * The one source-terminal rule (#3563): shutdown asked to cancel the intent,
+ * or its source turn has a durable terminal event. The startup repair and the
+ * fire-time fence both use it, so they cannot disagree about an intent.
+ */
+const RECOVERY_SOURCE_TERMINATED = `(
+  intent.shutdown_cancel_requested_at IS NOT NULL
+  OR EXISTS (
+    SELECT 1 FROM orchestration_events AS event
+    WHERE event.thread_id = intent.thread_id
+      AND event.turn_id = intent.source_turn_id
+      AND event.method IN ('turn.aborted', 'turn.failed')
+  )
+)`;
 
 function recoveryTransition(result: {
   changes: number | bigint;

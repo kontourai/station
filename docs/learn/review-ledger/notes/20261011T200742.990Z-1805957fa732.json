@@ -1,0 +1,23 @@
+{
+  "revision": "0358e074e31594db0c5e68d8682f543723a8f7d9",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Only the docs-kit paragraph of documentation.md changed (bundle-only manual and mirrored MCP topics); this document cites the guide for review workflow and maintenance sections that did not change, so its claims remain accurate.","inputs":[".veritas/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Only the docs-kit paragraph of documentation.md changed (bundle-only manual and mirrored MCP topics); this document cites the guide for review workflow and maintenance sections that did not change, so its claims remain accurate.","inputs":["docs/architecture/abstraction-review.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Only the docs-kit paragraph of documentation.md changed (bundle-only manual and mirrored MCP topics); this document cites the guide for review workflow and maintenance sections that did not change, so its claims remain accurate.","inputs":["docs/guides/code-quality.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/development.md","note":"Only the docs-kit paragraph of documentation.md changed (bundle-only manual and mirrored MCP topics); this document cites the guide for review workflow and maintenance sections that did not change, so its claims remain accurate.","inputs":["docs/guides/development.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Only the docs-kit paragraph of documentation.md changed (bundle-only manual and mirrored MCP topics); this document cites the guide for review workflow and maintenance sections that did not change, so its claims remain accurate.","inputs":["docs/guides/integrating-station.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Only the docs-kit paragraph of documentation.md changed (bundle-only manual and mirrored MCP topics); this document cites the guide for review workflow and maintenance sections that did not change, so its claims remain accurate. Its workflow-inventory rows for docs-kit.yml (main pushes; manual dispatch) and pages.yml still match the triggers; only the docs-kit pin moved to v0.4.0.","inputs":["docs/guides/testing.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/README.md","note":"Updated the public-site source boundary: docs-kit.json mirrors the public-docs.json allowlist and adds docs/reference/station-docs.md as bundle-only. Checked against docs-kit.json, the drift test, and a local docs-kit v0.4.0 build (11 pages, manual has no page).","inputs":["docs/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/documentation.md","note":"Checked the docs-kit paragraph against docs-kit.json (bundle-only manual, 16 topics from docs/learn/mcp-topics.json via the generate-station-docs.mjs section mapping), docs-kit-manifest.test.ts (fails on document or topic drift, fault-injected), and docs-kit.yml (still main-only, docs-kit pin bumped to v0.4.0).","inputs":["docs/guides/documentation.md",".github/workflows/docs-kit.yml","docs-kit.json"]},
+
+    {"path":"docs/pages/README.md","note":"Checked the docs-kit notes against docs-kit.json, pages.yml (bundle step still fail-open, pin now docs-kit v0.4.0), and a local docs-kit v0.4.0 build: the manual is in docs-bundle.json with a GitHub blob URL and absolute links, gets no page, and the exclude glob now names station-docs.","inputs":["docs/pages/README.md",".github/workflows/pages.yml","docs-kit.json"]}
+  ]
+}

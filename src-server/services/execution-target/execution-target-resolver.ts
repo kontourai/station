@@ -27,7 +27,10 @@ import {
   unsupportedModelOptionError,
   unsupportedModelOptionKeys,
 } from '@kontourai/station-contracts/provider';
-import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
+import {
+  type ConnectionConfig,
+  describeConnectionBlockers,
+} from '@kontourai/station-contracts/tool';
 import {
   resolveWorkspaceIsolationMode,
   type WorkspaceIsolationMode,
@@ -183,12 +186,23 @@ export function assertConnectionReady(connection: ConnectionConfig): void {
   if (!connection.enabled || connection.status === 'disabled') {
     throw new Error(`Engine connection '${connection.id}' is disabled`);
   }
-  if (
-    connection.status !== 'ready' ||
-    !connection.capabilities.includes('agent-runtime')
-  ) {
+  // #355: name the failed predicate and its remedy. The status is the same
+  // ConnectionConfig.status `station connections list` shows, read now.
+  if (connection.status !== 'ready') {
+    const blockers = describeConnectionBlockers(connection);
     throw new Error(
-      `Engine connection '${connection.id}' is not ready for execution`,
+      `Engine connection '${connection.id}' is not ready for execution (status: ${connection.status})${
+        blockers
+          ? `: ${blockers}`
+          : // Readiness evidence can carry remote error text, so the remedy
+            // is a fixed next step, never the connection's own free text.
+            `. Check this connection in Connections or run \`station connections test ${connection.id}\``
+      }`,
+    );
+  }
+  if (!connection.capabilities.includes('agent-runtime')) {
+    throw new Error(
+      `Engine connection '${connection.id}' does not advertise the agent-runtime capability, so it cannot run Agent sessions. Bind the Agent to an engine connection that provides an agent runtime`,
     );
   }
 }

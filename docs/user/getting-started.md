@@ -14,11 +14,77 @@ the signed portable release rings used by the installer below.
 | Path | Platforms | Use it when |
 | --- | --- | --- |
 | Run from source | macOS, Linux | You want the current `main` branch and are comfortable with a Node.js checkout. Follow the [developer guide](https://github.com/kontourai/station/blob/main/docs/guides/development.md#local-runtime). |
-| Nightly desktop build | macOS (Apple silicon), Windows (x64) | You want a native app for testing. Choose a matching asset from the [Nightly desktop pre-release](https://github.com/kontourai/station/releases/tag/nightly-desktop) and check its version. Retained assets may be older builds. |
+| Nightly server install | macOS, Linux, Windows (x64) | You want the newest signed `main` build as a local server you open in a browser. Use the one-line [Nightly install](#install-nightly). |
+| Nightly desktop build | macOS (Apple silicon), Windows (x64) | You want a native app for testing. Download it from the [Nightly desktop pre-release](https://github.com/kontourai/station/releases/tag/nightly-desktop); see [Nightly desktop downloads](#nightly-desktop-downloads). |
 
 When a signed stable or beta portable ring is available,
 [Install Or Upgrade](#install-or-upgrade) is the macOS/Linux installer path.
 The remaining sections cover that install and the first-run UI.
+
+## Install Nightly
+
+Nightly is built from `main` and published as signed prebuilt server
+archives. On macOS or Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kontourai/station/main/install.sh | STATION_CHANNEL=nightly sh
+```
+
+On Windows, in PowerShell:
+
+```powershell
+$env:STATION_CHANNEL = 'nightly'; irm https://raw.githubusercontent.com/kontourai/station/main/install.ps1 | iex
+```
+
+`STATION_CHANNEL=nightly` is enough: the installer reads the rolling
+[`portable-nightly`](https://github.com/kontourai/station/releases/tag/portable-nightly)
+manifest, verifies its Ed25519 signature against the keys pinned in the
+script, and checks the size and SHA-256 of the archive it selects for this
+host. Nothing unsigned is installed. It needs `curl` and `tar` on macOS and
+Linux; with no Node.js 24 on the host it downloads a pinned, digest-checked
+Node.js only to verify and extract. Neither a GitHub login nor a build is
+needed.
+
+The install lives under `~/.station/installs/nightly`, keeps its data in
+`~/.station/instances/nightly`, and owns the `station-nightly` launcher
+(`~/.local/bin/station-nightly`, or `station-nightly.cmd` on Windows). Open
+`http://localhost:38000` when it finishes. Run the same command again to
+upgrade, and `station-nightly --version` to see the installed build. Set
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` to install from a different signed
+manifest instead. The Station Nightly desktop app uses the same ports and
+data directory; the installer refuses to share them silently (see
+[channel identity and coexistence](https://github.com/kontourai/station/blob/main/docs/guides/release-channel-ports.md)).
+
+Each Nightly's own `install.sh` and `install.ps1` are also attached to its
+immutable `v<version>` release, next to its archives.
+
+### Nightly desktop downloads
+
+Each Nightly desktop publication also uploads its installers under fixed
+names, so these links always serve the newest published build:
+
+- macOS (Apple silicon):
+  `https://github.com/kontourai/station/releases/download/nightly-desktop/station-nightly-macos-aarch64.dmg`
+- Windows (x64):
+  `https://github.com/kontourai/station/releases/download/nightly-desktop/station-nightly-windows-x86_64-setup.exe`
+
+The release also carries the same builds under versioned names
+(`station-<version>-…`), and older retained builds. Its `SHA256SUMS` lists
+the newest build's downloads under both names. Download it next to the
+installer and check it, for example
+`shasum -a 256 --ignore-missing -c SHA256SUMS` on macOS,
+`sha256sum --ignore-missing -c SHA256SUMS` on Linux, or compare
+`(Get-FileHash <file>).Hash` on Windows. A mismatch right after a new build
+is published means the two files are from different builds; download both
+again.
+
+The Windows installer is not publisher-signed yet
+([#3591](https://github.com/kontourai/station/issues/3591)). When you run
+the downloaded installer, Microsoft Defender SmartScreen therefore shows
+"Windows protected your PC" with an unknown publisher; choose **More info**,
+then **Run anyway**. On Windows 11 with Smart App Control turned on, Windows
+can block the unsigned installer with no such option. The app's own updates
+are verified with Station's updater signing key.
 
 ## Before You Install
 
@@ -170,7 +236,10 @@ Runtime options such as reasoning effort stay with the Model choice for this
 browser tab only; they are not remembered after it. A choice you make stays on
 both surfaces for this browser tab, even if another chat later runs on a
 different Model, until you change it or choose the picker's **Use …** reset,
-which names the default it returns to.
+which names the default it returns to. Station does not start a chat on a Model
+its engine does not offer: a default that an engine advertising its own model
+list left out is skipped, and a kept choice that list no longer contains is
+refused at **Start** with the message kept, so you can choose another.
 
 Until Station has loaded your projects, the chips show placeholders and
 **Start** waits, so a start never runs in a project Station has guessed. If
@@ -445,7 +514,10 @@ how Station preserves the same work identity through retries and response loss.
 
 **Activity** also lists Claude Code, Codex, Grok and OpenCode conversations
 you ran in a terminal or another app on this machine. Station reads them; it
-never controls them. It looks in four places:
+never controls them. These conversations do not raise Station sounds, popups,
+desktop notifications or mobile alerts, and do not appear on mobile activity
+cards. A new conversation you continue in Station has its ordinary alerts.
+Station looks in four places:
 
 - Claude Code transcripts under `projects` in `CLAUDE_CONFIG_DIR`, or
   `~/.claude` when that is not set.
@@ -516,11 +588,14 @@ ones inside a Project, but no account can open them there.
 
 ## Continue an Attached Session
 
-Open an attached terminal Session in **Activity**, then choose **Continue in
-Station**. Claude and Codex create independent child Sessions; the original
-terminal Session can keep running. OpenCode and Grok conversations are read
-only: the action shows why it is unavailable. Codex continues from the latest completed
-turn Station has observed, so wait for one if the action is disabled.
+Open an attached terminal Session in **Activity**. It reads like any chat. To
+continue it in Station, type a message and press Send: Chat asks once,
+**Continue here?**, and **Continue and send** continues it there with your
+message. **Cancel** keeps your draft. Claude and Codex create independent child
+Sessions; the original terminal Session can keep running. OpenCode and Grok
+conversations are read only: the message box shows why it is unavailable.
+Codex continues from the latest completed turn Station has observed, so wait
+for one if the message box is unavailable.
 
 The continuation always works in the folder the conversation ran in, and the
 engine is confined to that folder. Station checks the folder again when you
@@ -540,7 +615,8 @@ continue:
   when the folder shown reaches another folder through a symbolic link
   inside your home folder. To
   continue such a conversation, add a Project for that folder or its
-  repository. Station does not move a conversation into another Project's folder,
+  repository: **Add a project for this folder instead** in the confirmation
+  opens New project with the folder already chosen. Station does not move a conversation into another Project's folder,
   because its history refers to files in the folder it ran in.
 
 A hosted Station does not continue conversations outside your Projects.

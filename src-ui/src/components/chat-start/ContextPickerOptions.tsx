@@ -1,5 +1,6 @@
 import { type ReactNode, useEffect, useRef } from 'react';
 import {
+  CodeGlyph,
   EngineGlyph,
   FolderGlyph,
   GlobeGlyph,
@@ -137,11 +138,13 @@ export function ContextPickerOptions({
 }
 
 export function contextGlyph(
-  name: 'engine' | 'folder' | 'globe' | 'plug' | 'time' | undefined,
+  name: 'engine' | 'code' | 'folder' | 'globe' | 'plug' | 'time' | undefined,
 ) {
   switch (name) {
     case 'engine':
       return <EngineGlyph />;
+    case 'code':
+      return <CodeGlyph />;
     case 'folder':
       return <FolderGlyph />;
     case 'globe':

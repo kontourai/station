@@ -340,6 +340,12 @@ export interface DevicePairingAttentionItem extends AttentionItemBase {
   /** The requesting device's display name, as recorded on the request. */
   deviceName: string;
   /**
+   * The space-delimited scope the device asked for (or its offer carried),
+   * so the approval surface can list it and let the approver untick any
+   * before approving. Optional because an older Station does not send it.
+   */
+  requestedScope?: string;
+  /**
    * Whether THE CALLER OF THIS READ could actually act on those approve/deny
    * routes — derived per response at the HTTP seam from the same two gates
    * the middleware applies to the request, in the same order: the pairing

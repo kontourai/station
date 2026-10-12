@@ -78,6 +78,8 @@ function renderHomeView(
 }
 
 const fixtures = vi.hoisted(() => ({
+  setupError: null as unknown,
+  refreshSetup: vi.fn(async () => undefined),
   projects: [{ id: 'p1', slug: 'station', name: 'Station' }],
   projectsByAuthority: {} as Record<
     string,
@@ -397,8 +399,8 @@ vi.mock('../hooks/useNewChatSelectionModel', () => ({
       runtimeFetching: false,
       modelsFetching: false,
       setupFetching: false,
-      setupError: null,
-      refreshSetup: async () => undefined,
+      setupError: fixtures.setupError,
+      refreshSetup: fixtures.refreshSetup,
       modelChoices: {},
       setModelChoices: () => undefined,
       modelChoiceKey: (agent: { slug: string }) => agent.slug,
@@ -483,6 +485,52 @@ describe('HomeView', () => {
     fixtures.tasksRefetch.mockClear();
     fixtures.inventoryRefetch.mockClear();
     fixtures.remoteSessionsResult = undefined;
+    fixtures.setupError = null;
+    fixtures.refreshSetup.mockClear();
+  });
+
+  test('a failed setup read says what happened in plain words and retries', () => {
+    // What Chromium's Response.json() rejects with when a proxy answers with
+    // an HTML page: the composer used to print this sentence verbatim.
+    fixtures.setupError = new SyntaxError(
+      `Failed to execute 'json' on 'Response': Unexpected token '<', "<!DOCTYPE "... is not valid JSON`,
+    );
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    const alert = screen
+      .getAllByRole('alert')
+      .find((node) => node.classList.contains('start-composer__alert'));
+    expect(alert?.textContent).toContain(
+      'Station sent a response this app could not read.',
+    );
+    expect(alert?.textContent).not.toContain('DOCTYPE');
+    fireEvent.click(
+      within(alert as HTMLElement).getByRole('button', { name: 'Try again' }),
+    );
+    expect(fixtures.refreshSetup).toHaveBeenCalledTimes(1);
+  });
+
+  test('a retry that fails again keeps the plain sentence and its retry', async () => {
+    const parse = new SyntaxError(
+      `Failed to execute 'json' on 'Response': Unexpected token '<', "<!DOCTYPE "... is not valid JSON`,
+    );
+    fixtures.setupError = parse;
+    // refreshSetup rethrows the same query error (throwOnError).
+    fixtures.refreshSetup.mockRejectedValueOnce(parse);
+    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+    const alert = () =>
+      screen
+        .getAllByRole('alert')
+        .find((node) => node.classList.contains('start-composer__alert'));
+    fireEvent.click(
+      within(alert() as HTMLElement).getByRole('button', { name: 'Try again' }),
+    );
+    await waitFor(() => expect(fixtures.refreshSetup).toHaveBeenCalledTimes(1));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(alert()?.textContent).not.toContain('DOCTYPE');
+    expect(
+      within(alert() as HTMLElement).getByRole('button', { name: 'Try again' }),
+    ).toBeTruthy();
   });
 
   test('shows guided start/open actions with a concrete selected identity', () => {

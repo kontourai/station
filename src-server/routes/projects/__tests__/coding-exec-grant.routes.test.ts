@@ -21,6 +21,7 @@ import {
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import { bindFullAccessRefusalIdentity } from '../../../security/full-access-refusal.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { FileTreeService } from '../../../services/projects/file-tree-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
@@ -35,7 +36,7 @@ afterEach(() => {
     rmSync(root, { recursive: true, force: true });
 });
 
-async function fixture() {
+async function fixture(options: { hostCli?: string } = {}) {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
   const root = mkdtempSync(join(tmpdir(), 'station-coding-exec-grant-'));
   roots.push(root);
@@ -98,6 +99,18 @@ async function fixture() {
       allowedOrigins: [],
     },
   });
+  // As the runtime composition binds it: the host's own operator CLI.
+  if (options.hostCli) {
+    const hostCli = options.hostCli;
+    app.use('*', async (c, next) => {
+      bindFullAccessRefusalIdentity(c.req.raw, {
+        environmentId: () => undefined,
+        deviceName: () => undefined,
+        hostCli: () => hostCli,
+      });
+      await next();
+    });
+  }
   app.route(
     '/api/coding',
     createCodingRoutes(new FileTreeService(), {
@@ -151,11 +164,24 @@ test('a paired device without the grant is refused with a stable code, and nothi
     body: {
       success: false,
       code: 'coding-exec-not-granted',
-      error:
-        "This device is not allowed to run commands on this Station's computer. The Station's operator can allow it: on the Station's host, run: station environment access devices, then station environment access scope <this device> --add coding:exec; or in the Station desktop app on its host, select the Station name (top right) → Paired devices → this device → Change access → Run commands → Apply.",
+      error: `This device is not allowed to run commands on this Station's computer. The Station's operator can allow it: on the Station's host, run: station environment access scope ${phone.device.id.slice(0, 8)} --add coding:exec; or in the Station desktop app on its host, select the Station name (top right) → Paired devices → this device → Change access → Run commands → Apply.`,
     },
     ran: false,
   });
+});
+
+test("the refusal's host command names this Station's own CLI, as the operator runs it", async () => {
+  // A nightly host has no `station` on its PATH.
+  const f = await fixture({ hostCli: 'npx @kontourai/station-cli@nightly' });
+  const phone = f.pair('Phone');
+
+  const refused = await f.exec(phone.credential);
+
+  expect(refused.status).toBe(403);
+  expect(refused.body.error).toContain(
+    `run: npx @kontourai/station-cli@nightly environment access scope ${phone.device.id.slice(0, 8)} --add coding:exec;`,
+  );
+  expect(refused.ran).toBe(false);
 });
 
 test('the operator grants it once, the device runs commands, and revoking takes it away', async () => {

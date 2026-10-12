@@ -108,7 +108,15 @@
 
     "src-server/runtime/bootstrap/hosted-tenant-mode.ts",
 
-    "src-server/runtime/bootstrap/hosted-persistence-boundary.ts"
+    "src-server/runtime/bootstrap/hosted-persistence-boundary.ts",
+
+    "packages/telemetry-broker/src/store.ts",
+
+    "packages/telemetry-broker/src/app.ts",
+
+    "packages/telemetry-broker/src/main.ts",
+
+    "packages/telemetry-broker/README.md"
   ],
 
   "checks": [

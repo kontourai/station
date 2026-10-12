@@ -104,6 +104,9 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // Reads identity/config files created in isolated Station temp homes, never
   // repository source. Direct telemetry imports own changed-test selection.
   'src-server/__tests__/telemetry.test.ts',
+  // Reads the receipt its child Playwright run writes into a temp root
+  // (#577), never repository source. Its imports select it for changes.
+  'scripts/__tests__/interactive-workspace-performance-host-gate.test.ts',
   // Read install.ps1 through the generator's exported path and the installer
   // core it embeds from a temporary extraction (#2675 W1): computed paths the
   // scanner cannot pin. The install.ps1 impact edge selects both, and their
@@ -530,6 +533,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'lists .github/workflows; the .github/workflows/** edge selects it',
   'scripts/__tests__/android-firebase-workflow-env.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
+  'scripts/__tests__/monument-import-boundary-gate.test.ts':
+    'the match is fixture source text (`import.meta.glob(...)`) written into a scratch repository; the suite itself walks no directory',
   'scripts/__tests__/basis-mcp-apps.test.ts':
     'git ls-files over its own generated outputs, to prove they are untracked',
   'scripts/__tests__/desktop-runtime-port-lease.test.ts':

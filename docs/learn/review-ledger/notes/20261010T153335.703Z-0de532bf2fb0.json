@@ -1,0 +1,7 @@
+{
+  "revision": "4ed9dc968657d8c549e8116236a204f3320cbea2",
+
+  "notes": [
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed content-bound in-process YAML parse reuse: every invocation still reads current bytes, duplicate-key/alias and shape checks remain fail-closed, callers receive independent clones, retention is bounded, and installed dependency/patch/receipt verification still runs. Five direct cache cases and 49 relevant lifecycle/preflight controls passed; source-only performance change, no new native or release qualification.","inputs":["docs/design/pnpm-workspace-installation.md","scripts/lib/pnpm-lockfile.mjs"]}
+  ]
+}

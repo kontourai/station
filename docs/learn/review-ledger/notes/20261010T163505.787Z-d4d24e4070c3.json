@@ -1,0 +1,7 @@
+{
+  "revision": "ff4db9545ac923750b1793d8cc18f0d811985f4b",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed CI owner-marker and runner-test changes against PR browser smoke. The existing job/spec inventory, browser-health limits,10-minute hosted timeout, zero retries and isolated lifecycle are unchanged. Owner infrastructure diagnostics now retain a standalone verdict line and bounded redacted child cause; this changes reporting, not smoke admission or qualification. Five targeted browser cases passed in the performance lane; they are not the complete seven-spec smoke.","inputs":["docs/testing/browser-smoke.md","scripts/__tests__/run-ci-fast.test.ts"]}
+  ]
+}

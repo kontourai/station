@@ -146,6 +146,7 @@ import {
   AttachmentInputUnsupportedError,
   ProviderTurnEndedError,
   SendTurnRefusedError,
+  SessionStartRefusedError,
 } from '../../providers/adapter-shape.js';
 import type { Prerequisite } from '../../providers/provider-contracts.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
@@ -695,6 +696,14 @@ const IDLE_SESSION_SWEEP_MS = 5 * 60_000;
 const PARKED_EXIT_WAIT_MS = 10_000;
 /** #2312: most discarded ids the late-event gate remembers at once. */
 const DISCARDED_DRAFT_GATE_MAX = 256;
+/**
+ * #3560: the wait before each retry of an observed event whose publish hit
+ * store contention. Two retries, so three attempts in all. Each attempt may
+ * already have waited out SQLite's busy_timeout, so the bound is what keeps a
+ * second Station process from stalling the adapter stream indefinitely before
+ * the interruption warning names it.
+ */
+const OBSERVED_EVENT_RETRY_DELAYS_MS = [25, 100] as const;
 
 /**
  * #2312 verifier M3: a Session in the Draft's conversation is one the caller
@@ -1984,8 +1993,29 @@ export class OrchestrationService {
       logger: {
         warn: (message, meta) => this.options.logger.warn(message, meta),
       },
+      // #3560: text that failed to flush ahead of an offered event is kept
+      // whenever the failure is retryable contention and the text did not
+      // commit. Most `projectAndPublishEvent` callers never retry; for them
+      // the text is re-timed in that method's `finally`, and an observed
+      // event's retry re-times it when it finishes (`resumeRetained`).
+      retainFailedFlush: (event, error) =>
+        this.isRetryablePublishFailure(event, error),
     },
   );
+  /**
+   * #3560: `turn.started` event ids whose provider-turn boundary is recorded
+   * while their publish is still in progress, so a retry does not record it
+   * again. Cleared when the publish returns or gives up.
+   */
+  private readonly providerTurnBoundariesInFlight = new Set<string>();
+  /**
+   * #3560: how many observed-event retries are asleep or running per thread
+   * (overlapping retries happen when an adapter is replaced while the old
+   * loop sleeps). Text the coalescer retained for such a thread stays untimed
+   * until the LAST retry finishes, so a window timer cannot drop it on the
+   * warn path while any retry still sleeps.
+   */
+  private readonly observedRetryThreads = new Map<string, number>();
   /** Threads whose missing configuration has already been logged for monitoring. */
   private readonly monitoringUnconfiguredThreads = new Set<string>();
   private readonly turnAdmissions = new Set<OrchestrationTurnAdmission>();
@@ -6415,6 +6445,9 @@ export class OrchestrationService {
       publicSession: publicProviderSession,
       isRejectedError: (error) =>
         error instanceof ModelLaunchPlanUnavailableError ||
+        // The adapter settled the start itself: the engine refused it and
+        // nothing of it is left to inspect.
+        error instanceof SessionStartRefusedError ||
         error instanceof SessionReattachConflictError ||
         error instanceof ConcurrentEngineStartCapacityError ||
         // #2873: a refusal to start, with nothing run.
@@ -7023,6 +7056,16 @@ export class OrchestrationService {
               clientTurnId,
             });
             if (claim) {
+              // #3559: the key's owner died after it may have handed this
+              // turn to the provider. Never send it again; report the same
+              // possible-effect outcome a live indeterminate start does.
+              if (claim.kind === 'indeterminate') {
+                orchestrationTurnDedup.add(1, {
+                  provider: adapter.provider,
+                  outcome: 'indeterminate',
+                });
+                throw new SessionTurnStartIndeterminateError();
+              }
               if (claim.kind === 'contended') {
                 const existingTurnId =
                   claim.turnId ??
@@ -7188,6 +7231,12 @@ export class OrchestrationService {
                           },
                         );
                       }
+                      // #3559: durable before the provider can see the turn.
+                      // If this owner dies past this point, a retry of the
+                      // same key is indeterminate instead of a second send.
+                      // A throw here has invoked nothing: the boundary stays
+                      // `prepared` and the claim is released.
+                      ownedClientTurnClaim?.beginInvocation();
                       const begun = boundary.beginInvocation(
                         new Date().toISOString(),
                       );
@@ -9444,16 +9493,14 @@ export class OrchestrationService {
   }
 
   /**
-   * Ownership is checked from Station's own read model before any provider
-   * adapter lookup. Attached sessions are not adapter-owned and must never
-   * trigger discovery or a provider mutation while rejecting a command.
+   * Attached transcripts are observed rather than run by Station. Commands
+   * and notification producers check this ownership before looking up an
+   * adapter or interrupting the user.
    */
-  private isReadOnlyAttachedSession(threadId: string): boolean {
+  isReadOnlyAttachedSession(threadId: string): boolean {
     const session =
       this.sessionReadModel.get(threadId) ??
-      this.options.eventStore
-        ?.readSessions()
-        .find((candidate) => candidate.threadId === threadId);
+      this.options.eventStore?.readSessionByThread(threadId);
     return session?.controlMode === 'read-only-attached';
   }
 
@@ -9713,7 +9760,11 @@ export class OrchestrationService {
         if (!this.quarantinedThreads.has(normalized.threadId)) {
           this.sessionAdapters.set(normalized.threadId, adapter);
         }
-        if (!this.projectAndPublishEvent(normalized)) continue;
+        // `projectAndPublishEvent` with a bounded retry of its publish half,
+        // holding this event until it is appended before the next one is
+        // consumed (#3560).
+        if (!(await this.publishObservedEvent(normalized, adapter, controller)))
+          continue;
         this.cooperativeStop.applyPendingTurnInterrupt(adapter, normalized);
         if (normalized.method === 'session.exited') {
           this.sessionAdapters.delete(normalized.threadId);
@@ -9823,6 +9874,112 @@ export class OrchestrationService {
         this.consumedAdapterEventStreams.delete(adapter);
         queueMicrotask(() => this.consumeCurrentAdapterEvents());
       }
+    }
+  }
+
+  /**
+   * #3560: `projectAndPublishEvent` for one observed event, retrying the SAME
+   * event (same `eventId`) while the failure is store contention. Admission
+   * runs once, and only the publish half is retried. The adapter queue has
+   * already handed the event over, so giving up here is what loses it: a
+   * dropped `turn.completed` folds the thread as running and boot recovery
+   * banners a turn that completed.
+   *
+   * Exhausted retries and every other failure rethrow into the loop's catch
+   * unchanged. That path is observation loss, not a provider terminal: it
+   * surfaces `adapter-event-stream-interrupted` and restarts, and it never
+   * permits retrying the turn.
+   *
+   * A retry repeats the publish body's pre-append steps. They are idempotent
+   * for a replay of the same event, except that an activity notification is
+   * counted twice in `sessionActivityEvents`; a provider-started turn's
+   * boundary is recorded once per event (`providerTurnBoundariesInFlight`).
+   * Lifecycle normalization is NOT redone, so a retried event keeps the
+   * `previousState`/`sessionState` computed before the first attempt.
+   * Pre-append state that outlives an append which never succeeds is #3561.
+   */
+  private async publishObservedEvent(
+    event: CanonicalRuntimeEvent,
+    adapter: ProviderAdapterShape,
+    controller: AbortController,
+  ): Promise<boolean> {
+    const admitted = this.admitEventForPublication(event);
+    if (!admitted) return true;
+    let retrying = false;
+    try {
+      for (const delayMs of [...OBSERVED_EVENT_RETRY_DELAYS_MS, undefined]) {
+        try {
+          return this.offerOrPublishEvent(admitted);
+        } catch (error) {
+          if (
+            delayMs === undefined ||
+            !this.isRetryablePublishFailure(admitted, error)
+          )
+            throw error;
+          this.options.logger.debug(
+            'Retrying an observed event after event store contention',
+            {
+              provider: adapter.provider,
+              threadId: admitted.threadId,
+              method: admitted.method,
+              error: errorMessage(error),
+            },
+          );
+          if (!retrying) {
+            retrying = true;
+            this.observedRetryThreads.set(
+              admitted.threadId,
+              (this.observedRetryThreads.get(admitted.threadId) ?? 0) + 1,
+            );
+          }
+          // node:sqlite is synchronous: each failed attempt may already have
+          // blocked the whole process for busy_timeout. Only this sleep yields.
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          if (controller.signal.aborted || !this.isAdapterCurrent(adapter))
+            throw error;
+        }
+      }
+      throw new Error('unreachable: the final attempt returns or throws');
+    } finally {
+      this.providerTurnBoundariesInFlight.delete(admitted.eventId);
+      // Whatever the outcome, this event's retry is over. Text still retained
+      // for the thread gets its window timer back once no other retry on the
+      // thread is in flight.
+      const remaining =
+        (this.observedRetryThreads.get(admitted.threadId) ?? 0) -
+        (retrying ? 1 : 0);
+      if (remaining > 0) {
+        this.observedRetryThreads.set(admitted.threadId, remaining);
+      } else {
+        this.observedRetryThreads.delete(admitted.threadId);
+        this.deltaCoalescer.resumeRetained(admitted.threadId);
+      }
+    }
+  }
+
+  /**
+   * Retry only the SQLITE_BUSY family (errcode 5, or its "database is
+   * locked" message, which the extended BUSY codes share): a peer holding the
+   * write lock can let go. SQLITE_LOCKED (6, "database table is locked") is a
+   * same-connection conflict and is not retried, nor is a constraint or
+   * programming error, which repeats identically.
+   *
+   * And never retry an event that is already stored. The append rolls back
+   * its savepoint on any throw inside it, but a throw from a step AFTER the
+   * commit reaches the caller too, and a replay of a committed plain-INSERT
+   * event would fail its primary key. If the probe itself fails, nothing
+   * proves the event committed, so the retry goes ahead; a replay that does
+   * hit the key then fails as a non-retryable error.
+   */
+  private isRetryablePublishFailure(
+    event: CanonicalRuntimeEvent,
+    error: unknown,
+  ): boolean {
+    if (!isSqliteContentionError(error)) return false;
+    try {
+      return !this.options.eventStore?.hasEventId(event.eventId);
+    } catch {
+      return true;
     }
   }
 
@@ -11004,8 +11161,29 @@ export class OrchestrationService {
    * it.
    */
   private projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean {
+    const admitted = this.admitEventForPublication(event);
+    if (!admitted) return true;
+    try {
+      return this.offerOrPublishEvent(admitted);
+    } finally {
+      this.providerTurnBoundariesInFlight.delete(admitted.eventId);
+      if (!this.observedRetryThreads.has(admitted.threadId))
+        this.deltaCoalescer.resumeRetained(admitted.threadId);
+    }
+  }
+
+  /**
+   * The once-per-event half of {@link projectAndPublishEvent}: client-origin
+   * attribution, which CONSUMES a send's accepted attribution, and the raw
+   * delta observation the turn-stall watchdog must see exactly once. Returns
+   * undefined for a turn start held for an in-flight send. The observed-event
+   * loop retries only the other half (#3560), so neither step runs twice.
+   */
+  private admitEventForPublication(
+    event: CanonicalRuntimeEvent,
+  ): CanonicalRuntimeEvent | undefined {
     const originEvent = this.clientOriginTurns.apply(event);
-    if (!originEvent) return true;
+    if (!originEvent) return undefined;
     event = originEvent;
     // Progress is a fact about the ENGINE producing output, not about what we
     // chose to publish. The turn-stall watchdog (archive#2959) observes here,
@@ -11025,6 +11203,11 @@ export class OrchestrationService {
       this.sessionExecutionCoordinator.observe(event);
       this.turnProgress.observe(event);
     }
+    return event;
+  }
+
+  /** The retryable half of {@link projectAndPublishEvent}. */
+  private offerOrPublishEvent(event: CanonicalRuntimeEvent): boolean {
     // NOTE the changed meaning of `true` here: it says the coalescer TOOK the
     // event, not that it was published. A taken delta is published later —
     // through `publishCanonicalEvent`, which may itself decline it (a
@@ -11032,8 +11215,8 @@ export class OrchestrationService {
     // never published at all.
     //
     // That matters because the caller does more with `false` than decide
-    // whether to publish again. `consumeAdapterEvents`' `if
-    // (!this.projectAndPublishEvent(normalized)) continue;` also gates the
+    // whether to publish again. In `consumeAdapterEvents`, a `false` from
+    // `publishObservedEvent` (which returns this) `continue`s, and so also gates the
     // `session.exited` adapter cleanup, `applyPostHocToolPolicies`,
     // `spoolCommandEvidence` and the state-transition telemetry below it, so
     // taking a quarantined thread's delta stops short-circuiting those. That
@@ -11062,7 +11245,10 @@ export class OrchestrationService {
     if (
       event.method !== 'turn.started' ||
       !event.turnId ||
-      !isProviderTriggeredTurn(event)
+      !isProviderTriggeredTurn(event) ||
+      // #3560: a retried publish of the same event must not record a second
+      // row, which boot recovery would banner a second time after a crash.
+      this.providerTurnBoundariesInFlight.has(event.eventId)
     ) {
       return;
     }
@@ -11071,6 +11257,8 @@ export class OrchestrationService {
       event.turnId,
       event.createdAt,
     );
+    if (recorded.kind === 'applied')
+      this.providerTurnBoundariesInFlight.add(event.eventId);
     providerTurnBoundaryRecords.add(1, {
       provider: event.provider,
       outcome: recorded.kind,

@@ -385,7 +385,36 @@ An ACP send whose attachments the engine cannot take (images when its
 non-image file) is refused before any engine effect with
 `ATTACHMENT_INPUT_UNSUPPORTED_CODE` (`attachment_input_unsupported`, from
 `provider`). Unlike the two codes above it is not retryable: the same send is
-refused again. An ACP steer delivered by the cancel + re-prompt fallback, for
+refused again. An ACP session whose requested model the engine's own fresh
+`session/new` options did not offer (`ACP model value unsupported`, or no model
+option at all) is refused by the adapter with `SessionStartRefusedError`,
+carrying `MODEL_NOT_ADVERTISED_CODE` (`model_not_advertised`, from `provider`).
+That type is how an adapter tells the start boundary that its start is settled:
+the boundary is released and the receipt is `rejected`, where every other
+adapter failure at start stays an indeterminate start that fences the thread. An
+adapter throws it only once the engine has answered with a refusal and what it
+spawned is torn down (an unconfirmed teardown is an `AggregateError`, an
+uncertain start whose end is not announced), and it owes the service the cause and
+the end of the session it had announced: a `runtime.error` carrying the code,
+then a `session.exited` (`start-refused`, no exit code), because
+`session.started` went out before `session/new` answered and the service binds
+the thread to the adapter on it. For a fresh start the session's lifecycle then
+reads `failed` with the engine's own words, also after a reload, and its binding
+is ended, so a resend in the same conversation, whatever it names (another
+model, the same one, or no override), continues in a successor session through
+the continuation seam. The exit is consumed in order on the adapter's event
+queue like any other, so a resend that lands before it has been projected sees
+the session still open and fails at the send; the next send resolves a
+successor. A Stop that lands during `session/new` ends the session's events as
+`stopped` rather than as the refusal (the caller still receives the typed
+refusal). A
+raw start on the refused session id itself is refused (a different model is a
+`session-reattach-conflict`). A model the engine was asked to apply and
+answered differently (`ACP model application unverified`) stays an uncertain
+start. The nested start claim of a task dispatch and delegation keep their own
+conservative uncertainty handling. A refusal raised from a lazy engine start
+inside a send (a restored session with no resume cursor but a model) is a
+`failed` receipt without the code, and ends with the row `closed`. An ACP steer delivered by the cancel + re-prompt fallback, for
 an engine without a native steer method, cancels the running prompt and any
 tool it was running. Its steer `turn.started` carries
 `steerInterruptedRun: true` so a client can say why that step shows as
@@ -440,6 +469,17 @@ terminal. The shared consumer publishes `runtime.warning` with code
 `adapter-event-stream-interrupted` and resumes consumption without changing
 the affected turns' lifecycle or dispatching replacements. Only subsequent
 engine evidence establishes completion or failure. This applies across engines.
+Before that, a publish that fails on event-store contention (the SQLITE_BUSY
+family; SQLITE_LOCKED is not retried) is retried for the same event, with the
+same `eventId`, at most twice before the next event is consumed. When the
+failure was the delta coalescer's flush of text buffered before that event,
+the text is kept, with no window timer, and the retry delivers it first. Once
+no retry is in flight its window timer is re-armed, so text left after
+exhausted retries is flushed by that timer; a timer flush that still fails is
+dropped with a warning, as before. An event that already committed is never
+replayed, and no flushed text contains the delta being offered, so a retried
+delta is never stored twice. Any other failure, and exhausted retries, are the
+observation loss described above.
 Muse tool results use the shared bounded output projection before persistence;
 an `outputReceipt` records truncation and whether full output is available.
 EventStore's 64 KiB ingress ceiling remains a last-resort rejection boundary.

@@ -1,0 +1,7 @@
+{
+  "revision": "65b33073aeaa5f8df19bc76e56985f4ef64a7671",
+
+  "notes": [
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"event-store.ts delta is one added read-only query, listTurnStartsSince (bounded turn.started rows at/after a timestamp, for #3562 interrupted-turn recovery). Grepped this document for EventStore method lists, turn starts, turn boundaries, interrupted/boot recovery, steer and indeterminate claims: none describe or depend on this query or on recovery's turn-ownership rule; no existing EventStore behavior changed. No prose change.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

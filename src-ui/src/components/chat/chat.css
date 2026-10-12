@@ -927,11 +927,6 @@
 }
 
 .file-mention-picker {
-  position: absolute;
-  z-index: 20;
-  left: 8px;
-  right: 8px;
-  bottom: calc(100% + 8px);
   display: grid;
   max-height: min(320px, 45vh);
   overflow-y: auto;
@@ -2367,11 +2362,6 @@
   gap: var(--k-space-1);
   flex: 0 0 auto;
 }
-.chat-input__send-mode {
-  min-height: var(--k-space-6);
-  gap: var(--k-space-1);
-}
-
 .chat-input .chat-input__send-btn {
   width: auto;
   min-width: 44px;
@@ -2411,10 +2401,35 @@
   border-start-end-radius: 0;
   border-end-end-radius: 0;
 }
-.chat-input__send-mode {
+/* Steer/Queue is the trailing segment of one split Send button: same height,
+   a hairline divider, only the outer corners rounded, and Send's accent while
+   Send is ready. It stays at full strength otherwise because it still works. */
+.chat-input .chat-input__send-mode {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--k-space-1);
   height: 44px;
-  border-start-start-radius: 0;
-  border-end-start-radius: 0;
+  padding: 0 var(--k-space-3);
+  border: none;
+  border-inline-start: var(--k-border-thin) solid
+    color-mix(in srgb, currentColor 28%, transparent);
+  border-radius: 0 var(--k-radius-control) var(--k-radius-control) 0;
+  background: var(--k-panel-raised);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  cursor: pointer;
+}
+.chat-input .chat-input__send-mode--active {
+  background: var(--k-action);
+  color: var(--k-action-contrast);
+}
+/* :not(:disabled) lifts this past the shared `.chat-input button` hover dim
+   (index.css), which would otherwise leave this half at 0.8 opacity. */
+.chat-input .chat-input__send-mode:hover:not(:disabled),
+.chat-input .chat-input__send-mode[aria-expanded="true"] {
+  opacity: 1;
+  filter: brightness(1.08);
 }
 
 .chat-input__submit-controls {
@@ -2426,10 +2441,6 @@
   visibility: hidden;
   pointer-events: none;
 }
-.chat-input__mode-slot {
-  display: none;
-}
-
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
   .app-toolbar__action--secondary.app-toolbar__action--secondary {
     display: none;
@@ -2800,15 +2811,10 @@
     display: none;
   }
   .chat-input .chat-input__send-btn,
-  .chat-input__send-mode {
+  .chat-input .chat-input__send-mode {
     width: 44px;
     min-width: 44px;
     padding: 0;
-  }
-  .chat-input__mode-slot {
-    display: block;
-    width: 44px;
-    height: 44px;
   }
 }
 

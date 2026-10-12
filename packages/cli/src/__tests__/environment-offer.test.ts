@@ -185,6 +185,9 @@ describe('environment offer', () => {
           });
           expect(JSON.parse(String(init?.body))).toEqual({
             endpoint: API_BASE,
+            // A QR or link is for a person's device: the Paired devices
+            // panel's grant, never the default grant's access:manage.
+            scope: 'orchestration:read orchestration:operate terminal:operate',
           });
           return {
             protocolVersion: DEVICE_PAIRING_PROTOCOL_VERSION,
@@ -227,6 +230,8 @@ describe('environment offer', () => {
           return proofFor(body.nonce);
         }
         if (path === '/api/pairing/offers') {
+          // The desktop SSH launcher's machine flow names no scope: it keeps
+          // the Station's default grant.
           expect(JSON.parse(String(init?.body))).toEqual({
             endpoint: forwarded,
           });
@@ -366,6 +371,9 @@ describe('environment offer', () => {
         if (path === '/api/pairing/offers') {
           expect(JSON.parse(String(init?.body))).toEqual({
             endpoint: 'https://station.tailnet.ts.net',
+            // A QR or link is for a person's device: the Paired devices
+            // panel's grant, never the default grant's access:manage.
+            scope: 'orchestration:read orchestration:operate terminal:operate',
           });
           return {
             protocolVersion: DEVICE_PAIRING_PROTOCOL_VERSION,
@@ -424,6 +432,9 @@ describe('environment offer', () => {
         if (path === '/api/pairing/offers') {
           expect(JSON.parse(String(init?.body))).toEqual({
             endpoint: 'https://station.tailnet.ts.net:8444',
+            // A QR or link is for a person's device: the Paired devices
+            // panel's grant, never the default grant's access:manage.
+            scope: 'orchestration:read orchestration:operate terminal:operate',
           });
           return {
             protocolVersion: DEVICE_PAIRING_PROTOCOL_VERSION,
