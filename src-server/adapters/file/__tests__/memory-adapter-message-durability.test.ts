@@ -248,6 +248,44 @@ describe('transcript appends and rewrites survive a crash (#3564)', () => {
     expect(await storedIds()).toEqual(['a', 'c', 'd']);
   });
 
+  test('a torn tail longer than one scan chunk is moved aside whole', async () => {
+    await adapter.addMessage(message('a'), USER, CONVERSATION);
+    const path = await messagesPath();
+    // A long streamed reply cut off mid-write: well past the 64 KiB backward
+    // scan window, so finding its start crosses several chunks.
+    const torn = `{"id":"b","role":"assistant","parts":[{"type":"text","text":"${'x'.repeat(200_000)}`;
+    await appendRaw(path, torn, 'utf-8');
+
+    await adapter.addMessage(message('c'), USER, CONVERSATION);
+
+    expect(await storedIds()).toEqual(['a', 'c']);
+    expect(await readFile(`${path}.torn`, 'utf-8')).toBe(`${torn}\n`);
+  });
+
+  test('a torn tail with no complete line before it is moved aside', async () => {
+    await adapter.addMessage(message('a'), USER, CONVERSATION);
+    const path = await messagesPath();
+    await adapter.clearMessages(USER, CONVERSATION);
+    await appendRaw(path, '{"id":"b"', 'utf-8');
+
+    await adapter.addMessage(message('c'), USER, CONVERSATION);
+
+    expect(await storedIds()).toEqual(['c']);
+    expect(await readFile(`${path}.torn`, 'utf-8')).toBe('{"id":"b"\n');
+  });
+
+  test('deleting the conversation removes its quarantined torn records', async () => {
+    await adapter.addMessage(message('a'), USER, CONVERSATION);
+    const path = await messagesPath();
+    await appendRaw(path, '{"id":"b","rol', 'utf-8');
+    await adapter.addMessage(message('c'), USER, CONVERSATION);
+    expect(readdirSync(dirname(path))).toContain('c1.ndjson.torn');
+
+    await adapter.deleteConversation(CONVERSATION);
+
+    expect(readdirSync(dirname(path))).not.toContain('c1.ndjson.torn');
+  });
+
   test('a crash between writing the rewrite and renaming it leaves the original intact', async () => {
     await adapter.addMessages(
       [message('m1'), message('m2'), message('m3')],

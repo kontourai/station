@@ -1,14 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { createReadStream, existsSync } from 'node:fs';
 import {
-  appendFile,
+  type FileHandle,
   mkdir,
+  open,
   rename,
   rm,
   truncate,
-  writeFile,
 } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { createInterface } from 'node:readline';
+import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
 import type { GetMessagesOptions } from '@voltagent/core';
 import type { UIMessage } from 'ai';
 import { createLogger } from '../../utils/logger.js';
@@ -92,6 +94,12 @@ async function withMessagesFile<T>(
  * half-written transcript. This mirrors what `persistConversation` already
  * does for the conversation document next door: readers see either the
  * previous complete file or this one.
+ *
+ * The temporary's data is flushed before the rename (#3564): otherwise a
+ * power loss can persist the rename and not the bytes, publishing an empty
+ * or partial transcript. The directory is flushed after it so the rename
+ * itself survives. Both follow the shared JSON publisher's sequence; that
+ * seam serializes a JSON value, while this file is NDJSON text.
  */
 async function writeMessagesFileAtomic(
   path: string,
@@ -99,12 +107,211 @@ async function writeMessagesFileAtomic(
 ): Promise<void> {
   const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
   try {
-    await writeFile(temporaryPath, contents, 'utf-8');
+    const handle = await open(temporaryPath, 'wx');
+    try {
+      await handle.writeFile(contents, 'utf-8');
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
     await rename(temporaryPath, path);
   } catch (error) {
     await rm(temporaryPath, { force: true }).catch(() => {});
     throw error;
   }
+  flushDirectoryAfterCommit(path, 'rewrite');
+}
+
+/**
+ * Flush the directory entry of a write that has already committed.
+ *
+ * Readers already see the bytes, so a failed directory flush must not report
+ * the write as failed: a caller retrying an append would duplicate the
+ * message, and one retrying a delete-by-id would act on a state it believes
+ * unchanged. The failure is disclosed instead (the shared JSON publisher
+ * swallows it silently).
+ */
+function flushDirectoryAfterCommit(
+  path: string,
+  operation: 'rewrite' | 'append',
+): void {
+  try {
+    fsyncDirectorySync(dirname(path));
+  } catch (error) {
+    logger.warn('Messages directory fsync failed after a committed write', {
+      path,
+      operation,
+      error,
+    });
+  }
+}
+
+/**
+ * What an append found and did about an unterminated last record.
+ *
+ * - `completed`: the tail parsed as JSON, so only its newline was lost. The
+ *   newline is written and the record kept.
+ * - `quarantined`: the tail is a fragment. Its bytes are appended, verbatim
+ *   and newline-terminated, to `quarantinePath`, and the transcript is
+ *   truncated back to its last complete line.
+ */
+export interface TornTailRecovery {
+  kind: 'completed' | 'quarantined';
+  path: string;
+  /** Byte offset where the unterminated record starts. */
+  offset: number;
+  /** Length of the unterminated record in bytes. */
+  bytes: number;
+  quarantinePath?: string;
+}
+
+/**
+ * Where an append moves an unparseable torn tail. It sits beside the
+ * transcript without the `.ndjson` suffix, so transcript scans (the usage
+ * aggregator's) skip it, and it is removed with the conversation.
+ */
+export function tornRecordQuarantinePath(messagesPath: string): string {
+  return `${messagesPath}.torn`;
+}
+
+const NEWLINE = 0x0a;
+const TAIL_SCAN_CHUNK_BYTES = 64 * 1024;
+
+async function readExactly(
+  handle: FileHandle,
+  length: number,
+  position: number,
+): Promise<Buffer> {
+  const buffer = Buffer.alloc(length);
+  const { bytesRead } = await handle.read(buffer, 0, length, position);
+  // The file is only mutated inside this path's queue slot, so a short read
+  // means another process changed it underneath us. Refuse rather than
+  // repair from a view that is already stale.
+  if (bytesRead !== length) {
+    throw new Error(
+      `Messages file changed during torn-tail scan (read ${bytesRead} of ${length} bytes at ${position}).`,
+    );
+  }
+  return buffer;
+}
+
+/** The bytes after the last newline, or null when the file ends in one. */
+async function findUnterminatedTail(
+  handle: FileHandle,
+  size: number,
+): Promise<{ offset: number; bytes: Buffer } | null> {
+  if (size === 0) return null;
+  const last = await readExactly(handle, 1, size - 1);
+  if (last[0] === NEWLINE) return null;
+
+  const chunks: Buffer[] = [];
+  let end = size;
+  while (end > 0) {
+    const start = Math.max(0, end - TAIL_SCAN_CHUNK_BYTES);
+    const chunk = await readExactly(handle, end - start, start);
+    const newline = chunk.lastIndexOf(NEWLINE);
+    if (newline !== -1) {
+      chunks.unshift(chunk.subarray(newline + 1));
+      return { offset: start + newline + 1, bytes: Buffer.concat(chunks) };
+    }
+    chunks.unshift(chunk);
+    end = start;
+  }
+  return { offset: 0, bytes: Buffer.concat(chunks) };
+}
+
+function isCompleteRecord(bytes: Buffer): boolean {
+  try {
+    const value: unknown = JSON.parse(bytes.toString('utf-8'));
+    return typeof value === 'object' && value !== null;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Make the transcript end on a line boundary before anything is appended.
+ *
+ * Every append writes `record + "\n"`, so an interrupted append (a crash,
+ * power loss or ENOSPC mid-write) leaves a prefix of one record with no
+ * newline. Appending straight after it glues the next record onto the
+ * fragment, and the reader then drops the merged line: one torn write cost
+ * two messages (#3564). Repairing here means a torn write costs at most the
+ * record that was being written.
+ */
+async function repairTornTail(
+  handle: FileHandle,
+  path: string,
+  size: number,
+): Promise<TornTailRecovery | null> {
+  const tail = await findUnterminatedTail(handle, size);
+  if (!tail) return null;
+
+  if (isCompleteRecord(tail.bytes)) {
+    // `a+` appends regardless of position, so this lands at the end.
+    await handle.write('\n');
+    return {
+      kind: 'completed',
+      path,
+      offset: tail.offset,
+      bytes: tail.bytes.length,
+    };
+  }
+
+  // Move the fragment aside before truncating it away, and make the copy
+  // durable first: a crash between the two then leaves the fragment in both
+  // places (the next append quarantines it again), never in neither.
+  const quarantinePath = tornRecordQuarantinePath(path);
+  const quarantine = await open(quarantinePath, 'a');
+  try {
+    // The fragment holds no newline by construction, so one appended line
+    // per recovery keeps the quarantine file line-framed.
+    await quarantine.writeFile(Buffer.concat([tail.bytes, Buffer.from('\n')]));
+    await quarantine.sync();
+  } finally {
+    await quarantine.close();
+  }
+  fsyncDirectorySync(dirname(quarantinePath));
+  await handle.truncate(tail.offset);
+  return {
+    kind: 'quarantined',
+    path,
+    offset: tail.offset,
+    bytes: tail.bytes.length,
+    quarantinePath,
+  };
+}
+
+/**
+ * Append whole NDJSON records and flush them before returning (#3564).
+ *
+ * Runs inside the path's queue slot. The handle is opened `a+` so the tail
+ * can be read and repaired through the same descriptor that appends.
+ */
+async function appendMessageRecords(
+  path: string,
+  payload: string,
+): Promise<void> {
+  const handle = await open(path, 'a+');
+  let wasEmpty = false;
+  try {
+    const { size } = await handle.stat();
+    wasEmpty = size === 0;
+    const recovery = await repairTornTail(handle, path, size);
+    if (recovery) {
+      logger.warn('Recovered an unterminated record in a messages file', {
+        recovery,
+      });
+    }
+    await handle.appendFile(payload, 'utf-8');
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  // An empty file is usually one this open just created, and a new file's
+  // directory entry is not durable until the directory is flushed. A file
+  // emptied by `clearMessages` pays one redundant directory flush.
+  if (wasEmpty) flushDirectoryAfterCommit(path, 'append');
 }
 
 /** Read a messages file as its raw lines, preserving bytes exactly. */
@@ -175,10 +382,9 @@ export async function addStoredMessage({
 
   const messagesPath = paths.getMessagesPath(resourceId, conversationId);
   await withMessagesFile(messagesPath, () =>
-    appendFile(
+    appendMessageRecords(
       messagesPath,
       `${JSON.stringify(messageWithMetadata)}\n`,
-      'utf-8',
     ),
   );
   await touchConversation(conversationId);
@@ -225,7 +431,7 @@ export async function addStoredMessages({
   const messagesPath = paths.getMessagesPath(resourceId, conversationId);
   const payload = `${messages.map((message) => JSON.stringify(message)).join('\n')}\n`;
   await withMessagesFile(messagesPath, () =>
-    appendFile(messagesPath, payload, 'utf-8'),
+    appendMessageRecords(messagesPath, payload),
   );
   await touchConversation(conversationId);
 }
