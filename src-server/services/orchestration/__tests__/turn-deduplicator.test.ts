@@ -338,30 +338,29 @@ describe('TurnDeduplicator', () => {
     store.close();
   });
 
-  // #3606 review F2: tombstones are time-bounded at 30 days, far past every
-  // retry window Station has (the longest is 7 days).
-  test('a tombstone past 30 days is removed while one inside the bound still answers expired', () => {
-    const { store, ledger, directory } = open(2);
+  // #3606 review F2: /chat tombstones are time-bounded at 30 days, far past
+  // every retry window Station has (the longest is 7 days).
+  test('a /chat tombstone past 30 days is removed while one inside the bound still answers expired', () => {
+    const { store, directory } = open(2);
     const settle = (clientTurnId: string) => {
-      const owner = ledger.claim({ threadId: 'thread', clientTurnId });
-      if (owner.kind !== 'owner') throw new Error('expected owner');
-      owner.claim.resolve(`turn-${clientTurnId}`);
+      expect(store.claimChatTurn(clientTurnId)).toEqual({ claimed: true });
+      store.resolveChatTurn(clientTurnId, `conversation-${clientTurnId}`);
     };
-    // k1 and k2 are evicted to tombstones; k3 and k4 stay full rows.
-    for (const clientTurnId of ['k1', 'k2', 'k3', 'k4']) settle(clientTurnId);
+    // c1 and c2 are evicted to tombstones; c3 and c4 stay full rows.
+    for (const clientTurnId of ['c1', 'c2', 'c3', 'c4']) settle(clientTurnId);
     const day = 24 * 60 * 60 * 1000;
     const database = new DatabaseSync(join(directory, 'orchestration.sqlite'));
     try {
       const backdate = database.prepare(
         'UPDATE orchestration_turn_dedup_expired SET expired_at = ? WHERE dedup_key = ?',
       );
-      backdate.run(Date.now() - 31 * day, turnDedupKey('thread', 'k1'));
-      backdate.run(Date.now() - 29 * day, turnDedupKey('thread', 'k2'));
+      backdate.run(Date.now() - 31 * day, chatTurnDedupKey('c1'));
+      backdate.run(Date.now() - 29 * day, chatTurnDedupKey('c2'));
     } finally {
       database.close();
     }
-    // Any later write runs retention.
-    settle('k5');
+    // The next dedup write runs retention.
+    settle('c5');
     const tombstones = new DatabaseSync(
       join(directory, 'orchestration.sqlite'),
     );
@@ -371,16 +370,61 @@ describe('TurnDeduplicator', () => {
           .prepare('SELECT dedup_key FROM orchestration_turn_dedup_expired')
           .all() as Array<{ dedup_key: string }>
       ).map((row) => row.dedup_key);
-      expect(keys).not.toContain(turnDedupKey('thread', 'k1'));
-      expect(keys).toContain(turnDedupKey('thread', 'k2'));
+      expect(keys).not.toContain(chatTurnDedupKey('c1'));
+      expect(keys).toContain(chatTurnDedupKey('c2'));
     } finally {
       tombstones.close();
     }
-    expect(ledger.claim({ threadId: 'thread', clientTurnId: 'k2' })).toEqual({
-      kind: 'expired',
+    expect(store.claimChatTurn('c2')).toEqual({
+      claimed: false,
+      outcome: 'expired',
     });
+    expect(store.claimChatTurn('c1')).toEqual({ claimed: true });
+    store.close();
+  });
+
+  // #3606 delta review: a thread tombstone outlives the time bound. A
+  // session-control start re-drives its unresolved request key forever, with
+  // the same clientTurnId, so its thread tombstone must last as long: until
+  // deleteThread removes both.
+  test('an evicted thread key stays expired past 30 days, so a late re-drive never sends again', () => {
+    const { store, ledger, directory } = open(2);
+    const outcomes: string[] = [];
+    const settle = (clientTurnId: string) => {
+      const owner = ledger.claim({ threadId: 'thread', clientTurnId });
+      if (clientTurnId === 'a-start') outcomes.push(owner.kind);
+      if (owner.kind !== 'owner') throw new Error('expected owner');
+      owner.claim.resolve(`turn-${clientTurnId}`);
+    };
+    // Same-millisecond rows are evicted in key order, so `a-start` goes first.
+    settle('a-start');
+    settle('k2');
+    settle('k3');
+    outcomes.push(
+      ledger.claim({ threadId: 'thread', clientTurnId: 'a-start' }).kind,
+    );
+    const database = new DatabaseSync(join(directory, 'orchestration.sqlite'));
+    try {
+      database
+        .prepare(
+          'UPDATE orchestration_turn_dedup_expired SET expired_at = ? WHERE dedup_key = ?',
+        )
+        .run(
+          Date.now() - 31 * 24 * 60 * 60 * 1000,
+          turnDedupKey('thread', 'a-start'),
+        );
+    } finally {
+      database.close();
+    }
+    settle('k4');
+    outcomes.push(
+      ledger.claim({ threadId: 'thread', clientTurnId: 'a-start' }).kind,
+    );
+    expect(outcomes).toEqual(['owner', 'expired', 'expired']);
+    // deleteThread is the bound: it removes the tombstone with the thread.
+    store.deleteThread('thread');
     expect(
-      ledger.claim({ threadId: 'thread', clientTurnId: 'k1' }),
+      ledger.claim({ threadId: 'thread', clientTurnId: 'a-start' }),
     ).toMatchObject({ kind: 'owner' });
     store.close();
   });

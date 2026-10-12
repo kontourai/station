@@ -512,6 +512,29 @@ describe('session control request keys (real SQLite table)', () => {
         ).toEqual({ kind: 'executed', result: 'ok' });
       });
 
+      test('count until exactly the TTL and stop counting one millisecond later', async () => {
+        const { keys, advance } = capped({ perCaller: 2, station: 100 });
+        await fill(keys, 'stuck', 2, stuck);
+        advance(SESSION_CONTROL_REQUEST_KEY_TTL_MS);
+        expect(
+          await runWithSessionControlKey(
+            keys,
+            id('fresh-0001', 'stuck'),
+            digest,
+            done,
+          ),
+        ).toEqual({ kind: 'capacity', scope: 'caller' });
+        advance(1);
+        expect(
+          await runWithSessionControlKey(
+            keys,
+            id('fresh-0001', 'stuck'),
+            digest,
+            done,
+          ),
+        ).toEqual({ kind: 'executed', result: 'ok' });
+      });
+
       test('no longer count toward the station backstop', async () => {
         const { keys, advance } = capped({ perCaller: 100, station: 2 });
         await fill(keys, 'c1', 1, stuck);
