@@ -188,7 +188,7 @@ for (const theme of ['light', 'dark'] as const) {
   for (const viewport of ['desktop', 'phone'] as const) {
     test(`offers a one-click server update (${theme}, ${viewport})`, async ({
       page,
-    }) => {
+    }, testInfo) => {
       await mount(page, theme, viewport, 'update');
       await expect(page.getByText(OLDER)).toBeVisible();
       const update = page.getByRole('button', {
@@ -197,7 +197,7 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(update).toBeVisible();
       await expectNoHorizontalScroll(page);
       await page.screenshot({
-        path: test.info().outputPath(`offer-${theme}-${viewport}.png`),
+        path: testInfo.outputPath(`offer-${theme}-${viewport}.png`),
       });
 
       await update.click();
@@ -211,14 +211,14 @@ for (const theme of ['light', 'dark'] as const) {
       ).toHaveCount(0);
       await expectNoHorizontalScroll(page);
       await page.screenshot({
-        path: test.info().outputPath(`progress-${theme}-${viewport}.png`),
+        path: testInfo.outputPath(`progress-${theme}-${viewport}.png`),
       });
     });
   }
 
   test(`explains how to update a server that cannot do it from here (${theme}, phone)`, async ({
     page,
-  }) => {
+  }, testInfo) => {
     await mount(page, theme, 'phone', 'manual');
     await expect(page.getByText(OLDER)).toBeVisible();
     await expect(
@@ -229,7 +229,7 @@ for (const theme of ['light', 'dark'] as const) {
     ).toBeVisible();
     await expectNoHorizontalScroll(page);
     await page.screenshot({
-      path: test.info().outputPath(`manual-${theme}-phone.png`),
+      path: testInfo.outputPath(`manual-${theme}-phone.png`),
     });
   });
 }
