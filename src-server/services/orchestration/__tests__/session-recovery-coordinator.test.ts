@@ -1865,10 +1865,11 @@ describe('SessionRecoveryCoordinator', () => {
   });
 
   /**
-   * #3563: the source-terminal repair is a bulk CAS that runs before timers
-   * are rebuilt. When it answers `unavailable`, reconcile cannot know which
-   * armed intent's source already ended, so it must arm none of them until
-   * the repair lands, instead of replaying a turn the user already stopped.
+   * #3563: the startup source-terminal repair is a bulk CAS. When it answers
+   * `unavailable`, a timer must still never replay a turn whose source
+   * already ended, and must still resume one whose source is alive. Each
+   * intent is fenced by the same rule when its timer fires; the startup
+   * repair is defence in depth, not a gate on every recovery.
    */
   describe('a failed source-terminal repair at boot', () => {
     function armedPair(store: EventStore, now: Date) {
@@ -1911,19 +1912,27 @@ describe('SessionRecoveryCoordinator', () => {
       });
     }
 
-    function coordinatorWithRepairFaults(
+    function coordinatorWithFaults(
       store: EventStore,
       now: Date,
-      faults: number,
+      faults: { repair: number; fence: number },
     ) {
       const real = recoveryLedger(store);
-      let remaining = faults;
+      let repairFaults = faults.repair;
+      let fenceFaults = faults.fence;
       const repairs = vi.fn((at: string) => {
-        if (remaining > 0) {
-          remaining -= 1;
+        if (repairFaults > 0) {
+          repairFaults -= 1;
           return { kind: 'unavailable' as const };
         }
         return real.cancelSourceTerminated(at);
+      });
+      const fences = vi.fn((fingerprint: string, at: string) => {
+        if (fenceFaults > 0) {
+          fenceFaults -= 1;
+          return { kind: 'unavailable' as const };
+        }
+        return real.cancelIfSourceTerminated(fingerprint, at);
       });
       const sendTurn = vi.fn(async (input: { threadId: string }) => ({
         turnId: `recovered-${input.threadId}`,
@@ -1931,41 +1940,44 @@ describe('SessionRecoveryCoordinator', () => {
       const warn = vi.fn();
       const coordinator = new SessionRecoveryCoordinator({
         eventStore: store,
-        recoveryLedger: { ...real, cancelSourceTerminated: repairs },
+        recoveryLedger: {
+          ...real,
+          cancelSourceTerminated: repairs,
+          cancelIfSourceTerminated: fences,
+        },
         adapterForProvider: () =>
           ({ metadata: { recovery: { sameSession: true } } }) as any,
         sendTurn,
         now: () => now,
         logger: { warn },
       });
-      return { coordinator, repairs, sendTurn, warn };
+      return { coordinator, fences, sendTurn, warn };
     }
 
-    test('arms no timer until the repair lands, then cancels the ended source and resumes the other', async () => {
+    test('a repair that never lands still cancels the ended source and resumes the live one', async () => {
       vi.useFakeTimers();
       const dir = makeTempDir('recovery-coordinator-');
       const store = new EventStore(join(dir, 'orchestration.sqlite'));
       const now = new Date('2026-07-29T12:00:00.000Z');
       armedPair(store, now);
-      const { coordinator, repairs, sendTurn, warn } =
-        coordinatorWithRepairFaults(store, now, 1);
+      const { coordinator, sendTurn, warn } = coordinatorWithFaults(
+        store,
+        now,
+        { repair: Number.POSITIVE_INFINITY, fence: 0 },
+      );
       try {
         coordinator.reconcile();
         await vi.advanceTimersByTimeAsync(0);
-        expect(sendTurn).not.toHaveBeenCalled();
+        expect(sendTurn.mock.calls.map(([input]) => input.threadId)).toEqual([
+          'thread-open',
+        ]);
+        expect(coordinator.latestProjection('thread-ended')).toMatchObject({
+          outcome: 'canceled',
+        });
         expect(warn).toHaveBeenCalledWith(
           expect.stringContaining('source-terminal repair'),
           expect.anything(),
         );
-
-        await vi.advanceTimersByTimeAsync(60_000);
-        expect(repairs).toHaveBeenCalledTimes(2);
-        expect(coordinator.latestProjection('thread-ended')).toMatchObject({
-          outcome: 'canceled',
-        });
-        expect(sendTurn.mock.calls.map(([input]) => input.threadId)).toEqual([
-          'thread-open',
-        ]);
       } finally {
         await coordinator.dispose().catch(() => undefined);
         store.close();
@@ -1973,29 +1985,33 @@ describe('SessionRecoveryCoordinator', () => {
       }
     });
 
-    test('a repair that never lands stops retrying and never replays either intent', async () => {
+    test('an unavailable fire-time fence defers the dispatch and keeps retrying', async () => {
       vi.useFakeTimers();
       const dir = makeTempDir('recovery-coordinator-');
       const store = new EventStore(join(dir, 'orchestration.sqlite'));
       const now = new Date('2026-07-29T12:00:00.000Z');
       armedPair(store, now);
-      const { coordinator, repairs, sendTurn } = coordinatorWithRepairFaults(
+      const { coordinator, fences, sendTurn, warn } = coordinatorWithFaults(
         store,
         now,
-        Number.POSITIVE_INFINITY,
+        { repair: 0, fence: 3 },
       );
       try {
         coordinator.reconcile();
-        await vi.advanceTimersByTimeAsync(10 * 60_000);
+        await vi.advanceTimersByTimeAsync(0);
+        // The startup repair already canceled `thread-ended`; only the live
+        // intent fires, and its fence cannot be read yet.
         expect(sendTurn).not.toHaveBeenCalled();
-        const attempts = repairs.mock.calls.length;
-        expect(attempts).toBeGreaterThan(1);
+        expect(warn).toHaveBeenCalledWith(
+          expect.stringContaining('fire-time'),
+          expect.anything(),
+        );
+        // Three unavailable answers, then the fence reads: never given up.
         await vi.advanceTimersByTimeAsync(10 * 60_000);
-        expect(repairs).toHaveBeenCalledTimes(attempts);
-        expect(sendTurn).not.toHaveBeenCalled();
-        expect(coordinator.latestProjection('thread-ended')).toMatchObject({
-          outcome: 'armed',
-        });
+        expect(fences.mock.calls.length).toBeGreaterThanOrEqual(4);
+        expect(sendTurn.mock.calls.map(([input]) => input.threadId)).toEqual([
+          'thread-open',
+        ]);
       } finally {
         await coordinator.dispose().catch(() => undefined);
         store.close();
