@@ -75,12 +75,11 @@ const RECOVERY_SHUTDOWN_SETTLEMENT_MS = 250;
 const CANCELLATION_RETRY_MS = 100;
 
 /**
- * #3563: backoff for a boot-time source-terminal repair that answered
- * `unavailable`. Armed intents stay without timers while it is retried; once
- * the schedule is spent they stay paused until the next boot repeats the
- * repair. Pausing a recovery is recoverable; replaying a stopped turn is not.
+ * #3563: when a timer fires and the per-intent source-terminal fence cannot
+ * be read, the dispatch waits this long and asks again, for as long as it
+ * takes. It never dispatches on an unread fence and never gives up.
  */
-const SOURCE_TERMINAL_REPAIR_RETRY_MS = [1_000, 2_000, 4_000, 8_000, 16_000];
+const SOURCE_TERMINAL_FENCE_RETRY_MS = 60_000;
 
 /**
  * Small recovery owner for the orchestration event seam. It schedules only
@@ -93,7 +92,6 @@ export class SessionRecoveryCoordinator {
     string,
     ReturnType<typeof setTimeout>
   >();
-  private sourceTerminalRepairTimer?: ReturnType<typeof setTimeout>;
   private stopping = false;
   private readonly inFlight = new Set<Promise<void>>();
   private readonly lifecycleByFingerprint = new Map<string, Promise<void>>();
@@ -174,7 +172,7 @@ export class SessionRecoveryCoordinator {
     // The source terminal is durable even if the original cancellation CAS
     // returned unavailable. Repair it before deriving timers, so restart can
     // never re-dispatch a recovery that the source already ended.
-    const repaired = this.repairSourceTerminals();
+    const repair = this.ledger.cancelSourceTerminated(this.now().toISOString());
     // CredentialRecoveryModule is the only owner that can turn a prepared
     // profile attempt into candidate-profile compensation.  This coordinator
     // may settle ordinary recovery only; otherwise it would erase the
@@ -185,50 +183,51 @@ export class SessionRecoveryCoordinator {
     );
     for (const intent of unsettled)
       this.recordIntentOutcome(intent, 'indeterminate');
-    if (repaired) {
-      this.armReconciledTimers();
-    } else {
-      // #3563: the repair is one bulk CAS, so a failure leaves every armed
-      // intent possibly source-terminated. None gets a timer until it lands.
+    // #3563: the bulk repair is defence in depth. Each timer re-checks the
+    // same rule for its own intent before it can dispatch, so a failed
+    // repair only needs to be said, not to pause every recovery.
+    if (repair.kind === 'unavailable' || repair.kind === 'invalid') {
       this.options.logger?.warn(
-        'Recovery source-terminal repair is unavailable; armed recoveries stay paused until it succeeds',
-        { retryInMs: SOURCE_TERMINAL_REPAIR_RETRY_MS[0] },
+        'Recovery source-terminal repair is unavailable at startup; each recovery is checked when its timer fires',
+        { result: repair.kind },
       );
-      this.retrySourceTerminalRepair(0);
     }
-    void this.credentialRecovery?.reconcile();
-  }
-
-  private repairSourceTerminals(): boolean {
-    const repair = this.ledger.cancelSourceTerminated(this.now().toISOString());
-    return repair.kind === 'applied' || repair.kind === 'stale';
-  }
-
-  private armReconciledTimers(): void {
     for (const intent of this.ledger.pending()) {
       if (intent.outcome !== 'armed' || !intent.dueAt) continue;
       this.schedule(intent.fingerprint, intent.dueAt);
     }
+    void this.credentialRecovery?.reconcile();
   }
 
-  private retrySourceTerminalRepair(attempt: number): void {
-    if (this.stopping || this.disposed) return;
-    const delay = SOURCE_TERMINAL_REPAIR_RETRY_MS[attempt];
-    if (delay === undefined) {
-      this.options.logger?.warn(
-        'Recovery source-terminal repair stayed unavailable; armed recoveries stay paused until the next restart',
-        { attempts: SOURCE_TERMINAL_REPAIR_RETRY_MS.length + 1 },
-      );
-      return;
+  /**
+   * #3563: the fire-time half of the source-terminal rule. Returns true when
+   * this timer may go on to claim. A canceled intent stops here; an unread
+   * fence re-arms the timer and asks again later.
+   */
+  private passesSourceTerminalFence(fingerprint: string): boolean {
+    const intent = this.ledger.find(fingerprint);
+    const fenced = this.ledger.cancelIfSourceTerminated(
+      fingerprint,
+      this.now().toISOString(),
+    );
+    if (fenced.kind === 'stale') return true;
+    if (fenced.kind === 'applied') {
+      if (intent) this.recordIntentOutcome(intent, 'canceled');
+      return false;
     }
-    const timer = setTimeout(() => {
-      this.sourceTerminalRepairTimer = undefined;
-      if (this.stopping || this.disposed) return;
-      if (this.repairSourceTerminals()) this.armReconciledTimers();
-      else this.retrySourceTerminalRepair(attempt + 1);
-    }, delay);
-    timer.unref?.();
-    this.sourceTerminalRepairTimer = timer;
+    this.options.logger?.warn(
+      'Recovery fire-time source-terminal check is unavailable; the dispatch waits and retries',
+      { retryInMs: SOURCE_TERMINAL_FENCE_RETRY_MS },
+    );
+    if (intent?.outcome === 'armed') {
+      this.schedule(
+        fingerprint,
+        new Date(
+          this.now().getTime() + SOURCE_TERMINAL_FENCE_RETRY_MS,
+        ).toISOString(),
+      );
+    }
+    return false;
   }
 
   async dispose(): Promise<void> {
@@ -236,10 +235,6 @@ export class SessionRecoveryCoordinator {
     this.stopping = true;
     for (const timer of this.timers.values()) clearTimeout(timer);
     this.timers.clear();
-    if (this.sourceTerminalRepairTimer) {
-      clearTimeout(this.sourceTerminalRepairTimer);
-      this.sourceTerminalRepairTimer = undefined;
-    }
     // Persist cancellation while this Module can still schedule its bounded
     // exact retry. Marking disposed first used to suppress that retry and
     // allowed an armed recovery to survive shutdown without an obligation.
@@ -543,6 +538,7 @@ export class SessionRecoveryCoordinator {
     autoResumeAllowed = true,
   ): Promise<void> {
     if (this.disposed) return;
+    if (!this.passesSourceTerminalFence(fingerprint)) return;
     // A reconstructed due intent still gets the same credential-recovery
     // Module before ordinary replay. Its durable claim remains the authority.
     if (this.credentialRecovery) {

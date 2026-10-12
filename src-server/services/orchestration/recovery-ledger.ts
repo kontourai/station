@@ -106,6 +106,14 @@ export interface RecoveryLedger {
   awaitingUser(): RecoveryIntentSnapshot[];
   /** Startup repair: source-terminal events remain authoritative after a canceled write fault. */
   cancelSourceTerminated(now: string): RecoveryTransition;
+  /**
+   * #3563: the startup repair's rule for one intent, checked when its timer
+   * fires. `applied` canceled it; `stale` lets dispatch proceed.
+   */
+  cancelIfSourceTerminated(
+    fingerprint: string,
+    now: string,
+  ): RecoveryTransition;
   cancelShutdownRequested(now: string): RecoveryTransition;
 }
 
@@ -261,6 +269,10 @@ interface RecoveryLedgerCoordinator {
   }): RecoveryTransition;
   awaitingUser(): RecoveryIntentRecord[];
   cancelSourceTerminated(now: string): RecoveryTransition;
+  cancelIfSourceTerminated(
+    fingerprint: string,
+    now: string,
+  ): RecoveryTransition;
   cancelShutdownRequested(now: string): RecoveryTransition;
 }
 
@@ -618,6 +630,13 @@ export function createRecoveryLedger(options: {
     cancelSourceTerminated: (now) => {
       try {
         return options.coordinator.cancelSourceTerminated(now);
+      } catch {
+        return unavailable();
+      }
+    },
+    cancelIfSourceTerminated: (fingerprint, now) => {
+      try {
+        return options.coordinator.cancelIfSourceTerminated(fingerprint, now);
       } catch {
         return unavailable();
       }

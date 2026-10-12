@@ -11594,6 +11594,8 @@ export class EventStore {
       awaitingUser: () => this.readUsageLimitIntentsAwaitingUser(),
       cancelSourceTerminated: (now) =>
         this.cancelSourceTerminatedRecoveries(now),
+      cancelIfSourceTerminated: (fingerprint, now) =>
+        this.cancelRecoveryIfSourceTerminated(fingerprint, now),
       cancelShutdownRequested: (now) => this.cancelShutdownRecoveries(now),
     };
     const startup = options.credentialStartup;
@@ -12585,17 +12587,31 @@ export class EventStore {
         `UPDATE orchestration_recovery_intents AS intent
          SET outcome = 'canceled', updated_at = ?
          WHERE intent.outcome IN ('armed', 'resumed', 'manual')
-           AND (
-             intent.shutdown_cancel_requested_at IS NOT NULL
-             OR EXISTS (
-               SELECT 1 FROM orchestration_events AS event
-               WHERE event.thread_id = intent.thread_id
-                 AND event.turn_id = intent.source_turn_id
-                 AND event.method IN ('turn.aborted', 'turn.failed')
-             )
-           )`,
+           AND ${RECOVERY_SOURCE_TERMINATED}`,
       )
       .run(now) as { changes: number | bigint };
+    return recoveryTransition(result);
+  }
+
+  /**
+   * #3563: the same rule for one intent, when its timer fires. A startup
+   * repair that answered `unavailable` cannot then replay a turn whose source
+   * already ended, and it no longer has to gate every other recovery.
+   * `applied` canceled the intent; `stale` means dispatch may proceed.
+   */
+  private cancelRecoveryIfSourceTerminated(
+    fingerprint: string,
+    now: string,
+  ): RecoveryTransition {
+    const result = this.db
+      .prepare(
+        `UPDATE orchestration_recovery_intents AS intent
+         SET outcome = 'canceled', updated_at = ?
+         WHERE intent.fingerprint = ?
+           AND intent.outcome IN ('armed', 'resumed', 'manual')
+           AND ${RECOVERY_SOURCE_TERMINATED}`,
+      )
+      .run(now, fingerprint) as { changes: number | bigint };
     return recoveryTransition(result);
   }
 
@@ -13862,6 +13878,21 @@ function sqliteRunChanges(result: unknown): number {
     throw new Error('SQLite write returned an invalid change count.');
   return Number(result.changes);
 }
+
+/**
+ * The one source-terminal rule (#3563): shutdown asked to cancel the intent,
+ * or its source turn has a durable terminal event. The startup repair and the
+ * fire-time fence both use it, so they cannot disagree about an intent.
+ */
+const RECOVERY_SOURCE_TERMINATED = `(
+  intent.shutdown_cancel_requested_at IS NOT NULL
+  OR EXISTS (
+    SELECT 1 FROM orchestration_events AS event
+    WHERE event.thread_id = intent.thread_id
+      AND event.turn_id = intent.source_turn_id
+      AND event.method IN ('turn.aborted', 'turn.failed')
+  )
+)`;
 
 function recoveryTransition(result: {
   changes: number | bigint;
