@@ -888,6 +888,8 @@ describe('SessionTurnBoundaryAuthority', () => {
         exact: () => null,
         probe: (pid) =>
           probeExactProcessIdentity(pid, {
+            // POSIX semantics: Windows keeps EPERM unavailable (#3563).
+            platform: 'linux',
             kill: () => {
               const error = new Error('EPERM') as NodeJS.ErrnoException;
               error.code = 'EPERM';
