@@ -48,9 +48,13 @@ participant can refuse a command before it writes, or abort it after.
 The package imports only `node:` builtins, the dependencies its
 `package.json` declares, and its own files. It never imports
 `@kontourai/station` or any `@kontourai/station-*` package, contracts and
-shared included. Loaders the import graph cannot see (`node:module`,
-`getBuiltinModule`, a referenced `require`, `import.meta.resolve`) and symlinks
-under the package are refused too. `scripts/monument-import-boundary-gate.mjs`
+shared included. Loaders the import graph cannot see (`node:module`, `node:vm`,
+`node:child_process` outside tests, `node:worker_threads`, `getBuiltinModule`,
+`createRequire`, `eval`, `Function`, a referenced or member `require`,
+`import.meta.resolve`), CommonJS source, nested manifests or repositories,
+relative paths through `node_modules`, and symlinks under the package are
+refused too. The gate reads source text; a name assembled at run time is out
+of its reach and is left to review. `scripts/monument-import-boundary-gate.mjs`
 enforces this in
 `ci:fast` and in `verify:static`. Station consumes the package only through
 its public entry points: `.`, `./sqlite` and `./testing`.

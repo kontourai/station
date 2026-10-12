@@ -29,6 +29,9 @@ import {
   type KernelTransaction,
 } from './port.js';
 
+const LONE_SURROGATE =
+  /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+
 function resolveKernelLimits(
   limits: Partial<KernelLimits> | undefined,
 ): KernelLimits {
@@ -122,6 +125,12 @@ function dispatch(
       return record ? { kind: 'found', record } : { kind: 'absent' };
     }
     case 'turnDedup.forgetPrefix':
+      // An empty prefix would forget every key, and an unpaired surrogate is
+      // stored differently by each adapter (node:sqlite binds it as U+FFFD).
+      if (command.prefix === '' || LONE_SURROGATE.test(command.prefix))
+        throw new RangeError(
+          'turnDedup.forgetPrefix needs a non-empty, well-formed prefix.',
+        );
       return {
         kind: 'applied',
         removed: tx.turnDedup.deletePrefix(command.prefix),

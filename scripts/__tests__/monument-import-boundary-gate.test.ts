@@ -19,7 +19,7 @@ const CLEAN = {
     "import { DatabaseSync } from 'node:sqlite';\nexport { local } from './local.js';\nexport type Db = DatabaseSync;\n",
   [`${ROOT}/src/local.ts`]: 'export const local = 1;\n',
   [`${ROOT}/src/__tests__/local.test.ts`]:
-    "import { expect, it } from 'vitest';\nimport { local } from '../local.js';\nit('works', () => expect(local).toBe(1));\n",
+    "import { spawnSync } from 'node:child_process';\nimport { expect, it } from 'vitest';\nimport { local } from '../local.js';\nit('works', () => expect(local + (spawnSync ? 0 : 1)).toBe(1));\n",
 };
 
 function run(

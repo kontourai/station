@@ -16,17 +16,26 @@
  *   by name even when declared, and declaring one in package.json is itself
  *   a violation, so adding the dependency is not a way around the rule;
  * - test files may also import the workspace test runner (`vitest`), which
- *   is not published with the package;
+ *   is not published with the package, and `node:child_process`, which the
+ *   crash tests use to kill a real process;
  * - a dynamic `import()` or `require()` whose argument is not a constant
- *   string cannot be checked and is refused, and so is every loader the
- *   import graph cannot see: `node:module` (`createRequire`),
- *   `getBuiltinModule`, `createRequire` and `eval` under any spelling, a
- *   `require` that is referenced rather than called, `import.meta.resolve`,
- *   and CommonJS source files (`.cjs`, `.cts`);
+ *   string cannot be checked and is refused, and so are the loaders the
+ *   import graph cannot see: the `node:module`, `node:vm`,
+ *   `node:child_process` and `node:worker_threads` builtins;
+ *   `getBuiltinModule`, `createRequire`, `eval` and `Function` spelled as a
+ *   name or a constant string; a `require` that is referenced, or called as a
+ *   member, rather than called directly; `import.meta.resolve`; and CommonJS
+ *   source (`.cjs`, `.cts`, or any nested `package.json`);
  * - no symlink may exist under the package, git-ignored paths included:
  *   relative specifiers are checked by path, and a link would let `./x`
- *   resolve outside it;
+ *   resolve outside it. No relative specifier may pass through
+ *   `node_modules`, and an untracked directory git will not list into (a
+ *   nested repository) is refused rather than skipped;
  * - declaration files are scanned like any other source.
+ *
+ * This is a lint over source text, not a sandbox: a name assembled at run
+ * time (`process['getBuilt' + 'inModule']`) is out of its reach. Review owns
+ * that; the gate makes the ordinary spellings fail loudly.
  *
  * Imports are read from the TypeScript syntax tree (static imports, re-exports,
  * `import x = require()`, `import()`, `require()`, `require.resolve()`,
@@ -46,7 +55,18 @@ const SOURCE_EXTENSION = /\.(?:[cm]?[jt]s|tsx|jsx)$/;
 const COMMONJS_EXTENSION = /\.c[jt]s$/;
 const TEST_FILE = /(^|\/)__tests__\/|\.(?:test|spec)\.[cm]?[jt]sx?$/;
 const TEST_ONLY_IMPORTS = new Set(['vitest']);
-const MODULE_LOADER_SPECIFIERS = new Set(['node:module', 'module']);
+/** Crash tests spawn real children; shipped source may not. */
+const TEST_ONLY_LOADERS = new Set(['node:child_process']);
+const MODULE_LOADER_SPECIFIERS = new Set([
+  'node:module',
+  'module',
+  'node:vm',
+  'vm',
+  'node:child_process',
+  'child_process',
+  'node:worker_threads',
+  'worker_threads',
+]);
 const STATION_PACKAGE = /^@kontourai\/station(?:-[^/]+)?$/;
 const DEPENDENCY_FIELDS = [
   'dependencies',
@@ -98,12 +118,23 @@ function constantString(node) {
  * `require(...)`, `require.resolve(...)`: the call forms the visitor checks
  * by their argument. A property NAMED `require` is not the loader.
  */
+function isMemberRequireCall(identifier) {
+  const parent = identifier.parent;
+  return (
+    ts.isPropertyAccessExpression(parent) &&
+    parent.name === identifier &&
+    ts.isCallExpression(parent.parent) &&
+    parent.parent.expression === parent
+  );
+}
+
 function isRequireCallee(identifier) {
   const parent = identifier.parent;
   if (ts.isCallExpression(parent) && parent.expression === identifier)
     return true;
   if (ts.isPropertyAccessExpression(parent)) {
-    if (parent.name === identifier) return true;
+    // `x.require` names a property; `module.require(...)` calls a loader.
+    if (parent.name === identifier) return !isMemberRequireCall(identifier);
     return (
       parent.expression === identifier &&
       parent.name.text === 'resolve' &&
@@ -138,6 +169,7 @@ const LOADER_NAMES = new Map([
   ['getBuiltinModule', '<getBuiltinModule>'],
   ['createRequire', '<createRequire>'],
   ['eval', '<eval>'],
+  ['Function', '<Function>'],
 ]);
 
 function isImportMeta(node) {
@@ -228,7 +260,9 @@ export function moduleReferences(file, content) {
       !isRequireCallee(node)
     ) {
       references.push({
-        specifier: '<require reference>',
+        specifier: isMemberRequireCall(node)
+          ? '<member require>'
+          : '<require reference>',
         line: lineOf(node.getStart()),
         how: 'module-loader',
       });
@@ -261,14 +295,19 @@ export function classifyReference(file, reference, declared) {
   const { specifier } = reference;
   if (reference.how === 'module-loader') return 'module-loader';
   if (specifier === null) return 'unverifiable-import';
-  if (MODULE_LOADER_SPECIFIERS.has(specifier)) return 'module-loader';
+  if (MODULE_LOADER_SPECIFIERS.has(specifier))
+    return TEST_FILE.test(file) && TEST_ONLY_LOADERS.has(specifier)
+      ? null
+      : 'module-loader';
   if (specifier.startsWith('node:')) return null;
   if (specifier.startsWith('.')) {
     const resolved = posix.normalize(
       posix.join(posix.dirname(file), specifier),
     );
-    return resolved === MONUMENT_ROOT ||
-      resolved.startsWith(`${MONUMENT_ROOT}/`)
+    // Through node_modules, a relative path reaches whatever is linked there.
+    return (resolved === MONUMENT_ROOT ||
+      resolved.startsWith(`${MONUMENT_ROOT}/`)) &&
+      !resolved.split('/').includes('node_modules')
       ? null
       : 'escapes-package';
   }
@@ -335,6 +374,14 @@ function main() {
       lstatSync(file, { throwIfNoEntry: false })?.isSymbolicLink(),
     )
     .map((file) => ({ kind: 'symlink', file, line: 1, specifier: '' }));
+  const structural = listed.flatMap((file) =>
+    file.endsWith('/')
+      ? [{ kind: 'unscanned-directory', file, line: 1, specifier: '' }]
+      : file.endsWith('/package.json') &&
+          file !== `${MONUMENT_ROOT}/package.json`
+        ? [{ kind: 'nested-manifest', file, line: 1, specifier: '' }]
+        : [],
+  );
   const files = listed.filter(
     (file) =>
       SOURCE_EXTENSION.test(file) &&
@@ -348,6 +395,7 @@ function main() {
   }
   const findings = [
     ...symlinks,
+    ...structural,
     ...scanMonument({
       files,
       readText: (path) => readFileSync(path, 'utf8'),
