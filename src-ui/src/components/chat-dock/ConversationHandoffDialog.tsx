@@ -27,6 +27,7 @@ import { GLOBAL_CONTEXT } from '../modals/new-chat-modal-utils';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveDialogSurface,
+  ResponsiveSurfaceActions,
 } from '../ResponsiveDialogSurface';
 import { Empty } from '../state';
 import '../chat/ConversationHandoff.css';
@@ -637,7 +638,9 @@ export function ConversationHandoffDialog({
               {feedback}
             </div>
           )}
-          <div className="conversation-handoff-dialog__actions">
+          {/* The shared action row owns phone wrapping, tap targets and the
+              safe area; this class keeps only the desktop alignment. */}
+          <ResponsiveSurfaceActions className="conversation-handoff-dialog__actions">
             <Button onClick={onClose} disabled={closeLocked}>
               Cancel
             </Button>
@@ -665,7 +668,7 @@ export function ConversationHandoffDialog({
                     ? `Switch to ${engineLabel ?? 'default engine'}`
                     : `Continue with ${targetName}`}
             </Button>
-          </div>
+          </ResponsiveSurfaceActions>
         </div>
       )}
     </ResponsiveDialogSurface>
