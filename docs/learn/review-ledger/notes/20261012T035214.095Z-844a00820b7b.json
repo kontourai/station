@@ -1,0 +1,7 @@
+{
+  "revision": "83d57ad163de9d6338c0e8d5780924b1595a3419",
+
+  "notes": [
+    {"path":"README.md","note":"Checked the root README against the new Nightly subsection (When the server is older than the app): the README repeats none of its claims and still links the guide correctly.","inputs":["README.md","docs/guides/nightly.md"]}
+  ]
+}
