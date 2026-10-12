@@ -92,7 +92,15 @@ coding app's default profile, and does not edit saved Agent defaults. Known
 capability incompatibilities remain visible with a refusal reason; live resource
 and adapter delivery checks still decide admission. In an existing conversation,
 changing or resetting the engine opens an explicit handoff with the real draft
-and the existing context/write-identity confirmation. **Use Agent defaults**
+and the existing context/write-identity confirmation. There the picker lists
+only the other engines this client can start (an unready or incompatible one is
+left out rather than shown with a refusal), lists none when the conversation's
+open resolution does not allow changes, and shows them disabled with the reason
+while a turn, queued message or pending check blocks the switch; the handoff's
+**Switch to …** action is disabled for the same reasons ([entry
+point](../../src-ui/src/components/chat-dock/ChatDockBody.tsx),
+[dialog](../../src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx)).
+**Use Agent defaults**
 returns to the authored engine and model through that handoff. In a new-start
 picker, resetting also clears an explicit Station choice, restoring configured
 placement defaults rather than leaving a remote destination without its verified
