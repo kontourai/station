@@ -2078,6 +2078,34 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
       });
     });
 
+    test('F1: a steer is never a dispatch’s own start, even when it is the first start recorded for its turn', async () => {
+      // The steered turn's original start is not in the log (e.g. it was
+      // lost to the same crash), so the first-start bound alone cannot tell.
+      const path = databasePath();
+      const threadId = 'thread-steer-first-start';
+      const dying = new EventStore(path);
+      dying.appendEvent(sessionStartedEvent({ threadId, provider: 'acp' }));
+      const r1 = dying
+        .sessionTurnBoundaryAuthority()
+        .claim(threadId, '2026-08-16T00:00:01.000Z');
+      if (r1.kind !== 'owner') throw new Error('expected R1 owner');
+      r1.claim.beginInvocation('2026-08-16T00:00:01.050Z');
+      dying.appendEvent(
+        startOf(threadId, 'T-steered', '2026-08-16T00:00:01.100Z', {
+          inputKind: 'steer',
+        }),
+      );
+      dying.close();
+      const eventStore = reboot(path, threadId);
+
+      await (serviceOn(eventStore) as any).interruptedTurns.consume();
+
+      expect(summarize(eventStore, threadId)).toEqual({
+        aborts: [],
+        banners: 1,
+      });
+    });
+
     test('two fresh non-provider starts after the claim: the LATEST is the dispatch’s own (closed), never read as moved on', async () => {
       const path = databasePath();
       const threadId = 'thread-two-fresh-starts';
