@@ -1,0 +1,7 @@
+{
+  "revision": "4d7dd9b704305e729ae5da64e12ce8223c98fc04",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"#3552 touched session-api.md only in the attached-continuation wording (message box replaces the Continue in Station control); this ADR's managed-chat routing decision does not depend on that wording. No prose change.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

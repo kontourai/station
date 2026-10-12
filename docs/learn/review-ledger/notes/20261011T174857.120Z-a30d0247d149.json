@@ -1,0 +1,7 @@
+{
+  "revision": "bbb274eb1b8e466d656e6741ea41044bb28cd3f5",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Model sentence now includes rows that cannot start (no model control), matching AgentPickerRow showModel = runnable && ...; rest of the Agent list paragraph unchanged and accurate.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-start/AgentPickerRow.tsx"]}
+  ]
+}

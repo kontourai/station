@@ -1,0 +1,7 @@
+{
+  "revision": "9e6792652ccc11e6c6507d2d5a2067c969417805",
+
+  "notes": [
+    {"path":"docs/design/agent-engine-unification.md","note":"§8.1 now says the start pickers carry the engine as the same quiet pill right after the Agent's name (not a line of its own), omitted where it repeats the name. Matches AgentPickerRow at this revision.","inputs":["docs/design/agent-engine-unification.md"]}
+  ]
+}
