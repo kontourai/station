@@ -4,9 +4,9 @@
  * rejection is paired with the clean control, which is what binds a non-zero
  * exit to the planted import rather than to a malformed fixture.
  */
-import { spawnSync } from 'node:child_process';
-import { readFileSync, symlinkSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { scratchRepo } from './helpers/guardrail-scratch.js';
 
@@ -25,6 +25,7 @@ const CLEAN = {
 function run(
   files: Record<string, string>,
   links: ReadonlyArray<readonly [path: string, target: string]> = [],
+  after: (dir: string) => void = () => {},
 ) {
   const dir = scratchRepo({
     script: SCRIPT,
@@ -34,7 +35,11 @@ function run(
   // The gate parses with the workspace's TypeScript API.
   symlinkSync(resolve('node_modules'), join(dir, 'node_modules'), 'dir');
   // Untracked on purpose: the gate must see a link before it is added.
-  for (const [path, target] of links) symlinkSync(target, join(dir, path));
+  for (const [path, target] of links) {
+    mkdirSync(dirname(join(dir, path)), { recursive: true });
+    symlinkSync(target, join(dir, path));
+  }
+  after(dir);
   const result = spawnSync(process.execPath, [join('scripts', SCRIPT)], {
     cwd: dir,
     encoding: 'utf8',
@@ -201,10 +206,59 @@ describe('monument import boundary gate', () => {
         'export enum E { require = 1 }',
         'export function g(require: string, { resolve }: { resolve: number }) { return resolve; }',
         'export const o = { require: 1, resolve: Promise.resolve(1) };',
+        'export class D { get require() { return 1; } set require(v: number) {} }',
+        'const { require: r } = o; export { r };',
         '',
       ].join('\n'),
     });
     expect(result.status, result.output).toBe(0);
+  });
+
+  it('rejects the remaining routes out: node_modules, nested manifests and repositories, code loaders', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const result = run(
+      {
+        ...CLEAN,
+        'packages/shared/src/index.ts': 'export const s = 1;\n',
+        [`${ROOT}/src/through.ts`]:
+          "export { s } from '../node_modules/@kontourai/station-shared/src/index.ts';\n",
+        [`${ROOT}/src/cjs/package.json`]: '{"type":"commonjs"}\n',
+        [`${ROOT}/src/cjs/legacy.js`]:
+          "module.exports = module.require('@kontourai/station-shared');\n",
+        [`${ROOT}/src/code.ts`]: [
+          "export const f = new Function('return 1');",
+          "import { runInThisContext } from 'node:vm';",
+          "import { fork } from 'node:child_process';",
+          "import { Worker } from 'node:worker_threads';",
+          'export { runInThisContext, fork, Worker };',
+          '',
+        ].join('\n'),
+      },
+      [[`${ROOT}/node_modules/@kontourai/station-shared`, '../../../shared']],
+      (dir) => {
+        // An untracked nested repository: git lists only its directory.
+        const vendor = join(dir, ROOT, 'src', 'vendor');
+        mkdirSync(vendor, { recursive: true });
+        execFileSync('git', ['init', '-q'], { cwd: vendor, windowsHide: true });
+        writeFileSync(
+          join(vendor, 'hidden.ts'),
+          "export * from '@kontourai/station-shared';\n",
+        );
+      },
+    );
+    expect(result.status, result.output).toBe(1);
+    for (const line of [
+      `escapes-package: ${ROOT}/src/through.ts:1 ../node_modules/@kontourai/station-shared/src/index.ts`,
+      `nested-manifest: ${ROOT}/src/cjs/package.json:1`,
+      `module-loader: ${ROOT}/src/cjs/legacy.js:1 <member require>`,
+      `module-loader: ${ROOT}/src/code.ts:1 <Function>`,
+      `module-loader: ${ROOT}/src/code.ts:2 node:vm`,
+      `module-loader: ${ROOT}/src/code.ts:3 node:child_process`,
+      `module-loader: ${ROOT}/src/code.ts:4 node:worker_threads`,
+      `unscanned-directory: ${ROOT}/src/vendor/`,
+    ])
+      expect(result.stderr).toContain(line);
   });
 
   it('rejects declaring a Station package as a dependency', {

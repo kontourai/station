@@ -577,6 +577,13 @@ const turnDedup: KernelConformanceCase[] = [
           }),
           { kind: 'applied', removed: 1 },
         );
+        // An empty prefix would forget every key, and a lone surrogate is
+        // encoded differently by each storage: both are refused.
+        for (const prefix of ['', 'a\ud83d'])
+          await assert.rejects(
+            session.run({ type: 'turnDedup.forgetPrefix', prefix }),
+            RangeError,
+          );
         assert.notEqual(await dedupRecord(session, 'n\u0000b::1'), undefined);
         assert.notEqual(await dedupRecord(session, '\u{1f600}x::1'), undefined);
       }),
