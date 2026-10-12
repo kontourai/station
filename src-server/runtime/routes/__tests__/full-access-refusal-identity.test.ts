@@ -3,10 +3,8 @@
  * says when the person's Station group (not the device's grant) is what
  * stops full access, and points the operator at People instead.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   bindFullAccessRefusalIdentity,
   fullAccessRefusalBody,
@@ -16,15 +14,10 @@ import { EnvironmentSecurityService } from '../../../services/ssh/environment-se
 import { createFullAccessRefusalIdentity } from '../full-access-refusal-identity.js';
 
 const STANDARD = 'orchestration:read orchestration:operate terminal:operate';
-const homes: string[] = [];
-afterEach(() => {
-  for (const home of homes.splice(0))
-    rmSync(home, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 async function station() {
-  const homeDir = mkdtempSync(join(tmpdir(), 'station-refusal-'));
-  homes.push(homeDir);
+  const homeDir = makeTempDir('station-refusal-');
   const security = new EnvironmentSecurityService({ homeDir });
   await security.initialize();
   const pair = (scope: string, login?: string) => {
