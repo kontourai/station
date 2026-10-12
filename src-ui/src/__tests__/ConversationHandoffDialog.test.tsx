@@ -601,12 +601,14 @@ describe('ConversationHandoffDialog', () => {
         { id: 'gpt-5', name: 'GPT-5', available: false },
         { id: 'gpt-6', name: 'GPT-6' },
       ]);
-      handoffExecutionMessage.mockResolvedValueOnce(receipt());
       render(<EngineDialog />);
       const retry = screen.getByRole('button', {
         name: 'Retry safely',
       }) as HTMLButtonElement;
       expect(retry.disabled).toBe(false);
+      // Queued only once the retry is known to be live, so a failure above
+      // leaves no unconsumed response for the next test.
+      handoffExecutionMessage.mockResolvedValueOnce(receipt());
       fireEvent.click(retry);
       await waitFor(() =>
         expect(handoffExecutionMessage).toHaveBeenCalledTimes(2),
