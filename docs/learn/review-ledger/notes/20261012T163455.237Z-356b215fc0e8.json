@@ -1,0 +1,7 @@
+{
+  "revision": "ba5061b1bec57db653ba50c4e72e2c0dc72c50ef",
+
+  "notes": [
+    {"path":"README.md","note":"Reviewed a README-only change: the tagline now matches the GitHub repository description and station.kontourai.io, and a Docs/Site/License badge row links the published docs site, the product site and LICENSE. Checked that both URLs return 200 and that LICENSE exists at the root. No behavior, install or capability claim in the body changed; the body's qualified wording about runs, reviews and receipts is untouched. Limit: the tagline wording is owner-directed marketing copy; docs-kit.json still carries the older tagline and was out of scope.","inputs":["README.md"]}
+  ]
+}
