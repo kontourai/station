@@ -68,6 +68,28 @@ describe('node:sqlite adapter connection settings', () => {
     }
   });
 
+  it('refuses to open when busy_timeout does not read back as set', () => {
+    const real = new DatabaseSync(':memory:');
+    const lying: SqliteKernelDatabase = {
+      exec: (sql) => real.exec(sql),
+      prepare: (sql) =>
+        sql === 'PRAGMA busy_timeout'
+          ? {
+              get: () => ({ timeout: 0 }),
+              all: () => [],
+              run: () => ({ changes: 0 }),
+            }
+          : real.prepare(sql),
+    };
+    try {
+      expect(() => openSqliteKernelStorage({ database: lying })).toThrow(
+        /busy_timeout is 0/,
+      );
+    } finally {
+      real.close();
+    }
+  });
+
   it('refuses a busy timeout that is not a positive integer', () => {
     for (const busyTimeoutMs of [0, -1, 1.5])
       expect(() =>
@@ -155,6 +177,54 @@ describe('node:sqlite adapter decoding', () => {
       ),
     ).rejects.toThrow(/Invalid monument owner/);
     await storage.close();
+  });
+});
+
+describe('node:sqlite adapter locking', () => {
+  it('serves read-only commands while another connection holds the write lock', async () => {
+    const { path } = location();
+    const storage = openSqliteKernelStorage({ path, busyTimeoutMs: 50 });
+    const processes = createFakeProcessTable();
+    const context = { liveness: processes.liveness };
+    const owner = processes.spawn();
+    storage.executeSync(
+      { type: 'turnDedup.claim', key: 'k', owner, now: 1, tracking: 'tracked' },
+      context,
+    );
+    const writer = new DatabaseSync(path);
+    writer.exec('PRAGMA busy_timeout = 50');
+    writer.exec('BEGIN IMMEDIATE');
+    try {
+      expect(
+        storage.executeSync({ type: 'turnDedup.read', key: 'k' }, context).kind,
+      ).toBe('found');
+      expect(
+        storage.executeSync({ type: 'turnBoundary.list' }, context).kind,
+      ).toBe('records');
+      expect(
+        storage.executeSync(
+          { type: 'turnBoundary.hasPossibleEffect', threadId: 't' },
+          context,
+        ).kind,
+      ).toBe('available');
+      // Control: a write command does wait for the lock, and gives up.
+      expect(() =>
+        storage.executeSync(
+          {
+            type: 'turnDedup.claim',
+            key: 'k2',
+            owner,
+            now: 1,
+            tracking: 'tracked',
+          },
+          context,
+        ),
+      ).toThrow(/locked/);
+    } finally {
+      writer.exec('ROLLBACK');
+      writer.close();
+      await storage.close();
+    }
   });
 });
 

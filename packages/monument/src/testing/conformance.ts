@@ -294,6 +294,51 @@ const durability: KernelConformanceCase[] = [
         );
       }),
   },
+  {
+    name: "durability: a command cannot run inside another command's transaction",
+    run: async (harness) => {
+      let current: Session | undefined;
+      let nested: Promise<unknown> | undefined;
+      await withSession(
+        harness,
+        async (session) => {
+          current = session;
+          const owner = session.processes.spawn();
+          assert.deepEqual(await session.run(claim('outer', owner)), {
+            kind: 'claimed',
+            reclaimed: false,
+          });
+          assert.ok(nested, 'the participant ran');
+          await assert.rejects(nested);
+          assert.equal(await dedupRecord(session, 'inner'), undefined);
+          assert.equal(
+            (await dedupRecord(session, 'outer'))?.owner?.id,
+            owner.id,
+          );
+        },
+        {
+          participants: [
+            {
+              name: 'nester',
+              commit: ({ command }) => {
+                if (
+                  current &&
+                  command.type === 'turnDedup.claim' &&
+                  command.key === 'outer'
+                ) {
+                  nested = current.run(
+                    claim('inner', current.processes.spawn()),
+                  );
+                  // Keep an early rejection from being reported as unhandled.
+                  nested.catch(() => {});
+                }
+              },
+            },
+          ],
+        },
+      );
+    },
+  },
 ];
 
 const turnDedup: KernelConformanceCase[] = [
@@ -332,6 +377,25 @@ const turnDedup: KernelConformanceCase[] = [
           kind: 'resolved',
           value: 'turn-1',
         });
+        // A retry after a lost acknowledgement: same owner, same value.
+        assert.deepEqual(
+          await session.run({
+            type: 'turnDedup.resolve',
+            key: 'k',
+            ownerId: a.id,
+            value: 'turn-1',
+          }),
+          { kind: 'applied' },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnDedup.resolve',
+            key: 'k',
+            ownerId: a.id,
+            value: 'turn-2',
+          }),
+          { kind: 'stale' },
+        );
         assert.deepEqual(
           await session.run({
             type: 'turnDedup.release',
@@ -491,6 +555,30 @@ const turnDedup: KernelConformanceCase[] = [
         );
         assert.notEqual(await dedupRecord(session, 'ab::1'), undefined);
         assert.notEqual(await dedupRecord(session, 'xy'), undefined);
+        // Thread ids may hold NUL or characters outside the BMP.
+        for (const key of [
+          'n\u0000a::1',
+          'n\u0000b::1',
+          '\u{1f600}::1',
+          '\u{1f600}x::1',
+        ])
+          await session.run(claim(key, a));
+        assert.deepEqual(
+          await session.run({
+            type: 'turnDedup.forgetPrefix',
+            prefix: 'n\u0000a::',
+          }),
+          { kind: 'applied', removed: 1 },
+        );
+        assert.deepEqual(
+          await session.run({
+            type: 'turnDedup.forgetPrefix',
+            prefix: '\u{1f600}::',
+          }),
+          { kind: 'applied', removed: 1 },
+        );
+        assert.notEqual(await dedupRecord(session, 'n\u0000b::1'), undefined);
+        assert.notEqual(await dedupRecord(session, '\u{1f600}x::1'), undefined);
       }),
   },
 ];
@@ -737,6 +825,24 @@ const turnBoundary: KernelConformanceCase[] = [
           retire: false,
         });
         assert.notEqual(await boundary(session, 'a2'), undefined);
+        // ...but the fact is recorded: accepting that turn id later is
+        // ambiguous, as for any terminal the thread has seen.
+        await session.run({
+          type: 'turnBoundary.observeTerminal',
+          threadId: 'z',
+          providerTurnId: 'pz',
+          sessionTerminal: false,
+          terminalCreatedAt: at(1),
+          retire: false,
+        });
+        await session.run(create('bz', 'z', a, at(2)));
+        await session.run(transition('bz', a, ['prepared'], 'invoking', at(3)));
+        assert.deepEqual(
+          await session.run(
+            transition('bz', a, ['invoking'], 'accepted', at(4), 'pz'),
+          ),
+          { kind: 'ambiguous' },
+        );
       }),
   },
   {
@@ -1280,6 +1386,79 @@ const crashPoints: KernelConformanceCase[] = [
       }),
   },
 ];
+
+crashPoints.push(
+  {
+    name: 'crash: a reconcile whose commit failed changes no row',
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const dead = session.processes.spawn();
+        await session.run(create('p', 't1', dead, at(1)));
+        await session.run(create('i', 't2', dead, at(1)));
+        await session.run(
+          transition('i', dead, ['prepared'], 'invoking', at(2)),
+        );
+        session.processes.kill(dead);
+        session.store.failNextCommit();
+        await assert.rejects(
+          session.run({ type: 'turnBoundary.reconcile', now: at(3) }),
+        );
+        await session.store.reopen();
+        assert.deepEqual(
+          (await boundaries(session)).map((row) => [row.boundaryId, row.state]),
+          [
+            ['i', 'invoking'],
+            ['p', 'prepared'],
+          ],
+        );
+        const recovered = await session.run({
+          type: 'turnBoundary.reconcile',
+          now: at(4),
+        });
+        assert.deepEqual(
+          interruptedOf(recovered).map((row) => [row.boundaryId, row.state]),
+          [['i', 'indeterminate']],
+        );
+      }),
+  },
+  {
+    name: 'crash: a terminal whose commit failed neither retires the row nor records the fact',
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const a = session.processes.spawn();
+        await session.run(recordAccepted('a1', 't', 'p1', a, at(1)));
+        const observe = {
+          type: 'turnBoundary.observeTerminal',
+          threadId: 't',
+          providerTurnId: 'p1',
+          sessionTerminal: false,
+          terminalCreatedAt: at(2),
+        } as const;
+        session.store.failNextCommit();
+        await assert.rejects(session.run(observe));
+        await session.store.reopen();
+        assert.equal((await boundary(session, 'a1'))?.state, 'accepted');
+        // The fact was not recorded either: once a1 is gone, accepting p1 on
+        // a new row of the same thread is not ambiguous.
+        await session.run({
+          type: 'turnBoundary.remove',
+          boundaryId: 'a1',
+          ownerId: a.id,
+          from: ['accepted'],
+        });
+        await session.run(create('b', 't', a, at(3)));
+        await session.run(transition('b', a, ['prepared'], 'invoking', at(4)));
+        assert.deepEqual(
+          await session.run(
+            transition('b', a, ['invoking'], 'accepted', at(5), 'p1'),
+          ),
+          { kind: 'applied' },
+        );
+        await session.run({ ...observe, terminalCreatedAt: at(6) });
+        assert.equal(await boundary(session, 'b'), undefined);
+      }),
+  },
+);
 
 export const kernelConformanceCases: readonly KernelConformanceCase[] =
   Object.freeze([

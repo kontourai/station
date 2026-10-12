@@ -74,7 +74,71 @@ async function claimThenDie(
   return { pid: child.pid ?? -1, signal };
 }
 
+/**
+ * A child whose participant blocks inside the open transaction, after the
+ * kernel's writes and before COMMIT, and is SIGKILLed there.
+ */
+async function dieInsideTransaction(
+  path: string,
+): Promise<NodeJS.Signals | null> {
+  const script = `
+    const { writeSync } = await import('node:fs');
+    const { openSqliteKernelStorage } = await import(${JSON.stringify(ADAPTER)});
+    const storage = openSqliteKernelStorage({
+      path: ${JSON.stringify(path)},
+      participants: [{
+        name: 'stall',
+        commit() {
+          writeSync(1, 'inside\\n');
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);
+        },
+      }],
+    });
+    const owner = { id: 'child-owner', pid: process.pid, identityKind: 'unverified' };
+    storage.executeSync(
+      { type: 'turnDedup.claim', key: 'k', owner, now: 1, tracking: 'tracked' },
+      { liveness: () => 'live' },
+    );
+  `;
+  const child = spawn(
+    process.execPath,
+    ['--import', 'tsx', '--input-type=module', '--eval', script],
+    { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
+  );
+  let stderr = '';
+  child.stderr.on('data', (chunk) => {
+    stderr += String(chunk);
+  });
+  await new Promise<void>((inside, failed) => {
+    child.stdout.on('data', (chunk) => {
+      if (String(chunk).includes('inside')) inside();
+    });
+    child.once('exit', (code) =>
+      failed(new Error(`child exited ${code} before its commit: ${stderr}`)),
+    );
+  });
+  const exited = new Promise<NodeJS.Signals | null>((done) =>
+    child.once('exit', (_code, signal) => done(signal)),
+  );
+  child.kill('SIGKILL');
+  return exited;
+}
+
 describe('node:sqlite adapter after a real SIGKILL', () => {
+  it('a process killed inside its transaction leaves nothing behind', async () => {
+    const location = createSqliteKernelLocation();
+    locations.push(location);
+    expect(await dieInsideTransaction(location.path)).toBe('SIGKILL');
+    const storage = openSqliteKernelStorage({ path: location.path });
+    expect(
+      storage.executeSync(
+        { type: 'turnDedup.read', key: 'k' },
+        { liveness: kernelLiveness },
+      ),
+    ).toEqual({ kind: 'absent' });
+    await storage.close();
+  });
+
   it('a begun claim whose owner was killed is indeterminate', async () => {
     const location = createSqliteKernelLocation();
     locations.push(location);

@@ -22,7 +22,10 @@ const CLEAN = {
     "import { expect, it } from 'vitest';\nimport { local } from '../local.js';\nit('works', () => expect(local).toBe(1));\n",
 };
 
-function run(files: Record<string, string>) {
+function run(
+  files: Record<string, string>,
+  links: ReadonlyArray<readonly [path: string, target: string]> = [],
+) {
   const dir = scratchRepo({
     script: SCRIPT,
     productionFiles: [MANIFEST],
@@ -30,6 +33,8 @@ function run(files: Record<string, string>) {
   });
   // The gate parses with the workspace's TypeScript API.
   symlinkSync(resolve('node_modules'), join(dir, 'node_modules'), 'dir');
+  // Untracked on purpose: the gate must see a link before it is added.
+  for (const [path, target] of links) symlinkSync(target, join(dir, path));
   const result = spawnSync(process.execPath, [join('scripts', SCRIPT)], {
     cwd: dir,
     encoding: 'utf8',
@@ -92,6 +97,49 @@ describe('monument import boundary gate', () => {
       `unverifiable-import: ${ROOT}/src/evil.ts:7 <non-constant require>`,
       // vitest is allowed in test files only.
       `undeclared-import: ${ROOT}/src/evil.ts:8 vitest`,
+    ])
+      expect(result.stderr).toContain(line);
+  });
+
+  it('rejects a symlink that would let a relative import leave the package', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const result = run(
+      {
+        ...CLEAN,
+        'src-server/services/turn-idempotency.ts': 'export const s = 1;\n',
+        [`${ROOT}/src/probe.ts`]:
+          "export { s } from './station/turn-idempotency.js';\n",
+      },
+      [[`${ROOT}/src/station`, '../../../src-server/services']],
+    );
+    expect(result.status, result.output).toBe(1);
+    expect(result.stderr).toContain(`symlink: ${ROOT}/src/station`);
+  });
+
+  it('rejects module loaders the import graph cannot see, and scans .d.ts', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const result = run({
+      ...CLEAN,
+      [`${ROOT}/src/types.d.ts`]:
+        "export * from '@kontourai/station-contracts';\n",
+      [`${ROOT}/src/loaders.ts`]: [
+        "import { createRequire } from 'node:module';",
+        "export const a = createRequire(import.meta.url)('@kontourai/station-shared');",
+        "export const b = process.getBuiltinModule('node:module');",
+        'const r = require;',
+        "export const c = import.meta.resolve('@kontourai/station-sdk');",
+        '',
+      ].join('\n'),
+    });
+    expect(result.status, result.output).toBe(1);
+    for (const line of [
+      `station-import: ${ROOT}/src/types.d.ts:1 @kontourai/station-contracts`,
+      `module-loader: ${ROOT}/src/loaders.ts:1 node:module`,
+      `module-loader: ${ROOT}/src/loaders.ts:3 <getBuiltinModule>`,
+      `module-loader: ${ROOT}/src/loaders.ts:4 <require reference>`,
+      `module-loader: ${ROOT}/src/loaders.ts:5 <import.meta.resolve>`,
     ])
       expect(result.stderr).toContain(line);
   });
