@@ -71,12 +71,51 @@ export async function accountMemberCaller(
       via: 'personal-token',
       principalId: tokenAccount,
     };
-  // #2377 slice B (decision 2): a station-control tool call sees what its
-  // session's owner would see. An account owner is held to membership; the
-  // operator and a device owner are unrestricted, as in their own requests.
-  const ownerId = deps.agentOwnerId(request);
+  return agentOwnerMemberCaller(deps.agentOwnerId(request));
+}
+
+/**
+ * The station-control half of {@link accountMemberCaller}, synchronous for
+ * surfaces that decide without an account session (the Task board and
+ * knowledge roots): #2377 slice B (decision 2), a station-control tool call
+ * sees what its session's owner would see. An account owner is held to
+ * membership; a call acting for no one is no caller; the operator and a
+ * device owner are unrestricted, as in their own requests.
+ */
+export function agentOwnerMemberCaller(
+  ownerId: string | null | undefined,
+): AccountMemberCaller {
   if (ownerId === null) return { kind: 'none' };
   if (ownerId !== undefined && isDeploymentAccountPrincipalId(ownerId))
     return { kind: 'member', via: 'agent-owner', principalId: ownerId };
   return undefined;
+}
+
+/**
+ * The Agent audience decision for a member caller (#3276): operator rules,
+ * no Agent, or the admissions of the principal it acts for. A caller that
+ * authenticated as an account (an account session or, #3586, an
+ * account-tied personal token; not a station-control owner) is re-resolved
+ * through `currentPrincipalId`, which rechecks that the request is still
+ * current and still that account; a station-control owner is the recorded
+ * owner itself.
+ */
+export async function agentAudienceForMemberCaller<Admissions>(
+  member: AccountMemberCaller,
+  deps: {
+    currentPrincipalId: () => Promise<string>;
+    admissions: (principalId: string) => Admissions;
+  },
+): Promise<
+  | { kind: 'operator' }
+  | { kind: 'none' }
+  | { kind: 'member'; admissions: Admissions }
+> {
+  if (!member) return { kind: 'operator' };
+  if (member.kind === 'none') return { kind: 'none' };
+  const principalId =
+    member.via === 'agent-owner'
+      ? member.principalId
+      : await deps.currentPrincipalId();
+  return { kind: 'member', admissions: deps.admissions(principalId) };
 }

@@ -668,7 +668,11 @@ import {
   type RequestDelegationSources,
 } from '../agents/request-delegation.js';
 import { installAccountBoundDeviceGate } from '../bootstrap/account-bound-device-gate.js';
-import { accountMemberCaller } from '../bootstrap/account-member-caller.js';
+import {
+  accountMemberCaller,
+  agentAudienceForMemberCaller,
+  agentOwnerMemberCaller,
+} from '../bootstrap/account-member-caller.js';
 import {
   type AgentAudienceGateDeps,
   agentCatalogForCaller,
@@ -2015,34 +2019,29 @@ export function configureRuntimeRoutes(
   const agentAudience: AgentAudienceGateDeps = {
     caller: async (c) => {
       const request = c.req.raw;
-      let member: Awaited<ReturnType<typeof memberCallerForRequest>>;
-      try {
-        member = await memberCallerForRequest(request);
-        if (member?.kind === 'member' && member.via === 'account-session') {
-          roomRequestPrincipals.set(
-            request,
-            resolveOrchestrationRequestPrincipal(c),
-          );
-          const actor = await projectMembershipAuthority(request).current();
-          return {
-            kind: 'member',
-            admissions: agentAudienceAdmissions(actor.principal.id),
-          };
-        }
-      } catch {
-        return { kind: 'none', unresolved: true };
-      }
       // A station-control call that acts for no resolved principal (caller-
       // less, or a session with no recorded owner) fails closed: it is
       // admitted to no Agent, as Task-room authority refuses an unresolved
       // principal. The audience is always composed with the membership of
       // the resolved `PrincipalRef.id`, never granted by the id alone.
-      if (!member) return { kind: 'operator' };
-      if (member.kind === 'none') return { kind: 'none' };
-      return {
-        kind: 'member',
-        admissions: agentAudienceAdmissions(member.principalId),
-      };
+      try {
+        return await agentAudienceForMemberCaller(
+          await memberCallerForRequest(request),
+          {
+            currentPrincipalId: async () => {
+              roomRequestPrincipals.set(
+                request,
+                resolveOrchestrationRequestPrincipal(c),
+              );
+              return (await projectMembershipAuthority(request).current())
+                .principal.id;
+            },
+            admissions: agentAudienceAdmissions,
+          },
+        );
+      } catch {
+        return { kind: 'none', unresolved: true };
+      }
     },
     listAgents: () => context.agentService.listAgents(),
   };
@@ -5139,14 +5138,13 @@ export function configureRuntimeRoutes(
     projectRef: string,
     action: 'view' | 'edit',
   ): boolean => {
-    const ownerId = agentOwnerIdForRequest(request);
-    if (ownerId === undefined) return true;
-    if (ownerId === null) return false;
-    if (!isDeploymentAccountPrincipalId(ownerId)) return true;
+    const member = agentOwnerMemberCaller(agentOwnerIdForRequest(request));
+    if (!member) return true;
+    if (member.kind === 'none') return false;
     if (!context.projectMembership) return false;
     try {
       return context.projectMembership
-        .admissionsForResolvedPrincipal(ownerId)
+        .admissionsForResolvedPrincipal(member.principalId)
         .some(
           ({ scope, member }) =>
             (scope.localProjectId === projectRef ||
