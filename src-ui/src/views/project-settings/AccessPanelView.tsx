@@ -135,28 +135,26 @@ export function AccessPanelView({
         }
         actions={
           <ResponsiveSurfaceActions className="project-access__actions">
-            <label>
-              Role for {member.principal.display}
-              <ProjectRolePicker
-                aria-label={`Role for ${member.principal.display}`}
-                disabled={busy || readOnly || !canGrant(member.role)}
-                title={readOnly ? writeDisabledReason : undefined}
-                value={member.role as GrantableProjectRole}
-                canGrant={canGrant}
-                onChange={(role) =>
-                  void submit(
-                    stamp({
-                      kind: 'change-member',
-                      scope: view.scope,
-                      principalId: member.principal.id,
-                      revision: member.revision,
-                      role,
-                      status: member.status,
-                    }),
-                  )
-                }
-              />
-            </label>
+            <ProjectRolePicker
+              label={<>Role for {member.principal.display}</>}
+              aria-label={`Role for ${member.principal.display}`}
+              disabled={busy || readOnly || !canGrant(member.role)}
+              title={readOnly ? writeDisabledReason : undefined}
+              value={member.role as GrantableProjectRole}
+              canGrant={canGrant}
+              onChange={(role) =>
+                void submit(
+                  stamp({
+                    kind: 'change-member',
+                    scope: view.scope,
+                    principalId: member.principal.id,
+                    revision: member.revision,
+                    role,
+                    status: member.status,
+                  }),
+                )
+              }
+            />
             <Button
               disabled={busy || readOnly || !canGrant(member.role)}
               title={readOnly ? writeDisabledReason : undefined}

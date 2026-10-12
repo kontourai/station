@@ -116,16 +116,14 @@ export function InviteFlow({
             />
           </label>
         )}
-        <label>
-          Project role
-          <ProjectRolePicker
-            value={role}
-            onChange={setRole}
-            canGrant={canGrant}
-            disabled={unavailable}
-            title={readOnly ? writeDisabledReason : undefined}
-          />
-        </label>
+        <ProjectRolePicker
+          label="Project role"
+          value={role}
+          onChange={setRole}
+          canGrant={canGrant}
+          disabled={unavailable}
+          title={readOnly ? writeDisabledReason : undefined}
+        />
         <Button
           type="submit"
           pending={busy}

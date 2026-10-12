@@ -51,7 +51,7 @@ describe('ProjectRolePicker', () => {
   test('lists every grantable role and disables the ones the actor cannot grant', () => {
     render(
       <ProjectRolePicker
-        aria-label="Role"
+        label="Role"
         value="viewer"
         onChange={() => {}}
         canGrant={(role) => canGrant(holding('contributor'), role)}
