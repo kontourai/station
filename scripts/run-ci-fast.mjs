@@ -158,9 +158,10 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   Object.freeze(['npm', Object.freeze(['run', 'native-platform:ratchet'])]),
   // #3565: @kontourai/monument is a Tier 1 package (ADR 0005) and may import
   // nothing of Station's, and Station reaches it only through its entry
-  // points. Source reads with the TypeScript parser plus an lstat of every
-  // tracked file: ~1s idle, ~7s at load ~30. Here so a planted import fails
-  // the pull request, not only the merge queue.
+  // points. Its cost is reading every Station source file to find the ones
+  // that name the package, then parsing those: ~1s idle, ~5-7s at load ~30.
+  // Here so a planted import fails the pull request, not only the merge
+  // queue.
   Object.freeze([
     'npm',
     Object.freeze(['run', 'monument-import-boundary:gate']),

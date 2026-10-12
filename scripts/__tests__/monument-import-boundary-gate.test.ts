@@ -416,7 +416,7 @@ describe('monument import boundary gate', () => {
         'src-server/modules.ts':
           "export * from '../node_modules/@kontourai/monument/src/index.ts';\n",
         'src-server/dynamic.ts':
-          "// loads @kontourai/monument parts\nconst name = 'x';\nexport const m = import(name);\n",
+          "// The package is named in code, so an unreadable reference is refused.\nconst label = '@kontourai/monument parts';\nexport const m = import(label);\n",
         [`${ROOT}/src/upper.ts`]:
           "export * from './NODE_MODULES/@kontourai/station-shared/index.js';\n",
       },

@@ -33,9 +33,14 @@
  *   nested repository) is refused rather than skipped;
  * - declaration files are scanned like any other source.
  *
- * This is a lint over source text, not a sandbox: a name assembled at run
- * time (`process['getBuilt' + 'inModule']`) is out of its reach. Review owns
- * that; the gate makes the ordinary spellings fail loudly.
+ * Threat model (owner decision, #3607): the gate stops ACCIDENTAL coupling
+ * between Station and Monument internals, the kind real code and agents
+ * produce: an import, a test helper's path, an alias, a symlink, a stray
+ * file. It does not stop deliberate evasion. Accepted limits, left to review:
+ * names assembled at run time (`process['getBuilt' + 'inModule']`), data
+ * URLs, escape spellings beyond `%XX`, `\u` and `\x` (line continuations,
+ * identity and octal escapes), and computed paths in Station files that never
+ * name the package in a string literal.
  *
  * Imports are read from the TypeScript syntax tree (static imports, re-exports,
  * `import x = require()`, `import()`, `require()`, `require.resolve()`,
@@ -94,6 +99,25 @@ export function packageNameOf(specifier) {
  */
 export const APPROVED_DEPENDENCIES = new Set();
 
+const LIFECYCLE_SCRIPTS = new Set([
+  'preinstall',
+  'install',
+  'postinstall',
+  'preprepare',
+  'prepare',
+  'postprepare',
+  'prepublish',
+  'prepublishOnly',
+  'prepack',
+  'postpack',
+  'publish',
+  'postpublish',
+  'preuninstall',
+  'uninstall',
+  'postuninstall',
+  'dependencies',
+]);
+
 /**
  * A specifier that installs something other than the registry package of the
  * declared name. `"innocent": "workspace:@kontourai/station-shared@*"` would
@@ -134,6 +158,23 @@ export function readManifest(manifestText, manifestPath) {
         runtime.add(name);
     }
   }
+  // Inert today, but each would run code at install or put an executable on
+  // a consumer's PATH without passing through the import graph.
+  if (manifest.bin !== undefined)
+    findings.push({
+      kind: 'manifest-hook',
+      file: manifestPath,
+      line: 1,
+      specifier: 'bin',
+    });
+  for (const name of Object.keys(manifest.scripts ?? {}))
+    if (LIFECYCLE_SCRIPTS.has(name))
+      findings.push({
+        kind: 'manifest-hook',
+        file: manifestPath,
+        line: 1,
+        specifier: `scripts.${name}`,
+      });
   return { declared: runtime, findings, exports: manifest.exports ?? {} };
 }
 
@@ -342,13 +383,18 @@ export function classifyReference(file, reference, declared) {
     if (/[%\\?#]/.test(specifier)) return 'encoded-specifier';
     const resolved = resolveRelative(file, specifier);
     // Through node_modules, a relative path reaches whatever is linked there.
-    return (resolved === MONUMENT_ROOT ||
-      resolved.startsWith(`${MONUMENT_ROOT}/`)) &&
-      !resolved
+    if (
+      !(
+        resolved === MONUMENT_ROOT || resolved.startsWith(`${MONUMENT_ROOT}/`)
+      ) ||
+      resolved
         .split('/')
         .some((segment) => segment.toLowerCase() === 'node_modules')
-      ? null
-      : 'escapes-package';
+    )
+      return 'escapes-package';
+    // Only source is read by the gate, so only source may be loaded: Node
+    // loads `../LICENSE` as ESM, and vitest loads Markdown.
+    return SOURCE_EXTENSION.test(resolved) ? null : 'non-source-import';
   }
   if (specifier.startsWith('/') || /^[A-Za-z]:[\\/]/.test(specifier))
     return 'escapes-package';
@@ -395,7 +441,8 @@ export function scanMonument({ files, readText }) {
 export function allowedPackageFile(file) {
   return (
     SOURCE_EXTENSION.test(file) ||
-    file.endsWith('.md') ||
+    (file.endsWith('.md') &&
+      !file.slice(MONUMENT_ROOT.length + 1).includes('/')) ||
     file === `${MONUMENT_ROOT}/LICENSE` ||
     file === `${MONUMENT_ROOT}/package.json` ||
     file === `${MONUMENT_ROOT}/tsconfig.json`
@@ -423,15 +470,14 @@ function listPackageFiles() {
 }
 
 /**
- * Station's side of the boundary: code outside the package reaches it only
- * through `@kontourai/monument` and the subpaths its manifest exports.
- */
-/**
  * The text a specifier could be spelled with, undone: percent escapes and
  * JavaScript string escapes decoded, case folded. Used only to choose which
  * files to parse, so it may over-match but must not under-match.
  */
 export function mentionsMonument(content) {
+  const folded = content.toLowerCase();
+  if (folded.includes('monument')) return true;
+  if (!content.includes('%') && !content.includes('\\')) return false;
   const decoded = content
     .replace(/%([0-9a-f]{2})/gi, (_, hex) =>
       String.fromCharCode(Number.parseInt(hex, 16)),
@@ -473,16 +519,62 @@ function within(path, root) {
   return a === b || a.startsWith(b + sep);
 }
 
+/** Every target string in an `imports`/`exports`/`paths` value. */
+function targetStrings(value) {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(targetStrings);
+  if (value && typeof value === 'object')
+    return Object.values(value).flatMap(targetStrings);
+  return [];
+}
+
+/** The decoded text of every string literal in a file, with its line. */
+function stringLiterals(file, content) {
+  const source = ts.createSourceFile(
+    file,
+    content,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const literals = [];
+  const visit = (node) => {
+    if (ts.isStringLiteralLike(node))
+      literals.push({
+        text: node.text,
+        line: source.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+      });
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return literals;
+}
+
+function decodePercent(text) {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
+}
+
 /**
  * Station's side of the boundary: code outside the package reaches it only
- * through `@kontourai/monument` and the subpaths its manifest exports.
+ * through `@kontourai/monument` and the subpaths its manifest exports. The
+ * threat model is the gate's (see the header): accidental coupling.
  *
- * - a relative, absolute or `file:` specifier is resolved as Node resolves
- *   it, through symlinks, and refused if it lands in the package, or in a
- *   `node_modules/@kontourai/monument` path the exports do not name;
+ * - a relative, absolute or `file:` module specifier is resolved as Node
+ *   resolves it, through symlinks and case-insensitively, and refused if it
+ *   lands in the package, or in a `node_modules/@kontourai/monument` path the
+ *   exports do not name;
+ * - in a file whose string literals name the package, every path-like string
+ *   literal is checked the same way (`vi.importActual(...)`, a
+ *   `createRequire` call, `new URL(..., import.meta.url)`), except that the
+ *   manifest is an allowed target; and a module
+ *   reference the gate cannot read (a non-constant `import()`) is refused;
  * - a symlink outside the package that points into it is refused;
- * - in a file that mentions the package under any spelling, a module
- *   reference the gate cannot read (a non-constant `import()`) is refused.
+ * - a `package.json` `imports` alias or a `tsconfig*.json` `paths` entry whose
+ *   target is inside the package, other than an exported entry file, is
+ *   refused.
  */
 export function scanMonumentConsumers({
   files,
@@ -495,9 +587,26 @@ export function scanMonumentConsumers({
     typeof exports === 'string' ? ['.'] : Object.keys(exports),
   );
   const packageRoot = canonicalPath(resolve(root, MONUMENT_ROOT));
-  const internalPath = (absolute) => {
+  const manifestPath = canonicalPath(
+    resolve(packageRoot, 'package.json'),
+  ).toLowerCase();
+  const entryTargets = new Set(
+    targetStrings(exports).map((target) =>
+      canonicalPath(resolve(packageRoot, target)).toLowerCase(),
+    ),
+  );
+  /**
+   * `allow`: which targets inside the package are not internals. A path
+   * string may name the manifest (a test reading its version, say); an alias
+   * may also map to an exported entry file, as a bundler alias would.
+   */
+  const internalPath = (absolute, { allow = 'nothing' } = {}) => {
     const canonical = canonicalPath(absolute);
-    if (within(canonical, packageRoot)) return true;
+    if (within(canonical, packageRoot)) {
+      const folded = canonical.toLowerCase();
+      if (allow !== 'nothing' && folded === manifestPath) return false;
+      return !(allow === 'entries' && entryTargets.has(folded));
+    }
     const modules = relative(root, canonical)
       .split(sep)
       .join('/')
@@ -505,58 +614,111 @@ export function scanMonumentConsumers({
       .match(/(?:^|\/)node_modules\/@kontourai\/monument(\/.*)?$/);
     return modules !== null && !allowed.has(`.${modules[1] ?? ''}`);
   };
+  /** true: refused; false: allowed; 'encoded': cannot be decoded. */
+  const reachesInternals = (file, text, options) => {
+    try {
+      if (text.startsWith('file:'))
+        return internalPath(fileURLToPath(text), options);
+      if (text.startsWith('/'))
+        return internalPath(resolve(root, decodeURIComponent(text)), options);
+      if (text.startsWith('./') || text.startsWith('../'))
+        return internalPath(
+          resolve(root, resolveRelative(file, text)),
+          options,
+        );
+    } catch (error) {
+      if (error instanceof URIError || error instanceof TypeError)
+        return 'encoded';
+      throw error;
+    }
+    if (/^@kontourai\/monument(?:\/|$)/i.test(text))
+      return !allowed.has(`.${text.slice(MONUMENT_PACKAGE.length)}`);
+    return false;
+  };
   const findings = [];
+  const report = (kind, file, line, specifier) =>
+    findings.push({ kind, file, line, specifier });
   for (const file of files) {
     if (isSymlink(file)) {
       if (internalPath(resolve(root, file)))
-        findings.push({
-          kind: 'monument-symlink',
-          file,
-          line: 1,
-          specifier: '',
-        });
+        report('monument-symlink', file, 1, '');
+      continue;
+    }
+    const name = basename(file);
+    if (name === 'package.json' || /^tsconfig.*\.json$/.test(name)) {
+      scanAlias(file, readText(file), root, internalPath, report);
       continue;
     }
     if (!SOURCE_EXTENSION.test(file)) continue;
     const content = readText(file);
     if (!mentionsMonument(content)) continue;
+    const literals = stringLiterals(file, content);
+    // Whether the file names the package in code, not just in a comment.
+    const namesPackage = literals.some((literal) =>
+      decodePercent(literal.text).toLowerCase().includes('monument'),
+    );
+    if (!namesPackage) continue;
+    const seen = new Set();
     for (const { specifier, line, how } of moduleReferences(file, content)) {
       if (typeof specifier !== 'string') {
-        findings.push({
-          kind: 'monument-unverifiable-import',
+        report(
+          'monument-unverifiable-import',
           file,
           line,
-          specifier: `<non-constant ${how}>`,
-        });
+          `<non-constant ${how}>`,
+        );
         continue;
       }
       if (how === 'module-loader') continue;
-      let internal = false;
-      if (specifier.startsWith('file:')) {
-        try {
-          internal = internalPath(fileURLToPath(specifier));
-        } catch {
-          internal = true;
-        }
-      } else if (specifier.startsWith('.') || specifier.startsWith('/')) {
-        internal = internalPath(
-          specifier.startsWith('/')
-            ? resolve(root, decodeURIComponent(specifier))
-            : resolve(root, resolveRelative(file, specifier)),
-        );
-      } else if (packageNameOf(specifier) === MONUMENT_PACKAGE) {
-        internal = !allowed.has(`.${specifier.slice(MONUMENT_PACKAGE.length)}`);
-      }
-      if (internal)
-        findings.push({
-          kind: 'monument-internal-import',
-          file,
-          line,
-          specifier,
-        });
+      seen.add(`${line}\0${specifier}`);
+      const verdict = reachesInternals(file, specifier);
+      if (verdict === 'encoded')
+        report('encoded-specifier', file, line, specifier);
+      else if (verdict)
+        report('monument-internal-import', file, line, specifier);
+    }
+    for (const { text, line } of literals) {
+      if (seen.has(`${line}\0${text}`)) continue;
+      const verdict = reachesInternals(file, text, { allow: 'manifest' });
+      if (verdict === 'encoded') report('encoded-specifier', file, line, text);
+      else if (verdict) report('monument-internal-reference', file, line, text);
     }
   }
   return findings;
+}
+
+/** `imports` in a package.json, `compilerOptions.paths` in a tsconfig. */
+function scanAlias(file, content, root, internalPath, report) {
+  const directory = resolve(root, dirname(file));
+  const check = (base, field, key, targets) => {
+    for (const target of targetStrings(targets)) {
+      if (!target.startsWith('.') && !target.startsWith('/')) continue;
+      const path = resolve(base, target.replaceAll('*', ''));
+      if (internalPath(path, { allow: 'entries' })) {
+        report('monument-alias', file, 1, `${field}.${key}`);
+        return;
+      }
+    }
+  };
+  if (basename(file) === 'package.json') {
+    let manifest;
+    try {
+      manifest = JSON.parse(content);
+    } catch {
+      return;
+    }
+    for (const [key, targets] of Object.entries(manifest?.imports ?? {}))
+      check(directory, 'imports', key, targets);
+    return;
+  }
+  const { config } = ts.parseConfigFileTextToJson(file, content);
+  const options = config?.compilerOptions ?? {};
+  const base =
+    typeof options.baseUrl === 'string'
+      ? resolve(directory, options.baseUrl)
+      : directory;
+  for (const [key, targets] of Object.entries(options.paths ?? {}))
+    check(base, 'compilerOptions.paths', key, targets);
 }
 
 function listConsumerFiles() {
