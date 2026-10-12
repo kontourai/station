@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { copyFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSyncBounded } from './bounded-capture.mjs';
 import { desktopPublishedAssetName } from './windows-nightly.mjs';
@@ -21,7 +21,26 @@ function github(args, timeoutMs = API_TIMEOUT_MS) {
   });
 }
 
-/** The only feed writer: immutable downloads are verified before latest.json changes. */
+/**
+ * The fixed download name of each installer: the staged name without its
+ * `-desktop`, so `releases/download/nightly-desktop/<name>` is always the
+ * newest published build. Not the staged name itself: older builds published
+ * assets under those names, and they remain on the release.
+ */
+export const NIGHTLY_DESKTOP_ALIASES = Object.freeze({
+  'station-nightly-desktop-macos-aarch64.dmg':
+    'station-nightly-macos-aarch64.dmg',
+  'station-nightly-desktop-windows-x86_64-setup.exe':
+    'station-nightly-windows-x86_64-setup.exe',
+});
+/** `sha256sum -c` lines for this build's downloads, under both names. */
+export const NIGHTLY_DESKTOP_CHECKSUMS = 'SHA256SUMS';
+
+/**
+ * The only feed writer: immutable downloads are verified before the fixed
+ * names, SHA256SUMS and latest.json (the replaced assets, latest.json last)
+ * change.
+ */
 export function publishNightlyDesktop({
   root,
   output,
@@ -63,7 +82,12 @@ export function publishNightlyDesktop({
       );
       const destination = join(output, name);
       copyFileSync(path, destination);
-      const asset = { ...record, name, path: destination };
+      const asset = {
+        ...record,
+        name,
+        path: destination,
+        stagedName: record.name,
+      };
       if (record.name === 'latest.json') manifest = asset;
       else assets.push(asset);
     }
@@ -181,6 +205,56 @@ export function publishNightlyDesktop({
     throw new Error(
       'Desktop uploads are not available with the staged digests; feed unchanged',
     );
+  // Replaced, not immutable: GitHub has no asset alias, so each fixed name is
+  // a second upload of the verified installer bytes. Each replacement is a
+  // delete then an upload, so a download in between can briefly miss, or
+  // pair a fixed name with the other build's SHA256SUMS line, which fails the
+  // check rather than passing the wrong bytes.
+  const aliases = assets
+    .filter((asset) => Object.hasOwn(NIGHTLY_DESKTOP_ALIASES, asset.stagedName))
+    .map((asset) => {
+      const name = NIGHTLY_DESKTOP_ALIASES[asset.stagedName];
+      const path = join(output, name);
+      copyFileSync(asset.path, path);
+      return { ...asset, name, path };
+    });
+  if (aliases.length !== Object.keys(NIGHTLY_DESKTOP_ALIASES).length)
+    throw new Error('Incomplete desktop installer aliases');
+  const sums = Buffer.from(
+    [...assets, ...aliases]
+      .map(({ name, sha256 }) => `${sha256}  ${name}\n`)
+      .sort()
+      .join(''),
+  );
+  const checksums = {
+    name: NIGHTLY_DESKTOP_CHECKSUMS,
+    path: join(output, NIGHTLY_DESKTOP_CHECKSUMS),
+    size: sums.length,
+    sha256: hash(sums),
+  };
+  writeFileSync(checksums.path, sums);
+  for (const asset of [...aliases, checksums]) {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        run(
+          [
+            'release',
+            'upload',
+            'nightly-desktop',
+            '--repo',
+            repository,
+            '--clobber',
+            asset.path,
+          ],
+          UPLOAD_TIMEOUT_MS,
+        );
+      } catch (error) {
+        if (attempt >= UPLOAD_ATTEMPTS) throw error;
+        continue;
+      }
+      break;
+    }
+  }
   run([
     'release',
     'upload',
@@ -191,7 +265,11 @@ export function publishNightlyDesktop({
     manifest.path,
   ]);
   const published = checkRelease(query());
-  if (![...assets, manifest].every((asset) => matches(published, asset)))
+  if (
+    ![...assets, ...aliases, checksums, manifest].every((asset) =>
+      matches(published, asset),
+    )
+  )
     throw new Error('Desktop publication readback differs from staged bytes');
   return published;
 }

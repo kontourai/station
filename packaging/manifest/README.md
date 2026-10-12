@@ -1,8 +1,9 @@
 # Public ecosystem manifest
 
 [install.sh](../../install.sh) uses the ecosystem-manifest path when
-`STATION_INSTALL_PUBLIC_MANIFEST_URL` is set. Otherwise it uses the GitHub
-release/attestation path. The manifest is a JSON envelope containing a payload,
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` is set, and for `STATION_CHANNEL=nightly`,
+which defaults it to the rolling `portable-nightly` manifest. Otherwise it
+uses the GitHub release/attestation path. The manifest is a JSON envelope containing a payload,
 key ID and detached Ed25519 signature over the canonical payload; the installer
 checks the selected portable archive against the signed hash before promotion.
 
@@ -53,9 +54,10 @@ archive is not a download/readback receipt.
 
 The [archive workflow](../../.github/workflows/portable-server-archives.yml)
 builds, smokes and uploads CI artifacts. The separate
-[portable Nightly publication workflow](../../docs/guides/nightly.md#portable-server-nightly-dry-run-until-the-owner-enables-it)
+[portable Nightly publication workflow](../../docs/guides/nightly.md#portable-server-nightly)
 assembles v2 and can publish its signed rolling manifest only behind the owner
-gate. The installer requires an explicit public manifest URL.
+gate. For Nightly the installers default to that rolling manifest; other
+channels need an explicit public manifest URL.
 
 The [ecosystem dry-run](../../scripts/exercise-ecosystem-packaging-dry-run.sh)
 uses v1 through a disposable local endpoint. The separate
