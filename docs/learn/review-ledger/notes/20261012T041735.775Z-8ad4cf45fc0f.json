@@ -1,0 +1,15 @@
+{
+  "revision": "0675c34ab5e033d740c741aa6ed9913ff499956b",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"testing.md changed only in the CI health history section (how ci:health attributes a run with no listed PR). This document's links to and claims about the testing guide are unaffected.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"testing.md changed only in the CI health history section (how ci:health attributes a run with no listed PR). This document's links to and claims about the testing guide are unaffected.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"testing.md changed only in the CI health history section (how ci:health attributes a run with no listed PR). This document's links to and claims about the testing guide are unaffected.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"testing.md changed only in the CI health history section (how ci:health attributes a run with no listed PR). This document's links to and claims about the testing guide are unaffected.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"testing.md changed only in the CI health history section (how ci:health attributes a run with no listed PR). This document's links to and claims about the testing guide are unaffected.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}
