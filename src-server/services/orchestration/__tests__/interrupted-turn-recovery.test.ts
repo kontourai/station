@@ -1776,9 +1776,9 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
         .sessionTurnBoundaryAuthority()
         .claim(threadId, '2026-08-16T00:00:01.000Z');
       if (claimed.kind !== 'owner') throw new Error('expected boundary owner');
-      expect(
-        claimed.claim.beginInvocation('2026-08-16T00:00:01.100Z'),
-      ).toEqual({ kind: 'applied' });
+      expect(claimed.claim.beginInvocation('2026-08-16T00:00:01.100Z')).toEqual(
+        { kind: 'applied' },
+      );
       dying.appendEvent({
         eventId: `turn-started:${threadId}`,
         provider: 'acp',
@@ -1882,9 +1882,9 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
       const { events, aborts, banners } = recoveryEvents(eventStore, threadId);
       expect(aborts).toEqual([]);
       expect(banners).toEqual([]);
-      expect(
-        activeTurnIdForEvents(events.map((row) => row.payload)),
-      ).toBe('provider:turn-2');
+      expect(activeTurnIdForEvents(events.map((row) => row.payload))).toBe(
+        'provider:turn-2',
+      );
       // The dead dispatch's row is gone; only the live engine turn's own
       // row remains for a later boot.
       eventStore.close();
