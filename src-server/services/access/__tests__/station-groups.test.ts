@@ -2,11 +2,11 @@
  * #3557: Station groups cap what a device tied to a person may use, through
  * the real security service every authorization reads.
  */
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { nativeActiveDevice } from '../../../runtime/bootstrap/native-device-proof-runtime.js';
 import { consentDecisionAuthority } from '../../../security/pairing-route-scopes.js';
 import type { DevicePairingService } from '../../ssh/device-pairing-service.js';
@@ -22,15 +22,10 @@ const ADMIN_LIKE =
   'orchestration:read orchestration:operate terminal:operate access:approve consent:decide coding:exec approval:full-access';
 const STANDARD = 'orchestration:read orchestration:operate terminal:operate';
 
-const homes: string[] = [];
-afterEach(() => {
-  for (const home of homes.splice(0))
-    rmSync(home, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 async function station(now?: () => number) {
-  const homeDir = mkdtempSync(join(tmpdir(), 'station-groups-'));
-  homes.push(homeDir);
+  const homeDir = makeTempDir('station-groups-');
   const security = new EnvironmentSecurityService({
     homeDir,
     ...(now ? { now } : {}),
