@@ -174,8 +174,12 @@ export class SessionRecoveryCoordinator {
       this.now().toISOString(),
       'due',
     );
-    for (const intent of unsettled)
-      this.recordIntentOutcome(intent, 'indeterminate');
+    // An unreadable scan fences nothing, so there is no outcome to record.
+    // Its prepared rows stay durable for the next startup; this due-path
+    // sweep has no in-process retry (#2823 scopes that to credentials).
+    if (unsettled.kind === 'available')
+      for (const intent of unsettled.obligations)
+        this.recordIntentOutcome(intent, 'indeterminate');
     for (const intent of this.ledger.pending()) {
       if (intent.outcome !== 'armed' || !intent.dueAt) continue;
       this.schedule(intent.fingerprint, intent.dueAt);

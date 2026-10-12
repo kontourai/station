@@ -33,6 +33,16 @@ export type RecoveryTransition =
   | { kind: 'unavailable' };
 
 /**
+ * One startup obligation read. `available` with no obligations proves storage
+ * holds none; `unavailable` proves nothing, so a caller must never treat it as
+ * an empty sweep (#2823). Rows already fenced before a mid-scan failure stay
+ * durable and are read again by the next scan.
+ */
+export type RecoveryObligationScan<T> =
+  | { kind: 'available'; obligations: T[] }
+  | { kind: 'unavailable' };
+
+/**
  * The recovery state machine at the orchestration Seam.
  *
  * Callers arm an intent, inspect immutable redacted state, and claim a single
@@ -65,13 +75,15 @@ export interface RecoveryLedger {
     kind?: 'due' | 'profile',
     /** Legacy profile rows have no exact credential receipt authority. */
     unlinkedOnly?: boolean,
-  ): RecoveryIntentSnapshot[];
+  ): RecoveryObligationScan<RecoveryIntentSnapshot>;
   /**
    * Startup-only exact credential settlement work. Prepared rows are changed
    * to indeterminate before returning; accepted rows retain their provider
    * truth so the credential Module can terminalize an adopted receipt.
    */
-  reconcilePreparedCredentials(now: string): RecoveryCredentialStartupHandle[];
+  reconcilePreparedCredentials(
+    now: string,
+  ): RecoveryObligationScan<RecoveryCredentialStartupHandle>;
   terminal(
     fingerprint: string,
     outcome: Extract<
@@ -501,9 +513,9 @@ export function createRecoveryLedger(options: {
           });
           if (intent) reconciled.push(snapshot(intent));
         }
-        return reconciled;
+        return { kind: 'available', obligations: reconciled };
       } catch {
-        return [];
+        return { kind: 'unavailable' };
       }
     },
     reconcilePreparedCredentials: (now) => {
@@ -564,9 +576,9 @@ export function createRecoveryLedger(options: {
             );
           }
         }
-        return reconciled;
+        return { kind: 'available', obligations: reconciled };
       } catch {
-        return [];
+        return { kind: 'unavailable' };
       }
     },
     terminal: (fingerprint, outcome, now) => {

@@ -6,6 +6,14 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { EventStore } from '../event-store.js';
 import { createRecoveryDispatchAdapter } from '../recovery-dispatch-adapter.js';
+import type { RecoveryObligationScan } from '../recovery-ledger.js';
+
+/** These assertions are about rows read from healthy storage. */
+function available<T>(scan: RecoveryObligationScan<T>): T[] {
+  if (scan.kind !== 'available')
+    throw new Error('expected a readable startup obligation scan');
+  return scan.obligations;
+}
 
 describe('RecoveryLedger', () => {
   const directories: string[] = [];
@@ -139,7 +147,11 @@ describe('RecoveryLedger', () => {
     await once(child.stdout!, 'data');
     const live = new EventStore(databasePath);
     expect(
-      live.createRecoveryLedger().reconcilePrepared('2026-08-13T00:00:01.000Z'),
+      available(
+        live
+          .createRecoveryLedger()
+          .reconcilePrepared('2026-08-13T00:00:01.000Z'),
+      ),
     ).toEqual([]);
     live.close();
 
@@ -151,9 +163,11 @@ describe('RecoveryLedger', () => {
       probe: () => ({ state: 'unavailable' as const }),
     });
     expect(
-      unavailable
-        .createRecoveryLedger()
-        .reconcilePrepared('2026-08-13T00:00:01.500Z'),
+      available(
+        unavailable
+          .createRecoveryLedger()
+          .reconcilePrepared('2026-08-13T00:00:01.500Z'),
+      ),
     ).toEqual([]);
     unavailable.close();
 
@@ -161,10 +175,12 @@ describe('RecoveryLedger', () => {
     await once(child, 'exit');
     const afterExit = new EventStore(databasePath);
     const ledger = afterExit.createRecoveryLedger();
-    expect(ledger.reconcilePrepared('2026-08-13T00:00:02.000Z')).toHaveLength(
-      1,
-    );
-    expect(ledger.reconcilePrepared('2026-08-13T00:00:03.000Z')).toEqual([]);
+    expect(
+      available(ledger.reconcilePrepared('2026-08-13T00:00:02.000Z')),
+    ).toHaveLength(1);
+    expect(
+      available(ledger.reconcilePrepared('2026-08-13T00:00:03.000Z')),
+    ).toEqual([]);
     afterExit.close();
   });
 
@@ -256,26 +272,28 @@ describe('RecoveryLedger', () => {
     // A live owner cannot be taken over by another connection.
     const liveObserver = new EventStore(databasePath);
     expect(
-      liveObserver
-        .createRecoveryLedger()
-        .reconcilePrepared('2026-08-13T00:00:02.000Z'),
+      available(
+        liveObserver
+          .createRecoveryLedger()
+          .reconcilePrepared('2026-08-13T00:00:02.000Z'),
+      ),
     ).toEqual([]);
     liveObserver.close();
     eventStore.close();
 
     const afterRestart = new EventStore(databasePath);
     const restartLedger = afterRestart.createRecoveryLedger();
-    const reconciled = restartLedger.reconcilePrepared(
-      '2026-08-13T00:00:02.000Z',
+    const reconciled = available(
+      restartLedger.reconcilePrepared('2026-08-13T00:00:02.000Z'),
     );
     expect(reconciled).toHaveLength(1);
     expect(reconciled[0]).toMatchObject({ outcome: 'indeterminate' });
     expect(restartLedger.find(intent.fingerprint)).toMatchObject({
       outcome: 'indeterminate',
     });
-    expect(restartLedger.reconcilePrepared('2026-08-13T00:00:03.000Z')).toEqual(
-      [],
-    );
+    expect(
+      available(restartLedger.reconcilePrepared('2026-08-13T00:00:03.000Z')),
+    ).toEqual([]);
     afterRestart.close();
   });
 
@@ -287,9 +305,9 @@ describe('RecoveryLedger', () => {
       now: '2026-08-13T00:00:00.000Z',
     });
     expect(profile.kind).toBe('owner');
-    expect(ledger.reconcilePrepared('2026-08-13T00:00:01.000Z', 'due')).toEqual(
-      [],
-    );
+    expect(
+      available(ledger.reconcilePrepared('2026-08-13T00:00:01.000Z', 'due')),
+    ).toEqual([]);
     expect(ledger.find(intent.fingerprint)).toMatchObject({
       outcome: 'resumed',
       dispatchKind: 'profile',
@@ -324,19 +342,25 @@ describe('RecoveryLedger', () => {
 
     const liveObserver = new EventStore(databasePath);
     expect(
-      liveObserver
-        .createRecoveryLedger()
-        .reconcilePrepared('2026-08-13T00:00:01.000Z', 'profile'),
+      available(
+        liveObserver
+          .createRecoveryLedger()
+          .reconcilePrepared('2026-08-13T00:00:01.000Z', 'profile'),
+      ),
     ).toEqual([]);
     liveObserver.close();
     eventStore.close();
     const afterRestart = new EventStore(databasePath);
     const restarted = afterRestart.createRecoveryLedger();
     expect(
-      restarted.reconcilePrepared('2026-08-13T00:00:01.000Z', 'profile'),
+      available(
+        restarted.reconcilePrepared('2026-08-13T00:00:01.000Z', 'profile'),
+      ),
     ).toHaveLength(2);
     expect(
-      restarted.reconcilePrepared('2026-08-13T00:00:02.000Z', 'profile'),
+      available(
+        restarted.reconcilePrepared('2026-08-13T00:00:02.000Z', 'profile'),
+      ),
     ).toEqual([]);
     expect(restarted.find(intent.fingerprint)).toMatchObject({
       outcome: 'indeterminate',
@@ -366,9 +390,11 @@ describe('RecoveryLedger', () => {
     };
     const afterReuse = new EventStore(databasePath, undefined, mismatch);
     expect(
-      afterReuse
-        .createRecoveryLedger()
-        .reconcilePrepared('2026-08-13T00:00:01.000Z'),
+      available(
+        afterReuse
+          .createRecoveryLedger()
+          .reconcilePrepared('2026-08-13T00:00:01.000Z'),
+      ),
     ).toHaveLength(1);
     afterReuse.close();
 
@@ -394,9 +420,11 @@ describe('RecoveryLedger', () => {
       probe: () => ({ state: 'unavailable' as const }),
     });
     expect(
-      blocked
-        .createRecoveryLedger()
-        .reconcilePrepared('2026-08-13T00:00:03.000Z'),
+      available(
+        blocked
+          .createRecoveryLedger()
+          .reconcilePrepared('2026-08-13T00:00:03.000Z'),
+      ),
     ).toHaveLength(1);
     blocked.close();
   });
