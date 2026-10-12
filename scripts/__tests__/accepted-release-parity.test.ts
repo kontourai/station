@@ -145,6 +145,15 @@ const CASES: Case[] = [
     check: 'incomparable v1.2.4-preview.1',
   },
   {
+    // Another prerelease ring at the same X.Y.Z: unordered, never written.
+    ring: 'preview',
+    existing: mark('preview', '1.2.4-preview.3'),
+    offered: '1.2.4-nightly.5',
+    recorded: '1.2.4-preview.3',
+    refused: true,
+    check: 'incomparable v1.2.4-preview.3',
+  },
+  {
     ring: 'preview',
     existing: mark('preview', '1.2.4-preview.3'),
     offered: '1.2.4-preview.2',
