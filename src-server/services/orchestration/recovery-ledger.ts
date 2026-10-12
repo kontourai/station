@@ -35,8 +35,10 @@ export type RecoveryTransition =
 /**
  * One startup obligation read. `available` with no obligations proves storage
  * holds none; `unavailable` proves nothing, so a caller must never treat it as
- * an empty sweep (#2823). Rows already fenced before a mid-scan failure stay
- * durable and are read again by the next scan.
+ * an empty sweep (#2823). For the two credential scans, rows already fenced
+ * before a mid-scan failure stay durable and are read again by the next scan.
+ * The due scan selects only still-prepared rows, so a due row fenced before
+ * the failure is not returned again.
  */
 export type RecoveryObligationScan<T> =
   | { kind: 'available'; obligations: T[] }

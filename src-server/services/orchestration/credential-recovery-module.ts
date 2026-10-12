@@ -487,7 +487,8 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
       return this.drainScopedCompensation();
     if (this.startupReadiness) return this.startupReadiness;
 
-    // Bulk prepared reconciliation is startup-only. A live terminal must use
+    // Bulk prepared reconciliation runs only in the startup pass, retried by
+    // later callers until it reconciles. A live terminal must use
     // its process-local claim capability; no second connection can take it.
     const operation = this.reconcileStartupPrepared().catch(() => ({
       kind: 'indeterminate' as const,
