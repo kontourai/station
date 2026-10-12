@@ -211,12 +211,15 @@ export function installAccountBoundDeviceGate(
     const runtimePrincipal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
     // This exact protected Device self-read bootstraps binding observation
     // before an account session exists. Its handler rechecks Device custody;
-    // it supplies no account principal or Project authority.
+    // it supplies no account principal or Project authority. A personal
+    // access token is not a Device and never takes this shortcut (#3586).
     if (
       runtimePrincipal?.kind === 'credential' &&
       runtimePrincipal.authority === 'device-credential' &&
       runtimePrincipal.source === 'bearer' &&
       runtimePrincipal.deviceKind === 'device' &&
+      deps.identifyDevice(runtimePrincipal.credential)?.credentialKind !==
+        'personal-token' &&
       (c.req.method === 'GET' || c.req.method === 'HEAD') &&
       c.req.path.startsWith(`${NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH}/`) &&
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/receipt$/.test(

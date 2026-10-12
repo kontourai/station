@@ -137,7 +137,7 @@ describe('account-tied personal access tokens over the production composition', 
     let appConfig: Record<string, unknown> = {};
     const context = deepStub({
       projectMembership: membership.service,
-      projectSharedTasks: undefined,
+      projectSharedTasks: membership.sharedTasks,
       deploymentAuthentication: localAccounts,
       localAccounts,
       applicationSessions,
@@ -430,6 +430,29 @@ describe('account-tied personal access tokens over the production composition', 
     ).toEqual(['demo', 'private']);
   });
 
+  test("a member token reads its Project's shared work; a non-member token gets 404", async () => {
+    const h = await setup();
+    const member = await h.person('member');
+    const outsider = await h.person('outsider');
+    await h.shareWith('demo', member, 'viewer');
+    const tokenOf = async (device: (init?: RequestInit) => RequestInit) => {
+      const minted = await h.mintToken(device);
+      expect(minted.status, await minted.clone().text()).toBe(201);
+      return h.bearer((await readJson<{ secret: string }>(minted)).secret);
+    };
+    const memberRead = await h.request(
+      '/api/projects/demo/shared-work',
+      (await tokenOf(member.device))(),
+    );
+    expect(memberRead.status, await memberRead.clone().text()).toBe(200);
+    expect(await memberRead.json()).toMatchObject({ success: true, data: [] });
+    const outsiderRead = await h.request(
+      '/api/projects/demo/shared-work',
+      (await tokenOf(outsider.device))(),
+    );
+    expect(outsiderRead.status, await outsiderRead.clone().text()).toBe(404);
+  });
+
   test('a token acts as its account: the observed principal is the account principal', async () => {
     const h = await setup();
     const member = await h.person('member');
@@ -466,6 +489,59 @@ describe('account-tied personal access tokens over the production composition', 
     h.localAccounts.administration.revokeSessions(member.accountId);
     const refused = await h.request('/api/projects', token());
     expect(refused.status, await refused.clone().text()).toBe(401);
+  });
+
+  test('re-enabling a disabled account does not revive tokens made before it was disabled', async () => {
+    const h = await setup();
+    const member = await h.person('member');
+    const minted = await h.mintToken(member.device);
+    expect(minted.status, await minted.clone().text()).toBe(201);
+    const token = h.bearer((await readJson<{ secret: string }>(minted)).secret);
+    await new Promise((settle) => setTimeout(settle, 5));
+    h.localAccounts.administration.setDisabled(member.accountId, true);
+    h.localAccounts.administration.setDisabled(member.accountId, false);
+    const refused = await h.request('/api/projects', token());
+    expect(refused.status, await refused.clone().text()).toBe(401);
+  });
+
+  // Station has no account-deletion route; the account store's own user row
+  // is what a deletion removes, so the test removes it there.
+  test('a token for an account that no longer exists is 401', async () => {
+    const h = await setup();
+    const member = await h.person('member');
+    const minted = await h.mintToken(member.device);
+    expect(minted.status, await minted.clone().text()).toBe(201);
+    const token = h.bearer((await readJson<{ secret: string }>(minted)).secret);
+    expect((await h.request('/api/projects', token())).status).toBe(200);
+    const database = (
+      h.localAccounts.administration as unknown as {
+        database: import('node:sqlite').DatabaseSync;
+      }
+    ).database;
+    database.exec('PRAGMA foreign_keys=OFF');
+    database.prepare('DELETE FROM user WHERE id = ?').run(member.accountId);
+    const refused = await h.request('/api/projects', token());
+    expect(refused.status, await refused.clone().text()).toBe(401);
+  });
+
+  test('a token is refused, not served, once the account store is closed', async () => {
+    const h = await setup();
+    const member = await h.person('member');
+    const minted = await h.mintToken(member.device);
+    expect(minted.status, await minted.clone().text()).toBe(201);
+    const { secret } = await readJson<{ secret: string }>(minted);
+    expect((await h.request('/api/projects', h.bearer(secret)())).status).toBe(
+      200,
+    );
+    // The provider's own close, which closes its account database.
+    await h.localAccounts.service.close();
+    loaded.splice(loaded.indexOf(h.localAccounts), 1);
+    // The token stops resolving (the standing read fails closed); the
+    // request itself is answered by the closed authentication service.
+    expect(h.security.identifyDevice(secret)).toBeNull();
+    expect(h.security.verifyCredential(secret)).toBe(false);
+    const refused = await h.request('/api/projects', h.bearer(secret)());
+    expect(refused.status, await refused.clone().text()).toBe(503);
   });
 
   test('a token presented with another account cookie is an identity conflict', async () => {
@@ -526,6 +602,22 @@ describe('account-tied personal access tokens over the production composition', 
     expect(ingress.status, await ingress.clone().text()).toBe(401);
     expect(await ingress.json()).toEqual({
       error: { code: 'account_identity_conflict' },
+    });
+  });
+
+  test('a token never takes the native Device receipt self-read shortcut', async () => {
+    const h = await setup();
+    const member = await h.person('member');
+    const minted = await h.mintToken(member.device);
+    expect(minted.status, await minted.clone().text()).toBe(201);
+    const token = h.bearer((await readJson<{ secret: string }>(minted)).secret);
+    const receipt = await h.request(
+      '/api/auth/native-device-bindings/0b9d3c3e-6a1f-4c2e-9d7a-2f1e8b6c4a10/receipt',
+      token(),
+    );
+    expect(receipt.status, await receipt.clone().text()).toBe(403);
+    expect(await receipt.json()).toEqual({
+      error: { code: 'account_bound_device_route_forbidden' },
     });
   });
 
