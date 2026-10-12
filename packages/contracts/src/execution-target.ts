@@ -111,7 +111,9 @@ export function executionBindingAgentId(ref: ExecutionAgentRef): AgentId {
  *
  * The public target deliberately contains no provider, engine, connection,
  * endpoint, transport, or credential selector. The selected Environment
- * resolves its own Agent binding and model launch plan.
+ * resolves its own Agent binding and model launch plan. The one engine-shaped
+ * field, `expectedEngine`, is a precondition the Environment checks against its
+ * own resolution and can only refuse on; it chooses nothing.
  */
 export interface ExecutionTarget {
   environment: EnvironmentRef;
