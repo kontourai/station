@@ -402,7 +402,7 @@ describe('SessionRecoveryCoordinator', () => {
     vi.useRealTimers();
   });
 
-  test('RECOVERY TELEMETRY DEFECT: emits the existing transient and terminal classifier decisions', () => {
+  test('RECOVERY TELEMETRY DEFECT: emits the existing transient and terminal classifier decisions', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'recovery-coordinator-'));
     dirs.push(dir);
     const store = new EventStore(join(dir, 'orchestration.sqlite'));
@@ -456,6 +456,8 @@ describe('SessionRecoveryCoordinator', () => {
       decision: 'reconnect',
       outcome: 'manual',
     });
+    // The armed transient intent holds a real timer; see #2324 below.
+    await coordinator.dispose().catch(() => undefined);
     store.close();
   });
 
@@ -1702,7 +1704,7 @@ describe('SessionRecoveryCoordinator', () => {
     vi.useRealTimers();
   });
 
-  test('#2324: a failed turn the engine opened on its own is never armed for replay — a user turn with the same failure is', () => {
+  test('#2324: a failed turn the engine opened on its own is never armed for replay — a user turn with the same failure is', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'recovery-coordinator-'));
     dirs.push(dir);
     const store = new EventStore(join(dir, 'orchestration.sqlite'));
@@ -1770,6 +1772,10 @@ describe('SessionRecoveryCoordinator', () => {
       decision: 'retry-now',
       outcome: 'armed',
     });
+    // The armed control holds a real timer. Dispose before closing the store
+    // so it cannot fire into a later test against a closed database, where
+    // the fire-time fence (#3563) would keep re-arming it.
+    await coordinator.dispose().catch(() => undefined);
     store.close();
   });
 
