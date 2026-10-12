@@ -18,6 +18,7 @@ import {
   describeRecentProcessBirthProbeFailures,
   lookupProcessBirthFingerprint,
   lookupProcessBirthFingerprintAsync,
+  lookupWindowsProcessImageIdentity,
   probeExactProcessIdentity,
   processBirthPredatesCurrentBoot,
   resolveOwnProcessIdentity,
@@ -26,6 +27,7 @@ import {
   WINDOWS_OWN_PROCESS_BIRTH_RETRY_DELAY_MS,
   WINDOWS_OWN_PROCESS_BIRTH_RETRY_TIMEOUT_MS,
   WINDOWS_OWN_PROCESS_BIRTH_TIMEOUT_MS,
+  WINDOWS_PROCESS_IMAGE_IDENTITY_TIMEOUT_MS,
 } from '../process-identity.mjs';
 import { windowsPowerShell7Path } from '../windows-system-utility.mjs';
 
@@ -678,5 +680,65 @@ describe('processBirthPredatesCurrentBoot', () => {
         platform: 'win32',
       }),
     ).toBeNull();
+  });
+});
+
+describe('lookupWindowsProcessImageIdentity (#2675)', () => {
+  test('runs System32 PowerShell, never PATH, on the cold-start budget', () => {
+    expect(WINDOWS_PROCESS_IMAGE_IDENTITY_TIMEOUT_MS).toBe(10_000);
+    const calls: Array<{ command: string; options: Record<string, unknown> }> =
+      [];
+    const identity = lookupWindowsProcessImageIdentity(4242, {
+      env: MINIMAL_WINDOWS_ENV,
+      exec: (command, _args, options) => {
+        calls.push({ command, options: options ?? {} });
+        return `2026-10-11T09:15:02.1234560Z\r\n${Buffer.from('D:\\Station\\runtime\\node.exe').toString('base64')}\r\n`;
+      },
+    });
+    expect(identity).toEqual({
+      birth: '2026-10-11T09:15:02.1234560Z',
+      image: 'D:\\Station\\runtime\\node.exe',
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].command).toBe(MINIMAL_ENV_POWERSHELL);
+    expect(calls[0].options.timeout).toBe(10_000);
+  });
+
+  test('reads the start time with exactly the birth probe statements', () => {
+    let birthScript = '';
+    lookupProcessBirthFingerprint(4244, {
+      platform: 'win32',
+      env: MINIMAL_WINDOWS_ENV,
+      exec: (_command, args) => {
+        birthScript = String(args.at(-1));
+        return '2026-10-11T09:15:02.1234560Z';
+      },
+    });
+    let imageScript = '';
+    lookupWindowsProcessImageIdentity(4244, {
+      env: MINIMAL_WINDOWS_ENV,
+      exec: (_command, args) => {
+        imageScript = String(args.at(-1));
+        return '';
+      },
+    });
+    expect(birthScript).toContain('GetProcessById(4244)');
+    expect(imageScript).toContain(
+      `function Read-StationBirth { ${birthScript} }`,
+    );
+  });
+
+  test('records why a probe produced nothing', () => {
+    expect(
+      lookupWindowsProcessImageIdentity(4243, {
+        env: MINIMAL_WINDOWS_ENV,
+        exec: () => {
+          throw Object.assign(new Error('exit 3'), { status: 3 });
+        },
+      }),
+    ).toBeNull();
+    expect(describeRecentProcessBirthProbeFailures(4243)).toContain(
+      'powershell.exe exited 3',
+    );
   });
 });
