@@ -335,6 +335,8 @@ describe('monument import boundary gate', () => {
           c: 'link:../sdk',
           'left-pad': '1.3.0',
         },
+        bin: { monument: './bin.js' },
+        scripts: { postinstall: 'node ./x.js', test: 'vitest' },
         peerDependencies: { d: 'portal:../cli' },
       }),
       [`${ROOT}/src/aliased.ts`]: "export * from 'innocent';\n",
@@ -348,6 +350,8 @@ describe('monument import boundary gate', () => {
       `aliased-dependency: ${MANIFEST}:1 peerDependencies.d`,
       `unapproved-dependency: ${MANIFEST}:1 dependencies.left-pad`,
       `undeclared-import: ${ROOT}/src/aliased.ts:1 innocent`,
+      `manifest-hook: ${MANIFEST}:1 bin`,
+      `manifest-hook: ${MANIFEST}:1 scripts.postinstall`,
     ])
       expect(result.stderr).toContain(line);
   });
@@ -429,6 +433,100 @@ describe('monument import boundary gate', () => {
       `escapes-package: ${ROOT}/src/upper.ts:1`,
     ])
       expect(result.stderr).toContain(line);
+  });
+
+  it('refuses a relative import of anything but source, and Markdown below the root', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const result = run({
+      ...CLEAN,
+      [`${ROOT}/src/notes.md`]: '# notes\n',
+      [`${ROOT}/src/loads.ts`]:
+        "import '../LICENSE';\nimport './notes.md';\nimport '../README.md';\n",
+    });
+    expect(result.status, result.output).toBe(1);
+    for (const line of [
+      `non-source-import: ${ROOT}/src/loads.ts:1 ../LICENSE`,
+      `non-source-import: ${ROOT}/src/loads.ts:2 ./notes.md`,
+      `non-source-import: ${ROOT}/src/loads.ts:3 ../README.md`,
+      `unexpected-file: ${ROOT}/src/notes.md`,
+    ])
+      expect(result.stderr).toContain(line);
+  });
+
+  it('refuses path strings into the package in Station files, not only imports', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const result = run({
+      ...CLEAN,
+      'src-server/strings.ts': [
+        "import { vi } from 'vitest';",
+        "export const a = await vi.importActual('../packages/monument/src/index.ts');",
+        "import { createRequire } from 'node:module'; const req = createRequire(import.meta.url); export const b = req('../packages/monument/src/local.ts');",
+        "export const w = new URL('../packages/monument/src/worker.ts', import.meta.url);",
+        "export const m = '@kontourai/monument/src/step';",
+        "export const manifest = new URL('../packages/monument/package.json', import.meta.url);",
+        "export const entry = '@kontourai/monument/sqlite';",
+        '',
+      ].join('\n'),
+      'src-server/bad.ts': "export * from '../packages/monument/%zz.ts';\n",
+    });
+    expect(result.status, result.output).toBe(1);
+    for (const line of [
+      'monument-internal-reference: src-server/strings.ts:2 ../packages/monument/src/index.ts',
+      'monument-internal-reference: src-server/strings.ts:3 ../packages/monument/src/local.ts',
+      'monument-internal-reference: src-server/strings.ts:4 ../packages/monument/src/worker.ts',
+      'monument-internal-reference: src-server/strings.ts:5 @kontourai/monument/src/step',
+      'encoded-specifier: src-server/bad.ts:1',
+    ])
+      expect(result.stderr).toContain(line);
+    expect(result.stderr).not.toContain('src-server/strings.ts:6');
+    expect(result.stderr).not.toContain('src-server/strings.ts:7');
+  });
+
+  it('refuses package.json imports and tsconfig paths that alias into the package', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const result = run({
+      ...CLEAN,
+      'package.json': JSON.stringify({
+        name: 'root',
+        imports: {
+          '#k/*': './packages/monument/src/*',
+          '#cond': { node: './packages/monument/src/local.ts' },
+          '#ok': './packages/monument/src/index.ts',
+        },
+      }),
+      'tsconfig.json':
+        '{\n  // comments are allowed here\n  "compilerOptions": { "paths": { "k/*": ["./packages/monument/src/*"], "ok": ["./packages/monument/src/index.ts"] } }\n}\n',
+      'src-server/tsconfig.test.json': JSON.stringify({
+        compilerOptions: {
+          baseUrl: '.',
+          paths: { 'm/*': ['../packages/monument/src/*'] },
+        },
+      }),
+    });
+    expect(result.status, result.output).toBe(1);
+    for (const line of [
+      'monument-alias: package.json:1 imports.#k/*',
+      'monument-alias: package.json:1 imports.#cond',
+      'monument-alias: tsconfig.json:1 compilerOptions.paths.k/*',
+      'monument-alias: src-server/tsconfig.test.json:1 compilerOptions.paths.m/*',
+    ])
+      expect(result.stderr).toContain(line);
+    expect(result.stderr).not.toContain('imports.#ok');
+    expect(result.stderr).not.toContain('paths.ok');
+  });
+
+  it('does not refuse a file that mentions the package only in a comment (control)', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const result = run({
+      ...CLEAN,
+      'src-server/comment.ts':
+        "// Later this will use the Monument kernel.\nconst name = 'x';\nexport const m = import(name);\n",
+    });
+    expect(result.status, result.output).toBe(0);
   });
 
   it('refuses an empty scope rather than reporting it clean', {

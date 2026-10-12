@@ -1063,6 +1063,35 @@ turnBoundary.push({
     }),
 });
 
+turnBoundary.push({
+  name: 'turn boundary: reconcile leaves alone a row recreated by the same owner at another createdAt',
+  run: (harness) =>
+    withSession(harness, async (session) => {
+      const dead = session.processes.spawn();
+      await session.run(create('b', 't', dead, at(1)));
+      await session.run(transition('b', dead, ['prepared'], 'invoking', at(2)));
+      session.processes.kill(dead);
+      const listed = await session.run({ type: 'turnBoundary.list' });
+      const plan = planTurnBoundaryReconcile(
+        listed.kind === 'records' ? listed.records : [],
+        { probe: session.processes.probe },
+        at(5),
+      );
+      // Same id and the same full owner, created again at the old row's
+      // updatedAt: only createdAt tells the rows apart.
+      await session.run({
+        type: 'turnBoundary.remove',
+        boundaryId: 'b',
+        ownerId: dead.id,
+        from: ['invoking'],
+      });
+      await session.run(create('b', 't', dead, at(2)));
+      const result = await session.run(plan);
+      assert.deepEqual(interruptedOf(result), []);
+      assert.equal((await boundary(session, 'b'))?.state, 'prepared');
+    }),
+});
+
 const requestKeys: KernelConformanceCase[] = [
   {
     name: 'request keys: same digest replays or re-drives; a different digest conflicts',
