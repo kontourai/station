@@ -188,21 +188,21 @@ export function pieces(
     .map((r) => ({ segs, from: r[0], to: r.at(-1) }));
 }
 
+// The L or A command that draws primitive `s` from parameter t0 to t1.
+function segmentCommand(s, t0, t1, d) {
+  const end = pt(evalSeg(s, t1).p, d);
+  if (s.type === 'line') return `L${end}`;
+  const large = Math.abs(s.turn) * (t1 - t0) > Math.PI ? 1 : 0;
+  return `A${fmt(s.R, d)} ${fmt(s.R, d)} 0 ${large} ${s.turn > 0 ? 1 : 0} ${end}`;
+}
+
 /** Path data for one run: M, then an exact L or A for each primitive. */
 export function runData({ segs, from, to }, d = 2) {
   let data = `M${pt(from.p, d)}`;
   for (let i = from.i; i <= to.i; i += 1) {
-    const s = segs[i];
-    if (!s) continue;
     const t0 = i === from.i ? from.t : 0;
     const t1 = i === to.i ? to.t : 1;
-    if (t1 - t0 < 1e-6) continue;
-    const end = evalSeg(s, t1).p;
-    if (s.type === 'line') data += `L${pt(end, d)}`;
-    else {
-      const sweep = Math.abs(s.turn) * (t1 - t0);
-      data += `A${fmt(s.R, d)} ${fmt(s.R, d)} 0 ${sweep > Math.PI ? 1 : 0} ${s.turn > 0 ? 1 : 0} ${pt(end, d)}`;
-    }
+    if (segs[i] && t1 - t0 >= 1e-6) data += segmentCommand(segs[i], t0, t1, d);
   }
   return data;
 }
