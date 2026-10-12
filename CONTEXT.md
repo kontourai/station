@@ -147,10 +147,18 @@ questions and evidence.
 The [constitution](docs/strategy/constitution.md) records product principles,
 not a certification that every feature already meets them. Keep core
 vendor-neutral, use published Kontour contracts, and propose missing primitive
-capabilities upstream. Extraction requires a real second consumer, a public
-contract, verification the new product owns, and a measurable reduction in
-Station-owned code. These are design constraints, not permission to extract
-or remove a working subsystem during documentation cleanup.
+capabilities upstream. [ADR 0005](docs/adr/0005-require-a-second-consumer-before-extraction.md)
+sets two tiers. A subsystem may become a publishable package in Station's
+workspace with Station as its only consumer. It must import no Station source
+and no `@kontourai/station-*` package, enforced by a lint rule or an automated
+check that fails CI. It must also have its own conformance suite and
+experimental versioning, and Station must use only its public entry point.
+Extraction into a standalone product or repository requires, at minimum, the
+ADR's real non-Station consumer that exists or is concretely asking. It also
+requires a public contract, verification the new product owns, and a
+measurable reduction in Station-owned code. These are design constraints, not
+permission to extract or remove a working subsystem during documentation
+cleanup.
 
 Use the [testing guide](docs/guides/testing.md) and `npm run gate:for -- <paths>`
 for current verification routes. Source inspection, a focused test, a live

@@ -15,8 +15,9 @@ release overlays. Promotion never edits source, moves a tag, or relabels a
 preview artifact.
 
 Nightly is a separate, opt-in signed-public-manifest path:
-`STATION_CHANNEL=nightly` requires `STATION_INSTALL_PUBLIC_MANIFEST_URL`.
-The authenticated GitHub-release path serves Stable and Beta only. See
+`STATION_CHANNEL=nightly` installs from the rolling `portable-nightly`
+manifest unless `STATION_INSTALL_PUBLIC_MANIFEST_URL` names another signed
+manifest. The authenticated GitHub-release path serves Stable and Beta only. See
 [channel identity and coexistence](release-channel-ports.md) for Nightly's
 home/port admission and the distinction between the public manifest signature
 and a signed Git tag. Publication remains separate from installer support.
@@ -161,7 +162,9 @@ The locations come from one base,
 manifest is `v<version>/station-portable-<ring>-manifest.json`. The rolling
 pointers are `portable-stable/station-portable-stable-manifest.json` and
 `portable-preview/station-portable-preview-manifest.json`. Nightly's
-`portable-nightly` pointer derives from the same base. Stable and preview
+`portable-nightly` pointer derives from the same base, and
+`scripts/install-script-generated.mjs` projects it into `install.sh` and
+`install.ps1` as the Nightly default. Stable and preview
 versions order numerically on `X.Y.Z` and `X.Y.Z-preview.N`.
 
 Nothing has been published this way yet. These remain owner actions: add the
