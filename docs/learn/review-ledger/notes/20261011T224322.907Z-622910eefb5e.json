@@ -1,0 +1,9 @@
+{
+  "revision": "897ee583f14b77a7bdd8dcddf4fce313c103469f",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"#3559: an earlier commit in this PR added an indeterminate branch to chat-primary-stream.ts; the review round reverted the file to origin/main, so its net change is none. This guide's /chat claims are unaffected; no prose change.","inputs":["docs/guides/agents.md","src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"#3559: an earlier commit in this PR added an indeterminate branch to chat-primary-stream.ts; the review round reverted the file to origin/main, so its net change is none. No environment variable changed; no prose change.","inputs":["docs/reference/env-vars.md","src-server/routes/chat/chat-primary-stream.ts"]}
+  ]
+}

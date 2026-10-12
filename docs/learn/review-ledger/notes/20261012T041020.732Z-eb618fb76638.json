@@ -1,0 +1,7 @@
+{
+  "revision": "c17900a783059df67cda728d15f6d0f535707a43",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Rechecked after the docs-index-reachability.test.ts per-test timeout change to 240 s: no claim here names that test's timeout or behaviour.","inputs":["docs/guides/development.md","scripts/__tests__/docs-index-reachability.test.ts"]}
+  ]
+}

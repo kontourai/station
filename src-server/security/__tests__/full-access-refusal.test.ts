@@ -51,7 +51,7 @@ describe('fullAccessRefusalBody', () => {
           "Open the Station desktop app on the Station's host.",
           'Select the Station name (top right), then Paired devices.',
           'Select the device by its name, then Change access.',
-          'Turn on Allow full access, then Apply.',
+          'Turn on Skip approval prompts, then Apply.',
         ],
         cli: 'station environment access scope 01234567 --add approval:full-access',
       },
@@ -61,6 +61,46 @@ describe('fullAccessRefusalBody', () => {
     );
     expect(JSON.stringify(body)).not.toContain('device-secret');
     expect(JSON.stringify(body)).not.toContain('0123456789abcdef');
+  });
+
+  test("the host command names this Station's channel CLI (a nightly host has no `station`)", () => {
+    const req = request({
+      kind: 'credential',
+      credential: 'c',
+      authority: 'device-credential',
+      deviceId: 'ca0dd4f2aaaaaaaa',
+      source: 'bearer',
+    });
+    bindFullAccessRefusalIdentity(req, {
+      environmentId: () => 'env-1',
+      deviceName: () => 'Phone',
+      hostCli: () => 'npx @kontourai/station-cli@nightly',
+    });
+    const body = fullAccessRefusalBody(req);
+    const cli =
+      'npx @kontourai/station-cli@nightly environment access scope ca0dd4f2 --add approval:full-access';
+    expect(body.details.grant).toMatchObject({ cli });
+    expect(body.error).toContain(`the operator can run: ${cli}`);
+  });
+
+  test('a CLI lookup that throws still refuses, naming station', () => {
+    const req = request({
+      kind: 'credential',
+      credential: 'c',
+      authority: 'device-credential',
+      deviceId: 'ca0dd4f2aaaaaaaa',
+      source: 'bearer',
+    });
+    bindFullAccessRefusalIdentity(req, {
+      environmentId: () => 'env-1',
+      deviceName: () => 'Phone',
+      hostCli: () => {
+        throw new Error('no build identity');
+      },
+    });
+    expect(fullAccessRefusalBody(req).details.grant).toMatchObject({
+      cli: 'station environment access scope ca0dd4f2 --add approval:full-access',
+    });
   });
 
   test('without the pairing records it still refuses, naming "this device"', () => {
@@ -98,7 +138,7 @@ describe('fullAccessRefusalBody', () => {
         "Open the Station desktop app on the Station's host.",
         'Select the Station name (top right), then Paired devices.',
         'Select the device by its name, then Change access.',
-        'Turn on Allow full access, then Apply.',
+        'Turn on Skip approval prompts, then Apply.',
       ],
     });
     expect(body.error).toContain('for the device you are using');

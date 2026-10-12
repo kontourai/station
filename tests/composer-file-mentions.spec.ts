@@ -122,3 +122,96 @@ test('keyboard-selects a scoped mention and preserves it across mounted chat swi
     fullPage: true,
   });
 });
+
+test('the mention picker opens above a phone composer without being clipped', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mount(page);
+  const composer = page.getByRole('textbox');
+  await composer.click();
+  await composer.pressSequentially('@');
+  const options = page.getByRole('option');
+  await expect(options).toHaveCount(3);
+  // It opens above the composer capsule, not inside it pushing the input down.
+  const listBox = await page
+    .getByRole('listbox', { name: 'Files and folders' })
+    .boundingBox();
+  const capsuleBox = await page.locator('.chat-input__capsule').boundingBox();
+  expect(listBox && capsuleBox).toBeTruthy();
+  expect(listBox!.y + listBox!.height).toBeLessThanOrEqual(capsuleBox!.y);
+  // A clipped option still has a box but is not what the pointer reaches:
+  // each option must be the topmost element at its own centre.
+  for (const option of await options.all()) {
+    const reachable = await option.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        box.left + box.width / 2,
+        box.top + box.height / 2,
+      );
+      return Boolean(hit && element.contains(hit));
+    });
+    expect(reachable).toBe(true);
+  }
+});
+
+test('pressing inside the mention list keeps it open, and refocusing reopens it after blur', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mount(page);
+  const composer = page.getByRole('textbox');
+  const list = page.getByRole('listbox', { name: 'Files and folders' });
+  await composer.click();
+  await composer.pressSequentially('Review @src');
+  await expect(list).toBeVisible();
+  // The list's own padding, not an option: focus must stay in the composer.
+  const box = await list.boundingBox();
+  await page.mouse.click(box!.x + 3, box!.y + 3);
+  await expect(composer).toBeFocused();
+  await expect(list).toBeVisible();
+  await page.getByRole('button', { name: 'First chat' }).focus();
+  await expect(list).toHaveCount(0);
+  await composer.focus();
+  await expect(list).toBeVisible();
+});
+
+test('a click refocus reopens the mention list only when the caret lands in the query', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mount(page);
+  const composer = page.getByRole('textbox');
+  const list = page.getByRole('listbox', { name: 'Files and folders' });
+  const away = page.getByRole('button', { name: 'First chat' });
+  await composer.click();
+  await composer.pressSequentially('@src');
+  await expect(list).toBeVisible();
+  const box = await composer.boundingBox();
+
+  // Caret left at the start, then a click at the end of the query: reopens.
+  await composer.press('Home');
+  await away.focus();
+  await expect(list).toHaveCount(0);
+  await page.mouse.click(box!.x + box!.width - 12, box!.y + 12);
+  await expect
+    .poll(() => composer.evaluate((t: HTMLTextAreaElement) => t.selectionStart))
+    .toBe(4);
+  await expect(list).toBeVisible();
+
+  // Caret left in the query, then a click at the start: stays closed.
+  await away.focus();
+  await expect(list).toHaveCount(0);
+  await page.mouse.click(box!.x + 4, box!.y + 12);
+  await expect
+    .poll(() => composer.evaluate((t: HTMLTextAreaElement) => t.selectionStart))
+    .toBe(0);
+  // The refocus sync runs one frame after focus; let two frames pass.
+  await page.evaluate(
+    () =>
+      new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve)),
+      ),
+  );
+  await expect(list).toHaveCount(0);
+});

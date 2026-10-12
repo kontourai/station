@@ -91,7 +91,8 @@ describe('OrchestrationService', () => {
         source,
         '\n  private async consumeAdapterEvents(',
       );
-      const gate = body.indexOf('if (!this.projectAndPublishEvent(');
+      // #3560: the gate is the retrying wrapper around projectAndPublishEvent.
+      const gate = body.indexOf('if (!(await this.publishObservedEvent(');
       const postHoc = body.indexOf('.applyPostHocToolPolicies(');
       const spool = body.indexOf('.spoolCommandEvidence(');
       expect(gate).toBeGreaterThanOrEqual(0);
@@ -99,9 +100,9 @@ describe('OrchestrationService', () => {
       expect(spool).toBeGreaterThan(postHoc);
       // The gate must be the ONLY one in the body: with two, the ingest
       // calls could sit above the real gate and still be `> gate`.
-      expect(body.split('if (!this.projectAndPublishEvent(').length - 1).toBe(
-        1,
-      );
+      expect(
+        body.split('if (!(await this.publishObservedEvent(').length - 1,
+      ).toBe(1);
       // Exactly one dispatch of each across the SERVICES TREE, not just this
       // file (review M2): before slice 11 both were private members of this
       // class, so "file-wide" was "everywhere". They are public members of an

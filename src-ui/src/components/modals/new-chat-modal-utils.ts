@@ -356,7 +356,7 @@ export interface NewChatModalContextOption {
 interface NewChatModalAgentGroup {
   label: string;
   icon?: string;
-  glyph?: 'engine' | 'globe' | 'plug' | 'time';
+  glyph?: 'engine' | 'code' | 'globe' | 'plug' | 'time';
   agents: AgentData[];
 }
 
@@ -613,7 +613,8 @@ export function buildNewChatModalViewModel({
     },
     {
       label: 'Coding apps',
-      glyph: 'engine',
+      // Not Station's lightning mark: two groups under one icon read as one.
+      glyph: 'code',
       agents: ordered.filter(
         (agent) =>
           !isStationAgentIdentity(agent.slug) && isEngineProvenanceAgent(agent),

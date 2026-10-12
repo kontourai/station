@@ -182,7 +182,9 @@
 
     "packages/shared/src/product-telemetry.ts",
 
-    "packages/contracts/src/usage-export.ts"
+    "packages/contracts/src/usage-export.ts",
+
+    "src-server/services/orchestration/delta-coalescer.ts"
   ],
 
   "checks": [

@@ -979,6 +979,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#2238: starts real Station children against one SQLite claims
   // store to prove construction preserves live ownership.
   'src-server/routes/chat/__tests__/chat-turn-dedup.test.ts',
+  // #3559: runs a real OrchestrationService owner process over SQLite,
+  // SIGKILLs it before or after its engine call, and retries the same client
+  // turn from a restarted store. Single-shot children; no wall-clock bound.
+  'src-server/services/orchestration/__tests__/turn-dedup-crash.process.test.ts',
   // The child process is owned by the hermetic helper rather than imported by
   // the test file; its broken-pipe proof also writes a 4 MiB stdin payload.
   'src-server/services/__tests__/helpers/hermetic-openssh.test.ts',

@@ -525,8 +525,8 @@ test('new chat lists persisted engine defaults and keeps selected and hovered te
   const selected = modal.locator('.new-chat-modal__agent--selected');
   await expect(selected).toContainText('Codex');
   // archive#3721 deleted the row description, and neither of the two remaining
-  // trailing elements is a replacement rung: the readiness badge
-  // (`@kontourai/ui` `.tone-*`) and the engine chip
+  // trailing elements is a replacement rung: the readiness badge, shown only
+  // on a blocked row with no fix (`@kontourai/ui` `.tone-*`), and the engine pill
   // (`components/badges/EngineChip.css:26-36`) each paint their own opaque
   // background, so their ratio is fixed by a token pair and cannot vary with
   // the row's selected/hover surface — measuring them would assert nothing.
@@ -1278,12 +1278,13 @@ test('new chat shows Station when the Station Agent matches the capability set',
   await expect(startComposer(page)).toBeVisible({ timeout: 3000 });
   // DESIGN §5: the picker groups by the Agents list's two bands
   // (`components/agent-provenance.ts:29-30`), not by engine name.
-  // `engineDefault: true` puts Station in the engine band, and the row's
-  // accessible name is "<name> <readiness state>" (`AgentReadinessCell.tsx`).
+  // `engineDefault: true` puts Station in the engine band. A row that can
+  // start shows no readiness badge, and an engine label that only repeats the
+  // name is left out, so the row's accessible name is the name alone.
   const dialog = await openAgentList(page);
   await expect(dialog.getByText('AI apps')).toBeVisible();
   await expect(dialog.getByText('Your agents')).toHaveCount(0);
   await expect(
-    dialog.getByRole('button', { name: 'Station Ready' }),
+    dialog.getByRole('button', { name: 'Station', exact: true }),
   ).toBeVisible();
 });

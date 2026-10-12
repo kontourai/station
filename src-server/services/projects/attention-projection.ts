@@ -1260,6 +1260,11 @@ export class AttentionProjectionService {
             createdAt: timestamp,
             updatedAt: timestamp,
             deviceName: request.deviceName,
+            // Only a request the approver may trim: an ordinary device
+            // request. A delegation or account-bound grant is approved as asked.
+            ...(request.kind !== 'delegation' && !request.requireAccountBinding
+              ? { requestedScope: request.scope }
+              : {}),
             // Derived at the HTTP seam from the boundary's own predicate —
             // see `list()`'s `viewer` option. The card renders Approve/Deny
             // only when true; a session tier that cannot pass the pairing

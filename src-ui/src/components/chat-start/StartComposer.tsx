@@ -1,5 +1,6 @@
 import { type ReactNode, type RefObject, useLayoutEffect, useRef } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
+import { MODEL_NOT_REPORTED } from '../../utils/modelCapabilities';
 import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { AgentIcon } from '../icons/AgentIcon';
@@ -48,9 +49,6 @@ export interface StartContextItem {
   detail: string;
   selected: boolean;
 }
-
-/** What `modelIdentityLabel` returns for no model id: never shown. */
-const MODEL_NOT_REPORTED = 'Model not reported';
 
 /** Visible text of the Agent chip: "Agent · Model". */
 function startAgentChipText(chip: StartAgentChip): string {

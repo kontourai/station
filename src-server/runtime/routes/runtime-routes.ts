@@ -153,7 +153,9 @@ import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
   DEVICE_PAIRING_BROWSER_COOKIE_DELIVERY,
   type DevicePrincipalBinding,
+  deviceRequestedExtraScopes,
   type FullAccessRevocationReport,
+  isDeviceRequestableScope,
   PAIRING_SCOPE_PRESETS,
   type PairingScope,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
@@ -183,6 +185,7 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { isStationNativeShellOrigin } from '@kontourai/station-shared/native-shell-origin';
+import { operatorCliCommand } from '@kontourai/station-shared/ports';
 
 function isAccountDeviceBinding(
   binding: DevicePrincipalBinding,
@@ -1928,6 +1931,7 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService.devicePairing
         .listDevices()
         .find((device) => device.id === deviceId)?.name,
+    hostCli: () => operatorCliCommand(context.buildProvenanceSnapshot?.channel),
   };
   context.app.use('*', async (c, next) => {
     bindFullAccessRefusalIdentity(c.req.raw, fullAccessRefusalIdentity);
@@ -2327,6 +2331,8 @@ export function configureRuntimeRoutes(
     context.app,
     context.environmentSecurityService.devicePairing,
     {
+      operatorCli: () =>
+        operatorCliCommand(context.buildProvenanceSnapshot?.channel),
       allowedOrigins,
       localGrant: {
         secretPath: join(
@@ -2619,6 +2625,8 @@ export function configureRuntimeRoutes(
     context.app,
     context.environmentSecurityService.devicePairing,
     {
+      operatorCli: () =>
+        operatorCliCommand(context.buildProvenanceSnapshot?.channel),
       // An approval by a caller that presented no credential is the disclosed
       // residue being exercised — warn volume, same as a denied remote
       // authentication, so it is readable in the same place.
@@ -7486,6 +7494,12 @@ export function configureDevicePairingPublicRoutes(
   app: HonoApp,
   pairing: DevicePairingService,
   options: {
+    /**
+     * The operator CLI command on this Station's host (`npx
+     * @kontourai/station-cli@nightly` on a nightly), named in every remedy
+     * that tells a person what to run there. `station` when omitted.
+     */
+    operatorCli?: () => string;
     allowedOrigins?: readonly string[];
     /**
      * Same-user local self-authorization (station#1715). Present in every
@@ -8064,7 +8078,14 @@ export function configureDevicePairingPublicRoutes(
       (body.requireAccountBinding !== undefined &&
         body.requireAccountBinding !== true) ||
       (body.clientInstanceId !== undefined &&
-        typeof body.clientInstanceId !== 'string')
+        typeof body.clientInstanceId !== 'string') ||
+      // A device names one requestable base plus requestable extras, never
+      // `access:manage`, and never beside a delegation (which has its own
+      // preset). The operator sees and may trim it before approving.
+      (body.scope !== undefined &&
+        (body.kind === 'delegation' ||
+          typeof body.scope !== 'string' ||
+          !isDeviceRequestableScope(body.scope)))
     ) {
       devicePairingRequests.add(1, {
         source: requestSource,
@@ -8140,7 +8161,9 @@ export function configureDevicePairingPublicRoutes(
               kind: 'delegation' as const,
               scope: PAIRING_SCOPE_PRESETS.delegation.join(' '),
             }
-          : {}),
+          : typeof body.scope === 'string'
+            ? { scope: body.scope }
+            : {}),
         deviceName: body.deviceName,
         clientInstanceId: body.clientInstanceId as string | undefined,
         requesterPosition: pairingRequesterPosition(c),
@@ -8177,7 +8200,11 @@ export function configureDevicePairingPublicRoutes(
         source: requestSource,
         outcome: 'requested',
       });
-      return c.json(result, 202);
+      // The requester shows the operator what to run to approve it.
+      return c.json(
+        { ...result, operatorCli: options.operatorCli?.() ?? 'station' },
+        202,
+      );
     } catch (error) {
       devicePairingRequests.add(1, {
         source: requestSource,
@@ -8593,6 +8620,12 @@ export function configureDevicePairingHostRoutes(
   app: HonoApp,
   pairing: DevicePairingService,
   options: {
+    /**
+     * The operator CLI command on this Station's host (`npx
+     * @kontourai/station-cli@nightly` on a nightly), named in every remedy
+     * that tells a person what to run there. `station` when omitted.
+     */
+    operatorCli?: () => string;
     audit?: (record: PairingApprovalAuditRecord) => void;
     verifyOperatorCredential?: (credential: string) => boolean;
     isApprovalCurrent?: (request: Request) => boolean;
@@ -8631,6 +8664,15 @@ export function configureDevicePairingHostRoutes(
   },
 ): void {
   const audit = options.audit;
+  // A refused approval names the command that approves it on this host.
+  const approvalRequiresOperator = (c: Context) =>
+    c.json(
+      {
+        error: 'approval_requires_operator',
+        operatorCli: options.operatorCli?.() ?? 'station',
+      },
+      403,
+    );
   // #2894 S1: counted per process, so the log line itself carries the total.
   let offHostOperatorCredentialUses = 0;
   const observeOperatorCredentialUse = (
@@ -8793,17 +8835,29 @@ export function configureDevicePairingHostRoutes(
           }
         | undefined;
       let relayConfirmation: DevicePairingRequest | undefined;
+      // What the approver keeps of the requested scope (the approval
+      // surfaces' Limit access list); omitted keeps all of it.
+      let grantedScope: string | undefined;
       if (c.req.raw.body !== null) {
         const body = await readPairingOfferJson(
           c.req.raw,
-          new Set(['', 'bindVerifiedIdentity', 'bindAccountIdentity']),
+          new Set([
+            '',
+            'bindVerifiedIdentity',
+            'bindAccountIdentity',
+            'scope',
+            'bindVerifiedIdentity,scope',
+          ]),
         );
         if (
           !body ||
           Object.keys(body).some(
             (key) =>
-              key !== 'bindVerifiedIdentity' && key !== 'bindAccountIdentity',
+              key !== 'bindVerifiedIdentity' &&
+              key !== 'bindAccountIdentity' &&
+              key !== 'scope',
           ) ||
+          (body.scope !== undefined && typeof body.scope !== 'string') ||
           (body.bindVerifiedIdentity !== undefined &&
             typeof body.bindVerifiedIdentity !== 'boolean') ||
           (body.bindAccountIdentity !== undefined &&
@@ -8816,8 +8870,9 @@ export function configureDevicePairingHostRoutes(
         // Reading the body yielded. Reapply the existing credential and scope
         // predicate before either ordinary approval or person binding commits.
         if (options.isApprovalCurrent?.(c.req.raw) !== true) {
-          return c.json({ error: 'approval_requires_operator' }, 403);
+          return approvalRequiresOperator(c);
         }
+        if (typeof body.scope === 'string') grantedScope = body.scope;
         if (body.bindVerifiedIdentity === true) {
           const actor = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
           const operatorCredential =
@@ -8834,7 +8889,7 @@ export function configureDevicePairingHostRoutes(
             return c.json({ error: 'person_binding_unavailable' }, 409);
           }
           if (!operatorCredential && !localGrant) {
-            return c.json({ error: 'approval_requires_operator' }, 403);
+            return approvalRequiresOperator(c);
           }
           bindingApproval = {
             principalId: resolveStationPrincipal(
@@ -8854,7 +8909,7 @@ export function configureDevicePairingHostRoutes(
             actor?.authority !== 'operator-credential' ||
             options.verifyOperatorCredential?.(actor.credential) !== true
           ) {
-            return c.json({ error: 'approval_requires_operator' }, 403);
+            return approvalRequiresOperator(c);
           }
           if (pairing.isRelayEnrollmentRequest(requestId)) {
             if (!options.relayEnrollment)
@@ -8915,7 +8970,7 @@ export function configureDevicePairingHostRoutes(
               actor.authority !== 'operator-credential' ||
               options.verifyOperatorCredential?.(actor.credential) !== true
             ) {
-              return c.json({ error: 'approval_requires_operator' }, 403);
+              return approvalRequiresOperator(c);
             }
             bindingApproval = {
               principalId: resolveStationPrincipal(
@@ -8929,9 +8984,42 @@ export function configureDevicePairingHostRoutes(
           }
         }
       }
+      // Full access or running commands, asked for at pairing, is the
+      // operator's to grant: an `access:approve` device may approve the rest,
+      // with those left out, but not keep them.
+      if (!relayConfirmation) {
+        const requested = pairing
+          .listRequests()
+          .find((candidate) => candidate.requestId === requestId);
+        const kept = grantedScope ?? requested?.scope ?? '';
+        if (deviceRequestedExtraScopes(kept).length > 0) {
+          const actor = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+          const operatorCredential =
+            actor?.authority === 'operator-credential' &&
+            options.verifyOperatorCredential?.(actor.credential) === true;
+          // The same operator test person binding uses: the operator
+          // credential, or the desktop's own home-possession local grant.
+          const localGrant =
+            actor?.authority === 'device-credential' &&
+            actor.locality === 'home-possession' &&
+            actor.mintKind === 'local-grant' &&
+            pairing.credentialLocality(actor.credential) ===
+              'home-possession' &&
+            pairing.credentialMintKind(actor.credential) === 'local-grant';
+          // Thrown, not returned, so it is counted and audited as the
+          // refusal it is, with the service's own refusals below.
+          if (!operatorCredential && !localGrant)
+            throw new DevicePairingError('approval_requires_operator');
+        }
+      }
       const request =
         relayConfirmation ??
-        pairing.confirmRequest(requestId, approval, bindingApproval);
+        pairing.confirmRequest(
+          requestId,
+          approval,
+          bindingApproval,
+          grantedScope === undefined ? undefined : { scope: grantedScope },
+        );
       devicePairingRequests.add(1, {
         source: request.source,
         outcome: 'approved',
@@ -8983,6 +9071,11 @@ export function configureDevicePairingHostRoutes(
           });
         }
       }
+      if (
+        error instanceof DevicePairingError &&
+        error.code === 'approval_requires_operator'
+      )
+        return approvalRequiresOperator(c);
       return c.json(
         { error: pairingErrorCode(error) },
         pairingErrorStatus(error),
