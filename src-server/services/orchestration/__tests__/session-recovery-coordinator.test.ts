@@ -2347,9 +2347,10 @@ describe('SessionRecoveryCoordinator', () => {
 
   /** A prior process claimed a due recovery and exited before invoking it. */
   function abandonedDueClaim() {
-    const dir = mkdtempSync(join(tmpdir(), 'recovery-due-startup-'));
-    dirs.push(dir);
-    const path = join(dir, 'orchestration.sqlite');
+    const path = join(
+      makeTempDir('recovery-due-startup-'),
+      'orchestration.sqlite',
+    );
     const first = new EventStore(path);
     const ledger = recoveryLedger(first);
     const intent = ledger.arm({
