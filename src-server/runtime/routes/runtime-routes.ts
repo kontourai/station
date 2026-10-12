@@ -715,6 +715,7 @@ import {
 } from './api-docs-launch.js';
 import { createOrchestrationBoardAuthorization } from './board-route-authorization.js';
 import { createClientStreamPresence } from './client-stream-presence.js';
+import { createFullAccessRefusalIdentity } from './full-access-refusal-identity.js';
 import {
   mayAnswerDelegatedRequest,
   runtimeAttentionRouteOptions,
@@ -1913,15 +1914,10 @@ export function configureRuntimeRoutes(
   // #1796: a refused full-access request names this Station and the paired
   // device that asked, read from the pairing service's own records (a
   // display name, never a credential), whichever route refuses it.
-  const fullAccessRefusalIdentity = {
-    environmentId: () =>
-      context.environmentSecurityService.devicePairing.environmentId(),
-    deviceName: (deviceId: string) =>
-      context.environmentSecurityService.devicePairing
-        .listDevices()
-        .find((device) => device.id === deviceId)?.name,
-    hostCli: () => operatorCliCommand(context.buildProvenanceSnapshot?.channel),
-  };
+  const fullAccessRefusalIdentity = createFullAccessRefusalIdentity(
+    context.environmentSecurityService,
+    () => context.buildProvenanceSnapshot?.channel,
+  );
   context.app.use('*', async (c, next) => {
     bindFullAccessRefusalIdentity(c.req.raw, fullAccessRefusalIdentity);
     await next();
