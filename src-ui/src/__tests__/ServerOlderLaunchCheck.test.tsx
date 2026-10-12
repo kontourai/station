@@ -201,6 +201,41 @@ describe('ServerOlderLaunchCheck', () => {
     ).toBeTruthy();
   });
 
+  test('dismissing an update it stopped following does not re-offer it from the old answer', () => {
+    vi.useFakeTimers();
+    try {
+      renderWithChrome(NEWER_CLIENT);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Update server to Nightly Oct 1' }),
+      );
+      act(() =>
+        applyOptions.onSuccess?.({
+          success: true,
+          serviceUpdate: { requestId: 'r1' },
+        }),
+      );
+      // 45 minutes without an outcome: the update may still have committed.
+      act(() => {
+        vi.advanceTimersByTime(45 * 60 * 1000);
+      });
+      expect(
+        screen.getByText(
+          'Stopped following the server update without reading its outcome.',
+        ),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
+      act(() => {
+        vi.runOnlyPendingTimers();
+      });
+      // The cached answer predates the update; it must not offer it again.
+      expect(
+        screen.queryByRole('button', { name: /Update server/ }),
+      ).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('dismissing a running update does not bring the stale offer back', () => {
     renderWithChrome(NEWER_CLIENT);
     fireEvent.click(

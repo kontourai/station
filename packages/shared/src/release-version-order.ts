@@ -118,8 +118,10 @@ export function hostNightlyAllocation(
     }
     return { date, build: Number(dated[4]) };
   }
+  // A version code has at most 7 digits until day 100000; an 8-digit number
+  // is a dated Nightly missing its build, not a code.
   const coded =
-    /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)-nightly\.([1-9][0-9]*)$/.exec(
+    /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)-nightly\.([1-9][0-9]{0,6})$/.exec(
       version,
     );
   if (!coded) return null;

@@ -104,10 +104,14 @@ describe('hostNightlyAllocation', () => {
     });
   });
 
-  test.each(['0.1.11', '0.1.11-preview.3', '0.1.11-nightly.20260230.1', 'x'])(
-    'is null for %j',
-    (version) => {
-      expect(hostNightlyAllocation(version)).toBeNull();
-    },
-  );
+  test.each([
+    '0.1.11',
+    '0.1.11-preview.3',
+    '0.1.11-nightly.20260230.1',
+    // A dated Nightly missing its build is not a version code (year 2574).
+    '0.1.11-nightly.20261001',
+    'x',
+  ])('is null for %j', (version) => {
+    expect(hostNightlyAllocation(version)).toBeNull();
+  });
 });

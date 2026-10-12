@@ -81,9 +81,13 @@ export function deriveServerOlderOffer(
   if (compareStationReleaseVersions(clientInHostOrder, server) !== 1) {
     return NONE;
   }
-  // A bare X.Y.Z client may be a ring build whose stamp lost its ring (an
-  // iOS build stamped with Apple's marketing version); against a prerelease
-  // of the same X.Y.Z it cannot tell which is newer, so it says nothing.
+  // A bare X.Y.Z client against a prerelease of the same X.Y.Z says
+  // nothing. The bare stamp may be a ring build that lost its ring (an
+  // internal or older iOS build stamped with Apple's marketing version), so
+  // it cannot tell which is newer. This deliberately also silences a genuine
+  // stable 0.1.12 desktop or Android client against a 0.1.12-preview.N
+  // server: that server tracks another ring and cannot self-update to the
+  // stable release anyway.
   if (
     releaseCore(clientInHostOrder) === clientInHostOrder &&
     sameRelease(clientInHostOrder, server)

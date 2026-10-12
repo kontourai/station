@@ -240,9 +240,11 @@ allocation; #2962 is meant to replace that bridge with one identity. An iOS
 build's Apple marketing version is the bare `X.Y.Z`, so its web bundle is
 stamped with the cohort's full Nightly version, or a Beta's full release
 version, instead. A bare `X.Y.Z` client never counts as newer than a
-prerelease of the same `X.Y.Z`. When the server is older, a dismissible banner
-names both versions in one readable form (a Nightly by its build date) and
-says so
+prerelease of the same `X.Y.Z`; that also keeps a stable `0.1.12` client quiet
+against a `0.1.12-preview.N` server, which tracks another ring and cannot
+update itself to the stable release. When the server is older, a dismissible
+banner says the server is older and names both versions in one readable form,
+a Nightly by its build date
 ([`ServerOlderLaunchCheck`](../../src-ui/src/components/ServerOlderLaunchCheck.tsx)).
 If the service's launcher runs the server and its verified manifest names a
 newer release, the banner offers **Update server to …**. That queues the same

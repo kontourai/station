@@ -139,16 +139,17 @@ export function ServerOlderLaunchCheck({
     return () => clearTimeout(timer);
   }, [following]);
 
-  // The outcome is in: re-read the server so the offer reflects what it runs.
-  // Until a check made after it answers, the old comparison is history: it
-  // must not offer the update that just ran.
-  const finished = flow.phase === 'finished';
+  // The update ended (with an outcome, or with following given up while it
+  // may still have committed): re-read the server so the offer reflects what
+  // it runs. Until a check made after that answers, the old comparison is
+  // history: it must not offer the update that just ran.
+  const concluded = flow.phase === 'finished' || flow.phase === 'expired';
   const [outcomeAt, setOutcomeAt] = useState<number | null>(null);
   useEffect(() => {
-    if (!finished) return;
+    if (!concluded) return;
     setOutcomeAt(Date.now());
     void refetch();
-  }, [finished, refetch]);
+  }, [concluded, refetch]);
   const awaitingRecheck =
     outcomeAt !== null && (statusUpdatedAt ?? 0) <= outcomeAt;
 

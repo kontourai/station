@@ -69,6 +69,9 @@ describe('deriveServerOlderOffer: when the server is older', () => {
       '0.1.11-nightly.246303',
     ],
     ['an iOS Beta stamped 0.1.11 meets a preview server', '0.1.11-preview.3'],
+    // Accepted: a genuine stable client is quiet against a preview of its
+    // own release, which tracks another ring and cannot self-update to it.
+    ['a stable 0.1.11 client meets its own preview', '0.1.11-preview.3'],
   ])('says nothing when %s', (_label, currentVersion) => {
     expect(
       deriveServerOlderOffer(

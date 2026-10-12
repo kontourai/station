@@ -82,18 +82,28 @@ describe('iOS web bundle build identity', () => {
           env: { ...process.env, GITHUB_OUTPUT: output },
           encoding: 'utf8',
         });
-        return { status: result.status, output: readFileSync(output, 'utf8') };
+        return {
+          status: result.status,
+          output: readFileSync(output, 'utf8'),
+          stdout: result.stdout,
+        };
       };
       const version = nightlyVersion(
         '0.1.11',
         new Date('2026-10-01T00:00:00Z'),
         build,
       );
-      expect(run(version)).toEqual({
+      expect(run(version)).toMatchObject({
         status: 0,
         output: `version=${version}\n`,
       });
-      expect(run('0.1.11').status).not.toBe(0);
+      // The refusal is explicit and names the value, not a silent set -e.
+      const refused = run('0.1.11');
+      expect(refused.status).toBe(1);
+      expect(refused.output).toBe('');
+      expect(refused.stdout).toContain(
+        "::error::cohort desktop version '0.1.11' is not a Nightly version",
+      );
     },
   );
 

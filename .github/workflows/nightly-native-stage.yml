@@ -199,7 +199,7 @@ jobs:
         if: steps.decide.outputs.build == 'true'
         run: |
           version=$(node -p 'require("./cohort-plan.json").versionIdentities.desktop.version')
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-nightly\.[1-9][0-9]*(\.[1-9][0-9]*)?$ ]]
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-nightly\.[1-9][0-9]*(\.[1-9][0-9]*)?$ ]] || { echo "::error::cohort desktop version '${version}' is not a Nightly version"; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: steps.decide.outputs.build == 'true'
