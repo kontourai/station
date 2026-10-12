@@ -5848,17 +5848,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   color: var(--error-text);
 }
 
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  /* Three named actions do not fit one row at phone width. Letting each grow
-     fills every row it wraps onto, so the row reads as a set of equal-width
-     targets rather than a left-over button stranded on a line of its own. */
-  .usage-telemetry-disclosure .station-dialog__footer > button,
-  .usage-telemetry-disclosure__actions > button,
-  .first-run-disclosure .first-run-chapter__actions > button {
-    flex: 1 1 auto;
-  }
-}
-
 /* Agent Editor */
 .agent-editor {
   display: flex;
@@ -6607,6 +6596,17 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
      footer's padding, and the safe area when it is larger. */
   .station-dialog__footer.responsive-surface-actions {
     padding-bottom: max(16px, var(--safe-bottom, 0px));
+  }
+
+  /* The usage telemetry disclosure's three named actions do not fit one row
+     at phone width. Letting each grow fills every row it wraps onto, so the
+     row reads as a set of equal-width targets rather than a left-over button
+     stranded on a line of its own. Lives in this shared mobile block rather
+     than a query of its own (mobile-css-ratchet). */
+  .usage-telemetry-disclosure .station-dialog__footer > button,
+  .usage-telemetry-disclosure__actions > button,
+  .first-run-disclosure .first-run-chapter__actions > button {
+    flex: 1 1 auto;
   }
 
   /* The transcript's own notice action (Retry, Discard, New chat…): its look is
