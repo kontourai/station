@@ -1,0 +1,9 @@
+{
+  "revision": "66e90d8bff2e28092e497aebaedaffdaf3ba65e2",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"vitest-resource-manifest.mjs gains the new child-process test accepted-release-parity.test.ts, classified with its child-process siblings as the docs require for new child-process tests. No other claim changed.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"vitest-resource-manifest.mjs gains the new child-process test accepted-release-parity.test.ts, classified with its child-process siblings as the docs require for new child-process tests. No other claim changed.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

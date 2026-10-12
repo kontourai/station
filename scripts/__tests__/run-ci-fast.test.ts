@@ -296,6 +296,8 @@ describe('bounded ci:fast runner', () => {
       ['npm', ['run', 'mobile:permissions:gate']],
       // #3149: a renderer-wide scan no path edge can select.
       ['npm', ['run', 'native-platform:ratchet']],
+      // #3565: the Tier 1 package's Station-import boundary.
+      ['npm', ['run', 'monument-import-boundary:gate']],
       ['npm', ['run', 'agent-plugin:validators:gate']],
       ['npm', ['run', 'settings:registry:gate']],
       ['npm', ['run', 'content:integrity']],

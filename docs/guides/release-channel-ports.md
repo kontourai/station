@@ -215,9 +215,11 @@ with the same variables, files and messages:
 - ports come from `STATION_INSTALL_SERVER_PORT`/`STATION_INSTALL_UI_PORT`,
   then the recorded ports, then the channel's. Unlike `install.sh`, it never
   reads `STATION_SERVER_PORT`/`STATION_UI_PORT`;
-- the downgrade and same-version-new-bytes refusals, with the
-  `STATION_VERSION` plus `STATION_INSTALL_ALLOW_ROLLBACK=1` opt-in, and the
-  nightly coexistence refusals above;
+- the downgrade and same-version-new-bytes refusals, the refusal of a
+  manifest older than the newest release the install root already accepted
+  (`.station-release-accepted.json`), each with the `STATION_VERSION` plus
+  `STATION_INSTALL_ALLOW_ROLLBACK=1` opt-in, and the nightly coexistence
+  refusals above;
 - stop, switch, start, restoring the previous version (or removing a first
   install) when a step fails; the restored version starts on the ports its
   restored state records (install.sh restarts it on the new ones); `STATION_INSTALL_NO_START=1` skips the start.
