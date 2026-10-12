@@ -1,5 +1,6 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { win32 } from 'node:path';
 import {
   windowsPowerShell7Path,
   windowsSystemUtilityPath,
@@ -271,6 +272,93 @@ async function windowsCreationDateFingerprintAsync(
     throw error;
   }
   return canonicalOrRecord(pid, command, output);
+}
+
+/**
+ * The bound for `lookupWindowsProcessImageIdentity`. Its callers are CLI
+ * start and stop decisions, never the server's event loop, so it gets the
+ * cold PowerShell start budget rather than the short arbitrary-pid one.
+ */
+export const WINDOWS_PROCESS_IMAGE_IDENTITY_TIMEOUT_MS =
+  WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS;
+
+function windowsImageIdentityCommand(pid) {
+  // The birth is read before and after the image, each through a fresh
+  // process object: a pid that exited and was reused between the reads has
+  // another start time and fails, as the Linux fingerprint's two procfs
+  // reads do. `Stop` makes a .NET exception end the script with a non-zero
+  // exit instead of continuing to the next statement.
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    `function Read-StationBirth { $p = [System.Diagnostics.Process]::GetProcessById(${pid}); try { $c = $p.StartTime.ToUniversalTime() } finally { $p.Dispose() }; $t = $c.Ticks - ($c.Ticks % 10); [datetime]::new([long]$t, [System.DateTimeKind]::Utc).ToString('yyyy-MM-ddTHH:mm:ss.fffffffZ', [System.Globalization.CultureInfo]::InvariantCulture) }`,
+    '$before = Read-StationBirth',
+    `$p = [System.Diagnostics.Process]::GetProcessById(${pid}); try { $image = $p.MainModule.FileName } finally { $p.Dispose() }`,
+    '$after = Read-StationBirth',
+    'if ($before -ne $after) { exit 3 }',
+    '$before',
+    '$image',
+  ].join('; ');
+}
+
+/**
+ * A Windows process's start time and executable image, read together: the
+ * identity Station's lifecycle records for its server and UI children and
+ * checks before it signals one (#2675). The start time has the same format
+ * as `lookupProcessBirthFingerprint`'s Windows birth. Null on any failure
+ * (no such process, access refused, timeout, unexpected output); callers
+ * fail closed on null.
+ */
+export function lookupWindowsProcessImageIdentity(pid, dependencies = {}) {
+  if (!Number.isInteger(pid) || pid < 1) return null;
+  const exec = dependencies.exec ?? execFileSync;
+  const timeoutMs =
+    dependencies.timeoutMs ?? WINDOWS_PROCESS_IMAGE_IDENTITY_TIMEOUT_MS;
+  let command;
+  try {
+    command = windowsSystemUtilityPath('powershell', dependencies.env);
+  } catch {
+    return null;
+  }
+  let output;
+  try {
+    output = exec(
+      command,
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-Command',
+        windowsImageIdentityCommand(pid),
+      ],
+      {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
+        timeout: timeoutMs,
+        killSignal: 'SIGKILL',
+      },
+    );
+  } catch (error) {
+    recordProbeFailure(pid, command, describeProbeError(error, timeoutMs));
+    return null;
+  }
+  const lines = String(output ?? '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  const [birth, image] = lines;
+  if (
+    lines.length !== 2 ||
+    !isWindowsRoundTripUtcIso(birth) ||
+    !win32.isAbsolute(image)
+  ) {
+    recordProbeFailure(
+      pid,
+      command,
+      `printed no start time and image: ${clipSnippet(output)}`,
+    );
+    return null;
+  }
+  return { birth, image };
 }
 
 /**
