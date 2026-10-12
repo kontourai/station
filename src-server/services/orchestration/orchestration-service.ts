@@ -715,30 +715,29 @@ interface CommittedEvent {
   providerTurnRecorded: SessionTurnBoundaryTransition | undefined;
 }
 
-/** The lifecycle fields `normalizeCanonicalRuntimeEventLifecycle` stamps. */
-const LIFECYCLE_STAMP_FIELDS = [
-  'sessionState',
-  'previousState',
-  'transitionReason',
-  'transitionSource',
-] as const;
-
 /**
- * #3561: `candidate` with its lifecycle fields put back to what the adapter
- * authored on `source`, so normalizing it again stamps from current state
- * instead of keeping an earlier stamp (which normalization never overwrites).
+ * #3561: `candidate` with the lifecycle fields that
+ * `normalizeCanonicalRuntimeEventLifecycle` stamps put back to what the
+ * adapter authored on `source`, so normalizing it again stamps from current
+ * state instead of keeping an earlier stamp (which normalization never
+ * overwrites).
  */
 function withAdapterLifecycleStamp(
   candidate: CanonicalRuntimeEvent,
   source: CanonicalRuntimeEvent,
 ): CanonicalRuntimeEvent {
-  const next: Record<string, unknown> = { ...candidate };
-  const authored = source as unknown as Record<string, unknown>;
-  for (const field of LIFECYCLE_STAMP_FIELDS) {
-    if (field in authored) next[field] = authored[field];
-    else delete next[field];
-  }
-  return next as unknown as CanonicalRuntimeEvent;
+  const next = { ...candidate };
+  delete next.sessionState;
+  delete next.previousState;
+  delete next.transitionReason;
+  delete next.transitionSource;
+  if ('sessionState' in source) next.sessionState = source.sessionState;
+  if ('previousState' in source) next.previousState = source.previousState;
+  if ('transitionReason' in source)
+    next.transitionReason = source.transitionReason;
+  if ('transitionSource' in source)
+    next.transitionSource = source.transitionSource;
+  return next;
 }
 
 /**
