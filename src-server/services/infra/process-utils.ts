@@ -13,6 +13,7 @@ import { join } from 'node:path';
 import {
   type ExactProcessIdentityProbe,
   lookupProcessBirthFingerprint,
+  lookupProcessBirthFingerprintCached,
   PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,
   probeExactProcessIdentity,
   processBirthPredatesCurrentBoot,
@@ -297,7 +298,13 @@ export function resolveOwnedProcessOwner(
     pid,
     instanceId: env.STATION_INSTANCE_ID ?? 'unknown',
     bootId: env.STATION_BOOT_ID ?? 'unknown',
-    birth: lookupProcessBirthFingerprint(pid),
+    // This process's own birth cannot change, so after one successful probe
+    // the shared cache answers without blocking (#561); every registration
+    // records it. Any other pid is probed fresh.
+    birth:
+      pid === process.pid
+        ? lookupProcessBirthFingerprintCached(pid)
+        : lookupProcessBirthFingerprint(pid),
   };
 }
 
@@ -959,7 +966,19 @@ function registerOwnedChild(
       },
     );
   }
-  return () => forgetOwnedProcess(pid, { registryDir });
+  // Callers release from 'exit' listeners, timers and shutdown paths, where
+  // a throw (a record that cannot be removed) would be uncaught. A record
+  // left behind is re-checked by the next startup sweep.
+  return () => {
+    try {
+      forgetOwnedProcess(pid, { registryDir });
+    } catch (error) {
+      warn('owned-process registry: record removal failed', {
+        registryDir,
+        error: String(error),
+      });
+    }
+  };
 }
 
 /**
@@ -987,6 +1006,10 @@ export function registerDetachedOwnedChild(
  * keep its group alive keeps its record, so the startup sweeps after this
  * owner is gone retain and report that group (never signal it) until it is
  * empty. On Windows there is no group to wait for.
+ *
+ * `release` runs from an 'exit' listener or a timer, so it must not throw;
+ * the releases `spawnOwnedChild` and `registerDetachedOwnedChild` build log
+ * a failed removal instead.
  */
 export function releaseOwnedChildAfterGroupExit(
   proc: Pick<ChildProcess, 'pid' | 'once'>,
@@ -995,30 +1018,16 @@ export function releaseOwnedChildAfterGroupExit(
 ): void {
   const pollMs = options.pollMs ?? 50;
   const maxWaitMs = options.maxWaitMs ?? 5_000;
-  // This runs from an 'exit' listener or a timer, where a throw (a record
-  // that cannot be removed) would be an uncaught exception and would stop
-  // the child's 'close' from firing. A record left behind is re-checked by
-  // the next startup sweep.
-  const releaseQuietly = () => {
-    try {
-      release();
-    } catch (error) {
-      logger.warn('owned-process registry: record removal failed', {
-        pid: proc.pid,
-        error: String(error),
-      });
-    }
-  };
   proc.once('exit', () => {
     const pid = proc.pid;
     if (typeof pid !== 'number' || process.platform === 'win32') {
-      releaseQuietly();
+      release();
       return;
     }
     const deadline = Date.now() + maxWaitMs;
     const check = () => {
       if (!processGroupExists(pid)) {
-        releaseQuietly();
+        release();
         return;
       }
       if (Date.now() >= deadline) return;
