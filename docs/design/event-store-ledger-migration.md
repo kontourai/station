@@ -54,8 +54,9 @@ must never project success or cleanup completion without `applied`. A thrown or
 ambiguous SQLite operation is `unavailable`, so the caller retains its opaque
 capability for the exact retry rather than guessing durability.
 
-Bulk `reconcilePrepared` is startup-only: it first rejects a prepared row with
-a live durable owner fence, then atomically changes only an abandoned
+Bulk `reconcilePrepared` runs only in startup reconciliation passes (later
+callers retry the credential pass until it reconciles): it first rejects a
+prepared row with a live durable owner fence, then atomically changes only an abandoned
 owner/attempt/correlation tuple and returns its exact winners. Live profile
 completion is restricted to the original process-local claim capability; a
 reconstructed process has no claim and waits for startup reconciliation to
@@ -64,10 +65,14 @@ and guarded compare-and-set updates, preserving due ordering (`due_at`, then
 creation) while keeping transaction coordination and owner-liveness checks
 inside the Implementation.
 
-Both startup reconciliation readers catch scan failures and return an empty
-list. An empty result therefore does not establish that recovery storage was
-read successfully. [#2823](https://github.com/kontourai/station/issues/2823)
-tracks explicit unavailable scan results and the caller's admission policy.
+Both startup reconciliation readers return a typed scan: `available` with the
+rows read, or `unavailable` when the coordinator read failed, so an empty
+result now establishes that recovery storage was read. CredentialRecoveryModule
+reports an unavailable scan as `unavailable` and keeps its startup pass
+eligible for retry instead of latching it.
+[#2823](https://github.com/kontourai/station/issues/2823) still tracks the
+caller's admission policy and the due-path sweep, which has no in-process
+retry.
 
 Ownership pairs an owner UUID with the shared process-identity birth
 fingerprint. A matching live PID is retained; a dead PID or mismatched birth is
