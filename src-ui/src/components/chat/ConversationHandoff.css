@@ -15,11 +15,19 @@
   backdrop-filter: blur(6px);
 }
 
+/* `ResponsiveDialogSurface` supplies behavior and geometry only, so the panel
+   owns its own surface; without one the form floated on the dimmed overlay
+   and the muted text was unreadable in the light theme. */
 .conversation-handoff-dialog {
+  box-sizing: border-box;
   width: min(680px, calc(100vw - 32px));
   max-height: min(760px, calc(100dvh - 32px));
   overflow: auto;
   padding: var(--space-5, 20px);
+  border: var(--k-border-thin, 1px) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  color: var(--k-text);
 }
 .conversation-handoff-dialog__header,
 .conversation-handoff-dialog__actions,
@@ -109,6 +117,14 @@
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
+}
+/* A long engine name wraps the primary onto its own row at phone width;
+   growing the buttons keeps both rows full-width instead of one ragged
+   right-aligned pair. */
+@media (max-width: 480px) {
+  .conversation-handoff-dialog__actions > .button {
+    flex: 1 1 auto;
+  }
 }
 .conversation-handoff-boundary {
   display: grid;
