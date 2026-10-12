@@ -400,6 +400,21 @@ describe('portable Nightly publication workflow: token, secret and effect scope'
     expect(steps[index('Upload the versioned release assets')].run).toContain(
       '--latest=false',
     );
+    // This Nightly's installers ride on its immutable release, created with
+    // it, and are read back byte for byte before the rolling write.
+    expect(steps[index('Upload the versioned release assets')].run).toMatch(
+      /gh release create "\$RELEASE_TAG" [^\n]* install\.sh install\.ps1\n/,
+    );
+    const readback =
+      steps[
+        index(
+          'Re-download the versioned assets and compare them with the manifest',
+        )
+      ].run ?? '';
+    expect(readback).toContain('for script in install.sh install.ps1; do');
+    expect(readback).toContain(
+      'cmp "$script" "$RUNNER_TEMP/published-$script"',
+    );
   });
 
   it("refuses a payload that is not this run's Nightly before signing or any release exists", () => {
