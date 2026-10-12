@@ -296,6 +296,9 @@ why. To recover on the host, do one of these:
 - install a release explicitly with `STATION_VERSION=v<x.y.z>` and
   `STATION_INSTALL_ALLOW_ROLLBACK=1`, which rewrites the record.
 
+Leftover `.station-release-accepted.json.*.tmp` files in the install root are
+staging files from an interrupted install and are safe to delete.
+
 One accepted edge: the record compares versions, not bytes. After a launcher
 rollback from vN, a manifest for different bytes signed as the same vN is not
 older than the record, and it is newer than the active release, so it

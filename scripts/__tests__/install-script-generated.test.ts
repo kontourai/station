@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { CHANNEL_PORTS, RELEASE_RINGS } from '../channel-ports.mjs';
 import {
+  acceptedReleaseFunctionSource,
   bundleInstallerCore,
   checkInstallPs1Script,
   checkInstallScript,
@@ -36,6 +37,38 @@ function scratchCopy(): string {
   copyFileSync(INSTALL_SCRIPT_PATH, path);
   return path;
 }
+
+describe('the accepted-release program block (#187)', () => {
+  it('carries the shipped function, which is comments and one exported function', () => {
+    const source = readFileSync(
+      resolve(root, 'packages/shared/src/accepted-release.mjs'),
+      'utf8',
+    );
+    expect(acceptedReleaseFunctionSource(source)).toMatch(
+      /^function acceptedReleaseRules\(/,
+    );
+  });
+
+  it.each([
+    ["import { x } from 'node:fs';\n"],
+    ['const helper = 1;\n'],
+    ['/** doc */\nexport const extra = 1;\n'],
+  ])('refuses a statement before the function: %j', (prefix) => {
+    expect(() =>
+      acceptedReleaseFunctionSource(
+        `/** doc */\n${prefix}export function acceptedReleaseRules(rings) {}\n`,
+      ),
+    ).toThrow(/only comments and its one exported function/);
+  });
+
+  it('refuses a second export after the function', () => {
+    expect(() =>
+      acceptedReleaseFunctionSource(
+        'export function acceptedReleaseRules(rings) {}\nexport const x = 1;\n',
+      ),
+    ).toThrow(/only comments and its one exported function/);
+  });
+});
 
 describe('install.sh generated blocks', () => {
   it('matches what the generator renders from its config sources', () => {

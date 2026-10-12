@@ -7,6 +7,7 @@
  * this tree a prebuilt archive" and one for "is it an installer-owned version
  * directory".
  */
+import { randomBytes } from 'node:crypto';
 import {
   closeSync,
   existsSync,
@@ -340,6 +341,7 @@ const ACCEPTED_RELEASE = acceptedReleaseRules(
   STATION_RELEASE_RINGS,
   { closeSync, lstatSync, openSync, readFileSync, rmSync, writeFileSync },
   renamePathSyncRetrying,
+  randomBytes,
 );
 export const ACCEPTED_RELEASE_FILENAME = ACCEPTED_RELEASE.FILENAME;
 export type { AcceptedReleaseMark, AcceptedReleaseRelation };

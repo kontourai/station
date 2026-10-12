@@ -48,4 +48,5 @@ export function acceptedReleaseRules(
     | 'writeFileSync'
   >,
   rename: (source: string, destination: string) => void,
+  randomBytes: (size: number) => { toString(encoding: 'hex'): string },
 ): AcceptedReleaseRules;

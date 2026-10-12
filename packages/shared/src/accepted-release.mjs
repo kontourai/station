@@ -18,7 +18,7 @@
  * defends against a hostile manifest host, not a local actor running as that
  * user.
  */
-export function acceptedReleaseRules(rings, fs, rename) {
+export function acceptedReleaseRules(rings, fs, rename, randomBytes) {
   const RELEASE = '(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)';
   const ANY_VERSION = new RegExp(`^${RELEASE}(?:-([a-z]+)\\.([1-9][0-9]*))?$`);
   const FILENAME = '.station-release-accepted.json';
@@ -157,8 +157,10 @@ export function acceptedReleaseRules(rings, fs, rename) {
    * Raises the record to `version`, atomically, and never lowers it: a
    * valid record is kept unless `version` is newer; a missing or invalid one
    * is replaced (the caller checked it first, or was explicitly told to go
-   * on). Throws for a version not of the ring shape. The staging file is
-   * created exclusively, so a link planted at its name is never followed.
+   * on). Throws for a version not of the ring shape. The staging file has
+   * a random name, so a file a killed run left behind never blocks a later
+   * one (process ids repeat, in containers especially), and is created
+   * exclusively, so a link planted at its name is never followed.
    * With `onlyIfAbsent`, writes only when there is no record at all.
    */
   function record(path, ring, version, onlyIfAbsent) {
@@ -173,7 +175,7 @@ export function acceptedReleaseRules(rings, fs, rename) {
       compareVersions(version, existing.version) !== 1
     )
       return;
-    const stage = `${path}.${process.pid}.tmp`;
+    const stage = `${path}.${randomBytes(8).toString('hex')}.tmp`;
     let created = false;
     try {
       const fd = fs.openSync(stage, 'wx', 0o600);

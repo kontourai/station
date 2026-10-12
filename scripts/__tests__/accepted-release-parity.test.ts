@@ -2,15 +2,20 @@ import { spawnSync } from 'node:child_process';
 import {
   chmodSync,
   chownSync,
+  closeSync,
   existsSync,
+  lstatSync,
+  openSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { acceptedReleaseRules } from '../../packages/shared/src/accepted-release.mjs';
 import {
   ACCEPTED_RELEASE_FILENAME,
   decideAgainstAcceptedRelease,
@@ -376,20 +381,42 @@ describe('accepted-release record: install.sh and the shared module agree (#187)
     },
   );
 
-  it('never follows a link planted at the staging name', () => {
-    const installRoot = makeTempDir('station-accepted-stage-link-');
+  it('is not blocked by a staging file or link left at a process-id name', () => {
+    // A killed run used to leave `<record>.<pid>.tmp`, and process ids repeat
+    // (in containers especially), so every later run failed with EEXIST.
+    const installRoot = makeTempDir('station-accepted-stage-leftover-');
+    const record = join(installRoot, ACCEPTED_RELEASE_FILENAME);
     const target = join(installRoot, 'victim.txt');
     writeFileSync(target, 'untouched\n');
-    symlinkSync(
-      target,
-      join(installRoot, `${ACCEPTED_RELEASE_FILENAME}.${process.pid}.tmp`),
+    writeFileSync(`${record}.${process.pid}.tmp`, 'left by a killed run\n');
+    symlinkSync(target, `${record}.${process.ppid}.tmp`);
+    recordAcceptedRelease(installRoot, 'stable', '1.2.3');
+    expect(recordedVersion(installRoot)).toBe('1.2.3');
+    expect(readFileSync(target, 'utf8')).toBe('untouched\n');
+    // The seed path too.
+    rmSync(record);
+    recordAcceptedRelease(installRoot, 'stable', '1.2.3', true);
+    expect(recordedVersion(installRoot)).toBe('1.2.3');
+  });
+
+  it('never follows a link planted at the staging name', () => {
+    // A fixed suffix stands in for the random one, so the link can be placed
+    // exactly where the staging file would go.
+    const rules = acceptedReleaseRules(
+      { stable: { prerelease: false } },
+      { closeSync, lstatSync, openSync, readFileSync, rmSync, writeFileSync },
+      renameSync,
+      () => Buffer.from('0123456789abcdef', 'hex'),
     );
-    expect(() => recordAcceptedRelease(installRoot, 'stable', '1.2.3')).toThrow(
+    const installRoot = makeTempDir('station-accepted-stage-link-');
+    const record = join(installRoot, ACCEPTED_RELEASE_FILENAME);
+    const target = join(installRoot, 'victim.txt');
+    writeFileSync(target, 'untouched\n');
+    symlinkSync(target, `${record}.0123456789abcdef.tmp`);
+    expect(() => rules.record(record, 'stable', '1.2.3', false)).toThrow(
       /EEXIST/,
     );
     expect(readFileSync(target, 'utf8')).toBe('untouched\n');
-    expect(existsSync(join(installRoot, ACCEPTED_RELEASE_FILENAME))).toBe(
-      false,
-    );
+    expect(existsSync(record)).toBe(false);
   });
 });
