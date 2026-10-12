@@ -1,0 +1,7 @@
+{
+  "revision": "f4587f12fdc8a2f36cb84ba308d92ddfa24fb08a",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Rewrote the Station control paragraph. Runs on Station names the explicit choice, else the Project default, else the host. It opens a Where this work runs list only when the server lists another usable Station (verified SSH or listable paired peer), else it is plain text. A remote choice continues to Engine and model, and Start (not the control) opens the task launcher. Checked against StartStationControl, StartPickerMenus, useExecutionStations and the NewChatModal remote launch, with 390px dark and light screenshots.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/NewChatModalSelectDispatch.test.tsx","src-ui/src/components/chat-start/StartPickerMenus.tsx","src-ui/src/components/chat-start/StartStationControl.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/hooks/useExecutionStationCatalog.ts"]}
+  ]
+}
