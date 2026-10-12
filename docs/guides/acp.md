@@ -528,8 +528,9 @@ A new session on a model the engine's fresh `session/new` options did not offer
 is refused by the adapter with the `model_not_advertised` code
 (`SessionStartRefusedError`). The start is settled rather than uncertain: the
 receipt is `rejected`, the thread is not fenced behind "Station may already have
-started this session", and the session ends with the engine's refusal as its
-cause (lifecycle `failed`, which survives a reload). In the chat composer the
+started this session", and a fresh start's session ends with the engine's
+refusal as its cause (lifecycle `failed`, which survives a reload). In the chat
+composer the
 error offers no Retry (the same model is refused again), re-reads the Agent
 catalog, the ACP connection list and the engine inventory, because the
 composer's snapshot of those is what let the model be chosen, and keeps the

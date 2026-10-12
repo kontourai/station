@@ -12406,6 +12406,9 @@ describe('OrchestrationService', () => {
     // ended, so whatever the resend names (another model, the same one, or no
     // override at all because the model came from the Agent) it continues in a
     // SUCCESSOR session; it must never be told the refused one is still open.
+    // Only the no-override row depends on the session having ended (without
+    // the adapter's exit it is `current_open`); the two named-model rows take
+    // the model-restart branch of the seam and are kept as resend shapes.
     test.each([
       ['another model', 'anthropic/claude-sonnet-4-6'],
       ['the same model', 'gpt-6.1-sol'],
