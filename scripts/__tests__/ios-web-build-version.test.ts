@@ -1,9 +1,9 @@
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { nightlyVersion } from '../lib/nightly-build-identity.mjs';
 
 /**
@@ -29,11 +29,7 @@ type Workflow = {
 const workflow = (name: string) =>
   parse(readFileSync(join(WORKFLOWS, name), 'utf8')) as Workflow;
 
-const temps: string[] = [];
-afterEach(() => {
-  for (const dir of temps.splice(0))
-    rmSync(dir, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 describe('iOS web bundle build identity', () => {
   test('the TestFlight build stamps the web bundle with web_build_version when given', () => {
@@ -69,8 +65,7 @@ describe('iOS web bundle build identity', () => {
       ].steps?.find((candidate) => candidate.id === 'web_identity');
       expect(step?.run).toBeTruthy();
       const run = (version: string) => {
-        const dir = mkdtempSync(join(tmpdir(), 'station-ios-web-version-'));
-        temps.push(dir);
+        const dir = makeTempDir('station-ios-web-version-');
         writeFileSync(
           join(dir, 'cohort-plan.json'),
           JSON.stringify({ versionIdentities: { desktop: { version } } }),
