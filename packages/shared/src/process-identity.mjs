@@ -328,9 +328,13 @@ function aliveState(pid, kill = process.kill) {
     kill(pid, 0);
     return 'alive';
   } catch (error) {
-    // Only ESRCH proves absence. EPERM and every other probe failure are
-    // live-or-ambiguous, never authorization to reclaim an owner.
-    return error?.code === 'ESRCH' ? 'dead' : 'unavailable';
+    // Only ESRCH proves absence. EPERM proves the pid EXISTS but belongs to
+    // another user, so it is alive for identity purposes: the birth lookup
+    // still decides whether it is the recorded owner or a reused pid (#3563).
+    // Every other probe failure stays ambiguous, never authorization to
+    // reclaim an owner.
+    if (error?.code === 'ESRCH') return 'dead';
+    return error?.code === 'EPERM' ? 'alive' : 'unavailable';
   }
 }
 
@@ -562,6 +566,9 @@ export function lookupProcessBirthFingerprintCachedAsync(
  * A three-way exact process probe. In particular, a live Windows PID whose
  * round-trip UTC process creation time cannot be read is unavailable, never dead:
  * callers must retain the fence rather than reclaiming a possibly-live owner.
+ * A pid that answers signal 0 with EPERM is still looked up: `exact` with a
+ * different birth proves reuse, and only an unreadable birth stays
+ * `unavailable` (#3563). `exact` is not permission to signal the pid.
  */
 function probeExactProcessIdentityOnce(pid, dependencies) {
   if (!Number.isInteger(pid) || pid < 1) return { state: 'dead' };
