@@ -25,6 +25,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useId, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
+import { PersonList } from '../../components/people/PersonList';
+import { PersonRow } from '../../components/people/PersonRow';
 import { Empty, ErrorState } from '../../components/state';
 import { errorText, userFacingErrorMessage } from '../../utils/errorText';
 import {
@@ -77,9 +79,6 @@ interface HeldSecret {
   minted: MintedPersonalAccessToken;
 }
 
-/** At this many people the list offers a filter. */
-export const PEOPLE_FILTER_THRESHOLD = 6;
-
 function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`;
 }
@@ -90,10 +89,9 @@ function limitedDevices(person: StationPerson): number {
   ).length;
 }
 
-function matchesFilter(person: StationPerson, filter: string): boolean {
-  const needle = filter.trim().toLowerCase();
+/** `needle` arrives trimmed and lower-cased. */
+function matchesFilter(person: StationPerson, needle: string): boolean {
   return (
-    !needle ||
     person.displayName.toLowerCase().includes(needle) ||
     person.principalId.toLowerCase().includes(needle)
   );
@@ -133,7 +131,6 @@ export function PeopleSection() {
     });
   }, []);
   const [filter, setFilter] = useState('');
-  const filterId = useId();
   // After Done on a secret shown apart from its row, focus lands on the
   // section rather than on the document body.
   const [focusSection, setFocusSection] = useState(false);
@@ -149,19 +146,11 @@ export function PeopleSection() {
   if (people.isPending && !held) return null;
 
   const list = refused ? undefined : people.data;
-  const filtering = (list?.length ?? 0) >= PEOPLE_FILTER_THRESHOLD;
-  // The person holding an unshown secret, or with a token action under way,
-  // is never filtered away.
-  const visible = (list ?? []).filter(
-    (person) =>
-      !filtering ||
-      matchesFilter(person, filter) ||
-      held?.principalId === person.principalId ||
-      busyRows.has(person.principalId),
-  );
+  // The held secret's owner is pinned through the filter (below), so they
+  // are shown in the list exactly when they are in it.
   const heldInList =
     held !== null &&
-    visible.some((person) => person.principalId === held.principalId);
+    (list ?? []).some((person) => person.principalId === held.principalId);
 
   async function mint(person: StationPerson, input: PersonalTokenInput) {
     try {
@@ -230,70 +219,60 @@ export function PeopleSection() {
                 The list couldn’t be refreshed: {errorText(people.error)}
               </p>
             )}
-            {list.length === 0 ? (
-              <Empty
-                variant="compact"
-                label="Nothing here yet"
-                description="When you approve a device with its person’s verified identity or account, that person appears here."
-              />
-            ) : (
-              <>
-                {filtering && (
-                  <label className="people__filter" htmlFor={filterId}>
-                    <span className="people__field-label">Filter</span>
-                    <input
-                      id={filterId}
-                      type="search"
-                      className="people__input"
-                      placeholder="Name or principal id"
-                      value={filter}
-                      onChange={(event) => setFilter(event.target.value)}
-                    />
-                  </label>
-                )}
-                {visible.length === 0 ? (
-                  <Empty
-                    className="people__none"
-                    label="Nobody matches that filter."
-                  />
-                ) : (
-                  <ul className="people__people" aria-label="People">
-                    {visible.map((person) => (
-                      <PersonCard
-                        key={person.principalId}
-                        person={person}
-                        open={
-                          toggled[person.principalId] ??
-                          autoOpen === person.principalId
-                        }
-                        onToggle={(open) =>
-                          setToggled((current) => ({
-                            ...current,
-                            [person.principalId]: open,
-                          }))
-                        }
-                        minted={
-                          held?.principalId === person.principalId
-                            ? held.minted
-                            : null
-                        }
-                        mint={(input) => mint(person, input)}
-                        onDone={() => setHeld(null)}
-                        onBusyChange={setRowBusy}
-                        // One secret at a time: a second mint would replace
-                        // the one still waiting to be copied.
-                        {...(held && held.principalId !== person.principalId
-                          ? {
-                              newDisabledReason:
-                                'Finish with the token that is showing first.',
-                            }
-                          : {})}
-                      />
-                    ))}
-                  </ul>
-                )}
-              </>
-            )}
+            <PersonList
+              items={list}
+              itemKey={(person) => person.principalId}
+              label="People"
+              empty={
+                <Empty
+                  variant="compact"
+                  label="Nothing here yet"
+                  description="When you approve a device with its person’s verified identity or account, that person appears here."
+                />
+              }
+              filter={{
+                value: filter,
+                onChange: setFilter,
+                placeholder: 'Name or principal id',
+                matches: matchesFilter,
+                // The person holding an unshown secret, or with a token
+                // action under way, is never filtered away.
+                pinned: (person) =>
+                  held?.principalId === person.principalId ||
+                  busyRows.has(person.principalId),
+              }}
+              renderItem={(person) => (
+                <PersonCard
+                  person={person}
+                  open={
+                    toggled[person.principalId] ??
+                    autoOpen === person.principalId
+                  }
+                  onToggle={(open) =>
+                    setToggled((current) => ({
+                      ...current,
+                      [person.principalId]: open,
+                    }))
+                  }
+                  minted={
+                    held?.principalId === person.principalId
+                      ? held.minted
+                      : null
+                  }
+                  mint={(input) => mint(person, input)}
+                  onDone={() => setHeld(null)}
+                  onBusyChange={setRowBusy}
+                  // One secret at a time: a second mint would replace the
+                  // one still waiting to be copied.
+                  {...(held && held.principalId !== person.principalId
+                    ? {
+                        newDisabledReason:
+                          'Finish with the token that is showing first.',
+                      }
+                    : {})}
+                />
+              )}
+            />
           </>
         )}
       </div>
@@ -368,10 +347,7 @@ function PersonCard({
   );
   const id = useId();
   const groupLabel = STATION_GROUP_LABELS[person.group].label;
-  // A New token form or an unshown secret pins the person open: collapsing
-  // would unmount the form, or hide the only copy of the secret.
   const pinned = editing || minted !== null;
-  const open = wantsOpen || pinned;
   const limited = limitedDevices(person);
 
   async function applyGroup(group: StationGroup) {
@@ -413,44 +389,29 @@ function PersonCard({
   }
 
   return (
-    <li
-      className={`people__person${open ? ' people__person--open' : ''}`}
-      data-principal-id={person.principalId}
-    >
-      <div className="people__person-row">
-        {/* The toggle and the Group picker are siblings, never nested: a
-            picker inside the button would be invalid and its clicks would
-            toggle the row. */}
-        <button
-          type="button"
-          className="people__toggle"
-          aria-expanded={open}
-          aria-controls={open ? `${id}-body` : undefined}
-          aria-disabled={pinned || undefined}
-          title={pinned ? 'Finish the new token first' : undefined}
-          onClick={() => {
-            if (!pinned) onToggle(!open);
-          }}
-        >
-          <span className="people__chevron" aria-hidden="true">
-            ▸
-          </span>
-          <span className="people__toggle-text">
-            <span className="people__person-name" title={person.displayName}>
-              {person.displayName}
+    <PersonRow
+      principalId={person.principalId}
+      name={person.displayName}
+      meta={
+        <>
+          {plural(person.devices.length, 'device')} ·{' '}
+          {plural(person.tokens.length, 'token')}
+          {limited > 0 && (
+            <span className="people__attention">
+              <span className="people__attention-dot" aria-hidden="true" />
+              {limited} limited
             </span>
-            <span className="people__meta">
-              {plural(person.devices.length, 'device')} ·{' '}
-              {plural(person.tokens.length, 'token')}
-              {limited > 0 && (
-                <span className="people__attention">
-                  <span className="people__attention-dot" aria-hidden="true" />
-                  {limited} limited
-                </span>
-              )}
-            </span>
-          </span>
-        </button>
+          )}
+        </>
+      }
+      open={wantsOpen}
+      onToggle={onToggle}
+      // A New token form or an unshown secret pins the person open:
+      // collapsing would unmount the form, or hide the only copy of the
+      // secret.
+      pinned={pinned}
+      pinnedReason="Finish the new token first"
+      actions={
         <select
           className="editor-select people__group-select"
           value={person.group}
@@ -465,18 +426,36 @@ function PersonCard({
             </option>
           ))}
         </select>
-      </div>
-      {groupError && (
-        <p className="people__error" role="alert">
-          {groupError}
-        </p>
-      )}
-      <p className="people__meta people__notice" role="status">
-        {groupNotice ?? ''}
-      </p>
-
-      {open && (
-        <div className="people__person-body" id={`${id}-body`}>
+      }
+      status={
+        <>
+          {groupError && (
+            <p className="people__error" role="alert">
+              {groupError}
+            </p>
+          )}
+          <p className="people__meta people__notice" role="status">
+            {groupNotice ?? ''}
+          </p>
+          <ConfirmModal
+            isOpen={pendingDemotion !== null}
+            title={`Move ${person.displayName} to ${
+              pendingDemotion ? STATION_GROUP_LABELS[pendingDemotion].label : ''
+            }?`}
+            message="Their devices reconnect under the new group, and any full access those devices had granted is reset."
+            confirmLabel="Move"
+            variant="danger"
+            role="alertdialog"
+            pending={setGroup.isPending}
+            onConfirm={() => {
+              if (pendingDemotion) void applyGroup(pendingDemotion);
+            }}
+            onCancel={() => setPendingDemotion(null)}
+          />
+        </>
+      }
+      body={
+        <>
           <span className="people__principal">{person.principalId}</span>
           <section className="people__sub" aria-labelledby={`${id}-devices`}>
             <div className="people__sub-header">
@@ -524,24 +503,8 @@ function PersonCard({
               })
             }
           />
-        </div>
-      )}
-
-      <ConfirmModal
-        isOpen={pendingDemotion !== null}
-        title={`Move ${person.displayName} to ${
-          pendingDemotion ? STATION_GROUP_LABELS[pendingDemotion].label : ''
-        }?`}
-        message="Their devices reconnect under the new group, and any full access those devices had granted is reset."
-        confirmLabel="Move"
-        variant="danger"
-        role="alertdialog"
-        pending={setGroup.isPending}
-        onConfirm={() => {
-          if (pendingDemotion) void applyGroup(pendingDemotion);
-        }}
-        onCancel={() => setPendingDemotion(null)}
-      />
-    </li>
+        </>
+      }
+    />
   );
 }

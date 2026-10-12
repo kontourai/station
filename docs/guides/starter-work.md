@@ -66,11 +66,14 @@ visible. Run `station doctor` for a local diagnosis.
 
 ## Continue an Attached Session
 
-Open the terminal Session in **Activity**, then choose **Continue in Station**.
+Open the terminal Session in **Activity**, where it reads like any chat, then
+type a message and press Send. Chat asks once, **Continue here?**,
+and **Continue and send** continues it there with that message.
 Claude and Codex create independent children, so the original terminal Session
 can keep running. Codex starts from the latest completed turn Station has
-observed; wait for a completed turn if the action is disabled. Station also
-shows a reason when the engine or source configuration is unavailable. The
+observed; wait for a completed turn if the message box is unavailable. Station
+shows the reason above the message box when the engine or source configuration
+is unavailable. The
 child always runs in the Session's own folder, checked again at continuation:
 a worktree Session continues in its worktree under the Project its repository
 belongs to, and a **No project** Session continues as a No project chat
@@ -78,8 +81,8 @@ confined to its folder once you confirm that choice, and only in a folder
 inside your home folder that Station allows (see
 [Continue an Attached Session](../user/getting-started.md#continue-an-attached-session)).
 
-An attached terminal Session stays read only. The first eligible **Continue in
-Station** action launches the bounded `continue-session` Starter: Station
+An attached terminal Session stays read only. The first eligible continuation
+launches the bounded `continue-session` Starter: Station
 validates the exact source Session, reuses the orchestration adoption ledger
 with one stable operation identity, and opens the exact Station-owned child
 returned by that owner. Retrying an uncertain response reuses that identity

@@ -84,6 +84,8 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 import {
+  CONNECTION_INTERRUPTION_GRACE_MS,
+  LIVE_STREAM_CONNECT_TIMEOUT_MS,
   MAX_FEED_EVENTS,
   mergeSessionEvents,
   useSessionEventStream,
@@ -279,6 +281,158 @@ describe('useSessionEventStream', () => {
       // duration — every other test here settles quickly and its leftover
       // mount goes idle, but this one specifically drives the case where it
       // might not.
+      unmount();
+    }
+  });
+
+  test('a stream that has not opened yet is not interrupted; one that failed is, only after the grace window, until it reopens', async () => {
+    vi.useFakeTimers();
+    fetchSession.mockResolvedValue({ session: {}, events: [] });
+    fetchSSE.mockImplementationOnce(
+      (_url: string, options: typeof streamOptions) => {
+        streamOptions = options;
+        return { close };
+      },
+    );
+    const { result, unmount } = renderHook(() =>
+      useSessionEventStream('http://station.test', 'task:1'),
+    );
+    try {
+      // Still connecting: `connected` is false, and that is not an outage.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(CONNECTION_INTERRUPTION_GRACE_MS * 2);
+      });
+      expect(result.current.connected).toBe(false);
+      expect(result.current.connectionInterrupted).toBe(false);
+      // …until the connect has hung past its own timeout.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(
+          LIVE_STREAM_CONNECT_TIMEOUT_MS - CONNECTION_INTERRUPTION_GRACE_MS * 2,
+        );
+      });
+      expect(result.current.connectionInterrupted).toBe(true);
+      act(() => streamOptions.onOpen?.());
+      expect(result.current.connectionInterrupted).toBe(false);
+
+      // A blip that reopens inside the grace window is never reported.
+      act(() => streamOptions.onError?.(new TypeError('Failed to fetch')));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(CONNECTION_INTERRUPTION_GRACE_MS - 1);
+      });
+      expect(result.current.connectionInterrupted).toBe(false);
+      act(() => streamOptions.onOpen?.());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(CONNECTION_INTERRUPTION_GRACE_MS);
+      });
+      expect(result.current.connectionInterrupted).toBe(false);
+
+      // A failure that outlasts the window is.
+      act(() => streamOptions.onError?.(new TypeError('Failed to fetch')));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(CONNECTION_INTERRUPTION_GRACE_MS);
+      });
+      expect(result.current.connectionInterrupted).toBe(true);
+
+      act(() => streamOptions.onOpen?.());
+      expect(result.current.connectionInterrupted).toBe(false);
+    } finally {
+      unmount();
+    }
+  });
+
+  test('a failed history read is a blip inside the grace window and an interruption past it, until a read succeeds', async () => {
+    vi.useFakeTimers();
+    fetchSession
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValue({ session: {}, events: [] });
+    const { result, unmount } = renderHook(() =>
+      useSessionEventStream('http://station.test', 'task:1'),
+    );
+    try {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.connected).toBe(true);
+      expect(result.current.error?.message).toBe('Failed to fetch');
+      expect(result.current.historyRetrying).toBe(true);
+      expect(result.current.connectionInterrupted).toBe(false);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(CONNECTION_INTERRUPTION_GRACE_MS);
+      });
+      expect(fetchSession.mock.calls.length).toBeGreaterThan(1);
+      expect(result.current.connectionInterrupted).toBe(true);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(result.current.error).toBeUndefined();
+      expect(result.current.connectionInterrupted).toBe(false);
+    } finally {
+      unmount();
+    }
+  });
+
+  test('a stream that fails before it ever opens is interrupted after the grace window, not the connect timeout', async () => {
+    vi.useFakeTimers();
+    // History answers, so only the live stream can make this interrupted.
+    fetchSession.mockResolvedValue({ session: {}, events: [] });
+    fetchSSE.mockImplementationOnce(
+      (_url: string, options: typeof streamOptions) => {
+        streamOptions = options;
+        return { close };
+      },
+    );
+    const { result, unmount } = renderHook(() =>
+      useSessionEventStream('http://station.test', 'task:1'),
+    );
+    try {
+      act(() => streamOptions.onError?.(new TypeError('Failed to fetch')));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(CONNECTION_INTERRUPTION_GRACE_MS - 1);
+      });
+      expect(result.current.connectionInterrupted).toBe(false);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(result.current.connectionInterrupted).toBe(true);
+      expect(result.current.historyRetrying).toBe(false);
+    } finally {
+      unmount();
+    }
+  });
+
+  test('reports history loaded only after a persisted read succeeds', async () => {
+    fetchSession.mockResolvedValueOnce({ session: {}, events: [] });
+    const { result } = renderHook(() =>
+      useSessionEventStream('http://station.test', 'task:1'),
+    );
+    expect(result.current.historyLoaded).toBe(false);
+    await waitFor(() => expect(result.current.historyLoaded).toBe(true));
+    expect(result.current.events).toHaveLength(0);
+  });
+
+  test('a terminal stop is reported as interrupted at once', () => {
+    fetchSSE.mockImplementationOnce(
+      (_url: string, options: typeof streamOptions) => {
+        streamOptions = options;
+        return { close };
+      },
+    );
+    const { result, unmount } = renderHook(() =>
+      useSessionEventStream('http://station.test', 'task:1'),
+    );
+    try {
+      act(() => {
+        streamOptions.onError?.(new sdk.StationHttpError(401, 'Unauthorized'));
+        streamOptions.onTerminal?.(
+          new sdk.StationHttpError(401, 'Unauthorized'),
+        );
+      });
+      expect(result.current.connectionInterrupted).toBe(true);
+    } finally {
       unmount();
     }
   });
@@ -818,6 +972,35 @@ describe('useSessionEventStream', () => {
     expect(result.current.upgradeRequired).toBe(false);
     expect(close).toHaveBeenCalled();
     expect(fetchSession).not.toHaveBeenCalled();
+  });
+
+  test('an undetermined capability probe is an interruption only once it outlasts the grace window', async () => {
+    vi.useFakeTimers();
+    fetchSessionEventWindowCapability.mockResolvedValueOnce(undefined);
+    fetchSSE.mockImplementationOnce(
+      (_url: string, options: typeof streamOptions) => {
+        streamOptions = options;
+        return { close };
+      },
+    );
+    const { result, unmount } = renderHook(() =>
+      useSessionEventStream('http://station.test', 'task:1'),
+    );
+    try {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(result.current.error?.message).toBe(
+        'Session history transport failed.',
+      );
+      expect(result.current.connectionInterrupted).toBe(false);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(CONNECTION_INTERRUPTION_GRACE_MS);
+      });
+      expect(result.current.connectionInterrupted).toBe(true);
+    } finally {
+      unmount();
+    }
   });
 
   test('re-probes a closed mounted stream after cooldown and reopens it when capable', async () => {

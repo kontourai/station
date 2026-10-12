@@ -1,0 +1,7 @@
+{
+  "revision": "a23a8d18bc3e311d56e89341f31eaa1baac8042c",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"chat.css change is composer-local (send-mode split segment, @ picker base positioning removed); no responsive layer, dialog surface, dock predicate or touch-target claim changed; mode segment keeps 44px.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]}
+  ]
+}

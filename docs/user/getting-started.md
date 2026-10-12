@@ -519,11 +519,14 @@ ones inside a Project, but no account can open them there.
 
 ## Continue an Attached Session
 
-Open an attached terminal Session in **Activity**, then choose **Continue in
-Station**. Claude and Codex create independent child Sessions; the original
-terminal Session can keep running. OpenCode and Grok conversations are read
-only: the action shows why it is unavailable. Codex continues from the latest completed
-turn Station has observed, so wait for one if the action is disabled.
+Open an attached terminal Session in **Activity**. It reads like any chat. To
+continue it in Station, type a message and press Send: Chat asks once,
+**Continue here?**, and **Continue and send** continues it there with your
+message. **Cancel** keeps your draft. Claude and Codex create independent child
+Sessions; the original terminal Session can keep running. OpenCode and Grok
+conversations are read only: the message box shows why it is unavailable.
+Codex continues from the latest completed turn Station has observed, so wait
+for one if the message box is unavailable.
 
 The continuation always works in the folder the conversation ran in, and the
 engine is confined to that folder. Station checks the folder again when you
@@ -543,7 +546,8 @@ continue:
   when the folder shown reaches another folder through a symbolic link
   inside your home folder. To
   continue such a conversation, add a Project for that folder or its
-  repository. Station does not move a conversation into another Project's folder,
+  repository: **Add a project for this folder instead** in the confirmation
+  opens New project with the folder already chosen. Station does not move a conversation into another Project's folder,
   because its history refers to files in the folder it ran in.
 
 A hosted Station does not continue conversations outside your Projects.

@@ -1,0 +1,7 @@
+{
+  "revision": "3c82bca3cc3da407b8d20f8544940439c80e5cb0",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed canonical generation delta:112 topics now include ProductTelemetryReceiver and its qualifier/readiness/coverage limits; existing background branch also links its operating guide. Runtime tool/resource filtering, credential-free reading, content digest and link validation are unchanged. Generated constant now matches canonical module-map/atlas inputs; this is documentation parity, not receiver runtime or deployment evidence.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

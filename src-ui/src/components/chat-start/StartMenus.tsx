@@ -123,7 +123,7 @@ export function StartAgentMenu({
       returnFocusTarget={anchor}
       initialFocusRef={searchRef}
       initialFocusPolicy="desktop"
-      overlayClassName="composer-popover-overlay composer-popover-overlay--start"
+      overlayClassName="composer-popover-overlay composer-popover-overlay--start start-menu__overlay"
       panelClassName="composer-popover-panel start-menu__panel"
     >
       <ResponsiveDialogHeader
@@ -267,7 +267,7 @@ export function StartProjectMenu({
       anchorRef={anchorRef}
       returnFocusTarget={anchor}
       initialFocusPolicy="desktop"
-      overlayClassName="composer-popover-overlay composer-popover-overlay--start"
+      overlayClassName="composer-popover-overlay composer-popover-overlay--start start-menu__overlay"
       panelClassName="composer-popover-panel start-menu__panel"
     >
       <ResponsiveDialogHeader
