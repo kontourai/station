@@ -59,6 +59,8 @@ const state = vi.hoisted(() => ({
   agentConnections: [] as unknown[],
   /** `GET /api/projects/run-locations`; undefined until it answers. */
   runLocations: undefined as Record<string, unknown> | undefined,
+  /** `GET /api/environments/peers`, as this caller may read it. */
+  peers: [] as unknown[],
 }));
 
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
@@ -79,7 +81,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     isError: false,
   }),
   usePeerCredentialsQuery: () => ({
-    data: [],
+    data: state.peers,
     isSuccess: true,
     isError: false,
   }),
@@ -138,6 +140,15 @@ vi.mock('@kontourai/station-sdk', () => ({
   telemetry: { track: vi.fn() },
 }));
 vi.mock('../contexts/ConfigContext', () => ({ useConfig: () => undefined }));
+// The caller's server-reported grant: this Station's operator.
+vi.mock('@kontourai/station-sdk/authority-observation', () => ({
+  getAuthorityObservation: async () => ({
+    schemaVersion: 'station.authority-observation/v1',
+    environmentId: 'env-parity',
+    principal: { kind: 'human', id: 'owner' },
+    grant: { kind: 'operator' },
+  }),
+}));
 // The Model picker's own UI has its own tests; here it is the choice it makes.
 vi.mock('../components/session/SessionModelPicker', () => ({
   SessionModelPicker: ({
@@ -243,6 +254,7 @@ beforeEach(() => {
   state.projectsError = false;
   state.agentConnections = [];
   state.runLocations = undefined;
+  state.peers = [];
   resetHeldHomeDraftsForTests();
 });
 // Every dock listener a test adds, removed even when the test fails, so a
@@ -372,6 +384,34 @@ describe('Home and the dock start the same way', () => {
     ).toBe('Project: missing-project');
     ui.cleanupListener();
   });
+
+  test.each(['home', 'dock'] as const)(
+    'on %s, tapping Runs on opens the Station choice with another Station to run on',
+    async (surface) => {
+      state.peers = [
+        {
+          environmentId: 'env-brian-media',
+          apiBase: 'https://brian-media.example.ts.net',
+          label: 'brian-media',
+          scope: 'orchestration:read orchestration:operate',
+        },
+      ];
+      const ui = renderBoth();
+      const root = surface === 'home' ? screen.getByTestId('home') : ui.dock();
+      fireEvent.click(
+        await within(formOf(root)).findByRole('button', {
+          name: 'Runs on This Station. Choose where this work runs',
+        }),
+      );
+      const menu = await screen.findByRole('dialog', {
+        name: 'Where this work runs',
+      });
+      expect(
+        within(menu).getByRole('button', { name: /brian-media/ }),
+      ).toBeTruthy();
+      ui.cleanupListener();
+    },
+  );
 
   test('both render the shared composer and open on the same selection', () => {
     const ui = renderBoth();

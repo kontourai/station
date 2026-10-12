@@ -3,6 +3,7 @@ import {
   usePeerCredentialsQuery,
   useSshEnvironmentsQuery,
 } from '@kontourai/station-sdk';
+import { getAuthorityObservation } from '@kontourai/station-sdk/authority-observation';
 import { discoverDelegationOptions } from '@kontourai/station-sdk/client';
 import { useQuery } from '@tanstack/react-query';
 import type { AgentData } from '../contexts/AgentsContext';
@@ -29,8 +30,12 @@ export type ExecutionStation = {
  * every paired Station. Each list joins only when its read SUCCEEDS for this
  * caller — a scoped Device whose `GET /api/environments/peers` is refused
  * (`access:manage`) never sees a paired choice, and an unverified SSH
- * environment (which the task launcher refuses) is never offered. `settled`
- * is false until both reads have answered, so a caller can avoid offering a
+ * environment (which the task launcher refuses) is never offered. Another
+ * Station runs the work as a task, and starting one
+ * (`POST /api/orchestration/delegations`) needs `orchestration:operate`, so
+ * a caller whose server-reported grant (the authority observation) lacks it
+ * is offered This Station only, even when it may read the lists. `settled`
+ * is false until every read has answered, so a caller can avoid offering a
  * choice before it knows there is one.
  */
 export function useExecutionStations() {
@@ -39,10 +44,36 @@ export function useExecutionStations() {
   const enabled = Boolean(scope?.isCurrent());
   const environments = useSshEnvironmentsQuery({ enabled });
   const peers = usePeerCredentialsQuery({ enabled });
-  const saved = environments.isSuccess ? (environments.data ?? []) : [];
-  const paired = peers.isSuccess
-    ? selectablePeerStations(peers.data, saved)
-    : [];
+  const authority = useQuery({
+    queryKey: [
+      'execution-station-authority',
+      scope?.apiBase,
+      scope?.authorityKey,
+    ],
+    enabled,
+    staleTime: 0,
+    retry: false,
+    queryFn: ({ signal }) => {
+      if (!scope?.isCurrent())
+        throw new Error('Reconnect to this Station before choosing one.');
+      return getAuthorityObservation(scope.apiBase, {
+        requestScope: scope,
+        signal,
+      });
+    },
+  });
+  const grant = authority.data?.grant;
+  // An unread or refused observation proves nothing: no remote choice.
+  const canStartTasks =
+    grant?.kind === 'operator' ||
+    (grant?.kind === 'device' &&
+      grant.grantedScopes.includes('orchestration:operate'));
+  const saved =
+    canStartTasks && environments.isSuccess ? (environments.data ?? []) : [];
+  const paired =
+    canStartTasks && peers.isSuccess
+      ? selectablePeerStations(peers.data, saved)
+      : [];
   const stations: ExecutionStation[] = [
     {
       id: 'current',
@@ -74,7 +105,8 @@ export function useExecutionStations() {
     settled:
       enabled &&
       (environments.isSuccess || environments.isError) &&
-      (peers.isSuccess || peers.isError),
+      (peers.isSuccess || peers.isError) &&
+      (authority.isSuccess || authority.isError),
     stationsUnavailable: environments.isError || peers.isError,
   };
 }

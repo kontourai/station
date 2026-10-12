@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
 
+import type { AuthorityObservationGrant } from '@kontourai/station-contracts/authority-observation';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  cleanup,
+  fireEvent,
+  render as renderView,
+  screen,
+} from '@testing-library/react';
+import type { ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import { StartStationMenu } from '../StartMenus';
@@ -17,6 +25,44 @@ const reads = vi.hoisted(() => ({
   ssh: { isSuccess: true, isError: false, data: [] as unknown[] },
   peers: { isSuccess: true, isError: false, data: [] as unknown[] },
 }));
+
+const OPERATOR: AuthorityObservationGrant = { kind: 'operator' };
+const READ_ONLY_DEVICE: AuthorityObservationGrant = {
+  kind: 'device',
+  deviceId: 'phone-1',
+  grantedScopes: ['orchestration:read', 'access:manage'],
+};
+/** The caller's grant, as `GET` of the authority observation reports it. */
+const caller = vi.hoisted(() => ({
+  grant: { kind: 'operator' } as AuthorityObservationGrant,
+}));
+vi.mock('@kontourai/station-sdk/authority-observation', () => ({
+  getAuthorityObservation: async () => ({
+    schemaVersion: 'station.authority-observation/v1',
+    environmentId: 'env-kontour',
+    principal: { kind: 'human', id: 'brian' },
+    grant: caller.grant,
+  }),
+}));
+
+/** Renders with the caller's grant already answered, as after its read. */
+function render(ui: ReactElement) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  client.setQueryData(
+    ['execution-station-authority', 'http://station.test', 'authority-1'],
+    {
+      schemaVersion: 'station.authority-observation/v1',
+      environmentId: 'env-kontour',
+      principal: { kind: 'human', id: 'brian' },
+      grant: caller.grant,
+    },
+  );
+  return renderView(
+    <QueryClientProvider client={client}>{ui}</QueryClientProvider>,
+  );
+}
 
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => ({
@@ -63,6 +109,7 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn();
   reads.ssh = { isSuccess: true, isError: false, data: [] };
   reads.peers = { isSuccess: true, isError: false, data: [] };
+  caller.grant = OPERATOR;
 });
 afterEach(cleanup);
 
@@ -135,6 +182,33 @@ describe('StartStationControl', () => {
     render(<StartStationControl canChoose={false} onOpen={vi.fn()} />);
     expect(screen.queryByRole('button')).toBeNull();
     expect(screen.getByText('Runs on kontour')).toBeTruthy();
+  });
+
+  test('a caller that may list Stations but not start tasks on them sees plain text', () => {
+    // Reading the lists is `orchestration:read`/`access:manage`; starting
+    // the task on another Station is `orchestration:operate`.
+    caller.grant = READ_ONLY_DEVICE;
+    reads.ssh = {
+      isSuccess: true,
+      isError: false,
+      data: [sshEnvironment('/srv/project')],
+    };
+    reads.peers = { isSuccess: true, isError: false, data: [PAIRED] };
+    const { container } = render(
+      <StartStationControl canChoose onOpen={vi.fn()} />,
+    );
+    expect(screen.getByText('Runs on kontour')).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(container.querySelector('.choice-caret')).toBeNull();
+    cleanup();
+    caller.grant = {
+      ...READ_ONLY_DEVICE,
+      grantedScopes: ['orchestration:read', 'orchestration:operate'],
+    };
+    render(<StartStationControl canChoose onOpen={vi.fn()} />);
+    expect(
+      screen.getByRole('button', { name: /^Runs on kontour\./ }),
+    ).toBeTruthy();
   });
 
   test('names the chosen or Project-default Station', () => {
