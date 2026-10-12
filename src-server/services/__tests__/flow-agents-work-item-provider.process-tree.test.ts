@@ -14,6 +14,7 @@
  * path is exercised here).
  */
 import {
+  chmodSync,
   existsSync,
   mkdtempSync,
   readFileSync,
@@ -204,6 +205,26 @@ describe.skipIf(process.platform === 'win32')(
         return (error as NodeJS.ErrnoException).code === 'EPERM';
       }
     }
+
+    test('a registry write that fails does not block the spawn', async () => {
+      // A trusted (0700) directory made read-only: the record write throws
+      // EACCES after the child is spawned. The CLI must still run and settle.
+      const dir = makeTrackedDir('flow-agents-owned-readonly-');
+      const scriptPath = join(dir, 'echo.cjs');
+      writeFileSync(scriptPath, "process.stdout.write('ran');\n");
+      chmodSync(registryDir, 0o500);
+      try {
+        const result = await createDefaultFlowAgentsCliRunner()(
+          scriptPath,
+          [],
+          { cwd: dir, timeoutMs: 10_000 },
+        );
+        expect(result.exitCode).toBe(0);
+        expect(result.stdout).toBe('ran');
+      } finally {
+        chmodSync(registryDir, 0o700);
+      }
+    }, 15_000);
 
     test('a running CLI child is registered, and the record is released only after its whole group exits', async () => {
       const dir = makeTrackedDir('flow-agents-owned-');
