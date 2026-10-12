@@ -145,37 +145,48 @@ describe.skipIf(!chromiumAvailable || wslQuarantinedHost)(
       });
     }
 
-    test('Retry and Start new chat are one row of equal 44px targets', async () => {
-      const page = await browser.newPage({
-        viewport: { width: 390, height: 844 },
-        hasTouch: true,
-        isMobile: true,
-      });
-      try {
-        await page.setContent(
-          fixtureHtml(ORDERS['chunk sheets after the entry sheet']),
-        );
-        const retry = await page
-          .getByRole('button', { name: 'Retry' })
-          .boundingBox();
-        const startNew = await page
-          .getByRole('button', { name: 'Start new chat' })
-          .boundingBox();
-        expect(retry).not.toBeNull();
-        expect(startNew).not.toBeNull();
-        if (!retry || !startNew) return;
-        for (const box of [retry, startNew]) {
-          expect(box.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
-          expect(box.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+    // A phone, and a touch tablet past both phone breakpoints (wider than
+    // 768px, taller than 540px), which only the `(hover: none)` block reaches.
+    for (const viewport of [
+      { width: 390, height: 844 },
+      { width: 1024, height: 1366 },
+    ]) {
+      test(`Retry and Start new chat are one row of equal 44px targets at ${viewport.width}x${viewport.height} touch`, async () => {
+        const page = await browser.newPage({
+          viewport,
+          hasTouch: true,
+          isMobile: true,
+        });
+        try {
+          expect(
+            await page.evaluate(() => matchMedia('(hover: none)').matches),
+            'the emulated device must be one that cannot hover',
+          ).toBe(true);
+          await page.setContent(
+            fixtureHtml(ORDERS['chunk sheets after the entry sheet']),
+          );
+          const retry = await page
+            .getByRole('button', { name: 'Retry' })
+            .boundingBox();
+          const startNew = await page
+            .getByRole('button', { name: 'Start new chat' })
+            .boundingBox();
+          expect(retry).not.toBeNull();
+          expect(startNew).not.toBeNull();
+          if (!retry || !startNew) return;
+          for (const box of [retry, startNew]) {
+            expect(box.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+            expect(box.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+          }
+          expect(startNew.height).toBe(retry.height);
+          // One row: side by side, not Start new chat stretched under Retry.
+          expect(startNew.y).toBe(retry.y);
+          expect(startNew.x).toBeGreaterThan(retry.x + retry.width);
+        } finally {
+          await page.close();
         }
-        expect(startNew.height).toBe(retry.height);
-        // One row: side by side, not Start new chat stretched under Retry.
-        expect(startNew.y).toBe(retry.y);
-        expect(startNew.x).toBeGreaterThan(retry.x + retry.width);
-      } finally {
-        await page.close();
-      }
-    });
+      });
+    }
   },
 );
 

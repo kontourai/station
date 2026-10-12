@@ -1612,9 +1612,12 @@ button:hover {
      whole action-row vocabulary: that rule's selectors also match header,
      footer and toolbar rows (the 38px dock header's actions, live-work rows,
      the inbox footer, tool-call actions) that have no wrap rule or coverage at
-     this width. */
+     this width. The recovery notice's Retry / Start new chat row
+     (ConversationOpenRecoveryNotice) is the same case: min-height is set by
+     no other rule, so the entry sheet can own it for that lazy chunk. */
   .chat-input__blocked-actions > button,
   .chat-input__queued-retry-actions > button,
+  .session-history-error__actions > .button,
   .ephemeral-message__action {
     min-height: 44px;
     min-width: 44px;
