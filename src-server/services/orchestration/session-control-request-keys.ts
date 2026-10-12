@@ -22,7 +22,10 @@ import type { SqliteDatabase } from './sqlite-database.js';
  * tool input says, so one agent cannot replay or collide with another's keys.
  */
 
-/** Rows older than this are forgotten; a retry that late is a new request. */
+/**
+ * Completed rows older than this are forgotten; a retry that late is a new
+ * request. Unresolved claims are kept whatever their age (#3559).
+ */
 export const SESSION_CONTROL_REQUEST_KEY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /**
  * The most rows one calling Session keeps. Past it, that caller's OWN oldest
@@ -142,9 +145,13 @@ export function createSqliteSessionControlRequestKeys(
 
   return {
     claim(id, digest) {
-      // A row past the TTL is forgotten before it can answer.
+      // A completed row past the TTL is forgotten before it can answer.
+      // #3559: an unresolved claim is never purged by age. Its attempt may
+      // have had its effect, so a late retry must re-drive it with its
+      // recorded decision rather than claim the key afresh and run again.
       db.prepare(
-        'DELETE FROM session_control_request_keys WHERE created_at < ?',
+        `DELETE FROM session_control_request_keys
+         WHERE created_at < ? AND result_json IS NOT NULL`,
       ).run(now() - SESSION_CONTROL_REQUEST_KEY_TTL_MS);
       const existing = read(id);
       if (existing) {

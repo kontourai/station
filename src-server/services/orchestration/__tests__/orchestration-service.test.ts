@@ -16005,7 +16005,11 @@ describe('OrchestrationService', () => {
         const send = (clientTurnId: string) =>
           cappedService.dispatch({
             type: 'sendTurn',
-            input: { threadId: 'thread-3559-evicted', input: 'hi', clientTurnId },
+            input: {
+              threadId: 'thread-3559-evicted',
+              input: 'hi',
+              clientTurnId,
+            },
           });
         // Same-millisecond rows are evicted in key order: `client-a` first.
         for (const clientTurnId of ['client-a', 'client-b', 'client-c'])

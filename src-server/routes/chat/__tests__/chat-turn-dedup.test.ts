@@ -394,10 +394,17 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
           .prepare('SELECT dedup_key FROM orchestration_turn_dedup')
           .all() as Array<{ dedup_key: string }>
       ).map((row) => row.dedup_key);
-      // #3559: the evicted row stays behind as a tombstone.
-      expect(keys).toContain('chat:12:old-resolved');
+      expect(keys).not.toContain('chat:12:old-resolved');
       expect(keys).toContain('chat:8:old-live');
       expect(keys).toContain('chat:8:old-dead');
+      // #3559: the evicted row leaves a tombstone outside the capped table.
+      expect(
+        after
+          .prepare(
+            'SELECT dedup_key FROM orchestration_turn_dedup_expired WHERE dedup_key = ?',
+          )
+          .get('chat:12:old-resolved'),
+      ).toEqual({ dedup_key: 'chat:12:old-resolved' });
     } finally {
       after.close();
     }

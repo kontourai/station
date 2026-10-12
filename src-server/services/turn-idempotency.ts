@@ -46,6 +46,13 @@ export interface TurnIdempotencyRecord {
   createdAt: number;
   owner?: TurnClaimOwner;
   invocation?: TurnClaimInvocation;
+  /**
+   * #3559: the key's resolved row was evicted by capacity retention. Only a
+   * tombstone remains: the turn ran, and its result can no longer be
+   * replayed. A persistence never writes a record with this flag set; it
+   * keeps the tombstone instead.
+   */
+  expired?: true;
 }
 export interface TurnIdempotencyPersistence {
   read(key: string): TurnIdempotencyRecord | undefined;
@@ -60,12 +67,32 @@ export interface TurnIdempotencyPersistence {
 }
 type TurnIdempotencyClaim =
   | { claimed: true }
-  | { claimed: false; value?: string; indeterminate?: undefined }
+  | {
+      claimed: false;
+      value?: string;
+      indeterminate?: undefined;
+      expired?: undefined;
+    }
   /**
    * The owner is dead but may already have started the effect: never
    * reclaimed, never replayed, and never resolvable by this caller.
    */
-  | { claimed: false; indeterminate: true; value?: undefined };
+  | {
+      claimed: false;
+      indeterminate: true;
+      value?: undefined;
+      expired?: undefined;
+    }
+  /**
+   * #3559: the key's resolved row was evicted. The effect ran, but its result
+   * is gone; the key is never claimable again.
+   */
+  | {
+      claimed: false;
+      expired: true;
+      value?: undefined;
+      indeterminate?: undefined;
+    };
 
 /**
  * A claim may be RECLAIMED only when its owner cannot still be executing it,
@@ -138,6 +165,7 @@ export class TurnIdempotencyStore {
       | 'reclaimed'
       | 'contended'
       | 'indeterminate'
+      | 'expired'
       | undefined;
     const owned: TurnIdempotencyRecord = {
       value: null,
@@ -150,6 +178,10 @@ export class TurnIdempotencyStore {
       if (!current) {
         metric = 'claimed';
         return { record: owned, result: { claimed: true } };
+      }
+      if (current.expired) {
+        metric = 'expired';
+        return { record: current, result: { claimed: false, expired: true } };
       }
       if (current.value !== null)
         return {
