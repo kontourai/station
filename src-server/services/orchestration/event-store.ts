@@ -6454,6 +6454,32 @@ export class EventStore {
     return row ? this.mapEventRow(row) : undefined;
   }
 
+  /**
+   * #3562: the thread's `turn.started` rows created at or after
+   * `sinceCreatedAt`, newest first, at most `limit`. Boot recovery reads one
+   * past its own bound so it can tell "these are all of them" from "there
+   * were more" and refuse to guess an owner in the second case.
+   */
+  listTurnStartsSince(
+    threadId: string,
+    sinceCreatedAt: string,
+    limit: number,
+  ): PersistedRuntimeEvent[] {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) {
+      throw new Error('A turn-start page limit must be between 1 and 1000');
+    }
+    return this.db
+      .prepare(
+        `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+         FROM orchestration_events
+         WHERE thread_id = ? AND method = 'turn.started' AND created_at >= ?
+         ORDER BY sequence DESC
+         LIMIT ?`,
+      )
+      .all(threadId, sinceCreatedAt, limit)
+      .map((row) => this.mapEventRow(row));
+  }
+
   private listRequestSettlementFacts(
     threadId: string,
     unresolvedRequests: readonly PersistedRuntimeEvent[],

@@ -1,5 +1,35 @@
 [
   {
+    "timestampUtc": "2026-10-12T08:11:05Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2476.38209927141",
+    "sha": "7e3267227f25a7da5544462303a8cff8441304c6",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38209927141",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2476.38209927141 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "154624a8726d33e489d2c165471b876e69db76b5",
+      "groups": {
+        "feat": [],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#3599](https://github.com/kontourai/station/pull/3599) chore(ci): declare the live flaky label and update renamed workflow fixtures",
+          "[#3598](https://github.com/kontourai/station/pull/3598) chore(docs): advance the review coverage baseline and archive 316 landed notes"
+        ]
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
     "timestampUtc": "2026-10-12T07:56:07Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2476",
