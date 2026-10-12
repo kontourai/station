@@ -135,11 +135,19 @@ async function pairingActionError(
 export async function confirmDevicePairingRequest(
   requestId: string,
   apiBase?: string,
+  /** What the approver keeps of the requested scope; omitted keeps all. */
+  scope?: string,
 ): Promise<void> {
   const resolvedApiBase = await resolveApiBase(apiBase);
   const response = await authenticatedFetch(
     `${resolvedApiBase}/api/pairing/requests/${encodeURIComponent(requestId)}/confirm`,
-    { method: 'POST' },
+    scope === undefined
+      ? { method: 'POST' }
+      : {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scope }),
+        },
   );
   if (!response.ok) throw await pairingActionError(response);
 }
@@ -164,7 +172,10 @@ export async function denyDevicePairingRequest(
  */
 export function useConfirmDevicePairingRequestMutation(apiBase?: string) {
   return useApiMutation(
-    (requestId: string) => confirmDevicePairingRequest(requestId, apiBase),
+    (input: string | { requestId: string; scope?: string }) =>
+      typeof input === 'string'
+        ? confirmDevicePairingRequest(input, apiBase)
+        : confirmDevicePairingRequest(input.requestId, apiBase, input.scope),
     { invalidateKeys: [['attention'], ['notifications']] },
   );
 }

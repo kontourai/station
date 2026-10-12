@@ -887,8 +887,6 @@ describe('CI verification workflow contracts', () => {
         'desktop-rust.yml type-checks the Android target on pull requests; full APK assembly stays post-merge',
       '.github/workflows/ios-rust-cache-warm.yml':
         'writes the iOS Rust cache from trusted main only; build-ios.yml is the pull-request and merge-queue signal and only restores it',
-      '.github/workflows/docs-kit.yml':
-        'advisory docs-kit gate on merged main; the org reusable workflow cannot check out a pull_request_target candidate, so docs-kit-manifest.test.ts and docs:truth:gate are the pre-merge signal',
     };
 
     const pushOnly = readWorkflowDocuments()

@@ -2,6 +2,8 @@ import { describe, expect, test } from 'vitest';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   DEVICE_PAIRING_SCOPE,
+  deviceRequestedExtraScopes,
+  isDeviceRequestableScope,
   isPairingScopeSubset,
   PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_ACCESS_MANAGE,
@@ -541,5 +543,43 @@ describe('scoped pairing (station#1098)', () => {
     expect(isPairingScopeSubset(DEFAULT_GRANT_PAIRING_SCOPE, 'garbage')).toBe(
       false,
     );
+  });
+});
+
+describe('what a device may ask for at pairing', () => {
+  test('one requestable base plus requestable extras, never access:manage', () => {
+    // Literals, not read from the presets under test.
+    for (const scope of [
+      'orchestration:read',
+      'orchestration:read orchestration:operate terminal:operate',
+      'orchestration:read orchestration:operate terminal:operate approval:full-access',
+      'orchestration:read coding:exec approval:full-access',
+    ])
+      expect(isDeviceRequestableScope(scope), scope).toBe(true);
+    for (const scope of [
+      DEFAULT_GRANT_PAIRING_SCOPE,
+      'approval:full-access',
+      'orchestration:read orchestration:operate',
+      'orchestration:read access:approve',
+      'orchestration:read home:control',
+      '',
+      'orchestration:read orchestration:read',
+    ])
+      expect(isDeviceRequestableScope(scope), scope).toBe(false);
+  });
+
+  test('the extras a request carries are the ones only the operator may keep', () => {
+    expect(
+      deviceRequestedExtraScopes(
+        'orchestration:read orchestration:operate terminal:operate approval:full-access',
+      ),
+    ).toEqual(['approval:full-access']);
+    expect(deviceRequestedExtraScopes(DEFAULT_GRANT_PAIRING_SCOPE)).toEqual([]);
+    expect(
+      pairingScopeIncludes(
+        DEFAULT_GRANT_PAIRING_SCOPE,
+        PAIRING_SCOPE_ACCESS_MANAGE,
+      ),
+    ).toBe(true);
   });
 });

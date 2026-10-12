@@ -74,7 +74,8 @@ short purpose. The engine that runs an Agent
 reads as a quiet pill right after its name, not on a line of its own. A row does not repeat what the list already states: the Station every row runs on, an engine name that is only
 the Agent's name plus a qualifier (the row keeps the qualifier), or "Model not
 reported": a row with a model catalog but no reported model offers **Choose
-model**, and one with neither, or one that cannot start, shows no model control. The Model picker offers search, recent choices, favorites and provider
+model**, and one with neither shows no model control. A row that cannot start
+keeps its Model control, so a choice made before its repair carries through it. The Model picker offers search, recent choices, favorites and provider
 filters; Options reveals capability filters and the selected model's supported
 runtime controls. Reviewed canonical model identities still own grouping across
 provider routes; similar names do not establish equivalence.

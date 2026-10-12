@@ -1,9 +1,14 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, test } from 'vitest';
 import { TurnIdempotencyStore } from '../../turn-idempotency.js';
 import { EventStore } from '../event-store.js';
+import {
+  chatTurnDedupKey,
+  turnDedupKey,
+} from '../sqlite-turn-dedup-persistence.js';
 import { createTurnDeduplicator } from '../turn-deduplicator.js';
 
 describe('TurnDeduplicator', () => {
@@ -80,18 +85,18 @@ describe('TurnDeduplicator', () => {
     store.close();
   });
 
-  test('reclaims an unresolved dead-process owner after restart and isolates wildcard-like thread ids', () => {
+  function restartWithDeadOwners(directory: string) {
+    return new EventStore(join(directory, 'orchestration.sqlite'), 512, {
+      exact: () => ({ pid: process.pid, start: 'replacement' }),
+      probe: () => ({ state: 'dead' }),
+    });
+  }
+
+  test('reclaims a dead owner claim that never began invoking, and isolates wildcard-like thread ids', () => {
     const first = open();
     first.ledger.claim({ threadId: 'th%', clientTurnId: 'client' });
     first.store.close();
-    const restarted = new EventStore(
-      join(first.directory, 'orchestration.sqlite'),
-      512,
-      {
-        exact: () => ({ pid: process.pid, start: 'replacement' }),
-        probe: () => ({ state: 'dead' }),
-      },
-    );
+    const restarted = restartWithDeadOwners(first.directory);
     const ledger = restarted.createTurnDeduplicator();
     expect(
       ledger.claim({ threadId: 'th%', clientTurnId: 'client' }),
@@ -99,6 +104,98 @@ describe('TurnDeduplicator', () => {
     expect(
       ledger.claim({ threadId: 'thAnything', clientTurnId: 'client' }),
     ).toMatchObject({ kind: 'owner' });
+    restarted.close();
+  });
+
+  // #3559: inverted. A dead owner that began invoking may already have handed
+  // the turn to the engine, so its claim is never reclaimed.
+  test('never reclaims a dead owner claim that began invoking; every retry is indeterminate', () => {
+    const first = open();
+    const owner = first.ledger.claim({
+      threadId: 'thread',
+      clientTurnId: 'invoked',
+    });
+    if (owner.kind !== 'owner') throw new Error('expected owner');
+    owner.claim.beginInvocation();
+    first.store.close();
+
+    const restarted = restartWithDeadOwners(first.directory);
+    const ledger = restarted.createTurnDeduplicator();
+    expect(
+      ledger.claim({ threadId: 'thread', clientTurnId: 'invoked' }),
+    ).toEqual({ kind: 'indeterminate' });
+    expect(
+      ledger.claim({ threadId: 'thread', clientTurnId: 'invoked' }),
+    ).toEqual({ kind: 'indeterminate' });
+    restarted.close();
+  });
+
+  test('fails closed on a dead owner claim written before invocation was recorded', () => {
+    const first = open();
+    first.store.close();
+    const database = new DatabaseSync(
+      join(first.directory, 'orchestration.sqlite'),
+    );
+    try {
+      database
+        .prepare(
+          `INSERT INTO orchestration_turn_dedup
+             (dedup_key, value, created_at, owner_json) VALUES (?, NULL, 0, ?)`,
+        )
+        .run(
+          turnDedupKey('thread', 'legacy'),
+          JSON.stringify({
+            pid: 999_999_999,
+            birth: 'dead-birth',
+            token: 'legacy-owner',
+            identityKind: 'exact',
+          }),
+        );
+    } finally {
+      database.close();
+    }
+
+    const restarted = restartWithDeadOwners(first.directory);
+    expect(
+      restarted
+        .createTurnDeduplicator()
+        .claim({ threadId: 'thread', clientTurnId: 'legacy' }),
+    ).toEqual({ kind: 'indeterminate' });
+    restarted.close();
+  });
+
+  test('a legacy /chat row keeps the dead-owner reclaim rule while a legacy thread row fails closed', () => {
+    const first = open();
+    first.store.close();
+    const database = new DatabaseSync(
+      join(first.directory, 'orchestration.sqlite'),
+    );
+    try {
+      const insert = database.prepare(
+        `INSERT INTO orchestration_turn_dedup
+           (dedup_key, value, created_at, owner_json) VALUES (?, NULL, 0, ?)`,
+      );
+      const deadOwner = JSON.stringify({
+        pid: 999_999_999,
+        birth: 'dead-birth',
+        token: 'legacy-owner',
+        identityKind: 'exact',
+      });
+      // `/chat` rows are written only by the facade, which records no
+      // invocation, so an unmarked `chat:` row is untracked by construction.
+      insert.run(chatTurnDedupKey('legacy-chat'), deadOwner);
+      insert.run(turnDedupKey('thread', 'legacy-thread'), deadOwner);
+    } finally {
+      database.close();
+    }
+
+    const restarted = restartWithDeadOwners(first.directory);
+    expect(restarted.claimChatTurn('legacy-chat')).toEqual({ claimed: true });
+    expect(
+      restarted
+        .createTurnDeduplicator()
+        .claim({ threadId: 'thread', clientTurnId: 'legacy-thread' }),
+    ).toEqual({ kind: 'indeterminate' });
     restarted.close();
   });
 

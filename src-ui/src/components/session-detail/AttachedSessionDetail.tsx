@@ -618,7 +618,7 @@ export function AttachedSessionDetail({
                   ? 'No messages yet.'
                   : connected || disconnected
                     ? 'Waiting for this conversation’s messages…'
-                    : 'Connecting to Station…'}
+                    : 'Connecting to this Station…'}
               </p>
             )
           ) : (

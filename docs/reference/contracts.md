@@ -440,6 +440,17 @@ terminal. The shared consumer publishes `runtime.warning` with code
 `adapter-event-stream-interrupted` and resumes consumption without changing
 the affected turns' lifecycle or dispatching replacements. Only subsequent
 engine evidence establishes completion or failure. This applies across engines.
+Before that, a publish that fails on event-store contention (the SQLITE_BUSY
+family; SQLITE_LOCKED is not retried) is retried for the same event, with the
+same `eventId`, at most twice before the next event is consumed. When the
+failure was the delta coalescer's flush of text buffered before that event,
+the text is kept, with no window timer, and the retry delivers it first. Once
+no retry is in flight its window timer is re-armed, so text left after
+exhausted retries is flushed by that timer; a timer flush that still fails is
+dropped with a warning, as before. An event that already committed is never
+replayed, and no flushed text contains the delta being offered, so a retried
+delta is never stored twice. Any other failure, and exhausted retries, are the
+observation loss described above.
 Muse tool results use the shared bounded output projection before persistence;
 an `outputReceipt` records truncation and whether full output is available.
 EventStore's 64 KiB ingress ceiling remains a last-resort rejection boundary.

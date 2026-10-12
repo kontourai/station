@@ -10,8 +10,18 @@ import {
  * release it. SQLite updates are
  * atomic and persist across process restart; release returns the pair to the
  * unclaimed state so a failed or aborted request may retry.
+ *
+ * #3559: a claim whose owner process died is taken over only if that owner
+ * never called `beginInvocation`. Otherwise the provider may already have the
+ * turn, so the claim answers `indeterminate` and is never replayed.
  */
 export interface TurnClaim {
+  /**
+   * Durably records that the provider may now receive this turn. Call it
+   * before invoking the provider and do not invoke if it throws. Once it has
+   * returned, a crash of this process can no longer make the turn claimable.
+   */
+  beginInvocation(): void;
   /**
    * Permanently records the provider turn for this owned claim. May throw on
    * durable failure; retry only this exact turnId on the same handle. After a
@@ -27,12 +37,11 @@ export interface TurnClaim {
 }
 
 export interface TurnDeduplicator {
-  claim(input: {
-    threadId: string;
-    clientTurnId: string;
-  }):
+  claim(input: { threadId: string; clientTurnId: string }):
     | { kind: 'owner'; claim: TurnClaim }
-    | { kind: 'contended'; turnId?: string };
+    | { kind: 'contended'; turnId?: string }
+    /** The dead owner may have invoked the provider. Never send this turn. */
+    | { kind: 'indeterminate' };
   awaitResolution(input: {
     threadId: string;
     clientTurnId: string;
@@ -47,8 +56,15 @@ export function createTurnDeduplicator(options: {
 }): TurnDeduplicator {
   return {
     claim: ({ threadId, clientTurnId }) => {
-      const claim = options.store.claim(options.keyFor(threadId, clientTurnId));
-      if (!claim.claimed) return { kind: 'contended', turnId: claim.value };
+      const claim = options.store.claim(
+        options.keyFor(threadId, clientTurnId),
+        Date.now(),
+        'tracked',
+      );
+      if (!claim.claimed)
+        return claim.indeterminate
+          ? { kind: 'indeterminate' }
+          : { kind: 'contended', turnId: claim.value };
       let settled = false;
       let intent:
         | { kind: 'resolve'; turnId: string }
@@ -77,6 +93,10 @@ export function createTurnDeduplicator(options: {
       return {
         kind: 'owner',
         claim: {
+          beginInvocation: () => {
+            if (settled) throw new Error('Turn claim has already settled.');
+            options.store.beginInvocation(key);
+          },
           resolve: (turnId) =>
             settle({ kind: 'resolve', turnId }, () =>
               options.store.resolve(key, turnId),
