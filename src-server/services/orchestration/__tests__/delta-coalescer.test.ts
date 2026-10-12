@@ -202,8 +202,15 @@ describe('DeltaCoalescer', () => {
     coalescer.offer(delta('t1', '67890'));
 
     // Reaching the cap emits without waiting for the window, bounding the
-    // SIZE of a single event.
-    expect(texts(emitted)).toEqual(['paint', '1234567890']);
+    // SIZE of a single event. #3560: the buffer is emitted BEFORE the delta
+    // that would reach the cap joins it, so no emitted event ever contains
+    // the delta being offered (a retry of that delta then cannot repeat it).
+    expect(texts(emitted)).toEqual(['paint', '12345']);
+    coalescer.offer(delta('t1', 'abcdefghij'));
+    // A single delta at the cap is emitted on its own at once.
+    expect(texts(emitted)).toEqual(['paint', '12345', '67890', 'abcdefghij']);
+    for (const text of texts(emitted))
+      expect(text.length).toBeLessThanOrEqual(10);
   });
 
   test('the window fires on its own when no other event arrives', () => {
@@ -353,7 +360,7 @@ describe('DeltaCoalescer', () => {
     expect(coalescer.pendingThreadCount()).toBe(0);
   });
 
-  test('a failed size-cap flush retains the text buffered before the offered delta, which the retry then re-offers', () => {
+  test('a failed size-cap flush retains the text buffered before the offered delta, which the retry then delivers first', () => {
     const emitted: CanonicalRuntimeEvent[] = [];
     let failNext = false;
     const coalescer = new DeltaCoalescer(
@@ -383,7 +390,8 @@ describe('DeltaCoalescer', () => {
     expect(coalescer.pendingThreadCount()).toBe(1);
 
     expect(coalescer.offer(reachesCap)).toBe(true);
-    expect(texts(emitted)).toEqual(['paint', '1234567890']);
+    coalescer.flushAll();
+    expect(texts(emitted)).toEqual(['paint', '12345', '67890']);
   });
 
   test('retained text arms no window timer, so a timer cannot drop it while the owner retry sleeps', () => {

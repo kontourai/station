@@ -21167,6 +21167,141 @@ describe('OrchestrationService', () => {
       await isolated.shutdown();
     });
 
+    test('a size-cap flush that committed before failing does not repeat the offered delta on retry', async () => {
+      const threadId = 'cap-committed-thread';
+      const turnId = 'turn-cap-committed';
+      const { events, isolated } = await startObservedTurn(threadId, turnId);
+      const delta = (eventId: string, text: string) =>
+        ({
+          eventId,
+          provider: 'claude',
+          threadId,
+          turnId,
+          itemId: 'cap-committed-item',
+          createdAt: new Date().toISOString(),
+          method: 'content.text-delta',
+          delta: text,
+        }) as CanonicalRuntimeEvent;
+      const appendEvent = eventStore.appendEvent.bind(eventStore);
+      let thrown = false;
+      const appendSpy = vi
+        .spyOn(eventStore, 'appendEvent')
+        .mockImplementation((event, declaredOutputs) => {
+          const sequence = appendEvent(event, declaredOutputs);
+          // Contention surfacing only after the size-cap flush committed.
+          if (event.eventId === 'cap-committed-a' && !thrown) {
+            thrown = true;
+            throw busy();
+          }
+          return sequence;
+        });
+      events.push(delta('cap-committed-0', 'Hello'));
+      events.push(delta('cap-committed-a', 'A'.repeat(5_000)));
+      events.push(delta('cap-committed-b', 'B'.repeat(4_000)));
+      events.push({
+        eventId: 'cap-committed-terminal',
+        provider: 'claude',
+        threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+        method: 'turn.completed',
+        finishReason: 'stop',
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(
+          payloads(threadId).some(
+            (event) =>
+              event.eventId === 'cap-committed-terminal' ||
+              isInterruptionWarning(event),
+          ),
+        ).toBe(true),
+      );
+
+      expect(thrown).toBe(true);
+      const stored = payloads(threadId).filter(
+        (event) =>
+          event.method === 'content.text-delta' ||
+          event.method === 'turn.completed',
+      );
+      // Every character exactly once, in order, then the terminal.
+      expect(
+        stored
+          .filter((event) => event.method === 'content.text-delta')
+          .map((event) => (event as { delta?: string }).delta)
+          .join(''),
+      ).toBe(`Hello${'A'.repeat(5_000)}${'B'.repeat(4_000)}`);
+      expect(stored.at(-1)?.eventId).toBe('cap-committed-terminal');
+      appendSpy.mockRestore();
+      await isolated.shutdown();
+    });
+
+    test('text retained after the retry gives up is flushed by its window timer once the store recovers', async () => {
+      const threadId = 'retained-after-giving-up-thread';
+      const turnId = 'turn-retained';
+      const { events, isolated, warn } = await startObservedTurn(
+        threadId,
+        turnId,
+      );
+      const delta = (eventId: string, text: string) =>
+        ({
+          eventId,
+          provider: 'claude',
+          threadId,
+          turnId,
+          itemId: 'retained-item',
+          createdAt: new Date().toISOString(),
+          method: 'content.text-delta',
+          delta: text,
+        }) as CanonicalRuntimeEvent;
+      const appendEvent = eventStore.appendEvent.bind(eventStore);
+      let heldAttempts = 0;
+      const appendSpy = vi
+        .spyOn(eventStore, 'appendEvent')
+        .mockImplementation((event, declaredOutputs) => {
+          // The buffered text fails on all three flushes ahead of the
+          // terminal and on the one ahead of the interruption warning; the
+          // store then recovers. Counting attempts, not time, keeps the
+          // recovery after the last owner has given up.
+          if (event.eventId === 'retained-delta-1') {
+            heldAttempts += 1;
+            if (heldAttempts <= 4) throw busy();
+          }
+          return appendEvent(event, declaredOutputs);
+        });
+      events.push(delta('retained-delta-0', 'Hello'));
+      events.push(delta('retained-delta-1', ', world'));
+      events.push({
+        eventId: 'retained-terminal',
+        provider: 'claude',
+        threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+        method: 'turn.completed',
+        finishReason: 'stop',
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(warn).toHaveBeenCalledWith(
+          'Failed to surface adapter stream failure to thread',
+          expect.objectContaining({ threadId }),
+        ),
+      );
+      expect(heldAttempts).toBe(4);
+
+      // Nothing else arrives for this thread: only a timer can flush it.
+      await vi.waitFor(
+        () =>
+          expect(
+            payloads(threadId).some(
+              (event) => event.eventId === 'retained-delta-1',
+            ),
+          ).toBe(true),
+        { timeout: 2_000 },
+      );
+      expect(heldAttempts).toBe(5);
+      appendSpy.mockRestore();
+      await isolated.shutdown();
+    });
+
     test('a failed size-cap flush keeps the text buffered before the offered delta', async () => {
       const threadId = 'cap-flush-thread';
       const turnId = 'turn-cap';
