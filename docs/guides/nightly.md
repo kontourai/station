@@ -237,7 +237,9 @@ separate:
   release is available, and the UI never renders it as "update available".
   A prebuilt release archive is the exception: the same route fetches the
   signed public manifest its install records, verifies it against the pinned
-  keys for its ring, and reports the running and newest versions. Settings can
+  keys for its ring, and reports the running and newest versions. A manifest
+  older than the newest release that install already accepted is not offered
+  (it would be a stale or replayed one). Settings can
   apply that update only when the service's fixed launcher runs the server;
   any other archive names `station upgrade` on the host, or a reinstall (see
   the [CLI `service` reference](../reference/cli.md#service)).
