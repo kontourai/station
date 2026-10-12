@@ -1,0 +1,7 @@
+{
+  "revision": "7e69868eb8427d5db5b396558ece59926f994152",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"ChatDock.tsx changed one prop: the engine-switch callback is withheld when conversationCanMutate is false. This document's claims (ambient pane hosting via renderAmbientChatPane) are unaffected.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "7e69868eb8427d5db5b396558ece59926f994152",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Updated the existing-conversation engine-picker claim: only engines this client can start are listed, none when the open resolution denies changes, disabled with the reason while a turn or queue blocks; the handoff submit is disabled for the same reasons. Override semantics, Use Agent defaults and new-start reset claims re-read against ChatDockBody/ChatDock and unchanged.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

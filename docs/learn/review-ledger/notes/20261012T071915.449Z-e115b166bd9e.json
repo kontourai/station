@@ -1,0 +1,7 @@
+{
+  "revision": "7e69868eb8427d5db5b396558ece59926f994152",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"mobile-chat-composer spec only updated the pinned disabled-reason wording on the Agent button; the matrix row's coverage claim (composer reachability and mobile geometry) is unchanged.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts"]}
+  ]
+}

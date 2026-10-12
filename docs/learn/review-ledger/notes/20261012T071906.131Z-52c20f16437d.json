@@ -1,0 +1,7 @@
+{
+  "revision": "7e69868eb8427d5db5b396558ece59926f994152",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"ChatDock/ChatDockBody changes gate and filter engine alternatives in the composer picker; no configuration key or default changed. Unaffected.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}
