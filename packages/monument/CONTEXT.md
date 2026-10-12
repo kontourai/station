@@ -59,6 +59,9 @@ its public entry points: `.`, `./sqlite` and `./testing`.
 
 - **Turn dedup:** rows past `turnDedupMaxEntries` are evicted oldest first,
   among resolved rows only. An unresolved claim is never evicted.
+  A resolve retried after its row was evicted answers `stale`, which a caller
+  cannot tell apart from a lost claim; an exact retry of a stored row answers
+  `applied`.
 - **Request keys:** a claim first forgets rows older than `requestKeyTtlMs`.
   This includes unresolved rows, which reproduces Station's current
   behaviour; #3581 is fixing that in Station, and the kernel will adopt the

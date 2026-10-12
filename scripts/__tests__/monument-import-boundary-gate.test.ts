@@ -199,7 +199,7 @@ describe('monument import boundary gate', () => {
       [`${ROOT}/src/names.ts`]: [
         'export class C { require = true; get resolve() { return 1; } }',
         'export enum E { require = 1 }',
-        'export function g(require: string, { resolve }: { resolve: number }) { return [require, resolve]; }',
+        'export function g(require: string, { resolve }: { resolve: number }) { return resolve; }',
         'export const o = { require: 1, resolve: Promise.resolve(1) };',
         '',
       ].join('\n'),

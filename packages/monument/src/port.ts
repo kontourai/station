@@ -60,8 +60,12 @@ export interface KernelStorage {
  *
  * - `admit` runs before the decision. Returning a reason refuses the command:
  *   nothing is written and the command answers `refused`.
- * - `commit` runs after the decision's writes. Throwing aborts the whole
- *   transaction, kernel writes included, and the command rejects.
+ * - `commit` runs after the decision's writes, for read-only commands too.
+ *   Throwing aborts the whole transaction, kernel writes included, and the
+ *   command rejects.
+ *
+ * A participant must not issue a kernel command itself: adapters refuse a
+ * command started inside another.
  */
 export interface CommitParticipant<HostTransaction = unknown> {
   readonly name: string;

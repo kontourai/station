@@ -42,9 +42,10 @@ asserts both when it opens. It tries WAL with a bounded retry and reports the
 journal mode it got in `storage.pragmas.journalMode`. That matches Station's
 stores: converting a file to WAL needs a lock that a contended open may not
 get. Read-only commands (`turnDedup.read`, `turnBoundary.list`,
-`turnBoundary.hasPossibleEffect`) run in a deferred transaction, so they are
-served while another connection holds the write lock; every other command
-takes `BEGIN IMMEDIATE`. The adapter also offers `executeSync`, which runs the same transaction
+`turnBoundary.hasPossibleEffect`) run in a deferred transaction, so under WAL
+they are served while another connection holds the write lock. Every other
+command, and every command when a participant has a `commit` hook, takes
+`BEGIN IMMEDIATE`. The adapter also offers `executeSync`, which runs the same transaction
 synchronously, for hosts whose call sites are synchronous. `executeSync` is
 specific to node:sqlite and is not part of the portable contract.
 

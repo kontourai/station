@@ -40,6 +40,12 @@ function emptyImage(): MemoryImage {
 export class MemoryKernelVolume {
   /** @internal Replaced wholesale at each commit; never mutated in place. */
   committed: MemoryImage = emptyImage();
+  /**
+   * @internal A command is running against this volume. Per volume, not per
+   * handle: a nested command through a second handle would commit first and
+   * then be overwritten by the outer commit.
+   */
+  inFlight = false;
 }
 
 const requestKeyId = (id: RequestKeyId): string =>
@@ -175,7 +181,6 @@ export function openMemoryKernelStorage(
   const volume = options.volume ?? new MemoryKernelVolume();
   const participants = options.participants ?? [];
   let closed = false;
-  let inFlight = false;
   return {
     async execute<C extends KernelCommand>(
       command: C,
@@ -184,9 +189,9 @@ export function openMemoryKernelStorage(
       if (closed) throw new KernelStorageClosedError();
       // A participant that issued a command from inside this one would
       // commit first and then be overwritten by the outer commit.
-      if (inFlight)
+      if (volume.inFlight)
         throw new Error('monument commands cannot run inside another command.');
-      inFlight = true;
+      volume.inFlight = true;
       try {
         const working = copy(volume.committed);
         const result = runKernelTransactionStep(
@@ -199,7 +204,7 @@ export function openMemoryKernelStorage(
         volume.committed = working;
         return copy(result);
       } finally {
-        inFlight = false;
+        volume.inFlight = false;
       }
     },
     async close() {

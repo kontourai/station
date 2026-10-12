@@ -20,10 +20,12 @@
  * - a dynamic `import()` or `require()` whose argument is not a constant
  *   string cannot be checked and is refused, and so is every loader the
  *   import graph cannot see: `node:module` (`createRequire`),
- *   `getBuiltinModule`, a `require` that is referenced rather than called,
- *   and `import.meta.resolve`;
- * - no symlink may exist under the package: relative specifiers are checked
- *   by path, and a link would let `./x` resolve outside it;
+ *   `getBuiltinModule`, `createRequire` and `eval` under any spelling, a
+ *   `require` that is referenced rather than called, `import.meta.resolve`,
+ *   and CommonJS source files (`.cjs`, `.cts`);
+ * - no symlink may exist under the package, git-ignored paths included:
+ *   relative specifiers are checked by path, and a link would let `./x`
+ *   resolve outside it;
  * - declaration files are scanned like any other source.
  *
  * Imports are read from the TypeScript syntax tree (static imports, re-exports,
@@ -41,6 +43,7 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const MONUMENT_ROOT = 'packages/monument';
 const SOURCE_EXTENSION = /\.(?:[cm]?[jt]s|tsx|jsx)$/;
+const COMMONJS_EXTENSION = /\.c[jt]s$/;
 const TEST_FILE = /(^|\/)__tests__\/|\.(?:test|spec)\.[cm]?[jt]sx?$/;
 const TEST_ONLY_IMPORTS = new Set(['vitest']);
 const MODULE_LOADER_SPECIFIERS = new Set(['node:module', 'module']);
@@ -108,12 +111,58 @@ function isRequireCallee(identifier) {
       parent.parent.expression === parent
     );
   }
+  // Declarations that merely use the name. A later VALUE reference to a
+  // local named `require` is still refused: telling it from the loader would
+  // need scope analysis, and failing closed costs only a rename.
   return (
     (ts.isPropertyAssignment(parent) ||
       ts.isMethodDeclaration(parent) ||
-      ts.isPropertySignature(parent)) &&
-    parent.name === identifier
+      ts.isPropertySignature(parent) ||
+      ts.isPropertyDeclaration(parent) ||
+      ts.isEnumMember(parent) ||
+      ts.isGetAccessorDeclaration(parent) ||
+      ts.isSetAccessorDeclaration(parent) ||
+      ts.isParameter(parent) ||
+      ts.isBindingElement(parent)) &&
+    (parent.name === identifier || parent.propertyName === identifier)
   );
+}
+
+/**
+ * Names that reach a module loader without an import the graph can see.
+ * They are refused wherever they appear as a name or as a constant string
+ * (`process['getBuiltinModule']`, `const { getBuiltinModule } = process`),
+ * since this package has no legitimate use for any of them.
+ */
+const LOADER_NAMES = new Map([
+  ['getBuiltinModule', '<getBuiltinModule>'],
+  ['createRequire', '<createRequire>'],
+  ['eval', '<eval>'],
+]);
+
+function isImportMeta(node) {
+  return (
+    ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword
+  );
+}
+
+function loaderSpelling(node) {
+  if (
+    (ts.isIdentifier(node) || ts.isStringLiteralLike(node)) &&
+    LOADER_NAMES.has(node.text)
+  )
+    return LOADER_NAMES.get(node.text);
+  if (
+    (ts.isPropertyAccessExpression(node) &&
+      isImportMeta(node.expression) &&
+      node.name.text === 'resolve') ||
+    (ts.isElementAccessExpression(node) &&
+      isImportMeta(node.expression) &&
+      ts.isStringLiteralLike(node.argumentExpression) &&
+      node.argumentExpression.text === 'resolve')
+  )
+    return '<import.meta.resolve>';
+  return undefined;
 }
 
 /** Every module reference in one file: `{ specifier | null, line, how }`. */
@@ -137,6 +186,13 @@ export function moduleReferences(file, content) {
       how: 'reference-directive',
     });
   const visit = (node) => {
+    const loader = loaderSpelling(node);
+    if (loader)
+      references.push({
+        specifier: loader,
+        line: lineOf(node.getStart()),
+        how: 'module-loader',
+      });
     if (
       (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
       node.moduleSpecifier
@@ -173,26 +229,6 @@ export function moduleReferences(file, content) {
     ) {
       references.push({
         specifier: '<require reference>',
-        line: lineOf(node.getStart()),
-        how: 'module-loader',
-      });
-    } else if (
-      ts.isPropertyAccessExpression(node) &&
-      node.name.text === 'getBuiltinModule'
-    ) {
-      references.push({
-        specifier: '<getBuiltinModule>',
-        line: lineOf(node.getStart()),
-        how: 'module-loader',
-      });
-    } else if (
-      ts.isPropertyAccessExpression(node) &&
-      ts.isMetaProperty(node.expression) &&
-      node.expression.keywordToken === ts.SyntaxKind.ImportKeyword &&
-      node.name.text === 'resolve'
-    ) {
-      references.push({
-        specifier: '<import.meta.resolve>',
         line: lineOf(node.getStart()),
         how: 'module-loader',
       });
@@ -253,6 +289,11 @@ export function scanMonument({ files, readText }) {
   );
   for (const file of files) {
     if (!SOURCE_EXTENSION.test(file)) continue;
+    // The package is ESM. A CommonJS file opens `module.require` and friends.
+    if (COMMONJS_EXTENSION.test(file)) {
+      findings.push({ kind: 'commonjs-source', file, line: 1, specifier: '' });
+      continue;
+    }
     for (const reference of moduleReferences(file, readText(file))) {
       const kind = classifyReference(file, reference, declared);
       if (kind)
@@ -268,16 +309,18 @@ export function scanMonument({ files, readText }) {
 }
 
 function listPackageFiles() {
-  // Untracked files count too: a planted import must fail before it is added.
+  // Untracked files count too, ignored ones included: a planted import or
+  // link must fail before it is added, wherever .gitignore would hide it.
+  // Only the package's own dependency tree is skipped.
   return execFileSyncBounded(
     'git',
     [
       'ls-files',
       '--cached',
       '--others',
-      '--exclude-standard',
       '--',
       MONUMENT_ROOT,
+      `:(exclude)${MONUMENT_ROOT}/node_modules`,
     ],
     { encoding: 'utf8', windowsHide: true },
   )

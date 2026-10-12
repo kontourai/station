@@ -190,9 +190,11 @@ function configureConnection(
 }
 
 /**
- * Commands that only read run in a deferred transaction, so they are served
- * from a WAL snapshot while another connection holds the write lock. A
- * participant that writes during one of them may get SQLITE_BUSY.
+ * Commands that only read run in a deferred transaction, so under WAL they are
+ * served from a snapshot while another connection holds the write lock. Not
+ * when a participant has a `commit` hook: a host write inside a deferred read
+ * fails at once (SQLITE_BUSY_SNAPSHOT) if another connection committed after
+ * the snapshot, so those commands take the write lock like any other.
  */
 const READ_ONLY_COMMANDS: ReadonlySet<KernelCommand['type']> = new Set([
   'turnDedup.read',
@@ -369,14 +371,13 @@ function sqliteTransaction(db: SqliteKernelDatabase): KernelTransaction {
       delete: (key) => {
         run('DELETE FROM monument_turn_dedup WHERE dedup_key = ?', key);
       },
-      // Compared as UTF-8 bytes: an exact prefix match with no wildcard
-      // semantics, unaffected by NUL (where text `length()` stops) or by
-      // characters outside the BMP (where JavaScript and SQLite count
-      // differently).
+      // Compared as bytes in the database's own encoding, measured by SQLite:
+      // an exact prefix match with no wildcard semantics, unaffected by NUL
+      // (where text `length()` stops), by characters outside the BMP, or by a
+      // host database that stores UTF-16.
       deletePrefix: (prefix) =>
         run(
-          'DELETE FROM monument_turn_dedup WHERE substr(CAST(dedup_key AS BLOB), 1, ?) = CAST(? AS BLOB)',
-          Buffer.byteLength(prefix, 'utf8'),
+          'DELETE FROM monument_turn_dedup WHERE substr(CAST(dedup_key AS BLOB), 1, length(CAST(?1 AS BLOB))) = CAST(?1 AS BLOB)',
           prefix,
         ),
       pruneResolved: (maxEntries) => {
@@ -544,6 +545,9 @@ export function openSqliteKernelStorage(
     throw error;
   }
   const tx = sqliteTransaction(db);
+  const participantsWrite = participants.some(
+    (participant) => participant.commit !== undefined,
+  );
   let closed = false;
 
   const executeSync = <C extends KernelCommand>(
@@ -558,7 +562,9 @@ export function openSqliteKernelStorage(
     return inTransaction(
       db,
       () => runKernelTransactionStep(command, context, tx, participants, db),
-      READ_ONLY_COMMANDS.has(command.type) ? 'DEFERRED' : 'IMMEDIATE',
+      READ_ONLY_COMMANDS.has(command.type) && !participantsWrite
+        ? 'DEFERRED'
+        : 'IMMEDIATE',
     );
   };
 
