@@ -75,6 +75,14 @@ const RECOVERY_SHUTDOWN_SETTLEMENT_MS = 250;
 const CANCELLATION_RETRY_MS = 100;
 
 /**
+ * #3563: backoff for a boot-time source-terminal repair that answered
+ * `unavailable`. Armed intents stay without timers while it is retried; once
+ * the schedule is spent they stay paused until the next boot repeats the
+ * repair. Pausing a recovery is recoverable; replaying a stopped turn is not.
+ */
+const SOURCE_TERMINAL_REPAIR_RETRY_MS = [1_000, 2_000, 4_000, 8_000, 16_000];
+
+/**
  * Small recovery owner for the orchestration event seam. It schedules only
  * durable intents, while provider work is delegated to one composed Adapter.
  * It is not a general scheduler or credential recovery implementation.
@@ -85,6 +93,7 @@ export class SessionRecoveryCoordinator {
     string,
     ReturnType<typeof setTimeout>
   >();
+  private sourceTerminalRepairTimer?: ReturnType<typeof setTimeout>;
   private stopping = false;
   private readonly inFlight = new Set<Promise<void>>();
   private readonly lifecycleByFingerprint = new Map<string, Promise<void>>();
@@ -165,7 +174,7 @@ export class SessionRecoveryCoordinator {
     // The source terminal is durable even if the original cancellation CAS
     // returned unavailable. Repair it before deriving timers, so restart can
     // never re-dispatch a recovery that the source already ended.
-    this.ledger.cancelSourceTerminated(this.now().toISOString());
+    const repaired = this.repairSourceTerminals();
     // CredentialRecoveryModule is the only owner that can turn a prepared
     // profile attempt into candidate-profile compensation.  This coordinator
     // may settle ordinary recovery only; otherwise it would erase the
@@ -176,11 +185,52 @@ export class SessionRecoveryCoordinator {
     );
     for (const intent of unsettled)
       this.recordIntentOutcome(intent, 'indeterminate');
+    if (repaired) {
+      this.armReconciledTimers();
+    } else {
+      // #3563: the repair is one bulk CAS, so a failure leaves every armed
+      // intent possibly source-terminated. None gets a timer until it lands.
+      this.options.logger?.warn(
+        'Recovery source-terminal repair is unavailable; armed recoveries stay paused until it succeeds',
+        { retryInMs: SOURCE_TERMINAL_REPAIR_RETRY_MS[0] },
+      );
+      this.retrySourceTerminalRepair(0);
+    }
+    void this.credentialRecovery?.reconcile();
+  }
+
+  private repairSourceTerminals(): boolean {
+    const repair = this.ledger.cancelSourceTerminated(
+      this.now().toISOString(),
+    );
+    return repair.kind === 'applied' || repair.kind === 'stale';
+  }
+
+  private armReconciledTimers(): void {
     for (const intent of this.ledger.pending()) {
       if (intent.outcome !== 'armed' || !intent.dueAt) continue;
       this.schedule(intent.fingerprint, intent.dueAt);
     }
-    void this.credentialRecovery?.reconcile();
+  }
+
+  private retrySourceTerminalRepair(attempt: number): void {
+    if (this.stopping || this.disposed) return;
+    const delay = SOURCE_TERMINAL_REPAIR_RETRY_MS[attempt];
+    if (delay === undefined) {
+      this.options.logger?.warn(
+        'Recovery source-terminal repair stayed unavailable; armed recoveries stay paused until the next restart',
+        { attempts: SOURCE_TERMINAL_REPAIR_RETRY_MS.length + 1 },
+      );
+      return;
+    }
+    const timer = setTimeout(() => {
+      this.sourceTerminalRepairTimer = undefined;
+      if (this.stopping || this.disposed) return;
+      if (this.repairSourceTerminals()) this.armReconciledTimers();
+      else this.retrySourceTerminalRepair(attempt + 1);
+    }, delay);
+    timer.unref?.();
+    this.sourceTerminalRepairTimer = timer;
   }
 
   async dispose(): Promise<void> {
@@ -188,6 +238,10 @@ export class SessionRecoveryCoordinator {
     this.stopping = true;
     for (const timer of this.timers.values()) clearTimeout(timer);
     this.timers.clear();
+    if (this.sourceTerminalRepairTimer) {
+      clearTimeout(this.sourceTerminalRepairTimer);
+      this.sourceTerminalRepairTimer = undefined;
+    }
     // Persist cancellation while this Module can still schedule its bounded
     // exact retry. Marking disposed first used to suppress that retry and
     // allowed an armed recovery to survive shutdown without an obligation.
