@@ -116,6 +116,13 @@ describe('StartStationControl', () => {
   });
 
   test('offers nothing before the Station reads answer, or without an Agent to apply it to', () => {
+    // A usable SSH Station is already known, but the paired read has not
+    // answered: no partial list is offered.
+    reads.ssh = {
+      isSuccess: true,
+      isError: false,
+      data: [sshEnvironment('/srv/project')],
+    };
     reads.peers = {
       isSuccess: false,
       isError: false,
