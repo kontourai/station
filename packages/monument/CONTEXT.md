@@ -74,8 +74,9 @@ between Station and Monument internals, the kind real code and agents
 produce: an import, a test helper's path such as `vi.importActual`, a
 `package.json` `imports` alias or `tsconfig` `paths` entry, a symlink, a stray
 file. It does not stop deliberate evasion. Names assembled at run time, data
-URLs, unusual escape spellings, and computed paths in files that never name
-the package are accepted limits, left to review.
+URLs, unusual escape spellings, computed paths in files that never name the
+package, and repo-relative path strings outside `resolve`/`join` calls and
+vite or vitest configs are accepted limits, left to review.
 
 ## Retention
 

@@ -617,6 +617,7 @@ describe('monument import boundary gate', () => {
         "export const context = new URL('../packages/monument/CONTEXT.md', import.meta.url);",
         "export const licence = new URL('../packages/monument/LICENSE', import.meta.url);",
         "export const index = '../packages/monument/src/index.ts';",
+        "export const aliases = { '@kontourai/monument/*': ['x'], glob: 'packages/monument/src/**' };",
         '',
       ].join('\n'),
     });

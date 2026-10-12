@@ -39,8 +39,10 @@
  * file. It does not stop deliberate evasion. Accepted limits, left to review:
  * names assembled at run time (`process['getBuilt' + 'inModule']`), data
  * URLs, escape spellings beyond `%XX`, `\u` and `\x` (line continuations,
- * identity and octal escapes), and computed paths in Station files that never
- * name the package in a string literal.
+ * identity and octal escapes), computed paths in Station files that never
+ * name the package in a string literal, and a repo-relative path string
+ * (`'packages/monument/src'`) used anywhere but a `resolve`/`join` argument
+ * or a vite or vitest config.
  *
  * Imports are read from the TypeScript syntax tree (static imports, re-exports,
  * `import x = require()`, `import()`, `require()`, `require.resolve()`,
@@ -528,6 +530,29 @@ function targetStrings(value) {
   return [];
 }
 
+/** An argument of `resolve(...)` or `join(...)`, `path.` or bare. */
+function isPathCallArgument(node) {
+  const call = node.parent;
+  if (!ts.isCallExpression(call) || !call.arguments.includes(node))
+    return false;
+  const callee = call.expression;
+  const name = ts.isIdentifier(callee)
+    ? callee.text
+    : ts.isPropertyAccessExpression(callee)
+      ? callee.name.text
+      : '';
+  return name === 'resolve' || name === 'join';
+}
+
+/** Bundler config files, whose plain strings are paths relative to them. */
+const BUNDLER_CONFIG = /(^|[.-])vite(?:st)?[^/]*\.config\.[cm]?[jt]s$/;
+
+/**
+ * Whether a string names the package: `@kontourai/monument`, or `monument`
+ * as a whole path segment. `monument-import-boundary:gate` does not.
+ */
+const NAMES_PACKAGE = /(^|[/@])monument(?![-\w])/;
+
 /** The decoded text of every string literal in a file, with its line. */
 function stringLiterals(file, content) {
   const source = ts.createSourceFile(
@@ -537,11 +562,29 @@ function stringLiterals(file, content) {
     true,
   );
   const literals = [];
+  const lineOf = (node) =>
+    source.getLineAndCharacterOfPosition(node.getStart()).line + 1;
   const visit = (node) => {
     if (ts.isStringLiteralLike(node))
       literals.push({
         text: node.text,
-        line: source.getLineAndCharacterOfPosition(node.getStart()).line + 1,
+        line: lineOf(node),
+        inPathCall: isPathCallArgument(node),
+        // `{ '@kontourai/monument/*': … }`: a key, not a value used as a path.
+        propertyName:
+          (ts.isPropertyAssignment(node.parent) ||
+            ts.isPropertySignature(node.parent)) &&
+          node.parent.name === node,
+      });
+    else if (ts.isTemplateExpression(node))
+      // Its constant parts only: enough to tell whether it names the package.
+      literals.push({
+        text: [
+          node.head.text,
+          ...node.templateSpans.map((span) => span.literal.text),
+        ].join(''),
+        line: lineOf(node),
+        template: true,
       });
     ts.forEachChild(node, visit);
   };
@@ -587,26 +630,28 @@ export function scanMonumentConsumers({
     typeof exports === 'string' ? ['.'] : Object.keys(exports),
   );
   const packageRoot = canonicalPath(resolve(root, MONUMENT_ROOT));
-  const manifestPath = canonicalPath(
-    resolve(packageRoot, 'package.json'),
-  ).toLowerCase();
-  const entryTargets = new Set(
-    targetStrings(exports).map((target) =>
+  /**
+   * What a path string or an alias may name inside the package: the files
+   * its manifest exports, the manifest, and the root README, CONTEXT and
+   * LICENSE. A module specifier may name none of them by path.
+   */
+  const publicTargets = new Set(
+    [
+      ...targetStrings(exports),
+      'package.json',
+      'README.md',
+      'CONTEXT.md',
+      'LICENSE',
+    ].map((target) =>
       canonicalPath(resolve(packageRoot, target)).toLowerCase(),
     ),
   );
-  /**
-   * `allow`: which targets inside the package are not internals. A path
-   * string may name the manifest (a test reading its version, say); an alias
-   * may also map to an exported entry file, as a bundler alias would.
-   */
   const internalPath = (absolute, { allow = 'nothing' } = {}) => {
     const canonical = canonicalPath(absolute);
-    if (within(canonical, packageRoot)) {
-      const folded = canonical.toLowerCase();
-      if (allow !== 'nothing' && folded === manifestPath) return false;
-      return !(allow === 'entries' && entryTargets.has(folded));
-    }
+    if (within(canonical, packageRoot))
+      return !(
+        allow === 'public' && publicTargets.has(canonical.toLowerCase())
+      );
     const modules = relative(root, canonical)
       .split(sep)
       .join('/')
@@ -645,7 +690,7 @@ export function scanMonumentConsumers({
       continue;
     }
     const name = basename(file);
-    if (name === 'package.json' || /^tsconfig.*\.json$/.test(name)) {
+    if (name === 'package.json' || ALIAS_CONFIG.test(name)) {
       scanAlias(file, readText(file), root, internalPath, report);
       continue;
     }
@@ -655,7 +700,7 @@ export function scanMonumentConsumers({
     const literals = stringLiterals(file, content);
     // Whether the file names the package in code, not just in a comment.
     const namesPackage = literals.some((literal) =>
-      decodePercent(literal.text).toLowerCase().includes('monument'),
+      NAMES_PACKAGE.test(decodePercent(literal.text).toLowerCase()),
     );
     if (!namesPackage) continue;
     const seen = new Set();
@@ -677,24 +722,46 @@ export function scanMonumentConsumers({
       else if (verdict)
         report('monument-internal-import', file, line, specifier);
     }
-    for (const { text, line } of literals) {
+    const bundlerConfig = BUNDLER_CONFIG.test(name);
+    for (const { text, line, template, inPathCall, propertyName } of literals) {
+      // Template text, property keys and globs name nothing loadable.
+      if (template || propertyName || text.includes('*')) continue;
       if (seen.has(`${line}\0${text}`)) continue;
-      const verdict = reachesInternals(file, text, { allow: 'manifest' });
-      if (verdict === 'encoded') report('encoded-specifier', file, line, text);
-      else if (verdict) report('monument-internal-reference', file, line, text);
+      // An undecodable string here is ordinary text ('/coverage/100%'), not
+      // a path: only module specifiers report `encoded-specifier`.
+      let verdict = reachesInternals(file, text, { allow: 'public' });
+      if (verdict === 'encoded') continue;
+      // A repo-relative string ('packages/monument/src') is a path only where
+      // it is used as one: in resolve/join, or in a vite or vitest config.
+      if (
+        !verdict &&
+        (inPathCall || bundlerConfig) &&
+        text.includes('/') &&
+        !/^[./]|^[a-z]+:/i.test(text)
+      )
+        verdict = [resolve(root, dirname(file)), root].some((base) =>
+          internalPath(resolve(base, text), { allow: 'public' }),
+        );
+      if (verdict) report('monument-internal-reference', file, line, text);
     }
   }
   return findings;
 }
 
 /** `imports` in a package.json, `compilerOptions.paths` in a tsconfig. */
+/** `tsconfig.json`, `x.tsconfig.json`, `tsconfig.test.json`, `jsconfig.json`. */
+const ALIAS_CONFIG = /(^|[.-])tsconfig.*\.json$|^jsconfig.*\.json$/;
+
 function scanAlias(file, content, root, internalPath, report) {
   const directory = resolve(root, dirname(file));
-  const check = (base, field, key, targets) => {
+  const check = (base, field, key, targets, bareIsPath) => {
     for (const target of targetStrings(targets)) {
-      if (!target.startsWith('.') && !target.startsWith('/')) continue;
+      // A bare package.json `imports` target is a package name; a bare
+      // tsconfig `paths` target is a path under baseUrl.
+      if (!bareIsPath && !target.startsWith('.') && !target.startsWith('/'))
+        continue;
       const path = resolve(base, target.replaceAll('*', ''));
-      if (internalPath(path, { allow: 'entries' })) {
+      if (internalPath(path, { allow: 'public' })) {
         report('monument-alias', file, 1, `${field}.${key}`);
         return;
       }
@@ -708,7 +775,7 @@ function scanAlias(file, content, root, internalPath, report) {
       return;
     }
     for (const [key, targets] of Object.entries(manifest?.imports ?? {}))
-      check(directory, 'imports', key, targets);
+      check(directory, 'imports', key, targets, false);
     return;
   }
   const { config } = ts.parseConfigFileTextToJson(file, content);
@@ -718,7 +785,7 @@ function scanAlias(file, content, root, internalPath, report) {
       ? resolve(directory, options.baseUrl)
       : directory;
   for (const [key, targets] of Object.entries(options.paths ?? {}))
-    check(base, 'compilerOptions.paths', key, targets);
+    check(base, 'compilerOptions.paths', key, targets, true);
 }
 
 function listConsumerFiles() {
