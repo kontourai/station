@@ -211,13 +211,14 @@ first; the controls show what **Start** will use:
 
 **Runs on <Station>** says which Station runs the work. When you can run work
 on another Station (a verified SSH environment or a paired Station you are
-allowed to list), it opens **Where this work runs**, with the current one
+allowed to list, with permission to start tasks), it opens **Where this work runs**, with the current one
 checked. Choosing another Station continues to its **Engine & model**, since
 that Station's own engines run the work. **Start** then opens **Run on a
 Station** with your message, Project and choices, and **Run task** starts a
 resumable task there. Unavailable destinations keep their refusal instead of
 falling back to this computer, and Cancel returns to your message, including
-edits made in the task chooser. Follow a started task in Activity. A
+edits made in the task chooser. A started task shows **Task started on
+<Station>.** with **Open task** to follow it in Activity. A
 foreground chat stays on its existing Station; choosing a remote task
 destination does not move that chat. With no other Station to choose, the
 control is plain text.

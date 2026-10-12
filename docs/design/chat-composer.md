@@ -115,14 +115,18 @@ The **Runs on <Station>** control names where this start runs: the explicit
 Station choice, else the Project's saved default environment, else the
 answering Station's host projection. When the server reports another Station
 this caller may run on (a verified SSH environment, or a paired Station the
-caller is authorized to list), it opens a **Where this work runs** list with
+caller is authorized to list) and the caller's authority observation grants
+`orchestration:operate` (the operator, or a device with that scope), it
+opens a **Where this work runs** list with
 the current Station marked. It only chooses the destination: This Station
 closes the list, and another Station continues into that Station's Engine &
 model picker, because a remote route needs a verified engine there. **Start**
 then opens the task launcher with the message, Project, Agent and selection,
 retaining portable Project/resource admission and the explicit no-fallback
 refusals; **Run task** starts a task and does not place or migrate a
-foreground chat on a peer. **Connect a Station for this task** keeps the
+foreground chat on a peer. Once the task is accepted the composer closes
+and the dock shows **Task started on <Station>.** with **Open task** into
+Activity. **Connect a Station for this task** keeps the
 task draft, chosen Station and Project resource while setup opens; returning
 refreshes discovery and still requires an explicit **Run task** action.
 Editing the task message updates the originating draft, so Cancel retains
