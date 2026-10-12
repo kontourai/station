@@ -10,6 +10,7 @@ import {
 } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { createInterface } from 'node:readline';
+import { CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES } from '@kontourai/station-contracts/chat-attachment';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
 import type { GetMessagesOptions } from '@voltagent/core';
 import type { UIMessage } from 'ai';
@@ -189,11 +190,16 @@ const NEWLINE = 0x0a;
 const TAIL_SCAN_CHUNK_BYTES = 64 * 1024;
 /**
  * The largest unterminated tail parsed to see whether only its newline was
- * lost. A longer tail is quarantined without being parsed, so repair memory
- * stays bounded. Nothing is lost either way: a quarantined tail keeps its
- * bytes in the `.torn` file.
+ * lost. It is twice the largest chat command body Station accepts, which
+ * already counts base64-inlined attachments, so every record Station can
+ * write fits with room for stored metadata. The read path parses records
+ * whole, so this bounds nothing the reader does not already hold in memory.
+ *
+ * A longer tail is quarantined unparsed. Its bytes survive in `.torn`, but
+ * nothing reads `.torn`, so such a record would leave the transcript.
  */
-const MAX_COMPLETABLE_TAIL_BYTES = 8 * 1024 * 1024;
+export const MAX_COMPLETABLE_TAIL_BYTES =
+  2 * CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES;
 
 async function readExactly(
   handle: FileHandle,

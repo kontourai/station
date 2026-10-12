@@ -20,7 +20,7 @@
  * layer the module actually uses, in order.
  */
 
-import { readdirSync } from 'node:fs';
+import { readdirSync, statSync } from 'node:fs';
 import { appendFile as appendRaw, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { UIMessage } from 'ai';
@@ -134,6 +134,23 @@ vi.mock('../../../utils/logger.js', async (importOriginal) => {
 });
 
 const { FileMemoryAdapter } = await import('../memory-adapter.js');
+const { MAX_COMPLETABLE_TAIL_BYTES } = await import(
+  '../memory-adapter-messages.js'
+);
+
+/**
+ * 2 x CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES (22 MiB): the largest record
+ * Station can write, with headroom. Pinned as a literal so a change to the
+ * derivation is a visible decision here, not a silent shift.
+ */
+const COMPLETABLE_TAIL_LIMIT = 46_137_344;
+
+/** An ASCII JSON message record of exactly `bytes` bytes. */
+function recordOfExactly(bytes: number, id: string): string {
+  const prefix = `{"id":"${id}","role":"user","parts":[{"type":"text","text":"`;
+  const suffix = '"}]}';
+  return `${prefix}${'x'.repeat(bytes - prefix.length - suffix.length)}${suffix}`;
+}
 
 const USER = 'u1';
 const CONVERSATION = 'c1';
@@ -263,6 +280,44 @@ describe('transcript appends and rewrites survive a crash (#3564)', () => {
     expect(await storedIds()).toEqual(['a', 'c']);
     expect(await readFile(`${path}.torn`, 'utf-8')).toBe(`${torn}\n`);
   });
+
+  test('a complete record exactly at the parse cap keeps its place', async () => {
+    expect(MAX_COMPLETABLE_TAIL_BYTES).toBe(COMPLETABLE_TAIL_LIMIT);
+    await adapter.addMessage(message('a'), USER, CONVERSATION);
+    const path = await messagesPath();
+    const record = recordOfExactly(COMPLETABLE_TAIL_LIMIT, 'b');
+    expect(Buffer.byteLength(record)).toBe(COMPLETABLE_TAIL_LIMIT);
+    await appendRaw(path, record, 'utf-8');
+
+    await adapter.addMessage(message('c'), USER, CONVERSATION);
+
+    expect(await storedIds()).toEqual(['a', 'b', 'c']);
+    expect(readdirSync(dirname(path))).not.toContain('c1.ndjson.torn');
+  }, 120_000);
+
+  test('a complete record one byte over the parse cap is quarantined whole', async () => {
+    await adapter.addMessage(message('a'), USER, CONVERSATION);
+    const path = await messagesPath();
+    const record = recordOfExactly(COMPLETABLE_TAIL_LIMIT + 1, 'b');
+    expect(Buffer.byteLength(record)).toBe(COMPLETABLE_TAIL_LIMIT + 1);
+    await appendRaw(path, record, 'utf-8');
+
+    await adapter.addMessage(message('c'), USER, CONVERSATION);
+
+    // Over the cap the tail is not parsed, so even a complete record leaves
+    // the transcript. Its bytes are kept, newline-terminated, in quarantine.
+    expect(await storedIds()).toEqual(['a', 'c']);
+    expect(statSync(`${path}.torn`).size).toBe(COMPLETABLE_TAIL_LIMIT + 2);
+    expect(messageLoggerWarnings).toContainEqual([
+      expect.any(String),
+      expect.objectContaining({
+        recovery: expect.objectContaining({
+          kind: 'quarantined',
+          bytes: COMPLETABLE_TAIL_LIMIT + 1,
+        }),
+      }),
+    ]);
+  }, 120_000);
 
   test('a torn tail with no complete line before it is moved aside', async () => {
     await adapter.addMessage(message('a'), USER, CONVERSATION);
