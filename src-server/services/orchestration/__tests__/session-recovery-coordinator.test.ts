@@ -2071,6 +2071,56 @@ describe('SessionRecoveryCoordinator', () => {
         vi.useRealTimers();
       }
     });
+
+    // Review L2: the source can end after the fence read it as live and
+    // before the claim lands (credential recovery awaits in between). The
+    // claim's compare-and-set carries the same rule, so the pair is atomic.
+    test('a source that ends between the fence and the claim is not resumed', async () => {
+      vi.useFakeTimers();
+      const dir = makeTempDir('recovery-coordinator-');
+      const store = new EventStore(join(dir, 'orchestration.sqlite'));
+      const now = new Date('2026-07-29T12:00:00.000Z');
+      armedPair(store, now);
+      const real = recoveryLedger(store);
+      const sendTurn = vi.fn(async (input: { threadId: string }) => ({
+        turnId: `recovered-${input.threadId}`,
+      }));
+      const coordinator = new SessionRecoveryCoordinator({
+        eventStore: store,
+        recoveryLedger: {
+          ...real,
+          cancelIfSourceTerminated: (fingerprint: string, at: string) => {
+            const fenced = real.cancelIfSourceTerminated(fingerprint, at);
+            if (fingerprint.startsWith('thread-open:')) {
+              store.appendEvent({
+                eventId: 'aborted-open-after-fence',
+                provider: 'claude',
+                threadId: 'thread-open',
+                turnId: 'turn-open',
+                createdAt: now.toISOString(),
+                method: 'turn.aborted',
+                reason: 'interrupted',
+              });
+            }
+            return fenced;
+          },
+        },
+        adapterForProvider: () =>
+          ({ metadata: { recovery: { sameSession: true } } }) as any,
+        sendTurn,
+        now: () => now,
+        logger: { warn: vi.fn() },
+      });
+      try {
+        coordinator.reconcile();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(sendTurn).not.toHaveBeenCalled();
+      } finally {
+        await coordinator.dispose().catch(() => undefined);
+        store.close();
+        vi.useRealTimers();
+      }
+    });
   });
 
   test('refuses to replay a turn whose attachment bytes are gone (#3374)', async () => {
