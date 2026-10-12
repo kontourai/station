@@ -3,12 +3,17 @@ import { stripTypeScriptTypes } from 'node:module';
 import vm from 'node:vm';
 import { expect, test } from 'vitest';
 
-const source = stripTypeScriptTypes(
-  readFileSync(
-    new URL('../../src-ui/src/lib/startup-animation.ts', import.meta.url),
-    'utf8',
-  ),
-).replaceAll('export function ', 'function ');
+const script = (path: string) =>
+  stripTypeScriptTypes(readFileSync(new URL(path, import.meta.url), 'utf8'))
+    .replaceAll('export function ', 'function ')
+    .replaceAll('export const ', 'const ');
+// The renderer runs as a classic script in a VM context, so its one import --
+// the generated mark geometry -- is inlined ahead of it.
+const animation = script('../../src-ui/src/lib/startup-animation.ts');
+const geometryImport = /^import \{[^}]*\} from '\.\/startup-mark-geometry';\n/m;
+if (!geometryImport.test(animation))
+  throw new Error('startup-animation.ts no longer imports its mark geometry');
+const source = `${script('../../src-ui/src/lib/startup-mark-geometry.ts')}\n${animation.replace(geometryImport, '')}`;
 
 function renderer({ reduced = false, channel = 'stable' } = {}) {
   let paints = 0;
