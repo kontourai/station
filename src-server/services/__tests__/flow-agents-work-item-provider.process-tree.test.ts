@@ -22,7 +22,8 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { createDefaultFlowAgentsCliRunner } from '../work-item-providers/flow-agents-work-item-provider.js';
 
 const tmpDirs: string[] = [];
@@ -139,5 +140,108 @@ describe.skipIf(process.platform === 'win32')(
       }
       expect(escaped).toEqual([]);
     }, 15_000);
+  },
+);
+
+/**
+ * #561: the CLI child is detached so a timeout can kill its whole tree, but
+ * that timeout lives in this process. A SIGKILLed Station used to leave the
+ * child running with no registry record for the startup sweep. The stub CLI
+ * starts a grandchild in its group and exits on request, leaving the
+ * grandchild behind; both are killed by exact pid in afterEach.
+ */
+const OWNED_STUB_SCRIPT = `
+const { spawn } = require('node:child_process');
+const { existsSync, writeFileSync } = require('node:fs');
+const { join } = require('node:path');
+const dir = process.argv[2];
+const grandchild = spawn(process.execPath, ['-e', 'setInterval(() => {}, 86400000)'], { stdio: 'ignore' });
+writeFileSync(join(dir, 'pids.json'), JSON.stringify({ leaderPid: process.pid, grandchildPid: grandchild.pid }));
+const poll = setInterval(() => {
+  if (existsSync(join(dir, 'release'))) { clearInterval(poll); process.exit(0); }
+}, 20);
+`;
+
+describe.skipIf(process.platform === 'win32')(
+  'createDefaultFlowAgentsCliRunner (owned-process registration, #561)',
+  () => {
+    const makeTrackedDir = trackTempDirs();
+    let registryDir: string;
+    const pids: number[] = [];
+
+    beforeEach(() => {
+      registryDir = makeTrackedDir('station-flow-agents-owned-registry-');
+      vi.stubEnv('STATION_OWNED_PROCESS_REGISTRY', registryDir);
+    });
+
+    afterEach(async () => {
+      for (const pid of pids.splice(0)) {
+        try {
+          process.kill(pid, 'SIGKILL');
+        } catch {
+          // Already gone.
+        }
+        for (let i = 0; i < 200 && isAlive(pid); i++) {
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+      }
+      vi.unstubAllEnvs();
+    });
+
+    async function waitUntil(check: () => boolean, ms = 5_000) {
+      const deadline = Date.now() + ms;
+      while (!check() && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      return check();
+    }
+
+    function groupAlive(pgid: number): boolean {
+      try {
+        process.kill(-pgid, 0);
+        return true;
+      } catch (error) {
+        return (error as NodeJS.ErrnoException).code === 'EPERM';
+      }
+    }
+
+    test('a running CLI child is registered, and the record is released only after its whole group exits', async () => {
+      const dir = makeTrackedDir('flow-agents-owned-');
+      const scriptPath = join(dir, 'owned-stub.cjs');
+      writeFileSync(scriptPath, OWNED_STUB_SCRIPT);
+
+      const running = createDefaultFlowAgentsCliRunner()(scriptPath, [dir], {
+        cwd: dir,
+        timeoutMs: 30_000,
+      });
+      const pidFile = join(dir, 'pids.json');
+      expect(await waitUntil(() => existsSync(pidFile))).toBe(true);
+      const { leaderPid, grandchildPid } = JSON.parse(
+        readFileSync(pidFile, 'utf8'),
+      ) as { leaderPid: number; grandchildPid: number };
+      pids.push(grandchildPid, leaderPid);
+
+      // While the CLI runs, its record names it.
+      const recordFile = join(registryDir, `engine-${leaderPid}.json`);
+      expect(existsSync(recordFile)).toBe(true);
+      expect(JSON.parse(readFileSync(recordFile, 'utf8')).enginePid).toBe(
+        leaderPid,
+      );
+
+      // The CLI exits; the grandchild keeps its group alive, so the record
+      // must stay for a later sweep.
+      writeFileSync(join(dir, 'release'), '');
+      const result = await running;
+      expect(result.exitCode).toBe(0);
+      expect(isAlive(grandchildPid)).toBe(true);
+      expect(groupAlive(leaderPid)).toBe(true);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(existsSync(recordFile)).toBe(true);
+
+      // Once the group is empty, the record is released.
+      process.kill(grandchildPid, 'SIGKILL');
+      expect(await waitUntil(() => !groupAlive(leaderPid))).toBe(true);
+      expect(await waitUntil(() => !existsSync(recordFile))).toBe(true);
+    }, 30_000);
   },
 );
