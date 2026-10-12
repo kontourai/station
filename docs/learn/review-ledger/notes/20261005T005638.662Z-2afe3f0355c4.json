@@ -1,0 +1,7 @@
+{
+  "revision": "2000dd43abd8a30ca28bb7a4ccd336ad7dfe3131",
+
+  "notes": [
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"No prose change after merging main: runtime-routes differs from main only by the callerMayAnswerDelegatedRequest wiring for bound answers; none of it touches what this document claims.","inputs":["docs/adr/0017-browser-preview-host.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

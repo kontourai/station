@@ -14,6 +14,7 @@ import type {
   ProjectTaskRoomGrant,
   ProjectTaskRoomGrantKind,
   ProjectTaskRoomOpenOutcome,
+  ProjectTaskRoomOutputFeedback,
   ProjectTaskRoomPrincipal,
   ProjectTaskRoomReadOutcome,
   ProjectTaskRoomRecord,
@@ -200,7 +201,14 @@ export interface ProjectTaskRoomHistory extends ProjectTaskRoomAuthority {
   dispose(): void;
 }
 
+export interface ProjectTaskRoomOutputFeedbackTargets {
+  validate(
+    scope: ProjectTaskRoomScope,
+    target: ProjectTaskRoomOutputFeedback['target'],
+  ): Promise<'admitted' | 'denied' | 'unavailable'>;
+}
 interface ProjectTaskRoomHistoryInput {
+  outputFeedbackTargets?: ProjectTaskRoomOutputFeedbackTargets;
   databasePath: string;
   capabilities: ProjectTaskRoomCapabilityAuthority;
   links?: ProjectTaskRoomLinkAuthority;
@@ -424,7 +432,8 @@ function createProjectTaskRoomHistoryInternal(
       else if (resolved.kind === 'granted') {
         const principalAuthorized =
           resolved.receipt.principal.kind === 'agent'
-            ? required === 'agent-publish'
+            ? required === 'agent-publish' &&
+              intent.body.kind !== 'output-feedback'
             : required === capabilityFor(intent.body);
         if (!principalAuthorized) outcome = { kind: 'denied' };
         if (principalAuthorized) {
@@ -518,10 +527,25 @@ function createProjectTaskRoomHistoryInternal(
                 );
                 const local = authorizationDisposition(commitAuthorization);
                 if (phase === 'authorize' || local !== 'admitted') return local;
-                // Unreachable: the worker only asks for this phase when the
-                // request carried writeAdmissionRequired, which is set from
-                // the same port's presence. Fail closed anyway — a default
-                // that admits is one refactor away from being the answer.
+                // Only fresh identities need a retained output. Exact retries survive deletion.
+                if (body.body.kind === 'output-feedback') {
+                  if (!input.outputFeedbackTargets) return 'denied';
+                  const target = await input.outputFeedbackTargets.validate(
+                    finalAuthorization.receipt.scope,
+                    body.body.target,
+                  );
+                  if (target !== 'admitted') return target;
+                  if (!active(operationGeneration)) return 'unavailable';
+                  const refreshed = await resolveAuthorized(
+                    grant,
+                    required,
+                    finalAuthorization.receipt,
+                  );
+                  const disposition = authorizationDisposition(refreshed);
+                  if (disposition !== 'admitted') return disposition;
+                }
+                if (!writeAdmissionRequired) return 'admitted';
+                // A configured admission port must remain available at commit.
                 if (!beginRoomWriteAdmission) return 'unavailable';
                 const admission = await boundedAdmissionCall(
                   () => beginRoomWriteAdmission(writeAdmission),
@@ -1157,7 +1181,7 @@ async function boundedAdmissionCall<T>(
 function capabilityFor(
   body: ProjectTaskRoomAppendBody,
 ): ProjectTaskRoomGrantKind {
-  return body.kind === 'human-message'
+  return body.kind === 'human-message' || body.kind === 'output-feedback'
     ? 'message-write'
     : body.kind === 'outcome-link'
       ? 'revision-link'
@@ -1171,6 +1195,7 @@ async function resolveBody(
   | { kind: 'resolved'; body: ProjectTaskRoomBody }
   | { kind: 'link-unresolved' | 'link-unverified' | 'unavailable' }
 > {
+  if (body.kind === 'output-feedback') return { kind: 'resolved', body };
   if (body.kind === 'human-message')
     return {
       kind: 'resolved',
@@ -1298,6 +1323,7 @@ function validAppendBody(value: unknown): value is ProjectTaskRoomAppendBody {
   )
     return false;
   const kind = value.kind;
+  if (kind === 'output-feedback') return validOutputFeedback(value);
   if (kind === 'human-message')
     return isPlainOwn(value, ['kind', 'text']) && text(value.text);
   if (kind === 'live-work-started')
@@ -1752,13 +1778,18 @@ function validRecord(
       'bodyBytes',
       'checkpointDigest',
     ]) ||
-    value.schemaVersion !== 'station.project-task-room/v2' ||
+    !['station.project-task-room/v2', 'station.project-task-room/v3'].includes(
+      value.schemaVersion,
+    ) ||
     !validScope(value.scope) ||
     !validPrincipal(value.principal) ||
     !optionalId(value.correlationId) ||
     !optionalId(value.causationId) ||
     !isPlainRecord(value.envelope) ||
     !validStoredBody(value.body) ||
+    (value.body.kind === 'output-feedback' &&
+      (value.schemaVersion !== 'station.project-task-room/v3' ||
+        value.principal.kind !== 'operator')) ||
     !Number.isSafeInteger(value.bodyBytes) ||
     value.bodyBytes < 0 ||
     !id(value.checkpointDigest)
@@ -1809,7 +1840,8 @@ function recordMatchesAuthority(
   const expectedGrantCapability: ProjectTaskRoomGrantKind =
     record.principal.kind === 'agent'
       ? 'agent-publish'
-      : record.body.kind === 'human-message'
+      : record.body.kind === 'human-message' ||
+          record.body.kind === 'output-feedback'
         ? 'message-write'
         : record.body.kind === 'outcome-link'
           ? 'revision-link'
@@ -1844,8 +1876,26 @@ function recordMatchesAuthority(
       record.principal.authorizationReceiptId
   );
 }
+function validOutputFeedback(value: Record<string, unknown>) {
+  return (
+    isPlainOwn(value, ['kind', 'target', 'review', 'text']) &&
+    isPlainOwn(value.target, ['outputId', 'digest', 'taskCreatedAt']) &&
+    id(value.target.outputId) &&
+    typeof value.target.digest === 'string' &&
+    /^sha256:[0-9a-f]{64}$/.test(value.target.digest) &&
+    typeof value.target.taskCreatedAt === 'string' &&
+    value.target.taskCreatedAt.length === 24 &&
+    Number.isFinite(Date.parse(value.target.taskCreatedAt)) &&
+    new Date(value.target.taskCreatedAt).toISOString() ===
+      value.target.taskCreatedAt &&
+    typeof value.review === 'string' &&
+    ['comment', 'changes-requested', 'accepted'].includes(value.review) &&
+    text(value.text)
+  );
+}
 function validStoredBody(value: unknown): value is ProjectTaskRoomBody {
   if (!isPlainRecord(value)) return false;
+  if (value.kind === 'output-feedback') return validOutputFeedback(value);
   if (value.kind === 'human-message')
     return isPlainOwn(value, ['kind', 'text']) && text(value.text);
   if (value.kind === 'live-work-started')

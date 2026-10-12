@@ -1,0 +1,7 @@
+{
+  "revision": "14ed8256e37a8984bedd979efc30e58fe6a04a18",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed the relationship boundaries cited by the updated Connections guide against the current native enrollment and connection-recovery callers. Station trust, Device approval, account sign-in and shared Project access remain separate; no additional behavior change was needed. Focused mounted UI tests passed; no installed-device claim is made.","inputs":["docs/guides/machine-relationships.md"]}
+  ]
+}

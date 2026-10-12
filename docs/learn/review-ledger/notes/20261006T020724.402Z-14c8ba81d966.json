@@ -1,0 +1,59 @@
+{
+  "revision": "f08f5927ddfab1c7126dd48fba3e2e34be416cd3",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Transitive via docs/architecture/module-map.md: the only module-map change is the ExtensionNotificationBindings paragraph naming the transcript.marker consumer and the marker table; this document's own claims do not depend on that paragraph and stay accurate.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Transitive via docs/architecture/module-map.md: the only module-map change is the ExtensionNotificationBindings paragraph naming the transcript.marker consumer and the marker table; this document's own claims do not depend on that paragraph and stay accurate.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Transitive via docs/architecture/module-map.md: the only module-map change is the ExtensionNotificationBindings paragraph naming the transcript.marker consumer and the marker table; this document's own claims do not depend on that paragraph and stay accurate.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Transitive via docs/architecture/module-map.md: the only module-map change is the ExtensionNotificationBindings paragraph naming the transcript.marker consumer and the marker table; this document's own claims do not depend on that paragraph and stay accurate.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Transitive via docs/architecture/module-map.md: the only module-map change is the ExtensionNotificationBindings paragraph naming the transcript.marker consumer and the marker table; this document's own claims do not depend on that paragraph and stay accurate.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Transitive via docs/architecture/module-map.md: the only module-map change is the ExtensionNotificationBindings paragraph naming the transcript.marker consumer and the marker table; this document's own claims do not depend on that paragraph and stay accurate.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"Transitive via docs/architecture/module-map.md: the only module-map change is the ExtensionNotificationBindings paragraph naming the transcript.marker consumer and the marker table; this document's own claims do not depend on that paragraph and stay accurate.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Transitive via docs/architecture/module-map.md: the only module-map change is the ExtensionNotificationBindings paragraph naming the transcript.marker consumer and the marker table; this document's own claims do not depend on that paragraph and stay accurate.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Transitive via docs/architecture/module-map.md: the only module-map change is the ExtensionNotificationBindings paragraph naming the transcript.marker consumer and the marker table; this document's own claims do not depend on that paragraph and stay accurate.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Transitive via docs/architecture/module-map.md: the only module-map change is the ExtensionNotificationBindings paragraph naming the transcript.marker consumer and the marker table; this document's own claims do not depend on that paragraph and stay accurate.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Transitive via docs/architecture/module-map.md: the only module-map change is the ExtensionNotificationBindings paragraph naming the transcript.marker consumer and the marker table; this document's own claims do not depend on that paragraph and stay accurate.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Transitive via docs/architecture/module-map.md: the only module-map change is the ExtensionNotificationBindings paragraph naming the transcript.marker consumer and the marker table; this document's own claims do not depend on that paragraph and stay accurate.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Transitive via docs/architecture/module-map.md: the only module-map change is the ExtensionNotificationBindings paragraph naming the transcript.marker consumer and the marker table; this document's own claims do not depend on that paragraph and stay accurate.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/build-your-first-plugin.md","note":"Transitive via packages/shared/package.json: the only change is one new explicit subpath export (./extension-transcript-markers). This document's claims about the shared package's subpath model and source-export layout stay accurate; it lists selected subpaths, not every one.","inputs":["docs/guides/build-your-first-plugin.md","packages/shared/package.json"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Transitive via packages/shared/package.json: the only change is one new explicit subpath export (./extension-transcript-markers). This document's claims about the shared package's subpath model and source-export layout stay accurate; it lists selected subpaths, not every one.","inputs":["docs/guides/responsive-ui.md","packages/shared/package.json"]},
+
+    {"path":"docs/guides/theming.md","note":"Transitive via packages/shared/package.json: the only change is one new explicit subpath export (./extension-transcript-markers). This document's claims about the shared package's subpath model and source-export layout stay accurate; it lists selected subpaths, not every one.","inputs":["docs/guides/theming.md","packages/shared/package.json"]},
+
+    {"path":"docs/patterns/backend.md","note":"Transitive via packages/shared/package.json: the only change is one new explicit subpath export (./extension-transcript-markers). This document's claims about the shared package's subpath model and source-export layout stay accurate; it lists selected subpaths, not every one.","inputs":["docs/patterns/backend.md","packages/shared/package.json"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Transitive via packages/shared/package.json: the only change is one new explicit subpath export (./extension-transcript-markers). This document's claims about the shared package's subpath model and source-export layout stay accurate; it lists selected subpaths, not every one.","inputs":["docs/patterns/frontend.md","packages/shared/package.json"]},
+
+    {"path":"docs/reference/shared.md","note":"Transitive via packages/shared/package.json: the only change is one new explicit subpath export (./extension-transcript-markers). This document's claims about the shared package's subpath model and source-export layout stay accurate; it lists selected subpaths, not every one.","inputs":["docs/reference/shared.md","packages/shared/package.json"]},
+
+    {"path":"docs/architecture.md","note":"Transitive via packages/shared/package.json: the only change is one new explicit subpath export (./extension-transcript-markers). This document's claims about the shared package's subpath model and source-export layout stay accurate; it lists selected subpaths, not every one.","inputs":["docs/architecture.md","packages/shared/package.json","packages/shared/package.json#/exports"]},
+
+    {"path":"packages/shared/README.md","note":"Transitive via packages/shared/package.json: the only change is one new explicit subpath export (./extension-transcript-markers). This document's claims about the shared package's subpath model and source-export layout stay accurate; it lists selected subpaths, not every one.","inputs":["packages/shared/README.md","packages/shared/package.json#/exports"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Updated ExtensionNotificationBindings: transcript.marker bindings are derived from packages/shared/src/extension-transcript-markers.ts, which runtime-event-projection.ts reads to emit a system marker row with a fixed label; extensionHandlers.ts returns for that consumer. Checked against the registry derivation, the projection case, the handler branch and the exact-set binding test.","inputs":["docs/architecture/module-map.md","src-shared/__tests__/extension-notification-bindings.test.ts","src-shared/extension-notification-bindings.ts","src-ui/src/hooks/orchestration/extensionHandlers.ts","packages/shared/src/extension-transcript-markers.ts"]},
+
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Dated decision record. Its exact-tuple, evidence-tagged, no-wildcard rule still holds: the new transcript.marker entries are exact tuples with an emitter tag, derived into the same registry. The 'consumed by the ACP adapter and the UI renderer' line remains true; the projection reads the marker table the registry derives from.","inputs":["docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","src-shared/extension-notification-bindings.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Extension Rendering: added that attached-session sources' compaction and rewind markers are separate evidenced bindings drawn by the transcript projection as a quiet line, not an ephemeral message. Kiro rendering claims unchanged and still match extensionHandlers.ts.","inputs":["docs/guides/acp.md","src-shared/extension-notification-bindings.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"runtime-event-projection.ts gained an extension.notification case that emits a marker row for listed tuples only; tool, approval and policy-denied projection paths this document describes are untouched.","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/runtime-event-projection.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"AttachedSessionDetail.tsx now renders a projected marker row as a quiet line before the presentation branch; continuation, read-only and composer behavior described here is unchanged.","inputs":["docs/guides/starter-work.md","src-ui/src/components/session-detail/AttachedSessionDetail.tsx"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"MessageBubble.tsx gained an early return for a transcript-marker row; checkpoint restore affordances on assistant rows are unchanged.","inputs":["docs/user/workspace-checkpoints.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

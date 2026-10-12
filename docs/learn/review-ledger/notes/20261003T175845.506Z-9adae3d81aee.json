@@ -1,0 +1,25 @@
+{
+  "revision": "d1946c3c45fe175a059256fa00f94ee17228988f",
+
+  "notes": [
+    {"path":"docs/README.md","note":"browser-automation.ts changed only in the status cursor comment and refusal text (cursors are unauthenticated position markers; the ownership filter bounds results). This document makes no claim about status cursors. No prose change.","inputs":["docs/README.md"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"browser-automation.ts changed only in the status cursor comment and refusal text (cursors are unauthenticated position markers; the ownership filter bounds results). This document makes no claim about status cursors. No prose change.","inputs":["docs/adr/0017-browser-preview-host.md"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"browser-automation.ts changed only in the status cursor comment and refusal text (cursors are unauthenticated position markers; the ownership filter bounds results). This document makes no claim about status cursors. No prose change.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"browser-automation.ts changed only in the status cursor comment and refusal text (cursors are unauthenticated position markers; the ownership filter bounds results). This document makes no claim about status cursors. No prose change.","inputs":["docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"browser-automation.ts changed only in the status cursor comment and refusal text (cursors are unauthenticated position markers; the ownership filter bounds results). This document makes no claim about status cursors. No prose change.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"browser-automation.ts changed only in the status cursor comment and refusal text (cursors are unauthenticated position markers; the ownership filter bounds results). This document makes no claim about status cursors. No prose change.","inputs":["docs/design/browser-preview-host-spike.md"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"browser-automation.ts changed only in the status cursor comment and refusal text (cursors are unauthenticated position markers; the ownership filter bounds results). This document makes no claim about status cursors. No prose change.","inputs":["docs/design/browser-preview-pane-mvp.md"]},
+
+    {"path":"docs/glossary.md","note":"browser-automation.ts changed only in the status cursor comment and refusal text (cursors are unauthenticated position markers; the ownership filter bounds results). This document makes no claim about status cursors. No prose change.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"browser-automation.ts changed only in the status cursor comment and refusal text (cursors are unauthenticated position markers; the ownership filter bounds results). This document makes no claim about status cursors. No prose change.","inputs":["docs/guides/mobile-device-workspace.md"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Corrected the browser_status cursor claim: a malformed cursor is refused, but any well-formed cursor is an unauthenticated position marker that only sets where listing resumes, and results stay limited to the caller's Project profile. Checked against decodeStatusCursor and the owns() filter in BrowserAutomation.status and the forged/cross-Project cursor test in browser-agent-close.test.ts.","inputs":["docs/guides/browser-workspace.md"]}
+  ]
+}

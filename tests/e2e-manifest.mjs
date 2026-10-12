@@ -1,6 +1,6 @@
 import { readdirSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import ts from 'typescript';
+import ts from 'typescript-api';
 
 export const E2E_AUDIT_PATTERN =
   /localhost:(3141|3000|5274)|waitForTimeout\(|test\.skip\(/;
@@ -360,7 +360,6 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/browser-relay-route-acceptance.spec.ts',
     'tests/credential-recovery-groups.spec.ts',
     'tests/ssh-environments-ui.spec.ts',
-    'tests/connect-modal.spec.ts',
     'tests/connect-retry.spec.ts',
     'tests/connect-remote-auth-recovery.spec.ts',
     'tests/connect-reconnect-banner.spec.ts',
@@ -371,6 +370,9 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/orchestration-provider-picker.spec.ts',
     'tests/project-layout-render-storm.spec.ts',
     'tests/orchestration-chat-flow.spec.ts',
+    'tests/mcp-elicitation-form.spec.ts',
+    'tests/mobile-request-sheet.spec.ts',
+    'tests/input-request.spec.ts',
     'tests/acp-orchestration-plan.spec.ts',
     'tests/flow-gate-verdicts.spec.ts',
     'tests/veritas-readiness-panel.spec.ts',
@@ -394,6 +396,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/connections-computers-ssh.spec.ts',
   ],
   sharedInstanceExclusive: [
+    // Owns real receiver pairing state and temporary credential files.
+    'tests/connect-modal.spec.ts',
     // Retains reviewed timeline/restore screenshots under .kontourai/chat-563.
     'tests/conversation-timeline.spec.ts',
     // Retains the short-viewport composer acceptance screenshot beside the
@@ -437,6 +441,9 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     // instance with a sibling spec.
     'tests/agents-editor-gates.spec.ts',
     'tests/skills-command-routes.spec.ts',
+    // Creates a live project, suspends every LLM connection while it runs one
+    // real turn in that project, and saves the project's icon.
+    'tests/project-icons.spec.ts',
     // D9 resets the whole notification store and acknowledges every pending
     // attention item to get a deterministic bell count; D8 creates, deletes
     // and re-creates two projects by fixed slug. Both are instance-wide
@@ -525,6 +532,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Regression #574: four legitimate restart journeys across VoltAgent/Strands and foreground/delegated origins. Two completed native turns precede actual same-home restart; foreground resumes through CLI chat and delegated Tasks through CLI delegate. Independently owned temporary instances use real readiness, and captured model requests must retain ordered user/assistant exchanges and original Conversation/Project/cwd binding.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-send-again-failed-turn.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "#3112: a Station-native turn against a model server that fails with HTTP 500, sent the way the composer sends one (typed text, ambient context out-of-band), then reopened from its stored record and resent with Send again on its failure card. The resend's turn.started prompt must equal the original: the Station agent's store also holds the framework's ambient-composed copy of the input, and Send again must not resend it. Live because the store and the event window are written by the real server.",
     exceptions: [],
   },
   {
@@ -808,6 +825,16 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale: 'Promoted project lifecycle lane.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/project-icons.spec.ts',
+    bucket: 'product',
+    surface: 'Projects',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "An icon set after creation, end to end: the settings picker uploads a real PNG, the live server validates and persists it, and the sidebar row, a Home row for a real session in that project, and the dock project switcher all draw the stored image. Live because the Home row and the persistence are the server's.",
     exceptions: [],
   },
   {
@@ -1419,6 +1446,33 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/mcp-elicitation-form.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    rationale:
+      '#3284 MCP form elicitation on the pending-requests strip: rendered fields, contrast, touch targets and focus at desktop and 390px in both themes, refusal of a missing required field, and the typed respondToRequest content; an MCP prompt listed in the composer slash menu as /<server>:<prompt> with its MCP badge at desktop and 390px.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/mobile-request-sheet.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    rationale:
+      '#3331 shared mobile request sheet at 390x844 for a long MCP elicitation form and a short tool approval: card-to-sheet, pinned actions, content-fit height, dismissal (backdrop, swipe, Escape, close) leaving the request pending, Send with an emulated keyboard, resolution elsewhere closing the sheet, focus trap/return, reduced motion, and inline desktop at 1280.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/input-request.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    rationale:
+      '#3390 one station.input-request/v1 renderer at 1280 and 390x844: Claude single/multi/custom questions with a required-field error marked and focused on its field, a Codex secret answer, MCP defaults pre-selected, an approval decision, transcript records for resolved requests including one resolved on another device, and a pre-#3390 stored harness question that still renders and answers.',
+    exceptions: [],
+  },
+  {
     path: 'tests/acp-orchestration-plan.spec.ts',
     bucket: 'product',
     surface: 'Chat / Orchestration',
@@ -1502,7 +1556,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'kontourai/station#689 — proves the New Chat workspace picker renders as a contained bottom sheet (not the clipped anchored dropdown) at 390x844, and covers open, scroll, filter, pick, outside-tap, and Escape dismissal.',
+      'kontourai/station#689, then the one start composer — proves the start composer project chip opens its project list as a contained bottom sheet (not a clipped anchored dropdown) at 390x844, and covers open, list-owned scroll with 44px rows, filter, pick, outside-tap, and Escape dismissal of the sheet alone.',
     exceptions: [],
   },
   {
@@ -1641,7 +1695,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'Workflow-owned isolated diagnostic Station proof with independent paired browser contexts, exact 100k-line corpus/FilePreview/scroll/Diff marks, canonical 10k retained replay versus beyond-window fallback, and Work Board fixture dispatch. Until the pane registers the stable restore/resolution/pointer bridge, Work Board observations remain explicitly NOT_VERIFIED; its scheduled lane cannot turn a short smoke into one-hour evidence.',
+      'Workflow-owned isolated diagnostic Station proof with independent paired browser contexts, exact 100k-line corpus/FilePreview/scroll/Diff marks, canonical 10k retained replay versus beyond-window fallback, and Work Board fixture dispatch. Until the pane registers the stable restore/resolution/pointer bridge, Work Board observations remain explicitly NOT_VERIFIED; its scheduled lane cannot turn a short smoke into one-hour evidence. Off the win32 reference platform the workload is skipped up front (REFERENCE_OS_MISMATCH) and only a NOT_VERIFIED receipt is emitted, so this bucket launches no browser or Station there (#577).',
     exceptions: [],
   },
   {
@@ -1691,7 +1745,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'The Coding layout as a navigation stack (#928 coding stack): Chat in the centre with its collapsible inbox, drill-in panes as history entries (browser Back/Forward, the stack bar and its chords), reload on a drill-in, reduced motion, and the phone keeping Chat in its dock.',
+      'The Coding layout as a navigation stack (#928 coding stack): Chat in the centre with its collapsible inbox, drill-in panes as history entries (browser Back/Forward, the stack bar and its chords), reload on a drill-in, reduced motion, and the phone keeping Chat in its dock. Past the wide fold (#3040, #3051): a rail pick opens the tool beside Chat without a history entry, the Terminal in a lower panel under both, keyboard resizing that survives a reload, per-conversation panels, the fold crossed with a draft kept, one bar with Chat’s verbs as named icons (#3046), the inbox folding for a tool and keeping the reader’s own choice, a file opened from Files landing beside Chat by replace, the folded inbox’s edge strip (hover, keyboard, the reader’s choice) and the fold judged again on resize.',
     exceptions: [],
   },
   {

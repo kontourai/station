@@ -8,6 +8,7 @@ import {
 } from 'node:fs';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { type HttpBindings } from '@hono/node-server';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
@@ -28,6 +29,8 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PairingFailureLimiter } from '../../security/pairing-failure-limiter.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
+import { OperatorPasskeyEnrollmentService } from '../../services/identity/operator-passkey-enrollment.js';
+import { OperatorPasskeyRegistry } from '../../services/identity/operator-passkey-registry.js';
 import { RelayEnrollmentService } from '../../services/identity/relay-enrollment-service.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { openRelayEnrollmentJournal } from '../../services/relay/relay-enrollment-journal.js';
@@ -143,6 +146,15 @@ function createHarness(
       pairing: DevicePairingService,
       homeDir: string,
     ) => RelayEnrollmentService;
+    operatorPasskeys?: OperatorPasskeyEnrollmentService;
+    /**
+     * By default the harness stops a paired device at the `/api/pairing`
+     * middleware (403) before any handler runs. This lets it through, so a
+     * test can prove the HANDLER's own operator check.
+     */
+    devicesReachPairingRoutes?: boolean;
+    /** The host's operator CLI, as the runtime composition passes it. */
+    operatorCli?: string;
   } = {},
 ) {
   const homeDir = mkdtempSync(join(tmpdir(), 'station-pairing-routes-'));
@@ -172,7 +184,9 @@ function createHarness(
   const localGrantSecretPath = join(homeDir, 'runtime', 'local-grant.secret');
   const auditRecords: PairingApprovalAuditRecord[] = [];
   const authFailureAuditRecords: PairingAuthFailureAuditRecord[] = [];
+  const operatorCli = options.operatorCli;
   configureDevicePairingPublicRoutes(app as never, pairing, {
+    ...(operatorCli ? { operatorCli: () => operatorCli } : {}),
     allowedOrigins: ['https://station.example.test'],
     ...(options.localGrant
       ? { localGrant: { secretPath: localGrantSecretPath } }
@@ -208,7 +222,8 @@ function createHarness(
     security: {
       verifyCredential: (credential, request) =>
         credential === MASTER_CREDENTIAL ||
-        (!request?.path.startsWith('/api/pairing') &&
+        ((options.devicesReachPairingRoutes ||
+          !request?.path.startsWith('/api/pairing')) &&
           pairing.verifyCredential(credential)),
       recognizeCredential: (credential) =>
         credential === MASTER_CREDENTIAL ||
@@ -231,6 +246,7 @@ function createHarness(
     },
   });
   configureDevicePairingHostRoutes(app as never, pairing, {
+    ...(operatorCli ? { operatorCli: () => operatorCli } : {}),
     audit: (record) => auditRecords.push(record),
     verifyOperatorCredential: (credential) => credential === MASTER_CREDENTIAL,
     isApprovalCurrent: (request) =>
@@ -256,6 +272,7 @@ function createHarness(
         );
       }),
     relayEnrollment,
+    operatorPasskeys: options.operatorPasskeys,
   });
   app.get('/api/projects', (c) => c.json({ projects: [] }));
   app.post('/api/projects', (c) => c.json({ projects: [] }));
@@ -1293,8 +1310,7 @@ describe('device pairing routes', () => {
       ),
     );
     expect(delegationOffer.status).toBe(201);
-    // kind is a host-side label, never part of the wire DevicePairingOffer.
-    expect(await delegationOffer.json()).not.toHaveProperty('kind');
+    expect(await delegationOffer.json()).toHaveProperty('kind', 'delegation');
 
     const invalidKind = await harness.request(
       '/api/pairing/offers',
@@ -3321,6 +3337,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     peer: string,
     deviceName: string,
     extraHeaders: Record<string, string> = {},
+    extraBody: Record<string, unknown> = {},
   ) {
     // `isTrustedBrowserPairingOrigin` accepts an allow-listed Origin with NO
     // `sec-fetch-site` at all (the guard reads the resulting `null` as
@@ -3330,7 +3347,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     const response = await harness.request(
       '/.well-known/station/v1/pairing/access-request',
       {
-        ...harness.json({ deviceName }),
+        ...harness.json({ deviceName, ...extraBody }),
         headers: {
           'Content-Type': 'application/json',
           Origin: 'https://station.example.test',
@@ -3346,6 +3363,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       credential?: string;
       bootstrap?: string;
       environmentId?: string;
+      operatorCli?: string;
     };
     expect(response.status).toBe(202);
     expect(body.requestId).toEqual(expect.any(String));
@@ -3355,6 +3373,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       requestId: string;
       credential?: string;
       bootstrap?: string;
+      operatorCli?: string;
     };
   }
 
@@ -3452,6 +3471,96 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     expect((await exchange.json()) as { device: PairedDevice }).toMatchObject({
       device: { name: 'Casey phone', scope: DEFAULT_GRANT_PAIRING_SCOPE },
     });
+  });
+
+  test('a device that asks for the standard grant is paired with it, never access:manage', async () => {
+    const harness = createHarness();
+    const access = await accessRequest(
+      harness,
+      DEVICE_PEER,
+      'Casey phone',
+      {},
+      // Literal, not read from the presets under test.
+      { scope: 'orchestration:read orchestration:operate terminal:operate' },
+    );
+    expect(
+      (await approve(harness, access.requestId, MASTER_CREDENTIAL)).status,
+    ).toBe(200);
+    const exchange = await harness.request(
+      '/.well-known/station/v1/pairing/exchange',
+      harness.json({
+        offerId: access.offerId,
+        proof: access.proof,
+        requestId: access.requestId,
+      }),
+      DEVICE_PEER,
+    );
+    expect(exchange.status).toBe(200);
+    const { device } = (await exchange.json()) as { device: PairedDevice };
+    expect(device.scope).toBe(
+      'orchestration:read orchestration:operate terminal:operate',
+    );
+    expect(device.scope).not.toContain('access:manage');
+  });
+
+  test('a device asks for one base plus requestable extras, never access:manage, and never beside a delegation', async () => {
+    const harness = createHarness();
+    const refused = async (body: Record<string, unknown>) => {
+      const response = await harness.request(
+        '/.well-known/station/v1/pairing/access-request',
+        {
+          ...harness.json({ deviceName: 'Casey phone', ...body }),
+          headers: {
+            'Content-Type': 'application/json',
+            Origin: 'https://station.example.test',
+          },
+        },
+        nextLoopbackPeer(),
+      );
+      return response.status;
+    };
+    // The default grant itself, an extra with no base, a grant only the
+    // operator adds later, a malformed value, and a narrower preset named on
+    // a delegation are each refused, never stored.
+    expect(await refused({ scope: DEFAULT_GRANT_PAIRING_SCOPE })).toBe(400);
+    expect(await refused({ scope: 'approval:full-access' })).toBe(400);
+    expect(await refused({ scope: 'orchestration:read access:approve' })).toBe(
+      400,
+    );
+    expect(await refused({ scope: 7 })).toBe(400);
+    expect(
+      await refused({ kind: 'delegation', scope: 'orchestration:read' }),
+    ).toBe(400);
+    expect(harness.pairing.listRequests()).toEqual([]);
+  });
+
+  test('the access request and a refused approval name the operator CLI on this host', async () => {
+    const harness = createHarness({
+      operatorCli: 'npx @kontourai/station-cli@nightly',
+      approvalStillCurrent: false,
+    });
+    const access = await accessRequest(harness, DEVICE_PEER, 'Casey phone');
+    expect(access.operatorCli).toBe('npx @kontourai/station-cli@nightly');
+
+    const refusedApproval = await approve(
+      harness,
+      access.requestId,
+      MASTER_CREDENTIAL,
+    );
+    expect(refusedApproval.status).toBe(403);
+    expect(await refusedApproval.json()).toEqual({
+      error: 'approval_requires_operator',
+      operatorCli: 'npx @kontourai/station-cli@nightly',
+    });
+  });
+
+  test('a Station given no operator CLI names station', async () => {
+    const access = await accessRequest(
+      createHarness(),
+      DEVICE_PEER,
+      'Casey phone',
+    );
+    expect(access.operatorCli).toBe('station');
   });
 
   test('a bearer creates an offer and approves a scanned pairing-code request', async () => {
@@ -4657,3 +4766,158 @@ test.each([{}, { bindVerifiedIdentity: true }])(
     ).toThrow('request_not_confirmed');
   },
 );
+
+describe('operator passkey host routes in the runtime auth boundary (#3257)', () => {
+  function passkeyHarness(devicesReachPairingRoutes = false) {
+    // In memory: this test is about the auth boundary, not the file.
+    const registry = new OperatorPasskeyRegistry(new DatabaseSync(':memory:'));
+    const service = new OperatorPasskeyEnrollmentService({
+      registry,
+      origin: 'https://station.example.ts.net',
+    });
+    return {
+      registry,
+      service,
+      harness: createHarness({
+        operatorPasskeys: service,
+        devicesReachPairingRoutes,
+      }),
+    };
+  }
+
+  test('the operator credential reaches them; a paired device and an anonymous caller do not', async () => {
+    const { registry, service, harness } = passkeyHarness();
+    try {
+      const { code } = service.createRequest({
+        requester: {
+          kind: 'paired-device',
+          deviceId: 'test-device',
+          pairedAt: null,
+          scope: '',
+        },
+        credential: 'browser',
+        deviceLabel: 'Phone browser',
+      });
+      const paired = await pairDevice(harness, 'Phone');
+
+      const operator = await harness.request('/api/pairing/operator-passkeys', {
+        headers: { Authorization: `Bearer ${MASTER_CREDENTIAL}` },
+      });
+      expect(operator.status).toBe(200);
+      expect(
+        ((await operator.json()) as { pending: unknown[] }).pending,
+      ).toHaveLength(1);
+
+      for (const [path, init] of [
+        ['/api/pairing/operator-passkeys', {}],
+        [
+          '/api/pairing/operator-passkeys/requests/approve',
+          harness.json({ code }),
+        ],
+        ['/api/pairing/operator-passkeys/someid', { method: 'DELETE' }],
+      ] as const) {
+        const anonymous = await harness.request(path, init);
+        expect(anonymous.status, `anonymous ${path}`).toBe(401);
+        const device = await harness.request(path, {
+          ...init,
+          headers: {
+            ...((init as RequestInit).headers as Record<string, string>),
+            Authorization: `Bearer ${paired.credential}`,
+          },
+        });
+        expect([401, 403], `device ${path}`).toContain(device.status);
+      }
+      // Neither the device nor the anonymous caller confirmed anything.
+      expect(service.listPending()).toHaveLength(1);
+    } finally {
+      registry.close();
+    }
+  });
+
+  test('a paired device that REACHES the handler is still refused by the handler: 401 authentication_required', async () => {
+    const { registry, service, harness } = passkeyHarness(true);
+    try {
+      const { code } = service.createRequest({
+        requester: {
+          kind: 'paired-device',
+          deviceId: 'test-device',
+          pairedAt: null,
+          scope: '',
+        },
+        credential: 'browser',
+        deviceLabel: 'Phone browser',
+      });
+      // The default grant carries access:manage (and access:approve), the
+      // scopes the /api/pairing family asks for.
+      const paired = await pairDevice(harness, 'Phone');
+      expect(paired.device.scope).toContain('access:manage');
+      const calls: Array<[string, RequestInit]> = [
+        ['/api/pairing/operator-passkeys', {}],
+        [
+          '/api/pairing/operator-passkeys/requests/inspect',
+          harness.json({ code }),
+        ],
+        [
+          '/api/pairing/operator-passkeys/requests/approve',
+          harness.json({ code, device: 'aaaa1111' }),
+        ],
+        [
+          '/api/pairing/operator-passkeys/requests/deny',
+          harness.json({ code }),
+        ],
+        ['/api/pairing/operator-passkeys/someid', { method: 'DELETE' }],
+      ];
+      for (const [path, init] of calls) {
+        const response = await harness.request(path, {
+          ...init,
+          headers: {
+            ...((init.headers as Record<string, string>) ?? {}),
+            Authorization: `Bearer ${paired.credential}`,
+          },
+        });
+        expect(response.status, path).toBe(401);
+        expect(await response.json(), path).toEqual({
+          error: 'authentication_required',
+        });
+      }
+      expect(service.listPending()).toHaveLength(1);
+    } finally {
+      registry.close();
+    }
+  });
+
+  test('an unexpected failure in a passkey route is logged by the runtime and answered with the standard sanitized 500', async () => {
+    const registry = new OperatorPasskeyRegistry(new DatabaseSync(':memory:'));
+    class Exploding extends OperatorPasskeyEnrollmentService {
+      override listPasskeys(): never {
+        throw new Error('ENOENT /Users/operator/.station/secret-path');
+      }
+    }
+    const harness = createHarness({
+      operatorPasskeys: new Exploding({
+        registry,
+        origin: 'https://station.example.ts.net',
+      }),
+    });
+    try {
+      const response = await harness.request('/api/pairing/operator-passkeys', {
+        headers: { Authorization: `Bearer ${MASTER_CREDENTIAL}` },
+      });
+      expect(response.status).toBe(500);
+      const text = await response.text();
+      expect(text).not.toContain('ENOENT');
+      expect(text).not.toContain('secret-path');
+      expect(JSON.parse(text)).toMatchObject({
+        success: false,
+        error: { code: 'internal_error' },
+      });
+      // The runtime logged it, cause included in the sanitized error.
+      expect(harness.logger.error).toHaveBeenCalledWith(
+        'Unhandled runtime HTTP error',
+        expect.objectContaining({ correlationId: expect.any(String) }),
+      );
+    } finally {
+      registry.close();
+    }
+  });
+});

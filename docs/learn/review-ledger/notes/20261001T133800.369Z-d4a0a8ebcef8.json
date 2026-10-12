@@ -1,0 +1,7 @@
+{
+  "revision": "6c2cd5fa91bdd90c87d03e9f55df59b7e6a7f247",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed #2941 additions in contracts.md and sdk.md against the integration guide public API routing and evidence limits. Optional conflict-owner fields do not alter authentication, deployment, lifecycle or hosted delivery claims; guide remains accurate.","inputs":["docs/guides/integrating-station.md"]}
+  ]
+}

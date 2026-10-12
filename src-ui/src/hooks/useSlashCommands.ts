@@ -1,6 +1,8 @@
 import type { Skill } from '@kontourai/station-contracts/catalog';
+import type { AgentMcpPrompt } from '@kontourai/station-contracts/mcp-prompts';
 import { resolveSkillCommandName } from '@kontourai/station-contracts/skill-command';
 import {
+  useAgentMcpPromptsQuery,
   useProviderCommandsQuery,
   useSkillsQuery,
 } from '@kontourai/station-sdk';
@@ -15,7 +17,7 @@ import {
 import {
   agentCommandSkills,
   declaredSkillCommandWord,
-} from '../utils/skill-commands';
+} from '../utils/skill-command-catalog';
 
 export interface SlashCommand {
   cmd: string;
@@ -23,7 +25,7 @@ export interface SlashCommand {
   aliases?: string[];
   isCustom?: boolean;
   /** A `skill` row is a skill that declared itself runnable as a command. */
-  source?: 'builtin' | 'custom' | 'acp' | 'skill';
+  source?: 'builtin' | 'custom' | 'acp' | 'skill' | 'mcp-prompt';
   handler?: (args: string[]) => void | Promise<void>;
   currentModel?: string;
 }
@@ -66,6 +68,17 @@ export function mergeSlashCommandSources(
   });
 }
 
+/** `Summarize a topic · <topic> [tone]` — what it does, then what it takes. */
+export function mcpPromptCommandDescription(prompt: AgentMcpPrompt): string {
+  const summary = prompt.description || prompt.title || prompt.name;
+  const usage = prompt.arguments
+    .map((argument) =>
+      argument.required ? `<${argument.name}>` : `[${argument.name}]`,
+    )
+    .join(' ');
+  return usage ? `${summary} · ${usage}` : summary;
+}
+
 export function useSlashCommands(
   agentSlug: string | null,
   // Only `.model` is read below — accept any object shaped like a slice of
@@ -92,6 +105,13 @@ export function useSlashCommands(
   const { data: acpCommandData = [] } = useProviderCommandsQuery('acp', {
     enabled: isAcp,
   });
+
+  // #3284: prompts from the MCP servers in this agent's tool view. A Station
+  // agent only — an ACP engine owns its own commands (above).
+  const { data: mcpPromptListing } = useAgentMcpPromptsQuery(
+    isAcp ? null : agentSlug,
+    { staleTime: 60_000 },
+  );
 
   const acpCommands = useMemo(
     () =>
@@ -219,6 +239,14 @@ export function useSlashCommands(
         },
       }));
 
+    const promptCommands: SlashCommand[] = (
+      mcpPromptListing?.prompts ?? []
+    ).map((prompt) => ({
+      cmd: `/${prompt.command}`,
+      description: mcpPromptCommandDescription(prompt),
+      source: 'mcp-prompt' as const,
+    }));
+
     const customCommands = currentAgent?.commands
       ? Object.values(currentAgent.commands).map((cmd: any) => ({
           cmd: `/${cmd.name}`,
@@ -267,6 +295,14 @@ export function useSlashCommands(
       },
       { source: 'skill', commands: skillCommands },
       ...disabledSkillGroups,
+      {
+        source: 'mcp-prompt',
+        commands: promptCommands,
+        gate: {
+          available: support.mcp,
+          reason: `Requires ${CAPABILITY_LABELS.mcp}`,
+        },
+      },
     ];
     return mergeSlashCommandSources(groups, true);
   }, [
@@ -275,6 +311,7 @@ export function useSlashCommands(
     availableModels,
     currentAgent,
     isAcp,
+    mcpPromptListing,
     skills,
     bindingStatus,
     chatState?.model,

@@ -1,0 +1,7 @@
+{
+  "revision": "058b19b63d88ffc68b5af83c3dda88ac9add9c63",
+
+  "notes": [
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Reviewed default main-host protocol harness member read assertions, exact four-field invitation scope, published document/history/publication markers and private Project denial. E2E typecheck passes; real main-WebView, ordinary UI user actions and physical Nightly remain NOT_VERIFIED.","inputs":["tests/tauri-shell/native-fresh-relay-fixture.md"]}
+  ]
+}

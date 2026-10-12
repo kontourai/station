@@ -1,0 +1,11 @@
+{
+  "revision": "8161f660c774147b021a77562fdb35e79a3349eb",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Re-checked against the #3157 delta round: session-api.md's usage-limit section now words the resume result as 'dispatch started' and states the one-minute floor for re-arming a refused replay. The ADR's routing decision and its session API statements are unaffected.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Re-checked against the #3157 delta round: the coordinator now re-arms a refused replay only for a wait of at least a minute (REARM_MIN_WAIT_MS); a past or sooner reset ends the intent as failed. The RecoveryLedger paragraph describes claims, fencing and projection, not this rule, so it stays accurate.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/session-recovery-coordinator.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reworded the usage-limit resume result to 'dispatch started' (the projection can still read failed if the dispatch is rejected) and documented the one-minute floor on re-arming a refused replay; checked against SessionRecoveryCoordinator.observeRuntimeError/armForRuntimeError and resumeUsageLimitNow. The rest of the document is unchanged.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

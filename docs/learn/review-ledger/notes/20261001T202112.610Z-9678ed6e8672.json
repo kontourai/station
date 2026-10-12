@@ -1,0 +1,7 @@
+{
+  "revision": "6173c6b06151c37f021f1aab0dffff8f1b7f3d23",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed original-goal return after connection setup: the existing canonical return hook now resumes automatically only when current selected-agent readiness permits it, revalidation settles before dispatch, failed reads keep the goal unsent, and authority changes cancel the journey. Manual Chat options retain explicit return/selection. The21 setup-return cases passed including automatic original-goal resumption.","inputs":["docs/design/connections-onboarding.md"]}
+  ]
+}

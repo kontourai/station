@@ -1,0 +1,7 @@
+{
+  "revision": "895d60db3867f5f8e75ca3881bbd08a48c0779fe",
+
+  "notes": [
+    {"path":"docs/design/pane-host-contract.md","note":"Reviewed one-line PluginFrameHost stylesheet import against the isolated rich-view path. The host now loads the existing shared iframe geometry itself, so width100percent/minheight160/borderless embed styling no longer depends on separately mounting the lazy MCP Tool UI component. No bridge, source identity, grant, sender, questionnaire or lifecycle behavior changed. Actual frozen746 browser showed304x154 default frame before this import; post-fix browser geometry remains to be qualified. Prior pane-host design/history review and limits remain unchanged.","inputs":["docs/design/pane-host-contract.md"]}
+  ]
+}

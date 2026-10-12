@@ -1,0 +1,7 @@
+{
+  "revision": "582079a481015c8aecbbc266222ed1d3b83b4aa2",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Correction to the previous note: native-project-runtime-fixture.ts calls startAccountLabStation and provisionRelayAccountStation directly; it does not call startRelayAccountStation. It also does not use startRelayAccountStationGroup. The sole changed helper line adds stopStation to grouped return values and retains their existing stop, so the native fixture composition and retained local debug receipt are unaffected. No new native execution or broader qualification is claimed.","inputs":["docs/guides/native-shell-verification.md"]}
+  ]
+}

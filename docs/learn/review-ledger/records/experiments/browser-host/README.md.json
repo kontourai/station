@@ -9,20 +9,18 @@
 
   "limits": "No native build, simulator/device, keychain, Linux artifact, transport/broker/provider, cloud or release execution. Source/fixture checks do not renew dated runtime/security evidence.",
 
-  "document": {"digest":"4955626c604afdd4d05589fb2c228aca81153b2fc62961379fb830961bffabeb","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
-
   "sources": [
-    {"path":"experiments/browser-host/scripts/workspace-pane-adapter.node.ts","digest":"47cad7690cabebbdcdef4a6c16e56648cd504c8be7d05e597690a9291ed2c3a7","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
+    "experiments/browser-host/scripts/workspace-pane-adapter.node.ts",
 
-    {"path":"experiments/browser-host/scripts/workspace-pane-adapter.ts","digest":"65380599d5fb7e4b2d76a90c7857fa804d15635bc6e5e25a8a5d90e668dce274","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
+    "experiments/browser-host/scripts/workspace-pane-adapter.ts",
 
-    {"path":"experiments/browser-host/tauri-child-webview/Cargo.toml","digest":"7f088c4e4fcff3e3637090c86311eca62ef3b880146a37ae7ddbfbc069e23b52","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
+    "experiments/browser-host/tauri-child-webview/Cargo.toml",
 
-    {"path":"experiments/browser-host/tauri-child-webview/src/main.rs","digest":"405870f505e48d3d3b2ab5a09e36e916a4cc550d01a3e94fa37f312d2f8ed5f3","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
+    "experiments/browser-host/tauri-child-webview/src/main.rs",
 
-    {"path":"experiments/browser-host/tauri-separate-window/Cargo.toml","digest":"345928e48a4fb363003bf1ddce74a78a7dacf12dd31628ed0673bf599fa83efe","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"},
+    "experiments/browser-host/tauri-separate-window/Cargo.toml",
 
-    {"path":"packages/contracts/src/workspace-pane.ts","digest":"30d58ac97807dd5d51b6f8420186f4c5ad5cb110988c1f79a81745756dd504a9","revision":"db0aba406478897be8b61fe938275dc2bbeaf12a"}
+    "packages/contracts/src/workspace-pane.ts"
   ],
 
   "checks": [

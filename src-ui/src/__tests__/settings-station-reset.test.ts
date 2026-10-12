@@ -139,6 +139,8 @@ describe('buildStationResetPlan', () => {
       'terminalShell',
       'mcpUiHost',
       'surfaceTrustFromVeritasEvidence',
+      // #3386: conversations outside projects in Activity.
+      'attachedSessionsOutsideProjects',
       'mobileDeviceHubUrl',
       // Sources
       'registryUrl',
@@ -155,6 +157,8 @@ describe('buildStationResetPlan', () => {
       'defaultMaxOutputTokens',
       'defaultWorkspaceIsolation',
       'workspaceCheckpoints',
+      // #3188: resume a usage-limit stop at the provider's reset.
+      'usageLimitAutoResume',
       // Chat
       'defaultChatFontSize',
     ]);

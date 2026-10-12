@@ -1,0 +1,7 @@
+{
+  "revision": "02ea170a2bb483f3313a4019b1231313fb14aeed",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Independent review confirmed exact exception containment and expiry. Removed redundant duplicate fixture entry from unscanned-invalid scenarios so only the target malformed rule supplies the failure. Ninety focused policy cases pass; production policy matching and floors are unchanged.","inputs":["docs/guides/dependency-security.md"]}
+  ]
+}

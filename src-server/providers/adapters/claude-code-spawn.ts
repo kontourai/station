@@ -5,6 +5,7 @@ import type {
   SpawnOptions,
 } from '@anthropic-ai/claude-agent-sdk';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
+import { terminateProcessTree } from '../../services/infra/process-utils.js';
 import {
   ClaudePermissionAsks,
   ClaudePermissionFrameTap,
@@ -32,6 +33,8 @@ export type ClaudeEngineProcess = {
   spawn: (options: SpawnOptions) => SpawnedProcess;
   /** The redacted end of the engine's stderr, empty when it wrote none. */
   stderrTail: () => string;
+  /** Prevent future spawns and require the owned engine processes to exit. */
+  terminate: () => Promise<void>;
 };
 
 function tailOf(text: string): string {
@@ -69,8 +72,12 @@ export function createClaudeEngineProcess(
 ): ClaudeEngineProcess {
   const asks = new ClaudePermissionAsks();
   let stderrTail = '';
+  let retired = false;
+  const children = new Set<ChildProcess>();
 
   const spawn = (options: SpawnOptions): SpawnedProcess => {
+    if (retired)
+      throw new Error('The Claude engine process owner has retired.');
     const child = spawnChild(options.command, options.args, {
       cwd: options.cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -78,6 +85,8 @@ export function createClaudeEngineProcess(
       env: options.env,
       windowsHide: true,
     });
+    children.add(child);
+    child.once('exit', () => children.delete(child));
     const { stdin, stdout, stderr } = child;
     if (!stdin || !stdout || !stderr)
       throw new Error('Claude Code process was spawned without piped stdio.');
@@ -162,6 +171,18 @@ export function createClaudeEngineProcess(
     asks,
     spawn,
     stderrTail: () => tailOf(redactSecrets(stderrTail)).trim(),
+    async terminate() {
+      retired = true;
+      await Promise.all(
+        [...children].map((child) =>
+          terminateProcessTree(child, {
+            graceMs: 100,
+            killConfirmMs: 1_000,
+            processGroup: false,
+          }),
+        ),
+      );
+    },
   };
 }
 

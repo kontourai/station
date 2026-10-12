@@ -1,0 +1,7 @@
+{
+  "revision": "ad5e9b522b5249a0d600ff17396941374f769a45",
+
+  "notes": [
+    {"path":"docs/design/shell-skeletons.md","note":"ProjectSettingsView.tsx change is only the legacy icon notice wording; no header, skeleton or frame behaviour changed, so the skeleton policy text remains accurate.","inputs":["docs/design/shell-skeletons.md","src-ui/src/views/ProjectSettingsView.tsx"]}
+  ]
+}

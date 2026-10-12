@@ -1,0 +1,7 @@
+{
+  "revision": "fb91b0deacf9ac3d59fd86e8e5eaaa3182df74e5",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Extended the 2026-10-01 section for round 3: the folded inbox's edge strip (named, tipped, Needs-you count from the inbox's own partition via onInboxNeedsYouChange, fine pointers past the fold only, hover-peek declined and why), the fold judged again on resize with a 150ms settle and 24px hysteresis and never over the reader's choice, the session count on the Open icon, the Terminal head '+' rule and file-row truncation. Traced through CodingWorkbench.tsx, ChatDock.tsx, mobile-activity-groups.ts, ChatDockWorkspaceControls.tsx, CodingTerminalPanel.tsx and FileTreePanel.tsx.","inputs":["docs/design/placement.md","packages/contracts/src/device-settings.ts","packages/contracts/src/engine-capability-matrix.ts","src-ui/src/App.tsx","src-ui/src/app-shell/ProjectLayoutRenderer.tsx","src-ui/src/app-shell/RegionShells.tsx","src-ui/src/app-shell/destination-registry.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/chat.css","src-ui/src/contexts/RegionModelContext.tsx","src-ui/src/contexts/navigation-store.ts","src-ui/src/hooks/useDockShellChrome.ts","src-ui/src/hooks/useLongPress.ts","src-ui/src/index.css","src-ui/src/lib/device-settings-store.ts","src-ui/src/workspace-panes/RegionPaneHost.tsx","src-ui/src/workspace-panes/__tests__/RegionPaneHost.project.test.tsx","src-ui/src/workspace-panes/workspacePaneHostController.ts"]}
+  ]
+}

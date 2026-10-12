@@ -1,0 +1,9 @@
+{
+  "revision": "116269c20b1105564a33e187d311f64586422393",
+
+  "notes": [
+    {"path":"docs/design/project-membership.md","note":"#3276 fix round 1 re-check: agent-audience-gate.ts changed only to stop exporting the member_agent_turns_unavailable constant (code-health unused-export gate); the refusal code, status and the gated routes this document names are unchanged.","inputs":["docs/design/project-membership.md","src-server/runtime/bootstrap/agent-audience-gate.ts"]},
+
+    {"path":"docs/reference/api.md","note":"#3276 fix round 1 re-check: agent-audience-gate.ts changed only to stop exporting the member_agent_turns_unavailable constant (code-health unused-export gate); the refusal code, status and the gated routes this document names are unchanged.","inputs":["docs/reference/api.md","src-server/runtime/bootstrap/agent-audience-gate.ts"]}
+  ]
+}

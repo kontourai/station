@@ -1,0 +1,7 @@
+{
+  "revision": "8f269bba9cc30d11caa10d1c077d5049338781ee",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Follow-ups: HomeStartComposer clears sessionStorage when a write fails (the page's 'survives reloading the page, but not closing the tab' still holds, and now never restores a stale list); the held note now reads 'Earlier draft: \"…\"' beside Restore your earlier draft / Discard it, which the page names; StartComposer's compact box grows to five lines (not described here; no claim affected); NewChatModal only calls the shared modelPickerProviders. No prose change.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

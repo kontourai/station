@@ -1,0 +1,7 @@
+{
+  "revision": "ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Independent source-delta review: ChatDock creation opens an unsent draft; submission retains scoped chat opening and pending-send authority fencing; recent chats use canonical open policy. Region and pane-host placement, mounting, persistence and chrome ownership remain unchanged. No prose change required.","inputs":["docs/design/placement.md"]}
+  ]
+}

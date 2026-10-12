@@ -52,7 +52,7 @@ import type {
   CapabilityUndeliveredReason,
   ResolvedAgentToolServer,
 } from '@kontourai/station-contracts/provider';
-import { isBuiltinStationControl } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
 
 export interface CodexToolServerSkip {
@@ -102,6 +102,7 @@ function tomlStringArray(values: string[]): string {
 export function resolveCodexMcpServers(
   toolServers: ResolvedAgentToolServer[],
   stationControlMcpUrl?: string,
+  stationKnowledgeMcpUrl?: string,
 ): ResolveCodexMcpServersResult {
   const configArgs: string[] = [];
   const deliveredIds: string[] = [];
@@ -132,19 +133,21 @@ export function resolveCodexMcpServers(
         `${keyPrefix}.disabled_tools=${tomlStringArray(server.disabledTools)}`,
       );
 
-    if (isBuiltinStationControl(server.id, toolDef)) {
-      if (!stationControlMcpUrl) {
+    const builtin = builtinStationApiServerId(server.id, toolDef);
+    if (builtin) {
+      const url =
+        builtin === 'station-knowledge'
+          ? stationKnowledgeMcpUrl
+          : stationControlMcpUrl;
+      if (!url) {
         skipped.push({
           id: server.id,
           reason: 'delivery-failed',
-          detail: 'station-control MCP auth was not available for this session',
+          detail: `${builtin} MCP auth was not available for this session`,
         });
         continue;
       }
-      configArgs.push(
-        '-c',
-        `${keyPrefix}.url=${tomlString(stationControlMcpUrl)}`,
-      );
+      configArgs.push('-c', `${keyPrefix}.url=${tomlString(url)}`);
       configArgs.push(...selectionArgs);
       deliveredIds.push(server.id);
       continue;

@@ -435,6 +435,26 @@ function stripDeclaredPullRequestKeep(
   };
 }
 
+/** Pull requests kept on the Task. */
+function keepsOf(
+  data: TaskGraphStoreData,
+  task: Pick<TaskRecord, 'id'>,
+): PersistedDeclaredPullRequestKeep[] {
+  return data.declaredPullRequestKeeps.filter(
+    (keep) => keep.taskId === task.id,
+  );
+}
+
+/** Opted in, and `done` is a transition the Task may make right now. */
+function closeOutReachable(task: PersistedTaskRecord): boolean {
+  return (
+    task.closeOnMerge === true &&
+    task.status !== 'done' &&
+    !task.dispatchReservation &&
+    canTransitionTaskStatus(task.status, 'done')
+  );
+}
+
 const DISPATCH_RESERVATION_LEASE_MS = 5 * 60 * 1000;
 
 const TASK_GRAPH_ROOT_KEYS = ['tasks', 'links', 'dispatches'] as const;
@@ -463,6 +483,7 @@ const TASK_RECORD_KEYS = [
   'workspaceBinding',
   'sourceProvider',
   'workItemRef',
+  'closeOnMerge',
   'dispatchReservation',
 ] as const;
 const DISPATCH_RESERVATION_KEYS = [
@@ -782,6 +803,8 @@ function validateTaskGraphStoreData(
     validateOptionalText(task.sessionId, `${at}.sessionId`, problems);
     validateOptionalText(task.sourceProvider, `${at}.sourceProvider`, problems);
     validateOptionalText(task.workItemRef, `${at}.workItemRef`, problems);
+    if (task.closeOnMerge !== undefined && task.closeOnMerge !== true)
+      problems.push(`${at}.closeOnMerge: must be true when present`);
     if (task.workspaceBinding === undefined) {
       problems.push(`${at}.workspaceBinding: required`);
     } else if (
@@ -1822,6 +1845,143 @@ export class TaskGraphService {
       await this.releaseClaimForTask(taskId, `task status -> ${status}`);
     }
     return updated;
+  }
+
+  /**
+   * #3161: a PERSON's opt-in to close a Task when every pull request kept on
+   * it is merged. There is no agent tool for this (the station-control table
+   * names no route that reaches it), and the flag lives on the Task record:
+   * a Task recreated under the same id starts without it.
+   */
+  async setCloseOnMerge(
+    taskId: string,
+    enabled: boolean,
+    clientOrigin?: ClientOrigin,
+  ): Promise<TaskRecord> {
+    return this.mutateStore((data) => {
+      const task = data.tasks.find((item) => item.id === taskId);
+      if (!task) throw new Error(`Task not found: ${taskId}`);
+      if (task.status === 'done' || task.status === 'canceled')
+        throw new Error(`Task is already ${task.status}`);
+      const { closeOnMerge: _previous, ...rest } = task;
+      const nextTask: PersistedTaskRecord = {
+        ...rest,
+        ...(enabled ? { closeOnMerge: true } : {}),
+        updatedAt: new Date().toISOString(),
+        ...(clientOrigin ? { updatedClientOrigin: clientOrigin } : {}),
+      };
+      return {
+        data: {
+          ...data,
+          tasks: data.tasks.map((item) =>
+            item.id === taskId ? nextTask : item,
+          ),
+        },
+        result: nextTask,
+      };
+    });
+  }
+
+  /**
+   * What close-out may act on, read without writing: the Task's incarnation
+   * and the pull requests kept on it. `undefined` when there is nothing to
+   * reconcile (flag off, Task gone or already settled, a status `done` is
+   * not reachable from, dispatch being established, nothing kept).
+   *
+   * The incarnation (`taskCreatedAt`) travels with the plan so the close is
+   * applied only to the Task the observation was for: the provider reads in
+   * between are slow, and a Task recreated under the same id meanwhile is
+   * not the one whose pull requests were read.
+   */
+  readCloseOutPlan(taskId: string):
+    | {
+        taskId: string;
+        /** The incarnation the plan was read for. */
+        taskCreatedAt: string;
+        keeps: TaskKeptDeclaredPullRequest[];
+      }
+    | undefined {
+    const data = this.readStore();
+    const task = data.tasks.find((item) => item.id === taskId);
+    const keeps = task ? keepsOf(data, task) : [];
+    if (!task || !closeOutReachable(task) || keeps.length === 0)
+      return undefined;
+    return {
+      taskId,
+      taskCreatedAt: task.createdAt,
+      keeps: keeps.map(stripDeclaredPullRequestKeep),
+    };
+  }
+
+  /**
+   * Move the Task to `done` because every pull request kept on it was
+   * observed merged. Decided under the store lock, against the Task as it is
+   * NOW: the same incarnation the observation was for, still opted in, a
+   * transition `canTransitionTaskStatus` allows, and no keep that was not
+   * observed (a pull request kept after the read blocks the close). Returns
+   * whether the Task was moved.
+   */
+  async completeTaskOnMerge(input: {
+    taskId: string;
+    taskCreatedAt: string;
+    /**
+     * The keeps observed merged, by declaration and target. Every
+     * declaration in one turn shares that turn's terminal event, so the
+     * event cannot tell two kept pull requests of one turn apart.
+     */
+    mergedKeeps: readonly {
+      declarationId: string;
+      provider: string;
+      host: string;
+      repository: { owner: string; name: string };
+      ref: string;
+      nativeId: string;
+    }[];
+  }): Promise<boolean> {
+    const moved = await this.mutateStore((data) => {
+      const task = data.tasks.find((item) => item.id === input.taskId);
+      if (!task || task.createdAt !== input.taskCreatedAt)
+        return { data, result: false };
+      const keeps = keepsOf(data, task);
+      if (
+        !closeOutReachable(task) ||
+        keeps.length === 0 ||
+        !keeps.every((keep) =>
+          input.mergedKeeps.some(
+            (merged) =>
+              // The target fields below already tell two keeps of one Task
+              // apart (a Task keeps one pull request once); the declaration
+              // is defense in depth, so a keep replaced under the same target
+              // is not taken for the one that was read.
+              merged.declarationId === keep.provenance.declarationId &&
+              merged.provider === keep.provider &&
+              merged.host === keep.host &&
+              merged.repository.owner === keep.repository.owner &&
+              merged.repository.name === keep.repository.name &&
+              merged.ref === keep.ref &&
+              merged.nativeId === keep.nativeId,
+          ),
+        )
+      )
+        return { data, result: false };
+      const nextTask: PersistedTaskRecord = {
+        ...task,
+        status: 'done',
+        updatedAt: new Date().toISOString(),
+      };
+      return {
+        data: {
+          ...data,
+          tasks: data.tasks.map((item) =>
+            item.id === input.taskId ? nextTask : item,
+          ),
+        },
+        result: true,
+      };
+    });
+    if (moved)
+      await this.releaseClaimForTask(input.taskId, 'task status -> done');
+    return moved;
   }
 
   async createLink(input: RelationGraphLinkInput): Promise<RelationGraphLink> {

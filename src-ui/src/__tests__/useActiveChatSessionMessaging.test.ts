@@ -864,27 +864,196 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(followUp.target).not.toHaveProperty('workspace');
   });
 
+  it('reports a definite visual-skill refusal, then admission after the selection is removed', async () => {
+    activeChatsStore.updateChat(sessionId, {
+      skillExperienceDraftInvalid: true,
+    });
+    const onAdmission = vi.fn();
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'codex',
+        undefined,
+        'Submitted form',
+        undefined,
+        undefined,
+        undefined,
+        { queueOnBusy: true, onAdmission },
+      );
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(onAdmission.mock.calls).toEqual([['not-invoked']]);
+    activeChatsStore.updateChat(sessionId, {
+      skillExperienceDraftInvalid: false,
+    });
+    await act(async () => {
+      await result.current(
+        sessionId,
+        'codex',
+        undefined,
+        'Submitted form',
+        undefined,
+        undefined,
+        undefined,
+        { queueOnBusy: true, onAdmission },
+      );
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+    expect(onAdmission.mock.calls).toEqual([['not-invoked'], ['accepted']]);
+  });
+
+  it('reports busy form follow-up queue admission even though the legacy return value is undefined', async () => {
+    activeChatsStore.updateChat(sessionId, { status: 'sending' });
+    const onAdmission = vi.fn();
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      expect(
+        await result.current(
+          sessionId,
+          'codex',
+          undefined,
+          'Submitted form',
+          undefined,
+          undefined,
+          undefined,
+          { queueOnBusy: true, onAdmission },
+        ),
+      ).toBeUndefined();
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[sessionId]?.queuedMessages).toContain(
+      'Submitted form',
+    );
+    expect(onAdmission.mock.calls).toEqual([['accepted']]);
+  });
+
   it('reuses the same client turn id from the Retry affordance', async () => {
     sendExecutionMessageMock
       .mockRejectedValueOnce(new Error('temporarily unavailable'))
       .mockResolvedValueOnce(successReceipt());
+    const onAdmission = vi.fn();
+    const claimRetry = vi.fn().mockReturnValue(true);
     const { result } = renderHook(() => useSendMessage('http://api.test'));
 
     await act(async () => {
-      await result.current(sessionId, 'codex', undefined, 'retry me');
+      await result.current(
+        sessionId,
+        'codex',
+        undefined,
+        'retry me',
+        undefined,
+        undefined,
+        undefined,
+        { onAdmission, claimRetry },
+      );
     });
     const firstId = sendExecutionMessageMock.mock.calls[0][1].clientTurnId;
     const retry = activeChatsStore
       .getSnapshot()
       [sessionId]?.ephemeralMessages?.at(-1)?.action?.handler;
     expect(retry).toBeTypeOf('function');
+    expect(onAdmission.mock.calls).toEqual([['indeterminate']]);
 
     await act(async () => {
       await retry?.();
     });
+    expect(onAdmission.mock.calls).toEqual([['indeterminate'], ['accepted']]);
     expect(sendExecutionMessageMock.mock.calls[1][1].clientTurnId).toBe(
       firstId,
     );
+    claimRetry.mockReturnValue(false);
+    await act(async () => {
+      await retry?.();
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2);
+    expect(onAdmission.mock.calls).toEqual([['indeterminate'], ['accepted']]);
+  });
+
+  it.each(['stopped', 'foreground-indeterminate'])(
+    'completes form Retry observation when its attempt is %s',
+    async (outcome) => {
+      sendExecutionMessageMock.mockRejectedValueOnce(
+        new Error('temporary refusal'),
+      );
+      if (outcome === 'stopped') {
+        sendExecutionMessageMock.mockImplementationOnce(
+          (
+            _base: string,
+            _input: unknown,
+            { signal }: { signal: AbortSignal },
+          ) =>
+            new Promise((_resolve, reject) => {
+              signal.addEventListener('abort', () => reject(signal.reason), {
+                once: true,
+              });
+            }),
+        );
+      } else {
+        sendExecutionMessageMock.mockRejectedValueOnce(
+          Object.assign(new Error('Receipt unavailable'), {
+            code: 'foreground_message_indeterminate',
+            outcome: 'indeterminate',
+          }),
+        );
+      }
+      const onAdmission = vi.fn();
+      const { result } = renderHook(() => ({
+        send: useSendMessage('http://api.test'),
+        cancel: useCancelMessage('http://api.test'),
+      }));
+      await act(async () => {
+        await result.current.send(
+          sessionId,
+          'codex',
+          undefined,
+          'Submitted form',
+          undefined,
+          undefined,
+          undefined,
+          { onAdmission, claimRetry: () => true },
+        );
+      });
+      const retry = activeChatsStore
+        .getSnapshot()
+        [sessionId]?.ephemeralMessages?.at(-1)?.action?.handler;
+      expect(retry).toBeTypeOf('function');
+      await act(async () => {
+        const retryAttempt = retry?.();
+        if (outcome === 'stopped') {
+          await vi.waitFor(() =>
+            expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2),
+          );
+          await result.current.cancel(sessionId);
+          await retryAttempt;
+        } else {
+          await expect(retryAttempt).rejects.toMatchObject({
+            code: 'foreground_message_indeterminate',
+          });
+        }
+      });
+      expect(onAdmission.mock.calls).toEqual([
+        ['indeterminate'],
+        ['indeterminate'],
+      ]);
+    },
+  );
+
+  it('marks a failed send as a send-failure notice, which the composer repeats', async () => {
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new Error('temporarily unavailable'),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'codex', undefined, 'will fail');
+    });
+
+    const notice = activeChatsStore
+      .getSnapshot()
+      [sessionId]?.ephemeralMessages?.at(-1);
+    expect(notice?.content).toBeTruthy();
+    expect(notice?.sendFailure).toBe(true);
   });
 
   it('renders a workspace-resume hint instead of a Model-connection hint for an orchestration refusal', async () => {
@@ -1026,6 +1195,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(chat?.ephemeralMessages).toHaveLength(1);
     const notice = chat?.ephemeralMessages?.[0];
     expect(notice?.content).toBe('Full access was not applied.');
+    expect(notice?.sendFailure).toBe(true);
     expect(notice?.content).not.toContain('Retrying may help');
     expect(notice?.fullAccessRefusal).toMatchObject({
       outcome: 'message-not-sent',
@@ -1189,6 +1359,57 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(chat?.attachments).toEqual([]);
     expect(chat?.attachmentStages).toEqual([]);
     expect(chat?.input).toBe('look');
+  });
+
+  // The engine refuses a new session's model it did not offer
+  // (`model_not_advertised`, thrown by the REAL fetcher). Retrying sends the same model into the same refusal; the picker's
+  // snapshot of the Agent, its engine and that list is what let it be chosen.
+  it('a model the engine did not offer is not presented as transient: no Retry, snapshots re-read', async () => {
+    const actual = await vi.importActual<
+      typeof import('@kontourai/station-sdk/client')
+    >('@kontourai/station-sdk/client');
+    const previous = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          success: false,
+          error:
+            "ACP model value unsupported: connection 'opencode' did not advertise 'gpt-6.1-sol' for this session.",
+          code: 'model_not_advertised',
+        }),
+        { status: 400, headers: { 'content-type': 'application/json' } },
+      )) as typeof fetch;
+    let refusal: unknown;
+    try {
+      refusal = await actual
+        .sendExecutionMessage('http://api.test', {} as never)
+        .catch((caught: unknown) => caught);
+    } finally {
+      globalThis.fetch = previous;
+    }
+    expect(refusal).toMatchObject({ code: 'model_not_advertised' });
+    sendExecutionMessageMock.mockRejectedValueOnce(refusal);
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+
+    await act(async () => {
+      await result.current(sessionId, 'station', undefined, 'hello');
+    });
+
+    const chat = activeChatsStore.getSnapshot()[sessionId];
+    const notice = chat?.ephemeralMessages?.at(-1);
+    expect(notice?.content).toContain(
+      "**This engine doesn't offer that model**",
+    );
+    expect(notice?.content).toContain("'gpt-6.1-sol'");
+    expect(notice?.content).toContain('Nothing was sent.');
+    expect(notice?.content).not.toContain('Retrying may help');
+    expect(notice?.content).not.toContain('may already have started');
+    expect(notice?.action).toBeUndefined();
+    // Not terminal: the same chat takes another model on the next send.
+    expect(notice).not.toHaveProperty('terminalSession');
+    expect(invalidateMock).toHaveBeenCalledWith(['agents']);
+    expect(invalidateMock).toHaveBeenCalledWith(['acp-connections']);
+    expect(invalidateMock).toHaveBeenCalledWith(['connections', 'engines']);
   });
 
   it('restores supervised attachments and stage refs after a definitive rejection', async () => {
@@ -1720,6 +1941,11 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         expect(notice?.content).toBe(testCase.expected);
         expect(notice?.content).not.toMatch(testCase.forbidden);
         expect(notice?.action?.label).toBe('Discard');
+        // The composer repeats this notice's Discard while a short dock hides
+        // the transcript; it finds the notice by this flag, which a send
+        // failure (the composer's other repeated line) must not carry.
+        expect(notice?.queuedRetry).toBe(true);
+        expect(notice?.sendFailure).toBeUndefined();
       } finally {
         delete (window.navigator as { onLine?: unknown }).onLine;
       }
@@ -1827,6 +2053,29 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(activeChatsStore.getSnapshot()[sessionId].queuedMessages).toEqual([
       'next',
     ]);
+  });
+
+  // A refused steer is a send that did not go, so the composer repeats it.
+  // A steer whose delivery cannot be confirmed is held, not failed (#3127).
+  it('a refused steer is a send-failure notice the composer repeats', async () => {
+    steerOrchestrationTurnMock.mockResolvedValueOnce({
+      outcome: 'no-active-turn',
+    });
+    activeChatsStore.updateChat(sessionId, {
+      status: 'sending',
+      orchestrationProvider: 'claude',
+      currentSessionId: 'exec-claude-1',
+      openTurnId: 'turn-open',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'course correct');
+    });
+    const notice = activeChatsStore
+      .getSnapshot()
+      [sessionId]?.ephemeralMessages?.at(-1);
+    expect(notice?.content).toBeTruthy();
+    expect(notice?.sendFailure).toBe(true);
   });
 
   it('holds ACP steering without interrupting a tool or guessing a safe boundary', async () => {

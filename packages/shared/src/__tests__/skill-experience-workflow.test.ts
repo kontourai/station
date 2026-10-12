@@ -1,5 +1,11 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
@@ -34,7 +40,7 @@ describe('public Skill experience author workflow', () => {
     write(
       library,
       'skills/interview/SKILL.md',
-      '---\nname: interview\ndescription: Delegate an interview.\n---\nCall the Skill tool twice, for "rounds" and "missing".\n',
+      '---\nname: interview\ndescription: Delegate an interview.\n---\nCall the Skill tool twice, for "rounds" and "missing". See [procedure](../../references/procedure.md).\n',
     );
     write(
       library,
@@ -51,12 +57,24 @@ describe('public Skill experience author workflow', () => {
       'skills/rounds/scripts/action.sh',
       'echo forbidden > invented-success.txt',
     );
+    write(library, 'references/procedure.md', 'Read [calls](calls.md).');
+    write(
+      library,
+      'references/calls.md',
+      'Call the Skill tool for "analysis" and "shared-missing". See [procedure](procedure.md).',
+    );
+    write(
+      library,
+      'skills/analysis/SKILL.md',
+      '---\nname: analysis\ndescription: Inspect the actual context.\n---\nRead facts before asking questions.\n',
+    );
     const result = inspectSkillLibrary(library, ['interview']);
     expect(result.skills).toEqual([
+      { name: 'analysis', path: 'skills/analysis/SKILL.md', dependsOn: [] },
       {
         name: 'interview',
         path: 'skills/interview/SKILL.md',
-        dependsOn: ['rounds'],
+        dependsOn: ['analysis', 'rounds'],
       },
       { name: 'rounds', path: 'skills/rounds/SKILL.md', dependsOn: [] },
     ]);
@@ -66,11 +84,27 @@ describe('public Skill experience author workflow', () => {
     expect(result.gaps).toEqual(
       expect.arrayContaining([
         expect.stringContaining('unresolved Skill missing'),
+        'references/calls.md: unresolved Skill shared-missing',
         expect.stringContaining('script is inspection data'),
         expect.stringContaining('dynamic Skill/tool/environment'),
       ]),
     );
     expect(() => readFileSync(join(library, 'invented-success.txt'))).toThrow();
+    expect(result.files.map((file) => file.path)).toContain(
+      'skills/analysis/SKILL.md',
+    );
+    write(
+      library,
+      'skills/analysis/SKILL.md',
+      '---\nname: analysis\ndescription: Inspect the actual context.\n---\nConfirm the actual context before continuing.\n',
+    );
+    expect(inspectSkillLibrary(library, ['interview']).digest).not.toBe(
+      result.digest,
+    );
+    rmSync(join(library, 'skills/analysis/SKILL.md'));
+    expect(inspectSkillLibrary(library, ['interview']).gaps).toContain(
+      'references/calls.md: unresolved Skill analysis',
+    );
   });
 
   function authorReview() {

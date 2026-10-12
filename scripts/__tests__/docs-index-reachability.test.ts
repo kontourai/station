@@ -789,11 +789,38 @@ describe('learning atlas', () => {
     // #2923: the shared freshness policy decides which stale records block —
     // those this change's own diff touches (scoped), none in the merge queue
     // or on main (advisory), all when the scope is unknown (strict).
-    const { ledger } = readReviewState(process.cwd());
+    const root = process.cwd();
+    const trace = join(makeTempDir('station-review-count-'), 'git.jsonl');
+    const previousTrace = process.env.GIT_TRACE2_EVENT;
+    const { ledger } = (() => {
+      process.env.GIT_TRACE2_EVENT = trace;
+      try {
+        return readReviewState(root, { history: false });
+      } finally {
+        if (previousTrace === undefined) delete process.env.GIT_TRACE2_EVENT;
+        else process.env.GIT_TRACE2_EVENT = previousTrace;
+      }
+    })();
+    const countReadGitCommands = readFileSync(trace, 'utf8')
+      .trim()
+      .split('\n')
+      .flatMap((line) => {
+        const event: { event: string; name: string } = JSON.parse(line);
+        return event.event === 'cmd_name' ? [event.name] : [];
+      });
+    // Counting records needs working-tree discovery, not landing-history replay.
+    expect(countReadGitCommands).toContain('ls-files');
+    expect(
+      countReadGitCommands.filter((command) =>
+        ['log', 'rev-list', 'merge-base', 'cat-file', 'ls-tree'].includes(
+          command,
+        ),
+      ),
+    ).toEqual([]);
     // The real ledger runs in the job's own mode: scoped on a pull request,
     // advisory in the merge queue, on main and in the repo-scans job.
     const result = await checkDocumentationFreshness({
-      root: process.cwd(),
+      root,
       env: JOB_ENV,
     });
     const advisory = formatFreshnessAdvisory(result.policy, result.advisory);
@@ -801,7 +828,11 @@ describe('learning atlas', () => {
     expect(() => assertDocumentationFresh(result)).not.toThrow();
     expect(result.reviews.size).toBe(ledger.records.length);
     expect(result.reviews.size).toBeGreaterThan(0);
-  });
+    // On a change that advances coverageBaseline, the scoped check proves the
+    // advance by running strict freshness in a temporary worktree at the new
+    // baseline (`baselineAdvanceProblem`): a full checkout plus a strict run,
+    // about 30 s on an idle host and several times that under load.
+  }, 240_000);
 
   it('invalidates review status when either the document or its code changes', async () => {
     const digest = (text: string) =>

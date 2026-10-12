@@ -1,0 +1,7 @@
+{
+  "revision": "865c770ae44d40281e0c22917daec43b27816392",
+
+  "notes": [
+    {"path":"docs/patterns/backend.md","note":"Re-recorded after a main merge reset the record. Stale only through the shared inventory file; no server module changed in this lane. No prose change.","inputs":["docs/ui/responsive-action-surfaces.txt","pnpm-lock.yaml","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

@@ -23,6 +23,7 @@ describe('project-settings utils', () => {
       icon: '',
       description: '',
       defaultModel: '',
+      defaultAgent: undefined,
       // Empty string, not absent: the pair is what a project default needs,
       // and an `undefined` would be dropped by JSON.stringify on save, so
       // clearing the connection would never reach the server.
@@ -68,6 +69,7 @@ describe('project-settings utils', () => {
       defaultEnvironment: { kind: 'current' },
       workingDirectory: undefined,
       agents: null,
+      defaultAgent: null,
     });
   });
 

@@ -1,0 +1,8 @@
+/* A project's colour standing in for a missing icon (ProjectIcon). Size and
+   colour are inline: each surface keeps the swatch geometry it already had. */
+.project-icon--dot,
+.project-icon--bar {
+  display: inline-block;
+  flex: 0 0 auto;
+  border-radius: var(--radius-pill);
+}

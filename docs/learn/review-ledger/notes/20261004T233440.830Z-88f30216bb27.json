@@ -1,0 +1,7 @@
+{
+  "revision": "eb19c6da33f225d1659c3b4dc711e1684ac9bf7c",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#3312: ToolCallDisplay's approval marker now reads the ladder's Needs approval (attentionWord) instead of Awaiting approval. Re-read the approval-surfaces section: it names no marker wording, so no prose change; policy, grant and preview claims untouched.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/runtime/agents/__tests__/pre-tool-policy.test.ts","src-ui/src/components/chat/ToolCallDisplay.tsx"]}
+  ]
+}

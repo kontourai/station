@@ -628,7 +628,7 @@ const usageAggregatorState = readRequiredSource(
 );
 for (const requiredHelper of [
   'export function createEmptyUsageStats',
-  'function updateDailyUsage',
+  'export function applyOrchestrationUsageToUsageStats',
   'export function computeStreakStats',
   'export function applyMessageToUsageStats',
   'export function mergeRescannedUsageStats',
@@ -4448,10 +4448,9 @@ const builtinWorkspacePaneRegistry = readRequiredSource(
   '../src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx',
 );
 for (const requiredImport of [
-  '../components/coding-layout/BranchToolbar',
+  '../components/coding-layout/CodingDiffPaneBody',
   '../components/coding-layout/CodingInspectorPanel',
   '../components/coding-layout/CodingTerminalPane',
-  '../components/coding-layout/DiffPanel',
   '../components/coding-layout/FileTreePanel',
 ]) {
   if (!builtinWorkspacePaneRegistry.includes(requiredImport)) {
@@ -4470,6 +4469,24 @@ errors.push(
     ),
   }),
 );
+
+// #3231 moved the Diff pane's body (branch toolbar, pull requests, diff) into
+// CodingDiffPaneBody, one level below the registry, as the terminal surface
+// sits below CodingTerminalPane.
+const codingDiffPaneBody = readRequiredSource(
+  '../src-ui/src/components/coding-layout/CodingDiffPaneBody.tsx',
+);
+for (const requiredImport of [
+  './BranchToolbar',
+  './DiffPanel',
+  './PullRequestsPanel',
+]) {
+  if (!codingDiffPaneBody.includes(`from '${requiredImport}'`)) {
+    errors.push(
+      `CodingDiffPaneBody.tsx must delegate its Diff pane sections to the extracted section ${requiredImport}.`,
+    );
+  }
+}
 
 const codingTerminalPane = readRequiredSource(
   '../src-ui/src/components/coding-layout/CodingTerminalPane.tsx',
@@ -6060,19 +6077,15 @@ for (const requiredHelper of [
   }
 }
 
-const metricsPanel = readRequiredSource(
-  '../src-ui/src/components/monitoring/MetricsPanel.tsx',
-);
-if (metricsPanel.includes('fetch(')) {
-  errors.push('MetricsPanel must not issue raw fetch() calls.');
-}
-if (!metricsPanel.includes('useMonitoringMetricsQuery')) {
-  errors.push('MetricsPanel must use the shared monitoring metrics query.');
-}
-
 const monitoringView = readRequiredSource(
   '../src-ui/src/views/MonitoringView.tsx',
 );
+if (monitoringView.includes('fetch(')) {
+  errors.push('MonitoringView must not issue raw fetch() calls.');
+}
+if (!monitoringView.includes('useOrchestrationSessionsQuery')) {
+  errors.push('MonitoringView must use the shared session diagnostics query.');
+}
 for (const requiredImport of [
   './MonitoringTimeControls',
   './MonitoringLogControls',
@@ -6179,7 +6192,6 @@ for (const requiredHelper of [
   'export function ProjectSidebarRow',
   '@kontourai/station-sdk',
   '../../contexts/NavigationContext',
-  '../icons/LayoutIcon',
 ]) {
   if (!projectSidebarRow.includes(requiredHelper)) {
     errors.push(`ProjectSidebarRow.tsx must include ${requiredHelper}.`);

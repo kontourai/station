@@ -19,7 +19,11 @@
  */
 
 import type { UsageRollup } from '@kontourai/station-contracts/usage-rollup';
+import { envelopeError } from './api-error-message';
 import { type ClientRequestOptions, getJson } from './http';
+import { unlessDeadline } from './request-deadline';
+
+export { fetchStationUsage, type StationUsageOverview } from './station-usage';
 
 export interface UsageRollupQuery {
   provider?: 'claude' | 'codex';
@@ -79,6 +83,12 @@ export async function fetchUsageRollup(
     `${apiBase}/api/analytics/usage-rollup?${params}`,
     opts,
   );
+  if (!response.ok)
+    throw envelopeError(
+      response,
+      await response.json().catch(unlessDeadline(() => null)),
+      'Usage rollup unavailable',
+    );
   return response.json() as Promise<UsageRollupResponse>;
 }
 

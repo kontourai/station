@@ -2,12 +2,14 @@ import {
   agentId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
+
 import { useMemo, useRef, useSyncExternalStore } from 'react';
 import { useAllActiveChats } from '../contexts/ActiveChatsContext';
 import { type AgentData, useAgents } from '../contexts/AgentsContext';
 import type { ChatUIState } from '../contexts/active-chats-state';
 import { conversationsStore } from '../contexts/ConversationsContext';
 import type { ChatSession } from '../types';
+import { displayTitleFromPrompt } from '../utils/display-title';
 import { deriveLatestPlanArtifactFromMessages } from '../utils/planArtifacts';
 
 type ConversationsSnapshot = ReturnType<typeof conversationsStore.getSnapshot>;
@@ -238,7 +240,7 @@ function deriveSession(
   const title =
     savedTitle && savedTitle !== 'New chat'
       ? savedTitle
-      : firstPrompt?.trim().slice(0, 100) || 'New chat';
+      : (firstPrompt && displayTitleFromPrompt(firstPrompt)) || 'New chat';
 
   return {
     id: chatId,
@@ -259,6 +261,7 @@ function deriveSession(
     attachments: chatState.attachments || [],
     queuedMessages: chatState.queuedMessages || [],
     queuedMessageFailure: chatState.queuedMessageFailure,
+    usageLimitStopped: chatState.usageLimitStopped,
     unsentMessages: chatState.unsentMessages,
     outboundQueuedTurns: chatState.outboundQueuedTurns || [],
     inputHistory: chatState.inputHistory || [],

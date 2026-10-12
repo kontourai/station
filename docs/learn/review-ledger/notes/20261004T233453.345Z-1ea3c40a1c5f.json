@@ -1,0 +1,7 @@
+{
+  "revision": "eb19c6da33f225d1659c3b4dc711e1684ac9bf7c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"#3312: work-status.ts only gained attentionWord, a read of the existing ATTENTION_WORDS table; the ladder words this doc quotes (Needs answer, Needs approval, No progress) are unchanged. No prose change.","inputs":["docs/design/chat-composer.md","src-ui/src/views/home/work-status.ts"]}
+  ]
+}

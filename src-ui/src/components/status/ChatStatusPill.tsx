@@ -6,6 +6,8 @@ import {
   useRef,
   useState,
 } from 'react';
+import { useElapsedClock } from '../../hooks/useElapsedClock';
+import { formatDuration } from '../../utils/relativeTime';
 import type { ChatStatus } from './chatStatus';
 import {
   LiveStatusGlyph,
@@ -25,52 +27,19 @@ function reducedMotion(): boolean {
   );
 }
 
-/** "42s", "4m 10s", "1h 5m". */
-function duration(ms: number): string {
-  const seconds = Math.max(0, Math.floor(ms / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
-}
-
 function clockText(ms: number): string {
   const seconds = Math.max(0, Math.floor(ms / 1000));
   const minutes = Math.floor(seconds / 60);
   return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
 }
 
-/** Now, once a second, paused while the page is hidden. */
-function useSecondTick(): number {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | undefined;
-    const start = () => {
-      if (timer || document.hidden) return;
-      setNow(Date.now());
-      timer = setInterval(() => setNow(Date.now()), 1000);
-    };
-    const stop = () => {
-      if (timer) clearInterval(timer);
-      timer = undefined;
-    };
-    const sync = () => (document.hidden ? stop() : start());
-    start();
-    document.addEventListener('visibilitychange', sync);
-    return () => {
-      stop();
-      document.removeEventListener('visibilitychange', sync);
-    };
-  }, []);
-  return now;
-}
-
 /**
  * The turn clock, the pill's only ticking part: it re-renders this one text
- * node once a second, and stops while the page is hidden.
+ * node off the shared elapsed clock, which stops while the page is hidden.
+ * The face is a stopwatch (`m:ss`), not the row's duration words.
  */
 const PillClock = memo(function PillClock({ from }: { from: number }) {
-  const now = useSecondTick();
+  const now = useElapsedClock();
   return (
     <span className="chat-status-pill__clock" aria-hidden="true">
       {clockText(now - from)}
@@ -85,14 +54,14 @@ function PillDetails({
   id: string;
   lines: ChatStatus['details'];
 }) {
-  const now = useSecondTick();
+  const now = useElapsedClock();
   return (
     <div id={id} className="chat-status-pill__details">
       {lines.map((line) => (
         <p key={line.text}>
           {line.since === undefined
             ? line.text
-            : `${line.text} · ${duration(now - line.since)}`}
+            : `${line.text} · ${formatDuration(now - line.since)}`}
         </p>
       ))}
     </div>
@@ -204,7 +173,7 @@ export function ChatStatusPill({
   const current = shown ?? (leaving ? lastShown.current : undefined);
   const announcement =
     shown?.kind === 'approval' && shown.count !== undefined
-      ? `${shown.count} approvals needed`
+      ? `Needs approval (${shown.count})`
       : (shown?.label ?? '');
   const currentLabel = current?.label;
   const currentCount = current?.count;
@@ -298,7 +267,7 @@ export function ChatStatusPill({
             aria-label={
               current.action === 'reveal-approval'
                 ? current.count !== undefined
-                  ? `${current.count} approvals needed — show the requests`
+                  ? `Needs approval (${current.count}) — show the requests`
                   : `${current.label} — show the request`
                 : current.action === 'repair'
                   ? `${current.label} — repair the connection`

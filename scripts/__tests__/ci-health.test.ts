@@ -1,5 +1,8 @@
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   buildSnapshot,
   capacityMetrics,
@@ -8,6 +11,7 @@ import {
   concurrencyTimeline,
   distribution,
   groupRuns,
+  LEDGER_LOG_FORMAT,
   ledgerMetrics,
   mergeMetrics,
   parseOptions,
@@ -22,6 +26,8 @@ import {
   summarizeGroups,
   windowDecision,
 } from '../ci-health.mjs';
+
+const makeTempDir = trackTempDirs();
 
 const at = (minutes: number) =>
   new Date(Date.UTC(2026, 9, 1, 0, minutes)).toISOString();
@@ -41,7 +47,7 @@ const job = (id = 1, overrides = {}) => ({
 const run = (id = 1, overrides = {}) => ({
   id,
   run_attempt: 1,
-  name: 'CI',
+  name: 'PR: CI',
   event: 'pull_request',
   status: 'completed',
   conclusion: 'success',
@@ -332,7 +338,7 @@ describe('CI health metrics', () => {
   it('reports qualification recovery and actual agent attempts separately from queue churn', () => {
     const runs = ['failure', 'timed_out', 'success'].map((conclusion, i) =>
       run(i, {
-        name: 'Main qualification',
+        name: i === 0 ? 'Main qualification' : 'Main: Qualification',
         head_branch: 'main',
         event: 'schedule',
         conclusion,
@@ -370,7 +376,7 @@ describe('CI health metrics', () => {
       mergeMetrics(
         [
           run(9, {
-            name: 'Merge integration',
+            name: 'PR: Merge integration',
             event: 'merge_group',
             conclusion: 'success',
             run_started_at: at(0),
@@ -424,12 +430,66 @@ describe('CI health metrics', () => {
   });
   it('counts only PR merges touching review-ledger files from git log', () => {
     const log =
-      '\x1efix: one (#3102)\n\ndocs/learn/review-ledger/a.json\ndocs/learn/review-ledger/b.json\n\x1efix: two (#3103)\ndocs/learn/review-ledger/c.json\n\x1eautomation\ndocs/learn/review-ledger/d.json\n\x1eother (#3104)\nscripts/foo.mjs\n';
+      '\x1efix: one (#3102)\n\nA\tdocs/learn/review-ledger/a.json\nM\tdocs/learn/review-ledger/b.json\n\x1efix: two (#3103)\n\nA\tdocs/learn/review-ledger/c.json\n\x1eautomation\n\nA\tdocs/learn/review-ledger/d.json\n\x1eother (#3104)\n\nM\tscripts/foo.mjs\n';
     expect(ledgerMetrics(log)).toEqual({
       mergesTouchingLedger: 2,
       medianFiles: 2,
       maxFiles: 2,
     });
+    // Compaction merges (#3394), read from a real repository with the exact
+    // log format collection uses: the archive and the notes it moved do not
+    // count; the index and any note the same merge adds do.
+    const root = makeTempDir('station-ci-health-ledger-');
+    const run = (...args: string[]) =>
+      execFileSync(
+        'git',
+        [
+          '-c',
+          'user.name=Fixture',
+          '-c',
+          'user.email=fixture@example.invalid',
+          '-c',
+          'core.hooksPath=/dev/null',
+          ...args,
+        ],
+        { cwd: root, encoding: 'utf8', windowsHide: true },
+      );
+    const write = (path: string, text: string) => {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), text);
+    };
+    const note = (n: number) =>
+      `docs/learn/review-ledger/notes/20261001T000000.000Z-${String(n).padStart(12, '0')}.json`;
+    const land = (subject: string) => {
+      run('add', '-A');
+      run('commit', '-qm', subject);
+    };
+    run('init', '-q', '-b', 'main');
+    write('docs/learn/review-ledger/ledger.json', '1\n');
+    for (const n of [1, 2, 3, 4, 5]) write(note(n), `note ${n}\n`);
+    land('fix: five reviews (#3401)');
+    const advance = (archive: string) => {
+      write('docs/learn/review-ledger/ledger.json', `${archive}\n`);
+      write(
+        `docs/learn/review-ledger/notes/archive/${archive.repeat(40)}.json`,
+        '{}\n',
+      );
+    };
+    advance('a');
+    for (const n of [1, 2, 3]) rmSync(join(root, note(n)));
+    land('docs(docs): advance the baseline (#3402)');
+    advance('b');
+    for (const n of [4, 5]) rmSync(join(root, note(n)));
+    for (const n of [6, 7]) write(note(n), `note ${n}\n`);
+    land('feat(docs): advance and review in one squash (#3403)');
+    const metricsOf = (commit: string) =>
+      ledgerMetrics(run('log', '-1', ...LEDGER_LOG_FORMAT, commit));
+    // Ordinary review merge: the index and five added notes.
+    expect(metricsOf('HEAD~2').maxFiles).toBe(6);
+    // Pure compaction: the index alone.
+    expect(metricsOf('HEAD~1').maxFiles).toBe(1);
+    // Compaction plus two new notes: the index and the two added notes.
+    expect(metricsOf('HEAD').maxFiles).toBe(3);
     expect(ledgerMetrics('')).toEqual({
       mergesTouchingLedger: 0,
       medianFiles: null,
@@ -507,6 +567,206 @@ describe('CI health collection bounds and command interface', () => {
     ]);
     expect(Object.keys(data.timelines)).toEqual(['3102', '3103']);
     expect(calls.filter((p) => p.includes('/jobs'))).toHaveLength(1);
+  });
+  describe('attributing a pull-request run whose pull_requests list is empty', () => {
+    const branch =
+      'dependabot/npm_and_yarn/runtime-and-ui-minor-patch-75d864bfe7';
+    const head = (label: string, sha = 'f'.repeat(40)) => ({
+      label: `kontourai:${label}`,
+      ref: label,
+      sha,
+      repo: { full_name: 'kontourai/station' },
+    });
+    // Shapes captured from the GitHub REST API: PR 3085 was closed with its
+    // head branch deleted, and 3553 is contained by two later stacked PRs.
+    const closedPull = {
+      number: 3085,
+      state: 'closed',
+      created_at: '2026-10-01T11:11:45Z',
+      closed_at: '2026-10-02T18:12:53Z',
+      merged_at: null,
+      head: head(branch, '4dad606189e37f6a123c3f0b6509c8886d3ff102'),
+    };
+    const pullRun = (id: number, sha: string, overrides = {}) => ({
+      ...run(id, {
+        name: 'Secret Scan',
+        event: 'pull_request',
+        head_sha: sha,
+        head_branch: branch,
+        created_at: '2026-10-01T21:40:50Z',
+        pull_requests: [],
+        head_repository: {
+          full_name: 'kontourai/station',
+          owner: { login: 'kontourai' },
+        },
+        ...overrides,
+      }),
+    });
+    async function collect(
+      runs: unknown[],
+      routes: { sha?: Record<string, unknown[]>; head?: unknown[] },
+    ) {
+      const calls: string[] = [];
+      const data = await collectHealth(
+        { ...options, until: '2026-10-04T00:00:00.000Z' },
+        async (endpoint: string) => {
+          calls.push(endpoint);
+          if (endpoint.includes('/actions/runs?'))
+            return { total_count: runs.length, workflow_runs: runs };
+          if (endpoint.includes('/jobs')) return { total_count: 0, jobs: [] };
+          const bySha = endpoint.match(/\/commits\/([^/]+)\/pulls/);
+          if (bySha) return routes.sha?.[bySha[1]] ?? [];
+          if (endpoint.includes('/pulls?state=all&head='))
+            return routes.head ?? [];
+          throw new Error(`Unexpected REST call ${endpoint}`);
+        },
+        async (_exe: string, args: string[]) =>
+          args[0] === 'remote'
+            ? 'git@github.com:kontourai/station.git'
+            : args[0] === 'rev-parse'
+              ? 'false'
+              : '',
+      );
+      return { data, calls };
+    }
+
+    it('resolves an unreachable head, and the head a force-push replaced, from the branch and PR lifetime', async () => {
+      const current = pullRun(1, '4dad606189e37f6a123c3f0b6509c8886d3ff102');
+      const replaced = pullRun(2, '10d49bea031f8a2489951d039b3c9f3f070076bf', {
+        created_at: '2026-10-01T21:40:48Z',
+      });
+      const { data, calls } = await collect([current, replaced], {
+        head: [closedPull],
+      });
+      expect(data.reasons).toEqual([]);
+      expect(data.runs.map((r: any) => r.pull_requests)).toEqual([
+        [{ number: 3085 }],
+        [{ number: 3085 }],
+      ]);
+      // One branch lookup serves both heads.
+      expect(calls.filter((c) => c.includes('/pulls?state=all&head='))).toEqual(
+        [
+          `repos/kontourai/station/pulls?state=all&head=${encodeURIComponent(`kontourai:${branch}`)}&per_page=100&page=1`,
+        ],
+      );
+    });
+    it('credits only the PR whose head is the branch, not stacked PRs that contain the commit', async () => {
+      const sha = '51bc37b501b4b89417de61230c976aa8de4a8fd0';
+      const pairing = 'feature/32af3a2a-pairing-permissions';
+      const { data } = await collect(
+        [
+          pullRun(1, sha, {
+            head_branch: pairing,
+            created_at: '2026-10-02T12:00:00Z',
+          }),
+        ],
+        {
+          sha: {
+            [sha]: [
+              {
+                number: 3553,
+                state: 'closed',
+                created_at: '2026-10-01T00:00:00Z',
+                closed_at: '2026-10-03T00:00:00Z',
+                head: head(pairing),
+              },
+              {
+                number: 3584,
+                state: 'open',
+                created_at: '2026-10-01T00:00:00Z',
+                closed_at: null,
+                head: head('feat/station-groups-3557'),
+              },
+              {
+                number: 3585,
+                state: 'open',
+                created_at: '2026-10-01T00:00:00Z',
+                closed_at: null,
+                head: head('feat/personal-tokens-3557'),
+              },
+            ],
+          },
+        },
+      );
+      expect(data.reasons).toEqual([]);
+      expect(data.runs[0].pull_requests).toEqual([{ number: 3553 }]);
+    });
+    it('reports the residual run when no PR had the branch before the run', async () => {
+      const beforeAnyPull = pullRun(7, 'a'.repeat(40), {
+        created_at: '2026-10-01T11:00:00Z',
+      });
+      const { data } = await collect([beforeAnyPull], { head: [closedPull] });
+      expect(data.runs[0].pull_requests).toEqual([]);
+      expect(data.reasons).toEqual([
+        `Cannot resolve PR push: run 7 (${'a'.repeat(12)} on kontourai/station:${branch}): no pull request lists this commit or had this head branch before the run`,
+      ]);
+      expect(buildSnapshot(data, options).incomplete).toBe(true);
+    });
+    it('credits a run created seconds after its PR closed (real #3085 timestamps)', async () => {
+      // CI run 37045922691 was created 3s after #3085 closed at 18:12:53Z.
+      const late = pullRun(9, '4dad606189e37f6a123c3f0b6509c8886d3ff102', {
+        name: 'CI',
+        event: 'pull_request_target',
+        created_at: '2026-10-02T18:12:56Z',
+      });
+      const viaBranch = await collect([late], { head: [closedPull] });
+      expect(viaBranch.data.reasons).toEqual([]);
+      expect(viaBranch.data.runs[0].pull_requests).toEqual([{ number: 3085 }]);
+      const viaSha = await collect([late], {
+        sha: { '4dad606189e37f6a123c3f0b6509c8886d3ff102': [closedPull] },
+      });
+      expect(viaSha.data.runs[0].pull_requests).toEqual([{ number: 3085 }]);
+    });
+    it('credits only the PR that owned the run when a branch name was reused', async () => {
+      const sha = 'c'.repeat(40);
+      const older = {
+        ...closedPull,
+        number: 100,
+        created_at: '2026-09-01T00:00:00Z',
+        closed_at: '2026-09-02T00:00:00Z',
+        head: head(branch, sha),
+      };
+      const newer = {
+        ...closedPull,
+        number: 200,
+        created_at: '2026-10-01T11:11:45Z',
+        closed_at: null,
+        state: 'open',
+        head: head(branch, sha),
+      };
+      const { data } = await collect([pullRun(10, sha)], {
+        sha: { [sha]: [older, newer] },
+      });
+      expect(data.runs[0].pull_requests).toEqual([{ number: 200 }]);
+    });
+    it('credits the latest-created PR when every candidate closed before the run', async () => {
+      const sha = 'd'.repeat(40);
+      const first = {
+        ...closedPull,
+        number: 300,
+        created_at: '2026-09-01T00:00:00Z',
+        closed_at: '2026-09-02T00:00:00Z',
+        head: head(branch, sha),
+      };
+      const second = {
+        ...first,
+        number: 301,
+        created_at: '2026-09-03T00:00:00Z',
+        closed_at: '2026-10-01T21:40:00Z',
+      };
+      // The run lands after both closed; listed oldest first so a "first
+      // candidate" pick would credit the wrong PR.
+      const { data } = await collect([pullRun(11, sha)], {
+        sha: { [sha]: [first, second] },
+      });
+      expect(data.runs[0].pull_requests).toEqual([{ number: 301 }]);
+    });
+    it('does not guess when the head repository is gone', async () => {
+      const orphan = pullRun(8, 'b'.repeat(40), { head_repository: null });
+      const { data, calls } = await collect([orphan], { head: [closedPull] });
+      expect(data.reasons).toHaveLength(1);
+      expect(calls.some((c) => c.includes('/pulls?state=all'))).toBe(false);
+    });
   });
   it('marks rate limits and exhausted job pagination incomplete rather than complete zeroes', async () => {
     const rateLimited = await collectHealth(options, async () => {

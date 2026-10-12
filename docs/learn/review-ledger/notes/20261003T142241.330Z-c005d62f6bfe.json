@@ -1,0 +1,7 @@
+{
+  "revision": "9330f3941806d4e9c52fa4774d66c91079bd7431",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Prose now distinguishes ordinary method tiers from explicit family overrides and names access:manage plus operator check for all marketplace source-management methods. Checked the source table and handlers; read-only public catalog remains orchestration:read.","inputs":["docs/security/remote-access-threat-model.md"]}
+  ]
+}

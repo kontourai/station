@@ -19,19 +19,22 @@ import {
   SC_MUTATING_TOOLS,
   SC_READ_ONLY_TOOLS,
 } from '../../runtime/tools/runtime-control-tools.js';
-import { createStationControlMcpServer } from '../station-control-mcp-server.js';
+import { stationControlToolCatalog } from '../station-control-mcp-server.js';
 import { STATION_CONTROL_TOOL_POLICY } from '../station-control-policy.js';
+import { stationKnowledgeToolCatalog } from '../station-knowledge-mcp-server.js';
 
 /**
  * The PRODUCTION server factory (every registrar it composes, including the
  * Basis and session-inventory MCP App tools the old hand list missed).
  */
 function registeredToolNames(): string[] {
-  const server = createStationControlMcpServer();
-  const registeredTools = (server as unknown as Record<string, unknown>)
-    ._registeredTools as Record<string, unknown> | undefined;
-  expect(registeredTools).toBeDefined();
-  return Object.keys(registeredTools as Record<string, unknown>);
+  return [
+    ...new Set(
+      [...stationControlToolCatalog(), ...stationKnowledgeToolCatalog()].map(
+        (tool) => tool.name,
+      ),
+    ),
+  ];
 }
 
 describe('station-control tool classification', () => {
@@ -104,6 +107,8 @@ describe('station-control tool classification', () => {
         'track_skill_run',
         'record_skill_outcome',
         'run_independent_review',
+        // #3161: a durable session record, so mutating, not a bounded write.
+        'declare_pull_request',
       ]),
     );
     expect(readOnly).toEqual(
@@ -142,6 +147,18 @@ describe('station-control tool classification', () => {
   });
 
   test('classification handles loader-prefixed names', () => {
+    expect(classifyControlTool('stationKnowledge_listKnowledgeRoots')).toBe(
+      'read-only',
+    );
+    expect(classifyControlTool('stationKnowledge_searchKnowledge')).toBe(
+      'read-only',
+    );
+    expect(classifyControlTool('stationKnowledge_addKnowledgeRecord')).toBe(
+      'mutating',
+    );
+    expect(SC_AUTO_APPROVED_TOOLS).toContain(
+      'station-knowledge_list_knowledge_roots',
+    );
     expect(classifyControlTool('station-control_create_agent')).toBe(
       'mutating',
     );

@@ -3,10 +3,20 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 16px;
+  padding: 12px;
   min-width: 0;
   height: 100%;
   overflow: auto;
+  font-size: var(--text-md);
+}
+/* Section labels at the pane's text size, bold: headings, not titles. */
+.pull-request-review h3 {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-lg);
+  font-weight: 600;
+}
+.pull-request-review p {
+  margin: 0;
 }
 .pull-request-review__actions {
   display: flex;
@@ -36,13 +46,14 @@
   width: 100%;
 }
 
-.pull-request-review__method {
-  display: grid;
-  gap: 6px;
-  align-self: flex-start;
+/* The live region is always in the flow; empty, it takes no height. */
+.pull-request-review__status {
+  margin: 0;
+  font-size: var(--text-md);
+  color: var(--text-secondary);
 }
-.pull-request-review__method select {
-  min-height: 44px;
+.pull-request-review__status--live:empty {
+  display: none;
 }
 .pull-request-review__discussion {
   padding-left: 20px;
@@ -77,6 +88,27 @@
   flex: 1 1 12ch;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+/* A row's two icons (add to chat, open details): dim at rest, full on the
+   row's hover or focus. Dim rather than hidden, so a finger — which has no
+   hover — still sees them, without a pointer media query of this sheet's
+   own. */
+.pull-request-review__check-tools {
+  display: inline-flex;
+  align-items: center;
+  /* 30px icons with 44px hit areas: 14px keeps the areas apart. */
+  gap: 14px;
+  flex: none;
+  margin-left: auto;
+}
+.pull-request-review__checks li .pull-request-review__check-tool {
+  opacity: 0.45;
+}
+.pull-request-review__checks li:hover .pull-request-review__check-tool,
+.pull-request-review__checks li:focus-within .pull-request-review__check-tool,
+.pull-request-review__checks li .pull-request-review__check-tool:hover,
+.pull-request-review__checks li .pull-request-review__check-tool:focus-visible {
+  opacity: 1;
 }
 /* The state word carries the meaning; the tone only reinforces it. */
 .pull-request-review__check-state {
@@ -162,30 +194,6 @@ details[open] > .pull-request-review__summary .pull-request-review__caret {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-/* State and decision chips share the engine chip's recipe: an opaque
-   `--bg-tertiary` fill so the ratio is set by the token pair alone, and a
-   toned word (never colour alone) on it. */
-.pull-request-review__chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: var(--radius-pill);
-  background: var(--bg-tertiary);
-  color: var(--text-tertiary);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  line-height: 1.4;
-  white-space: nowrap;
-}
-.pull-request-review__chip[data-tone="success"] {
-  color: var(--success-text);
-}
-.pull-request-review__chip[data-tone="failure"] {
-  color: var(--error-text);
-}
-.pull-request-review__chip[data-tone="pending"] {
-  color: var(--warning-text);
-}
 /* Check counts: small, toned, failures first by source order. */
 .pull-request-review__checks-summary {
   display: flex;
@@ -208,9 +216,9 @@ details[open] > .pull-request-review__summary .pull-request-review__caret {
 .pull-request-review__count[data-tone="success"] {
   color: var(--success-text);
 }
-.pull-request-review__handoff {
-  flex-shrink: 0;
-  min-height: 44px;
+/* The icon that was just pressed shows a check in the accent for a moment. */
+.pull-request-review__icon[data-added="true"] {
+  color: var(--accent-primary);
 }
 /* Forge comments the diff could not place: each a named group. */
 .pull-request-review__forge-comments {
@@ -241,10 +249,11 @@ details[open] > .pull-request-review__summary .pull-request-review__caret {
   margin-top: 4px;
   font-size: var(--text-sm);
 }
-/* One row: back, title, refresh, open on the forge. */
+/* One row at every width: back, the title (wrapping its words), and the
+   icons — nothing wraps under anything. */
 .pull-request-review__bar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   /* 14px keeps neighbouring 44px hit areas apart: 30px icon + 14px = 44. */
   gap: 14px;
@@ -254,11 +263,18 @@ details[open] > .pull-request-review__summary .pull-request-review__caret {
    it as one unit (right-aligned), so a phone-width bar is not a one-word
    column beside a button. */
 .pull-request-review__title {
-  flex: 1 1 auto;
-  min-width: min(16ch, 100%);
+  flex: 1 1 0;
+  min-width: 0;
   margin: 0;
   font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: 1.3;
   overflow-wrap: anywhere;
+}
+.pull-request-review__title:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 .pull-request-review__bar-actions {
   display: flex;

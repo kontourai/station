@@ -9,8 +9,6 @@
 
   "limits": "Retained release notes can describe an earlier implementation. This classification does not verify publication or current behavior; use the owning guide and code.",
 
-  "document": {"digest":"e240772ab205b10409486652b4c713b7fc4e82fdec91281e43df2f0f948562a5","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
-
   "sources": [],
 
   "checks": []

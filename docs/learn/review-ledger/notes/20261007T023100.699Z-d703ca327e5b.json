@@ -1,0 +1,7 @@
+{
+  "revision": "22f74ffcc1ad4760769b1dc225535730638d108e",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed #3405 sender delta and SDK consumer seams: optional internal form admission observation and Retry propagation do not change published SDK client APIs, HTTP schemas, receipt identities, imports or default caller behavior. Existing reference stays accurate; no new provider or native claim.","inputs":["docs/reference/sdk.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

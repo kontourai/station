@@ -63,15 +63,17 @@ import {
   tenantExecutionContextFromSession,
 } from '@kontourai/station-contracts/tenancy';
 import { createMcpHandler } from '@modelcontextprotocol/server';
-import { Hono } from 'hono';
+import { type Handler, Hono } from 'hono';
 import { stationControlSpawnEnv } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   resolveStationControlCallerFromToken,
   type StationControlCallerRecordResolver,
 } from '../../runtime/mcp/station-control-caller.js';
 import {
+  type BuiltinStationApiMcpId,
   STATION_CONTROL_MCP_HTTP_CHANNELS,
   STATION_CONTROL_MCP_PATH,
+  STATION_KNOWLEDGE_MCP_PATH,
   verifyStationControlMcpToken,
 } from '../../runtime/mcp/station-control-mcp-token.js';
 import {
@@ -125,6 +127,7 @@ function extractBearerToken(header: string | undefined): string | undefined {
 }
 
 interface StationControlMcpRouteOptions {
+  serverId?: BuiltinStationApiMcpId;
   /** THIS running instance's actually-bound HTTP port — never read from
    * `process.env.PORT`/`STATION_PORT` (see this module's header comment
    * for why those are unreliable). Required so the in-process tool calls
@@ -144,8 +147,8 @@ export function createStationControlMcpRoutes(
   options: StationControlMcpRouteOptions,
 ): Hono {
   const app = new Hono();
-
-  app.all(STATION_CONTROL_MCP_PATH, async (c) => {
+  const serverId = options.serverId ?? 'station-control';
+  const handler: Handler = async (c) => {
     if (!isLoopbackRemoteAddress(extractRemoteAddress(c.env))) {
       stationControlMcpHttpAuth.add(1, { result: 'loopback_denied' });
       return c.text('Not found', 404, SECURITY_HEADERS);
@@ -160,6 +163,7 @@ export function createStationControlMcpRoutes(
     // never dials this endpoint).
     const verified = verifyStationControlMcpToken(candidate, {
       channels: STATION_CONTROL_MCP_HTTP_CHANNELS,
+      serverId,
     });
     if (!verified) {
       stationControlMcpHttpAuth.add(1, { result: 'rejected' });
@@ -223,7 +227,11 @@ export function createStationControlMcpRoutes(
       () =>
         options.createServer
           ? options.createServer()
-          : createSelectedStationControlMcpServer(verified.allowedTools),
+          : createSelectedStationControlMcpServer(
+              verified.allowedTools,
+              undefined,
+              serverId,
+            ),
       { legacy: 'stateless', responseMode: 'auto' },
     );
     const response = await withStationControlExecutionContext(
@@ -252,6 +260,7 @@ export function createStationControlMcpRoutes(
           () => {
             const current = verifyStationControlMcpToken(candidate, {
               channels: STATION_CONTROL_MCP_HTTP_CHANNELS,
+              serverId,
             });
             return (
               current !== undefined &&
@@ -266,7 +275,10 @@ export function createStationControlMcpRoutes(
       if (!response.headers.has(key)) response.headers.set(key, value);
     }
     return response;
-  });
+  };
+  if (serverId === 'station-knowledge')
+    app.all(STATION_KNOWLEDGE_MCP_PATH, handler);
+  else app.all(STATION_CONTROL_MCP_PATH, handler);
 
   // No wildcard fallback here (unlike the dedicated, standalone MCP-UI
   // frame origin in mcp-ui-frame-server.ts): this sub-app is composed into

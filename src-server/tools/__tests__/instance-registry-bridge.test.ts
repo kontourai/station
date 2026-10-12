@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   chmodSync,
@@ -28,7 +28,7 @@ import {
   acquireStationHomeMaintenanceLease,
   acquireStationHomeRuntimeLease,
 } from '@kontourai/station-shared/station-home-lifecycle';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { withProfileStoreLock } from '../../../packages/cli/src/commands/profile-store.js';
 import {
   prepareRuntime,
@@ -1671,4 +1671,260 @@ test('home-schema incompatibility is specific and path-free across the native br
   expect(readFileSync(join(home, 'existing-data.txt'), 'utf8')).toBe(
     'preserve me',
   );
+});
+
+/**
+ * #2961 (ADR 0020 D4): the native bridge's sidecar operations all go through
+ * the one host-owner claim and owner-checked release. These drive the real
+ * bridge entry point; its parent (this test process) plays the desktop.
+ */
+describe('desktop sidecar host claim through the native bridge (#2961)', () => {
+  const liveRecord = (pid: number) => ({
+    pid,
+    birth: lookupProcessBirthFingerprint(pid)!,
+  });
+
+  test('claim and publish refuse while a live service owns the home, and report it', () => {
+    const home = root();
+    // A live service supervisor: this runner's parent outlives the test.
+    upsertInstance(
+      'default',
+      { port: 3242, type: 'service', ...liveRecord(process.ppid) },
+      home,
+    );
+    for (const [operation, instance] of [
+      ['claimSidecar', { type: 'sidecar', status: 'starting', port: 0 }],
+      [
+        'publishSidecar',
+        { type: 'sidecar', status: 'running', port: 38141, pid: process.pid },
+      ],
+    ] as const) {
+      const result = bridgeChild(operation, {
+        home,
+        id: 'desktop-sidecar-1',
+        instance,
+      });
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual({
+        ok: true,
+        claimed: false,
+        owners: [{ id: 'default', type: 'service', port: 3242 }],
+      });
+    }
+    expect(Object.keys(readInstanceRegistry(home).instances)).toEqual([
+      'default',
+    ]);
+  });
+
+  test('claim records the desktop itself; only a sidecar type is accepted', () => {
+    const home = root();
+    const won = bridgeChild('claimSidecar', {
+      home,
+      id: 'desktop-sidecar-1',
+      instance: { type: 'sidecar', status: 'starting', port: 0 },
+    });
+    expect(JSON.parse(won.stdout)).toEqual({
+      ok: true,
+      claimed: true,
+      owners: [],
+    });
+    expect(readInstanceRegistry(home).instances['desktop-sidecar-1']).toEqual({
+      type: 'sidecar',
+      status: 'starting',
+      port: 0,
+      ...liveRecord(process.pid),
+    });
+    const service = bridgeChild('claimSidecar', {
+      home,
+      id: 'desktop-sidecar-2',
+      instance: { type: 'service', port: 0 },
+    });
+    expect(service.status).toBe(1);
+    expect(JSON.parse(service.stdout)).toEqual({
+      ok: false,
+      error: { code: 'INVALID_INPUT' },
+    });
+  });
+
+  test('early child publication fences an orphan after its desktop dies (#2961)', () => {
+    const home = root();
+    const desktop = spawnSync(
+      process.execPath,
+      [
+        '-e',
+        `
+      const {spawn, spawnSync} = require('node:child_process');
+      const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {stdio:'ignore', windowsHide:true});
+      child.unref();
+      const bridge = (operation, instance) => spawnSync(process.execPath,
+        ['--import','tsx','src-server/tools/instance-registry-bridge.ts',operation],
+        {windowsHide:true,encoding:'utf8',input:JSON.stringify({home:${JSON.stringify(home)},id:'old-desktop',instance})});
+      const claim = bridge('claimSidecar',{type:'sidecar',status:'starting',port:0});
+      const publish = bridge('publishSidecar',{type:'sidecar',status:'starting',port:0,pid:child.pid});
+      console.log(JSON.stringify({childPid:child.pid,desktopPid:process.pid,claimStatus:claim.status,publishStatus:publish.status,publish:JSON.parse(publish.stdout)}));
+    `,
+      ],
+      { windowsHide: true, encoding: 'utf8' },
+    );
+    expect(desktop.status).toBe(0);
+    const result = JSON.parse(desktop.stdout);
+    try {
+      expect(result.claimStatus).toBe(0);
+      expect(result.publishStatus).toBe(0);
+      expect(result.publish.claimed).toBe(true);
+      expect(() => process.kill(result.desktopPid, 0)).toThrow();
+      const entry = readInstanceRegistry(home).instances['old-desktop'];
+      expect(entry.pid).toBe(result.childPid);
+      expect(entry.birth).toBe(lookupProcessBirthFingerprint(result.childPid));
+      const next = bridgeChild('claimSidecar', {
+        home,
+        id: 'new-desktop',
+        instance: { type: 'sidecar', status: 'starting', port: 0 },
+      });
+      expect(JSON.parse(next.stdout).claimed).toBe(false);
+      expect(readInstanceRegistry(home).instances['old-desktop']).toEqual(
+        entry,
+      );
+    } finally {
+      process.kill(result.childPid);
+    }
+  });
+
+  test('release removes only a sidecar record this desktop owns', () => {
+    const home = root();
+    const release = (id: string) =>
+      expect(bridgeChild('releaseSidecar', { home, id }).status).toBe(0);
+    upsertInstance(
+      'own',
+      { port: 1, type: 'sidecar', ...liveRecord(process.pid) },
+      home,
+    );
+    upsertInstance(
+      'reaped-child',
+      { port: 2, type: 'sidecar', pid: 2 ** 31 - 1, birth: 'gone' },
+      home,
+    );
+    // Another live process's record, and a service under the same id space.
+    upsertInstance(
+      'foreign-live',
+      { port: 3, type: 'sidecar', ...liveRecord(process.ppid) },
+      home,
+    );
+    upsertInstance('a-service', { port: 4, type: 'service' }, home);
+
+    for (const id of ['own', 'reaped-child', 'foreign-live', 'a-service']) {
+      release(id);
+    }
+
+    expect(Object.keys(readInstanceRegistry(home).instances).sort()).toEqual([
+      'a-service',
+      'foreign-live',
+    ]);
+  });
+
+  test('admits exactly one of concurrent desktops and services claiming one home', async () => {
+    const home = root();
+    const tsx = join(process.cwd(), 'node_modules', 'tsx', 'dist', 'cli.mjs');
+    const liveness = join(
+      process.cwd(),
+      'packages',
+      'cli',
+      'src',
+      'commands',
+      'service-liveness.ts',
+    );
+    // Installed services without a live supervisor.
+    for (const n of [1, 2, 3]) {
+      upsertInstance(`service-${n}`, { port: 3240 + n, type: 'service' }, home);
+    }
+    // A desktop: a live parent that runs the real bridge claim on "go".
+    const desktopSource = `
+        import { spawnSync } from 'node:child_process';
+        process.stdout.write('ready\\n');
+        process.stdin.once('data', () => {
+          const child = spawnSync(process.execPath, ['--import', 'tsx/esm',
+            'src-server/tools/instance-registry-bridge.ts', 'claimSidecar'], {
+            encoding: 'utf8',
+            windowsHide: true,
+            input: JSON.stringify({ home: process.env.REGISTRY_HOME,
+              id: process.env.CLAIM_ID,
+              instance: { type: 'sidecar', status: 'starting', port: 0 } }),
+          });
+          const output = JSON.parse(child.stdout);
+          process.stdout.write(JSON.stringify({ id: process.env.CLAIM_ID,
+            won: output.claimed === true, output }) + '\\n');
+        });
+        process.stdin.on('end', () => process.exit(0));
+      `;
+    // A service supervisor: the real CLI claim, as its own process.
+    const serviceSource = `
+        import { claimServiceHost } from ${JSON.stringify(liveness)};
+        process.stdout.write('ready\\n');
+        process.stdin.once('data', () => {
+          const output = claimServiceHost({ instanceName: process.env.CLAIM_ID,
+            home: process.env.REGISTRY_HOME, serverPort: 1, uiPort: 2 }, 'starting');
+          process.stdout.write(JSON.stringify({ id: process.env.CLAIM_ID,
+            won: output.won, output }) + '\\n');
+        });
+        process.stdin.on('end', () => process.exit(0));
+      `;
+    const claimants = [
+      ...[1, 2, 3].map((n) => ({
+        id: `desktop-sidecar-${n}`,
+        args: ['--input-type=module', '-e', desktopSource],
+      })),
+      ...[1, 2, 3].map((n) => ({
+        id: `service-${n}`,
+        args: [tsx, '-e', serviceSource],
+      })),
+    ];
+    const children = claimants.map(({ id, args }) =>
+      spawn(process.execPath, args, {
+        cwd: process.cwd(),
+        windowsHide: true,
+        env: { ...process.env, REGISTRY_HOME: home, CLAIM_ID: id },
+      }),
+    );
+    const readers = children.map((child) => {
+      const lines: string[] = [];
+      let buffered = '';
+      child.stdout.setEncoding('utf8');
+      child.stdout.on('data', (chunk: string) => {
+        buffered += chunk;
+        const parts = buffered.split('\n');
+        buffered = parts.pop()!;
+        lines.push(...parts);
+      });
+      return lines;
+    });
+    try {
+      await vi.waitFor(
+        () => expect(readers.every((lines) => lines.length >= 1)).toBe(true),
+        { timeout: 20_000, interval: 50 },
+      );
+      for (const child of children) child.stdin.write('go\n');
+      await vi.waitFor(
+        () => expect(readers.every((lines) => lines.length >= 2)).toBe(true),
+        { timeout: 20_000, interval: 50 },
+      );
+      const results = readers.map((lines) => JSON.parse(lines[1]!));
+      const winners = results.filter((result) => result.won);
+      expect(winners, JSON.stringify(results)).toHaveLength(1);
+      const live = Object.entries(readInstanceRegistry(home).instances)
+        .filter(([, entry]) => typeof entry.pid === 'number')
+        .map(([id]) => id);
+      expect(live).toEqual([winners[0].id]);
+    } finally {
+      await Promise.all(
+        children.map((child) => {
+          if (child.exitCode !== null || child.signalCode !== null) {
+            return undefined;
+          }
+          const exited = new Promise((resolve) => child.once('exit', resolve));
+          child.stdin.end();
+          return exited;
+        }),
+      );
+    }
+  }, 60_000);
 });

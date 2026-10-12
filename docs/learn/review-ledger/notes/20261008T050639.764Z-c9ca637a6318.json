@@ -1,0 +1,7 @@
+{
+  "revision": "04dded92fb12792e7091859330e2cce926387999",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"credential-profile-env.ts changed only by a formatter re-wrap after the merge of main; re-checked the overlay precedence and envInvalid marker claims against the merged resolver (ambient < connection env < overlay < home key < TMPDIR; marked profiles never route alike); unchanged.","inputs":["docs/guides/connections.md","src-server/providers/app-home/credential-profile-env.ts"]}
+  ]
+}

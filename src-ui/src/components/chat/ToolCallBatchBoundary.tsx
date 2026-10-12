@@ -63,10 +63,12 @@ export function preloadToolCallBatch(): Promise<unknown> {
 export function ToolCallBatchBoundary<P extends ToolCallLike>({
   run,
   renderCall,
+  renderInterlude,
   pending,
 }: {
   run: ToolCallRun<P>;
   renderCall: (part: P, index: number, expanded?: boolean) => ReactNode;
+  renderInterlude?: (part: P, index: number) => ReactNode;
   /** Inline rows shown until the batch chunk first loads — without this the
    * 2nd consecutive call flashes an empty gap (`pending={null}`). */
   pending: ReactNode;
@@ -78,7 +80,8 @@ export function ToolCallBatchBoundary<P extends ToolCallLike>({
     () =>
       loadedToolCallBatch as ComponentType<ToolCallBatchProps<P>> | undefined,
   );
-  if (loaded) return createElement(loaded, { run, renderCall });
+  if (loaded)
+    return createElement(loaded, { run, renderCall, renderInterlude });
   const load = loadToolCallBatch as unknown as () => Promise<{
     default: ComponentType<ToolCallBatchProps<P>>;
   }>;
@@ -86,7 +89,7 @@ export function ToolCallBatchBoundary<P extends ToolCallLike>({
   return (
     <LazyBoundary
       load={load}
-      componentProps={{ run, renderCall }}
+      componentProps={{ run, renderCall, renderInterlude }}
       pending={pending}
       // A chunk that cannot load leaves the run as its standalone rows —
       // every call, and any Allow/Deny, stays on screen — rather than

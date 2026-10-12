@@ -9,8 +9,6 @@
 
   "limits": "Goals such as plugin/core parity and evidence-gated work are expectations, not proof that every current feature meets them. Policy text is preserved; implementation must be checked independently.",
 
-  "document": {"digest":"2faf5b0f6906745b48784ec4d9abf5301ed8f79cb022860aaf060b847e524f80","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
-
   "sources": [],
 
   "checks": []

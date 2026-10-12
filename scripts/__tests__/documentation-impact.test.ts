@@ -651,3 +651,39 @@ describe('documentation impact', () => {
     ]);
   });
 });
+
+describe('review record layouts', () => {
+  const file = recordFile('guide.md');
+  const codeOf = (text: string, layout?: string) => {
+    try {
+      parseRecordFile(file, text, layout);
+      return 'accepted';
+    } catch (error) {
+      return (error as { code?: string }).code ?? String(error);
+    }
+  };
+
+  it('reports malformed record JSON as a review error in both read modes', () => {
+    for (const layout of ['canonical', 'advisory-dependency-history'])
+      expect(codeOf('{broken', layout)).toBe('invalid-json');
+  });
+
+  it('does not read a present but empty document as a path-only record', () => {
+    const value = {
+      path: 'guide.md',
+      kind: 'current',
+      state: 'partial',
+      summary: 'Reviewed.',
+      limits: 'None.',
+      document: null,
+      sources: ['src/a.ts'],
+      checks: [],
+    };
+    expect(
+      codeOf(
+        `${JSON.stringify(value, null, 2)}\n`,
+        'advisory-dependency-history',
+      ),
+    ).toBe('invalid-shape');
+  });
+});

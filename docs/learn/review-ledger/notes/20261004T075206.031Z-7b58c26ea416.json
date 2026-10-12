@@ -1,0 +1,7 @@
+{
+  "revision": "241bfe879370faf6c63e3b1503522b9bf3eaeaca",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reworded the stuck-claims limit (new requestKeys unusable, not locked out), added the pinned refusal answer and the resumed-interrupt accepted gap; checked against the route's pinned result and the request-key table.","inputs":["docs/guides/self-configuring-agent.md","src-server/routes/orchestration/session-agent-control.ts"]}
+  ]
+}

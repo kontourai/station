@@ -1,0 +1,7 @@
+{
+  "revision": "08fd77f74f71bf494dbf0ae3171da6e9622ff015",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Checked: ChatDockBody change only passes a derived one-line prop to the composer; config.md documents no setting or behavior it touches. No prose change needed.","inputs":["docs/reference/config.md"]}
+  ]
+}

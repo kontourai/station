@@ -1,0 +1,35 @@
+{
+  "revision": "a15d7b09e3b1a1434ac3d51a25d52773d30746a7",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed affected UI delta: optional callouts move after the work entry and default chat preparation uses existing owners. Granted Home recovery, project scope, send authority, cloud transfer, private-runner boundaries and public configuration contracts remain unchanged.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed intent-first work entry, existing engine preparation API reuse, disabled-app exclusion, warned outcomes, scoped cancellation and separate usage disclosure. No credential or scope authority is granted by the UI.","inputs":["docs/design/connections-onboarding.md"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed affected UI delta: optional callouts move after the work entry and default chat preparation uses existing owners. Granted Home recovery, project scope, send authority, cloud transfer, private-runner boundaries and public configuration contracts remain unchanged.","inputs":["docs/design/placement.md"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed affected UI delta: optional callouts move after the work entry and default chat preparation uses existing owners. Granted Home recovery, project scope, send authority, cloud transfer, private-runner boundaries and public configuration contracts remain unchanged.","inputs":["docs/guides/delegation-attempt-claims.md"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed Home goal dispatch and explicit Chat options entry; goal browser journey reached the owning send API without configuration selection. Consent and advanced setup journeys retain their data and scope assertions.","inputs":["docs/guides/e2e-coverage-matrix.md"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed affected UI delta: optional callouts move after the work entry and default chat preparation uses existing owners. Granted Home recovery, project scope, send authority, cloud transfer, private-runner boundaries and public configuration contracts remain unchanged.","inputs":["docs/guides/home-transfer-controller.md"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Reviewed affected UI delta: optional callouts move after the work entry and default chat preparation uses existing owners. Granted Home recovery, project scope, send authority, cloud transfer, private-runner boundaries and public configuration contracts remain unchanged.","inputs":["docs/guides/private-runner-partition.md"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Reviewed affected UI delta: optional callouts move after the work entry and default chat preparation uses existing owners. Granted Home recovery, project scope, send authority, cloud transfer, private-runner boundaries and public configuration contracts remain unchanged.","inputs":["docs/guides/product-law-authoring.md"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Reviewed affected UI delta: optional callouts move after the work entry and default chat preparation uses existing owners. Granted Home recovery, project scope, send authority, cloud transfer, private-runner boundaries and public configuration contracts remain unchanged.","inputs":["docs/guides/repository-layout.md"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Updated direct-chat entry to a written Home request and working defaults. Starter launch authority still requires its own completed first-run decision and exact work identities; the intent entry does not satisfy those gates.","inputs":["docs/guides/starter-work.md"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Reviewed affected UI delta: optional callouts move after the work entry and default chat preparation uses existing owners. Granted Home recovery, project scope, send authority, cloud transfer, private-runner boundaries and public configuration contracts remain unchanged.","inputs":["docs/guides/work-board-security.md"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Reviewed affected UI delta: optional callouts move after the work entry and default chat preparation uses existing owners. Granted Home recovery, project scope, send authority, cloud transfer, private-runner boundaries and public configuration contracts remain unchanged.","inputs":["docs/guides/workspace-packages.md"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed affected UI delta: optional callouts move after the work entry and default chat preparation uses existing owners. Granted Home recovery, project scope, send authority, cloud transfer, private-runner boundaries and public configuration contracts remain unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed affected UI delta: optional callouts move after the work entry and default chat preparation uses existing owners. Granted Home recovery, project scope, send authority, cloud transfer, private-runner boundaries and public configuration contracts remain unchanged.","inputs":["docs/reference/config.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Traced Home prompt through the typed local intent, preparation, fresh catalog, conversation creation and normal one-shot send. Real Muse response ZERO_SETUP_READY observed. Usage choice returns to work; optional personalization remains explicit; actor permissions and warnings still block.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

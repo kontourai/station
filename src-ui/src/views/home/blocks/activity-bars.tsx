@@ -65,9 +65,6 @@ export function buildHeatRows(items: HomeWorkItem[], now: number): HeatRow[] {
     // `bucket = BUCKET_COUNT`, `row.cells[BUCKET_COUNT]` is undefined, and the
     // `cell.count` read below throws — taking the whole Home route down to
     // its error boundary for one skewed timestamp.
-    //
-    // It also keeps this agreeing with `bucketByRecency`, the sibling time
-    // function Home renders below it, which files a future item under Today.
     const age = Math.max(0, now - item.updatedAt);
     const bucket = BUCKET_COUNT - 1 - Math.floor(age / BUCKET_MS);
     if (bucket < 0) continue;

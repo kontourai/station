@@ -158,10 +158,15 @@
 
 /* #1545: the tool-call preview is a command or a path — monospace so an
    operator can read it exactly, and `overflow-wrap: anywhere` so a long path
-   wraps inside the card instead of widening it. */
+   wraps inside the card instead of widening it. No ligatures or contextual
+   alternates (#3382): `!=`, `->` and `../` must read as typed. */
 .toast-card__detail--tool {
   font-family: var(--font-mono, ui-monospace, monospace);
   overflow-wrap: anywhere;
+  font-variant-ligatures: none;
+  font-feature-settings:
+    "calt" 0,
+    "liga" 0;
 }
 
 .toast-card__conversation {

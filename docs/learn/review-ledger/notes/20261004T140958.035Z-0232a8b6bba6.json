@@ -1,0 +1,7 @@
+{
+  "revision": "96bf944d5f3aa38147aa746ddc9bc4fafbc89c43",
+
+  "notes": [
+    {"path":"docs/design/operator-device-access.md","note":"Re-recorded for #3256 folded into this PR: PairedDevicesPanel's native-host 401 for a scope change now names the host CLI (station environment access scope), and this page's desktop-credential passage was updated to say so. It also states that revoke and record removal still carry the old managed-by text because no CLI command exists for them. Checked against PairedDevicesPanel.tsx at this commit.","inputs":["docs/design/operator-device-access.md","packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx"]}
+  ]
+}

@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import {
   existsSync,
   readdirSync,
@@ -10,6 +10,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, join, resolve, sep } from 'node:path';
+import { execFileSyncBounded } from './bounded-capture.mjs';
 import { sanitizedGitEnvironment } from './git-environment.mjs';
 
 /**
@@ -178,7 +179,7 @@ function parseWorktreePorcelain(porcelain) {
 }
 
 function gitSync(root, args) {
-  return execFileSync('git', ['-C', root, ...args], {
+  return execFileSyncBounded('git', ['-C', root, ...args], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     env: sanitizedGitEnvironment(process.env),

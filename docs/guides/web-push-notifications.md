@@ -171,7 +171,10 @@ caller-overridable value and expiration measured from delivery. The composer
 uses its category default, not that override or the stored record's remaining
 lifetime.
 
-A device's hide-content preference substitutes generic title/body text. The
+The title and body are sent in display form (#3382): bidi controls and
+invisible characters removed, controls turned into spaces, a multi-line title
+joined onto one line with " ⏎ ". A device's hide-content preference
+substitutes generic title/body text. The
 browser still receives category, notification ID and destination URL. For
 routing, Session metadata is tried first (`sessionId` or `conversationId`), then
 a validated relative `metadata.link`, then `/notifications`. Managed Sessions

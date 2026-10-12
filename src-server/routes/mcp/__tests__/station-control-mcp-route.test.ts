@@ -222,6 +222,74 @@ describe('station-control-mcp-route', () => {
     }
   });
 
+  test('Knowledge exposes only data tools and rejects Control credentials', async () => {
+    const app = createStationControlMcpRoutes({
+      port: TEST_PORT,
+      serverId: 'station-knowledge',
+    });
+    const control = mintStationControlMcpToken('both', 'url-token').token;
+    const knowledge = mintStationControlMcpToken(
+      'both',
+      'url-token',
+      undefined,
+      undefined,
+      undefined,
+      'station-knowledge',
+    ).token;
+    const wrong = await app.request(
+      `/mcp/station-knowledge?token=${control}`,
+      {},
+      envFor(LOOPBACK),
+    );
+    expect(wrong.status).toBe(401);
+    const listed = await callMcp(
+      app,
+      `/mcp/station-knowledge?token=${knowledge}`,
+      envFor(LOOPBACK),
+      1,
+      'tools/list',
+    );
+    expect(
+      listed.result.tools.map((tool: { name: string }) => tool.name).sort(),
+    ).toEqual([
+      'add_knowledge_record',
+      'get_knowledge_record',
+      'list_knowledge_records',
+      'list_knowledge_roots',
+      'search_knowledge',
+    ]);
+    expect(
+      listed.result.tools.find(
+        (tool: { name: string }) => tool.name === 'add_knowledge_record',
+      ).annotations.readOnlyHint,
+    ).toBe(false);
+    const denied = await callMcp(
+      app,
+      `/mcp/station-knowledge?token=${knowledge}`,
+      envFor(LOOPBACK),
+      2,
+      'tools/call',
+      { name: 'reindex_knowledge', arguments: {} },
+    );
+    expect(denied.error).toBeDefined();
+    const empty = mintStationControlMcpToken(
+      'empty',
+      'url-token',
+      undefined,
+      undefined,
+      [],
+      'station-knowledge',
+    ).token;
+    const emptyList = await callMcp(
+      app,
+      `/mcp/station-knowledge?token=${empty}`,
+      envFor(LOOPBACK),
+      3,
+      'tools/list',
+    );
+    expect(emptyList.result.tools).toEqual([]);
+  });
+
   test('rejects a request with no token', async () => {
     const app = createStationControlMcpRoutes({ port: TEST_PORT });
     const response = await app.request(

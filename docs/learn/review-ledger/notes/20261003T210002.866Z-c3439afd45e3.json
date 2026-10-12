@@ -1,0 +1,7 @@
+{
+  "revision": "ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed intent-first section and recorded NewChatModal source delta against existing Home automatic preparation, setup-return, engine readiness, prerequisite and account owners. Added ordinary unsent draft/helper journey. Detect/configure/install/sign-in remain separate, explicit actions; helper renders integration-supplied instructions and uses owning Connections routes, with no automatic software download or credential import. Existing engine-delivery audits retain their historical status; app-home/credentials/MCP execution behavior unchanged.","inputs":["docs/design/connections-onboarding.md"]}
+  ]
+}

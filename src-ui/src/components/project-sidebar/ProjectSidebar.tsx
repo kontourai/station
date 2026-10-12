@@ -14,6 +14,8 @@ import { useAgents } from '../../contexts/AgentsContext';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
+import { ArrowDownGlyph } from '../icons/Glyph';
+import '../DisclosureToggle.css';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
@@ -28,6 +30,8 @@ import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useBranding } from '../../hooks/useBranding';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
+import { useProjectAccents } from '../../hooks/useProjectAccents';
+import { useProjectIcons } from '../../hooks/useProjectIcons';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { chatTaskSessionId } from '../../views/home/home-view-model';
 import {
@@ -45,7 +49,6 @@ import { Skeleton } from '../state';
 import { ProjectSidebarHeader } from './ProjectSidebarHeader';
 import { ProjectSidebarNav } from './ProjectSidebarNav';
 import { ProjectSidebarRow } from './ProjectSidebarRow';
-import { projectAccents } from './projectAccent';
 import { useProjectListReorder } from './useProjectListReorder';
 import { useProjectSidebarState } from './useProjectSidebarState';
 import { buildSidebarClassName } from './utils';
@@ -169,9 +172,28 @@ function ProjectSidebarImpl() {
   // Drafts are composed from the same store the composer writes and the same
   // active-chat identity that the dock can focus. Do not synthesize a sidebar
   // copy: opening one must restore the exact persisted composer value.
+  //
+  // D6: one row per chat. A chat already listed under Open chats carries its
+  // draft on that row (the "Unsent draft" chip, or the Draft status of a chat
+  // that never sent), so it is not listed a second time here; Drafts holds
+  // the drafts of chats that section does not show. A collapsed Open chats
+  // shows none of its rows, so while it is collapsed every draft is listed
+  // here: a draft is always visible somewhere.
+  const openChatsShowRows =
+    !sidebarSections.openChatsHidden && !sidebarSections.openChatsCollapsed;
+  const openChatSessionIds = useMemo(
+    () =>
+      new Set(
+        openChatsShowRows
+          ? recentTasks.map((task) => chatTaskSessionId(task))
+          : [],
+      ),
+    [recentTasks, openChatsShowRows],
+  );
   const unsentDrafts = useMemo(
     () =>
       Object.entries(drafts)
+        .filter(([sessionId]) => !openChatSessionIds.has(sessionId))
         .filter(([, draft]) => draft.text.trim())
         .sort(([, left], [, right]) => right.updatedAt - left.updatedAt)
         .map(([sessionId, draft]) => {
@@ -182,14 +204,11 @@ function ProjectSidebarImpl() {
             preview: draft.text.trim(),
           };
         }),
-    [activeChats, drafts],
+    [activeChats, drafts, openChatSessionIds],
   );
-  // Allocate the accent palette across the whole sorted project set so every
-  // color is used before any repeats, stable regardless of API order.
-  const accentBySlug = useMemo(
-    () => projectAccents(projects.map((project) => project.slug)),
-    [projects],
-  );
+  // The one project-colour allocation every surface shares.
+  const accentBySlug = useProjectAccents();
+  const iconBySlug = useProjectIcons();
   const projectSlugs = useMemo(
     () => projects.map((project) => project.slug),
     [projects],
@@ -435,9 +454,9 @@ function ProjectSidebarImpl() {
                   <span className="sidebar__section-label-text">
                     Open chats
                   </span>
-                  <span className="sidebar__nav-chevron" aria-hidden="true">
-                    {sidebarSections.openChatsCollapsed ? '+' : '−'}
-                  </span>
+                  <ArrowDownGlyph
+                    className={`sidebar__nav-chevron disclosure-toggle__caret${sidebarSections.openChatsCollapsed ? '' : ' is-open'}`}
+                  />
                 </button>
                 <button
                   type="button"
@@ -461,6 +480,8 @@ function ProjectSidebarImpl() {
                     items: recentTasks,
                     workFacts: openChatFacts,
                     now: openChatsNow,
+                    projectAccentBySlug: accentBySlug,
+                    projectIconBySlug: iconBySlug,
                     onActivate: (task) => {
                       openChatsStore.focus({
                         sessionId: chatTaskSessionId(task),
@@ -503,9 +524,9 @@ function ProjectSidebarImpl() {
                   }
                 >
                   <span className="sidebar__section-label-text">Drafts</span>
-                  <span className="sidebar__nav-chevron" aria-hidden="true">
-                    {sidebarSections.draftsCollapsed ? '+' : '−'}
-                  </span>
+                  <ArrowDownGlyph
+                    className={`sidebar__nav-chevron disclosure-toggle__caret${sidebarSections.draftsCollapsed ? '' : ' is-open'}`}
+                  />
                 </button>
                 <button
                   type="button"
@@ -529,7 +550,7 @@ function ProjectSidebarImpl() {
                     }}
                   >
                     <span>{draft.title}</span>
-                    <small>Draft · {draft.preview}</small>
+                    <small>{draft.preview}</small>
                   </button>
                 ))}
               </div>

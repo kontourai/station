@@ -1,0 +1,7 @@
+{
+  "revision": "a08619ae8b654b9b8c6b05ae430ce512742d71cb",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Round 4 for #3391: rewrote the runsAt thread paragraph against guardFolderChecks: at most three folder checks out across all list reads (one pool thread always free), duplicates join, waiters queue within the project's limit and read unavailable with a not-checked-yet reason, and with three hung folders out no other folder gets a turn (verified with the reviewer's FIFO probe).","inputs":["docs/reference/shared.md"]}
+  ]
+}

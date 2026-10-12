@@ -65,7 +65,13 @@ runs), so it behaves correctly across many worktrees on the same machine. It
 refuses a missing bundle or one older than the source timestamps it inspects,
 naming `npm run build:cli` as the remedy. This is an approximate mtime check,
 not the content-based dist-freshness gate; preserved or skewed timestamps can
-miss drift. Outside a checkout it names the `npx` form instead.
+miss drift. Outside a checkout it names the `npx` form instead. A CLI killed by
+a signal is reported as 128 plus the signal number (143 for `SIGTERM`), not 1.
+
+The installer writes a regular file and never writes through a link. It
+refuses a destination that is a symlink (for example one left by `npm link`),
+or any existing file that is not a previously installed `station-dev`, and
+names the path to remove or the `STATION_DEV_BIN` directory to use instead.
 
 ```bash
 npm run station-dev:install   # once, from any Station checkout
@@ -137,7 +143,7 @@ Current command availability, with background in the [CLI product design](../des
 | Tier | Verbs | Bundled `station` | `./station` |
 |------|-------|-------------------|-------------|
 | Client | `chat`, `agents`, `sessions`, `approvals`, `operate`, `projects`, `tasks`, `skills`, every surface verb, `registry`, `stations`, `target`, `triage`, `setup existing`/`hosted`, `config`, `checkpoints`, `export`/`import`, `plugin`, `environment access request` | yes | yes |
-| Host-local | `open`, `doctor`, `environment show`, `environment credential show`, `environment offer`, `environment access list`/`approve`/`deny`, `service status`/`start`/`stop` | yes, existing local installation required for local authority | yes |
+| Host-local | `open`, `doctor`, `environment show`, `environment credential show`, `environment offer`, `environment access list`/`approve`/`deny`, `environment operator passkeys`, `service status`/`start`/`stop` | yes, existing local installation required for local authority | yes |
 | Host mutation | `environment credential rotate`, `environment reset`, `environment peers`, service install/uninstall | repository launcher required | yes |
 | Contributor | `build`, `dev`, `fresh`, `home`, `link`, `shortcut`, `start`, `stop`, `upgrade` | fails, naming `./station <command>` | yes |
 
@@ -218,7 +224,9 @@ What it does, in order:
    (`@kontourai/station-shared/instance-registry`) and confirms it with a
    `GET /api/system/instance` probe.
 2. Mints a **one-time local UI-bootstrap token** (station#1991) and opens your
-   browser at `http://localhost:<ui-port>#station-ui-bootstrap=<token>`.
+   browser at `http://<host>:<ui-port>#station-ui-bootstrap=<token>`, where
+   `<host>` is the host the instance recorded at start, or `localhost` for a
+   wildcard bind or an entry with no recorded host.
    The page redeems the token for a device-session cookie and strips it from
    the URL immediately — see
    [local-bootstrap-token.md](../design/local-bootstrap-token.md). The token
@@ -290,7 +298,11 @@ platform-v2 archives on macOS/Linux. Those install under
 build. Verification can download a pinned Node.js when neither the host nor
 an installed archive supplies one. See the
 [archive install contract](../guides/release-channel-ports.md#prebuilt-archives-and-source-releases)
-for prerequisites, retention and service limits.
+for prerequisites, retention and service limits. On Windows, `install.ps1`
+installs the `station-server-win32-x64.zip` archive from a signed public
+manifest the same way, with a `current` junction and a `station.cmd`
+launcher; see
+[Windows archive installs](../guides/release-channel-ports.md#windows-archive-installs).
 
 ```bash
 # Pin a release; rerun the ordinary command later to upgrade.
@@ -352,7 +364,7 @@ parent directories or infer a target from repository contents.
 
 The default Station applies to every command that talks to a Station API,
 including `environment` verbs. Host-side verbs that must run against the local
-Station (`environment access list|approve|deny`) still require a loopback
+Station (`environment access list|approve|deny`, `environment operator passkeys`) still require a loopback
 target — pass the selected channel's loopback `--api-base` explicitly when a
 remote Station is your default. `--station=<name>` also works for these
 verbs, but only for a saved Station whose endpoint is loopback AND that
@@ -604,6 +616,12 @@ browser this command cannot open, such as a simulator or another profile. Each
 link is single use, and minting one replaces any earlier unspent link, including
 the one `station start` printed (#2612). Without `--print`, the command never
 prints the token.
+
+The link names the host the instance's UI listener bound, as recorded in the
+registry at start (`127.0.0.1` for `start --watch`, which is loopback-only). A
+wildcard bind (`0.0.0.0`, `::`) or an entry that recorded no host keeps
+`localhost`. The host matters because the sign-in a link completes belongs to
+that origin: `localhost` and `127.0.0.1` do not share it.
 
 It is deliberate about refusing rather than guessing: no live instance in the
 home names it and points at `--home`; several live instances require
@@ -858,6 +876,13 @@ the CLI. Chat currently uses that process directory rather than the preserved
 `STATION_INVOKED_CWD`; an invocation from another repository can therefore use
 the Station checkout. For directory-based work, pass an explicit target-visible
 `--cwd`. This is a current caller limitation, not a Project authorization grant.
+
+With `--on=<environment>` and neither `--project` nor `--cwd`, a new chat sends
+no workspace, because this machine's directory means nothing on another Station.
+A directory workspace (the default for the current Station, or `--cwd`, or
+`station delegate --project-path`/`--cwd`) needs the operator's credential or a
+device holding the `coding:exec` grant; a paired device without it is refused with
+`working-directory-not-granted` and nothing starts. `--project` needs no grant.
 
 On continuation, the current caller omits workspace selection: `--project`
 and `--cwd` have no effect and are not warned about. The Conversation keeps its
@@ -1328,7 +1353,8 @@ carries `requestEventId`, the `request.opened` event it was read from.
 `respond` looks the request up first and, for an approval or permission this
 Station still lists, sends that id as `expectedRequestEventId`, so the server
 answers the request that was listed and refuses one that changed. A question
-(a request carrying a questionnaire) is never bound this way, so the server
+(a request carrying an input-request form, or a stored pre-#3390
+questionnaire) is never bound this way, so the server
 still refuses to close one that was not inspected. A request the lookup does
 not find is posted without the id and the server decides; nothing is refused
 client-side.
@@ -1537,8 +1563,25 @@ station connections create --data=<json> [--api-base=<url>]
 station connections update <id> --data=<json> [--api-base=<url>]
 station connections delete <id> [--api-base=<url>]
 station connections test <id> [--api-base=<url>]
+station connections recovery <id> [--api-base=<url>]
+station connections profiles <id> [--api-base=<url>]
+station connections profile-upsert <id> --data='{"ref":"...","label":"..."}' [--api-base=<url>]
+station connections profile-env <id> <profile-ref> --data='{"env":{"NAME":"value"}}' [--api-base=<url>]
+station connections profile-delete|profile-enroll|profile-unenroll <id> <profile-ref> [--api-base=<url>]
+station connections recovery-policy <id> --automatic=<true|false> [--api-base=<url>]
+station connections profile-import <id> <profile-ref> [--include-credentials] [--api-base=<url>]
+station connections profile-apply <id> <profile-ref> --confirm [--timeout-ms=<ms>] [--api-base=<url>]
 ```
 
+`profile-env` replaces a credential profile's non-secret env overlay
+(`{"env":{}}` clears it). Credential-shaped names and values are refused by a
+heuristic (names such as `*_KEY`, `*_TOKEN`, `*_AUTH`, `*_HEADERS`, `*_PAT`;
+values with URL userinfo or an authorization header); set such a name to `""`
+to mask an inherited value. `profile-upsert` refuses an `env` field.
+`profiles` and `profile-env` print each profile's overlay, or `envInvalid`
+with the offending variable names when the saved overlay breaks the rules;
+`recovery` does not. See
+[credential profile env overlays](../guides/connections.md#give-a-credential-profile-its-own-routing).
 `create`, `update` and `delete` print the resolved target to stderr
 (`Target: station=… endpoint=… source=…`) before the request, because the
 default target can be a saved remote Station. `create` refuses an `id` that
@@ -1559,7 +1602,8 @@ station flow report <project> <runId> [--api-base=<url>]
 ```
 
 `attach-command` runs the command **server-side in the project workspace**
-(same trust level as scheduler jobs and tool servers) and attaches the output
+(same trust level as scheduler jobs and tool servers, and a paired device needs the
+operator's `coding:exec` grant: `command-not-granted` otherwise) and attaches the output
 tail as claim evidence: exit 0 attaches the claim with status `assumed` — a
 passing command is a claim, not verification, and Surface downgrades
 `verified` without backing evidence; a non-zero exit or timeout attaches
@@ -1782,16 +1826,23 @@ station service uninstall [--instance=<name>] [--home=<dir>] [--base=<dir>] [--p
 station service run [--instance=<name>] [--home=<dir>] [--base=<dir>] [--port=<n>] [--ui-port=<n>] [--host=<address>] [--features=<flags>] [--allowed-origin=<origin>]...
 ```
 
-`run` is the foreground supervisor. It runs the server and UI in the current
-process and does not return, so it is the process an external supervisor
-wraps rather than a command that registers one: the installed systemd unit,
-the launchd plist, and this repository's container image all invoke it. Use it
-directly when the host has no service manager to register with — a container,
-or any Linux without a systemd user session — where `service install` fails by
-design (see the backend table below). It is not a replacement for
-`station start`, which builds if needed and launches both processes detached;
-`run` deliberately stays in the foreground so its supervisor owns the
-lifecycle.
+`run` is the foreground supervisor used by installed OS units and containers.
+It takes the same atomic home claim before starting Station. With no installed
+policy, it creates a service owner record with its PID and birth fingerprint;
+existing installed policy is preserved. A conflicting live owner keeps the
+supervisor alive without running Station. It polls at 5, 10, 20, then at most
+30-second intervals, logging only refusal-reason changes, and claims and starts
+when the owner is gone. Unreadable registry state exits nonzero. Lost ownership
+at readiness stops Station before returning to the same wait. Install still
+writes policy and a live installer reservation before starting the backend,
+restoring prior policy if backend startup fails.
+
+The container image's existing `service run` invocation self-claims a fresh
+home without a policy-registration step. Direct `command-station.js` is still
+unfenced and must not be described as exclusive ownership when sharing a
+writable home.
+`station start` remains the detached lifecycle command with its separate
+shared-home checks and overrides.
 
 The default service uses the selected channel's runtime home and generated
 server/UI ports (`~/.station/instances/stable`, `18141`, and `18000` for
@@ -1833,7 +1884,13 @@ version `install.sh` made active (on Linux and macOS), the unit runs the
 archive's bundled Node.js through `<install root>/current` (and puts
 `current/runtime/bin` on its `PATH`) with the fixed service launcher that
 `service install` copies to `<install root>/runtime/station-launcher.mjs`; the
-launcher runs the active version. The
+launcher runs the active version. For the version `install.ps1` made active
+(on Windows, #2675 W3), `service install` also copies that version's
+`runtime\node.exe` to `<install root>\runtime\node.exe`, and the task's
+`cmd.exe` wrapper runs that copy with the launcher, from `<install
+root>\runtime`: no junction is on the path the task executes, and the
+running launcher holds no version directory open, so an update can switch
+`current` and prune old versions under it. The
 service manifest records which (`kind`: `source` or `archive`) and, for such
 an archive, its `installRoot`; the installer and `station upgrade` recognize
 the service by that root. Installing a service from another version under
@@ -1878,6 +1935,25 @@ run `station service stop --instance=<name>` and
 `station service start --instance=<name>`: each start tries the restore once
 more. That includes any restart of the launcher, a reboot among them: every
 launcher start in this state runs one restore attempt on its own.
+
+On Windows the launcher supervises itself, because Task Scheduler does
+neither of the things the other two managers do for it: it does not run a task
+again when its program exits, and `schtasks /End` ends only the `cmd.exe`
+wrapper, not the processes it started. So the Windows launcher, where it
+would exit for its manager to restart it (the running version exited, or a
+step of an update failed, such as a restore), waits and starts over from
+`runtime\service-state.json` in the same process: 5 seconds, doubling to at
+most 60, and back to 5 after a run of 10 minutes. A failing restore is still
+counted and still ends in needs-operator. The launcher stops when its
+wrapper is gone, and it stops the running version by closing their IPC
+channel, which `service run` answers with the same orderly shutdown a
+SIGTERM starts elsewhere. `service stop` therefore ends the task, waits for
+the launcher to stop Station and exit (up to its 150-second stop budget, after
+which it ends the launcher by pid only if the launcher's start time proves the
+pid is still the launcher's, and otherwise refuses, naming the pid), and then
+stops anything left by record.
+If the launcher process itself is killed, nothing starts it again until the
+next logon or `service start`.
 `station service status` shows the update (`update` in `--json`), and in this
 state names the recovery; it is the place to see it, since no Station runs
 for a client to ask. While the launcher that accepted the update runs, the service's
@@ -1925,7 +2001,7 @@ origins on an `origins` line.
 | macOS | LaunchAgent in `~/Library/LaunchAgents/` | after reboot and login | `<STATION_HOME>/logs/*-service.{out,err}.log` |
 | Linux | systemd user unit in `~/.config/systemd/user/` | user-manager startup, including reboot without login | `journalctl --user -u station-<instance>.service` |
 | Windows | Task Scheduler task, `ONLOGON`, `LIMITED`, no time limit, no battery rules | installing user's logon | `<STATION_HOME>\logs\*-service.{out,err}.log` |
-| No service manager (container, or Linux without a systemd user session) | none — supervise `station service run` yourself | whenever its supervisor starts it | the supervisor's own stdout/stderr |
+| No service manager (container, or Linux without a systemd user session) | foreground `service run` with an atomic home claim | when invoked after winning the claim; waits while another live owner holds the home | supervisor stdout/stderr and `<STATION_HOME>/logs/<instance>.log` |
 
 `service status` reports the OS unit, lifecycle instance/processes, and both
 server/UI identity endpoints. `--json` emits the same data for automation. An
@@ -1981,6 +2057,9 @@ did not persist. Unlike the macOS (`KeepAlive`) and Linux (`Restart=always`)
 units, the Windows task does not relaunch a service that exits: Task
 Scheduler's restart settings apply to a task it could not start, and a wrapper
 that exits non-zero is left stopped until the next logon or `service start`.
+A service of an `install.ps1` install runs the fixed launcher, which restarts
+the Station it supervises itself (see the self-update section above); a
+service installed from any other code root is not restarted.
 `service status` (and `station upgrade`) read the same six values on a
 `scheduling` line: a task registered by an earlier version reports `stale`
 with the reinstall command, and `healthy` is false until it is reinstalled.
@@ -2032,7 +2111,7 @@ release-specific and must not contain the Station home.
 Start the application server and UI. Builds automatically on first run if `dist-server/` or `dist-ui/` are missing.
 
 ```
-station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force] [--allow-default-home-clean] [--build] [--home=<dir>] [--base=<dir>] [--temp-home] [--instance=<name>] [--features=<flags>] [--log[=<path>]] [--allowed-origin=<origin>]...
+station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force] [--allow-default-home-clean] [--build] [--watch] [--home=<dir>] [--base=<dir>] [--temp-home] [--instance=<name>] [--features=<flags>] [--log[=<path>]] [--allowed-origin=<origin>]...
 ```
 
 | Flag | Default | Description |
@@ -2044,6 +2123,7 @@ station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force
 | `--force` | — | Skip the confirmation prompt for destructive cleanup |
 | `--allow-default-home-clean` | — | Required together with `--force` to delete the selected default runtime home |
 | `--build` | — | Force rebuild before starting (even if dist exists) |
+| `--watch` | — | Development mode: server under `tsx watch`, UI as the Vite dev server proxying to it; loopback only, builds nothing. See [Development](../guides/development.md#running-a-second-station-in-development-mode) |
 | `--home=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | Runtime home for this instance — isolated **and** persistent. It never changes shared profiles; cannot be combined with `--temp-home` or `--base` |
 | `--base=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | The same runtime-only setting as `--home` |
 | `--temp-home` | — | Create and use a temporary home under the system temp directory |
@@ -2130,7 +2210,7 @@ stays valid across restarts. It does not fork the start logic — it derives the
 ports/instance/home, then runs the same path as [`start`](#start).
 
 ```
-station dev [--port-offset=<n>] [--host=<address>] [--build] [--clean] [--force] [--features=<flags>] [--dry-run]
+station dev [--port-offset=<n>] [--host=<address>] [--build] [--watch] [--clean] [--force] [--features=<flags>] [--dry-run]
 ```
 
 | Flag | Default | Description |
@@ -2138,6 +2218,7 @@ station dev [--port-offset=<n>] [--host=<address>] [--build] [--clean] [--force]
 | `--port-offset=<n>` | derived | Force an exact offset (`0`-`500`), overriding the derivation. `--port-offset=0` is valid and yields the base ports `39140`/`40140` (just below the derived `39141`-`39640` band). |
 | `--host=<address>` | `0.0.0.0` | Bind address; the default is a wildcard so a phone or LAN/tailnet client can reach the stable URL |
 | `--build` | — | Force a rebuild before starting |
+| `--watch` | — | Hot-reload mode, as `station start --watch` |
 | `--clean` | — | Wipe this dev instance's isolated home before starting (with `--force` to skip the prompt) |
 | `--force` | — | Skip the cleanup prompt / force a restart of an already-running dev instance |
 | `--features=<flags>` | — | Comma-separated feature flags |
@@ -2195,12 +2276,18 @@ station environment credential show
 station environment credential rotate [--force]
 station environment reset [--force]
 station environment offer [--tailscale] [--tailscale-serve-port=<port>]
+station environment operator passkeys [list] [--json] [--api-base=<loopback-url>|--station=<name>]
+station environment operator passkeys approve <code> [--device=<id-prefix>] [--api-base=<loopback-url>|--station=<name>]
+station environment operator passkeys deny <code> [--api-base=<loopback-url>|--station=<name>]
+station environment operator passkeys revoke <passkey-id> [--api-base=<loopback-url>|--station=<name>]
 station environment access list [--api-base=<loopback-url>|--station=<name>]
-station environment access approve [<request-id-or-offer-id>|--latest] [--force] [--bind-person|--bind-account|--personal-device] [--api-base=<loopback-url>|--station=<name>]
+station environment access approve [<request-id-or-offer-id>|--latest] [--scope=<scope,…>] [--force] [--bind-person|--bind-account|--personal-device] [--api-base=<loopback-url>|--station=<name>]
 station environment access deny [<request-id-or-offer-id>|--latest] [--force] [--api-base=<loopback-url>|--station=<name>]
 station environment access devices [--json] [--api-base=<loopback-url>|--station=<name>]
 station environment access scope <device-id|id-prefix|name> (--add=<scope,…>|--remove=<scope,…>|--set=<scope,…>) [--dry-run] [--api-base=<loopback-url>|--station=<name>]
 station environment access scopes [--json]
+station environment access revoke <device-id|id-prefix|name> [--force] [--api-base=<loopback-url>|--station=<name>]
+station environment access remove <device-id|id-prefix|name> [--force] [--api-base=<loopback-url>|--station=<name>]
 station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
 station environment hosts [--api-base=<url>]
 station environment list [--api-base=<url>]
@@ -2239,7 +2326,11 @@ station environment peers remove <environment-id>
   `--tailscale-serve-port` selects a strict port from 1 through 65535 (default
   443) and requires `--tailscale`; the selected port is used for the endpoint,
   mapping, and manual teardown guidance. Offer expiry
-  never changes Serve and Station never enables Funnel.
+  never changes Serve and Station never enables Funnel. The printed QR and
+  link grant **Standard** (`orchestration:read orchestration:operate
+  terminal:operate`), the same grant the **Paired devices** panel offers.
+  `--payload-only` is the desktop SSH launcher's machine flow: it names no
+  scope, so the Station issues its default grant.
 - `environment access request` is the requester side of device pairing: it asks a
   remote Station for access, waits for an operator to approve it there, then
   stores the issued bearer credential in the OS keyring and registers a
@@ -2255,14 +2346,20 @@ station environment peers remove <environment-id>
   read its operator credential from and is refused with that reason; use
   `STATION_HOME=<home> --api-base=<loopback-url>` for it instead
   (station#4515). `approve`/`deny` accept either id printed by `access list`
-  — the request id or the offer id — or `--latest`.
+  — the request id or the offer id — or `--latest`. `access list` shows what
+  each request asks for (`asksFor`), and `approve` names it before confirming.
+  `approve --scope=<scope,…>` keeps only those of the requested scopes; it can
+  only narrow the request, and cannot be combined with `--bind-account`.
+  Without `--scope`, the device gets what it asked for.
 - `access devices`/`scope`/`scopes` manage what each paired device may do, on
   the same host-only operator channel (#1796). `access devices` lists the live
   paired devices with id, name, last seen and scopes. `access scope` adds,
   removes or sets scopes on one device, named by its id, a unique id prefix,
   or its exact name (an ambiguous prefix or name is refused). Every scope is
   checked against the real vocabulary, `access:manage` is never grantable to a
-  device, the new scope is computed from the device's current one and sent
+  device (one paired by an older Station may still hold it; any real change
+  removes it and says so, as the desktop access editor does, while a change
+  that asks for nothing new leaves the device alone), the new scope is computed from the device's current one and sent
   with the scope it replaces, so a change another operator made meanwhile is
   refused rather than overwritten (rerun to apply yours). `--dry-run` prints
   before and after without changing anything. `access scopes` lists every
@@ -2278,6 +2375,18 @@ station environment peers remove <environment-id>
   it; re-running changes nothing already reset. A paired remote CLI cannot run
   these verbs: they refuse a non-loopback target before reading any
   credential.
+- `access revoke` and `access remove` finish what the Paired devices panel
+  cannot do from a native host app (#3256), on the same host-only channel and
+  with the same device selector as `access scope` (id, unique id prefix, or
+  exact name; an ambiguous one is refused). `access revoke` ends a live
+  device's access immediately, closes its terminal and voice connections, and
+  resets to Ask what its full access had granted, printing the same report as
+  `--remove approval:full-access`; the device can pair again later. `access
+  remove` deletes the record of an already-revoked device; a device that is
+  still paired is refused (revoke it first). Both name the device before
+  acting and fail unless Station's answer names that same device as revoked.
+  Neither can be undone, so an interactive run asks first, and a run with no
+  terminal is refused before Station is contacted unless it passes `--force`.
 - `environment peers` manages the **outbound** peer-credential store: the
   credentials this Station presents when it delegates to another Station, as
   opposed to the inbound device credentials `access`/pairing issues. `peers add`
@@ -2354,7 +2463,10 @@ the installer without a Git checkout or pre-stop action. Installed plugins are p
 From a prebuilt server archive (`station-server-<os>-<arch>`) that `install.sh`
 installed (the version `<install root>/current` names), `upgrade` validates the
 install state, provenance, ownership marker and active link, then re-runs that
-version's installer with the recorded release manifest. Public-manifest
+version's installer with the recorded release manifest. On Windows the
+installer is the version's `install.ps1`, run through the system Windows
+PowerShell, and the install root's ACL (current user only) is checked in place
+of POSIX mode bits. Public-manifest
 installs record the URL in schema-4 state; an explicit
 `STATION_INSTALL_PUBLIC_MANIFEST_URL` overrides it. The installer keeps the ports
 the install recorded: the CLI's own `STATION_SERVER_PORT`/`STATION_UI_PORT`
@@ -2957,6 +3069,12 @@ station plugin list
 Request removal by manifest name through the server's lifecycle owner. Managed
 contributions are retired there; retained data and pending cleanup are separate
 dispositions. The CLI prints completion only after an accepted success response.
+When that response carries the plugin's own `commandEffects` withdrawal with a
+status other than `completed` (Station answers 202 until captured palette
+command effects settle), the CLI appends the outstanding count, status and
+withdrawal id; with `commandEffectsUnavailable` it says completion cannot be
+confirmed. The removal has already committed in both cases. A dependency's
+`dependencyCommandEffects` are not summarized.
 
 ```
 station plugin remove <name>
@@ -2980,7 +3098,7 @@ station plugin info my-plugin
 
 ### `plugin update <name>`
 
-Update an installed plugin through the running Station server. The server resolves its source, rebuilds it, and applies registry and runtime changes as one lifecycle operation.
+Update an installed plugin through the running Station server. The server resolves its source, rebuilds it, and applies registry and runtime changes as one lifecycle operation. Its success message carries the same command-effect note as `plugin remove`.
 
 ```
 station plugin update <name>
@@ -3129,7 +3247,7 @@ Findings are evidence input only and do not approve, reject, satisfy a gate, or 
 
 When `station start` launches the server and UI processes, it writes per-instance state to `.station/instances/<instance-id>.json` in the current working directory. Each record includes the instance id, home directory, ports, and current server/UI PIDs.
 
-`station stop` resolves the matching instance from `--instance`, `--home`/`--base`, `--port`, or `--ui-port`, then terminates only that instance. If multiple instances are live and the selector is ambiguous, the CLI refuses and prints the matching records so you can choose the intended one.
+`station stop` resolves the matching instance from `--instance`, `--home`/`--base`, `--port`, or `--ui-port`, then terminates only that instance: the PIDs it recorded, checked against the process fingerprint recorded at start. A process that merely listens on one of the instance's ports is never signalled, and a port listener alone does not keep an instance record alive, so a record left by a start that lost its port race is reclaimed without touching the sibling that owns the port. A recorded PID whose process no longer matches its fingerprint is not signalled and the stop refuses. On Windows the fingerprint is the process's start time and executable image. A live recorded PID whose identity cannot be read is not signalled either: the stop refuses, keeps the record, and says how to retry or end the process by hand. `station start` refuses, before binding, a port band (server port through consent port, plus the UI port) that overlaps another live instance recorded in this checkout or published to the home's instance registry, and names that instance. If multiple instances are live and the selector is ambiguous, the CLI refuses and prints the matching records so you can choose the intended one.
 
 During rollout, Station still recognizes the prior `<cwd>/.station.pids` file when present and migrates away from it as new-format state is written.
 

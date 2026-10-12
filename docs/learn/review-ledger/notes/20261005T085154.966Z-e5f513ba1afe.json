@@ -1,0 +1,7 @@
+{
+  "revision": "8eac3feb64ce2b5de0b05d2dcb790f2a60fbec71",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"StartComposer now clears the compact auto-grow height when Home turns full-size. getting-started describes the chips, the text box and draft returns, not box sizing, so no claim changes. I checked lines 119, 177 and 185 against the composer.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-start/StartComposer.tsx"]}
+  ]
+}

@@ -281,6 +281,34 @@ describe.skipIf(!posix)('gh-app-token as a child process', () => {
     });
   });
 
+  it('requests workflows write only when explicitly selected for workflow PR arming', async () => {
+    const github = await fakeGitHub();
+    const keyDir = makeTempDir('station-gh-workflow-key-');
+    writeFileSync(join(keyDir, 'app.pem'), PEM, { mode: 0o600 });
+    const env = baseEnv({
+      STATION_GH_APP_ID: APP_ID,
+      STATION_GH_API_URL: github.url,
+      STATION_GH_APP_PRIVATE_KEY_PATH: join(keyDir, 'app.pem'),
+    });
+    expect(DEFAULT_PERMISSIONS).not.toHaveProperty('workflows');
+    const result = await runHelper(
+      ['--permissions', 'pull_requests:write,contents:write,workflows:write'],
+      env,
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(github.seen.at(-1)?.body).toEqual({
+      repositories: ['station'],
+      permissions: {
+        metadata: 'read',
+        pull_requests: 'write',
+        contents: 'write',
+        workflows: 'write',
+      },
+    });
+    const invalid = await runHelper(['--permissions', 'workflows:read'], env);
+    expect(invalid.status).toBe(EXIT_USAGE);
+  });
+
   it('fails closed with the setup pointer when unconfigured', async () => {
     const result = await runHelper([], baseEnv());
     expect(result.status).toBe(EXIT_UNCONFIGURED);

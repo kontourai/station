@@ -1,0 +1,7 @@
+{
+  "revision": "2256e32585d2fe891cad3587938b60e5a6e5d129",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Re-recorded after the session-api.md paragraph on reload approval hydration changed from newest turn only to a bounded older-page read. The ADR's flag and rollback decisions and its retained orchestration decisions do not mention hydration; I checked that the changed paragraph contradicts nothing in it.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

@@ -33,7 +33,7 @@ const PRIVACY_INVENTORY: readonly PrivacyInventoryEntry[] = [
     usedForTracking: false,
     purpose: 'Analytics',
     collection:
-      'Station startup metadata (app version, operating-system platform, and CPU architecture), classified session-recovery outcomes (failure category, recovery decision, and result), and engine-turn terminal outcomes (engine family and completed/aborted result). Delivery occurs only when STATION_TELEMETRY_ENDPOINT is configured, telemetry remains enabled, and the current inventory disclosure receipt exists.',
+      'Versioned event IDs and producer timestamps, inventory revision and installation hash, allowlisted app version/platform/architecture and optional full Git hash with provenance source, release channel and build-stamp dirty flag on every event; Station startup metadata, classified session-recovery outcomes (failure category, recovery decision, and result), and engine-turn terminal outcomes (engine family and completed/aborted/failed result). Delivery occurs only when STATION_TELEMETRY_ENDPOINT is configured, telemetry remains enabled, and the current inventory disclosure receipt exists.',
     destination:
       'The operator-configured STATION_TELEMETRY_ENDPOINT. A random per-install UUID is SHA-256 hashed before delivery; it is not account-derived.',
     evidence: [

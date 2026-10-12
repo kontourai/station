@@ -1,0 +1,7 @@
+{
+  "revision": "c940b8d8bd415857e855a1674fc214f5d456b5a8",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"The reader change (cap 1000 strict, plain read kept after a failed checks read, reason() for the snapshot) alters no SDK call, cache key or payload shape; the SDK reference states none of these.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

@@ -50,6 +50,16 @@ export const INTERNAL_PROXY_PEER_HEADER = 'x-station-proxy-peer';
 export const INTERNAL_PROXY_FORWARDED_HOST_HEADER =
   'x-station-proxy-forwarded-host';
 /**
+ * #2894: set to `1` by Station's own UI proxy when ITS client sent forwarding
+ * evidence (`forwarded`, `x-forwarded-*`, `x-real-ip` or any `tailscale-*`
+ * header). The proxy strips `tailscale-*` before relaying, so without this
+ * the backend could not tell that the hop in front of the proxy was itself a
+ * forwarder. Readers treat mere presence as off-host: it can only make a
+ * request look less local, so it needs no trust check.
+ */
+export const INTERNAL_PROXY_CLIENT_FORWARDED_HEADER =
+  'x-station-proxy-client-forwarded';
+/**
  * The orchestration thread a Station-agent relay turn belongs to (#2589).
  * Set only by the Station-agent adapter's `/chat` relay, which republishes
  * every tool-approval request of that stream as the thread's own

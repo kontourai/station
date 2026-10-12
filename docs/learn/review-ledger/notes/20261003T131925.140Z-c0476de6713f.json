@@ -1,0 +1,7 @@
+{
+  "revision": "7b543416d0d209f8f1c729ee589d833b4c3d810f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"BrowserSessionService: checked composition, grant, fence, dialog and console claims against browser-agent.ts, browser-automation.ts and station-control-browser-tools.ts after adding browser_close and paged browser_status. The section names no tool list or status size; BrowserAutomation still consumes the minted grant and close reuses the registry closeSession. Accurate; no prose change (the canonical description of close lives in the Browser workspace guide).","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

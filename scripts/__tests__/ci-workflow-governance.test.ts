@@ -315,7 +315,7 @@ describe('primary CI workflow governance', () => {
     );
   });
 
-  test('keeps Secret Scan on candidate pull requests to main', () => {
+  test('keeps PR: Secret scan on candidate pull requests to main', () => {
     const secretScan = load(
       readFileSync(
         new URL('../../.github/workflows/secret-scan.yml', import.meta.url),

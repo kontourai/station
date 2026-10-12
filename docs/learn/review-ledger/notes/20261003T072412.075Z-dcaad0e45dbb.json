@@ -1,0 +1,13 @@
+{
+  "revision": "694b59dcea900e9e3f33bd41a52dac226227d168",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed the diagnostic-only narrowing: an uncommitted note with a revision still inside the PR range is refused by the existing HEAD requirement without claiming history was rewritten. Only out-of-range revisions get rewritten-history guidance. Admission, baseline reachability and the documentation contracts are unchanged. Earlier 92-test selection, both fault catches and all 13 documentation truth lanes passed before this narrowing; the new control and final checks will run on this revision.","inputs":[".veritas/README.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the diagnostic-only narrowing: an uncommitted note with a revision still inside the PR range is refused by the existing HEAD requirement without claiming history was rewritten. Only out-of-range revisions get rewritten-history guidance. Admission, baseline reachability and the documentation contracts are unchanged. Earlier 92-test selection, both fault catches and all 13 documentation truth lanes passed before this narrowing; the new control and final checks will run on this revision.","inputs":["docs/guides/code-quality.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/documentation.md","note":"Reviewed the diagnostic-only narrowing: an uncommitted note with a revision still inside the PR range is refused by the existing HEAD requirement without claiming history was rewritten. Only out-of-range revisions get rewritten-history guidance. Admission, baseline reachability and the documentation contracts are unchanged. Earlier 92-test selection, both fault catches and all 13 documentation truth lanes passed before this narrowing; the new control and final checks will run on this revision.","inputs":["docs/guides/documentation.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/learn/README.md","note":"Reviewed the diagnostic-only narrowing: an uncommitted note with a revision still inside the PR range is refused by the existing HEAD requirement without claiming history was rewritten. Only out-of-range revisions get rewritten-history guidance. Admission, baseline reachability and the documentation contracts are unchanged. Earlier 92-test selection, both fault catches and all 13 documentation truth lanes passed before this narrowing; the new control and final checks will run on this revision.","inputs":["docs/learn/README.md","scripts/lib/documentation-freshness.mjs"]}
+  ]
+}

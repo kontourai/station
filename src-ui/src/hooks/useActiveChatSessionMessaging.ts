@@ -4,6 +4,7 @@ import type {
 } from '@kontourai/station-contracts/orchestration';
 import {
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  MODEL_NOT_ADVERTISED_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
@@ -202,6 +203,27 @@ function cachedSummaryAwaitsFirstTurn(
   );
 }
 
+type SendAdmission = 'accepted' | 'not-invoked' | 'indeterminate';
+
+async function observeSendAdmission<T>(
+  invoke: (report: (status: SendAdmission) => void) => Promise<T>,
+  observer: ((status: SendAdmission) => void) | undefined,
+): Promise<T> {
+  let reported = false;
+  const report = (status: SendAdmission) => {
+    reported = true;
+    observer?.(status);
+  };
+  try {
+    const result = await invoke(report);
+    if (!reported) report(result === true ? 'accepted' : 'indeterminate');
+    return result;
+  } catch (error) {
+    if (!reported) report('indeterminate');
+    throw error;
+  }
+}
+
 export function useSendMessage(
   apiBase: string,
   onActiveSessionChange?: (newSessionId: string) => void,
@@ -261,9 +283,16 @@ export function useSendMessage(
          * default send-while-busy path.
          */
         queueOnBusy?: boolean;
+        /** Form ownership observes admission without inferring delivery from the legacy return value. */
+        onAdmission?: (status: SendAdmission) => void;
+        /** Retire recovery actions whose originating submission was superseded. */
+        claimRetry?: () => boolean;
         /** State-bound capability supplied only by OutboundDispatchModule. */
         dispatch?: OutboundDispatchClaim;
         executionSnapshot?: {
+          executionAgentId?: string;
+          executionOnCurrentStation?: boolean;
+          expectedDefinitionFingerprint?: string;
           requestedModel?: string | null;
           requestedProviderOptions?: Record<string, unknown>;
           model?: string;
@@ -325,6 +354,7 @@ export function useSendMessage(
                       )[0];
         if (refusal) {
           addEphemeralMessage(sessionId, { role: 'system', content: refusal });
+          options?.onAdmission?.('not-invoked');
           return false;
         }
       }
@@ -387,6 +417,7 @@ export function useSendMessage(
               },
             ],
           });
+          options?.onAdmission?.('accepted');
           return;
         }
         steerOpenTurn = true;
@@ -507,6 +538,7 @@ export function useSendMessage(
           removeClaim();
           addEphemeralMessage(sessionId, {
             role: 'system',
+            sendFailure: true,
             content: steerRefusalMessage(result),
           });
           const latest = activeChatsStore.getSnapshot()[sessionId];
@@ -578,6 +610,15 @@ export function useSendMessage(
           apiBase,
           sessionId,
           agentSlug,
+          executionAgentId: options?.executionSnapshot
+            ? options.executionSnapshot.executionAgentId
+            : currentState?.executionAgentId,
+          executionOnCurrentStation: options?.executionSnapshot
+            ? options.executionSnapshot.executionOnCurrentStation
+            : currentState?.executionOnCurrentStation,
+          expectedDefinitionFingerprint: options?.executionSnapshot
+            ? options.executionSnapshot.expectedDefinitionFingerprint
+            : currentState?.expectedDefinitionFingerprint,
           projectSlug: currentState?.projectSlug,
           setApprovalMode: carriedApprovalPick,
           setApprovalModeBasedOn: currentState?.approvalPostureSequence ?? null,
@@ -634,6 +675,7 @@ export function useSendMessage(
           // durable tab keyed by its conversation while routing subsequent
           // live controls/events to the server-receipted child identity.
           currentSessionId: receipt.sessionId,
+          executionAgentId: receipt.resolution.executionAgentId,
           // #2436: the carried pick is settled only by what the server
           // reports became of it, never by the send's success alone. A
           // Station that reports nothing (an older one, or another Station
@@ -681,6 +723,7 @@ export function useSendMessage(
           invalidate(['orchestration-sessions']);
           invalidate(conversationQueries.inventory().queryKey);
         }
+        options?.onAdmission?.('accepted');
         onActiveSessionChange?.(sessionId);
         return options?.dispatch
           ? ({
@@ -739,6 +782,7 @@ export function useSendMessage(
           );
           addEphemeralMessage(sessionId, {
             role: 'system',
+            sendFailure: true,
             content: FULL_ACCESS_REFUSAL_SUMMARY,
             fullAccessRefusal: {
               ...fullAccessRefusalNotice(error, 'message-not-sent'),
@@ -756,6 +800,7 @@ export function useSendMessage(
                         : 'Default'
                     })`,
                     handler: () => {
+                      if (options?.claimRetry && !options.claimRetry()) return;
                       const now = activeChatsStore.getSnapshot()[sessionId];
                       // The draft the rollback restored is this message:
                       // sending it empties the composer as a send would.
@@ -769,19 +814,29 @@ export function useSendMessage(
                           attachments: [],
                           attachmentStages: [],
                         });
-                      void sendMessage(
-                        sessionId,
-                        agentSlug,
-                        now?.conversationId ?? conversationId,
-                        content,
-                        attachments,
-                        ambientContext,
-                        resolvedTurnId,
+                      return observeSendAdmission(
+                        (onAdmission) =>
+                          sendMessage(
+                            sessionId,
+                            agentSlug,
+                            now?.conversationId ?? conversationId,
+                            content,
+                            attachments,
+                            ambientContext,
+                            resolvedTurnId,
+                            {
+                              queueOnBusy: options?.queueOnBusy,
+                              onAdmission,
+                              claimRetry: options?.claimRetry,
+                            },
+                          ),
+                        options?.onAdmission,
                       );
                     },
                   },
                 }),
           });
+          options?.onAdmission?.('not-invoked');
           return false;
         }
         // Stop deliberately releases the browser's foreground observer after
@@ -837,6 +892,11 @@ export function useSendMessage(
                 clientTurnId: resolvedTurnId,
                 sessionId,
                 agentSlug,
+                executionAgentId: currentState?.executionAgentId,
+                executionOnCurrentStation:
+                  currentState?.executionOnCurrentStation,
+                expectedDefinitionFingerprint:
+                  currentState?.expectedDefinitionFingerprint,
                 conversationId: latestState?.conversationId ?? conversationId,
                 content,
                 attachments,
@@ -871,6 +931,7 @@ export function useSendMessage(
           // the completion-notice comment above for why that matters.
           addEphemeralMessage(sessionId, {
             role: 'system',
+            queuedRetry: true,
             // archive#3686. Neither line asserts a network condition or a
             // moment of recovery, because this device observes neither.
             //
@@ -902,6 +963,7 @@ export function useSendMessage(
               },
             },
           });
+          options?.onAdmission?.('accepted');
           return false;
         }
 
@@ -936,6 +998,7 @@ export function useSendMessage(
           ) {
             drainQueuedMessageOnTurnCompleted(apiBase, sessionId);
           }
+          options?.onAdmission?.('accepted');
           return false;
         }
 
@@ -1015,6 +1078,7 @@ export function useSendMessage(
         clearEphemeralMessages(sessionId);
         addEphemeralMessage(sessionId, {
           role: 'system',
+          sendFailure: true,
           // Title on its own line, as `formatChatErrorDisplay` shapes the
           // transcript's error markers: "Error: thread … Provider session…"
           // ran the label into the engine's text.
@@ -1047,20 +1111,34 @@ export function useSendMessage(
               : terminalSession ||
                   foregroundIndeterminate ||
                   dispatchClaim ||
-                  err.code === SESSION_START_INDETERMINATE_CODE
+                  err.code === SESSION_START_INDETERMINATE_CODE ||
+                  // Refused for the same model every time; the user has to
+                  // choose another, so a blind Retry only repeats the refusal.
+                  err.code === MODEL_NOT_ADVERTISED_CODE
                 ? undefined
                 : {
                     label: 'Retry',
-                    handler: () =>
-                      sendMessage(
-                        sessionId,
-                        agentSlug,
-                        latestState?.conversationId ?? conversationId,
-                        content,
-                        attachments,
-                        ambientContext,
-                        resolvedTurnId,
-                      ),
+                    handler: () => {
+                      if (options?.claimRetry && !options.claimRetry()) return;
+                      return observeSendAdmission(
+                        (onAdmission) =>
+                          sendMessage(
+                            sessionId,
+                            agentSlug,
+                            latestState?.conversationId ?? conversationId,
+                            content,
+                            attachments,
+                            ambientContext,
+                            resolvedTurnId,
+                            {
+                              queueOnBusy: options?.queueOnBusy,
+                              onAdmission,
+                              claimRetry: options?.claimRetry,
+                            },
+                          ),
+                        options?.onAdmission,
+                      );
+                    },
                   },
         });
         // The engine just answered the image question for itself; the
@@ -1068,6 +1146,15 @@ export function useSendMessage(
         // minutes and may predate that answer. Re-read it so the composer's
         // chips and Send gate reflect the refusal instead of "Ready".
         if (err.code === ATTACHMENT_INPUT_UNSUPPORTED_CODE) {
+          invalidate(['connections', 'engines']);
+        }
+        // The engine answered for itself which models it offers, and the
+        // composer's snapshot of the Agent, its engine and that list is what
+        // let the model be chosen. Re-read all three so the picker reflects
+        // the engine this chat actually resolved to.
+        if (err.code === MODEL_NOT_ADVERTISED_CODE) {
+          invalidate(['agents']);
+          invalidate(['acp-connections']);
           invalidate(['connections', 'engines']);
         }
         // A send that did not take can turn a Draft into a first-send failure
@@ -1090,6 +1177,9 @@ export function useSendMessage(
             reason: translated.title,
           } satisfies OutboundDispatchTransportResult;
         }
+        options?.onAdmission?.(
+          isProvablyNotSent(err) ? 'not-invoked' : 'indeterminate',
+        );
         return false;
       }
     },

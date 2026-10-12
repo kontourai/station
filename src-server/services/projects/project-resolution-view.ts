@@ -102,7 +102,10 @@
  * dependency required means this module cannot reintroduce it by omission.
  */
 
-import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import type {
+  ProjectConfig,
+  ProjectRunsAt,
+} from '@kontourai/station-contracts/project';
 import type {
   ProjectPrimaryResourceSelection,
   ProjectRepoResource,
@@ -122,6 +125,10 @@ export interface ProjectResourceResolverLike {
     projectSlug: string,
     resourceId?: string,
   ): Promise<ResourceResolutionResult>;
+  /** #3370: the project list's run locations; absent, the list omits them. */
+  describeProjectRunLocations?(
+    projectSlugs: readonly string[],
+  ): Promise<ReadonlyMap<string, ProjectRunsAt>>;
 }
 
 /**

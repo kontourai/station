@@ -1,0 +1,7 @@
+{
+  "revision": "35109fbfbcacc6dece1c2c87d5e302fac56f731b",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Checked every cited path exists on origin/main and the proposal matches its verified design input (14c83da3cd); proposal, no behavior shipped.","inputs":["docs/design/automations.md","docs/design/approval-posture-server-ordered.md","docs/guides/deployment.md","docs/security/remote-access-threat-model.md","scripts/qualification-repair.mjs"]}
+  ]
+}

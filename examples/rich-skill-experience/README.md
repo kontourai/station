@@ -20,6 +20,11 @@ and bounded canonical pending questions, answers the exact request event, and
 stages an explicitly selected next experience in Station’s composer. Sending the
 next stage remains a user action. It invents no progress or output state.
 
+**Prepare another round** stages the same experience with its original inputs.
+This is an example-added convenience, not a promised output of the Skill. Review
+the prepared composer and explicitly send to begin that round. Declared links to
+other experiences use the same preparation path.
+
 Refresh questions after the engine asks a canonical input question. Text/choice
 answers return through the existing `respondToRequest` command. Secret questions,
 ordinary approval requests and engines that ask in chat keep Station’s canonical

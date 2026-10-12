@@ -240,8 +240,11 @@ not a transactional backup of a running Station home.
 | Station home, plugin state, sessions and agent credentials | Outside this format's scope |
 
 Ignore rules outside the checkout are not installed on the target. A source's
-private local/global Git configuration is never copied wholesale. Tracked files
-remain included even when an ignore pattern matches them. Git's content diff is
+private local/global Git configuration is never copied wholesale. Package Git
+operations suppress external attribute and ignore files for each command rather
+than writing those file references into the restored repository. Station's Git
+routes continue to reject repository-local external file configuration. Tracked
+files remain included even when an ignore pattern matches them. Git's content diff is
 a better cross-host comparison than cached source status after a configuration
 change, since the target index is reconstructed.
 

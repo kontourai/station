@@ -1,0 +1,7 @@
+{
+  "revision": "9330f3941806d4e9c52fa4774d66c91079bd7431",
+
+  "notes": [
+    {"path":"docs/design/pane-host-contract.md","note":"Bind the real generated frame runtime producer: inspected delimiter/separator encoding and identity round trip; HTML-parser mutation catches removal. Existing bridge and opaque sandbox limits remain.","inputs":["docs/design/pane-host-contract.md"]}
+  ]
+}

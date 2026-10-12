@@ -56,6 +56,7 @@ export function JobFormModal({
   providers = [],
   hidden = false,
   checkingSetup = false,
+  interactionDisabled = false,
   setupError,
   onReadinessChange,
 }: {
@@ -65,6 +66,7 @@ export function JobFormModal({
   onSetupAgent?: (target: string) => void;
   hidden?: boolean;
   checkingSetup?: boolean;
+  interactionDisabled?: boolean;
   setupError?: unknown;
   onReadinessChange?: (ready: boolean) => void;
   providers?: SchedulerProviderInfo[];
@@ -307,6 +309,7 @@ export function JobFormModal({
       }));
 
   const handleSubmit = () => {
+    if (interactionDisabled) return;
     const nextSchedule = scheduleFromForm();
     const monitor =
       form.monitorType === 'github-pull-request'
@@ -429,6 +432,7 @@ export function JobFormModal({
             pending={pending}
             pendingLabel="Saving…"
             disabled={
+              interactionDisabled ||
               checkingSetup ||
               !scheduleValid ||
               !monitorValid ||

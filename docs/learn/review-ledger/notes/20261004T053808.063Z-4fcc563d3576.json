@@ -1,0 +1,23 @@
+{
+  "revision": "3ea45d52b50c833e6646c782c52a2ad64b27a6f9",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"#3036: freshness stays scoped on PRs and advisory in the queue, main and Nightly; the new guards only add note-removed and append-only-unverified blockers in scoped mode, and advisory events never reach them (documentation-freshness.mjs resolves the mode before scope).","inputs":[".veritas/README.md","docs/guides/documentation.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/README.md","note":"#3036: only the documentation guide gained a guards paragraph; the index's routing claims are unchanged.","inputs":["docs/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"#3036: the documentation guide only gained the ledger guards paragraph; the follow-through claims cited here are unchanged.","inputs":["docs/architecture/abstraction-review.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"#3036: the freshness paragraph still matches documentation-freshness.mjs: scoped blocking, advisory in the queue. The new note-removed and append-only-unverified blockers are scoped-only and do not change the advisory statement.","inputs":["docs/guides/code-quality.md","docs/guides/documentation.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/development.md","note":"#3036: only links the documentation guide, which gained a ledger guards paragraph; no claim here depends on it.","inputs":["docs/guides/development.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/documentation.md","note":"#3036: added the four guards (append-only notes, NOT_VERIFIED on a missing merge base, 178-character path budget, rollback of batch writes), checked against documentation-freshness.mjs, review-ledger-store.mjs, record-documentation-review.mjs, check-documentation-freshness.mjs and review-ledger-guards.test.ts, including measured 137/87 character longest record and capture paths.","inputs":["docs/guides/documentation.md","scripts/check-documentation-freshness.mjs","scripts/lib/documentation-freshness.mjs","scripts/lib/review-ledger-store.mjs","scripts/record-documentation-review.mjs"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#3036: only links the documentation workflow, which gained a guards paragraph; no claim here depends on it.","inputs":["docs/guides/integrating-station.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/testing.md","note":"#3036: links the documentation workflow and real-ledger freshness checks only; the new guards add a separate test file and change no claim made here.","inputs":["docs/guides/testing.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/learn/README.md","note":"#3036: the notes-files description is unchanged: record-documentation-review.mjs still writes one new notes file per run, now through writeReviewFiles with rollback; the loader and CLI output gained guards without changing the claims here.","inputs":["docs/learn/README.md","scripts/lib/documentation-freshness.mjs","scripts/lib/review-ledger-store.mjs","scripts/record-documentation-review.mjs"]}
+  ]
+}

@@ -8,12 +8,11 @@ import { readFileSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  claimDesktopSidecar,
+  type ClaimHostOwnerResult,
+  claimHostOwner,
   type InstanceConfig,
   reconcileStaleInstances,
-  removeInstance,
-  updateStatus,
-  upsertInstance,
+  removeOwnedInstance,
 } from '@kontourai/station-shared/instance-registry';
 import {
   birthProvesReuse,
@@ -24,9 +23,8 @@ import { quarantineLegacyServiceManifest } from './legacy-service-manifest-quara
 
 type Operation =
   | 'read'
-  | 'upsert'
-  | 'updateStatus'
-  | 'remove'
+  | 'publishSidecar'
+  | 'releaseSidecar'
   | 'claimSidecar'
   | 'ensureHomeSchema'
   | 'prepareRuntime'
@@ -34,9 +32,8 @@ type Operation =
   | 'profileLockIdentity';
 const OPERATIONS = new Set<Operation>([
   'read',
-  'upsert',
-  'updateStatus',
-  'remove',
+  'publishSidecar',
+  'releaseSidecar',
   'claimSidecar',
   'ensureHomeSchema',
   'prepareRuntime',
@@ -174,11 +171,9 @@ function input(operation: Operation): Record<string, unknown> {
         : operation === 'profileLockIdentity'
           ? ['pid']
           : ['home']
-      : operation === 'upsert' || operation === 'claimSidecar'
+      : operation === 'publishSidecar' || operation === 'claimSidecar'
         ? ['home', 'id', 'instance']
-        : operation === 'updateStatus'
-          ? ['home', 'id', 'status', 'pid']
-          : ['home', 'id'];
+        : ['home', 'id'];
   exactKeys(parsed, allowed);
   return parsed;
 }
@@ -311,32 +306,73 @@ export async function runInstanceRegistryBridge(): Promise<void> {
     return;
   }
   const id = requiredString(inputValue.id);
-  if (operation === 'claimSidecar') {
-    const instance = instanceConfig(inputValue.instance) as InstanceConfig;
-    if (instance.type === 'sidecar') {
-      instance.pid ??= process.ppid;
-      instance.birth = lookupProcessBirthFingerprint(instance.pid) ?? undefined;
-    }
-    const claimed = claimDesktopSidecar(id, instance, stationHome!);
-    process.stdout.write(`${JSON.stringify({ ok: true, claimed })}\n`);
+  if (operation === 'releaseSidecar') {
+    // Owner-checked: only a sidecar record this desktop recorded (its own
+    // pid) or whose recorded child is provably gone. The supervisor reaps its
+    // child before every release, so a live pid here is someone else's.
+    removeOwnedInstance(id, {
+      home: stationHome!,
+      pid: process.ppid,
+      ownTypes: ['sidecar'],
+      removeWhenOwnerGone: true,
+    });
+    process.stdout.write('{"ok":true}\n');
     return;
   }
-  if (operation === 'upsert') {
-    const instance = instanceConfig(inputValue.instance);
-    if (instance.type === 'sidecar' && typeof instance.pid === 'number') {
-      instance.birth = lookupProcessBirthFingerprint(instance.pid) ?? undefined;
-    }
-    upsertInstance(id, instance, stationHome!);
-  } else if (operation === 'updateStatus') {
-    const status = requiredString(inputValue.status);
-    const pid = inputValue.pid;
-    if (pid !== undefined && (!Number.isInteger(pid) || (pid as number) <= 0))
-      fail('invalid input');
-    updateStatus(id, status, pid as number | undefined, stationHome!);
-  } else {
-    removeInstance(id, stationHome!);
-  }
-  process.stdout.write('{"ok":true}\n');
+  const claim = claimSidecarHost(
+    stationHome!,
+    id,
+    instanceConfig(inputValue.instance),
+    process.ppid,
+    operation === 'publishSidecar',
+  );
+  process.stdout.write(
+    `${JSON.stringify({ ok: true, ...sidecarClaimOutput(claim) })}\n`,
+  );
+}
+
+/**
+ * Claims or re-publishes this desktop's sidecar through the one host-owner
+ * claim. `supervisorPid` is the desktop process (the bridge's parent). A
+ * claim records the supervisor itself; a publish records the listening child
+ * and must name it. Both refuse while any other live sidecar or service holds
+ * the home.
+ */
+function claimSidecarHost(
+  stationHome: string,
+  id: string,
+  partial: Partial<InstanceConfig>,
+  supervisorPid: number,
+  publishesChild: boolean,
+): ClaimHostOwnerResult {
+  if (partial.type !== 'sidecar') fail('invalid input');
+  if (publishesChild && typeof partial.pid !== 'number') fail('invalid input');
+  const pid = partial.pid ?? supervisorPid;
+  // Resolve the fingerprint before the registry lock: the lookup can spawn
+  // `ps`/PowerShell, and the lock is home-wide.
+  const birth = lookupProcessBirthFingerprint(pid) ?? undefined;
+  const instance = { ...partial, pid, birth } as InstanceConfig;
+  return claimHostOwner(id, {
+    home: stationHome,
+    type: 'sidecar',
+    ownerPids: [supervisorPid, pid],
+    publish: () => instance,
+  });
+}
+
+/** Path-free claim outcome for the native caller. */
+function sidecarClaimOutput(claim: ClaimHostOwnerResult): {
+  claimed: boolean;
+  owners: { id: string; type: string; port: number }[];
+} {
+  if (claim.won) return { claimed: true, owners: [] };
+  return {
+    claimed: false,
+    owners:
+      claim.reason === 'host-owned'
+        ? claim.owners.map(({ id, type, port }) => ({ id, type, port }))
+        : [],
+  };
 }
 
 if (

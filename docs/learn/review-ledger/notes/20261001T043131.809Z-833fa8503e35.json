@@ -1,0 +1,7 @@
+{
+  "revision": "aea40b70f27d60c131e23d7a5326288c5fea84de",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"RegionModelContext.tsx changed by two comment lines only (an unused-export marker for the suspended-model hook's test seam). No behaviour changed, so the placement claims about suspended surfaces are unaffected; no prose change.","inputs":["docs/design/placement.md"]}
+  ]
+}

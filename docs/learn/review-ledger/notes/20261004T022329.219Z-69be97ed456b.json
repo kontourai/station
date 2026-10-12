@@ -1,0 +1,7 @@
+{
+  "revision": "69a85dbe177ef274dc3e599dd93b69fe36920be9",
+
+  "notes": [
+    {"path":"docs/design/operator-device-access.md","note":"Bound the UI proxy (lifecycle.ts) and the marker constant (internal-api-token.ts) as sources: section 3.1 item 5 now describes the x-station-proxy-client-forwarded marker the proxy sets.","inputs":["docs/design/operator-device-access.md"]}
+  ]
+}

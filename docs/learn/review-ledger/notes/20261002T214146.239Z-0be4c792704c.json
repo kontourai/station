@@ -1,0 +1,7 @@
+{
+  "revision": "04123ca275d85ac19e95a3f0fd87ae68b138324f",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the topic and Customize entry-point changes against the named browser owners. Eleven focused Settings journeys and the Registry fold and sidebar journeys passed on an isolated instance. Scope/save/readback and legacy link checks remain; full-suite and native-device completion are not claimed.","inputs":["docs/guides/e2e-coverage-matrix.md"]}
+  ]
+}

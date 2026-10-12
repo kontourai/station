@@ -307,7 +307,7 @@ describe('ChatDockBody session-failure ownership (station#3299)', () => {
   // whose record carries only the ATTRIBUTION sentence, and the send path
   // wrote its own translated notice. Text arbitration could not match the two,
   // so the dock showed both — the card's advice and the banner's "send a
-  // message to try to continue this session" for a session that never began.
+  // message to try to continue this chat" for a session that never began.
   const refusedFirstSend = (): OrchestrationSessionSummary => ({
     ...failedOrchestrationSession(),
     lifecycleState: 'idle',
@@ -347,7 +347,7 @@ describe('ChatDockBody session-failure ownership (station#3299)', () => {
     expect(banner.textContent).toContain(
       'Station refused the send before it started.',
     );
-    expect(banner.textContent).toContain('Nothing reached the engine.');
+    expect(banner.textContent).toContain('Nothing reached the agent.');
     expect(banner.textContent).not.toContain('continue this session');
   });
 
@@ -527,13 +527,23 @@ describe('ChatDockBody turn-stall notice (#765)', () => {
     const chatInput = buildChatInput();
     // `isTurnInFlight` — status 'sending' is the local in-flight signal.
     const session = buildSession({ status: 'sending' });
+    // Four minutes after the last progress event, so the elapsed reading is
+    // a known value rather than however long ago the fixture's date is.
+    const now = vi
+      .spyOn(Date, 'now')
+      .mockReturnValue(Date.parse('2026-08-29T12:04:00.000Z'));
     renderDock(session, stalledOrchestrationSession(), chatInput);
 
     expect(screen.getByTestId('chat-dock-turn-stall-notice')).toBeTruthy();
+    // The ladder's word, naming who went quiet, in the one duration format;
+    // main's "No response from X … Still waiting." was a second way of
+    // saying it.
     expect(
-      screen.getByText(/No response from Claude Code for .*Still waiting\./i),
+      screen.getByText('No progress from Claude Code for 4m'),
     ).toBeTruthy();
+    now.mockRestore();
     expect(screen.queryByText(/retrying/i)).toBeNull();
+    expect(screen.queryByText(/No response/i)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /stop this turn/i }));
     expect(chatInput.handleCancel).toHaveBeenCalledTimes(1);
   });

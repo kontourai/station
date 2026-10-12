@@ -57,6 +57,10 @@ import type {
   NativePushIosRegistration,
   NativePushRegistration,
 } from '../native-push-registration-store.js';
+import {
+  osNotificationBody,
+  osNotificationTitle,
+} from '../os-notification-text.js';
 import type { PushSigningKey } from '../push-signing-key-store.js';
 import { isCardAlerted } from './card-alerted-categories.js';
 import {
@@ -362,23 +366,24 @@ export function composeApnsAlertPlaintext(input: {
     issued_at: String(input.now),
   };
   if (input.hideContent) return JSON.stringify(base);
-  let title = clip(input.notification.title ?? '', MAX_TITLE_CHARS);
-  let body = clip(input.notification.body ?? '', MAX_BODY_CHARS);
+  // Display form (#3382); every cut, here and below, re-bounds the raw text
+  // so it ends in "…" and keeps the title's "(+N lines)" count.
+  const rawTitle = input.notification.title ?? '';
+  const rawBody = input.notification.body;
+  let title = osNotificationTitle(rawTitle, MAX_TITLE_CHARS);
+  let body = osNotificationBody(rawBody, MAX_BODY_CHARS) ?? '';
   const compose = () =>
     JSON.stringify({ ...base, title, ...(body ? { body } : {}) });
   let plaintext = compose();
   while (Buffer.byteLength(plaintext, 'utf8') > MAX_PLAINTEXT_BYTES) {
-    if (body) body = clip(body, Math.floor([...body].length / 2) - 1);
-    else if (title) title = clip(title, Math.floor([...title].length / 2) - 1);
-    else break;
+    if (body) {
+      const max = Math.floor([...body].length / 2) - 1;
+      body = max > 0 ? (osNotificationBody(rawBody, max) ?? '') : '';
+    } else if (title) {
+      const max = Math.floor([...title].length / 2) - 1;
+      title = max > 0 ? osNotificationTitle(rawTitle, max) : '';
+    } else break;
     plaintext = compose();
   }
   return plaintext;
-}
-
-/** At most `max` code points; an ellipsis marks a cut. */
-function clip(value: string, max: number): string {
-  const points = [...value];
-  if (points.length <= max) return value;
-  return max <= 0 ? '' : `${points.slice(0, max - 1).join('')}…`;
 }

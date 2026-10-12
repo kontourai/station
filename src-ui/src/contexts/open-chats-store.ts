@@ -178,10 +178,10 @@ export function countOpenChatAttention(
 }
 
 /**
- * #1582 B9: the chats that are WORK — what "Continue most recent work" and
- * Home's Recent work may name. A chat created and never typed into produced a
- * "Continue most recent work → New chat" card that a reload erased; the store
- * never writes such a chat, so it was never work.
+ * #1582 B9: the chats that are WORK — what Home's Continue card and Recent
+ * work may name. A chat created and never typed into produced a Continue card
+ * naming "New chat" that a reload erased; the store never writes such a chat,
+ * so it was never work.
  *
  * Deliberately a second hook rather than a filter inside `useOpenChats`: the
  * dock inbox and the sidebar's mini-inbox list the chats OPEN IN THIS TAB, and

@@ -52,10 +52,11 @@ function SchedulerJobDialog({
       job={request.job}
       prefill={request.prefill}
       providers={providers}
-      onClose={close}
+      onClose={setup.close}
       hidden={setup.suspended}
       setupError={setupError}
       checkingSetup={checkingSetup}
+      interactionDisabled={setup.pending}
       onReadinessChange={setReady}
       onSetupAgent={(target) => {
         setSetupError(undefined);

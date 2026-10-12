@@ -670,6 +670,316 @@ describe('ClaudeTranscriptSessionSource', () => {
     ]);
   });
 
+  test.each(['turn-1', 'call-1', 'unknown-record'])(
+    'a late duration for %s cannot split the next turn across persisted reads',
+    async (parentUuid) => {
+      const root = fixtureDir();
+      const directory = join(root, 'projects', 'encoded-project');
+      mkdirSync(directory, { recursive: true });
+      const transcript = join(directory, 'session-a.jsonl');
+      const user = (uuid: string) => ({
+        type: 'user',
+        uuid,
+        sessionId: 'session-a',
+        cwd: '[redacted]',
+        timestamp: '2026-07-25T15:12:00.000Z',
+        message: { role: 'user', content: 'question' },
+      });
+      const assistant = (
+        uuid: string,
+        parent: string,
+        input: number,
+        output: number,
+      ) => ({
+        type: 'assistant',
+        uuid,
+        parentUuid: parent,
+        sessionId: 'session-a',
+        timestamp: '2026-07-25T15:12:01.000Z',
+        message: {
+          content: [{ type: 'text', text: 'answer' }],
+          usage: { input_tokens: input, output_tokens: output },
+        },
+      });
+      const first = [
+        user('turn-1'),
+        assistant('call-1', 'turn-1', 2, 3),
+        user('turn-2'),
+        assistant('call-2a', 'turn-2', 5, 7),
+      ];
+      const second = [
+        {
+          type: 'system',
+          subtype: 'turn_duration',
+          uuid: 'late-complete-1',
+          parentUuid,
+          sessionId: 'session-a',
+          timestamp: '2026-07-25T15:12:02.000Z',
+        },
+        assistant('call-2b', 'call-2a', 11, 13),
+        user('turn-3'),
+      ];
+      writeFileSync(transcript, first.map(record).join(''));
+      const source = new ClaudeTranscriptSessionSource({ configDir: root });
+      const [session] = (await source.discover()).sessions;
+      const before = await source.read(session);
+      writeFileSync(transcript, second.map(record).join(''), { flag: 'a' });
+      const restarted = new ClaudeTranscriptSessionSource({ configDir: root });
+      const [restoredSession] = (await restarted.discover()).sessions;
+      const after = await restarted.read(
+        restoredSession,
+        JSON.parse(JSON.stringify(before.cursor)),
+      );
+      const events = [...before.events, ...after.events];
+      expect(
+        events.filter(
+          (event) =>
+            event.method === 'token-usage.updated' && event.turnId === 'turn-2',
+        ),
+      ).toEqual([
+        expect.objectContaining({
+          promptTokens: 16,
+          completionTokens: 20,
+          totalTokens: 36,
+        }),
+      ]);
+      expect(
+        events
+          .filter((event) => event.method === 'turn.completed')
+          .map((event) => event.turnId),
+      ).toEqual(parentUuid === 'unknown-record' ? [] : ['turn-1']);
+      const whole = new ClaudeTranscriptSessionSource({ configDir: root });
+      const [wholeSession] = (await whole.discover()).sessions;
+      expect(events).toEqual((await whole.read(wholeSession)).events);
+    },
+  );
+
+  test.each(['full', 'aligned', 'unavailable'])(
+    'an older aggregation cursor recovers only an available user boundary (%s)',
+    async (window) => {
+      const boundaryAvailable = window !== 'unavailable';
+      const root = fixtureDir();
+      const directory = join(root, 'projects', 'encoded-project');
+      mkdirSync(directory, { recursive: true });
+      const transcript = join(directory, 'session-a.jsonl');
+      const prefix = record({
+        type: 'user',
+        uuid: 'prior-turn',
+        sessionId: 'session-a',
+        cwd: '[redacted]',
+        message: { role: 'user', content: 'prior question' },
+      });
+      writeFileSync(
+        transcript,
+        prefix +
+          [
+            {
+              type: 'user',
+              uuid: 'turn-1',
+              sessionId: 'session-a',
+              cwd: '[redacted]',
+              message: { role: 'user', content: 'question'.repeat(500) },
+            },
+            {
+              type: 'assistant',
+              uuid: 'call-1',
+              parentUuid: 'turn-1',
+              message: {
+                content: [],
+                usage: { input_tokens: 5, output_tokens: 7 },
+              },
+            },
+          ]
+            .map(record)
+            .join(''),
+      );
+      const source = new ClaudeTranscriptSessionSource({ configDir: root });
+      const [session] = (await source.discover()).sessions;
+      const before = await source.read(session);
+      if (typeof before.cursor === 'number')
+        throw new Error('missing aggregation cursor');
+      const { sourceState: _ancestry, ...oldCursor } = before.cursor;
+      writeFileSync(
+        transcript,
+        record({
+          type: 'system',
+          subtype: 'turn_duration',
+          uuid: 'complete-1',
+          parentUuid: 'call-1',
+        }),
+        { flag: 'a' },
+      );
+      const restarted = new ClaudeTranscriptSessionSource({
+        configDir: root,
+        ...(window === 'full'
+          ? {}
+          : {
+              maxBytes:
+                window === 'aligned'
+                  ? oldCursor.offset - Buffer.byteLength(prefix, 'utf8')
+                  : 512,
+            }),
+      });
+      const [restoredSession] = (await restarted.discover()).sessions;
+      const after = await restarted.read(
+        restoredSession,
+        JSON.parse(JSON.stringify(oldCursor)),
+      );
+      expect(after.events).toEqual(
+        boundaryAvailable
+          ? [
+              expect.objectContaining({
+                method: 'token-usage.updated',
+                turnId: 'turn-1',
+                promptTokens: 5,
+                completionTokens: 7,
+                totalTokens: 12,
+              }),
+              expect.objectContaining({
+                method: 'turn.completed',
+                turnId: 'turn-1',
+              }),
+            ]
+          : [],
+      );
+      expect(
+        (await restarted.read(restoredSession, after.cursor)).events,
+      ).toEqual([]);
+      if (!boundaryAvailable) {
+        writeFileSync(
+          transcript,
+          record({
+            type: 'user',
+            uuid: 'turn-2',
+            sessionId: 'session-a',
+            message: { role: 'user', content: 'next question' },
+          }),
+          { flag: 'a' },
+        );
+        const next = await restarted.read(restoredSession, after.cursor);
+        expect(
+          next.events.filter((event) => event.method === 'token-usage.updated'),
+        ).toEqual([
+          expect.objectContaining({ turnId: 'turn-1', totalTokens: 12 }),
+        ]);
+      }
+    },
+  );
+
+  test('a usage flush split by the event cap persists a coherent pre-record cursor', async () => {
+    const root = fixtureDir();
+    const directory = join(root, 'projects', 'encoded-project');
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(
+      join(directory, 'session-a.jsonl'),
+      [
+        {
+          type: 'user',
+          uuid: 'turn-1',
+          sessionId: 'session-a',
+          cwd: '[redacted]',
+          message: { role: 'user', content: 'first' },
+        },
+        {
+          type: 'assistant',
+          uuid: 'call-1',
+          parentUuid: 'turn-1',
+          message: {
+            content: [],
+            usage: { input_tokens: 5, output_tokens: 7 },
+          },
+        },
+        {
+          type: 'user',
+          uuid: 'turn-2',
+          sessionId: 'session-a',
+          cwd: '[redacted]',
+          message: { role: 'user', content: 'second' },
+        },
+      ]
+        .map(record)
+        .join(''),
+    );
+    const source = new ClaudeTranscriptSessionSource({
+      configDir: root,
+      maxEvents: 1,
+    });
+    const [session] = (await source.discover()).sessions;
+    const first = await source.read(session);
+    const atFlush = await source.read(session, first.cursor);
+    expect(atFlush.events).toEqual([
+      expect.objectContaining({
+        method: 'token-usage.updated',
+        turnId: 'turn-1',
+        totalTokens: 12,
+      }),
+    ]);
+    expect(typeof atFlush.cursor).toBe('object');
+    if (typeof atFlush.cursor === 'number')
+      throw new Error('missing aggregation cursor');
+    expect(atFlush.cursor.turnId).toBe('turn-1');
+    expect(atFlush.cursor.usage?.turnId).toBe(atFlush.cursor.turnId);
+    const resumed = new ClaudeTranscriptSessionSource({
+      configDir: root,
+      maxEvents: 1,
+    });
+    const [restoredSession] = (await resumed.discover()).sessions;
+    const afterFlush = await resumed.read(
+      restoredSession,
+      JSON.parse(JSON.stringify(atFlush.cursor)),
+    );
+    expect(afterFlush.events).toEqual([
+      expect.objectContaining({ method: 'turn.started', turnId: 'turn-2' }),
+    ]);
+    expect(
+      typeof afterFlush.cursor === 'number'
+        ? undefined
+        : afterFlush.cursor.usage?.turnId,
+    ).toBe('turn-2');
+  });
+
+  test('long turns keep ancestry cursor state within the follower storage bound', async () => {
+    const root = fixtureDir();
+    const directory = join(root, 'projects', 'encoded-project');
+    mkdirSync(directory, { recursive: true });
+    const rows = [
+      record({
+        type: 'user',
+        uuid: 'turn-1',
+        sessionId: 'session-a',
+        cwd: '[redacted]',
+        message: { role: 'user', content: 'question' },
+      }),
+    ];
+    for (let index = 0; index < 2000; index += 1) {
+      rows.push(
+        record({
+          type: 'assistant',
+          uuid: `call-${index}`,
+          parentUuid: index === 0 ? 'turn-1' : `call-${index - 1}`,
+          message: {
+            content: [],
+            usage: { input_tokens: 1, output_tokens: 0 },
+          },
+        }),
+      );
+    }
+    writeFileSync(join(directory, 'session-a.jsonl'), rows.join(''));
+    const source = new ClaudeTranscriptSessionSource({ configDir: root });
+    const [session] = (await source.discover()).sessions;
+    const result = await source.read(session);
+    if (typeof result.cursor === 'number')
+      throw new Error('missing source cursor state');
+    expect(result.cursor.usage?.promptTokens).toBe(2000);
+    expect(
+      Buffer.byteLength(JSON.stringify(result.cursor.sourceState), 'utf8'),
+    ).toBeLessThan(128 * 1024);
+    expect(Array.isArray(result.cursor.sourceState?.recordTurns)).toBe(true);
+    expect(JSON.stringify(result.cursor.sourceState)).not.toContain(
+      'call-1999',
+    );
+  });
+
   test('discovers only regular JSONL transcripts below the canonical projects root', async () => {
     const root = fixtureDir();
     const projects = join(root, 'projects');

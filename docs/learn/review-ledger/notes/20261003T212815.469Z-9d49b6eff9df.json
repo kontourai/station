@@ -1,0 +1,7 @@
+{
+  "revision": "73739630fb28cabc4f1e6581097f02a6859a5b91",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed final NewChatModal setup-ordering delta: the dialog remains registered through setup navigation commit, navigation-generated close cannot retire the draft, refused destinations report feedback, and the ordinary composer returns directly to retained text and repaired Agent. Visual-skill selection remains its deliberate unsent preparation flow. No change to documented transcript, continuation, approval, attention or pane ownership. Mounted regression failed on queued history Back before the fix and passed after; browser reached Connections and retained the message on return.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "018c39925af630ca8eeab05a917de01fc80bd89e",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.webm","note":"#2898 touched orchestration-service.ts only in resetFullAccessGrantedBy (revocation report classification and its docblock); the request inspector routes, event store reads and UI this recording shows are unchanged, so the capture stays accurate.","inputs":["src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

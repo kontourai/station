@@ -1,0 +1,7 @@
+{
+  "revision": "73739630fb28cabc4f1e6581097f02a6859a5b91",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed final setup and Home-action delta: retain dialog history until destination commit; navigation-induced close preserves draft writability; refused navigation supplies visible feedback; composer returns directly to retained text and repaired Agent. Visual skills keep their deliberate unsent preparation flow. Scheduler save is disabled during pending setup independently of readiness, and its mutation failed then restored green. Home uses shared New chat action. New history regression failed before repair; final setup, Home and scheduler focused tests passed. Browser reached Claude engine and account UI and returned with retained text; external installation, sign-in completion and physical-device proof were not executed.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

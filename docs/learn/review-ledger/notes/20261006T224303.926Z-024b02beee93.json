@@ -1,0 +1,7 @@
+{
+  "revision": "c38dc4ba40fad15b7375e4132e3bd514b6da0148",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Reviewed the form-admission extraction and all facade exports. Request normalization, typed stored-field reconstruction and refusal bounds retain their prior implementation; runtime event projection and pending cards use the form-only subpath, while accepted-answer validation stays in the facade consumed by the lazy form renderer. This records source composition, not browser or native runtime qualification.","inputs":["docs/reference/shared.md","packages/shared/package.json","packages/shared/src/mcp-elicitation-form.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "a507c417a354a25a2d09259a79b040361b26b3dd",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the follow-up chat.css delta: only composer-local stacked alignment changes to centered; region placement and chrome ownership remain unchanged.","inputs":["docs/design/placement.md"]}
+  ]
+}

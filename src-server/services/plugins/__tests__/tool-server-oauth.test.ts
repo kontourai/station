@@ -1,19 +1,27 @@
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 import { normalizePersistedToolServerReason } from '../../../security/tool-server-reason.js';
-import { ToolServerCredentialStore } from '../tool-server-credential-store.js';
+import {
+  removePrincipalToolServerCredentials,
+  ToolServerCredentialStore,
+} from '../tool-server-credential-store.js';
 import {
   captureToolServerOperationFailure,
   classifyOAuthFailure,
   classifyToolServerProbeFailure,
   formatToolServerFailure,
+  INSTANCE_CREDENTIAL_OWNER,
+  principalCredentialOwner,
   projectToolServerResult,
   requireHttpAuthorizationUrl,
   requireToolServerResult,
   StationToolServerOAuthProvider,
+  toolServerCredentialCandidates,
+  toolServerCredentialStoreFor,
   validateOAuthCallbackUrl,
 } from '../tool-server-oauth.js';
 
@@ -337,5 +345,125 @@ describe('OAuth error persistence safety', () => {
       'protocol_error: Tool server returned an unexpected protocol response',
     );
     expect(reason).not.toContain(raw);
+  });
+});
+
+describe('connected-account credential ownership (#3279)', () => {
+  const makeTempDir = trackTempDirs();
+  const ALICE = 'human:tailscale-serve:alice';
+  const BOB = 'human:tailscale-serve:bob';
+  const RESOURCE = 'https://resource.example/mcp';
+  const REDIRECT = 'http://127.0.0.1:3141/oauth/callback';
+
+  test('an existing instance token record keeps working and is never visible to a person', async () => {
+    const home = makeTempDir('station-oauth-owner-');
+    // Written exactly as the pre-#3279 provider wrote it: bucket = server id.
+    const legacy = new StationToolServerOAuthProvider(
+      new ToolServerCredentialStore(home),
+      'remote',
+      RESOURCE,
+      REDIRECT,
+    );
+    await legacy.saveTokens({ access_token: 'shared', token_type: 'Bearer' });
+    const raw = JSON.parse(
+      readFileSync(
+        join(home, 'security', 'tool-server-credentials.json'),
+        'utf8',
+      ),
+    );
+    expect(Object.keys(raw.credentials)).toEqual(['remote']);
+
+    const instance = new StationToolServerOAuthProvider(
+      toolServerCredentialStoreFor(home, INSTANCE_CREDENTIAL_OWNER),
+      'remote',
+      RESOURCE,
+      REDIRECT,
+    );
+    expect((await instance.tokens())?.access_token).toBe('shared');
+    const alice = new StationToolServerOAuthProvider(
+      toolServerCredentialStoreFor(home, principalCredentialOwner(ALICE)),
+      'remote',
+      RESOURCE,
+      REDIRECT,
+      undefined,
+      principalCredentialOwner(ALICE),
+    );
+    expect(await alice.tokens()).toBeUndefined();
+  });
+
+  test('people get distinct buckets in their own document and the shared document is untouched', async () => {
+    const home = makeTempDir('station-oauth-owner-');
+    const providerFor = (principalId: string, projectSlug?: string) => {
+      const owner = principalCredentialOwner(principalId, projectSlug);
+      return new StationToolServerOAuthProvider(
+        toolServerCredentialStoreFor(home, owner),
+        'remote',
+        RESOURCE,
+        REDIRECT,
+        undefined,
+        owner,
+      );
+    };
+    await providerFor(ALICE).saveTokens({
+      access_token: 'a',
+      token_type: 'Bearer',
+    });
+    await providerFor(BOB).saveTokens({
+      access_token: 'b',
+      token_type: 'Bearer',
+    });
+    await providerFor(ALICE, 'sales').saveTokens({
+      access_token: 'a-sales',
+      token_type: 'Bearer',
+    });
+    expect((await providerFor(ALICE).tokens())?.access_token).toBe('a');
+    expect((await providerFor(BOB).tokens())?.access_token).toBe('b');
+    expect((await providerFor(ALICE, 'sales').tokens())?.access_token).toBe(
+      'a-sales',
+    );
+    expect(
+      existsSync(join(home, 'security', 'tool-server-credentials.json')),
+    ).toBe(false);
+    // A person's provider can never be pointed at the shared document.
+    expect(
+      () =>
+        new StationToolServerOAuthProvider(
+          new ToolServerCredentialStore(home),
+          'remote',
+          RESOURCE,
+          REDIRECT,
+          undefined,
+          principalCredentialOwner(ALICE),
+        ),
+    ).toThrow('does not match its owner');
+    await removePrincipalToolServerCredentials(home, 'remote');
+    expect(await providerFor(ALICE).tokens()).toBeUndefined();
+    expect(await providerFor(BOB).tokens()).toBeUndefined();
+  });
+
+  test('candidates follow the turn principal, never another person, and reach the instance only when allowed', () => {
+    const personal = { credentialOwnership: { owner: 'principal' as const } };
+    expect(toolServerCredentialCandidates({}, ALICE)).toEqual([
+      INSTANCE_CREDENTIAL_OWNER,
+    ]);
+    expect(toolServerCredentialCandidates(personal, ALICE, 'sales')).toEqual([
+      principalCredentialOwner(ALICE, 'sales'),
+      principalCredentialOwner(ALICE),
+    ]);
+    expect(toolServerCredentialCandidates(personal, undefined)).toEqual([]);
+    expect(
+      toolServerCredentialCandidates(
+        {
+          credentialOwnership: {
+            owner: 'principal',
+            allowInstanceFallback: true,
+          },
+        },
+        ALICE,
+      ),
+    ).toEqual([principalCredentialOwner(ALICE), INSTANCE_CREDENTIAL_OWNER]);
+    expect(() => principalCredentialOwner('tenant:acme')).toThrow(
+      'Credential owner is invalid',
+    );
   });
 });

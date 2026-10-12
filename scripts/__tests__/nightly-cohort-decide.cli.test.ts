@@ -271,6 +271,43 @@ describe('nightly-cohort-decide CLI against a git repository', () => {
     expect(decided.stdout).toContain('build=false');
   });
 
+  it('refuses a source the published marker already contains, from real git ancestry', () => {
+    const older = commitLedger('[]\n', 'feat: older qualified source');
+    const newer = commitLedger('[ ]\n', 'feat: newer shipped source');
+    git('update-ref', 'refs/remotes/origin/main', newer);
+    const decide = (marker: string, head: string) =>
+      spawnSync(
+        process.execPath,
+        [
+          SCRIPT,
+          '--head-sha',
+          head,
+          '--android-marker',
+          marker,
+          '--android-candidate',
+          head,
+          '--desktop-marker',
+          marker,
+          '--desktop-candidate',
+          head,
+        ],
+        { cwd: repo, encoding: 'utf8', windowsHide: true },
+      );
+    const backwards = decide(newer, older);
+    expect(backwards.status, backwards.stderr).toBe(0);
+    expect(backwards.stdout).toContain('build=false');
+    expect(backwards.stdout).toContain('already contains source');
+    // The forward direction still builds.
+    const forwards = decide(older, newer);
+    expect(forwards.status, forwards.stderr).toBe(0);
+    expect(forwards.stdout).toContain('build=true');
+    expect(forwards.stdout).toContain(`behind source ${newer}`);
+    // An unknown marker commit fails closed instead of reading as "not ahead".
+    const unknown = decide('f'.repeat(40), newer);
+    expect(unknown.status).toBe(1);
+    expect(unknown.stderr).toContain('git merge-base --is-ancestor');
+  });
+
   it('fails closed on a malformed ledger at origin/main', () => {
     const malformed = commitLedger(
       '{"entries":[]}\n',

@@ -141,7 +141,8 @@ Common fields:
 | `serverModule` | string | no | Path to a server-side module that registers request-scoped plugin routes and lifecycle hooks |
 | `build` | string | no | Reserved; currently rejected so builds cannot execute manifest-supplied commands |
 | `capabilities` | string[] | no | Declared capabilities, e.g. `["chat", "navigation"]` |
-| `commands` | PluginCommandContribution[] | no | Inert palette-command declarations; registration alone grants no execution authority |
+| `commands` | PluginCommandContribution[] | no | Palette-command declarations (at most 32). Each `id` must be `<name>.<command>` and unique; `navigate` names a destination id and uses the built-in palette's page behavior. Validated for both manifest formats; declarations that fail are dropped (the plugin still loads) and the inventory shows `commandsRejected.reason`. Declaration grants no execution authority, and every effect is admitted by Station (see [Plugin Command Effects](../reference/api.md#plugin-command-effects)) |
+| `commandsRejected` | `{ reason: string }` | no | Set by Station, not by authors: the loader discards any value in `plugin.json` and sets it only when `commands` failed validation and was dropped |
 | `permissions` | string[] | no | Permissions the plugin needs (see Permissions) |
 | `links` | unknown | no | Opaque link metadata returned by plugin preview; it grants no capability |
 | `agents` | array | no | Agent configs to install |
@@ -174,8 +175,8 @@ a plugin installed under one of those names would find Station's routes inside
 the namespace it believes it owns. Install refuses these names outright:
 
 ```
-check-updates   fetch   home-role   host-approvals   install   preview   reload
-validate        visibility
+check-updates   command-effects   fetch   home-role   host-approvals
+install         preview           reload            validate    visibility
 ```
 
 The [reserved-identity list](../../src-server/services/plugins/reserved-plugin-identities.ts)
@@ -307,7 +308,7 @@ and need registry access; a local catalog does not promise a network-free build.
 | `minimal-layout` | The smallest useful layout surface |
 | `demo-layout` | A tour of Station capabilities, no external services |
 | `smart-routing` | A provider plugin with no UI entrypoint |
-| `matt-pocock-engineering` | Attributed pinned Skills and four visual entry definitions; agent, project/tracker setup and authority remain prerequisites |
+| `matt-pocock-engineering` | Attributed pinned Skills and five visual entry definitions; agent, project/tracker setup and authority remain prerequisites |
 
 The fuller catalog at `examples/registry/manifest.json` adds examples that pull
 npm dependencies (`enterprise-layout`, `survey-review-workbench`,
@@ -1125,9 +1126,13 @@ Install, recovery, update, and removal are person-only lifecycle operations.
 The [route guard](../../src-server/routes/plugins/plugin-person-approval.ts)
 refuses Station's internal agent-tool identity and delegated or unconfirmed
 device identities. Agent tools can propose an operation for a person to
-complete. This is an authenticated Station API boundary, not isolation from
-arbitrary code running as Station's operating-system user; that code can access
-the same local credentials and files.
+complete. Install, recovery and update also run the package's code, so a paired
+device additionally needs the operator's `coding:exec` grant (`403` with
+`code: 'command-not-granted'` otherwise); the operator in person never does.
+Preview only fetches and reads a manifest and needs no grant. This is an
+authenticated Station API boundary, not isolation from arbitrary code running as
+Station's operating-system user; that code can access the same local credentials
+and files.
 
 ```bash
 API_BASE="${STATION_API_BASE:-http://127.0.0.1:18141}"
@@ -1588,7 +1593,6 @@ by plugin code.
   "guardrails": {
     "maxTokens": 4096,
     "temperature": 0.7,
-    "topP": 0.9,
     "maxSteps": 10
   },
   "tools": {
@@ -1771,3 +1775,22 @@ For each conversion, move `displayName` to namespace `title`, make the
 supported Agent, capability, permission, and host-action declarations into the
 Station namespace. A schema-only rewrite is insufficient: installation,
 activation, each component, and real action execution must be verified together.
+
+## Extension loading and recovery in the client
+
+A remote Station's extensions are off until this device explicitly consents.
+That is a normal trust setting, not a workspace-wide failure banner. The
+Extensions screen explains it and offers Enable remote extensions, with the
+existing warning about app-wide authority before consent is stored.
+
+A failed inventory or bundle load produces a notification linking to Extensions.
+The screen retains the failure message and Retry extensions until the registry
+recovers. A failure to start the deferred registry itself produces a notification
+with Reload Station; it does not displace unrelated work with a global banner.
+Core shell and connection recovery retain their own failure surfaces.
+
+Owners: [registry bootstrap](../../src-ui/src/components/registry/PluginRegistryGate.tsx),
+[Extensions view](../../src-ui/src/views/RegistryView.tsx), and
+[deferred capability boundary](../../src-ui/src/components/DeferredCapabilityBoundary.tsx).
+These presentation changes do not enable bundles or alter consent storage,
+origin binding, plugin permissions or native bridge authority.

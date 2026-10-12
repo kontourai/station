@@ -1,0 +1,7 @@
+{
+  "revision": "0371f7dc7c6adc213a577809267f86740b64a676",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed #2962 400/426 payloads, ordering before credentials, shared direct-peer auth budget and parsed-only audit fields against runtime-http and route tests. Verified cross-origin header negotiation now drops stale acceptance on failed UI re-handshakes; HTTP contract unchanged outside audit suppression. No production deployment verification."}
+  ]
+}

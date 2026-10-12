@@ -1,0 +1,7 @@
+{
+  "revision": "ff8d4704b92d64b50d39bdc28cd02c49f779de49",
+
+  "notes": [
+    {"path":"docs/guides/nightly.md","note":"Cadence section names the qualification entry point; portable publish gate note names both admitted top-level workflow refs (nightly.yml, main-qualification.yml on refs/heads/main), matching portable-nightly-publish.yml's publish if: and summary case.","inputs":["docs/guides/nightly.md",".github/workflows/nightly.yml",".github/workflows/portable-nightly-publish.yml","scripts/__tests__/portable-nightly-publish-workflow.test.ts"]}
+  ]
+}

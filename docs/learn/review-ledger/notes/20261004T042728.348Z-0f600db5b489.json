@@ -1,0 +1,7 @@
+{
+  "revision": "b9b6e486561bb58f1237bb95ddcbbb7e5f0878c3",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-recorded after merging main (#3201): ChatDock.tsx changes here are comment-only and the removal of a dead helper; New still opens the New Chat picker, as this doc states.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

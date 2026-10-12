@@ -1,4 +1,4 @@
-name: Backlog disposition policy
+name: "Repo: Backlog policy"
 
 # A daily audit, not a per-event gate. Running on every issue and label event
 # produced ~170 runs a day, most cancelled by the next label click, and failed

@@ -1,0 +1,7 @@
+{
+  "revision": "6a740918ced3d8ef7cf6865385ece383fecdaa86",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"The capabilities paragraph (optional booleans, absence means unsupported, one registry) covers delegatedInputAnswers unchanged; no new unauthenticated surface: the flag is a static protocol fact and continue keeps its existing auth.","inputs":["docs/security/remote-access-threat-model.md","packages/contracts/src/environment-security.ts"]}
+  ]
+}

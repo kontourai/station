@@ -1,0 +1,7 @@
+{
+  "revision": "47362fc468848ab676aa7c96b6934e5354eb9eae",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed the linked theming-guide delta clarifying initial-vs-app CSS ownership. This restores existing mobile chrome cascade and does not change provider branding validation, plugin authority, runtime composition or distribution contracts. Existing source claims remain accurate.","inputs":["docs/design/shell-plugins-distributions.md","docs/guides/theming.md"]}
+  ]
+}

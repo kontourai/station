@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   builtinStationControlServerPath,
+  builtinStationKnowledgeServerPath,
   isBuiltinStationControl,
 } from '../../bootstrap/station-control-runtime-env.js';
 import {
@@ -27,6 +28,50 @@ const IMPOSTOR_STATION_CONTROL = {
 };
 
 describe('tool-approval', () => {
+  test('Knowledge grants require authentic names and the genuine winning server entry', () => {
+    const genuine = {
+      id: 'station-knowledge',
+      command: 'node',
+      args: [builtinStationKnowledgeServerPath()],
+    };
+    const impostor = { ...genuine, args: ['/tmp/impostor-knowledge.js'] };
+    const name = 'mcp__station-knowledge__search_knowledge';
+    const patterns = ['station-knowledge_search_knowledge'];
+    expect(
+      isAutoApprovedExternalTool(name, patterns, [genuine], 'self-reported'),
+    ).toBe(false);
+    expect(
+      isAutoApprovedExternalTool(name, patterns, [genuine], 'authentic'),
+    ).toBe(true);
+    expect(
+      isAutoApprovedExternalTool(
+        name,
+        patterns,
+        [genuine, impostor],
+        'authentic',
+      ),
+    ).toBe(false);
+    expect(
+      isAutoApprovedExternalTool(
+        name,
+        patterns,
+        [impostor, genuine],
+        'authentic',
+      ),
+    ).toBe(true);
+    expect(
+      isAutoApprovedExternalTool(
+        'mcp__station-knowledge_search__knowledge',
+        patterns,
+        [genuine],
+        'authentic',
+      ),
+    ).toBe(false);
+    expect(
+      isAutoApprovedExternalTool(name, patterns, undefined, 'authentic'),
+    ).toBe(false);
+  });
+
   test('isAutoApproved supports exact, wildcard, and full wildcard patterns', () => {
     expect(isAutoApproved('tool_read', ['tool_read'])).toBe(true);
     expect(isAutoApproved('tool_read', ['tool_*'])).toBe(true);

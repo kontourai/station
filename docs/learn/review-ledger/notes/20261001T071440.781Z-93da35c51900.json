@@ -1,0 +1,7 @@
+{
+  "revision": "b03622e2007e22ff75c7280a41396526c75a7b6e",
+
+  "notes": [
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"#3071 review-fix round. Changed inputs: orchestration-service.ts (request inspection reports a request settled by its turn's abort as resolved; respondToRequest refuses a resolved or settled request with request_event_changed before adapter resolution). The page names respondToRequest among commands that carry posture context; the settled-request refusal runs before that and changes no posture rule. No prose change.","inputs":["docs/design/approval-posture-server-ordered.md"]}
+  ]
+}

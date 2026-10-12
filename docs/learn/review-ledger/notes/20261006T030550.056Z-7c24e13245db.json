@@ -1,0 +1,35 @@
+{
+  "revision": "a05e192d3cc41dda1650b4ba44843427d6e0bca8",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Transitive via docs/architecture/module-map.md: the only change is one sentence in ExtensionNotificationBindings saying a marker never splits a turn and is held until the turn closes; this document's own claims do not depend on it and stay accurate.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Transitive via docs/architecture/module-map.md: the only change is one sentence in ExtensionNotificationBindings saying a marker never splits a turn and is held until the turn closes; this document's own claims do not depend on it and stay accurate.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Transitive via docs/architecture/module-map.md: the only change is one sentence in ExtensionNotificationBindings saying a marker never splits a turn and is held until the turn closes; this document's own claims do not depend on it and stay accurate.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Transitive via docs/architecture/module-map.md: the only change is one sentence in ExtensionNotificationBindings saying a marker never splits a turn and is held until the turn closes; this document's own claims do not depend on it and stay accurate.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Transitive via docs/architecture/module-map.md: the only change is one sentence in ExtensionNotificationBindings saying a marker never splits a turn and is held until the turn closes; this document's own claims do not depend on it and stay accurate.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Transitive via docs/architecture/module-map.md: the only change is one sentence in ExtensionNotificationBindings saying a marker never splits a turn and is held until the turn closes; this document's own claims do not depend on it and stay accurate.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"Transitive via docs/architecture/module-map.md: the only change is one sentence in ExtensionNotificationBindings saying a marker never splits a turn and is held until the turn closes; this document's own claims do not depend on it and stay accurate.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Transitive via docs/architecture/module-map.md: the only change is one sentence in ExtensionNotificationBindings saying a marker never splits a turn and is held until the turn closes; this document's own claims do not depend on it and stay accurate.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Transitive via docs/architecture/module-map.md: the only change is one sentence in ExtensionNotificationBindings saying a marker never splits a turn and is held until the turn closes; this document's own claims do not depend on it and stay accurate.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Transitive via docs/architecture/module-map.md: the only change is one sentence in ExtensionNotificationBindings saying a marker never splits a turn and is held until the turn closes; this document's own claims do not depend on it and stay accurate.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Transitive via docs/architecture/module-map.md: the only change is one sentence in ExtensionNotificationBindings saying a marker never splits a turn and is held until the turn closes; this document's own claims do not depend on it and stay accurate.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Transitive via docs/architecture/module-map.md: the only change is one sentence in ExtensionNotificationBindings saying a marker never splits a turn and is held until the turn closes; this document's own claims do not depend on it and stay accurate.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Transitive via docs/architecture/module-map.md: the only change is one sentence in ExtensionNotificationBindings saying a marker never splits a turn and is held until the turn closes; this document's own claims do not depend on it and stay accurate.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"ExtensionNotificationBindings now states the held-marker rule: a marker arriving during a turn is held by runtime-event-projection.ts until emitAssistantTurn closes the turn, then follows its single canonical answer row with the duringTurn label from extension-transcript-markers.ts; between turns it renders in place. extensionHandlers.ts's transcript.marker return is documented as intent only. Checked against the projection, the label table and the end-of-turn answer-read test.","inputs":["docs/architecture/module-map.md","packages/shared/src/extension-transcript-markers.ts","src-ui/src/hooks/orchestration/extensionHandlers.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"runtime-event-projection.ts now holds markers during an open turn and emits them after the turn's row; the turn row, tool, approval and policy-denied projection paths this document describes are unchanged (no split, canonical ids kept).","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/runtime-event-projection.ts"]}
+  ]
+}

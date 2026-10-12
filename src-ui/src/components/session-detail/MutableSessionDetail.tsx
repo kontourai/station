@@ -3,6 +3,7 @@ import {
   type OrchestrationSessionSummary,
   useOrchestrationCommandReceiptsQuery,
 } from '@kontourai/station-sdk';
+import { boundedDisplayText } from '@kontourai/station-shared/display-text';
 import {
   type ReactNode,
   useCallback,
@@ -26,7 +27,7 @@ import {
   clientOriginSurfaceLabel,
 } from '../../utils/clientOrigin';
 import { errorAgentDraft } from '../../utils/errorAgentDraft';
-import { relativeTimeAgo } from '../../utils/relativeTime';
+import { relativeTime } from '../../utils/relativeTime';
 import {
   builderRunIdentityLabel,
   builderRunMatchLabel,
@@ -53,6 +54,9 @@ import {
   sessionChatOpenTarget,
 } from './sessionDetailPresentation';
 import './SessionDetail.css';
+
+/** A pending request's title is engine text; Codex's is the whole command. */
+const MAX_PENDING_REQUEST_TITLE_LENGTH = 200;
 
 const loadConversationPullRequestLinks = () =>
   import('../pull-requests/ConversationPullRequestLinks').then((module) => ({
@@ -306,7 +310,7 @@ export function MutableSessionDetail({
     : Number.NaN;
   const lastUserActionWhen =
     latestOrigin && Number.isFinite(lastUserActionAtMs)
-      ? relativeTimeAgo(lastUserActionAtMs, Date.now())
+      ? relativeTime(lastUserActionAtMs, Date.now())
       : null;
 
   // "Started from": the first recorded command origin, surface only. An
@@ -324,9 +328,8 @@ export function MutableSessionDetail({
     session.reportedModel ?? session.effectiveModel ?? session.model,
     sessionProjectLabel(session),
     startedFrom ? `from ${startedFrom}` : null,
-    Number.isFinite(createdAtMs)
-      ? `started ${relativeTimeAgo(createdAtMs, Date.now())}`
-      : null,
+    // The compact time, last, where every row keeps it.
+    Number.isFinite(createdAtMs) ? relativeTime(createdAtMs, Date.now()) : null,
   ];
 
   const parentTaskId = session.delegation?.taskId ?? threadId;
@@ -380,7 +383,14 @@ export function MutableSessionDetail({
               <span className="sessions-detail__request-label">
                 {pendingRequestPresentation.label}
               </span>
-              <strong>{pendingRequest.title}</strong>
+              {/* #3382: an engine-supplied title (Codex's is the command)
+                  beside Approve/Decline, so in display form. */}
+              <strong>
+                {boundedDisplayText(
+                  pendingRequest.title,
+                  MAX_PENDING_REQUEST_TITLE_LENGTH,
+                )}
+              </strong>
             </div>
             {/* archive#1781: the card RENDERS for an unanswerable session —
               deleting it would be the silent filtering ADR 0012 forbids, and

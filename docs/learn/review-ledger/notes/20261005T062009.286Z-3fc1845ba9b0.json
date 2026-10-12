@@ -1,0 +1,7 @@
+{
+  "revision": "f891786eebfb74100a956f1f7243fe52c32c2802",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Added the HomeStartComposer action-inventory entry (held-draft Restore/Discard row, flex-wrap, inherits the 44px floor); ChatDock only threads a draft callback. The guide's inventory process is unchanged. No prose change.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

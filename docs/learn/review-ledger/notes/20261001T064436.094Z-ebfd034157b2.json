@@ -1,0 +1,7 @@
+{
+  "revision": "4a7e8e662c0adb6b19ef3eeabd6ba432a5b99c17",
+
+  "notes": [
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed the broker guide's per-offer dynamic ICE mode against committed client, normal config factory, browser runtime and native adapter callers at55606e049. Four focused files passed81 cases; real mounted broker via connector client confirms ICE-only Origin omission while ordinary registration retains exact Origin. Lifetime-clamp mutation at4a7e8e662 made browser300000 exceed115000 and native90000 exceed45000 for the intended assertions; exact committed source restored32PASS. Read Root-owned metadata-only public-ice-endpoint-receipt.json: source9f7109de5a265cd7339a7498eac1a0562d3bf506 at2026-10-01T05:26:12.821173Z, public connector200/reuse200/unauth401/foreign401,TTL600,no returned issuer,revocation204,response file deleted; applicationOrNativePeerTestedfalse. Separately traced native source1e99a85da paired-free capture, exact grant/context/digest comparison, installation-key fixed-purpose signing, main-window async RPC and post-network currentness with16KiB receipt cap/grant expiry. Rustfmt/diff checks passed; no Rust compiler, IPC/runtime, public Pion or physical iOS proof executed by this lane. Root combined registration/build and final integration readiness/docs remain separate. Manual static community TURN mode retained; no byte cap or application authority inferred.","inputs":["docs/guides/self-hosted-broker.md"]}
+  ]
+}

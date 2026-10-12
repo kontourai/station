@@ -17,9 +17,9 @@
       "advisory": "GHSA-ch52-4w7c-c8xp",
       "severity": "high",
       "owner": "station-maintainers",
-      "reason": "Brian explicitly approved seven-day risk acceptance in thread ad2ad454-cf14-49b6-997e-296c38cbedc0 on 2026-10-03. Upstream has no published patched version. Threat model: An unauthenticated caller manipulating max-stale against a shared HTTP cache containing another user response. Station-specific exploitability has not been ruled out; this is risk acceptance, not remediation or non-reachability proof. Recheck on every upstream release or dependency graph change and remove this exact exception when patched. All other critical/high identities remain blocking. Brian also explicitly authorized this exact exception through 2026-10-10 in thread 2476b495-8abe-4c47-be5a-57851a445325; production graph reachability is confirmed and Station exploitability remains unproven.",
+      "reason": "Brian explicitly approved this exact seven-day renewal through 2026-10-17T00:00:00Z in T3 thread 547e89a2-9a39-4f72-b419-98efcddb47c3 on 2026-10-10 UTC. Review on 2026-10-10 UTC: GitHub advisory names <=4.2.0 and no first patched version; npm latest is 4.3.0. Issue #3150 retains integrity-verified dependency-boundary reproduction in 4.2.0 and 4.3.0: max-stale can select a shared response whose TTL was zeroed for Set-Cookie. Threat model: unauthenticated caller selecting another user response from a shared HTTP cache. Production graph is present; a reachable Station HTTP exploit or non-reachability remains unproved. Exact-scope seven-day temporary risk acceptance, not remediation. Recheck every upstream release or dependency graph change; remove when independently verified remediation lands. No unrelated critical/high identity is accepted.",
       "trackingIssue": "https://github.com/kontourai/station/issues/3150",
-      "expires": "2026-10-10"
+      "expires": "2026-10-17"
     },
     {
       "scope": "root",
@@ -27,9 +27,9 @@
       "advisory": "GHSA-vfj7-8cjw-p6xm",
       "severity": "high",
       "owner": "station-maintainers",
-      "reason": "Brian explicitly approved seven-day risk acceptance in thread ad2ad454-cf14-49b6-997e-296c38cbedc0 on 2026-10-03. Upstream has no published patched version. Threat model: An untrusted deeply nested brace pattern exhausting a Node process call stack. Station-specific exploitability has not been ruled out; this is risk acceptance, not remediation or non-reachability proof. Recheck on every upstream release or dependency graph change and remove this exact exception when patched. All other critical/high identities remain blocking. Brian also explicitly authorized this exact exception through 2026-10-10 in thread 2476b495-8abe-4c47-be5a-57851a445325; production graph reachability is confirmed and Station exploitability remains unproven.",
+      "reason": "Brian explicitly approved this exact seven-day renewal through 2026-10-17T00:00:00Z in T3 thread 547e89a2-9a39-4f72-b419-98efcddb47c3 on 2026-10-10 UTC. Review on 2026-10-10 UTC: npm latest remains 3.0.3; GitHub advisory covers <=3.0.3 with no first patched version. Threat model: an untrusted deeply nested brace pattern reaching expansion and exhausting a Station Node process stack. Dependency paths include micromatch/fast-glob and VoltAgent; Station-specific entry-point exploitability and non-reachability remain unproved. Exact-root seven-day temporary risk acceptance, not remediation. Recheck every upstream release or dependency graph change; remove when independently verified mitigation lands. No unrelated critical/high identity is accepted.",
       "trackingIssue": "https://github.com/kontourai/station/issues/3150",
-      "expires": "2026-10-10"
+      "expires": "2026-10-17"
     },
     {
       "scope": "sdk",
@@ -37,9 +37,9 @@
       "advisory": "GHSA-ch52-4w7c-c8xp",
       "severity": "high",
       "owner": "station-maintainers",
-      "reason": "Brian explicitly approved seven-day risk acceptance in thread ad2ad454-cf14-49b6-997e-296c38cbedc0 on 2026-10-03. Upstream has no published patched version. Threat model: An unauthenticated caller manipulating max-stale against a shared HTTP cache containing another user response. Station-specific exploitability has not been ruled out; this is risk acceptance, not remediation or non-reachability proof. Recheck on every upstream release or dependency graph change and remove this exact exception when patched. All other critical/high identities remain blocking. Brian also explicitly authorized this exact exception through 2026-10-10 in thread 2476b495-8abe-4c47-be5a-57851a445325; production graph reachability is confirmed and Station exploitability remains unproven.",
+      "reason": "Brian explicitly approved this exact seven-day renewal through 2026-10-17T00:00:00Z in T3 thread 547e89a2-9a39-4f72-b419-98efcddb47c3 on 2026-10-10 UTC. Review on 2026-10-10 UTC: GitHub advisory names <=4.2.0 and no first patched version; npm latest is 4.3.0. Issue #3150 retains integrity-verified dependency-boundary reproduction in 4.2.0 and 4.3.0: max-stale can select a shared response whose TTL was zeroed for Set-Cookie. Threat model: unauthenticated caller selecting another user response from a shared HTTP cache. Production graph is present; a reachable Station HTTP exploit or non-reachability remains unproved. Exact-scope seven-day temporary risk acceptance, not remediation. Recheck every upstream release or dependency graph change; remove when independently verified remediation lands. No unrelated critical/high identity is accepted.",
       "trackingIssue": "https://github.com/kontourai/station/issues/3150",
-      "expires": "2026-10-10"
+      "expires": "2026-10-17"
     },
     {
       "scope": "shared",
@@ -47,9 +47,9 @@
       "advisory": "GHSA-ch52-4w7c-c8xp",
       "severity": "high",
       "owner": "station-maintainers",
-      "reason": "Brian explicitly approved seven-day risk acceptance in thread ad2ad454-cf14-49b6-997e-296c38cbedc0 on 2026-10-03. Upstream has no published patched version. Threat model: An unauthenticated caller manipulating max-stale against a shared HTTP cache containing another user response. Station-specific exploitability has not been ruled out; this is risk acceptance, not remediation or non-reachability proof. Recheck on every upstream release or dependency graph change and remove this exact exception when patched. All other critical/high identities remain blocking. Brian also explicitly authorized this exact exception through 2026-10-10 in thread 2476b495-8abe-4c47-be5a-57851a445325; production graph reachability is confirmed and Station exploitability remains unproven.",
+      "reason": "Brian explicitly approved this exact seven-day renewal through 2026-10-17T00:00:00Z in T3 thread 547e89a2-9a39-4f72-b419-98efcddb47c3 on 2026-10-10 UTC. Review on 2026-10-10 UTC: GitHub advisory names <=4.2.0 and no first patched version; npm latest is 4.3.0. Issue #3150 retains integrity-verified dependency-boundary reproduction in 4.2.0 and 4.3.0: max-stale can select a shared response whose TTL was zeroed for Set-Cookie. Threat model: unauthenticated caller selecting another user response from a shared HTTP cache. Production graph is present; a reachable Station HTTP exploit or non-reachability remains unproved. Exact-scope seven-day temporary risk acceptance, not remediation. Recheck every upstream release or dependency graph change; remove when independently verified remediation lands. No unrelated critical/high identity is accepted.",
       "trackingIssue": "https://github.com/kontourai/station/issues/3150",
-      "expires": "2026-10-10"
+      "expires": "2026-10-17"
     }
   ],
   "residuals": [
@@ -61,11 +61,11 @@
       "severity": "moderate",
       "reachability": "production",
       "owner": "station-maintainers",
-      "disposition": "Reachable through @voltagent/core@2.9.2's transitive telemetry graph; npm audit offers no compatible upstream remediation for this nested version.",
-      "controls": "Station's independently managed OpenTelemetry graph resolves 2.10.0; retain telemetry input validation and do not force a cross-major override into VoltAgent's private dependency graph.",
-      "trackingUrl": "https://github.com/kontourai/station/issues/1753",
-      "expires": "2026-10-08",
-      "recheckTrigger": "Run npm audit --omit=dev after every VoltAgent core update and when VoltAgent publishes a compatible OpenTelemetry remediation."
+      "disposition": "Production-reachable through @voltagent/core@2.10.0 -> @opentelemetry/exporter-trace-otlp-http@0.203.0, which pins this exact OpenTelemetry core version. The latest published @voltagent/core still uses the 0.203 exporter line; no compatible upstream remediation is published. Owner-approved 30-day risk acceptance for this exact moderate identity; this does not claim the path is unreachable or fixed.",
+      "controls": "Station's independently managed OpenTelemetry graph resolves 2.10.0, but that does not mitigate VoltAgent's distinct production graph. Do not force a version override across the upstream OpenTelemetry package set's exact pins. Reassess this reachable baggage-propagation path on upstream release.",
+      "trackingUrl": "https://github.com/kontourai/station/issues/3510",
+      "expires": "2026-11-07",
+      "recheckTrigger": "Run npm run audit:policy after every VoltAgent or OpenTelemetry update and remove this exact residual when a compatible upstream package set resolves core to 2.8.0 or newer."
     },
     {
       "scope": "root",
@@ -75,11 +75,11 @@
       "severity": "moderate",
       "reachability": "production",
       "owner": "station-maintainers",
-      "disposition": "Reachable through @voltagent/logger@2.0.2's transitive telemetry graph; npm audit offers no compatible upstream remediation for this nested version.",
-      "controls": "Station's independently managed OpenTelemetry graph resolves 2.10.0; retain telemetry input validation and do not force a cross-major override into VoltAgent's private dependency graph.",
-      "trackingUrl": "https://github.com/kontourai/station/issues/1753",
-      "expires": "2026-10-08",
-      "recheckTrigger": "Run npm audit --omit=dev after every VoltAgent logger update and when VoltAgent publishes a compatible OpenTelemetry remediation."
+      "disposition": "Production-reachable through @voltagent/core@2.10.0 -> @voltagent/logger@2.0.2 -> @opentelemetry/exporter-logs-otlp-http@0.204.0, which pins this exact OpenTelemetry core version. The latest published VoltAgent packages still use the 0.204 logger exporter line; no compatible upstream remediation is published. Owner-approved 30-day risk acceptance for this exact moderate identity; this does not claim the path is unreachable or fixed.",
+      "controls": "Station's independently managed OpenTelemetry graph resolves 2.10.0, but that does not mitigate VoltAgent's distinct production graph. Do not force a version override across the upstream OpenTelemetry package set's exact pins. Reassess this reachable baggage-propagation path on upstream release.",
+      "trackingUrl": "https://github.com/kontourai/station/issues/3510",
+      "expires": "2026-11-07",
+      "recheckTrigger": "Run npm run audit:policy after every VoltAgent or OpenTelemetry update and remove this exact residual when a compatible upstream package set resolves core to 2.8.0 or newer."
     },
     {
       "scope": "root",
@@ -89,11 +89,43 @@
       "severity": "moderate",
       "reachability": "production",
       "owner": "station-maintainers",
-      "disposition": "Reachable only through @voltagent/core@2.9.2; npm audit offers no compatible upstream remediation for its nested uuid dependency.",
+      "disposition": "Production-reachable through @voltagent/core@2.10.0 -> uuid@9.0.1. The latest published @voltagent/core still declares uuid ^9.0.1, and no patched 9.x version exists; the advisory's first patched release is 11.1.1. Owner-approved 30-day risk acceptance for this exact moderate identity; this does not claim the path is unreachable or fixed.",
       "controls": "Station generates its security-sensitive identifiers through Node crypto and does not rely on VoltAgent's nested uuid package for pairing or credential secrets.",
-      "trackingUrl": "https://github.com/kontourai/station/issues/1753",
-      "expires": "2026-10-08",
-      "recheckTrigger": "Run npm audit --omit=dev after every VoltAgent core update and when VoltAgent publishes a compatible uuid remediation."
+      "trackingUrl": "https://github.com/kontourai/station/issues/3510",
+      "expires": "2026-11-07",
+      "recheckTrigger": "Run npm run audit:policy after every VoltAgent core update and remove this exact residual when VoltAgent publishes a compatible uuid remediation."
+    },
+    {
+      "scope": "root",
+      "package": "sprintf-js",
+      "version": "1.0.3",
+      "advisory": "GHSA-hp3w-g68c-fv3c",
+      "severity": "moderate",
+      "reachability": "production",
+      "owner": "station-maintainers",
+      "disposition": "Brian explicitly approved machine-bound acceptance conditional on good/bad drift/restoration proof and independent review. These conditions passed at guard revision e319df1a89. Exact root production sprintf-js1.0.3/GHSA-hp3w-g68c-fv3c only, until2026-10-13; no automatic renewal or identity-only fallback. This is a locally remediated numeric precision primitive still reported by upstream version, not a claim of upstream remediation or proven absence of production format control.",
+      "controls": "Machine guard requires structured binding at the actual policy acceptance seam. Observes current parsed workspace+lock references, exact patch bytes/hash, accounted installed source+min formatter bytes and Node24; refuses missing/drift, package/caller-directory/file/symlink/case-equivalent shadows and unaccounted copies. Proof: six source/min CJS/global/AMD paths/66supported comparisons at228505, exact patched bytes unchanged in composed source-map1.2.2 graph29cd; guard109good/bad/restored tests and finalowner-bypass17FAIL/2PASS followed109PASS at e319, fourth independent reviewPASS. Production presence is confirmed; attacker-controlled Station format reachability remains unproven. Legacy YAML/CLI supported, oversizedprecision andg0 bounded rounding. Width/padding/parser growth remain outside scope. Actual composed installation/audit/hosted verification remain separate.",
+      "trackingUrl": "https://github.com/kontourai/station/pull/3445",
+      "expires": "2026-10-13",
+      "recheckTrigger": "Before expiry and on upstream compatible release, dependency/patch/source-or-minified artifact/hash/Node-runtime change, additional formatter entrypoint, or discovery of untrusted production format control: recheck exact applied bytes and bounded numeric plus supported-format/YAML/CLI controls, withdraw this disposition on mismatch, and remove it when compatible upstream remediation passes. No automatic renewal.",
+      "patchBinding": {
+        "schemaVersion": 1,
+        "package": "sprintf-js",
+        "version": "1.0.3",
+        "patchPath": "patches/sprintf-js-1.0.3.patch",
+        "patchSha256": "d7a96af1a095bea6b7a54d87e9a4e736387a6ffcec096307717f80b699ecc4c6",
+        "installedEntrypoints": [
+          {
+            "path": "node_modules/sprintf-js/src/sprintf.js",
+            "sha256": "99e901c0ae0e17adc28b962525031c6f432b340eba8f4d3099058869306db083"
+          },
+          {
+            "path": "node_modules/sprintf-js/dist/sprintf.min.js",
+            "sha256": "71024e953ebe9c73ccf298776c15508a328469fb68c2d8b876319b61f46017c4"
+          }
+        ],
+        "nodeMajor": 24
+      }
     }
   ]
 }

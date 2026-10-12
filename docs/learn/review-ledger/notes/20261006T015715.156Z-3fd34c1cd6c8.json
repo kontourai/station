@@ -1,0 +1,7 @@
+{
+  "revision": "1e2395d8589cfcb313b8fdc80020bf7564f2edac",
+
+  "notes": [
+    {"path":"docs/guides/local-collaboration-lab.md","note":"#3391 round 8: runsAt left GET /api/projects and /api/boot (back to main's catalogue) for a separate operator-only GET /api/projects/run-locations (projects.ts), with SDK listProjectRunLocations/useProjectRunLocationsQuery, ProjectsContext useScopedProjectRunLocationsQuery, and the composer merging it in (HomeStartComposer, ChatDock to NewChatModal); the route is declared in pairing-route-scopes.ts and projectReadGuard refuses member-scoped callers. Searched this document for boot, Project list, run-location and pairing-scope claims; none are affected.","inputs":["docs/guides/local-collaboration-lab.md","packages/sdk/src/client/projects.ts","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

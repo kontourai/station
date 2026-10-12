@@ -1,0 +1,7 @@
+{
+  "revision": "600193649f09f1aed154cc2b260ed07bfb27c12c",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"#3386 Grok fix round: dependent session-api.md's Grok paragraph now covers displayText, aborted abandoned turns, rewind markers and discovery budgets. The ADR's orchestration flag status and retained decisions are unaffected; no prose change.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

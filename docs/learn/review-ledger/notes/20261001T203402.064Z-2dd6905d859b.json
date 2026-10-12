@@ -1,0 +1,7 @@
+{
+  "revision": "0ab9b2a8123e608900bae2492b40c0b35483ac2d",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Merged bytes. navigation-store.ts on this branch gained a same-URL index assignment in handlePopState, two read-only getters (traversalAwaitsGuard, traversalDepartedIndex), an exported navigationEntryIndex, and navigate() no longer copies main's page stamp to a new entry; main's side added the entryLocations map. The document's claims about this file — that it is the navigation authority and that URL/popstate/back-forward remain authoritative over persisted host selection — still hold with both changes.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md"]}
+  ]
+}

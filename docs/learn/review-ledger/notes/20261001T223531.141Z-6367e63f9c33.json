@@ -1,0 +1,7 @@
+{
+  "revision": "543ec6c18fac08d9cd88ed6dff81b940e7776f86",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Re-read the pull-request review paragraph against the reader: a full first page of GitHub check contexts (100, unpaged by gh pr view) is partial, a GitLab merged-results pipeline is unavailable with its own reason, and subject marks a file-level inline comment whose null line is not outdated.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

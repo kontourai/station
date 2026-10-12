@@ -1,14 +1,14 @@
-name: Android Tests
+name: "Main: Android tests"
 
 on:
   workflow_run:
-    workflows: [Build Android verification artifact]
+    workflows: ["Main: Android build"]
     types: [completed]
   # checkov:skip=CKV_GHA_7:Manual test runs require an exact prior Android build run ID
   workflow_dispatch:
     inputs:
       run_id:
-        description: 'Successful Build Android verification artifact run ID'
+        description: 'Successful Main: Android build run ID'
         required: true
 
 permissions:
@@ -59,7 +59,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

@@ -1,0 +1,7 @@
+{
+  "revision": "ba0269e234b8e1f18be0d5f4e77f8cdabb429029",
+
+  "notes": [
+    {"path":"packages/telemetry-broker/README.md","note":"Reviewed full receiver source and private operating guide at e705f80: dedicated product/operator keys, permanent live-schema/durability gates on all8entrypoints, transaction/HTTP/storage/retention bounds, Unix bounded secret-file admission, unknown delivery coverage and physical-size capacity trap. Fifteen HTTP mocks, guarded concurrency/rate mutations and artifact-bound livePG16.14 qualifier passed; persistent deployment, native and final-source restore remain separate.","inputs":["packages/telemetry-broker/README.md","package.json#/scripts/build:telemetry-broker","package.json#/scripts/qualify:telemetry-broker","packages/contracts/src/product-telemetry.ts","packages/shared/src/product-telemetry.ts","packages/telemetry-broker/build.mjs","packages/telemetry-broker/package.json","packages/telemetry-broker/src/__tests__/broker.test.ts","packages/telemetry-broker/src/app.ts","packages/telemetry-broker/src/main.ts","packages/telemetry-broker/src/store.ts","scripts/qualify-telemetry-broker.mjs","src-server/services/usage-telemetry-service.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "543ec6c18fac08d9cd88ed6dff81b940e7776f86",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"The review pane's bar now wraps its action group (labelled Add to chat plus two icon controls) under the title as one unit at phone width, and its disclosures keep the 44px floor; shared primitives and the guide's claims are unchanged.","inputs":["docs/guides/responsive-ui.md"]}
+  ]
+}

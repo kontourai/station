@@ -1,0 +1,33 @@
+{
+  "revision": "5068f9cb2deda94059546cee76d09d05b9c6e573",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Reviewed the only subsequent smoke source delta: multiline destructuring format of bootAndProbe, retaining the explicit archive root and identical arguments/call behavior. Prior packaging and fresh-home catalog claims remain unchanged; this format edit provides no additional runtime/platform evidence."},
+
+    {"path":"docs/guides/android-build.md","note":"Reviewed the only subsequent smoke source delta: multiline destructuring format of bootAndProbe, retaining the explicit archive root and identical arguments/call behavior. Prior packaging and fresh-home catalog claims remain unchanged; this format edit provides no additional runtime/platform evidence."},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed the only subsequent smoke source delta: multiline destructuring format of bootAndProbe, retaining the explicit archive root and identical arguments/call behavior. Prior packaging and fresh-home catalog claims remain unchanged; this format edit provides no additional runtime/platform evidence."},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Reviewed the only subsequent smoke source delta: multiline destructuring format of bootAndProbe, retaining the explicit archive root and identical arguments/call behavior. Prior packaging and fresh-home catalog claims remain unchanged; this format edit provides no additional runtime/platform evidence."},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the only subsequent smoke source delta: multiline destructuring format of bootAndProbe, retaining the explicit archive root and identical arguments/call behavior. Prior packaging and fresh-home catalog claims remain unchanged; this format edit provides no additional runtime/platform evidence."},
+
+    {"path":"docs/guides/ecosystem-packaging.md","note":"Reviewed the only subsequent smoke source delta: multiline destructuring format of bootAndProbe, retaining the explicit archive root and identical arguments/call behavior. Prior packaging and fresh-home catalog claims remain unchanged; this format edit provides no additional runtime/platform evidence."},
+
+    {"path":"docs/guides/native-releases.md","note":"Reviewed the only subsequent smoke source delta: multiline destructuring format of bootAndProbe, retaining the explicit archive root and identical arguments/call behavior. Prior packaging and fresh-home catalog claims remain unchanged; this format edit provides no additional runtime/platform evidence."},
+
+    {"path":"docs/guides/nightly.md","note":"Reviewed the only subsequent smoke source delta: multiline destructuring format of bootAndProbe, retaining the explicit archive root and identical arguments/call behavior. Prior packaging and fresh-home catalog claims remain unchanged; this format edit provides no additional runtime/platform evidence."},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Reviewed the only subsequent smoke source delta: multiline destructuring format of bootAndProbe, retaining the explicit archive root and identical arguments/call behavior. Prior packaging and fresh-home catalog claims remain unchanged; this format edit provides no additional runtime/platform evidence."},
+
+    {"path":"docs/guides/release-rings.md","note":"Reviewed the only subsequent smoke source delta: multiline destructuring format of bootAndProbe, retaining the explicit archive root and identical arguments/call behavior. Prior packaging and fresh-home catalog claims remain unchanged; this format edit provides no additional runtime/platform evidence."},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the only subsequent smoke source delta: multiline destructuring format of bootAndProbe, retaining the explicit archive root and identical arguments/call behavior. Prior packaging and fresh-home catalog claims remain unchanged; this format edit provides no additional runtime/platform evidence."},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the only subsequent smoke source delta: multiline destructuring format of bootAndProbe, retaining the explicit archive root and identical arguments/call behavior. Prior packaging and fresh-home catalog claims remain unchanged; this format edit provides no additional runtime/platform evidence."},
+
+    {"path":"examples/registry/README.md","note":"Reviewed the only subsequent smoke source delta: multiline destructuring format of bootAndProbe, retaining the explicit archive root and identical arguments/call behavior. Prior packaging and fresh-home catalog claims remain unchanged; this format edit provides no additional runtime/platform evidence."},
+
+    {"path":"packaging/manifest/README.md","note":"Reviewed the only subsequent smoke source delta: multiline destructuring format of bootAndProbe, retaining the explicit archive root and identical arguments/call behavior. Prior packaging and fresh-home catalog claims remain unchanged; this format edit provides no additional runtime/platform evidence."}
+  ]
+}

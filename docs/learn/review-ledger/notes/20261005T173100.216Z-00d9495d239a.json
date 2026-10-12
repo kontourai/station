@@ -1,0 +1,35 @@
+{
+  "revision": "b96d87f8960406b0919ab4e5a8ec6bed1573cfce",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Re-reviewed for #3279 round 4: module-map.md's Ownership paragraph only narrows the create id-oracle sentence (instance-owned creates reveal a used id; person-owned creates are refused before the id check). This document makes no claim about secret-binding creation or ids, so no prose change.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Re-reviewed for #3279 round 4: module-map.md's Ownership paragraph only narrows the create id-oracle sentence (instance-owned creates reveal a used id; person-owned creates are refused before the id check). This document makes no claim about secret-binding creation or ids, so no prose change.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Re-reviewed for #3279 round 4: module-map.md's Ownership paragraph only narrows the create id-oracle sentence (instance-owned creates reveal a used id; person-owned creates are refused before the id check). This document makes no claim about secret-binding creation or ids, so no prose change.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Re-reviewed for #3279 round 4: module-map.md's Ownership paragraph only narrows the create id-oracle sentence (instance-owned creates reveal a used id; person-owned creates are refused before the id check). This document makes no claim about secret-binding creation or ids, so no prose change.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Re-reviewed for #3279 round 4: module-map.md's Ownership paragraph only narrows the create id-oracle sentence (instance-owned creates reveal a used id; person-owned creates are refused before the id check). This document makes no claim about secret-binding creation or ids, so no prose change.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Re-reviewed for #3279 round 4: module-map.md's Ownership paragraph only narrows the create id-oracle sentence (instance-owned creates reveal a used id; person-owned creates are refused before the id check). This document makes no claim about secret-binding creation or ids, so no prose change.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"Re-reviewed for #3279 round 4: module-map.md's Ownership paragraph only narrows the create id-oracle sentence (instance-owned creates reveal a used id; person-owned creates are refused before the id check). This document makes no claim about secret-binding creation or ids, so no prose change.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Re-reviewed for #3279 round 4: module-map.md's Ownership paragraph only narrows the create id-oracle sentence (instance-owned creates reveal a used id; person-owned creates are refused before the id check). This document makes no claim about secret-binding creation or ids, so no prose change.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Re-reviewed for #3279 round 4: module-map.md's Ownership paragraph only narrows the create id-oracle sentence (instance-owned creates reveal a used id; person-owned creates are refused before the id check). This document makes no claim about secret-binding creation or ids, so no prose change.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Re-reviewed for #3279 round 4: module-map.md's Ownership paragraph only narrows the create id-oracle sentence (instance-owned creates reveal a used id; person-owned creates are refused before the id check). This document makes no claim about secret-binding creation or ids, so no prose change.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Re-reviewed for #3279 round 4: module-map.md's Ownership paragraph only narrows the create id-oracle sentence (instance-owned creates reveal a used id; person-owned creates are refused before the id check). This document makes no claim about secret-binding creation or ids, so no prose change.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Re-reviewed for #3279 round 4: module-map.md's Ownership paragraph only narrows the create id-oracle sentence (instance-owned creates reveal a used id; person-owned creates are refused before the id check). This document makes no claim about secret-binding creation or ids, so no prose change.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Re-reviewed for #3279 round 4: module-map.md's Ownership paragraph only narrows the create id-oracle sentence (instance-owned creates reveal a used id; person-owned creates are refused before the id check). This document makes no claim about secret-binding creation or ids, so no prose change.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Re-reviewed for #3279 round 4: station-docs-content.ts changed only by docs:mcp:generate recompiling the narrowed module-map create sentence. This manual makes no secret-binding claim, so no prose change.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Round 4 for #3279: narrowed the create id-oracle sentence. Checked against secret-binding-administration.ts create: parseOwner/SecretBindingPersonCreateError runs before the store mutation's 'already exists' check, so only an instance-owned create (no owner or kind instance) reaches the duplicate-id refusal, which matches any existing record, person-owned included. No code changed.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

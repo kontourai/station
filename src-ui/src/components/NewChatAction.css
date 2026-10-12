@@ -1,0 +1,29 @@
+.new-chat-action {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  gap: var(--k-space-2);
+}
+.new-chat-action svg {
+  width: var(--k-space-4);
+  height: var(--k-space-4);
+  flex: 0 0 auto;
+}
+
+.chat-dock__mobile-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--k-space-1);
+}
+/* Icon-only in the mobile chat header: the toolbar icon family supplies the
+   44px pill, border and weight shared with Chat actions beside it. */
+.chat-dock__mobile-new svg {
+  width: 18px;
+  height: 18px;
+}
+.chat-start__inbox-action {
+  align-self: flex-end;
+  margin: var(--k-space-3);
+}

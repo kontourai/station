@@ -1,0 +1,7 @@
+{
+  "revision": "2136504fc467103acea24b76c89b769879f0c8a4",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Checked the record parser after merging #3114: historical dependency reads still tolerate only reformatted layout, malformed JSON is reported as a review error, invalid source bindings remain errors for both layouts, and a record's layout follows whether it has a document key. The guide's validation paragraph matches.","inputs":["docs/guides/documentation.md",".veritas/attestations/HEAD","scripts/lib/review-ledger-store.mjs"]}
+  ]
+}

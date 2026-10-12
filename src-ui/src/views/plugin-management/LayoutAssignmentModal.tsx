@@ -1,6 +1,6 @@
 import { Checkbox } from '../../components/Checkbox';
 import { SparkleGlyph } from '../../components/icons/Glyph';
-import { LayoutIcon } from '../../components/icons/LayoutIcon';
+import { ProjectIcon } from '../../components/icons/ProjectIcon';
 import { ResponsiveDialogSurface } from '../../components/ResponsiveDialogSurface';
 
 export function LayoutAssignmentModal({
@@ -73,7 +73,11 @@ export function LayoutAssignmentModal({
                   checked={selectedProjects.has(project.slug)}
                   onChange={(checked) => onToggleProject(project.slug, checked)}
                 >
-                  <LayoutIcon layout={project} size={28} />
+                  <ProjectIcon
+                    project={project}
+                    size={28}
+                    fallback="initials"
+                  />
                   <span>{project.name}</span>
                   <span className="plugins__assign-project-count">
                     {project.layoutCount} layout

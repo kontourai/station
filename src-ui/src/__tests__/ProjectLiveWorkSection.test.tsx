@@ -257,13 +257,14 @@ describe('ProjectLiveWorkSection', () => {
   test('no rendered row contradicts the lane heading above it', () => {
     const LANE_VOCABULARY: Record<string, string[]> = {
       needsYou: [
-        'Needs attention',
+        'Needs approval',
+        'Needs answer',
         'Waiting on you',
-        'Review pending',
+        'Interrupted',
         'Blocked',
       ],
       running: ['Running'],
-      idle: ['Ready', 'Queued', "Can't answer here"],
+      idle: ['Idle', 'Elsewhere'],
     };
 
     mocks.sessions.push(
@@ -348,16 +349,16 @@ describe('ProjectLiveWorkSection', () => {
 
     // The three A1 shapes, by the word they used to print.
     expect(
-      screen.getByRole('button', { name: /Attached but idle.*Ready/i }),
+      screen.getByRole('button', { name: /Attached but idle.*Idle/i }),
     ).toBeTruthy();
     expect(
       screen.getByRole('button', {
-        name: /Review pending mid-turn.*Needs attention/i,
+        name: /Review pending mid-turn.*Needs approval/i,
       }),
     ).toBeTruthy();
     expect(
       screen.getByRole('button', {
-        name: /Stranded request.*Can't answer here/i,
+        name: /Stranded request.*Elsewhere/i,
       }),
     ).toBeTruthy();
   });
@@ -403,6 +404,40 @@ describe('ProjectLiveWorkSection', () => {
       projectName: undefined,
       model: 'claude-opus',
       threadId: 'waiting',
+    });
+  });
+
+  // A delegated task running on a PAIRED Station: its record names the
+  // peer's agent and conversation, so opening it must not rehydrate a chat
+  // on them, and its Needs-you row invites opening rather than replying here.
+  test('a paired-Station record opens without a chat target and does not invite a reply', () => {
+    mocks.sessions.push(
+      session({
+        threadId: 'peer-delegation:abc',
+        assignedAgentSlug: 'codex',
+        conversationId: 'conv-on-peer',
+        lifecycleState: 'needs_input',
+        pendingReview: true,
+        displayTitle: 'Peer question',
+        delegation: {
+          taskId: 'task:peer',
+          environmentId: 'environment-peer',
+          environmentName: 'Station B',
+          environmentKind: 'peer',
+          targetKind: 'agent',
+          targetId: 'codex',
+        },
+      }),
+    );
+    const { container } = render(<ProjectLiveWorkSection slug="station" />);
+    const cta = container.querySelector('.project-page__live-work-cta');
+    expect(cta?.textContent).toBe('Open');
+    expect(screen.queryByRole('button', { name: 'Chat' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Jump in' }));
+    // A `navigate` action: the thread alone, no conversation or agent to
+    // rehydrate, so the dock reveals Activity rather than opening a chat.
+    expect(mocks.focus).toHaveBeenCalledWith({
+      threadId: 'peer-delegation:abc',
     });
   });
 

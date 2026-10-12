@@ -1,0 +1,7 @@
+{
+  "revision": "f69dec76a0ade0dee258155c313ede9bfc31d0be",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed the new Connections-guide reset steps against the existing relationship model: a broker route remains separate from pairing, account identity, Device approval, and compute access. The added recovery action does not change direction, trust relationship, or capabilities; the guide links to Connections for current setup details.","inputs":["docs/guides/machine-relationships.md"]}
+  ]
+}

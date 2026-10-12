@@ -1,0 +1,7 @@
+{
+  "revision": "4a2ce52b385a6518ad71e3f5a89d52b9a3e9f273",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"This branch removes selectDirectNewChatAgent (agent-selection-policy.ts), left unused when #3170 made the New button always open the picker, and updates comments in agent-selection-policy.ts and ChatDockHeader.tsx plus three tests that pinned pre-#3144/#3127/#3170 behaviour. This reference's claims about Station's docs surfaces do not describe the New-chat shortcut or these tests; nothing it states changed.","inputs":["src-ui/src/components/agent-selection-policy.ts"]}
+  ]
+}

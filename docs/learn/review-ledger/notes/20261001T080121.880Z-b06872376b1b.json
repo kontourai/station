@@ -1,0 +1,7 @@
+{
+  "revision": "4a1fc2197028ded07d0e389e98a30042ab7cadb5",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"#3071 final round. Added that a question (a request carrying a questionnaire) is never bound to its event by approvals respond or by operate. Checked against expectedRequestEvent in packages/cli/src/commands/approvals.ts and the isQuestion check in operate/state.ts, and against the server guard ('Inspect the current question before answering it') exercised in request-inspection.routes.test.ts; executed core-http.test.ts and operate-keys.test.ts with fault injection on both checks. Rest of the page, including main's merged changes, not re-reviewed.","inputs":["docs/reference/cli.md"]}
+  ]
+}

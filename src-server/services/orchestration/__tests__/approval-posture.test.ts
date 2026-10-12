@@ -10,7 +10,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { SetApprovalModeResult } from '@kontourai/station-contracts/orchestration';
-import type { ApprovalMode } from '@kontourai/station-contracts/provider';
+import {
+  type ApprovalMode,
+  PROVIDER_MUSE,
+} from '@kontourai/station-contracts/provider';
 import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
@@ -28,6 +31,7 @@ import type {
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
+import { ApprovalPosture } from '../approval-posture.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -963,6 +967,39 @@ describe('server-ordered approval posture (#2436)', () => {
       await decide('t-2409-untouched', 'connection-default');
       await turn('t-2409-untouched');
       expect(claude.turns.at(-1)?.modelOptions).toBeUndefined();
+    });
+  });
+});
+
+/**
+ * #2898 review LOW-7: the confinement-change exception on Muse, the other
+ * engine with an approval knob and no native sandbox. Its start `never`
+ * under `host` is re-sent under `workspace` as `auto`, as on Claude; an
+ * ordinary turn while the confinement still holds sends nothing.
+ */
+describe('#2898: a confinement change re-applies the engine mode on Muse', () => {
+  test('never started host is re-sent as auto once the session applies as workspace', async () => {
+    const posture = new ApprovalPosture({
+      resolveAgentDefault: async () => 'never',
+    });
+    const resolve = (
+      phase: 'start' | 'turn',
+      confinement: 'host' | 'workspace',
+    ) =>
+      posture.resolve({
+        threadId: 'muse-thread',
+        provider: PROVIDER_MUSE,
+        phase,
+        agentSlug: 'muse-agent',
+        confinement,
+      });
+    expect(await resolve('start', 'host')).toEqual({ approvalMode: 'never' });
+    expect(await resolve('turn', 'host')).toBeUndefined();
+    expect(await resolve('turn', 'workspace')).toEqual({
+      approvalMode: 'auto',
+    });
+    expect(await resolve('turn', 'workspace')).toEqual({
+      approvalMode: 'auto',
     });
   });
 });

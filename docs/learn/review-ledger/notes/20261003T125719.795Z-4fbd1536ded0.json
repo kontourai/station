@@ -1,0 +1,7 @@
+{
+  "revision": "be34938f4652aa3b7f5a1a7749189d0e536690ed",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Re-recorded after the main merge replaced the base branch's record. This lane imports contract types from their domain subpaths (conversation-pull-request-links, pull-request-provider, workspace-pull-request-pane) and adds no runtime helper to the package; the one new client-side parser (pull-request-reference.ts) lives in src-ui, as this file requires. No prose change.","inputs":["docs/reference/contracts.md","packages/contracts/package.json#/exports"]}
+  ]
+}

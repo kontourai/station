@@ -9,12 +9,10 @@
 
   "limits": "No model recommendation or live tool-calling observation was renewed. Current model binding/provider owners are routing references, not vendor compatibility proof.",
 
-  "document": {"digest":"82d00fa21dd2c11406b28984cac67f4b82e55204fa642e45ea76d095d277eec3","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
-
   "sources": [
-    {"path":"src-server/providers/llm/ollama-provider.ts","digest":"868b1856847fc5faeffb7660108440b999d851d625100327aff62fbcb8f04715","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-server/providers/llm/ollama-provider.ts",
 
-    {"path":"src-server/runtime/plugins/runtime-provider-resolution.ts","digest":"99c57df9288ec94d454dace087cb1bfc99867e41f6caa992d244bc053a2a0253","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"}
+    "src-server/runtime/plugins/runtime-provider-resolution.ts"
   ],
 
   "checks": [

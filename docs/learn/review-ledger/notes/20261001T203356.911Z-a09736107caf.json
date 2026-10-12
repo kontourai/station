@@ -1,0 +1,7 @@
+{
+  "revision": "0ab9b2a8123e608900bae2492b40c0b35483ac2d",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Merged bytes of this branch and main (#3035's Coding-layout stack section, which this branch does not touch). Re-checked the main-region section rewritten for #2986 and #2988 sentence by sentence against RegionModelContext.tsx, main-page-history.ts and the merged navigation-store.ts: a page swap at / is a navigation entry stamped in history.state; a traversal onto a stamped / entry restores the page; route entries carry no stamp and an unstamped / entry is stamped on arrival; the three traversals that are not obeyed (bare popstate, a landing while traversalAwaitsGuard, a traversal within one navigation entry by traversalDepartedIndex); a deep-link adoption adds no entry; placeSurface into main restores a maximized dock and keeps lastDockMaximized; the stated limits. #3035's drill-in entries are at the Coding layout's route, where the page restore does not act (it requires pathname /), and its entryLocations map is keyed by the same index the same-URL traversal now follows.","inputs":["docs/design/placement.md"]}
+  ]
+}

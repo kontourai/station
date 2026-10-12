@@ -1,0 +1,19 @@
+{
+  "revision": "81119beee7ca34df36773bc6f16a79b4fb83a77d",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"#3386 fix round: adoption now records dispatchCanonicalCwd on the child and the No project folder rule is an allow rule inside the home folder. Searched this document for adoption, dispatchCanonicalCwd and continuation-folder claims; none is affected. No prose change.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"#3386 fix round: adoption now records dispatchCanonicalCwd on the child and the No project folder rule is an allow rule inside the home folder. Searched this document for adoption, dispatchCanonicalCwd and continuation-folder claims; none is affected. No prose change.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md","src-server/services/orchestration/attached-session-adoption.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"#3386 fix round: adoption now records dispatchCanonicalCwd on the child and the No project folder rule is an allow rule inside the home folder. Searched this document for adoption, dispatchCanonicalCwd and continuation-folder claims; none is affected. No prose change.","inputs":["docs/guides/agents.md","src-server/services/orchestration/attached-session-adoption.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"#3386 fix round: added that an adopted attached-session child records dispatchCanonicalCwd (attached-session-adoption.ts) so recovery's assertDispatchCwdUnmoved compares it; checked against the restart test. AdoptionLedger section unchanged.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/attached-session-adoption.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#3386 fix round: No project rule rewritten as the allow rule in noProjectFolderRefusal (strictly inside resolved home; not in a top-level dot-folder, ~/Library, ~/AppData; not temp-containing; not overlapping Station home), the recorded-equals-resolved cwd check, and the dispatchCanonicalCwd record on every adopted child; each sentence checked against attached-session-continuation-place.ts and attached-session-adoption.ts.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/attached-session-adoption.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"#3386 fix round: the No project sentence now states the home-folder allow rule and links the user guide; checked against noProjectFolderRefusal.","inputs":["docs/guides/starter-work.md","src-server/services/orchestration/attached-session-adoption.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"#3386 fix round: the No project paragraph now states the allow rule (inside your home folder; home itself, outside folders, hidden top-level folders, Library/AppData, temp and Station data refused; a link to another folder refused); checked against noProjectFolderRefusal and the recorded-path check, no absolute paths.","inputs":["docs/user/getting-started.md","docs/guides/starter-work.md"]}
+  ]
+}

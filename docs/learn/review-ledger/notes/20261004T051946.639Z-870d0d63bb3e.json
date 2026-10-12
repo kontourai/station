@@ -1,0 +1,13 @@
+{
+  "revision": "f9902e2692c5b9c6c2f25b2d63574c8e833ce3e6",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Reviewed attached external-session follow against the importer delta: ancestry/cursor bookkeeping remains bounded read-only observation; original-process control and independent adoption authority are unchanged. Delta review: the existing-cursor look-behind probes one preceding byte and preserves an aligned complete first record. Full, aligned, and unavailable boundary fixtures distinguish identity recovery from guessed completion.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"Reviewed importer ancestry and existing-cursor upgrade delta against Agent engine/runtime and continuation guidance. Configuration, invocation, source-home affinity, and control/adoption contracts remain unchanged. Delta review: the existing-cursor look-behind probes one preceding byte and preserves an aligned complete first record. Full, aligned, and unavailable boundary fixtures distinguish identity recovery from guessed completion.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Replaced the #581 limitation with bounded parent-turn ancestry, upgrade look-behind without counter replay, coherent event-cap cursor state, and retention of all per-turn observations. Source/source-restart fixtures and real EventStore regressions prove this slice; no new live provider reconciliation or expanded history bounds is claimed. Delta review: the existing-cursor look-behind probes one preceding byte and preserves an aligned complete first record. Full, aligned, and unavailable boundary fixtures distinguish identity recovery from guessed completion.","inputs":["docs/guides/monitoring.md","src-server/providers/sessions/claude-transcript-session-source.ts","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Documented source-owned bounded ancestry, unknown-parent behavior, existing-cursor identity recovery, and coherent partial-record replay. Per-turn versus cumulative observation retention remains bounded; source-home affinity, adoption, and control authority stay unchanged. Delta review: the existing-cursor look-behind probes one preceding byte and preserves an aligned complete first record. Full, aligned, and unavailable boundary fixtures distinguish identity recovery from guessed completion.","inputs":["docs/reference/session-api.md","src-server/providers/sessions/claude-transcript-session-source.ts"]}
+  ]
+}

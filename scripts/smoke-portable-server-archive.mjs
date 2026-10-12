@@ -34,6 +34,7 @@ import {
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { parseArgs } from 'node:util';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import {
   highestSymbolVersion,
   symbolVersionFloor,
@@ -87,7 +88,7 @@ function noteAnnouncedHome(output) {
 /** Runs the launcher once, recording any Station home it announces. */
 function spawnLauncherSync(launcher, args, env, cwd, timeout) {
   const { command, args: argv, options } = launcherInvocation(launcher, args);
-  const result = spawnSync(command, argv, {
+  const result = spawnSyncBounded(command, argv, {
     ...options,
     cwd,
     env,
@@ -363,7 +364,14 @@ async function choosePorts() {
  * environment): an unset port falls back to a channel default the owner's
  * own Station uses.
  */
-async function bootAndProbe({ launcher, nextLauncher, env, home, release }) {
+async function bootAndProbe({
+  root,
+  launcher,
+  nextLauncher,
+  env,
+  home,
+  release,
+}) {
   // The home a release of this channel owns (runtime-path-resolver's
   // runtimeInstancePath); a development checkout would pick instances/dev/<id>.
   const stationHome = join(home, '.station', 'instances', release.channel);
@@ -487,6 +495,25 @@ async function bootAndProbe({ launcher, nextLauncher, env, home, release }) {
       authorization,
     );
     log(`/api/system/status 200 (${Object.keys(status).length} fields)`);
+    const catalog = await getJson(
+      `http://127.0.0.1:${serverPort}/api/registry/plugins`,
+      authorization,
+    );
+    const curated = catalog.data?.find(
+      (entry) => entry.catalog?.itemId === 'matt-pocock-engineering',
+    );
+    if (curated?.catalogSourceName !== 'Station')
+      fail(
+        'Fresh archive did not expose its bundled Station engineering collection',
+      );
+    const source = realpathSync(curated.source);
+    if (!source.startsWith(`${realpathSync(root)}${sep}`))
+      fail('Bundled catalog resolved a build-host path outside this archive');
+    if (!existsSync(join(source, 'plugin.json')))
+      fail('Bundled engineering collection has no portable plugin manifest');
+    log(
+      'Fresh archive exposes its source-bound Station engineering collection',
+    );
     const identity = await getJson(
       `http://127.0.0.1:${serverPort}/api/system/instance`,
       authorization,
@@ -774,7 +801,7 @@ async function main() {
     const listing = treeListing(root);
     const restoreWritable = makeReadOnly(root);
     try {
-      await bootAndProbe({ launcher, nextLauncher, env, home, release });
+      await bootAndProbe({ root, launcher, nextLauncher, env, home, release });
     } finally {
       restoreWritable();
     }

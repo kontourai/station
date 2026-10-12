@@ -1,0 +1,7 @@
+{
+  "revision": "cb17fb7a3cfd0c7f0df5c1837870b0662ef0cd3d",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed regenerated tool-servers MCP topic against the canonical setup guide and selection delivery changes. The generated prose now explains compact setup, read-only defaults, independent approvals, new-chat application and bounded engine support. Generation check passed; runtime selection tests passed. This source-delta review does not establish model-driven deferred discovery or release proof.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

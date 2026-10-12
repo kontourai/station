@@ -1,0 +1,7 @@
+{
+  "revision": "305355b474a30b93dbca4d3310bb17d484ce5296",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Reviewed #3405 form lifecycle through the result-part producer, both transcript renderers, UIBlockActionsContext, chatFormDraftsStore and normal sender. Documented connection/chat/conversation scope, event-and-ordinal identity, in-memory lifetime, chat-close cleanup, pending acceptance and conservative unconfirmed locking; supplied blockId stays in the payload. Focused UI regression reached streaming settlement and remount with values retained. No reload, packaged native or live-provider proof.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/UIBlockRenderer.tsx","src-ui/src/contexts/chat-form-drafts-store.ts","src-ui/src/components/chat/ui-block-identity.ts","src-ui/src/components/chat/UIBlockActionsContext.tsx","src-ui/src/components/chat/StreamingMessage.tsx","src-ui/src/components/chat/message-bubble/MessageContent.tsx"]}
+  ]
+}

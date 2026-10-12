@@ -1,0 +1,7 @@
+{
+  "revision": "14b9ccfbecf87ae603643fcbe18d8956b535c2c2",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Audit round: re-read the wide-fold section against CodingWorkbench.tsx (Escape shortcut, skip control, portalled Browser flyout, preview back arrow), codingPanels.ts (640 floor derivation), CodingTerminalPane.tsx (shell-only auto open), ProjectLayoutRenderer.tsx (Browser ordinal) and the CSS (40px bar/heads, edge at rest); corrected the Escape, head height, floor and edge-at-rest claims and added the dated audit-round bullets.","inputs":["docs/design/placement.md","packages/contracts/src/device-settings.ts","packages/contracts/src/engine-capability-matrix.ts","src-ui/src/App.tsx","src-ui/src/app-shell/ProjectLayoutRenderer.tsx","src-ui/src/app-shell/RegionShells.tsx","src-ui/src/app-shell/destination-registry.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/chat.css","src-ui/src/contexts/RegionModelContext.tsx","src-ui/src/contexts/navigation-store.ts","src-ui/src/hooks/useDockShellChrome.ts","src-ui/src/hooks/useLongPress.ts","src-ui/src/index.css","src-ui/src/lib/device-settings-store.ts","src-ui/src/workspace-panes/RegionPaneHost.tsx","src-ui/src/workspace-panes/__tests__/RegionPaneHost.project.test.tsx","src-ui/src/workspace-panes/workspacePaneHostController.ts"]}
+  ]
+}

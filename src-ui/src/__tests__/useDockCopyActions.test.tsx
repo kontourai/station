@@ -73,7 +73,7 @@ describe('useDockCopyActions', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Copy thread ID' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy chat ID' }));
 
     await waitFor(() =>
       expect(writeText).toHaveBeenCalledWith('station-thread-from-route'),
@@ -111,7 +111,7 @@ describe('useDockCopyActions', () => {
     clipboardRefuses();
     render(<Probe conversationId="station-thread-from-route" />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Copy thread ID' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Copy chat ID' }));
 
     await waitFor(() =>
       expect(showToastMock).toHaveBeenCalledWith(
@@ -129,7 +129,7 @@ describe('useDockCopyActions', () => {
 
   test('omits the path row when the session resolved no directory', () => {
     render(<Probe conversationId="thread-1" workingDirectory={null} />);
-    expect(rows()).toEqual(['Copy thread ID']);
+    expect(rows()).toEqual(['Copy chat ID']);
   });
 
   test('offers the chained session id once a continuation has split the identities', async () => {
@@ -143,7 +143,7 @@ describe('useDockCopyActions', () => {
         sessionId="grok-build:1789746816232:session:f8aace61"
       />,
     );
-    expect(rows()).toEqual(['Copy thread ID', 'Copy session ID']);
+    expect(rows()).toEqual(['Copy chat ID', 'Copy session ID']);
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy session ID' }));
     await waitFor(() =>
@@ -160,6 +160,6 @@ describe('useDockCopyActions', () => {
         sessionId="grok-build:1789746816232"
       />,
     );
-    expect(rows()).toEqual(['Copy thread ID']);
+    expect(rows()).toEqual(['Copy chat ID']);
   });
 });

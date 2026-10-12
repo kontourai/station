@@ -155,6 +155,7 @@ export function EphemeralMessage({
       {msg.action && onAction && (
         <button
           type="button"
+          className="ephemeral-message__action"
           onClick={onAction}
           style={{
             marginTop: '12px',

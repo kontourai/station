@@ -1,0 +1,7 @@
+{
+  "revision": "865c770ae44d40281e0c22917daec43b27816392",
+
+  "notes": [
+    {"path":"docs/guides/product-law-authoring.md","note":"Re-recorded after a main merge reset the record. This lane's delta to builtinWorkspacePaneRegistry.tsx is one thing: CodingDiffPane renders CodingDiffPaneBody (git rows, then one view at full width) instead of composing BranchToolbar, PullRequestsPanel and DiffPanel as two columns; the pull-request pane, binding and directory derivation are untouched. This guide makes no claim about that composition. No prose change.","inputs":["package.json","pnpm-workspace.yaml","src-server/runtime/routes/runtime-routes.ts","src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]}
+  ]
+}

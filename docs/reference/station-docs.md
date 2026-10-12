@@ -41,6 +41,9 @@ what a job did, what a setting contains, or what is in a Project. Answer those
 questions from an authorized live read, or state that only general
 documentation is available.
 
+`station-knowledge` is the separate data server for reading and capturing
+Knowledge records. It requires caller authority; see [Knowledge agent tools](../guides/knowledge.md#agent-tools).
+
 `station-control` is the separate built-in server for Station operations, such
 as creating Agents, running jobs, changing settings, and validating a local
 plugin folder. Installing a plugin through Station's agent tools is refused: a person approves its preview on the Plugins page or with `station plugin install <source>` (see the `plugin-authoring` topic).
@@ -91,8 +94,11 @@ its selected execution engine determines the available delivery mechanisms.
 
 Each engine has a capability matrix for system prompts, tool servers, skills,
 commands, and model selection. Requested authored content without a supported
-delivery channel is reported as undelivered; an absent request is not a failed
-delivery.
+delivery channel is reported as undelivered on the ordinary saved-binding path;
+an absent request is not a failed delivery. An explicit conversation engine
+override must preserve required profile delivery and refuses unsupported or
+undelivered content instead of starting a reduced profile. See
+[execution overrides](session-api.md#preserve-an-agent-profile-with-an-execution-override).
 
 Use the [Agent guide](../guides/agents.md) and [Session API](session-api.md) for
 current setup, capability, turn, idle, terminal, and recovery behavior. A matrix
@@ -181,6 +187,8 @@ remote start is not automatically safe to retry. See the
 
 A task can also be dispatched: assign an agent or a skill to it and send it into a session. Task statuses follow a neutral work-item vocabulary (todo, ready, triage, in progress, blocked, review, verification, done), plus a canceled state for work abandoned before completion.
 
+An agent on any engine can declare a pull request it opened with the Station Control `declare_pull_request` tool; a person keeps the declared pull request onto a Task. A person can also opt a Task in to closing when its pull requests merge: with that opt-in, the Task moves to done once every pull request kept on it is merged at its provider. A pull request closed without merging does not complete the Task, a Task in todo, ready, triage or blocked never closes by itself, and no agent tool sets the opt-in. Station checks when someone with permission to change Task status refreshes the conversation's pull request links; nothing polls. A declaration is recorded when the turn completes and is lost if Station restarts first.
+
 ## Scheduled jobs and notifications
 
 A scheduled job can use a cron expression, a fixed interval (`every`), or a
@@ -203,6 +211,9 @@ A skill is a reusable bundle of instructions and behavior that an agent adopts â
 Skills are a capability Station owns for agents it runs. For an agent bound to an external engine, whether the skill reaches the engine depends on that engine having a delivery channel for skills. Some engines do; others do not.
 
 When an engine has no channel for an authored skill, Station records that as undelivered rather than silently dropping it, and the agent editor shows the authored content read-only with a diagnostic naming the engine that cannot deliver it.
+
+Explicit conversation engine overrides refuse undeliverable required skills
+rather than starting without them. Saved Agent defaults remain unchanged.
 
 Skills are installed and browsed from the registry, like agents and tool servers.
 

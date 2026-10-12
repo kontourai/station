@@ -16,6 +16,7 @@ import {
   type ProjectConfig,
   type ProjectIconCandidate,
   type ProjectMetadata,
+  type ProjectRunLocations,
 } from '@kontourai/station-contracts/project';
 import {
   isWellFormedProjectResolutionView,
@@ -38,9 +39,9 @@ import type {
   WorkspacePaneAvailability,
   WorkspacePaneAvailabilityInput,
 } from '@kontourai/station-contracts/workspace-pane-availability';
+import { envelopeError } from './api-error-message';
 import {
   type ClientRequestOptions,
-  envelopeErrorMessage,
   getJson,
   mutateJson,
   readJsonBody,
@@ -158,6 +159,21 @@ export async function listProjectViews(
   const value = await unwrapOrThrow<unknown>(response);
   if (!Array.isArray(value)) throw new Error('Invalid Project catalogue.');
   return value.map((project) => parseProjectView<ProjectMetadata>(project));
+}
+
+/**
+ * `GET /api/projects/run-locations` — where each Project's chats run, by slug
+ * (#3391). Operator only: a shared member receives an empty map.
+ */
+export async function listProjectRunLocations(
+  apiBase: string,
+  opts?: ClientRequestOptions,
+): Promise<ProjectRunLocations> {
+  const response = await getJson(`${apiBase}/api/projects/run-locations`, opts);
+  const value = await unwrapOrThrow<unknown>(response);
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Invalid Project run locations.');
+  return value as ProjectRunLocations;
 }
 
 /** `GET /api/projects/:slug` — get a project. */
@@ -562,14 +578,9 @@ export async function deleteProjectLayout(
   const result = (await readJsonBody(response)) as
     | ProjectEnvelope<never>
     | undefined;
-  if (!response.ok) {
-    throw new StationHttpError(
-      response.status,
-      envelopeErrorMessage(result, 'Failed to delete layout'),
-    );
-  }
-  if (!result?.success) {
-    throw new Error(envelopeErrorMessage(result, 'Failed to delete layout'));
+  // A 2xx `success:false` is a refusal too, and keeps its observed status.
+  if (!response.ok || !result?.success) {
+    throw envelopeError(response, result, 'Failed to delete layout');
   }
 }
 

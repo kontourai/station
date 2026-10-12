@@ -230,7 +230,7 @@ test.describe('Coding Layout Inspector — a tool configured', () => {
       },
     });
 
-    await expect(planPanel.getByText('Approval required (1)')).toBeVisible();
+    await expect(planPanel.getByText('Needs approval (1)')).toBeVisible();
   });
 });
 

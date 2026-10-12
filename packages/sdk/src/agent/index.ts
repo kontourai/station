@@ -15,10 +15,13 @@ export type { EnrichedAgentProjection } from '@kontourai/station-contracts/enric
 export {
   type EnvironmentId,
   type EnvironmentRef,
+  type ExecutionAgentRef,
   type ExecutionModelRequest,
   type ExecutionResolutionReceipt,
   type ExecutionTarget,
   environmentId,
+  executionBindingAgentId,
+  executionProfileAgentId,
   type WorkspaceTarget,
 } from '@kontourai/station-contracts/execution-target';
 export type {
@@ -81,7 +84,6 @@ export {
   type ForegroundMessageReceipt,
   getConversationHandoffStatus,
   handoffExecutionMessage,
-  sendExecutionMessage,
 } from '../client/execution';
 export {
   type ApiRequestScope,
@@ -103,6 +105,7 @@ export {
   type RespondToRequestResult,
   respondToRequest,
 } from '../client/orchestration';
+export { sendExecutionMessage } from '../client/send-execution-message';
 export {
   inspectSessionOutput,
   listSessionOutputs,

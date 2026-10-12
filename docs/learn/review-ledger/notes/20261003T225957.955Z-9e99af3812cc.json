@@ -1,0 +1,21 @@
+{
+  "revision": "bede4512a87f3e93d9a1f28416835b9146f7465c",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the #3163 type-only follow-up against this document: ClaudeSessionRecord declares the claudeConfigHome member the adapter already sets at spawn, and a test helper avoids Array.findLastIndex. No behavior or claim here changes.","inputs":["docs/conformance/tool-policy-delivery.md"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed the #3163 type-only follow-up against this document: ClaudeSessionRecord declares the claudeConfigHome member the adapter already sets at spawn, and a test helper avoids Array.findLastIndex. No behavior or claim here changes.","inputs":["docs/design/connections-onboarding.md"]},
+
+    {"path":"docs/guides/agents.md","note":"Reviewed the #3163 type-only follow-up against this document: ClaudeSessionRecord declares the claudeConfigHome member the adapter already sets at spawn, and a test helper avoids Array.findLastIndex. No behavior or claim here changes.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the #3163 type-only follow-up against this document: ClaudeSessionRecord declares the claudeConfigHome member the adapter already sets at spawn, and a test helper avoids Array.findLastIndex. No behavior or claim here changes.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the #3163 type-only follow-up against this document: ClaudeSessionRecord declares the claudeConfigHome member the adapter already sets at spawn, and a test helper avoids Array.findLastIndex. No behavior or claim here changes.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the #3163 type-only follow-up against this document: ClaudeSessionRecord declares the claudeConfigHome member the adapter already sets at spawn, and a test helper avoids Array.findLastIndex. No behavior or claim here changes.","inputs":["docs/guides/starter-work.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the #3163 type-only follow-up against this document: ClaudeSessionRecord declares the claudeConfigHome member the adapter already sets at spawn, and a test helper avoids Array.findLastIndex. No behavior or claim here changes.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the #3163 type-only follow-up against this document: ClaudeSessionRecord declares the claudeConfigHome member the adapter already sets at spawn, and a test helper avoids Array.findLastIndex. No behavior or claim here changes.","inputs":["examples/self-configuring-agent/README.md"]}
+  ]
+}

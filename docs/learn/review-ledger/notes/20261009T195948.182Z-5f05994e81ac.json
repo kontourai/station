@@ -1,0 +1,7 @@
+{
+  "revision": "f6f2723acec3bdf98b7a018897f8e2720d9ad814",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the canonical Gallery capture, exact-diff and separate baseline-refresh contract against completed Linux PR run 37982245304 attempt 1 at f94477c41299354341edad2d985d2c92aed4496c. Capture completed with 53 compared, one changed Monitoring image, one existing volatile reference and zero failed/missing screens. Inspected reference, capture and diff: Live/Clear All are anchored at the right edge by the verified Monitoring CSS fix; the rest of the screen matches. Prescribed baseline writer changed only this image and its hash; artifact comparison now passes 53/53 exactly. Existing volatile handling, renderer pin and zero-threshold comparison remain intact. This review establishes captured pixels at f94477c412, not a new-head hosted capture or provider/native acceptance. The earlier small Monitoring shift with unisolated cause is historical; the subsequent browser range-change regression reproduces movement and verifies the actual layout fix.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json"]}
+  ]
+}

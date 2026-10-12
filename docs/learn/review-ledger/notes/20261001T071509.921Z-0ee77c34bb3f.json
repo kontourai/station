@@ -1,0 +1,7 @@
+{
+  "revision": "b03622e2007e22ff75c7280a41396526c75a7b6e",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"#3071 review-fix round. Changed inputs: packages/shared/package.json (one new export subpath, ./request-settlement). Added the Request settlement section. Checked against packages/shared/src/request-settlement.ts (both arms, the five fields read, untyped records accepted) and its callers in src-server and packages/cli; the package.json delta is that one export. Rest of the page not re-reviewed.","inputs":["docs/reference/shared.md"]}
+  ]
+}

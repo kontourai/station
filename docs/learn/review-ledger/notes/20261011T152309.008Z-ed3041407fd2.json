@@ -1,0 +1,7 @@
+{
+  "revision": "efd61a3096c6303690f1e41127d69ff4bd19a258",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"ResponsiveDialogSurface now sets data-sheet on its overlay when useIsMobile matches; added it to the 'currently owns' list. Re-checked the chip-menu claim ('edge sheets on a phone with their own scrolling list'): the start menus now dock to the bottom and side edges in sheet mode and scroll their list, so it holds. Other surface bullets unchanged.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/ResponsiveDialogSurface.tsx","src-ui/src/index.css"]}
+  ]
+}

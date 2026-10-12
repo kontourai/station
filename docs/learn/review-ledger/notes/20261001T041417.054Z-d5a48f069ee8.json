@@ -1,0 +1,11 @@
+{
+  "revision": "6423df870808e78717df6ad4b73b2fbd56b5997d",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Live lanes entry: the watchdog-silent run is now its own ladder rung ('No progress for Nm', caution tone, clock icon, Running lane) ahead of Running. Checked the wording, lane and the not-called-stalled rationale against the quiet rung in src-ui/src/views/home/work-status.ts and its table row in src-ui/src/__tests__/work-status.test.ts.","inputs":["docs/glossary.md"]},
+
+    {"path":"CONTEXT.md","note":"docs/glossary.md changed only inside its Live lanes entry (the no-progress rung). This document does not restate that entry; searched for live lanes, Needs you and status line and found none, so its text stays accurate.","inputs":["CONTEXT.md"]},
+
+    {"path":"CONTEXT-MAP.md","note":"docs/glossary.md changed only inside its Live lanes entry (the no-progress rung). This document does not restate that entry; searched for live lanes, Needs you and status line and found none, so its map stays accurate.","inputs":["CONTEXT-MAP.md"]}
+  ]
+}

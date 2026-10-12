@@ -3,6 +3,12 @@ import {
   setNativePairingExchangeTransport,
 } from '@kontourai/station-connect/device-pairing';
 import { pairingScopePresetString } from '@kontourai/station-contracts';
+import {
+  authenticatedFetch,
+  ChatHttpError,
+  sendExecutionMessage,
+  setClientCredentialResolver,
+} from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { completeVerifiedPairing } from '../../../../../packages/connect/src/react/pairingCompletion.js';
@@ -53,6 +59,104 @@ test('blocks credential requests after the development HTTP exception is removed
 });
 
 describe('native authenticated transport', () => {
+  test('retries a pre-HTTP DNS miss with fresh native request identity and rechecks authority', async () => {
+    vi.useFakeTimers();
+    let attempts = 0;
+    bridge.invoke.mockImplementation(async (command: string) => {
+      if (command !== 'station_native_http_request') return;
+      attempts += 1;
+      queueMicrotask(() => {
+        if (attempts === 1)
+          emit({
+            type: 'error',
+            code: 'transport_dns',
+            detail: 'DNS unavailable',
+          });
+        else {
+          emit({ type: 'response', status: 204, headers: {}, bodyLength: 0 });
+          emit({ type: 'end' });
+        }
+      });
+    });
+    const guard = vi.fn();
+    const init = {
+      method: 'POST',
+      body: '{"decision":"acceptForSession"}',
+      authorityGuard: guard,
+    };
+    const pending = nativeAuthenticatedTransport(
+      'https://station.example.test/api/orchestration/commands',
+      init,
+    );
+    await vi.advanceTimersByTimeAsync(750);
+    expect((await pending).status).toBe(204);
+    const calls = bridge.invoke.mock.calls.filter(
+      ([command]) => command === 'station_native_http_request',
+    );
+    expect(calls).toHaveLength(2);
+    expect(calls[0][1].request.requestId).not.toBe(
+      calls[1][1].request.requestId,
+    );
+    expect(calls[0][1].request.body).toEqual(calls[1][1].request.body);
+    expect(guard.mock.calls.length).toBeGreaterThanOrEqual(3);
+  });
+
+  test('does not replay an approval after an HTTP 503 or an uncertain transport timeout', async () => {
+    for (const outcome of ['response', 'timeout'] as const) {
+      bridge.invoke.mockReset();
+      bridge.invoke.mockImplementation(async (command: string) => {
+        if (command !== 'station_native_http_request') return;
+        queueMicrotask(() => {
+          if (outcome === 'response') {
+            emit({ type: 'response', status: 503, headers: {}, bodyLength: 0 });
+            emit({ type: 'end' });
+          } else
+            emit({
+              type: 'error',
+              code: 'transport_timeout',
+              detail: 'Timed out',
+            });
+        });
+      });
+      const pending = nativeAuthenticatedTransport(
+        'https://station.example.test/api/orchestration/commands',
+        { method: 'POST', body: '{}' },
+      );
+      if (outcome === 'response') expect((await pending).status).toBe(503);
+      else
+        await expect(pending).rejects.toMatchObject({
+          code: 'transport_timeout',
+        });
+      expect(
+        bridge.invoke.mock.calls.filter(
+          ([command]) => command === 'station_native_http_request',
+        ),
+      ).toHaveLength(1);
+    }
+  });
+
+  test('stops pre-HTTP DNS retries at three attempts', async () => {
+    vi.useFakeTimers();
+    bridge.invoke.mockImplementation(async (command: string) => {
+      if (command === 'station_native_http_request')
+        queueMicrotask(() => emit({ type: 'error', code: 'transport_dns' }));
+    });
+    const outcome = nativeAuthenticatedTransport(
+      'https://station.example.test/api/orchestration/commands',
+      { method: 'POST', body: '{}' },
+    );
+    const refused = expect(outcome).rejects.toMatchObject({
+      code: 'transport_dns',
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+    await refused;
+    expect(
+      bridge.invoke.mock.calls.filter(
+        ([command]) => command === 'station_native_http_request',
+      ),
+    ).toHaveLength(3);
+  });
+
   beforeEach(() => {
     bridge.invoke.mockReset();
     bridge.channels.length = 0;
@@ -803,5 +907,124 @@ describe('native authenticated transport', () => {
     expect(setCredential).not.toHaveBeenCalled();
     expect(markDeviceSession).not.toHaveBeenCalled();
     expect(setActiveConnection).toHaveBeenCalledTimes(2);
+  });
+});
+
+/**
+ * #3166: Station marks its own JSON answers with `x-station-envelope`, and the
+ * SDK reads that marker to tell a Station refusal from an intermediary's. On
+ * desktop every request goes through this broker, so the marker must survive
+ * the native response and reach the SDK's request seam.
+ */
+describe('Station envelope marker through the native broker (#3166)', () => {
+  // Pinned beside `STATION_ENVELOPE_HEADER` in packages/contracts/src/http.ts.
+  const MARKER = 'x-station-envelope';
+  const REFUSAL = { success: false, error: 'no', code: 'refused' };
+
+  type BrokerReply = {
+    status: number;
+    headers: Record<string, string>;
+    body: unknown;
+  };
+
+  /** Answer each native request with the next reply, as the broker would. */
+  function brokerReplies(replies: BrokerReply[]): void {
+    bridge.invoke.mockImplementation(async (command: string) => {
+      if (command !== 'station_native_http_request') return;
+      const reply = replies.shift();
+      if (!reply) throw new Error('unexpected native request');
+      queueMicrotask(() => {
+        emit({
+          type: 'response',
+          status: reply.status,
+          headers: reply.headers,
+        });
+        emit({
+          type: 'chunk',
+          bytes: [...new TextEncoder().encode(JSON.stringify(reply.body))],
+        });
+        emit({ type: 'end' });
+      });
+    });
+  }
+
+  /** Route the SDK for `origin` through the real native transport. */
+  function useNativeTransport(origin: string): void {
+    setClientCredentialResolver(() => ({
+      origin,
+      transport: nativeAuthenticatedTransport,
+    }));
+  }
+
+  async function refusalFrom(origin: string): Promise<ChatHttpError> {
+    const error = await sendExecutionMessage(origin, {
+      agentId: 'writer',
+      message: 'hello',
+      idempotencyKey: 'k1',
+    } as never).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ChatHttpError);
+    return error as ChatHttpError;
+  }
+
+  beforeEach(() => {
+    bridge.invoke.mockReset();
+    bridge.channels.length = 0;
+  });
+
+  afterEach(() => {
+    setClientCredentialResolver();
+  });
+
+  test('a marked Station refusal is recognised as Station’s own answer', async () => {
+    // A distinct origin per test: what an origin has sent is process-wide.
+    const origin = 'https://marked-refusal.station.test';
+    useNativeTransport(origin);
+    brokerReplies([
+      {
+        status: 200,
+        headers: { 'content-type': 'application/json', [MARKER]: '1' },
+        body: { success: true, data: [] },
+      },
+      {
+        status: 403,
+        headers: { 'content-type': 'application/json', [MARKER]: '1' },
+        body: REFUSAL,
+      },
+    ]);
+
+    const answer = await authenticatedFetch(`${origin}/api/anything`);
+    // The seam itself: an origin that never marked falls back to body shape
+    // and would also read as Station's, so the outcome alone proves nothing.
+    expect(answer.headers.get(MARKER)).toBe('1');
+    await answer.json();
+    const error = await refusalFrom(origin);
+
+    expect(error.status).toBe(403);
+    expect(error.stationEnvelope).toBe(true);
+  });
+
+  test('after a marked answer, an unmarked refusal in Station’s shape is not Station’s', async () => {
+    const origin = 'https://intermediary-refusal.station.test';
+    useNativeTransport(origin);
+    brokerReplies([
+      {
+        status: 200,
+        headers: { 'content-type': 'application/json', [MARKER]: '1' },
+        body: { success: true, data: [] },
+      },
+      {
+        status: 403,
+        headers: { 'content-type': 'application/json' },
+        body: REFUSAL,
+      },
+    ]);
+
+    await (await authenticatedFetch(`${origin}/api/anything`)).json();
+    const error = await refusalFrom(origin);
+
+    // Only reachable as `false` if the broker's marker on the first answer
+    // taught the SDK that this origin marks its answers.
+    expect(error.status).toBe(403);
+    expect(error.stationEnvelope).toBe(false);
   });
 });

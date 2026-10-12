@@ -1,0 +1,7 @@
+{
+  "revision": "b03622e2007e22ff75c7280a41396526c75a7b6e",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"#3071 review-fix round. Changed inputs: open-requests.ts (collectOpenRequests leaves out requests settled by their turn's abort, through the shared fold; no process-local input); orchestration-service.ts (request inspection reports a request settled by its turn's abort as resolved; respondToRequest refuses a resolved or settled request with request_event_changed before adapter resolution). Checked that projectRequestAnswerability is unchanged and the new settle rule reads only the event log (no process-local fact enters a fold), so the decision and its reading-status note stand; request inspection still computes answerability for an open request and now reports a fold-settled one resolved before that. The 'collectOpenRequests deletes only on request.resolved' line is in the dated option (c) argument and is left as history. No prose change.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md"]}
+  ]
+}

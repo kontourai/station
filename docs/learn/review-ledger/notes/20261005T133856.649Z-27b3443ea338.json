@@ -1,0 +1,7 @@
+{
+  "revision": "eef021bb201ffdd196449fcd86f0eee308f454e5",
+
+  "notes": [
+    {"path":"examples/custom-branding/README.md","note":"ProjectSidebar.tsx changed only in the Open chats rows' project marks (accent and icon maps passed to SidebarOpenChats). The README's sidebar claim is that the browser sidebar consumes the branding app name; that path (useBranding) is untouched, so it stays accurate.","inputs":["examples/custom-branding/README.md","src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]}
+  ]
+}

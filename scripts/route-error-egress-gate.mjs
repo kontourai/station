@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { toPosixPath } from './lib/posix-path.mjs';
 
 /**

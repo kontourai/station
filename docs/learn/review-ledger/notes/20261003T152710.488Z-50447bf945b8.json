@@ -1,0 +1,11 @@
+{
+  "revision": "11addcede65058aa348cb8d822a553bf65a97e14",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Correction to the preceding manifest review note: the delta since 00e6787 is mcp-tool-selection, not skill-experience-workflow (that earlier export was already present). Inspected packages/shared/package.json and its tool-selection translator: the added public subpath supports exact selected MCP names and changes no UI tokens, primitives, theme/geometry, or transport/query ownership. The described UI contracts remain accurate.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/guides/theming.md","note":"Correction to the preceding manifest review note: the delta since 00e6787 is mcp-tool-selection, not skill-experience-workflow (that earlier export was already present). Inspected packages/shared/package.json and its tool-selection translator: the added public subpath supports exact selected MCP names and changes no UI tokens, primitives, theme/geometry, or transport/query ownership. The described UI contracts remain accurate.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Correction to the preceding manifest review note: the delta since 00e6787 is mcp-tool-selection, not skill-experience-workflow (that earlier export was already present). Inspected packages/shared/package.json and its tool-selection translator: the added public subpath supports exact selected MCP names and changes no UI tokens, primitives, theme/geometry, or transport/query ownership. The described UI contracts remain accurate.","inputs":["docs/patterns/frontend.md"]}
+  ]
+}

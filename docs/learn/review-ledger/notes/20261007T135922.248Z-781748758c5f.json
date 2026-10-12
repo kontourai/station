@@ -1,0 +1,7 @@
+{
+  "revision": "764f618016b03c6c16ca0841446de84fa99584d7",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Reviewed the new implemented release diagram against main-qualification.yml, nightly.yml, release.yml, publish-release.yml and nightly-qualification-decide.mjs: six-hour exact-source qualification, 20-hour native delivery admission, source reservation hold, independent Preview selection, owner-approved publication and same-source Stable promotion. The second diagram is explicitly proposed; quiet-interval triggers, concurrent private staging, shorter cadence and delivery verification are not claims of implemented behavior. Source inspection only; no new hosted, signing, provider or installed-device evidence. Diagram maintenance follows its named workflow and decision owners.","inputs":["docs/guides/releasing.md","scripts/nightly-qualification-decide.mjs"]}
+  ]
+}

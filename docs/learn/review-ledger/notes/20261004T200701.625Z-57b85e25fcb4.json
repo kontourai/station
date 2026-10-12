@@ -1,0 +1,7 @@
+{
+  "revision": "586180539945f147e2cf80adc3feae611c18c799",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"No responsive claim depends on the renamed controls; cross-runtime spec keeps its 412px Home containment and switcher geometry checks.","inputs":["docs/guides/responsive-ui.md","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}

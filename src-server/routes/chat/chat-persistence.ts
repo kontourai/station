@@ -1,3 +1,4 @@
+import { isContentlessAssistantMessage } from '../../adapters/file/memory-adapter-prompt-view.js';
 import type { ChatMessage } from './chat-request-preparation.js';
 import { extractChatUserText } from './chat-request-preparation.js';
 
@@ -224,6 +225,9 @@ function isUserTurnAlreadyPersisted(
   ) {
     const candidate = stored[i];
     if (candidate?.role === 'assistant') {
+      // #3112: a failed stream's empty response placeholder (stored before
+      // the prompt-view write filter existed) is not an answer.
+      if (isContentlessAssistantMessage(candidate)) continue;
       // Answered — stop. See the doc comment above.
       return false;
     }

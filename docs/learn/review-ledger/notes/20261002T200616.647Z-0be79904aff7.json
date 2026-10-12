@@ -1,0 +1,7 @@
+{
+  "revision": "74a5cf14585db34917d862e6c8b79276c35ebe50",
+
+  "notes": [
+    {"path":"docs/design/connection-broker.md","note":"Reviewed the verification-guide delta: only native recovery labels and collapsed technical detail wording changed. The broker design's protocol and delivery claims remain unaffected; no new runtime evidence is implied.","inputs":["docs/design/connection-broker.md"]}
+  ]
+}

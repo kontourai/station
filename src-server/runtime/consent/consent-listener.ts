@@ -58,10 +58,12 @@ import type {
   ConsentDecisionAuthority,
   ConsentTransactionView,
 } from '../../services/consent/consent-transactions.js';
+import type { OperatorPasskeyEnrollmentService } from '../../services/identity/operator-passkey-enrollment.js';
 import { consentDecisionOps } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 import { sanitizedTransportError } from '../../utils/outward-error.js';
 import { parseDeviceSessionCookie } from '../bootstrap/runtime-http.js';
+import { registerOperatorPasskeyEnrollmentRoutes } from './operator-passkey-enrollment-routes.js';
 
 const CONSENT_SESSION_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 
@@ -151,6 +153,11 @@ interface ConsentListenerDeps {
   channel: ConsentChannelService;
   credentials: ConsentDecisionCredentialResolver;
   logger?: Logger;
+  /**
+   * Operator passkey enrollment (#3257, S2b). Absent, the enrollment routes
+   * are not registered at all.
+   */
+  passkeys?: OperatorPasskeyEnrollmentService;
 }
 
 function parseConsentSessionCookie(
@@ -208,13 +215,25 @@ function resolveListenerAuthority(
  * The consent origin as proven by this request's own Host header, or null
  * when the Host is unusable or names a different port than the one this
  * listener was configured with. The hostname is deliberately the
- * request-visible one (decision 4) — only the PORT is pinned.
+ * request-visible one (decision 4) — only the PORT is pinned. The one
+ * exception is the configured `STATION_TRUSTED_CONSENT_ORIGIN`, whose exact
+ * host is accepted and yields that origin.
  */
 function requestConsentOrigin(
   hostHeader: string | undefined,
   consentPort: number,
+  trustedOrigin: string | null,
 ): string | null {
   if (!hostHeader) return null;
+  // Behind an HTTPS mapping the Host is the mapped name, not the consent
+  // port. Only the exact configured host qualifies; the Origin header must
+  // then equal the configured origin, so any other https origin still fails.
+  if (
+    trustedOrigin !== null &&
+    hostHeader.toLowerCase() === new URL(trustedOrigin).host
+  ) {
+    return trustedOrigin;
+  }
   let url: URL;
   try {
     url = new URL(`http://${hostHeader}`);
@@ -232,7 +251,9 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
   app.use('*', async (c, next) => {
     await next();
     for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
-      c.res.headers.set(name, value);
+      // A route that needs a narrower or wider policy of its own (the
+      // enrollment page's `script-src 'self'`) sets the header itself.
+      if (!c.res.headers.has(name)) c.res.headers.set(name, value);
     }
   });
 
@@ -326,7 +347,11 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
     const expectedOrigin =
       consentPort === null
         ? null
-        : requestConsentOrigin(c.req.header('host'), consentPort);
+        : requestConsentOrigin(
+            c.req.header('host'),
+            consentPort,
+            deps.channel.trustedOrigin,
+          );
     if (expectedOrigin === null) {
       return refuse(
         'origin_unresolvable',
@@ -506,6 +531,15 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
           ),
     );
   });
+
+  if (deps.passkeys) {
+    registerOperatorPasskeyEnrollmentRoutes(app, {
+      service: deps.passkeys,
+      channel: deps.channel,
+      credentials: deps.credentials,
+      logger: deps.logger,
+    });
+  }
 
   app.all('*', (c) => c.html(statusPage('Not found', 'Nothing here.'), 404));
 

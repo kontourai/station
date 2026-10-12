@@ -457,7 +457,23 @@ export function useDockShellChrome({
   const [liveDragHeight, setLiveDragHeight] = useState<number | null>(null);
   const isCollapsedDragPreview = !readerIsDockOpen && liveDragHeight !== null;
 
-  const toolbarHeight = useMemo(() => readToolbarHeight(), []);
+  // The toolbar's height is not a mount-time constant: it can be hidden or not
+  // yet laid out when the dock mounts (a full-screen mobile chat, a route that
+  // shows it later), and a non-maximized full dock sized from that early read
+  // then sits on top of it. Follow the element's own size instead.
+  const [toolbarHeight, setToolbarHeight] = useState(() => readToolbarHeight());
+  useEffect(() => {
+    const toolbar = document.querySelector('.app-toolbar');
+    if (!toolbar || typeof ResizeObserver === 'undefined') return;
+    const sync = () => {
+      const next = readToolbarHeight();
+      setToolbarHeight((current) => (current === next ? current : next));
+    };
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(toolbar);
+    return () => observer.disconnect();
+  }, []);
   const collapsedHeight = useMemo(() => {
     void isMobile;
     if (typeof window === 'undefined') return DOCK_COLLAPSED_HEIGHT;

@@ -18,10 +18,10 @@
  * reason the reader cannot act on.
  */
 
-import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = process.cwd();
@@ -134,7 +134,7 @@ function runBiome() {
   // the throwing path, so a run that exits 0 with warnings loses every
   // diagnostic and measures as a clean tree.
   const { command, args } = biomeLintInvocation();
-  const result = spawnSync(command, args, {
+  const result = spawnSyncBounded(command, args, {
     cwd: ROOT,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],

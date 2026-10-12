@@ -25,6 +25,8 @@ export function PendingPairingReconciler({
   onApprovalWaiting: () => void;
 }) {
   const {
+    activeConnection,
+    commitEndpointCandidate,
     commitVerifiedPairing,
     connections,
     markDeviceSession,
@@ -38,6 +40,8 @@ export function PendingPairingReconciler({
   const approvalWaitingRef = useRef(onApprovalWaiting);
   const connectionsRef = useRef(connections);
   const operationsRef = useRef({
+    activeConnection,
+    commitEndpointCandidate,
     commitVerifiedPairing,
     markDeviceSession,
     reconcileHandshake,
@@ -50,6 +54,8 @@ export function PendingPairingReconciler({
   approvalWaitingRef.current = onApprovalWaiting;
   connectionsRef.current = connections;
   operationsRef.current = {
+    activeConnection,
+    commitEndpointCandidate,
     commitVerifiedPairing,
     markDeviceSession,
     reconcileHandshake,
@@ -120,6 +126,9 @@ export function PendingPairingReconciler({
                 connectionId: target.id,
                 name: target.name,
                 endpoint: pending.endpoint,
+                activate: pending.activateConnection,
+                bindApprovedEndpoint: pending.activateConnection === false,
+                preserveSelectedStation: pending.preserveSelectedStation,
               },
               { ...result, endpoint: pending.endpoint },
             );
@@ -128,7 +137,13 @@ export function PendingPairingReconciler({
               authentication: { scheme: 'bearer', protocolVersion: 1 },
             });
             return { status: 'completed' } as const;
-          } catch {
+          } catch (error) {
+            if (
+              error instanceof Error &&
+              error.name === 'PairingControllerEndpointConflict'
+            ) {
+              return failed('Current Station route kept', error.message);
+            }
             return failed(
               'Access was approved but not saved',
               'The Station approved this device, but the Station could not be saved on this device. Request access again after checking local storage.',

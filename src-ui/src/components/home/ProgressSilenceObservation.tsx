@@ -1,8 +1,16 @@
 import type { TurnProgressSilence } from '@kontourai/station-sdk';
-import { useEffect, useState } from 'react';
-import { relativeTimeAgo } from '../../utils/relativeTime';
+import { absoluteTime } from '../../utils/relativeTime';
+import { ElapsedDuration } from '../ElapsedDuration';
 
-/** archive#4054: display-only rendering of the watchdog's server projection. */
+/**
+ * archive#4054: display-only rendering of the watchdog's server projection,
+ * in the status ladder's words ("No progress · 4m" on a row is "No progress
+ * for 4m" in a sentence). The window the watchdog used is a tuning constant
+ * and is not shown; the instant it has been silent since is the tooltip.
+ *
+ * The duration is the shared one (`ElapsedDuration`: one format, one clock),
+ * so this sentence and the row beside it never disagree about how long.
+ */
 export default function ProgressSilenceObservation({
   observation,
   engineName,
@@ -10,42 +18,12 @@ export default function ProgressSilenceObservation({
   observation: TurnProgressSilence;
   engineName?: string;
 }) {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    if (!engineName) return;
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [engineName]);
-  if (engineName) {
-    const seconds = Math.max(
-      0,
-      Math.floor((now - Date.parse(observation.silentSinceEventAt)) / 1000),
-    );
-    const duration =
-      seconds < 60
-        ? `${seconds}s`
-        : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
-    return (
-      <strong>
-        No response from {engineName} for {duration}. Still waiting.
-      </strong>
-    );
-  }
-  const currentNow = Date.now();
+  const silentSince = Date.parse(observation.silentSinceEventAt);
+  const title = absoluteTime(silentSince) || observation.silentSinceEventAt;
   return (
-    <strong title={observation.silentSinceEventAt}>
-      No progress events for{' '}
-      {relativeTimeAgo(
-        Date.parse(observation.silentSinceEventAt),
-        currentNow,
-      ).replace(' ago', '')}{' '}
-      (window{' '}
-      {relativeTimeAgo(currentNow - observation.windowMs, currentNow).replace(
-        ' ago',
-        '',
-      )}
-      )
+    <strong title={title}>
+      {engineName ? `No progress from ${engineName} for ` : 'No progress for '}
+      <ElapsedDuration since={silentSince} />
     </strong>
   );
 }

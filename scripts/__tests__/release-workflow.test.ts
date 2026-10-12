@@ -13,7 +13,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, relative, resolve } from 'node:path';
 import { load } from 'js-yaml';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { describe, expect, it } from 'vitest';
 import {
   createNativeReleaseConfig,
@@ -1087,6 +1087,8 @@ describe('native release workflow topology', () => {
           'scripts/reclaim-android-runner-disk.sh',
           'scripts/resolve-android-build-run.mjs',
           'scripts/write-android-build-manifest.mjs',
+          // #3175: desktop-build-manifest.mjs imports the bounded capture.
+          'scripts/lib/bounded-capture.mjs',
           'scripts/lib/android-build-manifest.mjs',
           'scripts/lib/desktop-build-manifest.mjs',
           'package.json',

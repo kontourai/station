@@ -27,7 +27,7 @@ vi.mock('../SessionInventoryCompact', () => ({
   }: {
     onOpenFull(trigger: HTMLElement, selection: unknown): void;
   }) => (
-    <aside aria-label="Session inventory">
+    <aside aria-label="Chat inventory">
       <button
         type="button"
         onClick={(event) =>
@@ -62,7 +62,7 @@ const scope = { kind: 'whole-session' as const, sessionId: 'session-a' };
 function renderHost(options: { isMobile?: boolean } = {}) {
   const trigger = document.createElement('button');
   trigger.type = 'button';
-  trigger.textContent = 'Session inventory';
+  trigger.textContent = 'Chat inventory';
   document.body.appendChild(trigger);
   const onClose = vi.fn();
   const result = render(
@@ -86,7 +86,7 @@ describe('SessionInventoryHost', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Open full Basis' }));
 
-    expect(screen.queryByLabelText('Session inventory')).toBeNull();
+    expect(screen.queryByLabelText('Chat inventory')).toBeNull();
     expect(screen.getByRole('dialog', { name: 'Basis' })).not.toBeNull();
     const fallback = hooks.fallback.mock.lastCall?.[0] as {
       forceFallback?: boolean;
@@ -103,7 +103,7 @@ describe('SessionInventoryHost', () => {
   test('keeps phone inventory as its one full fallback sheet', () => {
     renderHost({ isMobile: true });
 
-    expect(screen.queryByLabelText('Session inventory')).toBeNull();
+    expect(screen.queryByLabelText('Chat inventory')).toBeNull();
     expect(screen.getByRole('dialog', { name: 'Basis' })).not.toBeNull();
     const fallback = hooks.fallback.mock.lastCall?.[0] as {
       forceFallback?: boolean;
@@ -127,6 +127,6 @@ describe('SessionInventoryHost', () => {
       ).focusFullBasis?.(),
     ).toBe(false);
     expect(focus).toHaveBeenCalledOnce();
-    expect(screen.queryByLabelText('Session inventory')).toBeNull();
+    expect(screen.queryByLabelText('Chat inventory')).toBeNull();
   });
 });

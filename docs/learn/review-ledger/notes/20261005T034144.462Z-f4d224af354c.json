@@ -1,0 +1,7 @@
+{
+  "revision": "ad30dbea5f0eb5bc07431d5d233cf05b62725e6a",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Edited the icon paragraph: glyph rule now also requires a visible character and refuses bidirectional controls and unpaired surrogates (projectIconProblem, glyph-characters), and ProjectService applies the rule to a new icon from non-route callers (assertWritableProjectIcon, changed value only). Checked the data-URL clause against PROJECT_ICON_DATA_URL_PATTERN (a non-allowed media type, including upper case, is image-type) and the clear/unchanged-update sentences against withoutClearedIcon and buildProjectSavePayload.","inputs":["docs/reference/shared.md","packages/contracts/src/project.ts"]}
+  ]
+}

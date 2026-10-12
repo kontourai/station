@@ -1,3 +1,11 @@
+export { runAgentMcpPrompt } from './query-domains/mcpPromptRun';
+export {
+  peerEnrollmentQueries,
+  useCancelPeerEnrollmentMutation,
+  useCompletePeerEnrollmentMutation,
+  usePeerEnrollmentQuery,
+  useStartPeerEnrollmentMutation,
+} from './query-domains/peerEnrollments';
 /**
  * SDK Query Hooks - Wraps React Query for API calls
  * Plugins use these instead of raw useQuery
@@ -33,6 +41,7 @@ export {
   type AgentCreateResult,
   type AgentTemplate,
   type AwsProfilesResult,
+  agentMcpPromptsQueryKey,
   createAgent,
   createAgentDetailed,
   deleteAgent,
@@ -45,6 +54,7 @@ export {
   updateAgent,
   updateAppConfig,
   updateAppLogLevel,
+  useAgentMcpPromptsQuery,
   useAgentQuery,
   useAgentsQuery,
   useAgentTemplatesQuery,
@@ -95,7 +105,6 @@ export {
   useResetUsageStatsMutation,
   useSaveFeedbackRatingMutation,
   useUsageQuery,
-  useUsageRollupQuery,
 } from './query-domains/analytics';
 export {
   AnswerShareAuthRequiredError,
@@ -246,12 +255,14 @@ export {
   unregisterNativePush,
   unsubscribePushNotifications,
   useAcknowledgeConversationMutation,
+  useChildWorkTranscriptQuery,
   useCodingDiffQuery,
   useCodingFileContentQuery,
   useCodingFilesQuery,
   useConversationContextBoundaryStatusQuery,
   useConversationInventoryQuery,
   useConversationsQuery,
+  useConversationUsageTreeQuery,
   useCreateCodingFileMutation,
   useDelegateOrchestrationTaskMutation,
   useDelegationOptionsQuery,
@@ -466,6 +477,7 @@ export {
 export {
   adoptCommittedProjectTaskRoomDocument,
   appendProjectTaskRoomHumanMessage,
+  appendProjectTaskRoomOutputFeedback,
   commandProjectTaskRoomLive,
   discoverProjectTaskRoom,
   fetchProjectTaskRoomDocument,
@@ -490,6 +502,7 @@ export {
   TaskRoomWorkNotSentError,
   type TaskRoomWorkRequestScope,
   useAppendProjectTaskRoomHumanMessageMutation,
+  useAppendProjectTaskRoomOutputFeedbackMutation,
   useCommandProjectTaskRoomLiveMutation,
   usePlanProjectTaskRoomEditMutation,
   useProjectTaskRoomDiscoveryQuery,
@@ -599,6 +612,7 @@ export {
   useRemoveSshEnvironmentMutation,
   useSshEnvironmentsQuery,
 } from './query-domains/sshEnvironments';
+export { useStationUsageQuery } from './query-domains/stationUsage';
 export {
   type AuthStatusData,
   applyCoreUpdate,
@@ -712,6 +726,7 @@ export {
   useTrustBundlesQuery,
   useTrustReportQuery,
 } from './query-domains/trustBundles';
+export { useUsageRollupQuery } from './query-domains/usageRollup';
 export {
   type ReadinessInitResultVM,
   type ReadinessRequirementVM,
@@ -781,6 +796,7 @@ export {
   layoutCatalogRetryDelay,
   type ModelConnectionMutationInput,
   type ModelConnectionSmokeInput,
+  PROJECT_RUN_LOCATIONS_QUERY_KEY_PREFIX,
   ProjectIdentityIncarnationMismatchError,
   type ProjectIdentityReadFailure,
   type ProjectReadQueryConfig,
@@ -828,6 +844,7 @@ export {
   useProjectLayoutsQuery,
   useProjectQuery,
   useProjectResolutionQuery,
+  useProjectRunLocationsQuery,
   useProjectsQuery,
   useProjectWorkspacePanesQuery,
   useReorderProjectsMutation,

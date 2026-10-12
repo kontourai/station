@@ -9,8 +9,6 @@
 
   "limits": "A changeset is not proof of a published release or downstream consumer compatibility.",
 
-  "document": {"digest":"c70989994884185d546dc1d00c89d04a83cabf39cdeb2617069809babd10b734","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
   "sources": [],
 
   "checks": []

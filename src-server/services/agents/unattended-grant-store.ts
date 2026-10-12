@@ -115,6 +115,12 @@ export function principalKey(principal: UnattendedPrincipal): string {
         kind: principal.kind,
         originAgentSlug: principal.originAgentSlug,
       });
+    case 'automation-rule':
+      return JSON.stringify({ kind: principal.kind, ruleId: principal.ruleId });
+    default: {
+      const unhandled: never = principal;
+      return unhandled;
+    }
   }
 }
 

@@ -1,0 +1,7 @@
+{
+  "revision": "00bada2726c33a49f7edc8803d08831b46b6deb3",
+
+  "notes": [
+    {"path":"docs/patterns/backend.md","note":"Reviewed the action-inventory delta against backend and contracts-first pattern claims. It adds two UI transcript action rows using the existing shared responsive contract without changing transcript handlers, API envelopes, authorization, persistence, or server behavior. Existing backend pattern explanation remains accurate; no prose change is required.","inputs":["docs/patterns/backend.md"]}
+  ]
+}

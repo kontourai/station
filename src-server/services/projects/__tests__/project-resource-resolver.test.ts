@@ -17,7 +17,7 @@ import {
   isWellFormedResolution,
   type ResourceResolutionResult,
 } from '@kontourai/station-contracts/project-identity';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { putProject } from '../../../domain/__tests__/file-storage-test-helpers.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import type { CheckoutRemoteReader } from '../checkout-remote-reader.js';
@@ -30,7 +30,14 @@ import {
   projectManifestPath,
 } from '../project-manifest-store.js';
 import { bindProjectResource } from '../project-resource-binder.js';
-import { ProjectResourceResolver } from '../project-resource-resolver.js';
+import {
+  MAX_UNSETTLED_FOLDER_CHECKS,
+  ProjectResourceResolver,
+  RUN_LOCATION_BUSY_REASON,
+  RUN_LOCATION_TIMED_OUT_REASON,
+  resetRunLocationFolderChecksForTests,
+  unsettledRunLocationFolderChecks,
+} from '../project-resource-resolver.js';
 
 /**
  * archive#1594 made `ResourceResolutionResult` a discriminated union, so
@@ -297,6 +304,429 @@ describe('resolveProjectExecutionRoot', () => {
     await expect(
       makeResolver(harness).resolveProjectExecutionRoot('notes'),
     ).rejects.toThrow(/cannot start here \(unbound\)/);
+  });
+});
+
+/** A reader that fails the test if a list read ever spawns `git`. */
+const noGitOnListReads: CheckoutRemoteReader = async (path) => {
+  throw new Error(`describeProjectRunLocation read remotes at ${path}`);
+};
+
+/** One project through the list read. */
+async function describeOne(resolver: ProjectResourceResolver, slug: string) {
+  return (await resolver.describeProjectRunLocations([slug])).get(slug);
+}
+
+describe('describeProjectRunLocations (#3370)', () => {
+  async function bindFolderlessMonorepo(harness: Harness) {
+    const checkout = tempDir('station-run-location-checkout-');
+    const app = join(checkout, 'packages', 'app');
+    mkdirSync(app, { recursive: true });
+    // No working directory: the project reaches its checkout only through
+    // the manifest's binding, the case the composer hint used to call home.
+    await saveProject(harness.adapter, { slug: 'acme' });
+    writeManifestRecord(harness.home, 'acme', {
+      id: 'prj_acme',
+      repos: [gitResource('github.com/acme/mono')],
+      executionRoot: { repoId: 'github.com/acme/mono', path: 'packages/app' },
+    });
+    const bound = await bindProjectResource('acme', checkout, {
+      manifests: new ProjectManifestStore(harness.home, harness.adapter),
+      bindings: harness.bindings,
+      readRemotes: remoteReader(['git@github.com:acme/mono.git']),
+    });
+    expect(bound).toMatchObject({ ok: true });
+    return { checkout, app };
+  }
+
+  test('a folderless project with a bound executionRoot runs at that root, the same one a start resolves', async () => {
+    const harness = createHome();
+    const { app } = await bindFolderlessMonorepo(harness);
+
+    const described = await describeOne(
+      makeResolver(harness, noGitOnListReads),
+      'acme',
+    );
+    const started = await makeResolver(
+      harness,
+      remoteReader(['git@github.com:acme/mono.git']),
+    ).resolveProjectExecutionRoot('acme');
+
+    expect(described).toEqual({
+      kind: 'execution-root',
+      path: realpathSync(app),
+    });
+    expect(started).toBe(realpathSync(app));
+  });
+
+  test('skips only the git identity check: a drifted checkout still names its directory, and the start refuses', async () => {
+    const harness = createHome();
+    const { app } = await bindFolderlessMonorepo(harness);
+    const elsewhere = remoteReader(['git@github.com:other/repo.git']);
+
+    expect(await describeOne(makeResolver(harness, elsewhere), 'acme')).toEqual(
+      { kind: 'execution-root', path: realpathSync(app) },
+    );
+    await expect(
+      makeResolver(harness, elsewhere).resolveProjectExecutionRoot('acme'),
+    ).rejects.toThrow(/cannot start here \(drifted\)/);
+  });
+
+  test('a project with a working directory and no manifest runs in that folder, spelled as stored', async () => {
+    const harness = createHome();
+    const folder = tempDir('station-run-location-folder-');
+    await saveProject(harness.adapter, {
+      slug: 'plain',
+      workingDirectory: folder,
+    });
+    expect(
+      await describeOne(makeResolver(harness, noGitOnListReads), 'plain'),
+    ).toEqual({ kind: 'folder', path: folder });
+  });
+
+  test('a project with no directory at all leaves the place to the agent', async () => {
+    const harness = createHome();
+    await saveProject(harness.adapter, { slug: 'notes' });
+    expect(
+      await describeOne(makeResolver(harness, noGitOnListReads), 'notes'),
+    ).toEqual({ kind: 'none' });
+  });
+
+  test('a start the records already refuse reads as unavailable, with the start’s own reason', async () => {
+    const harness = createHome();
+    const gone = join(tempDir('station-run-location-gone-'), 'deleted');
+    await saveProject(harness.adapter, {
+      slug: 'gone',
+      workingDirectory: gone,
+    });
+    const described = await describeOne(
+      makeResolver(harness, noGitOnListReads),
+      'gone',
+    );
+    expect(described).toMatchObject({ kind: 'unavailable' });
+    expect(described?.kind === 'unavailable' && described.reason).toMatch(
+      /^Project 'gone' cannot start here \(missing\)/,
+    );
+  });
+});
+
+describe('describeProjectRunLocations never holds the list on a folder (#3370 review)', () => {
+  const never = () => new Promise<never>(() => {});
+  const hungFs = { exists: never, realpath: never, isDirectory: never };
+  afterEach(() => resetRunLocationFolderChecksForTests());
+
+  test('a second list read waits on the folder check already out instead of starting another', async () => {
+    const harness = createHome();
+    await saveProject(harness.adapter, {
+      slug: 'hung',
+      workingDirectory: '/mnt/not-responding',
+    });
+    const exists = vi.fn(never);
+    const fs = { ...hungFs, exists };
+    const resolver = makeResolver(harness, noGitOnListReads);
+
+    for (let read = 0; read < 2; read += 1) {
+      const locations = await resolver.describeProjectRunLocations(['hung'], {
+        timeoutMs: 50,
+        fs,
+      });
+      expect(locations.get('hung')).toMatchObject({ kind: 'unchecked' });
+    }
+
+    expect(exists).toHaveBeenCalledTimes(1);
+  });
+
+  /** Hangs any folder under /mnt, like a dead mount; reads the rest. */
+  function mountFs(hung: (path: string) => Promise<never>) {
+    const isHung = (path: string) => path.startsWith('/mnt/');
+    return {
+      exists: (path: string) =>
+        isHung(path) ? hung(path) : Promise.resolve(existsSync(path)),
+      realpath: (path: string) =>
+        isHung(path) ? hung(path) : Promise.resolve(realpathSync(path)),
+      isDirectory: async (path: string) => (isHung(path) ? hung(path) : true),
+    };
+  }
+
+  test('more healthy projects than the limit all read their folder: a finished check hands its turn on', async () => {
+    const harness = createHome();
+    const slugs = ['a', 'b', 'c', 'd', 'e'];
+    expect(slugs.length).toBeGreaterThan(MAX_UNSETTLED_FOLDER_CHECKS);
+    const folders = new Map<string, string>();
+    for (const slug of slugs) {
+      const folder = tempDir(`station-run-location-many-${slug}-`);
+      folders.set(slug, folder);
+      await saveProject(harness.adapter, { slug, workingDirectory: folder });
+    }
+
+    const locations = await makeResolver(
+      harness,
+      noGitOnListReads,
+    ).describeProjectRunLocations(slugs, { timeoutMs: 5_000 });
+
+    expect(Object.fromEntries(locations)).toEqual(
+      Object.fromEntries(
+        slugs.map((slug) => [
+          slug,
+          { kind: 'folder', path: folders.get(slug) },
+        ]),
+      ),
+    );
+    expect(unsettledRunLocationFolderChecks()).toBe(0);
+  });
+
+  test.each([
+    ['rejects', () => Promise.reject(new Error('async boom'))],
+    [
+      'throws synchronously',
+      () => {
+        throw new Error('sync boom');
+      },
+    ],
+  ])(
+    'a check that %s frees its turn for the next project',
+    async (_label, fail) => {
+      const harness = createHome();
+      const slugs = ['x0', 'x1', 'x2', 'x3', 'x4', 'x5'];
+      for (const slug of slugs)
+        await saveProject(harness.adapter, {
+          slug,
+          workingDirectory: `/bad/${slug}`,
+        });
+      const folder = tempDir('station-run-location-after-');
+      await saveProject(harness.adapter, {
+        slug: 'ok',
+        workingDirectory: folder,
+      });
+      const fs = {
+        exists: (path: string) =>
+          path.startsWith('/bad/')
+            ? (fail() as Promise<boolean>)
+            : Promise.resolve(existsSync(path)),
+        realpath: async (path: string) => realpathSync(path),
+        isDirectory: async () => true,
+      };
+      const resolver = makeResolver(harness, noGitOnListReads);
+
+      const failed = await resolver.describeProjectRunLocations(slugs, {
+        timeoutMs: 1_000,
+        fs,
+      });
+      const after = await resolver.describeProjectRunLocations(['ok'], {
+        timeoutMs: 1_000,
+        fs,
+      });
+
+      expect([...failed.values()].map(({ kind }) => kind)).toEqual(
+        slugs.map(() => 'unavailable'),
+      );
+      expect(unsettledRunLocationFolderChecks()).toBe(0);
+      expect(after.get('ok')).toEqual({ kind: 'folder', path: folder });
+    },
+  );
+
+  test('one read over many hung folders never has more than the limit of checks out', async () => {
+    const harness = createHome();
+    const slugs = ['a', 'b', 'c', 'd', 'e', 'f'];
+    for (const slug of slugs)
+      await saveProject(harness.adapter, {
+        slug,
+        workingDirectory: `/mnt/${slug}`,
+      });
+    const hung = vi.fn(never);
+
+    const locations = await makeResolver(
+      harness,
+      noGitOnListReads,
+    ).describeProjectRunLocations(slugs, { timeoutMs: 50, fs: mountFs(hung) });
+
+    expect(hung).toHaveBeenCalledTimes(MAX_UNSETTLED_FOLDER_CHECKS);
+    expect(unsettledRunLocationFolderChecks()).toBe(
+      MAX_UNSETTLED_FOLDER_CHECKS,
+    );
+    expect(MAX_UNSETTLED_FOLDER_CHECKS).toBe(3);
+    expect(
+      [...locations.values()].every(({ kind }) => kind === 'unchecked'),
+    ).toBe(true);
+  });
+
+  test('with checks stuck on dead mounts, a healthy project still reads its folder', async () => {
+    const harness = createHome();
+    for (const slug of ['a', 'b'])
+      await saveProject(harness.adapter, {
+        slug,
+        workingDirectory: `/mnt/${slug}`,
+      });
+    const folder = tempDir('station-run-location-healthy-');
+    await saveProject(harness.adapter, {
+      slug: 'healthy',
+      workingDirectory: folder,
+    });
+    const hung = vi.fn(never);
+    const resolver = makeResolver(harness, noGitOnListReads);
+    await resolver.describeProjectRunLocations(['a', 'b'], {
+      timeoutMs: 50,
+      fs: mountFs(hung),
+    });
+    expect(unsettledRunLocationFolderChecks()).toBe(2);
+
+    const locations = await resolver.describeProjectRunLocations(['healthy'], {
+      timeoutMs: 1_000,
+      fs: mountFs(hung),
+    });
+
+    expect(locations.get('healthy')).toEqual({ kind: 'folder', path: folder });
+  });
+
+  test('a project that joins a check still waiting for its turn says it was not checked', async () => {
+    const harness = createHome();
+    for (const slug of ['a', 'b', 'c', 'd'])
+      await saveProject(harness.adapter, {
+        slug,
+        workingDirectory: `/mnt/${slug}`,
+      });
+    // A second project on the same folder joins the first one's queued check.
+    await saveProject(harness.adapter, {
+      slug: 'twin',
+      workingDirectory: '/mnt/d',
+    });
+    const hung = vi.fn(never);
+    const resolver = makeResolver(harness, noGitOnListReads);
+    await resolver.describeProjectRunLocations(['a', 'b', 'c'], {
+      timeoutMs: 50,
+      fs: mountFs(hung),
+    });
+    const first = resolver.describeProjectRunLocations(['d'], {
+      timeoutMs: 1_000,
+      fs: mountFs(hung),
+    });
+
+    const joined = await resolver.describeProjectRunLocations(['twin'], {
+      timeoutMs: 50,
+      fs: mountFs(hung),
+    });
+
+    expect(joined.get('twin')).toEqual({
+      kind: 'unchecked',
+      reason: RUN_LOCATION_BUSY_REASON,
+    });
+    await first;
+  });
+
+  test('a check that never gets a turn says it was not checked, not that the folder timed out', async () => {
+    const harness = createHome();
+    for (const slug of ['a', 'b', 'c', 'd'])
+      await saveProject(harness.adapter, {
+        slug,
+        workingDirectory: `/mnt/${slug}`,
+      });
+    const hung = vi.fn(never);
+    const resolver = makeResolver(harness, noGitOnListReads);
+    await resolver.describeProjectRunLocations(['a', 'b', 'c'], {
+      timeoutMs: 50,
+      fs: mountFs(hung),
+    });
+
+    const locations = await resolver.describeProjectRunLocations(['d'], {
+      timeoutMs: 50,
+      fs: mountFs(hung),
+    });
+
+    expect(locations.get('d')).toEqual({
+      kind: 'unchecked',
+      reason: RUN_LOCATION_BUSY_REASON,
+    });
+    expect(hung).toHaveBeenCalledTimes(3);
+  });
+
+  test('a folder that never answers reads as unchecked (not refused) within the time box, and its neighbours still answer', async () => {
+    const harness = createHome();
+    await saveProject(harness.adapter, {
+      slug: 'hung',
+      workingDirectory: '/mnt/not-responding',
+    });
+    await saveProject(harness.adapter, { slug: 'notes' });
+    const started = Date.now();
+
+    const locations = await makeResolver(
+      harness,
+      noGitOnListReads,
+    ).describeProjectRunLocations(['hung', 'notes'], {
+      timeoutMs: 50,
+      fs: hungFs,
+    });
+
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect(locations.get('hung')).toEqual({
+      kind: 'unchecked',
+      reason: RUN_LOCATION_TIMED_OUT_REASON,
+    });
+    expect(locations.get('notes')).toEqual({ kind: 'none' });
+  });
+
+  test('checks every project’s folder at once, not one after another', async () => {
+    const harness = createHome();
+    const slugs = ['a', 'b', 'c'];
+    for (const slug of slugs)
+      await saveProject(harness.adapter, {
+        slug,
+        workingDirectory: `/mnt/${slug}`,
+      });
+    // A folder answers only once all three checks have started: a serial
+    // read would wait on the first until its time box ran out.
+    let started = 0;
+    let release: () => void = () => {};
+    const allStarted = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const barrierFs = {
+      exists: async () => {
+        started += 1;
+        if (started === slugs.length) release();
+        await allStarted;
+        return true;
+      },
+      realpath: async (path: string) => path,
+      isDirectory: async () => true,
+    };
+
+    const locations = await makeResolver(
+      harness,
+      noGitOnListReads,
+    ).describeProjectRunLocations(slugs, { timeoutMs: 1_000, fs: barrierFs });
+
+    expect([...locations.values()]).toEqual(
+      slugs.map((slug) => ({ kind: 'folder', path: `/mnt/${slug}` })),
+    );
+  });
+
+  test('reads Station’s records once per request: one project record per project, one bindings read in all', async () => {
+    const harness = createHome();
+    for (const slug of ['a', 'b', 'c']) {
+      await saveProject(harness.adapter, {
+        slug,
+        workingDirectory: tempDir(`station-run-location-${slug}-`),
+      });
+      writeManifestRecord(harness.home, slug, {
+        id: `prj_${slug}`,
+        repos: [{ kind: 'local-only', id: `local:${slug}` }],
+      });
+    }
+    const getProject = vi.spyOn(harness.adapter, 'getProject');
+    const readBindings = vi.spyOn(harness.bindings, 'read');
+
+    const locations = await makeResolver(
+      harness,
+      noGitOnListReads,
+    ).describeProjectRunLocations(['a', 'b', 'c']);
+
+    expect([...locations.values()].map(({ kind }) => kind)).toEqual([
+      'folder',
+      'folder',
+      'folder',
+    ]);
+    expect(getProject).toHaveBeenCalledTimes(3);
+    expect(readBindings).toHaveBeenCalledTimes(1);
   });
 });
 

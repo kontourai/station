@@ -1,0 +1,7 @@
+{
+  "revision": "9d6022e1d490dc013a0b29b526fbc26089c9181d",
+
+  "notes": [
+    {"path":"docs/learn/media/connections-models.png","note":"SplitPaneLayout.css gained one rule inside the existing (pointer: coarse) block: the list search box takes min-height 44px. The capture is a fine-pointer desktop render of Connections, where that media query does not match (fine-pointer search height is asserted unchanged in SplitPaneLayout.touch-target.test.tsx), so the image is still accurate.","inputs":["docs/learn/media/connections-models.png"]}
+  ]
+}

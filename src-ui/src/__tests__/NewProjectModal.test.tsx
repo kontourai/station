@@ -277,7 +277,7 @@ describe('NewProjectModal starter layout picker', () => {
     });
     fireEvent.click(screen.getByLabelText('Choose project icon'));
     fireEvent.click(screen.getByLabelText('Use public/favicon.png'));
-    fireEvent.click(screen.getByRole('button', { name: 'Use initials' }));
+    fireEvent.click(screen.getByRole('button', { name: 'No icon' }));
     fireEvent.click(screen.getByRole('button', { name: 'Create' }));
 
     await waitFor(() =>
@@ -303,6 +303,22 @@ describe('NewProjectModal starter layout picker', () => {
       '/Users/me/de',
       expect.objectContaining({ enabled: false }),
     );
+  });
+
+  test('opens with the folder named in the link already chosen (#3552)', () => {
+    window.history.replaceState(
+      null,
+      '',
+      '/projects/new?directory=%2Fwork%2Fscratch%2Fapp',
+    );
+    try {
+      render(<NewProjectModal isOpen onClose={onCloseMock} />);
+      expect(
+        (screen.getByLabelText('Working Directory') as HTMLInputElement).value,
+      ).toBe('/work/scratch/app');
+    } finally {
+      window.history.replaceState(null, '', '/');
+    }
   });
 
   test('enables local artwork discovery once a directory is picked', async () => {
@@ -487,7 +503,7 @@ describe('NewProjectModal starter layout picker', () => {
       target: { value: 'Keep this description' },
     });
     fireEvent.click(screen.getByLabelText('Choose project icon'));
-    fireEvent.change(screen.getByLabelText(/Emoji or image URL/), {
+    fireEvent.change(screen.getByLabelText(/Emoji or symbol/), {
       target: { value: '🚀' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
@@ -510,7 +526,7 @@ describe('NewProjectModal starter layout picker', () => {
       (screen.getByLabelText(/Description/) as HTMLTextAreaElement).value,
     ).toBe('Keep this description');
     expect(
-      (screen.getByLabelText(/Emoji or image URL/) as HTMLInputElement).value,
+      (screen.getByLabelText(/Emoji or symbol/) as HTMLInputElement).value,
     ).toBe('🚀');
   });
 
@@ -795,7 +811,9 @@ describe('NewProjectModal copy density and layout browser placement (station#182
       ),
     ).toBeTruthy();
     expect(
-      within(identityField).getByText(/Uses initials until you choose an icon/),
+      within(identityField).getByText(
+        /Without an icon, Station shows its initials and colour/,
+      ),
     ).toBeTruthy();
   });
 

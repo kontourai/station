@@ -1,0 +1,7 @@
+{
+  "revision": "1d7c6f50f7ddfc15d981fc32a2f6279ddec6a07c",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Traced accumulated eff24-to-1d7 canonical content validation/Claude answer translation, source-home continuation, native binding/ownership checks, observed init identity, retirement and usage-limit details. Requested continuity, observed identity and completion remain distinct; legacy compatibility and dated SDK statements retain scope. Independent source review of affected claims only; no affected prose correction identified. REASONED, not provider/native/runtime/CI qualification. Shared typed init predicate retains identical classification and claim-before-mapper ordering.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/claude-adapter.ts"]}
+  ]
+}

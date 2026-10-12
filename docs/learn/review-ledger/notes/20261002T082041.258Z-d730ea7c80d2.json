@@ -1,0 +1,21 @@
+{
+  "revision": "78a730ab4d174c721861ab18c95db66f2ca6262a",
+
+  "notes": [
+    {"path":"docs/learn/media/connections-models.png","note":"Re-bind after main #3108: the index.css delta is chat-dock-scoped additions on existing tokens; these captures show the file-preview, connections and repository surfaces, which contain no chat-dock or inbox chrome, so their pixels and the behavior they document are unchanged.","inputs":["docs/learn/media/connections-models.png"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Re-bind after main #3108: the index.css delta is chat-dock-scoped additions on existing tokens; these captures show the file-preview, connections and repository surfaces, which contain no chat-dock or inbox chrome, so their pixels and the behavior they document are unchanged.","inputs":["docs/learn/media/connections-tour.webm"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Re-bind after main #3108: the index.css delta is chat-dock-scoped additions on existing tokens; these captures show the file-preview, connections and repository surfaces, which contain no chat-dock or inbox chrome, so their pixels and the behavior they document are unchanged.","inputs":["docs/learn/media/inspect-request.png"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Re-bind after main #3108: the index.css delta is chat-dock-scoped additions on existing tokens; these captures show the file-preview, connections and repository surfaces, which contain no chat-dock or inbox chrome, so their pixels and the behavior they document are unchanged.","inputs":["docs/learn/media/inspect-request.webm"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Re-bind after main #3108: the index.css delta is chat-dock-scoped additions on existing tokens; these captures show the file-preview, connections and repository surfaces, which contain no chat-dock or inbox chrome, so their pixels and the behavior they document are unchanged.","inputs":["docs/learn/media/project-with-task.png"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"Re-bind after main #3108: the index.css delta is chat-dock-scoped additions on existing tokens; these captures show the file-preview, connections and repository surfaces, which contain no chat-dock or inbox chrome, so their pixels and the behavior they document are unchanged.","inputs":["docs/learn/media/repository-knowledge-narrow.png"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"Re-bind after main #3108: the index.css delta is chat-dock-scoped additions on existing tokens; these captures show the file-preview, connections and repository surfaces, which contain no chat-dock or inbox chrome, so their pixels and the behavior they document are unchanged.","inputs":["docs/learn/media/repository-knowledge.png"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Re-bind after main #3108: the index.css delta is chat-dock-scoped additions on existing tokens; these captures show the file-preview, connections and repository surfaces, which contain no chat-dock or inbox chrome, so their pixels and the behavior they document are unchanged.","inputs":["docs/learn/media/shared-task-document.png"]}
+  ]
+}

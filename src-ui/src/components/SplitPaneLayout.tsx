@@ -84,7 +84,20 @@ interface SplitPaneItem {
    * in it.
    */
   trailing?: React.ReactNode;
+  /**
+   * Makes the row button a drag source (#3159: a conversation reference).
+   * Absent renders the row exactly as before.
+   */
+  onDragStart?: (event: React.DragEvent<HTMLElement>) => void;
+  onDragEnd?: () => void;
+  /** The section this row sits in; a heading is emitted where it changes. */
   section?: string;
+  /**
+   * How that heading renders, when the host owns its words and face (the
+   * Activity lanes render the shared work-group label). Defaults to the
+   * `section` text in this layout's own section-header style.
+   */
+  sectionLabel?: React.ReactNode;
   /**
    * Optional presentation-only collapsible group. A group is emitted by a
    * caller as contiguous items; rows outside a group retain the original
@@ -1399,6 +1412,13 @@ export function SplitPaneLayout({
                     aria-describedby={describedBy}
                     data-split-pane-nav={itemKey}
                     data-split-pane-line={item.trailing ? undefined : itemKey}
+                    {...(item.onDragStart
+                      ? {
+                          draggable: true,
+                          onDragStart: item.onDragStart,
+                          onDragEnd: item.onDragEnd,
+                        }
+                      : {})}
                   >
                     {item.icon && (
                       <div className="split-pane__item-icon">{item.icon}</div>
@@ -1456,7 +1476,7 @@ export function SplitPaneLayout({
                     {item.section !== undefined &&
                       item.section !== items[i - 1]?.section && (
                         <div className="split-pane__section-header">
-                          {item.section}
+                          {item.sectionLabel ?? item.section}
                         </div>
                       )}
                     {groupStarts && group && (

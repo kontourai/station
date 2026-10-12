@@ -1,0 +1,7 @@
+{
+  "revision": "f891786eebfb74100a956f1f7243fe52c32c2802",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Only a responsive action-inventory entry changed (HomeStartComposer held-draft row); the frontend patterns described still hold. No prose change.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

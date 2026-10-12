@@ -56,7 +56,7 @@ describe('PendingApprovalStrip announcements (#2344)', () => {
   test('a newly pending request is announced once, not on every re-render', () => {
     const { rerender } = render(strip([]));
     rerender(strip([request('req-1', 'Bash')]));
-    expect(liveRegion().textContent).toBe('Approval needed: Bash');
+    expect(liveRegion().textContent).toBe('Needs approval: Bash');
     const announced = liveRegion().firstElementChild;
 
     // A new array holding the same request: nothing new to say, and the
@@ -64,7 +64,7 @@ describe('PendingApprovalStrip announcements (#2344)', () => {
     rerender(strip([request('req-1', 'Bash')]));
     rerender(strip([request('req-1', 'Bash')]));
     expect(liveRegion().firstElementChild).toBe(announced);
-    expect(liveRegion().textContent).toBe('Approval needed: Bash');
+    expect(liveRegion().textContent).toBe('Needs approval: Bash');
   });
 
   test('a second request is announced by itself; the first is not repeated', () => {
@@ -77,7 +77,7 @@ describe('PendingApprovalStrip announcements (#2344)', () => {
       ]),
     );
     expect(liveRegion().textContent).toBe(
-      'Approval needed: station-control.list_agents',
+      'Needs approval: station-control.list_agents',
     );
   });
 
@@ -88,7 +88,7 @@ describe('PendingApprovalStrip announcements (#2344)', () => {
     rerender(strip([]));
     rerender(strip([request('req-2', 'Bash')]));
     // Same words, but a new node: an unchanged text node is not re-read.
-    expect(liveRegion().textContent).toBe('Approval needed: Bash');
+    expect(liveRegion().textContent).toBe('Needs approval: Bash');
     expect(liveRegion().firstElementChild).not.toBe(first);
   });
 
@@ -100,7 +100,7 @@ describe('PendingApprovalStrip announcements (#2344)', () => {
         request('req-2', undefined, 'rm -rf x'),
       ]),
     );
-    expect(liveRegion().textContent).toBe('2 approvals needed: Bash, rm -rf x');
+    expect(liveRegion().textContent).toBe('Needs approval (2): Bash, rm -rf x');
   });
 
   test('requests already waiting when the strip mounts are not announced', () => {
@@ -120,7 +120,7 @@ describe('PendingApprovalStrip announcements (#2344)', () => {
         request('req-3', 'Edit'),
       ]),
     );
-    expect(liveRegion().textContent).toBe('Approval needed: Edit');
+    expect(liveRegion().textContent).toBe('Needs approval: Edit');
   });
 
   test('requests the event window loads before it settles are not announced', () => {
@@ -149,6 +149,6 @@ describe('PendingApprovalStrip announcements (#2344)', () => {
         true,
       ),
     );
-    expect(liveRegion().textContent).toBe('Approval needed: Edit');
+    expect(liveRegion().textContent).toBe('Needs approval: Edit');
   });
 });

@@ -1,0 +1,19 @@
+{
+  "revision": "f6774e0c9a3e67a4e93740d1295e0460e4512da9",
+
+  "notes": [
+    {"path":"README.md","note":"Merge refresh: verified README source bindings after merging origin/main; release-channel-ports.md change is from this branch and merged cleanly.","inputs":["README.md"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Merge refresh: nightly.yml change from main is a comment-only edit to the secrets: inherit comment; no behavioral claim in this guide changes.","inputs":["docs/guides/mobile-release.md"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Merge refresh: nightly.yml change from main is comment-only; no ring claim changes.","inputs":["docs/guides/release-rings.md"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Merge refresh: nightly.yml change from main is comment-only; no store-entry claim changes.","inputs":["docs/guides/store-entry.md"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Merge refresh: scripts/release-admit-producer-assets.mjs arrived from main and is not touched by this branch; guide text unchanged by merge.","inputs":["docs/guides/native-releases.md"]},
+
+    {"path":"docs/guides/nightly.md","note":"Merge refresh: portable-nightly-publication.mjs merged main's changes with this branch's host-stream changes; text conflict-free, covered by focused tests.","inputs":["docs/guides/nightly.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Merge refresh: vitest-resource-manifest.mjs merged cleanly; AGENTS.md guidance on classifying child-process tests still holds.","inputs":["scripts/AGENTS.md"]}
+  ]
+}

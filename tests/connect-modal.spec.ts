@@ -4,15 +4,32 @@
  * Opens the app, seeds localStorage with a connection, verifies:
  *  - the connection chip appears in the header
  *  - its chooser opens the manager through Manage Stations
- *  - adding a new connection via the form works
+ *  - approving a Device grant saves its connection without switching
  *  - switching active connection updates the chip label
  *  - editing a connection works
  *  - removing a connection works
- *  - discover panel renders
+ *  - empty discovery remains unavailable
  *  - status dot states render correctly
  */
-import { expect, type Locator, type Page, test } from '@playwright/test';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  AUTHORITY_OBSERVATION_SCHEMA_VERSION,
+  type AuthorityObservation,
+} from '@kontourai/station-contracts/authority-observation';
+import type { AppConfig } from '@kontourai/station-contracts/config';
+import type { PublicStationHandshake } from '@kontourai/station-contracts/environment-security';
+import type { StarterWorkStatus } from '@kontourai/station-contracts/starter-work';
+import type { ACPConnectionInfo } from '@kontourai/station-sdk';
+import { expect, type Locator, type Page } from '@playwright/test';
+import { pairedDevicePrincipal } from '../src-server/runtime/bootstrap/orchestration-request-principal';
+import {
+  DevicePairingError,
+  DevicePairingService,
+} from '../src-server/services/ssh/device-pairing-service';
 import { requireE2EOperatorCredential } from './helpers/e2e-operator-credential';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import { dismissSetupLauncher } from './helpers/orchestration';
 import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 
@@ -100,7 +117,266 @@ function seedConnection(
   `;
 }
 
+const receiverHomes: string[] = [];
+
+/** Approved receiver-domain fixture; browser Origin admission is covered separately. */
+async function receiverFixture(
+  page: Page,
+  origin: string,
+  holdDiscovery = false,
+) {
+  const home = mkdtempSync(join(tmpdir(), 'station-connect-modal-receiver-'));
+  receiverHomes.push(home);
+  mkdirSync(join(home, 'security'), { recursive: true });
+  const environmentId = '11111111-1111-4111-8111-111111110259';
+  const pairing = new DevicePairingService({ homeDir: home, environmentId });
+  let releaseDiscovery = () => {};
+  const discovery = holdDiscovery
+    ? new Promise<void>((resolve) => {
+        releaseDiscovery = resolve;
+      })
+    : Promise.resolve();
+  const handshake: PublicStationHandshake = {
+    schemaVersion: 1,
+    environmentId,
+    authentication: { scheme: 'bearer', protocolVersion: 1 },
+    transports: { http: 1, sse: 1, websocket: 1 },
+    compatibility: {
+      serverVersion: '0.0.0-test',
+      protocolVersion: 1,
+      minClientProtocol: 1,
+      capabilities: { remoteAuth: 1, devicePairing: 1, environmentProof: 1 },
+    },
+  };
+  // Pairing-only receiver: no installed ACP providers or model selection.
+  const connections: ACPConnectionInfo[] = [];
+  const config: AppConfig = {
+    defaultModel: '',
+    invokeModel: '',
+    structureModel: '',
+    firstRun: { status: 'completed' },
+  };
+  const starterTaskStatus: StarterWorkStatus = { state: 'unbound' };
+  let exchangedDeviceId: string | undefined;
+  await page.route(`${origin}/**`, async (route) => {
+    const request = route.request();
+    const requestUrl = new URL(request.url());
+    const path = requestUrl.pathname;
+    if (request.method() === 'GET' && path === '/.well-known/station/v1') {
+      await discovery;
+      return route.fulfill({ json: handshake });
+    }
+    if (
+      request.method() === 'POST' &&
+      path === '/.well-known/station/v1/pairing/access-request'
+    ) {
+      const input = request.postDataJSON() as Pick<
+        Parameters<DevicePairingService['requestAccess']>[0],
+        'deviceName' | 'clientInstanceId' | 'kind'
+      >;
+      const pending = pairing.requestAccess({
+        endpoint: origin,
+        deviceName: input.deviceName,
+        clientInstanceId: input.clientInstanceId,
+        requesterPosition: 'off-box',
+        kind: input.kind ?? 'device',
+      });
+      return route.fulfill({ status: 202, json: pending });
+    }
+    if (
+      request.method() === 'POST' &&
+      path === '/.well-known/station/v1/pairing/exchange'
+    ) {
+      try {
+        const input = request.postDataJSON() as Parameters<
+          DevicePairingService['exchange']
+        >[0];
+        const issued = pairing.exchange(input);
+        exchangedDeviceId = issued.device.id;
+        return route.fulfill({ json: issued });
+      } catch (error) {
+        if (error instanceof DevicePairingError)
+          return route.fulfill({ status: 409, json: { error: error.code } });
+        throw error;
+      }
+    }
+    const authorization = request.headers().authorization;
+    if (
+      !authorization?.startsWith('Bearer ') ||
+      !pairing.verifyCredential(authorization.slice(7))
+    ) {
+      return route.fulfill({
+        status: 401,
+        json: { error: 'authentication_required' },
+      });
+    }
+    if (request.method() === 'GET' && path === '/acp/connections') {
+      return route.fulfill({ json: { success: true, data: connections } });
+    }
+    if (request.method() === 'GET' && path === '/config/app') {
+      return route.fulfill({ json: { success: true, data: config } });
+    }
+    if (request.method() === 'GET' && path === '/api/starter-work/start-task') {
+      // No Starter Task was bound or launched on this receiver.
+      return route.fulfill({
+        json: { success: true, data: starterTaskStatus },
+      });
+    }
+    if (request.method() === 'GET' && path === '/events') {
+      // This fixture owns no EventBus; it proves no live SSE delivery.
+      return route.abort();
+    }
+    if (request.method() === 'GET' && path === '/api/auth/authority') {
+      const device = pairing.identifyDevice(authorization.slice(7));
+      if (!device)
+        throw new Error('The verified receiver grant has no Device record');
+      const principal = pairedDevicePrincipal(device);
+      if (principal.kind !== 'human' && principal.kind !== 'tenant') {
+        throw new Error(
+          'The receiver Device resolved a principal kind unsupported by authority observations',
+        );
+      }
+      const observation: AuthorityObservation = {
+        schemaVersion: AUTHORITY_OBSERVATION_SCHEMA_VERSION,
+        environmentId,
+        principal: { kind: principal.kind, id: principal.id },
+        grant: {
+          kind: 'device',
+          deviceId: device.id,
+          grantedScopes: device.scope.split(' '),
+        },
+      };
+      return route.fulfill({ json: observation });
+    }
+    if (request.method() === 'GET' && path === '/api/system/status')
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: STATUS_READY,
+      });
+    if (request.method() === 'GET' && path === '/api/system/identity')
+      return route.fulfill({
+        json: {
+          environmentId,
+          instanceId: 'connect-modal-receiver',
+          bootId: 'receiver-boot',
+          sha: '2222222222222222222222222222222222222222',
+        },
+      });
+    if (
+      request.method() === 'GET' &&
+      (path === '/api/browser/projects/default/access' ||
+        (path === '/api/browser/sessions' &&
+          requestUrl.searchParams.get('projectSlug') === 'default'))
+    )
+      return rejectUnexpectedFixtureRequest(route);
+    if (
+      await fulfillStationShellRead(route, {
+        environmentId,
+        deviceId: exchangedDeviceId,
+      })
+    )
+      return;
+    return rejectUnexpectedFixtureRequest(route);
+  });
+  return { pairing, environmentId, releaseDiscovery };
+}
+
+async function identifyReceiver(page: Page, origin: string) {
+  await openStationManager(page);
+  const dialog = page.getByRole('dialog');
+  await dialog
+    .getByRole('button', { name: 'Connect a Station', exact: true })
+    .click();
+  await dialog
+    .getByRole('textbox', { name: 'Station address', exact: true })
+    .fill(origin);
+  await dialog.getByRole('button', { name: 'Continue', exact: true }).click();
+  return dialog;
+}
+
+async function approveReceiverDevice(
+  page: Page,
+  origin: string,
+  name: string,
+  receiver: Awaited<ReturnType<typeof receiverFixture>>,
+) {
+  const dialog = page.getByRole('dialog');
+  await expect(
+    dialog.getByText(receiver.environmentId, { exact: true }),
+  ).toBeVisible();
+  expect(receiver.pairing.listDevices()).toHaveLength(0);
+  await expect(
+    dialog.getByRole('checkbox', {
+      name: `Use ${origin} from this device`,
+      exact: true,
+    }),
+  ).toBeChecked();
+  await expect(
+    dialog.getByRole('checkbox', {
+      name: `Let Dev Server send work to ${origin}`,
+      exact: true,
+    }),
+  ).not.toBeChecked();
+  await dialog
+    .getByRole('button', { name: 'Request selected access', exact: true })
+    .click();
+  if (new URL(origin).protocol === 'http:') {
+    const consent = dialog.getByRole('checkbox', {
+      name: 'Allow an unencrypted connection',
+    });
+    await expect(consent).not.toBeChecked();
+    await expect(
+      dialog.getByRole('button', { name: 'Request access', exact: true }),
+    ).toBeDisabled();
+    await consent.check();
+  }
+  await dialog
+    .getByRole('button', { name: 'Request access', exact: true })
+    .click();
+  await expect.poll(() => receiver.pairing.listRequests().length).toBe(1);
+  expect(receiver.pairing.listDevices()).toHaveLength(0);
+  const pending = receiver.pairing.listRequests()[0];
+  receiver.pairing.confirmRequest(pending.requestId, {
+    kind: 'presented-credential',
+  });
+  await expect
+    .poll(async () =>
+      page.evaluate((address) => {
+        const saved = JSON.parse(
+          localStorage.getItem('station-connect-connections') ?? '[]',
+        ) as Array<{ url: string; credentialState: string }>;
+        return saved.find((connection) => connection.url === address)
+          ?.credentialState;
+      }, origin),
+    )
+    .toBe('saved');
+  expect(receiver.pairing.listDevices()).toHaveLength(1);
+  await expect(page.getByTestId('app-toolbar-connection')).toHaveAccessibleName(
+    /Dev Server/,
+  );
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await openStationManager(page);
+  const manager = page.getByRole('dialog');
+  await openConnectionEditor(manager, origin);
+  await manager
+    .getByRole('textbox', { name: 'Station name', exact: true })
+    .fill(name);
+  await manager.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(
+    manager.getByRole('button', {
+      name: `View details for ${name}`,
+      exact: true,
+    }),
+  ).toBeVisible();
+  return manager;
+}
+
 test.describe('Connection Manager Modal', () => {
+  test.afterEach(() => {
+    for (const home of receiverHomes.splice(0))
+      rmSync(home, { recursive: true, force: true });
+  });
   test.beforeEach(async ({ page }) => {
     await page.route('**/api/**', async (route) => {
       if (
@@ -129,20 +405,8 @@ test.describe('Connection Manager Modal', () => {
         },
       }),
     );
-    // The manual-add flow (archive#942) handshakes a candidate host's public
-    // `/.well-known/station/v1` endpoint and gates the Add button on it
-    // before saving. The suite adds hosts on addresses nothing is actually
-    // listening on (e.g. 10.0.0.5), so without this the handshake runs for
-    // its real ~5s timeout before failing open — racing (and losing to) the
-    // default 5s `expect().toBeVisible()` timeout on the connection showing
-    // up right after. Mock it the same way connections-crud.spec.ts does so
-    // every candidate host resolves promptly, matching a real reachable host.
-    // The body includes `compatibility` per the real shape
-    // (`EnvironmentSecurityService.getPublicHandshake`,
-    // src-server/services/ssh/environment-security-service.ts) — every field
-    // a real host actually sends, not just the pre-archive#942 subset — so this
-    // mock stays representative of what `checkHostCompatibility` really
-    // parses instead of accidentally testing a payload no server sends.
+    // The controlling Station is already paired. Receiver fixtures below
+    // override only their own origin and issue grants through the pairing owner.
     await page.route('**/.well-known/station/v1', (route) =>
       route.fulfill({
         status: 200,
@@ -232,144 +496,88 @@ test.describe('Connection Manager Modal', () => {
     ).toBe(false);
   });
 
-  test('can add a new connection manually', async ({ page }) => {
-    // Deterministic activation outcome for the fake host below
-    // (http://10.0.0.5:3141: nothing listens there). Activating it fires
-    // the authority observation plus the protected query fan-out; against a
-    // real black hole those hang on TCP timing (environment-dependent: CI
-    // Linux vs a sandbox proxy), holding the tree in pending past the
-    // assertions below. Answer everything except the pre-save handshake
-    // with the same 404 the remote-auth-recovery suite uses for unmatched
-    // hosts, so activation settles promptly into the ephemeral branch and
-    // the suite proves the composition (modal survival, chip identity)
-    // instead of the network's mood. The still-pending flavor is covered
-    // at unit level (authorityRecoveryComposition), and whether an
-    // observation to an unreachable host should time out is a separate
-    // product decision — no assertion below changes either way.
-    await page.route(
-      /^http:\/\/10\.0\.0\.5:3141\/(?!\.well-known\/).*/,
-      (route) =>
-        route.fulfill({
-          status: 404,
-          contentType: 'application/json',
-          body: JSON.stringify({ error: 'fixture route not found' }),
-        }),
+  test('can approve a new Device connection and select it explicitly', async ({
+    page,
+  }) => {
+    const origin = 'http://10.0.0.5:3141';
+    const receiver = await receiverFixture(page, origin, true);
+    const dialog = await identifyReceiver(page, origin);
+    await expect(
+      dialog.getByRole('button', { name: 'Checking Station…', exact: true }),
+    ).toBeVisible();
+    expect(receiver.pairing.listRequests()).toHaveLength(0);
+    receiver.releaseDiscovery();
+    const manager = await approveReceiverDevice(
+      page,
+      origin,
+      'Office',
+      receiver,
     );
-    // archive#945 LOW: a bare "the connection eventually appears" assertion would
-    // pass identically even if the app silently stopped calling the archive#942
-    // pre-save handshake — `ConnectionManagerModalContent`'s own post-add
-    // health probe (`checkOne`) hits this exact same `.well-known/station/v1`
-    // URL, so a naive "was this URL ever requested" counter cannot tell the
-    // two apart (proven against a real build: hitting the endpoint happens
-    // 3 times on the correct path and 2 times with the pre-save check
-    // removed — not a discriminating signal to hardcode against). The one
-    // signal that is exclusively tied to the pre-save gate is the composer's
-    // own "Checking…" button label (`ManualAddPanel`'s `checking` prop,
-    // driven only by `passesCompatibility`), so delay the mocked response
-    // just enough to observe that transient state and assert on it directly.
-    await page.route('**/.well-known/station/v1', async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      return route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          schemaVersion: 1,
-          environmentId: 'env-connect-modal-suite',
-          authentication: { scheme: 'bearer', protocolVersion: 1 },
-          transports: { http: 1, sse: 1, websocket: 1 },
-          compatibility: {
-            serverVersion: '0.0.0-test',
-            protocolVersion: 1,
-            minClientProtocol: 1,
-            capabilities: {
-              remoteAuth: 1,
-              devicePairing: 1,
-              environmentProof: 1,
-            },
-          },
-        }),
-      });
-    });
-
-    await openStationManager(page);
-    await page
-      .getByRole('dialog')
-      .getByRole('button', { name: 'Add a Station address' })
+    await manager
+      .getByRole('button', { name: 'View details for Office', exact: true })
       .click();
-    await page.getByPlaceholder('Name (optional)').fill('Office');
-    await page
-      .getByPlaceholder('https://station.example.ts.net')
-      .fill('http://10.0.0.5:3141');
-    const add = page.getByRole('button', { name: 'Add', exact: true });
-    await expect(add).toBeDisabled();
-    await page
-      .getByRole('checkbox', { name: 'Allow an unencrypted connection' })
-      .check();
-    await add.click();
-
-    // The pre-save handshake is actually in flight — this button label is
-    // exclusively driven by that check, not by the unrelated post-add probe.
+    await manager
+      .getByRole('button', { name: 'Switch to Office', exact: true })
+      .click();
     await expect(
-      page.getByRole('button', { name: 'Checking…', exact: true }),
-    ).toBeVisible();
-
-    // The modal remains open across the endpoint change, preserving context.
-    const dialog = page.getByRole('dialog');
-    // A successful add now carries straight into authorising the new host
-    // instead of returning to the list (archive#986) — the pairing panel names it
-    // by name, not "this Station".
+      manager.locator('.station-connect-row').filter({ hasText: 'Office' }),
+    ).toContainText('Current ·');
+    await manager
+      .getByRole('button', { name: 'Close Station manager', exact: true })
+      .click();
     await expect(
-      dialog.getByRole('heading', { name: 'Request Access', exact: true }),
-    ).toBeVisible();
-    await expect(dialog).toContainText('Office');
-    await dialog.getByRole('button', { name: 'Back' }).click();
-
-    // The connection is saved and active as soon as it is added, regardless
-    // of whether authorising it is completed right away.
-    await expect(dialog.getByText('Office', { exact: true })).toBeVisible();
-    await dialog.getByRole('button', { name: 'Close Station manager' }).click();
-
-    // Chip should update to the new active connection after dismissal.
-    await expect(
-      page.getByTestId('app-toolbar-connection').getByText('Office'),
-    ).toBeVisible();
+      page.getByTestId('app-toolbar-connection'),
+    ).toHaveAccessibleName(/Office/);
   });
 
-  test('keeps Add Station fields at the iOS focus-zoom floor', async ({
+  test('keeps Connect Station fields at the iOS focus-zoom floor', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openStationManager(page);
-    await page
-      .getByRole('dialog')
-      .getByRole('button', { name: 'Add a Station address' })
+    const dialog = page.getByRole('dialog');
+    await dialog
+      .getByRole('button', { name: 'Connect a Station', exact: true })
       .click();
-
-    const fields = [
-      page.getByPlaceholder('Name (optional)'),
-      page.getByPlaceholder('https://station.example.ts.net'),
-    ];
-    for (const field of fields) {
-      await expect(field).toBeVisible();
-      expect(
-        await field.evaluate((element) =>
-          Number.parseFloat(getComputedStyle(element).fontSize),
-        ),
-      ).toBeGreaterThanOrEqual(16);
-    }
-
+    const address = dialog.getByRole('textbox', {
+      name: 'Station address',
+      exact: true,
+    });
+    await expect(address).toBeVisible();
+    expect(
+      await address.evaluate((element) =>
+        Number.parseFloat(getComputedStyle(element).fontSize),
+      ),
+    ).toBeGreaterThanOrEqual(16);
     const viewport = page.locator('meta[name="viewport"]');
     await expect(viewport).toHaveAttribute('content', /initial-scale=1/);
     await expect(viewport).not.toHaveAttribute(
       'content',
       /(?:user-scalable=no|maximum-scale=1)/,
     );
-
     const before = await page.evaluate(() => ({
       scale: window.visualViewport?.scale ?? 1,
       width: window.visualViewport?.width ?? window.innerWidth,
     }));
-    await fields[1].focus();
+    await address.focus();
+    await dialog
+      .getByRole('button', { name: 'Pairing code', exact: true })
+      .click();
+    for (const field of [
+      dialog.getByRole('textbox', {
+        name: 'Station address for a short code',
+        exact: true,
+      }),
+      dialog.getByRole('textbox', { name: 'Pairing code', exact: true }),
+    ]) {
+      await expect(field).toBeVisible();
+      expect(
+        await field.evaluate((element) =>
+          Number.parseFloat(getComputedStyle(element).fontSize),
+        ),
+      ).toBeGreaterThanOrEqual(16);
+      await field.focus();
+    }
     const after = await page.evaluate(() => ({
       scale: window.visualViewport?.scale ?? 1,
       width: window.visualViewport?.width ?? window.innerWidth,
@@ -407,105 +615,42 @@ test.describe('Connection Manager Modal', () => {
     );
   });
 
-  test('can switch between connections', async ({ page }) => {
-    // Same deterministic-activation fixture as the test above, for this
-    // test's fake host (http://203.0.113.5:3141): without it the activation
-    // reads hang on black-hole TCP timing and the tree never settles past
-    // pending within the chip assertion's budget. See the comment there —
-    // no assertion here changes either way.
-    await page.route(
-      /^http:\/\/203\.0\.113\.5:3141\/(?!\.well-known\/).*/,
-      (route) =>
-        route.fulfill({
-          status: 404,
-          contentType: 'application/json',
-          body: JSON.stringify({ error: 'fixture route not found' }),
-        }),
+  test('can switch between approved Device connections', async ({ page }) => {
+    const origin = 'http://10.0.0.6:3141';
+    const receiver = await receiverFixture(page, origin);
+    await identifyReceiver(page, origin);
+    const dialog = await approveReceiverDevice(
+      page,
+      origin,
+      'Remote',
+      receiver,
     );
-    // The suite's handshake mock answers every host as Dev Server's own
-    // environment, which would make Remote the same Station at a second
-    // address and fold Dev Server into it. A real second Station has its own
-    // identity.
-    await page.route(
-      'http://203.0.113.5:3141/.well-known/station/v1',
-      (route) =>
-        route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({
-            schemaVersion: 1,
-            environmentId: 'env-connect-modal-remote',
-            authentication: { scheme: 'bearer', protocolVersion: 1 },
-            transports: { http: 1, sse: 1, websocket: 1 },
-            compatibility: {
-              serverVersion: '0.0.0-test',
-              protocolVersion: 1,
-              minClientProtocol: 1,
-              capabilities: {
-                remoteAuth: 1,
-                devicePairing: 1,
-                environmentProof: 1,
-              },
-            },
-          }),
-        }),
-    );
-    // Add a second connection via the UI
-    await openStationManager(page);
-    await page
-      .getByRole('dialog')
-      .getByRole('button', { name: 'Add a Station address' })
+    await dialog
+      .getByRole('button', { name: 'View details for Remote', exact: true })
       .click();
-    await page.getByPlaceholder('Name (optional)').fill('Remote');
-    await page
-      .getByPlaceholder('https://station.example.ts.net')
-      .fill('http://203.0.113.5:3141');
-    const add = page.getByRole('button', { name: 'Add', exact: true });
-    await expect(add).toBeDisabled();
-    await page
-      .getByRole('checkbox', { name: 'Allow an unencrypted connection' })
-      .check();
-    await add.click();
-
-    // Back out of the authorize step this add now continues into (archive#986) —
-    // switching to an already-saved connection does not require completing
-    // pairing on the one just added.
-    await page
-      .getByRole('dialog')
-      .getByRole('button', { name: 'Back' })
+    await dialog
+      .getByRole('button', { name: 'Switch to Remote', exact: true })
       .click();
-
-    // Adding selected Remote; prove that state before switching back, so an
-    // unchanged Dev Server connection cannot satisfy the final assertion.
     await expect(
-      page
-        .getByRole('dialog')
-        .locator('.station-connect-row')
-        .filter({ hasText: 'Remote' }),
+      dialog.locator('.station-connect-row').filter({ hasText: 'Remote' }),
     ).toContainText('Current ·');
-    await page
-      .getByRole('dialog')
-      .getByRole('button', { name: 'Close Station manager' })
+    await dialog
+      .getByRole('button', { name: 'Close Station manager', exact: true })
       .click();
     await expect(
       page.getByTestId('app-toolbar-connection'),
     ).toHaveAccessibleName(/Remote/);
-
     await openStationManager(page);
-    await page
-      .getByRole('dialog')
+    const manager = page.getByRole('dialog');
+    await manager
       .getByRole('button', { name: 'View details for Dev Server', exact: true })
       .click();
-    await page
-      .getByRole('dialog')
+    await manager
       .getByRole('button', { name: 'Switch to Dev Server', exact: true })
       .click();
-    await page
-      .getByRole('dialog')
-      .getByRole('button', { name: 'Close Station manager' })
+    await manager
+      .getByRole('button', { name: 'Close Station manager', exact: true })
       .click();
-
-    // The chip names Dev Server again.
     await expect(
       page.getByTestId('app-toolbar-connection'),
     ).toHaveAccessibleName(/Dev Server/);
@@ -558,13 +703,14 @@ test.describe('Connection Manager Modal', () => {
         },
       });
     });
-    await openStationManager(page);
-    const dialog = page.getByRole('dialog');
-    await dialog.getByRole('button', { name: 'Add a Station address' }).click();
-    await page.getByPlaceholder('Name (optional)').fill('Desktop proof');
-    await page.getByPlaceholder('https://station.example.ts.net').fill(address);
-    await dialog.getByRole('button', { name: 'Add', exact: true }).click();
-    await dialog.getByRole('button', { name: 'Back', exact: true }).click();
+    const receiver = await receiverFixture(page, address);
+    await identifyReceiver(page, address);
+    const dialog = await approveReceiverDevice(
+      page,
+      address,
+      'Desktop proof',
+      receiver,
+    );
     const url = dialog.getByText(address, { exact: true });
     await expect(url).toBeVisible();
     expect(
@@ -601,28 +747,10 @@ test.describe('Connection Manager Modal', () => {
   });
 
   test('can remove a connection', async ({ page }) => {
-    // Add a second connection via the UI so we have something to remove
-    await openStationManager(page);
-    await page
-      .getByRole('dialog')
-      .getByRole('button', { name: 'Add a Station address' })
-      .click();
-    await page.getByPlaceholder('Name (optional)').fill('ToDelete');
-    await page
-      .getByPlaceholder('https://station.example.ts.net')
-      .fill('http://delete-me:3141');
-    const add = page.getByRole('button', { name: 'Add', exact: true });
-    await expect(add).toBeDisabled();
-    await page
-      .getByRole('checkbox', { name: 'Allow an unencrypted connection' })
-      .check();
-    await add.click();
-
-    // Back out of the authorize step this add now continues into (archive#986).
-    await page
-      .getByRole('dialog')
-      .getByRole('button', { name: 'Back' })
-      .click();
+    const origin = 'https://delete-me.example.test';
+    const receiver = await receiverFixture(page, origin);
+    await identifyReceiver(page, origin);
+    await approveReceiverDevice(page, origin, 'ToDelete', receiver);
 
     // Modal is still open. Forget lives behind the row's "More actions"
     // overflow menu (ConnectionListPanel.tsx station#4512 review M6), and

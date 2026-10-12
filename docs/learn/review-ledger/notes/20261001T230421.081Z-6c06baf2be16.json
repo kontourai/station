@@ -1,0 +1,7 @@
+{
+  "revision": "d85d50244f03fafcd0453f70c29878b39049e1dd",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed final goal/job recovery producers: retained catalog polling keys successful-read timestamps so shared unchanged arrays cannot stop recovery; polling joins an active TanStack read rather than cancelling/restarting non-abort-consuming transport. Missing second reads and duplicate transport both failed baselines; 14 caller/helper checks pass. Native screenshot reproduced setup hidden beneath full chat; phone setup now closes dock via guarded precommit navigation and exact return restores original full size, with baseline failure and 26 restored caller tests. Current UI typecheck passes. This records source/caller evidence, not physical-device or hosted merge proof.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

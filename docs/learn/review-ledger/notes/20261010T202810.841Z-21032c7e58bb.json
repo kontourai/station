@@ -1,0 +1,7 @@
+{
+  "revision": "1e082b1cc7204d00cac6c064490c1766b6fcfd0e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed main renderer stylesheet order and the lazy Chat boundary after Gallery run 38083156069 showed taller dock chrome in five screens. NewChatAction.css remains eager before index.css; Chat implementation remains lazy. No authority, region ownership or loading contract changes. Local Gallery capture passed, UI build retains 311587 normalized gzip JS bytes with 50326 CSS bytes, and read-only lint passed. Hosted exact-pixel verification remains pending; baseline images are unchanged.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

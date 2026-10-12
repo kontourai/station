@@ -1,0 +1,7 @@
+{
+  "revision": "2dce1aec1da50b6a615488dc1d0cd132ac5ec136",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Rechecked the paired-Station attention paragraphs against runtime-attention-route-options, orchestration-service and station-control-delegation: viewerCanRespond is described as a model of two gates, the recorded-host refusal and the 512-character id refusal and title ellipsis match the code.","inputs":["docs/reference/session-api.md","src-server/services/projects/attention-projection.ts"]}
+  ]
+}

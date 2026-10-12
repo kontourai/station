@@ -1,0 +1,19 @@
+{
+  "revision": "76b449df8d01fe1bf866f4a0428c8d0f267f81d6",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"76b449df8d only swaps how the project accent map is obtained (the shared useProjectAccents, passed from the dock to NewChatModal as projectAccentBySlug) and adds the lanes' git locations and colours to the Continue row; no behaviour this page describes changed. No prose change.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"76b449df8d only swaps how the project accent map is obtained (the shared useProjectAccents, passed from the dock to NewChatModal as projectAccentBySlug) and adds the lanes' git locations and colours to the Continue row; no behaviour this page describes changed. No prose change.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"76b449df8d only swaps how the project accent map is obtained (the shared useProjectAccents, passed from the dock to NewChatModal as projectAccentBySlug) and adds the lanes' git locations and colours to the Continue row; no behaviour this page describes changed. No prose change.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"76b449df8d only swaps how the project accent map is obtained (the shared useProjectAccents, passed from the dock to NewChatModal as projectAccentBySlug) and adds the lanes' git locations and colours to the Continue row; no behaviour this page describes changed. No prose change.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"76b449df8d only swaps how the project accent map is obtained (the shared useProjectAccents, passed from the dock to NewChatModal as projectAccentBySlug) and adds the lanes' git locations and colours to the Continue row; no behaviour this page describes changed. No prose change.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"76b449df8d only swaps how the project accent map is obtained (the shared useProjectAccents, passed from the dock to NewChatModal as projectAccentBySlug) and adds the lanes' git locations and colours to the Continue row; no behaviour this page describes changed. No prose change.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"76b449df8d only swaps how the project accent map is obtained (the shared useProjectAccents, passed from the dock to NewChatModal as projectAccentBySlug) and adds the lanes' git locations and colours to the Continue row; no behaviour this page describes changed. No prose change.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockModalStack.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

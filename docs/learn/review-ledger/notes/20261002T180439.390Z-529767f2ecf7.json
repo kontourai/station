@@ -1,0 +1,7 @@
+{
+  "revision": "5fd060b485db82e786a359c10d6dfc246d565eb6",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed compact state labels and count-aware approval announcements, centered status/scroll group, fixed hover bounds, measured host width animation with stable clock column, and running-only tool reflection. Browser component checks confirmed executing-only reflection, width interpolation and hover geometry; reduced-motion behavior is guarded in source. Focused status/tool tests passed. No real-provider or native proof.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

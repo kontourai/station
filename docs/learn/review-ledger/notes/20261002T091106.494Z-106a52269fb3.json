@@ -1,0 +1,7 @@
+{
+  "revision": "8a5d2b299d48a5b8132c3522776c504371f6e2cd",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Re-record after main #3100: vitest-resource-manifest.mjs took the claude ask-reason test entry (additive); scripts/AGENTS.md manifest guidance claims unchanged.","inputs":["scripts/AGENTS.md"]}
+  ]
+}

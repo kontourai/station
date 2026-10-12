@@ -1,0 +1,7 @@
+{
+  "revision": "3ff57bc91496fd66f7b97eb67df16f6d49bd7ed5",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Read the project-forms.spec.ts and project-lifecycle.spec.ts deltas: project-forms gains long-working-directory containment tests for the Settings preview and Project page header at 360/768/1280px, and project-lifecycle only loosens the edit-button accessible name to include the path. The Projects row (create/edit/delete, layout selection, unsaved guards, failed saves, phone-sized form containment) still names the same specs and still describes them. Reasoned from the diff, no check executed.","inputs":["tests/project-forms.spec.ts","tests/project-lifecycle.spec.ts"]}
+  ]
+}

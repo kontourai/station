@@ -1,0 +1,13 @@
+{
+  "revision": "d38813c55cc2483f1ac5ee67c69fcf93ec3332b2",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed the follow-up attribution-test delta: seven Response.json calls now use the existing typed readJson<{data:UsageRollup}> helper. The helper delegates to the same response JSON reader; fixtures, runtime calls and assertions are unchanged. All eight route/peer attribution cases still pass. This typing correction leaves the previously reviewed limits, filtering, provenance and compatibility claims accurate; no prose change needed.","inputs":["docs/guides/connections.md","src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the follow-up attribution-test delta: seven Response.json calls now use the existing typed readJson<{data:UsageRollup}> helper. The helper delegates to the same response JSON reader; fixtures, runtime calls and assertions are unchanged. All eight route/peer attribution cases still pass. This typing correction leaves the previously reviewed limits, filtering, provenance and compatibility claims accurate; no prose change needed.","inputs":["docs/reference/api.md","src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the follow-up attribution-test delta: seven Response.json calls now use the existing typed readJson<{data:UsageRollup}> helper. The helper delegates to the same response JSON reader; fixtures, runtime calls and assertions are unchanged. All eight route/peer attribution cases still pass. This typing correction leaves the previously reviewed limits, filtering, provenance and compatibility claims accurate; no prose change needed.","inputs":["docs/reference/contracts.md","src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the follow-up attribution-test delta: seven Response.json calls now use the existing typed readJson<{data:UsageRollup}> helper. The helper delegates to the same response JSON reader; fixtures, runtime calls and assertions are unchanged. All eight route/peer attribution cases still pass. This typing correction leaves the previously reviewed limits, filtering, provenance and compatibility claims accurate; no prose change needed.","inputs":["docs/reference/sdk.md","src-server/services/orchestration/__tests__/engine-account-usage-attribution.test.ts"]}
+  ]
+}

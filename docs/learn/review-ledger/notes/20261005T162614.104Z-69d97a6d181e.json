@@ -1,0 +1,7 @@
+{
+  "revision": "dd265ce982c284adc0e0cde3d8d78a1ef6a14ac1",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the Home and Projects/Settings rows against task-first-home (now also declares the file-preview changes read and asserts the pane's Changes count) and project-architecture (phone dock slot follows #2549's pane-over-Chat; /api/plugins fixture uses the real { plugins } shape). Rows' coverage descriptions remain accurate; no prose change.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/project-architecture.spec.ts","tests/task-first-home.spec.ts"]}
+  ]
+}

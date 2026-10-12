@@ -9,9 +9,14 @@ import {
 } from '@kontourai/station-contracts/application-session';
 import { CLIENT_ORIGIN_HEADER } from '@kontourai/station-contracts/client-origin';
 import { DEPLOYMENT_AUTHENTICATION_BASE_PATH } from '@kontourai/station-contracts/deployment-authentication';
-import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-security';
+import {
+  CLIENT_PROTOCOL_HEADER,
+  pairingScopeIncludes,
+} from '@kontourai/station-contracts/environment-security';
 import {
   AUTH_RATE_LIMITED_ERROR_CODE,
+  STATION_ENVELOPE_HEADER,
+  STATION_ENVELOPE_HEADER_VALUE,
   STATION_PLUGIN_HEADER,
 } from '@kontourai/station-contracts/http';
 import { NATIVE_DEVICE_PROOF_HEADER } from '@kontourai/station-contracts/native-device-proof';
@@ -30,6 +35,10 @@ import {
   INTERACTIVE_WORKSPACE_TIMING_MODE,
   INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER,
 } from '../../../src-shared/interactive-workspace-performance-timing.js';
+import {
+  clientProtocolApplies,
+  evaluateClientProtocol,
+} from '../../security/client-protocol-admission.js';
 import {
   NativeDeviceRequestRefusedError,
   nativeDeviceOnlyObservationRoute,
@@ -71,6 +80,8 @@ import {
 } from '../../services/connections/virtual-application.js';
 import { guardAccountResponse } from '../../services/identity/account-response-guard.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
+import { RELAYED_RESPONSE_HEADER } from '../../services/remote-stations/remote-station-forwarder.js';
+import { HOST_STATION_COMPATIBILITY } from '../../services/ssh/environment-security-service.js';
 import {
   deviceSessionAuthorizations,
   requestBudgetOutcomes,
@@ -229,12 +240,46 @@ interface RuntimeHttpContext {
   security?: RuntimeHttpSecurityOptions;
 }
 
+const envelopeMarkedApps = new WeakSet<object>();
+
+/**
+ * #2842: the one place a response is marked as this Station's own answer.
+ *
+ * Every JSON response the app answers gets `STATION_ENVELOPE_HEADER`,
+ * whichever handler, middleware or error boundary wrote it, so a client can
+ * tell Station's refusal from an intermediary's JSON of the same shape. A
+ * response relayed from another Station (`RELAYED_RESPONSE_HEADER`, set by
+ * `fetchRemoteStation`) is the exception: it leaves without this Station's
+ * marker and without the peer's.
+ *
+ * It must wrap every writer, so it is installed before any other middleware.
+ * `configureRuntimeHttp` installs it; runtime composition calls it earlier
+ * still, ahead of the hosted tenant gate, and the second call is a no-op.
+ */
+export function installStationEnvelopeMarker(app: RuntimeApp): void {
+  if (envelopeMarkedApps.has(app)) return;
+  envelopeMarkedApps.add(app);
+  app.use('*', async (c, next) => {
+    await next();
+    if (c.res.headers.has(RELAYED_RESPONSE_HEADER)) {
+      c.header(RELAYED_RESPONSE_HEADER, undefined);
+      c.header(STATION_ENVELOPE_HEADER, undefined);
+      return;
+    }
+    const contentType = c.res.headers.get('content-type') ?? '';
+    if (/^application\/json\s*(;|$)/i.test(contentType)) {
+      c.header(STATION_ENVELOPE_HEADER, STATION_ENVELOPE_HEADER_VALUE);
+    }
+  });
+}
+
 export function configureRuntimeHttp({
   app,
   logger,
   eventBus,
   security,
 }: RuntimeHttpContext): void {
+  installStationEnvelopeMarker(app);
   app.use('*', async (c, next) => {
     await next();
     const authentication = security?.deploymentAuthentication;
@@ -351,6 +396,8 @@ export function configureRuntimeHttp({
       cors({
         origin: resolveRuntimeCorsOrigin,
         credentials: true,
+        // #2842: a cross-origin client must be able to read the marker.
+        exposeHeaders: [STATION_ENVELOPE_HEADER],
       }),
     );
   }
@@ -685,7 +732,10 @@ function configureRuntimeSecurity(
 ): void {
   const allowedOrigins = new Set(security.allowedOrigins ?? []);
   const limiter = new RuntimeAuthFailureLimiter(security);
+  const protocolAuditLimiter = new RuntimeAuthFailureLimiter(security);
   const budget = new RuntimeMutationBudget(security);
+  const clientProtocolPolicy =
+    security.clientCompatibility ?? HOST_STATION_COMPATIBILITY;
 
   app.use('*', async (c, next) => {
     const origin = c.req.header('origin');
@@ -697,7 +747,7 @@ function configureRuntimeSecurity(
       c.header('Access-Control-Allow-Origin', origin);
       c.header(
         'Access-Control-Expose-Headers',
-        `${ACCOUNT_AUTHENTICATION_FAILURE_HEADER}, Retry-After`,
+        `${ACCOUNT_AUTHENTICATION_FAILURE_HEADER}, Retry-After, ${STATION_ENVELOPE_HEADER}`,
       );
       c.header('Vary', 'Origin');
       c.header('Access-Control-Allow-Credentials', 'true');
@@ -711,7 +761,7 @@ function configureRuntimeSecurity(
         // Last-Event-ID: set by the SDK's fetchSSE reconnect loop and consumed
         // by the orchestration resume cursor — omitting it preflight-blocks
         // every cross-origin SSE reconnect (#169).
-        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, ${CLIENT_ORIGIN_HEADER}, ${STATION_PLUGIN_HEADER}, ${KNOWLEDGE_ROOT_IDENTITY_HEADER}, ${APPLICATION_SESSION_HEADER}, ${APPLICATION_SESSION_PROOF_HEADER}${
+        `Authorization, Content-Type, Last-Event-ID, X-Station-Client-Session, ${CLIENT_ORIGIN_HEADER}, ${CLIENT_PROTOCOL_HEADER}, ${STATION_PLUGIN_HEADER}, ${KNOWLEDGE_ROOT_IDENTITY_HEADER}, ${APPLICATION_SESSION_HEADER}, ${APPLICATION_SESSION_PROOF_HEADER}${
           process.env.STATION_PERFORMANCE_REFERENCE === '1'
             ? `, ${INTERACTIVE_WORKSPACE_TIMING_REQUEST_HEADER}`
             : ''
@@ -751,6 +801,36 @@ function configureRuntimeSecurity(
         timestamp: security.now?.() ?? Date.now(),
       });
       return c.json({ error: { code: 'insufficient_scope' } }, 403);
+    }
+    // ── #2962 client API protocol admission ──
+    // Before any credential check, so an outdated client is told to update
+    // rather than handed an authentication failure it cannot fix. CORS
+    // headers are already set above, so a browser can read the refusal.
+    if (clientProtocolApplies(requiredCapability, proxyCaller === 'loopback')) {
+      const refusal = evaluateClientProtocol(
+        c.req.header(CLIENT_PROTOCOL_HEADER),
+        clientProtocolPolicy,
+      );
+      if (refusal) {
+        // Bound audit emission without consuming the authentication budget.
+        // Keep answering protocol refusals after the audit budget is exhausted.
+        if (protocolAuditLimiter.retryAfterSeconds(limiterKey) === undefined) {
+          protocolAuditLimiter.recordFailure(limiterKey);
+          emitSecurityAudit(security, c, routeLabeler, {
+            event: 'station.auth.failure',
+            outcome: 'denied',
+            reason: refusal.body.error.code,
+            routeClass,
+            peerClass: effectivePeerClass,
+            transport: 'http',
+            timestamp: security.now?.() ?? Date.now(),
+            ...(refusal.body.error.clientProtocol === undefined
+              ? {}
+              : { clientProtocol: refusal.body.error.clientProtocol }),
+          });
+        }
+        return c.json(refusal.body, refusal.status);
+      }
     }
     const accountOperation =
       c.req.path === DEPLOYMENT_AUTHENTICATION_BASE_PATH ||
@@ -1019,6 +1099,7 @@ function configureRuntimeSecurity(
             path: c.req.path,
           },
           authority === 'operator-credential',
+          locality === 'home-possession',
         );
       if (!permitted) {
         if (cookieCredential) {

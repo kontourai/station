@@ -4,6 +4,7 @@ import {
   BUILD_MANIFEST_FILENAME,
   readNativeClientBuildManifest,
 } from './lib/desktop-build-manifest.mjs';
+import { stageIosLaunchScreen } from './lib/ios-launch-screen.mjs';
 
 const projectRoot = process.cwd();
 const manifest = readNativeClientBuildManifest(projectRoot);
@@ -14,6 +15,8 @@ if (!existsSync(appleProjectDir)) {
     `Cannot stage iOS build provenance: ${assetsDir} does not exist. Run \`npx tauri ios init\` first.`,
   );
 }
+stageIosLaunchScreen(projectRoot);
+
 if (!manifest) {
   console.warn(
     'No staged native client build provenance; iOS package will report no immutable artifact timestamp.',

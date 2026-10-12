@@ -1,0 +1,23 @@
+/* State and decision chips for pull requests: 20px pill, 11px/600, no border. */
+.pull-request-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-pill);
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+.pull-request-chip[data-tone="success"] {
+  color: var(--success-text);
+}
+.pull-request-chip[data-tone="failure"] {
+  color: var(--error-text);
+}
+.pull-request-chip[data-tone="pending"] {
+  color: var(--warning-text);
+}

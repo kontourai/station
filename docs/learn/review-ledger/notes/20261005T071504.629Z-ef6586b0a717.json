@@ -1,0 +1,7 @@
+{
+  "revision": "582aef22350835c5e1238229168bc834617dcdd3",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"project-architecture now asserts the collapsed bar shows the icon-only New chat action and no \"Start a chat\" text; the coverage row for the dock collapsed state still describes what the spec covers. No prose change.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/project-architecture.spec.ts"]}
+  ]
+}

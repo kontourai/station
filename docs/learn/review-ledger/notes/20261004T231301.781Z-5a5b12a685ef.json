@@ -1,0 +1,7 @@
+{
+  "revision": "29b1aebb7cdbdcdf6b10221f05eb33e544996070",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Against origin/main the only change to contracts.md is the progressSilence paragraph: it now quotes the shipped TurnActivityProgress string (No progress from <engine> for 4m) instead of the retired No response from wording. This doc does not mention progressSilence or the silence wording, so none of its claims change.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

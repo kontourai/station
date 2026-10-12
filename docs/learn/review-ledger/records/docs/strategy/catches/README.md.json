@@ -9,14 +9,12 @@
 
   "limits": "Historical measurements and external incidents were not rerun; classification does not certify current behavior.",
 
-  "document": {"digest":"f7d00ee20a2408ea437a68f7f1dbbda97ecd74e92ac5f1782691497f3ececa92","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"},
-
   "sources": [
-    {"path":".veritas/proof-families/repo-guardrails.families.json","digest":"6fd7988f9d05c6b329859d0ef1f9737d8a90f19ce53a90967db7186fa8f7453f","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"},
+    ".veritas/proof-families/repo-guardrails.families.json",
 
-    {"path":"docs/strategy/catches/catches.jsonl","digest":"7f83b0940619b5de13fe9dfdbcf6d5fa21f951d011815456abf034dd52be60ae","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"},
+    "docs/strategy/catches/catches.jsonl",
 
-    {"path":"scripts/__tests__/catch-log.test.ts","digest":"eee30c66b4a6e372b9f695769e5c9897f71db053f2b34da3ea7f207a9d7a1b20","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"}
+    "scripts/__tests__/catch-log.test.ts"
   ],
 
   "checks": [

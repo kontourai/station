@@ -101,6 +101,12 @@ const derived = pathReadPinEdges({ root: ROOT });
  * construction. Shrinking this list is the goal; growing it is a decision.
  */
 const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
+  // Reads identity/config files created in isolated Station temp homes, never
+  // repository source. Direct telemetry imports own changed-test selection.
+  'src-server/__tests__/telemetry.test.ts',
+  // Reads the receipt its child Playwright run writes into a temp root
+  // (#577), never repository source. Its imports select it for changes.
+  'scripts/__tests__/interactive-workspace-performance-host-gate.test.ts',
   // Read install.ps1 through the generator's exported path and the installer
   // core it embeds from a temporary extraction (#2675 W1): computed paths the
   // scanner cannot pin. The install.ps1 impact edge selects both, and their
@@ -155,6 +161,12 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   'src-server/runtime/__tests__/orchestration-transfer-budget.integration.test.ts',
   'src-server/security/__tests__/svg-response-tripwire.test.ts',
   'src-server/services/__tests__/flow-agents-skills.test.ts',
+  // Reads by path with a module anchor, so the scanner counts it, but no read
+  // names a repository source to pin: its fixture is under fixtures/, and the
+  // rest are a child process's pid file in a temp dir and readFileSync text
+  // inside the fake `opencode` scripts it writes and spawns. Its import of
+  // opencode-model-capabilities.ts selects it for source changes.
+  'src-server/services/acp/__tests__/opencode-model-capabilities.test.ts',
   // Device hosts: these read only their own fixtures (real OpenSSH
   // transcripts, anchored to the test file) or, for the resolver, walk the
   // server source tree to prove a structural rule. Neither names a source
@@ -181,6 +193,11 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // so no single pin could stand for it. test-impact-manifest.mjs routes it
   // for any src-ui source change.
   'src-ui/src/__tests__/station-vocabulary.test.ts',
+  // The status-vocabulary scan of the work surfaces: it walks those
+  // directories under src-ui/src and reads every file it finds, so no single
+  // pin could stand for it. test-impact-manifest.mjs routes it for a change
+  // under any root it walks.
+  'src-ui/src/__tests__/session-state-word-consistency.test.ts',
   'src-ui/src/app-shell/__tests__/RoutePendingSkeleton.test.tsx',
   'src-ui/src/components/first-run/__tests__/tour-steps.test.ts',
   'src-ui/src/views/project-settings/__tests__/ResourcesSection.test.tsx',
@@ -507,15 +524,17 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'walks its own fixture directory',
   'scripts/__tests__/ci-event-environment.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
+  'scripts/__tests__/test-impact-incidents.test.ts':
+    'lists src-server/runtime/bootstrap to pin every gate module to its impact edge; asserts nothing about their content',
   'packages/cli/src/__tests__/profile.test.ts':
     'lists the saved Station store directory under its temporary STATION_HOME',
-  'packages/sdk/src/__tests__/client-entry-portability.test.ts':
-    'walks packages/sdk/src/client; its packages/sdk/src/client/** edge selects it',
   'packages/shared/src/__tests__/workspace-package.test.ts': TEMP_VIA_FIXTURE,
   'scripts/__tests__/android-channel-release-generation.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
   'scripts/__tests__/android-firebase-workflow-env.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
+  'scripts/__tests__/monument-import-boundary-gate.test.ts':
+    'the match is fixture source text (`import.meta.glob(...)`) written into a scratch repository; the suite itself walks no directory',
   'scripts/__tests__/basis-mcp-apps.test.ts':
     'git ls-files over its own generated outputs, to prove they are untracked',
   'scripts/__tests__/desktop-runtime-port-lease.test.ts':
@@ -526,6 +545,10 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'incidental: compares the committed icon sets and .icns files it regenerates',
   'scripts/__tests__/guardrail-known-bad-fixtures.test.ts':
     'walks its own fixture root',
+  'scripts/__tests__/review-ledger-guards.test.ts':
+    'git ls-files through a helper that runs with cwd set to its temporary fixture repository, never the real tree',
+  'scripts/__tests__/install-ps1-full.test.ts':
+    'lists only the versions directory of the temporary install roots it creates',
   'scripts/__tests__/install-ps1.test.ts':
     'lists only the versions directory of the temporary install roots it creates',
   'scripts/__tests__/install-script.test.ts':
@@ -597,6 +620,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'a Playwright spec; Vitest cannot schedule it (#1817)',
   'src-ui/src/__tests__/station-vocabulary.test.ts':
     'walks src-ui/src only; its src-ui/src/** edge selects it on every change there',
+  'src-ui/src/__tests__/session-state-word-consistency.test.ts':
+    'walks the work-surface directories under src-ui/src only; an edge per walked root selects it on every change there',
   'tests/builder-delivery-viewer.spec.ts':
     'a Playwright spec (examples/builder-delivery-viewer); Vitest cannot schedule it (#1817)',
 });

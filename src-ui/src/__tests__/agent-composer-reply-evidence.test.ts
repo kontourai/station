@@ -12,22 +12,19 @@ test.each([false, true])(
         <section id="chat-dock">
           <h1>PONG</h1>
           <textarea placeholder="Type a message..."></textarea>
+          <button type="button">Send</button>
         </section>
       `);
       await page.evaluate((withReply) => {
-        document
-          .querySelector('textarea')!
-          .addEventListener('keydown', (event) => {
-            if (event.key !== 'Enter') return;
-            event.preventDefault();
-            document.body.dataset.submitted = 'true';
-            if (withReply) {
-              const message = document.createElement('div');
-              message.className = 'message assistant';
-              message.textContent = 'PONG';
-              document.querySelector('#chat-dock')!.append(message);
-            }
-          });
+        document.querySelector('button')!.addEventListener('click', () => {
+          document.body.dataset.submitted = 'true';
+          if (withReply) {
+            const message = document.createElement('div');
+            message.className = 'message assistant';
+            message.textContent = 'PONG';
+            document.querySelector('#chat-dock')!.append(message);
+          }
+        });
       }, reply);
       const result = sendComposerTurn(page, 'PONG', /PONG/, 250);
       if (reply) await result;

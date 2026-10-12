@@ -1,0 +1,7 @@
+{
+  "revision": "f891786eebfb74100a956f1f7243fe52c32c2802",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"ChatDock change threads a client-side draft callback; no API surface changed. No prose change.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

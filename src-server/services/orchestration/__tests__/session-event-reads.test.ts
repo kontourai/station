@@ -163,20 +163,30 @@ describe('SessionEventReads conversation boundary hydration', () => {
         sessionId: childId,
         idempotencyKey: 'handoff-key',
         targetAgentId: 'codex',
+        targetExecutionAgentId: 'claude',
         targetEnvironmentId: 'environment-a',
         messageDigest: 'message-a',
         createdAt: '2026-08-25T00:01:00.000Z',
       });
 
-      await expect(
-        readsFor(store, rootId).readConversationEventWindow(rootId, {
-          authority: INTERNAL_SESSION_READ_SCOPE,
-          turnLimit: 10,
-        }),
-      ).resolves.toMatchObject({
+      const snapshot = await readsFor(
+        store,
+        rootId,
+      ).readConversationEventWindow(rootId, {
+        authority: INTERNAL_SESSION_READ_SCOPE,
+        turnLimit: 10,
+      });
+      expect(snapshot).toMatchObject({
         currentSessionId: childId,
         session: { threadId: rootId },
+        handoffs: [
+          expect.objectContaining({ targetExecutionAgentId: 'claude' }),
+        ],
       });
+      expect(snapshot?.handoffs[0]).not.toHaveProperty('targetProvider');
+      expect(snapshot?.handoffs[0]).not.toHaveProperty(
+        'expectedDefinitionFingerprint',
+      );
     } finally {
       store.close();
     }

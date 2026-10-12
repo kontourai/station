@@ -1,0 +1,7 @@
+{
+  "revision": "b38fa3bf89210ebfba30a32ced0c7f5027261bcd",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed the changed mounted summary and its test against the guide's native-shell evidence record. The text-only change does not alter the simulator receipt or its limits; physical iOS and live availability remain unverified by this test.","inputs":["docs/guides/native-shell-verification.md"]}
+  ]
+}

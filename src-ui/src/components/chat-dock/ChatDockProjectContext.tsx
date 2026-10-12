@@ -4,6 +4,7 @@ import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { GitBadge } from '../badges/GitBadge';
 import { FolderGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
+import './ChatDockProjectContext.css';
 
 const loadChatDockProjectSwitcherSheet = () =>
   import('./ChatDockProjectSwitcherSheet').then((module) => ({

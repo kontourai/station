@@ -1,0 +1,7 @@
+{
+  "revision": "7b2a0b28383d9ac1fd919753c0cbb45e867c78dc",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed new Home intent action surface: shared Button targets, wrapping actions, full-width96px goal textarea; actual375browser and iOS26.5 Safari inspected. Existing responsive geometry and action inventory contract retained.","inputs":["docs/guides/responsive-ui.md"]}
+  ]
+}

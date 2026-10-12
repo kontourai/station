@@ -11,6 +11,7 @@ import { sanitizeUntrustedDisplayText } from '@kontourai/station-contracts/orche
 import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
+  NATIVE_RESUME_IDENTITY_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
 import type {
   CanonicalRuntimeEvent,
@@ -26,6 +27,7 @@ import {
 import {
   type ClaudeChildWorkContext,
   type ClaudeChildWorkState,
+  observeClaudeSubagentReply,
   observeClaudeTaskNotification,
   observeClaudeTaskProgress,
   observeClaudeTaskStarted,
@@ -52,6 +54,11 @@ import {
   resolveClaudeResultTarget,
   settleClaudeResultTarget,
 } from './claude-sdk-turns.js';
+import {
+  type ClaudeUsageLimitState,
+  observeClaudeRateLimit,
+  takeClaudeUsageLimitDetails,
+} from './claude-usage-limit.js';
 import {
   type ParagraphBoundaryState,
   withParagraphBreak,
@@ -201,8 +208,9 @@ function claudeDeferredToolUse(
   };
 }
 
-export interface ClaudeMessageState {
+export interface ClaudeMessageState extends ClaudeUsageLimitState {
   session: ProviderSession;
+  requireNativeResumeIdentity?: true;
   /** Live SDK permission mode; unset until Station sent one or init reported it. */
   currentPermissionMode?: PermissionMode;
   allowsBypassPermissions?: boolean;
@@ -254,6 +262,8 @@ export interface ClaudeMessageState {
    * sibling subagent's request stays answerable.
    */
   onTaskSettled?: (taskId: string) => void;
+  /** #3163: the CLAUDE_CONFIG_DIR the engine was spawned with, when set. */
+  claudeConfigHome?: string;
   /**
    * #2457: the session's child work (its subagents) as the contract's
    * registry. Owned by `claude-adapter-child-work.ts`.
@@ -424,6 +434,12 @@ export function reportClaudePermissionMode(
   });
 }
 
+export function isClaudeInitMessage(
+  message: SDKMessage,
+): message is Extract<SDKMessage, { type: 'system'; subtype: 'init' }> {
+  return message.type === 'system' && message.subtype === 'init';
+}
+
 export function mapClaudeSdkMessage({
   provider,
   record,
@@ -450,7 +466,30 @@ export function mapClaudeSdkMessage({
       observeClaudeBackgroundChildSettling(turnContext),
   };
 
-  if (message.type === 'system' && message.subtype === 'init') {
+  if (isClaudeInitMessage(message)) {
+    if (
+      record.requireNativeResumeIdentity &&
+      message.session_id !== record.attemptedResumeCursor
+    ) {
+      record.terminalResultObserved = 'binding-dead';
+      record.session.status = 'dead';
+      clearClaudeSdkTurns(turnContext);
+      publish({
+        eventId: crypto.randomUUID(),
+        provider,
+        threadId: record.session.threadId,
+        createdAt,
+        method: 'runtime.error',
+        severity: 'error',
+        code: ENGINE_SESSION_BINDING_DEAD_CODE,
+        retriable: false,
+        message:
+          'The engine opened a different native conversation; the requested resume was refused.',
+        metadata: { [NATIVE_RESUME_IDENTITY_METADATA_KEY]: 'mismatch' },
+      });
+      interruptEngine?.();
+      return;
+    }
     const sourceCursor = claudeSourceResumeCursor(record.session.resumeCursor);
     record.session.resumeCursor = sourceCursor
       ? { ...sourceCursor, claudeSessionId: message.session_id }
@@ -478,6 +517,9 @@ export function mapClaudeSdkMessage({
       model: message.model,
       cwd: message.cwd,
       metadata: {
+        ...(record.attemptedResumeCursor === message.session_id
+          ? { [NATIVE_RESUME_IDENTITY_METADATA_KEY]: 'matched' }
+          : {}),
         ...(message.permissionMode
           ? { permissionMode: message.permissionMode }
           : {}),
@@ -809,7 +851,14 @@ export function mapClaudeSdkMessage({
     return;
   }
 
+  if (message.type === 'rate_limit_event') {
+    // #3157: the reset a usage-limit stop resumes at.
+    observeClaudeRateLimit(record, message.rate_limit_info);
+    return;
+  }
+
   if (message.type === 'result') {
+    const usageLimit = takeClaudeUsageLimitDetails(record, message);
     // #2324: the result closes the turn it names (its user uuids), else the
     // running turn — never "whichever turn Station allocated last". Resolved
     // before anything is published so its usage lands on the same turn.
@@ -900,6 +949,7 @@ export function mapClaudeSdkMessage({
             : ENGINE_TURN_FAILED_CODE,
         retriable: false,
         message: claudeResultFailureText(message),
+        ...(usageLimit ? { details: { ...usageLimit } } : {}),
         // #2324 review F1: a failed turn the engine opened on its own ends
         // with this error; it carries the trigger its start did.
         ...(resultTurn?.kind === 'provider'
@@ -1038,6 +1088,8 @@ export function mapClaudeSdkMessage({
   }
 
   if (message.type === 'assistant') {
+    if (message.parent_tool_use_id === null && message.error === 'rate_limit')
+      record.usageLimitReply = true;
     // #2324: before the model capture below — a frame that starts a turn
     // resets the previous turn's reported model.
     if (message.parent_tool_use_id === null) {
@@ -1061,8 +1113,12 @@ export function mapClaudeSdkMessage({
     // Surface top-level tool calls as canonical tool.started events so the
     // UI shows "Running Bash…"-style activity immediately, even for fast
     // tools that never emit SDK `tool_progress`. Subagent-internal calls
-    // (`parent_tool_use_id != null`) stay out of the main transcript.
-    if (message.parent_tool_use_id !== null) return;
+    // (`parent_tool_use_id != null`) stay out of the main transcript; their
+    // model is that subagent's own (#3163).
+    if (message.parent_tool_use_id !== null) {
+      observeClaudeSubagentReply(childWorkContext, message);
+      return;
+    }
     const content = message.message?.content;
     if (!Array.isArray(content)) return;
     for (const block of content) {

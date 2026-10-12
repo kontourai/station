@@ -1,0 +1,7 @@
+{
+  "revision": "071c95a78bfa0ea21e77d0acc3b6554d403e0451",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed four explicitly approved exception entries: root cache+braces, SDK cache, Shared cache; all expire2026-10-10. Threat models and unverified Station reachability remain explicit. Live managed audit across full+production scopes passed with exact entries; unrelated high advisory negative control remained blocking. Composition test fixtures now exercise unscanned roots and scheduled cross-scope unused records independently of changing live approvals;90 cases passed. No scanner logic, severity floor, dependency versions or prior residuals changed.","inputs":["docs/guides/dependency-security.md"]}
+  ]
+}

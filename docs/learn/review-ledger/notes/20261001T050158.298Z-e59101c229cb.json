@@ -1,0 +1,7 @@
+{
+  "revision": "7badec8afccf1359a99e3a81b6b688fd1a32a916",
+
+  "notes": [
+    {"path":"docs/guides/self-hosted-broker.md","note":"Re-reviewed the unchanged broker guide after switching all new ICE test allocations to the existing trackTempDirs after-hook helper. Production contract, issuer, cache, origin and ledger bytes are unchanged. Latest focused owner and CLI run passed 49 tests with one Windows-only skip; Connect parser had ten passing cases and the Connect typecheck passed. The temp-dir ratchet now names only pre-existing integration additions in native-surface-registry.test.ts, native-v2-pion-application-adapter.test.ts and self-hosted-broker-connector.test.ts; no baseline changed. Scoped Biome passed all fourteen touched source/test files and stored-path guard found zero new rows. Veritas readiness was executed and reported required style-standard and documentation-truth failures from broader integration checks; Root owns the inherited style/docs repairs and final full CI. Retain original executed source and mutation receipts, bounded provider-boundary scope, and the guide's NOT_VERIFIED native/Pion/physical/public journey limits.","inputs":["docs/guides/self-hosted-broker.md"]}
+  ]
+}

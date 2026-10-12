@@ -38,6 +38,8 @@ const REVIEWED_RESOURCE_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/orchestration/__tests__/credential-recovery-module.test.ts',
   'src-server/runtime/bootstrap/__tests__/native-engine-adoption.test.ts',
   'src-ui/src/__tests__/vite-sdk-client-alias.test.ts',
+  // #699: buildPlugin starts esbuild's service child; no direct import.
+  'packages/shared/src/__tests__/plugin-build.test.ts',
 ]);
 
 function temporaryRoot() {
@@ -93,6 +95,30 @@ describe('Vitest resource manifest', () => {
     expect(groups.ordinary.length).toBeGreaterThan(0);
     expect(assertOrdinaryVitestSelection(groups)).toEqual(groups.ordinary);
   }, 70_000);
+
+  it('refuses a discovery listing past the 64 MiB capture bound by name (#2787)', () => {
+    let requested: unknown;
+    expect(() =>
+      discoverVitestFiles({
+        spawnSync: ((
+          _command: string,
+          _args: string[],
+          options: { maxBuffer?: number },
+        ) => {
+          requested = options.maxBuffer;
+          return {
+            status: null,
+            stdout: 'scripts/__tests__/truncated.test.ts\n',
+            stderr: '',
+            error: Object.assign(new Error('spawnSync node ENOBUFS'), {
+              code: 'ENOBUFS',
+            }),
+          };
+        }) as never,
+      }),
+    ).toThrow(/list --filesOnly wrote more than 67108864 bytes/);
+    expect(requested).toBe(67_108_864);
+  });
 
   it('proves eight ordinary slices cover the canonical corpus exactly once', async () => {
     // Vitest sorts a SHA-1 path projection and slices that ordered set. This

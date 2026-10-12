@@ -2325,20 +2325,20 @@ describe('NativeStationProfileStorage', () => {
     await expect(
       storage.commitVerifiedPairing({
         connectionId: 'temporary-desktop-connection',
-        name: 'brian-media',
-        endpoint: 'https://brian-media.example',
+        name: 'home-media',
+        endpoint: 'https://home-media.example',
         credentialHandle: 'handle-new',
         nextCredentialRef: hostRef('host-ref-new'),
         clientInstanceId: CLIENT_INSTANCE_ID,
         handshake: {
-          environmentId: 'environment-brian-media',
+          environmentId: 'environment-home-media',
           authentication: { scheme: 'bearer', protocolVersion: 1 },
         },
       }),
     ).rejects.toThrow('metadata was not saved');
 
     expect(currentStore().profiles).toHaveLength(PROFILE_STORE.profiles.length);
-    expect(credentials.has('station-bearer:environment-brian-media')).toBe(
+    expect(credentials.has('station-bearer:environment-home-media')).toBe(
       false,
     );
   });

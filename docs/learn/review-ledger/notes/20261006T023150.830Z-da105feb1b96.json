@@ -1,0 +1,7 @@
+{
+  "revision": "a2e220c76a956f03eefcfb34fad26409c668e3d0",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"#3406: added two PROCESS_HEAVY entries to vitest-resource-manifest.mjs (the new path-probe test spawns children; codex-rollout-follow now reaches the probe child transitively). Consistent with the rule that child-process tests are classified there; no prose change.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

@@ -6,7 +6,7 @@
  * CLI+SDK dedupe.
  */
 
-import { apiErrorMessage } from './api-error-message';
+import { envelopeError } from './api-error-message';
 import { type ClientRequestOptions, getJson } from './http';
 import { rethrowDeadline } from './request-deadline';
 
@@ -30,17 +30,16 @@ interface RunsEnvelope<T> {
  * check-then-parse.
  */
 async function unwrapRunsResponse<T>(response: Response): Promise<T> {
+  const fallback = `Runs API error: ${response.status}`;
   let result: RunsEnvelope<T> | null = null;
   try {
     result = (await response.json()) as RunsEnvelope<T>;
   } catch (error) {
     rethrowDeadline(error);
-    throw new Error(`Runs API error: ${response.status}`);
+    throw envelopeError(response, undefined, fallback);
   }
   if (!response.ok || !result.success) {
-    throw new Error(
-      apiErrorMessage(result, `Runs API error: ${response.status}`),
-    );
+    throw envelopeError(response, result, fallback);
   }
   return result.data as T;
 }

@@ -1,0 +1,7 @@
+{
+  "revision": "ad5e9b522b5249a0d600ff17396941374f769a45",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Re-read the project icon paragraph against ProjectSettingsView.tsx and ProjectIconPicker.tsx: the legacy notice is now generic (an existing icon that can't be shown any more, such as one saved as a link, asks for a new one), and the picker hint names the colour-or-initials fallback, which matches the paragraph's rows-show-colour, project-page-shows-initials statement. Updated the legacy sentence; other icon claims unchanged.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

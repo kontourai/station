@@ -1,0 +1,7 @@
+{
+  "revision": "bcbadb74ca2f45ee4e4806c102ef9f700ff3911a",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"station-docs-content.ts was regenerated again (npm run docs:mcp:generate) after the fix round's edits to the SessionDigest module topic; this page's claims about the shipped docs server, its credential-free tools and the station-control split are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "c58a2114ee41d76fd4e54362bf0694eede749eb0",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed merged mobile Settings picker and scope caption against current DestinationRegistry and section navigation. Incoming native Device proof documentation and evidence routes are preserved; this UI change does not enable native transport or alter authority. Original mobile/desktop E2E and unsaved-navigation proof retained; revalidation follows the merge.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

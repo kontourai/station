@@ -1,0 +1,7 @@
+{
+  "revision": "859272a9c16c882b7099bacb400403ddde82caa3",
+
+  "notes": [
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked the station-control delegation change: a respond to this Station's own control API (target kind current) that is forbidden now keeps its typed local refusal again, while a paired Station's 403 still becomes the fixed paired-Station sentence. Searched this document for 403, refusal and respond claims; none describes this path, so no claim changed.","inputs":["docs/design/task-room-agent-requests.md","src-server/tools/station-control-delegation.ts"]}
+  ]
+}

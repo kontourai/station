@@ -5,6 +5,9 @@
  * `deps.resourcePosture` absent (older/partial route composition) degrades
  * to a 503, never a fabricated healthy reading.
  */
+
+import { freemem, totalmem } from 'node:os';
+import type { HostResourceSnapshot } from '@kontourai/station-contracts/system-status';
 import { Hono } from 'hono';
 import type { RuntimeResourcePostureProbe } from '../../services/infra/resource-posture.js';
 import { systemOps } from '../../telemetry/metrics.js';
@@ -26,8 +29,20 @@ export function createResourcePostureRoutes(deps: ResourcePostureRouteDeps) {
     }
     try {
       const posture = await deps.resourcePosture.observe();
+      const memory = process.memoryUsage();
+      const resources: HostResourceSnapshot = {
+        sampledAt: Date.now(),
+        memory: { totalBytes: totalmem(), freeBytes: freemem() },
+        process: {
+          pid: process.pid,
+          uptimeSeconds: process.uptime(),
+          rssBytes: memory.rss,
+          heapUsedBytes: memory.heapUsed,
+          heapTotalBytes: memory.heapTotal,
+        },
+      };
       systemOps.add(1, { op: 'get_resource_posture' });
-      return c.json({ success: true, data: posture });
+      return c.json({ success: true, data: { ...posture, resources } });
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 500);
     }

@@ -1,0 +1,11 @@
+{
+  "revision": "15ccffed2afec7906d7bf4a853335f3be3a6293b",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"After merging origin/main a91c50d32: main's own changes to this page and its sources are covered by main's record, which this merge kept. This branch's delta to the bound sources (docs/reference/sdk.md) is unchanged since its last review, whose finding is carried forward, not re-derived: docs/reference/sdk.md changed one sentence (useSendToChat shows Chat: the dock, or the Chat page where a layout's centre is Chat). Searched this guide for useSendToChat and for any statement that sending opens the dock: none. No prose change.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"After merging origin/main a91c50d32: main's own changes to this page and its sources are covered by main's record, which this merge kept. This branch's delta to the bound sources (docs/reference/sdk.md, src-ui/src/components/CommandPalette.tsx, src-ui/src/hooks/useActiveChatSessionLifecycle.ts) is unchanged since its last review, whose finding is carried forward, not re-derived: CommandPalette.tsx and useActiveChatSessionLifecycle.ts now show Chat through showChatPageOrDock. Corrected the useSendToChat description, which said it always opens the dock; checked the other dock statements (useDockState, setDockState, Dock entry IDs) against the code and they are unchanged.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"After merging origin/main a91c50d32: main's own changes to this page and its sources are covered by main's record, which this merge kept. This branch's delta to the bound sources (docs/reference/sdk.md) is unchanged since its last review, whose finding is carried forward, not re-derived: docs/reference/sdk.md changed one sentence about useSendToChat. This file makes no statement about that hook or about the dock opening. No prose change.","inputs":["packages/sdk/AGENTS.md"]}
+  ]
+}

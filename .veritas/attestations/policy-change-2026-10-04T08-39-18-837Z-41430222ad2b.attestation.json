@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-10-04T08-39-18-837Z-41430222ad2b",
+  "kind": "policy-change",
+  "actor": {
+    "id": "agent:codex-relay-3249",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": null,
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-10-04T08:39:18.837Z",
+  "repoStandardsHash": "sha256:03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed",
+  "repoMapHash": "sha256:d683b09c5100dfa5e0b31ec6efe07e788348ea4c4d5af74c477f2e3c6bdccb69",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-10-03T04-07-12-289Z-9aa39e38c84c",
+  "validUntilDays": 90,
+  "notes": "Delegated policy owner disposition for PR3249: eight generic-api-key findings in immutable review note20261004T072744.891Z-91c3555a3247 at722f are exactly SSH/delegation prose. Add only targetRules generic-api-key AND exact secret literal AND exact single path. Local gitleaks8.30.1 reproduced eight; corrected range scan finds zero; same-file generated real-credential-shaped control remains detected. No history/note edits or broad exclusions. Historical fc181/f9 case remains with3238; c1/544 with3236. Threat model accidental real credential commits.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-10-03T04-07-12-289Z-9aa39e38c84c",
+    "approvalRef": "t3:2476b495-8abe-4c47-be5a-57851a445325:security-scope-handoff-20261004",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-10-04T08-39-18-837Z-41430222ad2b",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "b60e094a430f93f7eb8cf9723a093ce9de1e56ef661ee0648f477d3f677e3c58",
+        "validUntil": "2027-01-02T08:39:18.837Z"
+      },
+      "createdAt": "2026-10-04T08:39:18.837Z",
+      "updatedAt": "2026-10-04T08:39:18.837Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-10-04T08-39-18-837Z-41430222ad2b",
+      "claimId": "veritas.attestation.policy-change-2026-10-04T08-39-18-837Z-41430222ad2b",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Delegated policy owner disposition for PR3249: eight generic-api-key findings in immutable review note20261004T072744.891Z-91c3555a3247 at722f are exactly SSH/delegation prose. Add only targetRules generic-api-key AND exact secret literal AND exact single path. Local gitleaks8.30.1 reproduced eight; corrected range scan finds zero; same-file generated real-credential-shaped control remains detected. No history/note edits or broad exclusions. Historical fc181/f9 case remains with3238; c1/544 with3236. Threat model accidental real credential commits.",
+      "observedAt": "2026-10-04T08:39:18.837Z",
+      "collectedBy": "agent:codex-relay-3249",
+      "integrityRef": "b60e094a430f93f7eb8cf9723a093ce9de1e56ef661ee0648f477d3f677e3c58",
+      "metadata": {
+        "actor": {
+          "id": "agent:codex-relay-3249",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-10-04T08:39:18.837Z",
+        "validUntil": "2027-01-02T08:39:18.837Z",
+        "contentHash": "b60e094a430f93f7eb8cf9723a093ce9de1e56ef661ee0648f477d3f677e3c58"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-10-04T08-39-18-837Z-41430222ad2b.verified",
+      "claimId": "veritas.attestation.policy-change-2026-10-04T08-39-18-837Z-41430222ad2b",
+      "status": "verified",
+      "actor": "agent:codex-relay-3249",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-10-04T08-39-18-837Z-41430222ad2b"
+      ],
+      "createdAt": "2026-10-04T08:39:18.837Z",
+      "verifiedAt": "2026-10-04T08:39:18.837Z"
+    }
+  }
+}

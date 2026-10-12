@@ -1,0 +1,19 @@
+{
+  "revision": "ccf76b6ebf226cf9b7100fc5dd3de0948badd7bf",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed RelayRouteProfiles public-link copy: moving the existing encoder import before the tap preserves iOS clipboard user activation; native grants, capabilities and account authority are unchanged. Installed fixed app remains unverified.","inputs":["docs/design/native-capabilities.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed public iOS setup-link action: prior dynamic import lost WebKit tap activation and failed Copy; synchronous encoder invocation now calls clipboard write within the tap. The link remains route-intent only, with no invitation secret or authority.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed saved Station public-link copy change: it changes clipboard timing only, not Station selection, identity, Device approval or Project membership.","inputs":["docs/guides/machine-relationships.md"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed actual iOS 26.5 Copy public setup link failure on source2fa, mounted baseline red and restored 36 route-profile tests after synchronous import. This is source/browser-test proof; fixed iOS shell behavior and signed artifact remain unverified.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed public route-intent Copy action: synchronous clipboard write does not mint routing grants, change broker admission or expose application content; installed fix awaits qualification.","inputs":["docs/guides/self-hosted-broker.md"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed existing Connect native-relay-link codec and mounted copy test: the same closed public route-intent envelope is encoded synchronously, with no bound invitation or secret.","inputs":["docs/reference/connect.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed RelayRouteProfiles clipboard timing change: no SDK API, authenticated request or Project access contract changed.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

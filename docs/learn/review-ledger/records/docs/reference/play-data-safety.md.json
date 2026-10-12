@@ -9,26 +9,24 @@
 
   "limits": "Source review covers the stated operational facts and generator behavior. Whole-inventory completeness, legal/store classification, provider practices and publication remain unverified and require separate owner work. No real login, export, phone delivery or submission. Additional main merge b269a6cf9: structural reconciliation only; prior distinct anchors below are historical reviews, not approval of combined bytes. Active bindings retain existing anchors; combined dependency bytes remain stale pending semantic review and supported recording after the merge commit. Prior distinct anchors: [{\"path\":\"pnpm-lock.yaml\",\"ours\":{\"digest\":\"2907b97d6a2e98b4211695a78cf83b03419218f1dd95ce090ca753d9bdbad14a\",\"revision\":\"b50eeb9584c1808e429e59dcb3c3c2253307bbbe\"},\"main\":{\"digest\":\"29dbdce300fcd3d881ae511317af478da6e9c098a8e8cf51c6b2269a937525df\",\"revision\":\"df9188971e1a93d2c5525a7f5f38e3da93c9e4de\"}},{\"path\":\"src-server/services/identity/local-account-provider.ts\",\"ours\":{\"digest\":\"1eadf45d7477da2ad97cd820a8723488f69fc27cf61cbca808bb934f0b066eca\",\"revision\":\"34838898143e9a6048203520cdc6da3f78ecf49e\"},\"main\":{\"digest\":\"adcca23a978ad7c38ca7cbcbf1d14b1241a12ab2991723a11cd1e1319668a2de\",\"revision\":\"c8bae67dac38dce6107177638464f9f9944fef92\"}}].",
 
-  "document": {"digest":"834366555f8bc88a09ba1905af7d3688e83ab0606d7e362bb81ee142663893e4","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
   "sources": [
-    {"path":"pnpm-lock.yaml","digest":"e5666b03a0bedc8656564f5371ea01b19879ac4a8ed732280e1d0903025de0c5","revision":"fdca33b1896b280299ba72fc70a3c9b9cda7f3af"},
+    "pnpm-lock.yaml",
 
-    {"path":"src-server/services/__tests__/privacy-inventory.test.ts","digest":"d76754d2b6182ff1bb5f89a1fe3b61719c9654fea01485c5392317b588e3bd38","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/services/__tests__/privacy-inventory.test.ts",
 
-    {"path":"src-server/services/identity/local-account-provider.ts","digest":"1eadf45d7477da2ad97cd820a8723488f69fc27cf61cbca808bb934f0b066eca","revision":"34838898143e9a6048203520cdc6da3f78ecf49e"},
+    "src-server/services/identity/local-account-provider.ts",
 
-    {"path":"src-server/services/identity/local-account-runtime.ts","digest":"fe5b823f91b15a868e183a98f18639531c1ada051ac490268102a26c1f261124","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/services/identity/local-account-runtime.ts",
 
-    {"path":"src-server/services/notifications/web-push-channel.ts","digest":"693602d66e0bbea68b0122f97be012ca34f9456051c19e47a9bb13a335219054","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/services/notifications/web-push-channel.ts",
 
-    {"path":"src-server/services/privacy-inventory.ts","digest":"469cc6a8bea5a9943040b373be225917c6aa8cbe5de5a5fe003e6ae2810752b9","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/services/privacy-inventory.ts",
 
-    {"path":"src-server/services/usage-telemetry-service.ts","digest":"477dd0b6487762648a027efc928cf3fc087fc5e406792728805996109148eb38","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/services/usage-telemetry-service.ts",
 
-    {"path":"src-server/telemetry.ts","digest":"f682958dc24d74cfee413e2986b257df4177c5645386a0ec9ed5e3774bab090c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-server/telemetry.ts",
 
-    {"path":"src-ui/src/hooks/usePushNotifications.ts","digest":"e24fae797ee62ddf6b723c57d47f5c86bd7ae218e17a5175126a90156680a61b","revision":"f0a0b5b5277589e998f5a7e08e7c7fc2229c6b5f"}
+    "src-ui/src/hooks/usePushNotifications.ts"
   ],
 
   "checks": [

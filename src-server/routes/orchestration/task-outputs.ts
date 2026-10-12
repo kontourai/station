@@ -100,6 +100,7 @@ export function createTaskOutputRoutes(
       )
         return unavailable();
       const originalProjectId = task.projectId;
+      const originalTaskCreatedAt = task.createdAt;
       const originalWorkspace = workspace;
       const current = () =>
         options.isRequestPrincipalCurrent(c.req.raw) === true &&
@@ -109,6 +110,7 @@ export function createTaskOutputRoutes(
         const actual = options.taskGraph.readTask(taskId);
         return (
           actual?.projectId === originalProjectId &&
+          actual.createdAt === originalTaskCreatedAt &&
           // Same-provenance witness compare, not a path read: both sides are
           // `workspaceBinding.workingDirectory` (see the note above `const
           // workspace = ...`) — one captured at request start, one re-read
@@ -138,7 +140,7 @@ export function createTaskOutputRoutes(
             {
               expectedProjectId: originalProjectId,
               isAuthorized: (actualTask) =>
-                current() &&
+                canKeepForTask() &&
                 actualTask.projectId === originalProjectId &&
                 // Same witness compare as `canKeepForTask` above.
                 actualTask.workspaceBinding?.workingDirectory ===

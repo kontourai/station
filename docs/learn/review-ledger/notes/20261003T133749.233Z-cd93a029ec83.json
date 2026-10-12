@@ -1,0 +1,7 @@
+{
+  "revision": "c53537e2f86111cd65178dc7744cddbb949f819f",
+
+  "notes": [
+    {"path":"CLAUDE.md","note":"Still imports AGENTS.md; AGENTS.md change only qualifies the issue-migration sentence.","inputs":["CLAUDE.md"]}
+  ]
+}

@@ -234,13 +234,19 @@ async function mockShell(page: Page) {
 async function bindChatToProject(page: Page, project: string): Promise<void> {
   await page
     .getByRole('region', { name: 'Dock', exact: true })
-    .getByRole('button', { name: 'New', exact: true })
+    .getByRole('button', { name: 'New chat', exact: true })
     .click();
-  const modal = page.getByRole('dialog', { name: 'New Chat' });
+  const modal = page.getByRole('dialog', { name: 'New chat', exact: true });
   await expect(modal).toBeVisible({ timeout: 15_000 });
-  await page.locator('.new-chat-modal__context-button').click();
-  await page.locator(`[data-context-value="${project}"]`).click();
-  await modal.locator('[data-agent-slug="claude"]').first().click();
+  // The start composer's project chip is remembered: choosing a project
+  // binds the dock to it for new chats, which is what renders the dock's
+  // project-context row. Nothing starts.
+  await modal.getByRole('button', { name: /^Project: / }).click();
+  await page
+    .getByRole('dialog', { name: 'Choose project' })
+    .locator(`[data-context-value="${project}"]`)
+    .click();
+  await modal.press('Escape');
 }
 
 for (const scenario of [
@@ -267,7 +273,9 @@ for (const scenario of [
     // Bind a chat to the scenario's project so the dock renders its
     // project-context row.
     await bindChatToProject(page, scenario.project);
-    await expect(page.getByRole('dialog', { name: 'New Chat' })).toBeHidden();
+    await expect(
+      page.getByRole('dialog', { name: 'New chat', exact: true }),
+    ).toBeHidden();
 
     const badge = page.locator('.chat-dock__project-badge');
     await expect(badge).toBeVisible({ timeout: 15_000 });

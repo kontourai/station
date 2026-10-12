@@ -1,4 +1,16 @@
-import type { AttentionRequestReference } from '@kontourai/station-contracts/attention';
+import {
+  approvalRefusalRemedy,
+  defaultKeptScope,
+  elevatedLabels,
+  keptScopeForApproval,
+  RequestedScopeChecklist,
+  requestedScopeTokens,
+} from '@kontourai/station-connect';
+import type {
+  AttentionPeerRequestReference,
+  AttentionRequestReference,
+} from '@kontourai/station-contracts/attention';
+import type { PairingScope } from '@kontourai/station-contracts/environment-security';
 import type {
   ApprovalAttentionItem,
   AttentionItem,
@@ -23,17 +35,27 @@ import {
   useDismissNotificationMutation,
   useNotificationActionMutation,
   useQueryClient,
+  useSystemStatusForApiBaseQuery,
 } from '@kontourai/station-sdk';
+import {
+  continueDelegatedTask,
+  respondToDelegatedTaskRequest,
+} from '@kontourai/station-sdk/client';
+import { operatorCliCommand } from '@kontourai/station-shared/ports';
 import { useMutation } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
 import {
   useApiBase,
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
+import { openApprovalConversation } from '../../lib/openApprovalConversation';
 import {
   attentionKindLabel,
   isAcknowledgeableAttentionItem,
   isApprovalLivePending,
+  isPeerHostedAttentionItem,
+  peerAttentionElsewhereText,
+  peerRequestDecision,
   sessionFailedIdentity,
   sessionFailureCause,
 } from '../../utils/attention';
@@ -43,6 +65,7 @@ import {
   navigateToAttentionTarget,
 } from '../../utils/attentionOpen';
 import { formatNotificationTime } from '../../utils/notifications';
+import { Dialog } from '../Dialog';
 import { LazyBoundary } from '../LazyBoundary';
 import { SkeletonList } from '../state';
 import './AttentionCard.css';
@@ -146,6 +169,10 @@ function SessionFailedDetail({ item }: { item: SessionFailedAttentionItem }) {
 }
 
 function AttentionAction({ item }: { item: AttentionItem }) {
+  // A task running on a paired Station: its thread id here names only the
+  // local lifecycle record, so a reply or request inspection would address
+  // nothing. Same rule, and same note, as the Activity detail's peer branch.
+  if (isPeerHostedAttentionItem(item)) return <PeerHostedAction item={item} />;
   switch (item.kind) {
     case 'approval':
       return item.requestReference ? (
@@ -271,6 +298,21 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
   const confirmMutation = useConfirmDevicePairingRequestMutation();
   const denyMutation = useDenyDevicePairingRequestMutation();
   const busy = confirmMutation.isPending || denyMutation.isPending;
+  // The approve command names this Station's own CLI, read from its build.
+  const { apiBase } = useApiBase();
+  const operatorCli = operatorCliCommand(
+    useSystemStatusForApiBaseQuery(apiBase).data?.build?.channel,
+  );
+  // What the approver keeps of what the device asked for; all of it unless
+  // limited. An older Station sends no requested scope: no list, and
+  // Approve keeps whatever the request carries.
+  const requestedScope = item.requestedScope ?? '';
+  const [kept, setKept] = useState<ReadonlySet<PairingScope>>(() =>
+    defaultKeptScope(requestedScope),
+  );
+  // The card only says a device is asking; the details and the decision
+  // open in a dialog.
+  const [reviewing, setReviewing] = useState(false);
   // #765 D5 live verification: `access:approve` is operator-promotion-only,
   // so a paired browser session can read this item but the pairing routes
   // answer its approve/deny with 401 `authentication_required` — the buttons
@@ -283,40 +325,99 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
         className="attention-item__detail"
         data-testid="attention-pairing-remedy"
       >
-        {pairingApprovalRemedy(item)}
+        {pairingApprovalRemedy(item, operatorCli, kept)}
       </div>
     );
   }
+  const decision = (
+    <div className="attention-item__actions">
+      <button
+        type="button"
+        className="attention-item__action attention-item__action--primary"
+        disabled={busy}
+        onClick={() => {
+          const scope = requestedScope
+            ? keptScopeForApproval(requestedScope, kept)
+            : undefined;
+          confirmMutation.mutate(
+            scope === undefined
+              ? item.source.requestId
+              : { requestId: item.source.requestId, scope },
+            // Decided: close rather than offer the same decision again
+            // until the item refreshes away.
+            { onSuccess: () => setReviewing(false) },
+          );
+        }}
+      >
+        Approve
+      </button>
+      <button
+        type="button"
+        className="attention-item__action attention-item__action--danger"
+        disabled={busy}
+        onClick={() =>
+          denyMutation.mutate(item.source.requestId, {
+            onSuccess: () => setReviewing(false),
+          })
+        }
+      >
+        Deny
+      </button>
+    </div>
+  );
   return (
     <>
       <div className="attention-item__actions">
         <button
           type="button"
           className="attention-item__action attention-item__action--primary"
-          disabled={busy}
-          onClick={() => confirmMutation.mutate(item.source.requestId)}
+          onClick={() => setReviewing(true)}
         >
-          Approve
-        </button>
-        <button
-          type="button"
-          className="attention-item__action attention-item__action--danger"
-          disabled={busy}
-          onClick={() => denyMutation.mutate(item.source.requestId)}
-        >
-          Deny
+          Review
         </button>
       </div>
-      <MutationError
-        error={describePairingActionError(
-          confirmMutation.error,
-          item,
-          'approve',
-        )}
-      />
-      <MutationError
-        error={describePairingActionError(denyMutation.error, item, 'deny')}
-      />
+      {reviewing && (
+        <Dialog
+          title={`${item.deviceName} is asking to pair`}
+          closeLabel="Close pairing request"
+          // Not closable while a decision is in flight, so its outcome shows.
+          dismissible={!busy}
+          hideClose={busy}
+          onClose={() => setReviewing(false)}
+          footer={decision}
+        >
+          {requestedScope ? (
+            <RequestedScopeChecklist
+              deviceName={item.deviceName}
+              requestedScope={requestedScope}
+              kept={kept}
+              onChange={setKept}
+              disabled={busy}
+            />
+          ) : (
+            <p className="attention-item__detail">{item.body}</p>
+          )}
+          <MutationError
+            error={describePairingActionError(
+              confirmMutation.error,
+              item,
+              'approve',
+              operatorCli,
+              // What the refused approval sent, not the boxes as they are now.
+              submittedKept(confirmMutation.variables, requestedScope) ?? kept,
+            )}
+          />
+          <MutationError
+            error={describePairingActionError(
+              denyMutation.error,
+              item,
+              'deny',
+              operatorCli,
+              kept,
+            )}
+          />
+        </Dialog>
+      )}
     </>
   );
 }
@@ -326,8 +427,38 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
  * and the 403 error path print, because it is the same fact arriving earlier
  * — before a doomed request instead of after one.
  */
-function pairingApprovalRemedy(item: DevicePairingAttentionItem): string {
-  return `Approving “${item.deviceName}” needs a trusted Station session. Run this on the Station: station environment access approve ${item.source.requestId} --force`;
+function pairingApprovalRemedy(
+  item: DevicePairingAttentionItem,
+  operatorCli: string,
+  kept: ReadonlySet<PairingScope>,
+  /** The elevated permissions a refused approval kept, by label. */
+  keptElevated: readonly string[] = [],
+): string {
+  return approvalRefusalRemedy({
+    deviceName: item.deviceName,
+    requestId: item.source.requestId,
+    operatorCli,
+    // The printed command grants exactly what this card would have kept.
+    keptScope: item.requestedScope
+      ? keptScopeForApproval(item.requestedScope, kept)
+      : undefined,
+    keptElevated,
+  });
+}
+
+/** The scope an approval mutation sent: all requested for a bodyless one. */
+function submittedKept(
+  variables: string | { requestId: string; scope?: string } | undefined,
+  requestedScope: string,
+): ReadonlySet<PairingScope> | undefined {
+  if (variables === undefined || !requestedScope) return undefined;
+  return new Set(
+    requestedScopeTokens(
+      typeof variables === 'string'
+        ? requestedScope
+        : (variables.scope ?? requestedScope),
+    ),
+  );
 }
 
 /**
@@ -341,6 +472,8 @@ function describePairingActionError(
   error: unknown,
   item: DevicePairingAttentionItem,
   action: 'approve' | 'deny',
+  operatorCli: string,
+  kept: ReadonlySet<PairingScope>,
 ): unknown {
   if (error == null) return null;
   if (!(error instanceof DevicePairingRequestActionError)) return error;
@@ -350,7 +483,9 @@ function describePairingActionError(
     );
   }
   if (error.status === 403 && action === 'approve') {
-    return new Error(pairingApprovalRemedy(item));
+    return new Error(
+      pairingApprovalRemedy(item, operatorCli, kept, elevatedLabels(kept)),
+    );
   }
   if (error.status === 404 || error.status === 410) {
     return new Error(
@@ -456,10 +591,17 @@ function ApprovalActions({ item }: { item: ApprovalAttentionItem }) {
             className={`attention-item__action attention-item__action--${action.variant ?? 'secondary'}`}
             disabled={mutation.isPending}
             onClick={() =>
-              mutation.mutate({
-                actionId: action.id,
-                id: item.source.notificationId,
-              })
+              mutation.mutate(
+                {
+                  actionId: action.id,
+                  id: item.source.notificationId,
+                },
+                {
+                  onSuccess: () => {
+                    if (item.openHref) openApprovalConversation(item.openHref);
+                  },
+                },
+              )
             }
           >
             {action.label}
@@ -500,6 +642,181 @@ function ApprovalActions({ item }: { item: ApprovalAttentionItem }) {
       )}
       <MutationError error={mutation.error} />
       <MutationError error={dismissMutation.error} />
+    </>
+  );
+}
+
+function PeerHostedAction({
+  item,
+}: {
+  item: NeedsInputAttentionItem | ReviewPendingAttentionItem;
+}) {
+  const decision = peerRequestDecision(item);
+  return (
+    <>
+      {decision.kind === 'decide' ? (
+        <PeerRequestDecisionActions reference={decision.reference} />
+      ) : decision.kind === 'answer' ? (
+        <PeerInputAnswer reference={decision.reference} itemId={item.id} />
+      ) : (
+        <div
+          className="attention-item__detail"
+          data-testid="attention-peer-elsewhere"
+        >
+          {decision.reason ? `${decision.reason} ` : ''}
+          {peerAttentionElsewhereText(item.environmentName)}
+        </div>
+      )}
+      {/* The projection links a peer item to the Activity detail. */}
+      <OpenSessionLink href={item.openHref} label="Open in Activity" />
+    </>
+  );
+}
+
+/**
+ * Allow/Deny for the paired Station's own open request, forwarded through
+ * `POST /api/orchestration/delegations/:taskId/respond` with the record's
+ * `environmentId` — the paired Station re-checks that the request is still
+ * open and decides it there. Never a local `respondToRequest`: the request
+ * id names a request on the other Station.
+ */
+function PeerRequestDecisionActions({
+  reference,
+}: {
+  reference: AttentionPeerRequestReference;
+}) {
+  const scope = useHostRequestAuthorityScope();
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (decision: 'accept' | 'decline') => {
+      if (!scope?.isCurrent())
+        throw new Error('Reconnect to this Station to decide this request.');
+      return respondToDelegatedTaskRequest(
+        scope.apiBase,
+        reference.taskId,
+        {
+          requestId: reference.requestId,
+          decision,
+          environmentId: reference.environmentId,
+        },
+        { requestScope: scope },
+      );
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['attention'] }),
+        queryClient.invalidateQueries({ queryKey: ['orchestration-sessions'] }),
+      ]);
+    },
+  });
+  return (
+    <>
+      <div className="attention-item__actions">
+        <button
+          type="button"
+          className="attention-item__action attention-item__action--primary"
+          disabled={mutation.isPending || mutation.isSuccess}
+          onClick={() => mutation.mutate('accept')}
+        >
+          Allow
+        </button>
+        <button
+          type="button"
+          className="attention-item__action attention-item__action--danger"
+          disabled={mutation.isPending || mutation.isSuccess}
+          onClick={() => mutation.mutate('decline')}
+        >
+          Deny
+        </button>
+      </div>
+      <MutationError error={mutation.error} />
+    </>
+  );
+}
+
+/**
+ * A reply to the paired Station's own open input question, delivered through
+ * `POST /api/orchestration/delegations/:taskId/continue` with the record's
+ * `environmentId` and `expectedInputRequest` naming exactly that request on
+ * the paired Station. This Station forwards it only to a Station that
+ * advertises enforcing the binding; the paired Station refuses it when the
+ * question was answered or replaced, and that refusal is shown.
+ */
+function PeerInputAnswer({
+  reference,
+  itemId,
+}: {
+  reference: AttentionPeerRequestReference & {
+    threadId: string;
+    requestEventId: string;
+  };
+  itemId: string;
+}) {
+  const scope = useHostRequestAuthorityScope();
+  const queryClient = useQueryClient();
+  const [answer, setAnswer] = useState('');
+  const mutation = useMutation({
+    mutationFn: (message: string) => {
+      if (!scope?.isCurrent())
+        throw new Error('Reconnect to this Station to answer this request.');
+      return continueDelegatedTask(
+        scope.apiBase,
+        reference.taskId,
+        {
+          message,
+          environmentId: reference.environmentId,
+          expectedInputRequest: {
+            threadId: reference.threadId,
+            requestId: reference.requestId,
+            requestEventId: reference.requestEventId,
+          },
+        },
+        { requestScope: scope },
+      );
+    },
+    onSuccess: async () => {
+      setAnswer('');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['attention'] }),
+        queryClient.invalidateQueries({ queryKey: ['orchestration-sessions'] }),
+      ]);
+    },
+  });
+  return (
+    <>
+      <form
+        className="attention-answer"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (answer.trim()) mutation.mutate(answer);
+        }}
+      >
+        {/* Same scale as the item's own detail line, and the same compact
+            action row as Allow/Deny. */}
+        <label
+          className="attention-item__detail"
+          htmlFor={`attention-peer-answer-${itemId}`}
+        >
+          Answer on the paired Station
+        </label>
+        <textarea
+          id={`attention-peer-answer-${itemId}`}
+          value={answer}
+          onChange={(event) => setAnswer(event.target.value)}
+        />
+        <div className="attention-item__actions">
+          <button
+            type="submit"
+            className="attention-item__action attention-item__action--primary"
+            disabled={
+              !answer.trim() || mutation.isPending || mutation.isSuccess
+            }
+          >
+            Send answer
+          </button>
+        </div>
+      </form>
+      <MutationError error={mutation.error} />
     </>
   );
 }
@@ -857,9 +1174,11 @@ function invalidateGateQueries(
 function OpenSessionLink({
   href,
   onOpen,
+  label = 'Open session',
 }: {
   href: string;
   onOpen?: () => Promise<unknown>;
+  label?: string;
 }) {
   return (
     <a
@@ -874,7 +1193,7 @@ function OpenSessionLink({
         });
       }}
     >
-      Open session
+      {label}
     </a>
   );
 }

@@ -1,0 +1,21 @@
+{
+  "revision": "3d33d71792203d38262ac5fd80261d12bd31e1ed",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Re-record after merging main: claude-adapter.ts took main's credential-profile usageAccountKey refactor (usage accounting only); this PR's ask-reason tap was reviewed on the branch and the documented grant/safety-check claims are unchanged.","inputs":["docs/conformance/tool-policy-delivery.md"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Re-record after merging main: claude-adapter.ts took main's credential-profile usageAccountKey refactor (usage accounting only); this PR's ask-reason tap was reviewed on the branch and the documented grant/safety-check claims are unchanged.","inputs":["docs/design/connections-onboarding.md"]},
+
+    {"path":"docs/guides/agents.md","note":"Re-record after merging main: claude-adapter.ts took main's credential-profile usageAccountKey refactor (usage accounting only); this PR's ask-reason tap was reviewed on the branch and the documented grant/safety-check claims are unchanged.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Re-record after merging main: claude-adapter.ts took main's credential-profile usageAccountKey refactor (usage accounting only); this PR's ask-reason tap was reviewed on the branch and the documented grant/safety-check claims are unchanged.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Re-record after merging main: claude-adapter.ts took main's credential-profile usageAccountKey refactor (usage accounting only); this PR's ask-reason tap was reviewed on the branch and the documented grant/safety-check claims are unchanged.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Re-record after merging main: claude-adapter.ts took main's credential-profile usageAccountKey refactor (usage accounting only); this PR's ask-reason tap was reviewed on the branch and the documented grant/safety-check claims are unchanged.","inputs":["docs/guides/starter-work.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"Re-record after merging main: claude-adapter.ts took main's credential-profile usageAccountKey refactor (usage accounting only); this PR's ask-reason tap was reviewed on the branch and the documented grant/safety-check claims are unchanged.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Re-record after merging main: claude-adapter.ts took main's credential-profile usageAccountKey refactor (usage accounting only); this PR's ask-reason tap was reviewed on the branch and the documented grant/safety-check claims are unchanged.","inputs":["examples/self-configuring-agent/README.md"]}
+  ]
+}

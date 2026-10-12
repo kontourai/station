@@ -9,18 +9,16 @@
 
   "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
 
-  "document": {"digest":"97194a0e05db0851a22da5ce9a08ddd303c4fce597c7ba2205f76725fa6289aa","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
-
   "sources": [
-    {"path":"examples/minimal-layout/package.json","digest":"7931000b9a456f89184d3806e16a78d673ae0f1a18938af7af762272ba3f99da","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
+    "examples/minimal-layout/package.json",
 
-    {"path":"examples/minimal-layout/plugin.json","digest":"2d09b54b5196940361840384cfa934dc67227e535cea4d6eb68bcb8f2f72037b","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
+    "examples/minimal-layout/plugin.json",
 
-    {"path":"examples/minimal-layout/src/index.tsx","digest":"2a21555a160202bb2f072204a839d9890c8d01cc5f1ae02533c354335e5d1ac5","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
+    "examples/minimal-layout/src/index.tsx",
 
-    {"path":"packages/cli/src/commands/install.ts","digest":"ca98a0fa5d41930d6b3bb5d33000804411d82ec80650a7d97294cb7dcd020ac5","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"},
+    "packages/cli/src/commands/install.ts",
 
-    {"path":"src-ui/src/core/SDKAdapter.tsx","digest":"6b97757f9bfe3c29837ba06546c68a7a05c18447466f1535768dc936f4d86feb","revision":"ed05e6f6c98c5b2bb994a88ff8fa8e1421639269"}
+    "src-ui/src/core/SDKAdapter.tsx"
   ],
 
   "checks": [

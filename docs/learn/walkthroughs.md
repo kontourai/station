@@ -24,7 +24,10 @@ establish that every part of that issue is resolved.
 
 ![A saved shared Task document and its revision history.](media/shared-task-document.png)
 
-The Project capture retains its original revision and appearance. The Task
+The Project capture retains its original revision and appearance.
+It predates the inline start composer now shown above Project activity; use
+[the getting-started guide](../user/getting-started.md) for the current controls.
+The Task
 document capture was replaced after actual single-user save/send/reopen checks.
 The current Task
 workspace leads with the objective and shared room, keeps technical identity
@@ -105,7 +108,7 @@ does not move the detail out of reach. At narrow widths they stack vertically.
 
 ![The same record list and detail at a narrow browser width.](media/repository-knowledge-narrow.png)
 
-These captures use an actual imported snapshot: 1,149 records and 2,089 links.
+These captures use an actual imported snapshot: 1,656 records and 3,278 links.
 Those counts describe this capture, not a fixed application limit or the latest
 repository. The record identifies the snapshot and attributes its purpose text
 to the module map. No model, embedding service or vector index was used.

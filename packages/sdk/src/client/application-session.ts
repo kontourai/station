@@ -15,13 +15,12 @@ import {
 } from '@kontourai/station-contracts/principal';
 import { isStationNativeShellOrigin } from '@kontourai/station-shared/native-shell-origin';
 import { z } from 'zod/v3';
+import { envelopeError } from './api-error-message';
 import {
   type ClientRequestOptions,
-  envelopeErrorMessage,
   getJson,
   mutateJson,
   readJsonBody,
-  StationHttpError,
 } from './http';
 
 /** Native implementations can delegate signing to protected platform custody. */
@@ -188,10 +187,7 @@ async function read(response: Response): Promise<unknown> {
     | { data?: unknown; error?: unknown }
     | undefined;
   if (!response.ok)
-    throw new StationHttpError(
-      response.status,
-      envelopeErrorMessage(body, 'Application session request failed.'),
-    );
+    throw envelopeError(response, body, 'Application session request failed.');
   return body?.data;
 }
 /** The caller supplies the actual client Origin and the existing scoped Device transport. */

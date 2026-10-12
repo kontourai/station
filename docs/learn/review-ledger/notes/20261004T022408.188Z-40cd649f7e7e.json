@@ -1,0 +1,7 @@
+{
+  "revision": "ebed6102bc141abb991cc326faa551d3974ae3bc",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Read line 26 (API reference row: versions, authenticated request, refused unauthorized request) against the api.md audit-bound eviction qualification: integrating-station.md makes no audit-rate claim, so it stays accurate."}
+  ]
+}

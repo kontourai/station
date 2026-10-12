@@ -10,6 +10,7 @@ import {
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import { sanitizedGitEnvironment } from '../lib/git-environment.mjs';
 
 // End to end: a violating source in a checkout must make the real
@@ -34,12 +35,13 @@ function copyTrackedTree() {
   const root = realpathSync(makeTempDir('proof-family-e2e-'));
   // Hooks export GIT_DIR, GIT_INDEX_FILE and friends; inheriting them would
   // list some other repository or index instead of this checkout.
-  const listing = spawnSync('git', ['ls-files', '-z'], {
+  const listing = spawnSyncBounded('git', ['ls-files', '-z'], {
     cwd: repoRoot,
     env: sanitizedGitEnvironment(),
     encoding: 'utf8',
     windowsHide: true,
   });
+  expect(listing.error).toBeUndefined();
   expect(listing.status, listing.stderr).toBe(0);
   const files = listing.stdout
     .split('\0')

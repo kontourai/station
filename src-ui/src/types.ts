@@ -11,7 +11,10 @@ import type {
 } from '@kontourai/station-contracts/agent-identity';
 import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 import type { BoardReference } from '@kontourai/station-contracts/board';
-import type { HarnessQuestionnaire } from '@kontourai/station-contracts/harness-questions';
+import type {
+  InputRequestForm,
+  InputRequestRecord,
+} from '@kontourai/station-contracts/input-request';
 import type {
   ApprovalMode,
   EngineId,
@@ -137,6 +140,8 @@ export interface ComposerAttachmentStageSnapshot {
   expired?: boolean;
   /** See `ComposerAttachmentStageUpdate.capacityFull`. */
   capacityFull?: boolean;
+  /** See `ComposerAttachmentStageUpdate.callerUnresolved`. */
+  callerUnresolved?: boolean;
   error?: string;
   /** Retained provenance is safe across reload; source bytes are never retained. */
   transformation?: TransformationReceipt;
@@ -209,7 +214,13 @@ export interface ChatMessage {
     approvalToolName?: string;
     /** #2915: see `MessagePart.approvalSessionGrant`. */
     approvalSessionGrant?: ToolRequestSessionGrant;
-    questionnaire?: HarnessQuestionnaire;
+    /**
+     * #3390: an open form request (a harness question or a tool server's
+     * elicitation), answered on the pending-requests card.
+     */
+    inputRequest?: InputRequestForm;
+    /** #3390: an `input-request` part's record; see `MessagePart`. */
+    inputRequestRecord?: InputRequestRecord;
     cancelled?: boolean;
     approvalStatus?:
       | 'auto-approved'
@@ -226,6 +237,8 @@ export interface ChatMessage {
     runtimeErrorCode?: string;
     uiBlock?: UIBlock;
     toolCallId?: string;
+    /** Durable terminal result event, shared with streaming parts. */
+    sourceEventId?: string;
     flowRunAttached?: FlowRunBinding;
     flowGateVerdict?: FlowGateVerdictInfo;
     conversationHandoff?: import('@kontourai/station-contracts/orchestration').ConversationHandoffProjection;
@@ -323,6 +336,8 @@ export interface ChatSession {
   streamingMessage?: import('./contexts/active-chats-state').StreamingMessage;
   /** See ChatUIState.queuedMessageFailure (active-chats-state.ts) — persisted. */
   queuedMessageFailure?: { message: string; code?: string; at: number };
+  /** See ChatUIState.usageLimitStopped (#3157) — session-scoped. */
+  usageLimitStopped?: boolean;
   /** See ChatUIState.unsentMessages (archive#3706) — persisted, not a queue. */
   unsentMessages?: UnsentMessageRecord[];
   outboundQueuedTurns?: Array<{
@@ -354,6 +369,9 @@ export interface ChatSession {
   stopPending?: boolean;
   model?: string;
   modelSource?: EffectiveModelSource;
+  executionAgentId?: string;
+  executionOnCurrentStation?: boolean;
+  expectedDefinitionFingerprint?: string;
   requestedModel?: string;
   requestedModelSource?: EffectiveModelSource;
   requestedProviderOptions?: Record<string, unknown>;

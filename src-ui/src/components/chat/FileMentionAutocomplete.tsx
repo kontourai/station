@@ -3,7 +3,8 @@ import {
   type CodingLocation,
   useCodingFileMentionCandidatesQuery,
 } from '@kontourai/station-sdk/coding-file-mentions-query';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { useAnchoredPopup } from '../../hooks/useAnchoredPopup';
 
 function flatten(entries: readonly CodingFileEntry[]): CodingFileEntry[] {
   return entries.flatMap((entry) => [entry, ...flatten(entry.children ?? [])]);
@@ -17,6 +18,7 @@ export function FileMentionAutocomplete({
   keyboardController,
   onActiveDescendantChange,
   onSelect,
+  anchorRef,
 }: {
   /** The Project and folder the lookup reads in (#2412). */
   location: CodingLocation;
@@ -32,7 +34,11 @@ export function FileMentionAutocomplete({
   >;
   onActiveDescendantChange: (id: string | undefined) => void;
   onSelect: (entry: CodingFileEntry) => void;
+  /** The composer input; the list opens against its capsule. Without it the
+   *  list renders in normal flow where it is mounted. */
+  anchorRef?: RefObject<HTMLElement | null>;
 }) {
+  const { popupStyle, renderPopup } = useAnchoredPopup(anchorRef);
   const [selected, setSelected] = useState(0);
   const selectedRef = useRef(0);
   const pendingNavigationRef = useRef(0);
@@ -114,12 +120,16 @@ export function FileMentionAutocomplete({
     };
   }, [keyboardController, onActiveDescendantChange]);
 
-  return (
+  return renderPopup(
     <div
       id={listboxId}
       className="file-mention-picker"
       role="listbox"
       aria-label="Files and folders"
+      style={popupStyle}
+      // Pressing anywhere in the list (padding, a status row, the scrollbar)
+      // must not move focus out of the composer, which closes the list.
+      onPointerDown={(event) => event.preventDefault()}
     >
       {isLoading || querySettling ? (
         <div className="file-mention-picker__status">Finding files…</div>
@@ -155,6 +165,6 @@ export function FileMentionAutocomplete({
           <span>{entry.path}</span>
         </button>
       ))}
-    </div>
+    </div>,
   );
 }

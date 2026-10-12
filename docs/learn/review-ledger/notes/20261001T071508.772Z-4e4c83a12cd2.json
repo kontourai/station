@@ -1,0 +1,7 @@
+{
+  "revision": "b03622e2007e22ff75c7280a41396526c75a7b6e",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"#3071 review-fix round. Changed inputs: claude-adapter.ts (a main-thread request.opened carries its turnId, a subagent's none; interruptTurn cancels the turn's own requests raised during the SDK interrupt before turn.aborted). Rewrote the #3071 passage. Checked each sentence against packages/shared/src/request-settlement.ts (recovery arm by position since turn.started; live arm by request.opened.turnId; turn.completed cancelled counted; runtime.error/session.exited/ordinary completion settle nothing), interrupted-turn-recovery.ts (expired, turn-interrupted, resolved before the abort), orchestration-service.ts settledRequestRefusal and inspectAttentionRequest (409 request_event_changed with and without the event guard, no adapter call), and which adapters stamp turnId (Claude main thread, Muse own turn, station-agent turn events: read in source; Codex and ACP emit none). Executed request-turn-settlement.test.ts, the #3071 block of interrupted-turn-recovery.test.ts and the Claude adapter gap tests, with fault injection on each. 'The adapters read for this change resolve what they hold cancelled' rests on reading Claude, Codex and ACP stop paths, not on tests of Codex or ACP. Rest of the page not re-reviewed.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

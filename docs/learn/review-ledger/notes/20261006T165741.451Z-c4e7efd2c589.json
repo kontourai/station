@@ -1,0 +1,7 @@
+{
+  "revision": "6c77533c97a0f90be2ff0a38267ee11b1c7efdde",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed against the run-e2e-suite.mjs change that adds a per-run empty STATION_EXTERNAL_GROK_SOURCE_ROOT beside the Claude, Codex and OpenCode roots. The matrix claims a temporary ./station instance and runner-owned Starter home; it names no per-engine history roots, so no prose changes. The change makes the temporary-instance claim hold on hosts with Grok CLI history.","inputs":["docs/guides/e2e-coverage-matrix.md","scripts/run-e2e-suite.mjs"]}
+  ]
+}

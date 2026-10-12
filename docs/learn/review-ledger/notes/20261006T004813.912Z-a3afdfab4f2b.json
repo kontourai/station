@@ -1,0 +1,7 @@
+{
+  "revision": "53cc41b6bc019041a22f55e1bab913e97154e64d",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"#3386 Grok after merging main: grok-session-index.ts gained a comment on backlog order (no behavior change; the admission gate, inspection order and bounds described here are unchanged) and managed-acp-workspace.ts made its root helper module-private (isManagedAcpWorkspace unchanged). The Grok discovery paragraph remains accurate; no prose change.","inputs":["docs/reference/session-api.md","src-server/providers/sessions/grok-session-index.ts","src-server/services/acp/managed-acp-workspace.ts"]}
+  ]
+}

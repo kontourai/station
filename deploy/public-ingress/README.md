@@ -12,6 +12,19 @@ public-ingress operation: Caddy publishes TCP 80 and 443, while the Station
 service publishes no host ports. Do not attach untrusted containers to this
 Compose network or mount another customer's volumes into it.
 
+`station service run` claims the home atomically before starting Station, even
+on a fresh home without `service install`. It records the supervisor's PID and
+birth fingerprint as a service owner. If Desktop or another live service holds
+the home, the supervisor stays alive without starting Station and polls with
+backoff capped at 30 seconds; it starts after the owner is gone. Lost ownership
+at readiness stops Station before returning to that wait. Existing Dockerfile
+and Compose commands need no policy-registration step.
+
+Direct `command-station.js` launches remain unfenced and can serve the same
+writable home as a registry claimant. When bound to `0.0.0.0`, they are reachable
+through container networking and any published or proxied ports. The recipes
+and historical qualifications below are not current image or cloud proof.
+
 ## Prepare
 
 Requirements: a reviewed Station container image pinned by digest, Docker

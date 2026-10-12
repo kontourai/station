@@ -1,0 +1,7 @@
+{
+  "revision": "cc4357355b6931968876ec6a18a08ba7f790105a",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed final one-pass pending-request derivation: questionnaire/form descriptors are normalized once, bound ordinary approvals are still excluded, forms retain their pending strip, and the shared empty array remains stable when no unanswered requests exist. Request/thread/event identity and session grant/preview readers remain unchanged. Runtime event projection still uses canonical typed stored-form admission; no standing grant or engine policy changes.","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/runtime-event-projection.ts","src-ui/src/hooks/orchestration/pendingRequestRows.ts"]}
+  ]
+}

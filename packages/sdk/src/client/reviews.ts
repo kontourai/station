@@ -170,7 +170,14 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
       return;
     }
     const timer = setTimeout(resolve, ms);
-    timer.unref?.();
+    const timerHandle: unknown = timer;
+    if (
+      typeof timerHandle === 'object' &&
+      timerHandle !== null &&
+      'unref' in timerHandle &&
+      typeof timerHandle.unref === 'function'
+    )
+      timerHandle.unref();
     signal?.addEventListener(
       'abort',
       () => {

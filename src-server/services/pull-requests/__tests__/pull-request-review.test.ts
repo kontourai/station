@@ -365,7 +365,7 @@ describe('checks and inline review comments', () => {
       name: 'Windows PR portable floor',
       startedAt: '2026-09-29T04:00:03Z',
       status: 'COMPLETED',
-      workflowName: 'Windows PR Verification',
+      workflowName: 'PR: Windows',
     },
     {
       __typename: 'CheckRun',
@@ -455,7 +455,7 @@ describe('checks and inline review comments', () => {
         {
           name: 'Windows PR portable floor',
           state: 'failure',
-          group: 'Windows PR Verification',
+          group: 'PR: Windows',
           url: 'https://github.com/kontourai/station/actions/runs/3/job/4',
         },
         {

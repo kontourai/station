@@ -74,6 +74,8 @@ let historyState = {
   historyRetrying: false,
   elidedHistory: { total: 0, byteLimit: 0, outputLimit: 0 },
 };
+/** Connection flags the attached detail reads from the real hook. */
+let streamFlags: { connectionInterrupted?: boolean } = {};
 let attentionItems: Array<Record<string, unknown>> = [];
 let attentionQueryState: {
   isLoading: boolean;
@@ -146,6 +148,10 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   return {
     isApiRequestScope: real.isApiRequestScope,
     projectIdentityReadFailure: real.projectIdentityReadFailure,
+    // The chat's per-message rating, inert here.
+    useFeedbackRatingsQuery: () => ({ data: [] }),
+    useSaveFeedbackRatingMutation: () => ({ mutate: vi.fn() }),
+    useDeleteFeedbackRatingMutation: () => ({ mutate: vi.fn() }),
     AdoptSessionError: class AdoptSessionError extends Error {
       failureClass: string;
       retryable: boolean;
@@ -314,16 +320,37 @@ vi.mock('../hooks/orchestration/useSessionTranscriptEvents', () => ({
   }),
 }));
 
+// The chat's user avatar reads auth, which this harness does not provide.
+vi.mock('../components/icons/UserIcon', () => ({ UserIcon: () => null }));
+
 vi.mock('../hooks/orchestration/useSessionEventStream', () => ({
   useSessionEventStream: () => ({
     events: feedEvents,
     connected: true,
     loadOlder,
     ...historyState,
+    ...streamFlags,
   }),
 }));
 
+import {
+  CONVERSATION_REFERENCE_DRAG_TYPE,
+  draggedConversationReference,
+  publishReferenceableConversations,
+} from '../components/chat/conversationReferenceDrag';
 import { SessionsView } from '../views/SessionsView';
+
+/**
+ * #3552: an external conversation continues from its composer — type, send,
+ * confirm once — exactly as the chat dock does.
+ */
+function continueFromComposer(message = 'carry on') {
+  fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+    target: { value: message },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+}
 
 function renderView(
   sessionId?: string,
@@ -331,6 +358,7 @@ function renderView(
   intentToken?: number,
   onFocusConsumed?: () => void,
   apiBase = 'http://test.local',
+  onContinueInChat?: (threadId: string, draft: string) => void,
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -349,6 +377,7 @@ function renderView(
           focusHint={nextFocusHint}
           intentToken={nextIntentToken}
           onFocusConsumed={nextOnFocusConsumed}
+          onContinueInChat={onContinueInChat}
         />
       </NavigationProvider>
     </QueryClientProvider>
@@ -482,6 +511,7 @@ describe('SessionsView', () => {
       historyRetrying: false,
       elidedHistory: { total: 0, byteLimit: 0, outputLimit: 0 },
     };
+    streamFlags = {};
     attentionItems = [];
     attentionQueryState = { isLoading: false, isError: false, error: null };
     attentionRefetch.mockClear();
@@ -562,6 +592,49 @@ describe('SessionsView', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(refetchSessions).toHaveBeenCalledTimes(1);
+  });
+
+  test('#3159: an Activity row whose conversation may be referenced drags it onto a composer', () => {
+    const scope = { apiBase: 'http://test.local' };
+    publishReferenceableConversations({
+      apiBase: scope.apiBase,
+      ids: new Set(['another-conversation']),
+    });
+    const first = renderView();
+    expect(rowButton('Worker task').hasAttribute('draggable')).toBe(false);
+    first.unmount();
+
+    // Another Station's inventory makes nothing here draggable.
+    publishReferenceableConversations({
+      apiBase: 'http://other.test',
+      ids: new Set(['thread-alpha']),
+    });
+    const second = renderView();
+    expect(rowButton('Worker task').hasAttribute('draggable')).toBe(false);
+    second.unmount();
+
+    publishReferenceableConversations({
+      apiBase: scope.apiBase,
+      ids: new Set(['thread-alpha']),
+    });
+    renderView();
+    const row = rowButton('Worker task');
+    expect(row.getAttribute('draggable')).toBe('true');
+    const values = new Map<string, string>();
+    fireEvent.dragStart(row, {
+      dataTransfer: {
+        setData: (type: string, value: string) => values.set(type, value),
+        effectAllowed: 'all',
+      },
+    });
+    expect(values.get(CONVERSATION_REFERENCE_DRAG_TYPE)).toBe('thread-alpha');
+    expect(draggedConversationReference('thread-alpha', scope)).toMatchObject({
+      id: 'thread-alpha',
+      projectSlug: 'demo',
+    });
+    fireEvent.dragEnd(row);
+    expect(draggedConversationReference('thread-alpha', scope)).toBeNull();
+    publishReferenceableConversations(null);
   });
 
   test('lists sessions and opens a live feed on select', () => {
@@ -650,7 +723,7 @@ describe('SessionsView', () => {
     ).toBe('true');
     expect(screen.getAllByTestId('activity-row-meta')).toHaveLength(3);
     expect(
-      (await screen.findAllByText(/No progress events for/)).length,
+      (await screen.findAllByText(/No progress · /)).length,
     ).toBeGreaterThan(0);
     expect(
       screen
@@ -658,7 +731,7 @@ describe('SessionsView', () => {
         .find(
           (node) => node.getAttribute('data-session-id') === 'worker-thread-2',
         )?.textContent,
-    ).not.toContain('No progress events for');
+    ).not.toContain('No progress ·');
 
     fireEvent.click(
       screen.getByRole('button', { name: /Check the migration/ }),
@@ -724,7 +797,26 @@ describe('SessionsView', () => {
         detail: '<em>Stopped by request.</em>',
       },
     };
-    sessions = [parent, needsAttention, completed, noLifecycleState, stopped];
+    const failed = {
+      ...needsAttention,
+      threadId: 'failed',
+      displayTitle: 'Failed on the stream',
+      delegation: { ...needsAttention.delegation, taskId: 'task:failed' },
+      pendingReview: false,
+      lifecycleState: 'failed',
+      terminalAttribution: {
+        kind: 'engine_error',
+        detail: 'The response stream failed.',
+      },
+    };
+    sessions = [
+      parent,
+      needsAttention,
+      completed,
+      noLifecycleState,
+      stopped,
+      failed,
+    ];
 
     renderView();
 
@@ -733,35 +825,34 @@ describe('SessionsView', () => {
         .getAllByTestId('activity-row-meta')
         .find((node) => node.getAttribute('data-session-id') === sessionId)!;
 
-    expect(
-      within(statusFor('ready-parent'))
-        .getByRole('img')
-        .getAttribute('aria-label'),
-    ).toBe('Ready');
-    expect(
-      within(statusFor('needs-attention'))
-        .getByRole('img')
-        .getAttribute('aria-label'),
-    ).toBe('Needs attention');
-    expect(
-      within(statusFor('completed'))
-        .getByRole('img')
-        .getAttribute('aria-label'),
-    ).toBe('Completed');
-    expect(
-      within(statusFor('no-lifecycle-state'))
-        .getByRole('img')
-        .getAttribute('aria-label'),
-    ).toBe('Ready');
-    expect(
-      within(statusFor('stopped')).getByRole('img').getAttribute('aria-label'),
-    ).toBe('Stopped');
+    // The ladder's words, with the ladder's own (decorative) glyph beside
+    // them: the word carries the state, so the glyph is not a second name.
+    const stateOf = (sessionId: string) =>
+      within(statusFor(sessionId)).getByTestId('activity-row-state')
+        .textContent;
+    expect(stateOf('ready-parent')).toBe('Idle');
+    expect(stateOf('needs-attention')).toBe('Needs approval');
+    expect(stateOf('completed')).toBe('Done');
+    expect(stateOf('no-lifecycle-state')).toBe('Idle');
+    expect(stateOf('stopped')).toBe('Stopped');
     expect(
       within(statusFor('stopped')).getByTestId(
         'session-member-terminal-attribution',
       ).textContent,
     ).toBe('<em>Stopped by request.</em>');
     expect(statusFor('stopped').querySelector('em')).toBeNull();
+    // A failure's cause is the line's detail, attributed in place: the row's
+    // text carries it once, not as a second sr-only copy.
+    expect(stateOf('failed')).toBe('Failed · The response stream failed.');
+    expect(
+      within(statusFor('failed')).getByTestId(
+        'session-member-terminal-attribution',
+      ).textContent,
+    ).toBe('The response stream failed.');
+    expect(
+      statusFor('failed').textContent?.split('The response stream failed.')
+        .length,
+    ).toBe(2);
   });
 
   test('puts a mixed-state run in Needs you, counts the rendered run, and keeps its summary when collapsed', async () => {
@@ -898,12 +989,12 @@ describe('SessionsView', () => {
     ).toHaveLength(1);
     expect(
       row?.querySelector('.split-pane__item-subtitle')?.textContent,
-    ).toMatch(/^! Waiting on you · Claude Code · demo, \d+d ago$/);
+    ).toMatch(/^\s*Waiting on you · Claude Code · demo, .+$/);
     // The row is named by its title alone; its status line describes it.
     // (The leading space is the badge slot, empty when no PR conflicts.)
     const accessibleRow = screen.getByRole('button', {
       name: 'An independent session',
-      description: /^\s*! Waiting on you · Claude Code · demo, \d+d ago$/,
+      description: /^\s*Waiting on you · Claude Code · demo, .+$/,
     });
     fireEvent.click(accessibleRow);
     expect(accessibleRow.classList.contains('split-pane__item--selected')).toBe(
@@ -944,7 +1035,7 @@ describe('SessionsView', () => {
     expect(rows).toHaveLength(1);
     expect(
       rows[0].querySelector('.split-pane__item-subtitle')?.textContent,
-    ).toMatch(/^✓ Completed · Claude Code · 2 turns, /);
+    ).toMatch(/^\s*Done · Claude Code · 2 turns, /);
     expect(
       container.querySelector('.split-pane__section-header')?.textContent,
     ).toMatch(/ · 1$/);
@@ -1524,6 +1615,28 @@ describe('SessionsView', () => {
     });
   });
 
+  test('#3382: an open request title is shown in display form beside Approve', () => {
+    const RLO = String.fromCodePoint(0x202e);
+    feedEvents = [
+      {
+        provider: 'codex',
+        threadId: 'thread-alpha',
+        createdAt: '2026-06-28T00:00:03.000Z',
+        method: 'request.opened',
+        requestId: 'req-8',
+        requestType: 'approval',
+        title: `echo ${RLO}a\nrm -rf /`,
+      },
+    ];
+    renderView();
+    fireEvent.click(screen.getByRole('button', { name: /Worker task/ }));
+
+    const request = screen.getByTestId('session-request');
+    expect(request.querySelector('strong')!.textContent).toBe(
+      `echo a ${String.fromCodePoint(0x23ce)} rm -rf /`,
+    );
+  });
+
   test('surfaces an open request and resolves it', async () => {
     feedEvents = [
       {
@@ -1718,7 +1831,7 @@ describe('SessionsView', () => {
     expect(
       within(detail).queryByLabelText('Continue delegated task'),
     ).toBeNull();
-    expect(within(detail).getAllByText('Completed').length).toBe(1);
+    expect(within(detail).getAllByText('Done').length).toBe(1);
   });
 
   test("shows the failed session's own failure detail instead of a bare badge, with no live/stop contradiction", () => {
@@ -2552,6 +2665,32 @@ describe('SessionsView', () => {
     expect(within(detail).queryByTestId('session-request')).toBeNull();
   });
 
+  test('an attached session says Station is unreachable only once the hook reports an interruption, not for a retrying history blip', () => {
+    sessions[0] = {
+      ...sessions[0],
+      threadId: 'external:claude:terminal-1',
+      controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
+      delegation: undefined,
+    };
+    historyState = {
+      ...historyState,
+      error: new Error('Failed to fetch'),
+      historyRetrying: true,
+    };
+    const view = renderView('external:claude:terminal-1');
+    expect(screen.queryByText(/isn't responding/)).toBeNull();
+    view.unmount();
+
+    streamFlags = { connectionInterrupted: true };
+    renderView('external:claude:terminal-1');
+    expect(
+      screen.getByText(
+        "Station isn't responding right now — retrying automatically.",
+      ),
+    ).toBeTruthy();
+  });
+
   test('continues an attached session into the returned Station child and keeps the source read only', async () => {
     sessions[0] = {
       ...sessions[0],
@@ -2571,9 +2710,7 @@ describe('SessionsView', () => {
     });
 
     renderView('external:claude:terminal-1');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
 
     await waitFor(() =>
       expect(adoptSession).toHaveBeenCalledWith(
@@ -2593,10 +2730,50 @@ describe('SessionsView', () => {
     expect(screen.getByTestId('session-detail').textContent).toContain(
       'station-child',
     );
+    // Without Chat to hand over to, the confirmed message waits in the
+    // continued session's message box; nothing is sent from here.
+    expect(sendTurn).not.toHaveBeenCalled();
+    expect(
+      (screen.getByLabelText('Send input to session') as HTMLTextAreaElement)
+        .value,
+    ).toBe('carry on');
     expect(
       window.localStorage.getItem(ATTACHED_SESSION_CONTINUATION_STORAGE_KEY),
     ).toBeNull();
     expect(sessions[0]?.controlMode).toBe('read-only-attached');
+  });
+
+  test('with a chat dock, Send hands the exact draft to it and continues nothing here (#3454)', () => {
+    sessions[0] = {
+      ...sessions[0],
+      threadId: 'external:claude:handoff',
+      controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
+      delegation: undefined,
+    };
+    const onContinueInChat = vi.fn();
+    renderView(
+      'external:claude:handoff',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      onContinueInChat,
+    );
+    const composer = screen.getByRole('textbox', {
+      name: 'Message',
+    }) as HTMLTextAreaElement;
+    fireEvent.change(composer, { target: { value: 'My exact\nmessage' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(onContinueInChat).toHaveBeenCalledWith(
+      'external:claude:handoff',
+      'My exact\nmessage',
+    );
+    expect(onContinueInChat).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(adoptSession).not.toHaveBeenCalled();
+    expect(launchContinueSessionStarter).not.toHaveBeenCalled();
+    expect(composer.value).toBe('');
   });
 
   test('reuses the exact continuation operation after response loss and remount', async () => {
@@ -2619,17 +2796,13 @@ describe('SessionsView', () => {
         return child;
       });
     const first = renderView('external:claude:response-loss');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await screen.findByRole('alert');
     const operationId = adoptSession.mock.calls[0][0].operationId;
     first.unmount();
 
     renderView('external:claude:response-loss');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await waitFor(() => expect(adoptSession).toHaveBeenCalledTimes(2));
     expect(adoptSession.mock.calls[1][0].operationId).toBe(operationId);
   });
@@ -2649,9 +2822,7 @@ describe('SessionsView', () => {
       controlMode: 'station-owned',
     });
     renderView('external:claude:later-continuation');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await waitFor(() => expect(adoptSession).toHaveBeenCalledTimes(1));
     expect(adoptSession).toHaveBeenCalledWith({
       sourceThreadId: 'external:claude:later-continuation',
@@ -2674,9 +2845,7 @@ describe('SessionsView', () => {
     );
 
     renderView('external:claude:corrupt-continuation');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
 
     await screen.findByText(
       "Couldn't safely start the continuation. Browser storage is unavailable or corrupt, so retrying could duplicate it.",
@@ -2703,10 +2872,10 @@ describe('SessionsView', () => {
     });
 
     renderView('external:claude:unsafe-retry');
+    continueFromComposer();
     const continueButton = screen.getByRole('button', {
-      name: 'Continue in Station',
+      name: 'Continue and send',
     });
-    fireEvent.click(continueButton);
 
     await screen.findByText(
       'Station says this continuation cannot be retried safely from this state.',
@@ -2760,16 +2929,18 @@ describe('SessionsView', () => {
       });
 
     renderView(first.threadId);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await screen.findByText(
       'Station says this continuation cannot be retried safely from this state.',
     );
 
     fireEvent.click(screen.getByRole('button', { name: /Attached B/ }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+      target: { value: 'carry on' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
     const secondButton = screen.getByRole('button', {
-      name: 'Continue in Station',
+      name: 'Continue and send',
     });
     expect(secondButton.getAttribute('disabled')).toBeNull();
     fireEvent.click(secondButton);
@@ -2820,9 +2991,7 @@ describe('SessionsView', () => {
     });
 
     renderView('external:claude:cleanup-failure');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
 
     await waitFor(() =>
       expect(screen.getByLabelText('Send input to session')).toBeTruthy(),
@@ -2852,17 +3021,13 @@ describe('SessionsView', () => {
     getStarterWork.mockRejectedValueOnce(new Error('status response lost'));
     adoptSession.mockResolvedValue(child);
     const first = renderView('external:claude:status-loss');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await screen.findByRole('alert');
     expect(adoptSession).not.toHaveBeenCalled();
     first.unmount();
 
     renderView('external:claude:status-loss');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await waitFor(() => expect(adoptSession).toHaveBeenCalledTimes(1));
     expect(adoptSession.mock.calls[0][0]).toMatchObject({
       starterId: 'continue-session',
@@ -2885,7 +3050,7 @@ describe('SessionsView', () => {
       ),
     ).toBeTruthy();
     expect(
-      within(detail).queryByRole('button', { name: 'Continue in Station' }),
+      within(detail).queryByRole('textbox', { name: 'Message' }),
     ).toBeNull();
     expect(
       within(detail).queryByText('Started in Claude Code · Read only'),
@@ -2918,9 +3083,7 @@ describe('SessionsView', () => {
     });
 
     renderView('external:claude:terminal-mobile');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await waitFor(() => expect(refetchSessions).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole('button', { name: /Back to list/ }));
     expect(screen.queryByTestId('session-detail')).toBeNull();
@@ -2957,9 +3120,7 @@ describe('SessionsView', () => {
     refetchSessions.mockImplementation(() => pendingRefetch.promise);
 
     renderView('external:claude:terminal-pending');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await screen.findByRole('button', { name: 'Continuing…' });
     fireEvent.click(screen.getByRole('button', { name: /Back to list/ }));
     expect(screen.queryByTestId('session-detail')).toBeNull();
@@ -3008,9 +3169,7 @@ describe('SessionsView', () => {
     });
 
     renderView('external:claude:terminal-mobile');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await waitFor(() => expect(refetchSessions).toHaveBeenCalledTimes(1));
 
     fireEvent.click(
@@ -3058,9 +3217,7 @@ describe('SessionsView', () => {
     refetchSessions.mockImplementation(() => pendingRefetch.promise);
 
     renderView('external:claude:terminal-mobile');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await screen.findByRole('button', { name: 'Continuing…' });
     fireEvent.click(
       screen.getByRole('button', { name: /Worker task.*sibling/ }),
@@ -3662,6 +3819,11 @@ describe('SessionsView', () => {
         {
           ...sessions[0],
           threadId: 'peer-delegation:847',
+          // The real writer's shape: the peer's target as the agent slug and
+          // the peer's conversation id.
+          assignedAgentSlug: 'codex',
+          conversationId: 'task-peer-847',
+          controlMode: 'station-owned',
           displayTitle: 'Run the peer checks',
           lifecycleState: 'queued',
           hasActiveTurn: false,
@@ -3681,6 +3843,8 @@ describe('SessionsView', () => {
       expect(rowNames(container)).toContain('Run the peer checks');
       // The paired Station owns the turn: no local Stop… on its row.
       expect(rowMenuItems('Run the peer checks')).not.toContain('Stop…');
+      // Its agent slug and conversation are the peer's: no local chat.
+      expect(rowMenuItems('Run the peer checks')).not.toContain('Open in chat');
     });
 
     test('every row carries a relative time', () => {
@@ -3694,7 +3858,7 @@ describe('SessionsView', () => {
 
       const { container } = renderView();
 
-      expect(listRows(container)[0].textContent).toContain('3h ago');
+      expect(listRows(container)[0].textContent).toContain('3h');
     });
 
     test('lists the newest session first, against a server list that arrives oldest-first', () => {
@@ -3819,15 +3983,14 @@ describe('SessionsView', () => {
       const { container } = renderView();
 
       // The live lanes have no members here and therefore emit nothing at all.
-      // The six-hour-old row reads under the dated history stream, whose
-      // sub-section depends on the local hour the suite runs at.
-      const headings = sectionHeadings(container);
-      expect(headings.slice(0, 2)).toEqual([
+      // The six-hour-old row reads under "Earlier", the lane's one name on
+      // every surface — not a dated sub-section ("Earlier today",
+      // "Yesterday", …) that renamed it here alone (design round 2026-10, C2).
+      expect(sectionHeadings(container)).toEqual([
         'Needs you · 2',
-        'Recently finished · 1',
+        'Just finished · 1',
+        'Earlier · 1',
       ]);
-      expect(['Earlier today · 1', 'Yesterday · 1']).toContain(headings[2]);
-      expect(headings).toHaveLength(3);
       expect(rowNames(container)).toEqual([
         'Waiting on a decision',
         'Also waiting on you',
@@ -3849,22 +4012,19 @@ describe('SessionsView', () => {
      * recomputes the map it checks agrees by construction.
      */
     test('no rendered row contradicts the section heading above it', () => {
-      const FINISHED = ['Completed', 'Stopped', 'Failed'];
+      const FINISHED = ['Done', 'Stopped', 'Failed'];
       const LANE_VOCABULARY: Record<string, string[]> = {
         'Needs you': [
-          'Needs attention',
+          'Needs approval',
+          'Needs answer',
           'Waiting on you',
-          'Review pending',
+          'Interrupted',
           'Blocked',
         ],
         Running: ['Running'],
-        Idle: ['Ready', 'Queued', "Can't answer here"],
-        'Recently finished': FINISHED,
-        // The history lane's dated sub-sections.
-        'Earlier today': FINISHED,
-        Yesterday: FINISHED,
-        'This week': FINISHED,
-        Older: FINISHED,
+        Idle: ['Idle', 'Elsewhere'],
+        'Just finished': FINISHED,
+        Earlier: FINISHED,
       };
 
       sessions = [
@@ -3968,12 +4128,13 @@ describe('SessionsView', () => {
       // while checking nothing.
       expect(rendered).toHaveLength(7);
       const headings = new Set(rendered.map((entry) => entry.heading));
-      expect(
-        [...headings].filter(
-          (heading) => heading !== 'Earlier today' && heading !== 'Yesterday',
-        ),
-      ).toEqual(['Needs you', 'Running', 'Idle', 'Recently finished']);
-      expect(headings.size).toBe(5);
+      expect([...headings]).toEqual([
+        'Needs you',
+        'Running',
+        'Idle',
+        'Just finished',
+        'Earlier',
+      ]);
 
       for (const entry of rendered) {
         const permitted = LANE_VOCABULARY[entry.heading];
@@ -3988,10 +4149,10 @@ describe('SessionsView', () => {
       const rowText = (name: string) =>
         listRows(container).find((row) => row.textContent?.includes(name))
           ?.textContent ?? '';
-      expect(rowText('Attached but idle')).toContain('Ready');
-      expect(rowText('Review pending mid-turn')).toContain('Needs attention');
-      expect(rowText('Closed mid-run')).toContain('Completed');
-      expect(rowText('Stranded request')).toContain("Can't answer here");
+      expect(rowText('Attached but idle')).toContain('Idle');
+      expect(rowText('Review pending mid-turn')).toContain('Needs approval');
+      expect(rowText('Closed mid-run')).toContain('Done');
+      expect(rowText('Stranded request')).toContain('Elsewhere');
       // The explicit stopped outcome must not fold into the successful word.
       expect(rowText('Canceled run')).toContain('Stopped');
     });
@@ -4296,7 +4457,7 @@ describe('SessionsView', () => {
       expect(time?.textContent).toBe('3d');
       expect(
         within(row).getByTestId('activity-row-meta').textContent,
-      ).toContain('3d ago');
+      ).toContain('3d');
     });
 
     test('discards a Draft through the server command; only Drafts offer it', async () => {

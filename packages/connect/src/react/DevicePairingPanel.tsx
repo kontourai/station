@@ -23,6 +23,7 @@ import {
   describePairingRequestFailure,
   encodeDevicePairingPayload,
   isTransportFailure,
+  knownOperatorCli,
   loadPendingExchange,
   type PendingPairingExchange,
   requestCurrentStationAccess,
@@ -58,6 +59,14 @@ import {
 } from './HttpConnectionConsent';
 import { QRDisplay } from './QRDisplay';
 import { QRScanner } from './QRScanner';
+import {
+  defaultKeptScope,
+  elevatedLabels,
+  FULL_DEVICE_ACCESS_SCOPE,
+  keptScopeForApproval,
+  RequestedScopeChecklist,
+  requestedScopeTokens,
+} from './RequestedAccess';
 
 export interface PairingResult {
   endpoint: string;
@@ -166,6 +175,8 @@ export function JoinDevicePairingPanel({
   onCancel,
   onApprovalPending,
   initialMode = 'scan',
+  initialManualEndpoint = '',
+  initialManualCode = '',
   originIsStation = true,
   hostAppName,
   directEndpoint,
@@ -184,6 +195,9 @@ export function JoinDevicePairingPanel({
    */
   onApprovalPending?: (pending: PendingPairingExchange) => void;
   initialMode?: 'direct' | 'scan' | 'manual';
+  /** Destination and short code already collected by the host setup journey. */
+  initialManualEndpoint?: string;
+  initialManualCode?: string;
   /**
    * True when the page was served by a Station host, so `window.location.origin`
    * is a usable direct-request target (the web case). Defaults to true to keep
@@ -234,8 +248,8 @@ export function JoinDevicePairingPanel({
   // otherwise resolve between focus/selection and the input event, replacing
   // the selected value so the user's text is appended to the detected label.
   const deviceNameOwnedByUserRef = useRef(false);
-  const [manualEndpoint, setManualEndpoint] = useState('');
-  const [manualCode, setManualCode] = useState('');
+  const [manualEndpoint, setManualEndpoint] = useState(initialManualEndpoint);
+  const [manualCode, setManualCode] = useState(initialManualCode);
   const [reviewOffer, setReviewOffer] = useState<ScannedPairingOffer | null>(
     () =>
       initialPairingPayload
@@ -419,6 +433,12 @@ export function JoinDevicePairingPanel({
 
   const begin = async (offer: ScannedPairingOffer) => {
     if (!httpConsent.allowed) return;
+    if (offer.kind === 'delegation') {
+      setError(
+        'This invitation is for a peer Station. Use Connect a Station to request peer access; it cannot pair this device.',
+      );
+      return;
+    }
     setError(null);
     setWaitingOnConnection(false);
     try {
@@ -428,6 +448,10 @@ export function JoinDevicePairingPanel({
         proof: offer.challenge,
         deviceName,
       });
+      if (request.kind === 'delegation')
+        throw new Error(
+          'This code grants peer Station access and cannot pair this device.',
+        );
       const nextPending: PendingPairingExchange = {
         // station#1876: stamped so the app-level gate can show a real
         // progress bar during the approval wait instead of a spinner.
@@ -473,6 +497,10 @@ export function JoinDevicePairingPanel({
         proof: manualCode.trim().toUpperCase(),
         deviceName,
       });
+      if (request.kind === 'delegation')
+        throw new Error(
+          'This code grants peer Station access and cannot pair this device.',
+        );
       const nextPending: PendingPairingExchange = {
         // station#1876: stamped so the app-level gate can show a real
         // progress bar during the approval wait instead of a spinner.
@@ -550,6 +578,13 @@ export function JoinDevicePairingPanel({
       const request = await requestCurrentStationAccess({
         endpoint,
         deviceName,
+        // A device asks for everything a device can have, never the default
+        // grant's `access:manage`; the operator limits it when approving. An
+        // account-bound guest request asks for the plain Standard preset:
+        // its elevated grants are the operator's call.
+        scope: accountBoundDeviceRequest
+          ? pairingScopePresetString(DEFAULT_PAIRING_SCOPE_PRESET)
+          : FULL_DEVICE_ACCESS_SCOPE,
         ...(accountBoundDeviceRequest
           ? {
               clientInstanceId: accountBoundDeviceRequest.clientInstanceId,
@@ -600,6 +635,9 @@ export function JoinDevicePairingPanel({
           ? canUseBrowserSession(endpoint)
           : originIsStation || canUseBrowserSession(endpoint),
         requestKind: 'direct',
+        ...(knownOperatorCli(request.operatorCli)
+          ? { operatorCli: knownOperatorCli(request.operatorCli) }
+          : {}),
         ...(accountBoundDeviceRequest
           ? {
               clientInstanceId: accountBoundDeviceRequest.clientInstanceId,
@@ -636,7 +674,7 @@ export function JoinDevicePairingPanel({
 
   if (pending) {
     const target = directLabel || 'this Station';
-    const approveCommand = `station environment access approve ${pending.requestId}`;
+    const approveCommand = `${pending.operatorCli ?? 'station'} environment access approve ${pending.requestId}`;
     return (
       <div className="pairing-wait">
         <strong className="pairing-wait__status" role="status">
@@ -754,6 +792,12 @@ export function JoinDevicePairingPanel({
       <div style={{ display: 'grid', gap: 12 }}>
         <strong>Review pairing offer</strong>
         <HttpConnectionConsent consent={httpConsent} />
+        {reviewOffer.kind === 'delegation' ? (
+          <p role="alert">
+            This invitation is for a peer Station. Use Connect a Station; it
+            cannot pair this device.
+          </p>
+        ) : null}
         <span style={{ color: 'var(--text-secondary, #999)', fontSize: 13 }}>
           Backend ID: {reviewOffer.environmentId}. Endpoint:{' '}
           {reviewOffer.endpoint}. Expires:{' '}
@@ -761,7 +805,7 @@ export function JoinDevicePairingPanel({
         </span>
         <button
           type="button"
-          disabled={!httpConsent.allowed}
+          disabled={!httpConsent.allowed || reviewOffer.kind === 'delegation'}
           onClick={() => void begin(reviewOffer)}
           style={primaryBtnStyle}
         >
@@ -964,6 +1008,30 @@ export function JoinDevicePairingPanel({
   );
 }
 
+/**
+ * What to do when this session may not approve: keep the elevated grants out
+ * (when it tried to keep one), or run the exact approval on the host, with
+ * the same kept scope, so the command never grants more than was chosen.
+ */
+export function approvalRefusalRemedy(input: {
+  deviceName: string;
+  requestId: string;
+  operatorCli: string;
+  /** The kept scope sent with the approval, when the approver trimmed it. */
+  keptScope?: string;
+  /** The elevated permissions the refused approval kept, by label. */
+  keptElevated: readonly string[];
+  extraFlag?: string;
+}): string {
+  const scopeFlag = input.keptScope
+    ? ` --scope=${input.keptScope.split(' ').join(',')}`
+    : '';
+  const command = `${input.operatorCli} environment access approve ${input.requestId}${scopeFlag} --force${input.extraFlag ?? ''}`;
+  return input.keptElevated.length > 0
+    ? `Only this Station's operator can grant ${input.keptElevated.join(' or ')}. Use Limit access to leave ${input.keptElevated.length > 1 ? 'them' : 'it'} out of “${input.deviceName}”'s access, or run this on the Station: ${command}`
+    : `Approving “${input.deviceName}” needs a trusted Station session. Run this on the Station: ${command}`;
+}
+
 function authHeaders(credential: string | undefined): HeadersInit {
   return credential ? { Authorization: `Bearer ${credential}` } : {};
 }
@@ -1156,6 +1224,13 @@ export function HostDevicePairingPanel({
   );
   const [clientChannel, setClientChannel] =
     useState<Exclude<PairingDeepLinkChannel, 'dev'>>(initialClientChannel);
+  // Per pending device request: what the approver keeps of what it asked
+  // for. Absent means everything it asked for.
+  const [keptScopes, setKeptScopes] = useState<
+    ReadonlyMap<string, ReadonlySet<PairingScope>>
+  >(new Map());
+  const keptScopeOf = (request: DevicePairingRequest) =>
+    keptScopes.get(request.requestId) ?? defaultKeptScope(request.scope);
   const [requestActionIds, setRequestActionIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
@@ -1190,6 +1265,26 @@ export function HostDevicePairingPanel({
         headers: { ...authHeaders(getCredential()), ...init.headers },
       }),
     [apiBase, getCredential, request],
+  );
+
+  // #2898: "Stop now" on a session the revocation left running unconfined.
+  const stopSession = useCallback(
+    async (sessionId: string) => {
+      try {
+        const response = await authenticatedFetch(
+          '/api/orchestration/commands',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: 'stopSession', threadId: sessionId }),
+          },
+        );
+        return response.ok;
+      } catch {
+        return false;
+      }
+    },
+    [authenticatedFetch],
   );
 
   const refresh = useCallback(async () => {
@@ -1236,20 +1331,30 @@ export function HostDevicePairingPanel({
     try {
       const bindPerson = personBindingRequests.has(request.requestId);
       const bindAccount = accountBindingRequests.has(request.requestId);
+      // An account binding confirms the request as asked; trimming is for an
+      // ordinary device approval.
+      const scope =
+        request.kind !== 'delegation' && !bindAccount
+          ? keptScopeForApproval(request.scope, keptScopeOf(request))
+          : undefined;
+      const body = {
+        ...(bindAccount
+          ? { bindAccountIdentity: true }
+          : bindPerson
+            ? { bindVerifiedIdentity: true }
+            : {}),
+        ...(scope !== undefined ? { scope } : {}),
+      };
       const response = await authenticatedFetch(
         `/api/pairing/requests/${request.requestId}${
           action === 'approve' ? '/confirm' : ''
         }`,
         {
           method: action === 'approve' ? 'POST' : 'DELETE',
-          ...(action === 'approve' && (bindPerson || bindAccount)
+          ...(action === 'approve' && Object.keys(body).length > 0
             ? {
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(
-                  bindAccount
-                    ? { bindAccountIdentity: true }
-                    : { bindVerifiedIdentity: true },
-                ),
+                body: JSON.stringify(body),
               }
             : {}),
         },
@@ -1265,6 +1370,18 @@ export function HostDevicePairingPanel({
           );
           return;
         }
+        // A refused approval names this host's own CLI (a Station that
+        // predates it, or any other answer, falls back to `station`).
+        const operatorCli =
+          response.status === 403 && action === 'approve'
+            ? knownOperatorCli(
+                (
+                  (await response.json().catch(() => null)) as {
+                    operatorCli?: unknown;
+                  } | null
+                )?.operatorCli,
+              )
+            : undefined;
         setError(
           response.status === 401
             ? "This device's access to this Station needs review. Reconnect it, then try again."
@@ -1275,7 +1392,29 @@ export function HostDevicePairingPanel({
               // remedy is a different, credentialed session, so name the one
               // that always exists on the host.
               response.status === 403 && action === 'approve'
-              ? `Approving “${request.deviceName}” needs a trusted Station session. Run this on the Station: station environment access approve ${request.requestId} --force${bindPerson ? ' --bind-person' : bindAccount ? ' --bind-account' : ''}`
+              ? approvalRefusalRemedy({
+                  deviceName: request.deviceName,
+                  requestId: request.requestId,
+                  operatorCli: operatorCli ?? 'station',
+                  keptScope:
+                    request.kind !== 'delegation' && !bindAccount
+                      ? keptScopeForApproval(
+                          request.scope,
+                          keptScopeOf(request),
+                        )
+                      : undefined,
+                  // Unticking helps only an ordinary approval; a person or
+                  // account binding is refused for its own reason.
+                  keptElevated:
+                    request.kind !== 'delegation' && !bindAccount && !bindPerson
+                      ? elevatedLabels(keptScopeOf(request))
+                      : [],
+                  extraFlag: bindPerson
+                    ? ' --bind-person'
+                    : bindAccount
+                      ? ' --bind-account'
+                      : '',
+                })
               : response.status === 404 || response.status === 410
                 ? 'That access request has already expired or been removed.'
                 : `This Station could not ${action} that access request. Try again.`,
@@ -1505,6 +1644,11 @@ export function HostDevicePairingPanel({
                 }}
               >
                 <strong>{request.deviceName}</strong>
+                <span>
+                  {request.kind === 'delegation'
+                    ? 'Peer Station access'
+                    : 'Device access'}
+                </span>
                 {request.source === 'tailnet' && request.requester && (
                   <span
                     style={{
@@ -1516,9 +1660,33 @@ export function HostDevicePairingPanel({
                   </span>
                 )}
               </div>
-              <span style={{ color: 'var(--text-secondary, #999)' }}>
-                Requests {describeDeviceScope(request.scope)}
-              </span>
+              {request.kind === 'delegation' ? (
+                <span style={{ color: 'var(--text-secondary, #999)' }}>
+                  Lets this Station send work here. Project resource consent is
+                  separate.
+                </span>
+              ) : (
+                <RequestedScopeChecklist
+                  deviceName={request.deviceName}
+                  requestedScope={request.scope}
+                  // An account binding confirms the request as asked, so its
+                  // list shows everything kept, not an earlier untick.
+                  kept={
+                    accountBindingRequests.has(request.requestId)
+                      ? new Set(requestedScopeTokens(request.scope))
+                      : keptScopeOf(request)
+                  }
+                  disabled={
+                    requestActionIds.has(request.requestId) ||
+                    accountBindingRequests.has(request.requestId)
+                  }
+                  onChange={(next) =>
+                    setKeptScopes((current) =>
+                      new Map(current).set(request.requestId, next),
+                    )
+                  }
+                />
+              )}
               <small style={{ color: 'var(--text-secondary, #999)' }}>
                 {request.source === 'tailnet'
                   ? `Verified by Tailscale${
@@ -2047,6 +2215,7 @@ export function HostDevicePairingPanel({
         <FullAccessRevocationNotice
           outcome={revocation}
           onDismiss={() => setRevocation(null)}
+          onStopSession={stopSession}
         />
       )}
       {error && (

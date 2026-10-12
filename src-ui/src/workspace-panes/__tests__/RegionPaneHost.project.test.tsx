@@ -23,7 +23,7 @@ import {
   within,
 } from '@testing-library/react';
 import { useEffect } from 'react';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, expect, test, vi } from 'vitest';
 import { RegionShells } from '../../app-shell/RegionShells';
 import { KeyboardShortcutsProvider } from '../../contexts/KeyboardShortcutsContext';
 import { NavigationProvider } from '../../contexts/NavigationContext';
@@ -38,6 +38,10 @@ import {
   writeBrowserPreviewPaneState,
 } from '../browserPreviewPaneStateStorage';
 import { writeFilePreviewPaneState } from '../filePreviewPaneStateStorage';
+import {
+  REGION_HOST_WARM_TIMEOUT_MS,
+  warmRegionHostImports,
+} from './warmRegionHostImports';
 
 vi.mock('../../views/SessionsView', () => ({
   SessionsView: () => <div data-testid="sessions-view" />,
@@ -91,9 +95,15 @@ vi.mock('../../contexts/ProjectsContext', () => ({
  * The registry's one seam. The stub renders the instance it was handed, so
  * every assertion about "which project the pane is bound to" reads the
  * host's real derivation, not the stub's.
+ *
+ * The real registry returns the SAME component for a descriptor on every
+ * call, so the stub must too: a component built per call is a new element
+ * type on each host re-render, which remounts the pane and strands any
+ * element a test already holds. Under load that re-render lands between the
+ * test's find and its assertions.
  */
-vi.mock('../builtinWorkspacePaneRegistry', () => ({
-  getBuiltinWorkspacePaneRenderer: () =>
+const CodingStub = vi.hoisted(
+  () =>
     function CodingStub({ instance }: { instance: WorkspacePaneInstance }) {
       return (
         <p
@@ -105,6 +115,9 @@ vi.mock('../builtinWorkspacePaneRegistry', () => ({
         </p>
       );
     },
+);
+vi.mock('../builtinWorkspacePaneRegistry', () => ({
+  getBuiltinWorkspacePaneRenderer: () => CodingStub,
 }));
 
 const STORAGE_PREFIX = 'station:workspace-pane-host:v2:ambient:';
@@ -128,6 +141,9 @@ function currentModel(): ReturnType<typeof useRegionModel> {
   if (!model) throw new Error('region model probe never rendered');
   return model;
 }
+
+// First-mount import cost is paid here, once, not inside the first test's waits.
+beforeAll(warmRegionHostImports, REGION_HOST_WARM_TIMEOUT_MS);
 
 beforeEach(() => {
   model = null;
@@ -217,13 +233,15 @@ function tabs(region: string): [string, string | null][] {
 }
 
 /**
- * The region host, its chrome bar and its built-in pane all arrive through
- * dynamic imports, and the FIRST mount in a file pays their transform cost in
- * this runner — measurably more than the 1s `waitFor` default once #2049 put
- * the file-preview state modules on that chain. Waiting longer here is a
- * runner fact, not a product one: every later assertion is immediate.
+ * The region host, its chrome bar and its built-in pane arrive through staged
+ * dynamic imports. `beforeAll` warms them (`warmRegionHostImports`), so this
+ * wait normally measures rendering only. The 5s bound stays as the hang guard
+ * for a mount that never produces the chat pane; it is not the import budget.
  */
 async function awaitChatPane() {
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
   await waitFor(() => expect(model).not.toBeNull());
   await waitFor(
     () => expect(screen.queryByTestId('ambient-chat-occupant')).not.toBeNull(),
@@ -301,6 +319,24 @@ test('a Terminal placed beside Chat is the dock project’s: rendered, persisted
       selected: 'coding:terminal',
     }),
   );
+});
+
+/**
+ * A host re-render must not remount the pane: the registry hands back one
+ * component per descriptor, and a remount strands any element a caller holds
+ * (it also restarts a real terminal). A registry stub that builds a component
+ * per call fails here deterministically, where it otherwise failed only when
+ * a re-render landed between a test's find and its assertions under load.
+ */
+test('a host re-render keeps the mounted coding pane element connected', async () => {
+  deviceSettingsStore.set('chatDockProjectSlug', 'alpha');
+  const { pane } = await renderWithChatAndTerminal();
+  act(() => deviceSettingsStore.set('chatDockProjectSlug', 'beta'));
+  await waitFor(() =>
+    expect(screen.getByTestId('coding-pane').dataset.project).toBe('beta-id'),
+  );
+  expect(pane.isConnected).toBe(true);
+  expect(screen.getByTestId('coding-pane')).toBe(pane);
 });
 
 /**
@@ -652,7 +688,6 @@ test('while the dock’s project read is in flight the region waits and writes n
  * clears the binding.
  */
 test('a dock binding naming a project that no longer exists falls back to the route’s project', async () => {
-  deviceSettingsStore.set('chatDockProjectSlug', 'deleted-project');
   deviceSettingsStore.set('regionArrangement', {
     version: 1,
     regions: {
@@ -679,6 +714,9 @@ test('a dock binding naming a project that no longer exists falls back to the ro
     maximize: null,
     dockSlotPlacement: null,
   });
+  // Project entry chooses its chat default; restore the stale saved binding
+  // after that transition so this fixture reaches the read-only fallback.
+  deviceSettingsStore.set('chatDockProjectSlug', 'deleted-project');
   renderShells();
   await waitFor(() => expect(model).not.toBeNull());
   await waitFor(() =>
@@ -795,12 +833,14 @@ test('a pull request and a file preview render as their own dock tabs, named by 
     ['#2049', 'false'],
     ['Header.tsx', 'true'],
   ]);
-  const pane = await screen.findByTestId('coding-pane');
-  expect(pane.closest('.chat-dock')).toBe(shell('right'));
-  expect(pane.dataset.descriptor).toBe(
-    'pane:builtin:workspace-preview:file-preview',
-  );
-  expect(pane.dataset.project).toBe('alpha-id');
+  await waitFor(() => {
+    const pane = within(shell('right')).getByTestId('coding-pane');
+    expect(pane.closest('.chat-dock')).toBe(shell('right'));
+    expect(pane.dataset.descriptor).toBe(
+      'pane:builtin:workspace-preview:file-preview',
+    );
+    expect(pane.dataset.project).toBe('alpha-id');
+  });
 
   act(() => currentModel().selectPane('right', PR_PANE_ID));
   await act(async () => {

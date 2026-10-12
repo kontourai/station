@@ -40,6 +40,29 @@ function resolvePluginSourceForStation(
   return existsSync(localSource) ? localSource : source;
 }
 
+/**
+ * The error a plugin command throws when its Station request never got an
+ * answer. A refused or failed connection is genuinely "not reachable", and
+ * gets the lifecycle-specific wording. A deadline miss is not: Station
+ * accepted the connection and was still working, and a timed-out write may
+ * already have been applied (#369). That error passes through unchanged so
+ * `explainRequestFailure` still sees it and reports a timeout, indeterminate
+ * for a write, instead of a false "not reachable" that invites a blind retry.
+ */
+function stationRequestFailure(
+  error: unknown,
+  apiBase: string,
+  requirement: string,
+): Error {
+  if (error instanceof StationRequestTimeoutError) return error;
+  return new Error(`Station at ${apiBase} is not reachable. ${requirement}`, {
+    cause: error,
+  });
+}
+
+const PLUGIN_LIFECYCLE_REQUIREMENT =
+  'Plugin lifecycle commands require a running Station so CLI and API mutations share one registry transaction.';
+
 function resolvePluginTarget(parsed: ParsedCoreArgs): ResolvedApiBase {
   const target = resolveApiBaseDetailed(parsed);
   configureApiCredential(parsed, target.apiBase);
@@ -63,10 +86,7 @@ async function pluginRequest<T>(
       },
     });
   } catch (error) {
-    throw new Error(
-      `Station at ${apiBase} is not reachable. Plugin lifecycle commands require a running Station so CLI and API mutations share one registry transaction.`,
-      { cause: error },
-    );
+    throw stationRequestFailure(error, apiBase, PLUGIN_LIFECYCLE_REQUIREMENT);
   }
 
   const payload = (await response.json()) as T & {
@@ -135,9 +155,7 @@ async function previewPlugin(
         source: resolvePluginSourceForStation(source, target),
       }),
       // POST to carry the source; the route inspects a manifest and installs
-      // nothing. (Today `pluginRequest` rewraps every transport failure, so no
-      // reporter sees this error's classification — see station#3402's
-      // follow-up. The declaration belongs with the operation regardless.)
+      // nothing, so a timeout here reports as a read, not a write.
       readOnly: true,
     },
     target,
@@ -389,9 +407,10 @@ async function installedPlugins(
     ) {
       throw error;
     }
-    throw new Error(
-      `Station at ${target.apiBase} is not reachable. Plugin lifecycle commands require a running Station so CLI and API mutations share one registry transaction.`,
-      { cause: error },
+    throw stationRequestFailure(
+      error,
+      target.apiBase,
+      PLUGIN_LIFECYCLE_REQUIREMENT,
     );
   }
 }
@@ -405,16 +424,51 @@ export async function list(parsed: ParsedCoreArgs = NO_FLAGS): Promise<void> {
   console.log(JSON.stringify(plugins, null, 2));
 }
 
+/**
+ * A lifecycle change that withdrew plugin command effects commits at once but
+ * is not finished until every captured effect settles (kontourai/station#1419).
+ * Station answers 202 with the withdrawal; say so rather than "done".
+ */
+interface CommandEffectsWithdrawal {
+  withdrawalId: string;
+  status: string;
+  outstanding: number;
+}
+
+function commandEffectsNote(
+  withdrawal: CommandEffectsWithdrawal | undefined,
+  unavailable?: boolean,
+): string {
+  if (unavailable)
+    return ' Its plugin command effects could not be recorded, so completion cannot be confirmed.';
+  if (!withdrawal || withdrawal.status === 'completed') return '';
+  const effects =
+    withdrawal.outstanding === 1
+      ? '1 plugin command effect is'
+      : `${withdrawal.outstanding} plugin command effects are`;
+  return withdrawal.status === 'winding-down'
+    ? ` ${effects} still winding down (withdrawal ${withdrawal.withdrawalId}).`
+    : ` ${effects} unresolved (${withdrawal.status}, withdrawal ${withdrawal.withdrawalId}).`;
+}
+
 export async function remove(
   name: string,
   parsed: ParsedCoreArgs = NO_FLAGS,
 ): Promise<void> {
-  await pluginRequest<{ success: boolean }>(
-    parsed,
-    `/${encodeURIComponent(name)}`,
-    { method: 'DELETE' },
+  const result = await pluginRequest<{
+    success: boolean;
+    commandEffects?: CommandEffectsWithdrawal;
+    commandEffectsUnavailable?: boolean;
+  }>(parsed, `/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  const note = commandEffectsNote(
+    result.commandEffects,
+    result.commandEffectsUnavailable,
   );
-  console.log(`✅ Removed ${name} through Station`);
+  console.log(
+    note
+      ? `✅ Removed ${name} through Station.${note}`
+      : `✅ Removed ${name} through Station`,
+  );
 }
 
 export async function info(
@@ -441,10 +495,20 @@ export async function update(
   const result = await pluginRequest<{
     success: boolean;
     plugin?: { name?: string; version?: string };
+    commandEffects?: CommandEffectsWithdrawal;
+    commandEffectsUnavailable?: boolean;
   }>(parsed, `/${encodeURIComponent(name)}/update`, { method: 'POST' });
   const updatedName = result.plugin?.name ?? name;
   const version = result.plugin?.version ? `@${result.plugin.version}` : '';
-  console.log(`✅ Updated ${updatedName}${version} through Station`);
+  const note = commandEffectsNote(
+    result.commandEffects,
+    result.commandEffectsUnavailable,
+  );
+  console.log(
+    note
+      ? `✅ Updated ${updatedName}${version} through Station.${note}`
+      : `✅ Updated ${updatedName}${version} through Station`,
+  );
 }
 
 export async function registry(registryUrl?: string): Promise<void> {
@@ -468,9 +532,10 @@ export async function installRegistryPlugin(
       },
     );
   } catch (error) {
-    throw new Error(
-      `Station at ${apiBase} is not reachable. Registry plugin installation requires the canonical Station lifecycle.`,
-      { cause: error },
+    throw stationRequestFailure(
+      error,
+      apiBase,
+      'Registry plugin installation requires the canonical Station lifecycle.',
     );
   }
   const result = (await response.json()) as {

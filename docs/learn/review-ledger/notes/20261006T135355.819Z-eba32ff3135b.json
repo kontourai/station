@@ -1,0 +1,7 @@
+{
+  "revision": "1d39473c8e111a17cf86a42b4660f68b1e5ab4fc",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"#3391 fix round: the run-locations query refetches on mount after 30s and keys under 'project-run-locations' (not persisted to IndexedDB, unlike 'projects'); station-control-policy.ts now leaves GET /api/projects/run-locations unmapped for every tool caller although /api/projects/:slug would capture it. Searched this document for Project list, run-location, query-persistence and station-control route claims; none are affected.","inputs":["docs/reference/api.md","packages/sdk/src/queries.ts"]}
+  ]
+}

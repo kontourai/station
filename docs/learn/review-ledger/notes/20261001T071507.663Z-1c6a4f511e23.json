@@ -1,0 +1,7 @@
+{
+  "revision": "b03622e2007e22ff75c7280a41396526c75a7b6e",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"#3071 review-fix round. Changed inputs: orchestration-service.ts (request inspection reports a request settled by its turn's abort as resolved; respondToRequest refuses a resolved or settled request with request_event_changed before adapter resolution); orchestration-session-state.ts (summary openRequestIds/blockingOpenRequestIds leave out requests settled by their turn's abort). The page lists respondToRequest among the decision functions and routes its behavior to the Session API; RespondToRequestInput is unchanged (expectedRequestEventId already existed). inputOrigin derivation is untouched by the session-state delta. No prose change.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

@@ -12,6 +12,10 @@ import { conversationPartToContentParts } from '../../hooks/orchestration/conver
 import { useSessionTranscriptEvents } from '../../hooks/orchestration/useSessionTranscriptEvents';
 import { Button } from '../Button';
 import { MessageContent } from '../chat/message-bubble/MessageContent';
+import {
+  TranscriptMarker,
+  transcriptMarkerLabel,
+} from '../chat/TranscriptMarker';
 import { Empty, ErrorState, SkeletonBlock } from '../state';
 import { useSessionTranscriptScroll } from './useSessionTranscriptScroll';
 
@@ -177,6 +181,9 @@ export const SessionTranscript = memo(function SessionTranscript({
         )
       ) : (
         rows.map((message, index) => {
+          const marker = transcriptMarkerLabel(message.contentParts);
+          if (marker)
+            return <TranscriptMarker key={message.id} label={marker} />;
           const streaming =
             isStreaming && index === lastIndex && message.role === 'assistant';
           return (

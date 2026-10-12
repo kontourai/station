@@ -1,0 +1,7 @@
+{
+  "revision": "2c226ce4538609c6bf6c68517bc70780c20ac59e",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"#3386 Continue: api.md's continue-session launch body now names an optional target; this guide links api.md for route reference and makes no claim about the continue-session body or adoption. No prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

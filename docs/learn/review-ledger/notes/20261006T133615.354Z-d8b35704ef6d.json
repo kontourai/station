@@ -1,0 +1,7 @@
+{
+  "revision": "3e4ab28f7a5512d14beda8b72147394210f0f1bb",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"#3406 delta round: added the stuck-helper limit behaviour (only folders under a stuck folder unread, others matched as missing, logged) and D1 (an unread folder's transcript with a recorded Project is still followed when unattributed following is off), checked against attached-session-path-probe.ts request()/underStuckFolder and follow-service poll/follow onlyWithStoredProject; executed the probe test file (13 tests) and injections. Limit: no real hung mount.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/attached-session-follow-service.ts"]}
+  ]
+}

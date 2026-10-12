@@ -1,0 +1,7 @@
+{
+  "revision": "9c6e16f5491ef7b01bdb869be38a462648992e77",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Merge-delta source review: integrated current Claude spawn documentation with the retained config/environment and connection setup scope. Station now uses spawnClaudeCodeProcess to observe engine frames while SDK Options still build command arguments and environment. Reviewed actual spawn and permission-frame source ownership; existing config-home claims and prior external/native proof limits remain unchanged. Source review only, not new SDK/CLI qualification.","inputs":["docs/design/connections-onboarding.md"]}
+  ]
+}

@@ -192,7 +192,7 @@ explicit engine commands, not a promise of native steering on every ACP Session.
 
 ## User-facing execution timeline
 
-Chat actions' **Conversation history** action loads the selected execution in
+Chat actions' **History** action loads the selected execution in
 the same bounded 100-event archive pages and opens it under a synthetic replay
 identity. User-turn landmarks come from the validated tape, not mounted DOM;
 click, pointer drag, previous/next controls, and ordinary button keyboard

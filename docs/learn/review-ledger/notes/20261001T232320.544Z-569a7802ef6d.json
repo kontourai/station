@@ -1,0 +1,13 @@
+{
+  "revision": "c2f51cf0697d7d6a64c75e6ebee23c25c8b437fa",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed test-only delta: allowance and real SQLite attribution fixtures now use trackTempDirs() for cleanup on assertion failure. The four focused tests and temp-directory ratchet pass. Persistence, profile identity ordering, owner/process attribution, SDK parsing and UI contracts are unchanged.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed test-only delta: allowance and real SQLite attribution fixtures now use trackTempDirs() for cleanup on assertion failure. The four focused tests and temp-directory ratchet pass. Persistence, profile identity ordering, owner/process attribution, SDK parsing and UI contracts are unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed test-only delta: allowance and real SQLite attribution fixtures now use trackTempDirs() for cleanup on assertion failure. The four focused tests and temp-directory ratchet pass. Persistence, profile identity ordering, owner/process attribution, SDK parsing and UI contracts are unchanged.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed test-only delta: allowance and real SQLite attribution fixtures now use trackTempDirs() for cleanup on assertion failure. The four focused tests and temp-directory ratchet pass. Persistence, profile identity ordering, owner/process attribution, SDK parsing and UI contracts are unchanged.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

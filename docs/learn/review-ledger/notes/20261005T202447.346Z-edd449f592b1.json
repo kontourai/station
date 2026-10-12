@@ -1,0 +1,7 @@
+{
+  "revision": "032756fb88be5a8258ade97cf8b59f73272ccf5d",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"#3386 fix round: station-docs-content.ts was regenerated from the module map (one sentence on adopted children recording dispatchCanonicalCwd). This page describes how the docs MCP ships canonical prose, which is unchanged. No prose change.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

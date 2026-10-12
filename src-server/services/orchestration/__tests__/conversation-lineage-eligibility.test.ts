@@ -242,4 +242,54 @@ describe('#749 shared continuation control eligibility', () => {
     });
     expect(reserveNextConversationSession).not.toHaveBeenCalled();
   });
+  describe('a model change on a session that cannot take it per turn', () => {
+    function restartLineage(current: OrchestrationSessionDetail) {
+      const lineage = new ConversationLineage({
+        eventStore: {
+          conversationSessions: () => [
+            {
+              conversationId: 'conversation-policy',
+              sessionId: 'conversation-policy',
+              ordinal: 0,
+              createdAt: '2026-08-29T00:00:00.000Z',
+            },
+          ],
+          reserveNextConversationSession: () => ({
+            outcome: 'created',
+            lineage: { sessionId: 'new-child' },
+          }),
+        } as any,
+        logger: { warn: vi.fn() },
+        readSession: async () => current,
+        readSessionMessages: () => [],
+        listSessionReadModel: async () => [],
+        canReadSession: () => true,
+        perTurnModelOverride: () => false,
+      });
+      return lineage.resolveConversationContinuation(
+        'conversation-policy',
+        INTERNAL_SESSION_READ_SCOPE,
+        { provider: 'grok', modelOverride: 'other-model' },
+      );
+    }
+
+    test('names a predecessor that never ran a turn so it can be stopped', async () => {
+      const resolved = await restartLineage(detail({ model: 'first-model' }));
+      expect(resolved).toMatchObject({
+        sessionId: 'new-child',
+        startRequired: true,
+        retirePredecessorSessionId: 'conversation-policy',
+      });
+    });
+
+    test('keeps a predecessor that has turn facts', async () => {
+      const current = detail({ model: 'first-model' });
+      current.events = [
+        { method: 'turn.started', threadId: 'conversation-policy' },
+      ] as any;
+      const resolved = await restartLineage(current);
+      expect(resolved.startRequired).toBe(true);
+      expect(resolved).not.toHaveProperty('retirePredecessorSessionId');
+    });
+  });
 });

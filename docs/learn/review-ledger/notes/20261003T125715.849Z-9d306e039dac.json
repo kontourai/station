@@ -1,0 +1,7 @@
+{
+  "revision": "be34938f4652aa3b7f5a1a7749189d0e536690ed",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Re-recorded after the main merge replaced the base branch's record. This lane changes no public contract, route or SDK surface; integration routing is unaffected. The base branch's pull-request review observations remain additive optional fields on an existing read. No prose change.","inputs":["docs/guides/deployment-authentication.md","docs/guides/documentation.md","docs/guides/plugins.md","docs/reference/api.md","docs/reference/cli.md","docs/reference/contracts.md","docs/reference/sdk.md","packages/contracts/src/deployment-authentication.ts","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

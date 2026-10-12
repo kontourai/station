@@ -6,6 +6,10 @@ import type {
   ApprovedStationConnectionTrust,
   StationConnectionProofBinding,
 } from '@kontourai/station-contracts/connection-proof';
+import {
+  STATION_ENVELOPE_HEADER,
+  STATION_ENVELOPE_HEADER_VALUE,
+} from '@kontourai/station-contracts/http';
 import type {
   SelfHostedBrokerNativeClientSurfaceV2,
   SelfHostedBrokerScopeV1,
@@ -273,6 +277,13 @@ export function createSelfHostedBrokerPionRuntime(
     };
   }
 
+  // These refusals are written outside the Hono app, so the runtime's marker
+  // middleware never sees them; they carry the marker themselves (#2842).
+  const OWN_REFUSAL_HEADERS = Object.freeze({
+    'Cache-Control': 'no-store',
+    [STATION_ENVELOPE_HEADER]: STATION_ENVELOPE_HEADER_VALUE,
+  });
+
   // Request dispatch gated against the peer's captured descriptor (outgoing
   // application-data direction alongside the channel send/subscribe gates).
   function gatedFetchFor(entry: PeerEntry): VirtualApplication {
@@ -287,7 +298,7 @@ export function createSelfHostedBrokerPionRuntime(
           retirePeer(entry);
           return Response.json(
             { error: { code: 'broker_trust_retired' } },
-            { status: 503, headers: { 'Cache-Control': 'no-store' } },
+            { status: 503, headers: OWN_REFUSAL_HEADERS },
           );
         }
         if (
@@ -297,7 +308,7 @@ export function createSelfHostedBrokerPionRuntime(
         )
           return Response.json(
             { error: { code: 'broker_application_origin_forbidden' } },
-            { status: 403, headers: { 'Cache-Control': 'no-store' } },
+            { status: 403, headers: OWN_REFUSAL_HEADERS },
           );
         verifiedPionRequests.set(
           request,

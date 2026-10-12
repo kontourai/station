@@ -1,0 +1,13 @@
+{
+  "revision": "b9ed99fffb44db5295c2652b34dfc2adc10e1c83",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Reviewed the resolved current-main SDK/contracts source bindings and merged public references. Engine metadata types, selected protected quota callers and explicit currency/capture limits coexist with upstream Chat-centre navigation and aborted-request settlement. Integration routing, public-contract ownership and glossary terms remain accurate; both source histories and independent notes are retained.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the resolved current-main SDK/contracts source bindings and merged public references. Engine metadata types, selected protected quota callers and explicit currency/capture limits coexist with upstream Chat-centre navigation and aborted-request settlement. Integration routing, public-contract ownership and glossary terms remain accurate; both source histories and independent notes are retained.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed the resolved current-main SDK/contracts source bindings and merged public references. Engine metadata types, selected protected quota callers and explicit currency/capture limits coexist with upstream Chat-centre navigation and aborted-request settlement. Integration routing, public-contract ownership and glossary terms remain accurate; both source histories and independent notes are retained.","inputs":["packages/contracts/AGENTS.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the resolved current-main SDK/contracts source bindings and merged public references. Engine metadata types, selected protected quota callers and explicit currency/capture limits coexist with upstream Chat-centre navigation and aborted-request settlement. Integration routing, public-contract ownership and glossary terms remain accurate; both source histories and independent notes are retained.","inputs":["packages/sdk/AGENTS.md"]}
+  ]
+}

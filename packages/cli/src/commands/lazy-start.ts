@@ -20,6 +20,7 @@ import {
   type InstanceConfig,
 } from '@kontourai/station-shared/instance-registry';
 import { resolveStationRuntimeContext } from '@kontourai/station-shared/runtime-path-resolver';
+import { browserHostFor } from './local-browser.js';
 import { openBrowser as defaultOpenBrowser } from './open-browser.js';
 import { promptSelect, type SelectOption } from './prompt.js';
 
@@ -93,7 +94,7 @@ async function openRunningInstance(
     Pick<LazyStartDeps, 'mintToken'>,
 ): Promise<void> {
   const uiPort = target.uiPort ?? DEFAULT_UI_PORT;
-  const baseUrl = `http://localhost:${uiPort}`;
+  const baseUrl = `http://${browserHostFor(target.host)}:${uiPort}`;
   // The default command's positional directory is a project selector, not a
   // Station-home override. Project IDs are the directory leaf in this launcher
   // contract; the runtime resolves that selector against its own project list.

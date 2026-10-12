@@ -9,10 +9,19 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import type React from 'react';
 import { createRef, useState } from 'react';
 import { beforeAll, describe, expect, test, vi } from 'vitest';
 import { ChatInputArea } from '../components/chat/ChatInputArea';
-import { mentionToken } from '../components/chat/composer-mentions';
+import {
+  mentionToken,
+  parseComposerSessionReferences,
+} from '../components/chat/composer-mentions';
+import {
+  CONVERSATION_REFERENCE_DRAG_TYPE,
+  endConversationReferenceDrag,
+  startConversationReferenceDrag,
+} from '../components/chat/conversationReferenceDrag';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 
 const fetchConversationInventory = vi.hoisted(() => vi.fn());
@@ -337,6 +346,69 @@ describe('ChatInputArea', () => {
     fireEvent.drop(screen.getByRole('textbox'), { dataTransfer });
 
     expect(onInputChange).not.toHaveBeenCalled();
+  });
+
+  test('#3159: a conversation row dragged from this Station becomes a reference; a forged or foreign drag does not', () => {
+    const onInputChange = vi.fn();
+    const scope = {
+      apiBase: 'http://station.test',
+      authorityKey: 'owner-a',
+      isCurrent: () => true,
+    };
+    render(
+      <ChatInputArea
+        {...renderProps({
+          sessionId: 'session-a',
+          input: '',
+          onInputChange,
+          mentionAuthority: 'authority-a',
+          activeConversationId: 'current-conversation',
+          mentionRequestScope: scope,
+        })}
+      />,
+    );
+    const textbox = screen.getByRole('textbox');
+    const transfer = () => {
+      const values = new Map<string, string>();
+      return {
+        types: [CONVERSATION_REFERENCE_DRAG_TYPE],
+        setData: (type: string, value: string) => values.set(type, value),
+        getData: (type: string) => values.get(type) ?? '',
+        effectAllowed: 'all',
+      };
+    };
+    const rowDrag = (reference: { apiBase: string }) => {
+      const dataTransfer = transfer();
+      startConversationReferenceDrag(
+        { dataTransfer } as unknown as React.DragEvent<HTMLElement>,
+        { id: 'row-conversation', title: 'Row conversation', ...reference },
+      );
+      return dataTransfer;
+    };
+
+    // Another Station's row (same id) is not this composer's to accept.
+    fireEvent.drop(textbox, {
+      dataTransfer: rowDrag({ apiBase: 'http://other.test' }),
+    });
+    endConversationReferenceDrag();
+    // A payload no row of this window started (another app, another tab).
+    const forged = transfer();
+    forged.setData(CONVERSATION_REFERENCE_DRAG_TYPE, 'row-conversation');
+    fireEvent.drop(textbox, { dataTransfer: forged });
+    expect(onInputChange).not.toHaveBeenCalled();
+
+    fireEvent.drop(textbox, {
+      dataTransfer: rowDrag({ apiBase: scope.apiBase }),
+    });
+    expect(onInputChange).toHaveBeenCalledTimes(1);
+    const [next] = onInputChange.mock.calls[0]!;
+    expect(parseComposerSessionReferences(next)).toEqual([
+      expect.objectContaining({
+        conversationId: 'row-conversation',
+        label: 'Row conversation',
+        authority: 'authority-a',
+      }),
+    ]);
   });
 
   test('closes the picker and returns focus after a conversation reference drop', async () => {
@@ -916,7 +988,7 @@ describe('ChatInputArea', () => {
   test('opens the model picker when model selection is available', () => {
     const props = renderChatInputArea();
 
-    fireEvent.click(screen.getByRole('button', { name: /^Model/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Engine & model/ }));
 
     expect(props.onModelOpen).toHaveBeenCalled();
     expect(props.onInputChange).not.toHaveBeenCalled();
@@ -947,12 +1019,14 @@ describe('ChatInputArea', () => {
     expect(agent.getAttribute('aria-haspopup')).toBe('dialog');
     expect(
       screen
-        .getByRole('button', { name: /^Model:/ })
+        .getByRole('button', { name: /^Engine & model:/ })
         .querySelector('.chat-input__model-name')?.textContent,
     ).not.toBe('Model');
     expect(
-      screen.getByRole('button', { name: /^Model:/ }).getAttribute('title'),
-    ).toMatch(/^Model:/);
+      screen
+        .getByRole('button', { name: /^Engine & model:/ })
+        .getAttribute('title'),
+    ).toMatch(/^Engine & model:/);
     agent.focus();
     // Browsers synthesize an untrusted click for keyboard activation of a
     // native button; detail=0 distinguishes that path from pointer input.
@@ -1002,7 +1076,7 @@ describe('ChatInputArea', () => {
     }
 
     render(<OfflineComposer />);
-    fireEvent.click(screen.getByRole('button', { name: /^Model/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Engine & model/ }));
 
     expect(await screen.findByRole('dialog', { name: 'Model' })).toBeTruthy();
     expect(
@@ -1060,6 +1134,7 @@ describe('ChatInputArea', () => {
       (screen.getByPlaceholderText(/Type a message/) as HTMLTextAreaElement)
         .value,
     ).toBe('keep this draft');
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     expect(
       screen.getByRole('combobox', { name: 'Thinking effort' }),
     ).toBeTruthy();
@@ -1101,7 +1176,7 @@ describe('ChatInputArea', () => {
     ).toBe('Big Pickle');
     expect(
       modelButton.querySelector('.chat-input__chip-caption')?.textContent,
-    ).toBe('Model');
+    ).toBe('Engine & model');
     // The source moved from a second visible line into the accessible name:
     // that subline is what made this pill two rows tall on a phone, and the
     // override state stays visible via the pill's own variant class.
@@ -1120,7 +1195,7 @@ describe('ChatInputArea', () => {
       availableModels: [{ id: 'default', name: 'Default (recommended)' }],
     });
 
-    const modelButton = screen.getByRole('button', { name: /^Model/ });
+    const modelButton = screen.getByRole('button', { name: /^Engine & model/ });
     expect(modelButton.textContent).toContain('Default');
     expect(modelButton.textContent).not.toContain('recommended');
     // Nothing is lost: the catalog's own option name still reaches assistive
@@ -1144,7 +1219,7 @@ describe('ChatInputArea', () => {
       ],
     });
 
-    const modelButton = screen.getByRole('button', { name: /^Model/ });
+    const modelButton = screen.getByRole('button', { name: /^Engine & model/ });
     expect(modelButton.textContent).toContain('Opus 5');
   });
 
@@ -1155,7 +1230,7 @@ describe('ChatInputArea', () => {
       currentModel: undefined,
     });
 
-    const modelButton = screen.getByRole('button', { name: /^Model/ });
+    const modelButton = screen.getByRole('button', { name: /^Engine & model/ });
     expect(modelButton.textContent).toContain('Model & effort');
     expect(modelButton.getAttribute('aria-label')).toContain('Model & effort');
     expect(screen.queryByText('Model not reported')).toBeNull();
@@ -1174,7 +1249,7 @@ describe('ChatInputArea', () => {
     // second visible line, but it still goes through modelSourceLabel — so
     // this remains a real guard against the internal "runtime" vocabulary
     // leaking to users (docs/design/chat-composer.md §2).
-    const modelButton = screen.getByRole('button', { name: /^Model/ });
+    const modelButton = screen.getByRole('button', { name: /^Engine & model/ });
     const accessibleName = modelButton.getAttribute('aria-label') ?? '';
     expect(modelButton.textContent).not.toContain('runtime');
     expect(accessibleName).not.toContain('runtime');
@@ -1189,9 +1264,26 @@ describe('ChatInputArea', () => {
       onModelReset,
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Use default' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Use default model' }));
     expect(onModelReset).toHaveBeenCalledOnce();
   });
+
+  test.each([
+    ['project default', 'Use project default'],
+    // 'unknown' has no user-facing label; the reset never reads a bare "Use".
+    ['unknown', 'Use default model'],
+  ] as const)(
+    'names a %s reset after the default it restores',
+    (source, name) => {
+      renderChatInputArea({
+        currentModel: 'override-model',
+        currentModelSource: 'session override',
+        defaultModelSource: source,
+        onModelReset: vi.fn(),
+      });
+      expect(screen.getByRole('button', { name })).toBeTruthy();
+    },
+  );
 
   test('adds a pasted screenshot without changing the typed draft', async () => {
     const selectAttachmentFiles = vi.fn(async () => {});
@@ -1786,5 +1878,19 @@ describe('ChatInputArea dock reservation', () => {
       rect.mockRestore();
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('ChatInputArea send-failure notice', () => {
+  test('repeats the notice as a status line above the draft', () => {
+    renderChatInputArea({ sendFailureNotice: 'The engine is offline' });
+    const line = document.querySelector('.chat-input__send-failure');
+    expect(line?.textContent).toBe('The engine is offline');
+    expect(line?.getAttribute('role')).toBe('status');
+  });
+
+  test('renders nothing without a notice', () => {
+    renderChatInputArea({ sendFailureNotice: undefined });
+    expect(document.querySelector('.chat-input__send-failure')).toBeNull();
   });
 });

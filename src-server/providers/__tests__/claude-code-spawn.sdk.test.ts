@@ -23,6 +23,7 @@ async function run(spawner: 'sdk' | 'station') {
   const engine = createClaudeEngineProcess();
   const calls: Array<{
     requestId: unknown;
+    decisionReasonType: unknown;
     optionKeys: string[];
     recorded: unknown;
   }> = [];
@@ -57,6 +58,7 @@ async function run(spawner: 'sdk' | 'station') {
         canUseTool: async (_toolName, input, options) => {
           calls.push({
             requestId: options.requestId,
+            decisionReasonType: Reflect.get(options, 'decisionReasonType'),
             optionKeys: Object.keys(options).sort(),
             recorded: engine.asks.take(options.requestId),
           });
@@ -74,7 +76,7 @@ async function run(spawner: 'sdk' | 'station') {
 }
 
 describe('Station engine spawn against the real Agent SDK', () => {
-  test('the SDK still withholds the structured reason, and hands canUseTool the frame request id the tap recorded under', async () => {
+  test('the SDK forwards the structured reason with the frame request id the tap records classifier facts under', async () => {
     const { engine, calls, messages } = await run('station');
 
     // The replayed ask and the live ask, each already recorded when the
@@ -91,12 +93,15 @@ describe('Station engine spawn against the real Agent SDK', () => {
     expect(messages).toContainEqual(
       expect.objectContaining({ note: 'héllo — 日本語 🙂' }),
     );
-    // Why the tap exists: the SDK forwards none of these. When this fails
-    // the SDK has started to, and the tap can be retired for its field.
+    expect(
+      calls.map((call) => [call.requestId, call.decisionReasonType]),
+    ).toEqual([
+      ['req-replay', 'rule'],
+      ['req-live', 'safetyCheck'],
+    ]);
+    // The classifier's approval fact still comes from the stream tap.
     for (const call of calls) {
-      expect(call.optionKeys).not.toContain('decisionReasonType');
       expect(call.optionKeys).not.toContain('classifierApprovable');
-      expect(call.optionKeys).not.toContain('requiresUserInteraction');
     }
   }, 30_000);
 

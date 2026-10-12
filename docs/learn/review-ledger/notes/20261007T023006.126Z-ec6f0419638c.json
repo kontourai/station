@@ -1,0 +1,7 @@
+{
+  "revision": "22f74ffcc1ad4760769b1dc225535730638d108e",
+
+  "notes": [
+    {"path":"packages/sdk/README.md","note":"Reviewed #3405 sender delta against host callback usage and queued/refused-send caveat. onAdmission is an optional internal observer used by chat-native forms; existing arguments, returned identities, public SDK exports, default sends and authority boundaries remain unchanged. Existing host callback example and admission caveat stay accurate. No new SDK contract claim.","inputs":["packages/sdk/README.md","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { ensureLivenessScale } from './lib/liveness-scale-resolve.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   runFallowAnalysis,
@@ -45,7 +46,7 @@ function complexityKeyCounts(report, totalRows) {
  * commit and found no changed file at all, so it emits no `dead_code` section
  * rather than an empty one. That is not a malformed report — there was nothing
  * to attribute — and refusing it with `Missing unused_exports findings` named a
- * symptom two steps from its cause (#2094). It is reached by dispatching CI on
+ * symptom two steps from its cause (#2094). It is reached by dispatching PR: CI on
  * `main`: a dispatch has no pull request, so `STATION_CI_FAST_BASE` is empty,
  * the base falls back to `origin/main`, and on `main` that IS the head.
  *
@@ -182,6 +183,7 @@ async function runCodeHealthGate(root, baseRef) {
 
 if (invokedDirectly(import.meta.url)) {
   try {
+    await ensureLivenessScale();
     const args = process.argv.slice(2);
     if (args.length > 1 || (args.length && !args[0].startsWith('--base=')))
       throw new Error(
@@ -200,7 +202,7 @@ if (invokedDirectly(import.meta.url)) {
     // as "nothing was wrong" (#2094).
     console.log(
       result.emptyComparison
-        ? `Compared ${result.base} against ${result.head}: no changed file, so nothing was analyzed and no unused export or type was evaluated. This is not a statement about the tree's code health. A CI dispatch on main reaches this — a dispatch has no pull request, so the base falls back to origin/main, which on main IS the head. Pass --base=<ref> or set STATION_CI_FAST_BASE to compare against something.`
+        ? `Compared ${result.base} against ${result.head}: no changed file, so nothing was analyzed and no unused export or type was evaluated. This is not a statement about the tree's code health. A PR: CI dispatch on main reaches this — a dispatch has no pull request, so the base falls back to origin/main, which on main IS the head. Pass --base=<ref> or set STATION_CI_FAST_BASE to compare against something.`
         : 'New unused exports/types require a real caller or an explicit entrypoint/public-API contract. Review other introduced findings in the raw report; complexity and estimated coverage are advisory.',
     );
     if (process.env.GITHUB_STEP_SUMMARY)

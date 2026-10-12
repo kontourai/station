@@ -22,6 +22,7 @@ import {
   classifyToolCall,
   isToolCallAwaitingApproval,
   isToolCallBatchPending,
+  RAN_EVEN_WHEN_FAILED,
   type ToolCallKind,
   type ToolCallPhase,
   toolCallPhase,
@@ -56,6 +57,11 @@ const KIND_PHRASES: Record<
     running: (n) => `Editing ${plural(n, 'file', 'files')}`,
     pending: (n) => plural(n, 'file edit', 'file edits'),
   },
+  delete: {
+    done: (n) => `Deleted ${plural(n, 'file', 'files')}`,
+    running: (n) => `Deleting ${plural(n, 'file', 'files')}`,
+    pending: (n) => plural(n, 'file deletion', 'file deletions'),
+  },
   exec: {
     done: (n) => `Ran ${plural(n, 'command', 'commands')}`,
     running: (n) => `Running ${plural(n, 'command', 'commands')}`,
@@ -75,7 +81,14 @@ const KIND_PHRASES: Record<
 
 /** Fixed rendering order for multi-kind summaries — stable output, not
  * insertion order (which would make the summary depend on call order). */
-const KIND_ORDER: ToolCallKind[] = ['read', 'write', 'exec', 'search', 'other'];
+const KIND_ORDER: ToolCallKind[] = [
+  'read',
+  'write',
+  'delete',
+  'exec',
+  'search',
+  'other',
+];
 
 function toolNameOf(part: ToolCallLike): string {
   return toolDisplayView(part).toolName;
@@ -92,6 +105,9 @@ interface ClassifiedToolCall<P extends ToolCallLike = ToolCallLike> {
   inProgress: boolean;
   /** The call reached a failure terminal (error text or an error state). */
   failed: boolean;
+  /** A failed call that a LATER call in the same list retried successfully
+   * with the same tool and identical arguments ({@link recoveredFailures}). */
+  recovered: boolean;
   /** The session ended with the call still open, so whether it ran is
    * unknown (station#1558's `unresolved` terminal). Neither in progress nor
    * done — the batch header's verb has to account for it separately from
@@ -121,9 +137,13 @@ export interface ToolCallGroup<P extends ToolCallLike = ToolCallLike> {
    */
   aggregateSummary: string;
   inProgress: boolean;
-  /** How many of this run's calls failed — a collapsed batch must disclose
-   * failure without being opened (archive#2652 redesign). */
+  /** How many of this run's calls failed and were NOT recovered by a later
+   * identical call — a collapsed batch must disclose failure without being
+   * opened (archive#2652 redesign). */
   failedCount: number;
+  /** Failed calls a later identical call recovered. Disclosed neutrally: the
+   * failure still happened, but it is not the run's outcome. */
+  recoveredCount: number;
   /** How many of this run's calls ended `unresolved`. Disclosed for the same
    * reason `failedCount` is: the summary's verb alone cannot say that some of
    * these calls may never have run, and a reader who does not open the batch
@@ -138,12 +158,66 @@ export interface ToolCallGroup<P extends ToolCallLike = ToolCallLike> {
   /** Latest running call's `progressMessage`, if any — the collapsed line
    * is the only live surface once the run is batched. */
   progressMessage?: string;
+  /** Narration folded between the calls (`foldTurnWork`), in original order. */
+  interludes: { part: P; index: number }[];
+}
+
+/** What {@link recoveredFailures} needs to know about one call. */
+export interface RetryEvidence {
+  toolName: string;
+  args: unknown;
+  failed: boolean;
+  /** Observed successful completion (`toolCallPhase(...) === 'done'`). */
+  succeeded: boolean;
+}
+
+/** Structural equality for JSON-shaped tool arguments. */
+function sameArgs(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || !a || !b) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every(
+    (key) =>
+      Object.hasOwn(b, key) &&
+      sameArgs(
+        (a as Record<string, unknown>)[key],
+        (b as Record<string, unknown>)[key],
+      ),
+  );
+}
+
+/**
+ * Which failed calls were recovered: a failure counts as recovered only when
+ * a LATER call in the same list ran the same tool with deep-equal arguments
+ * and completed successfully. Calls with no arguments on record never match:
+ * nothing shows they were the same call. A retry with different arguments, a later
+ * identical call that also failed (or never finished), or an earlier success
+ * does not recover it. Returns one flag per input call, in order.
+ */
+export function recoveredFailures(calls: readonly RetryEvidence[]): boolean[] {
+  return calls.map(
+    (call, position) =>
+      call.failed &&
+      calls
+        .slice(position + 1)
+        .some(
+          (later) =>
+            later.succeeded &&
+            call.args != null &&
+            later.args != null &&
+            later.toolName === call.toolName &&
+            sameArgs(later.args, call.args),
+        ),
+  );
 }
 
 function classifyCall<P extends ToolCallLike>(
   part: P,
   index: number,
-): ClassifiedToolCall<P> {
+): Omit<ClassifiedToolCall<P>, 'recovered'> {
   const toolName = toolNameOf(part);
   const args = toolDisplayView(part).args;
   const kind = classifyToolCall({ toolName, toolKind: part.toolKind, args });
@@ -197,8 +271,11 @@ function summarizeCalls(
   }
 
   const counts = new Map<ToolCallKind, number>();
+  const failures = new Map<ToolCallKind, number>();
   for (const call of calls) {
     counts.set(call.kind, (counts.get(call.kind) ?? 0) + 1);
+    if (call.failed)
+      failures.set(call.kind, (failures.get(call.kind) ?? 0) + 1);
   }
 
   const tense = pending ? 'pending' : inProgress ? 'running' : 'done';
@@ -210,9 +287,22 @@ function summarizeCalls(
     // call cannot take past or progressive tense — both claim work the
     // expanded rows refuse. It takes the noun inventory; the count badges
     // name which calls did not run.
-    const phrase = KIND_PHRASES[kind][tense](count);
+    //
+    // A write, delete or unknown kind whose every call failed claims no
+    // change: "Edited 2 files" would say an edit landed when none did, so it
+    // takes the same noun inventory, as its rows take the bare verb. One
+    // success keeps the completed phrase; the failed badge counts the rest.
+    // Commands, reads and searches keep the completed phrase: it only says
+    // they ran (`RAN_EVEN_WHEN_FAILED`).
+    const kindTense =
+      tense === 'done' &&
+      !RAN_EVEN_WHEN_FAILED.has(kind) &&
+      failures.get(kind) === count
+        ? 'pending'
+        : tense;
+    const phrase = KIND_PHRASES[kind][kindTense](count);
     segments.push(
-      segments.length === 0 || tense === 'pending'
+      segments.length === 0 || kindTense === 'pending'
         ? phrase
         : `${phrase[0]!.toLowerCase()}${phrase.slice(1)}`,
     );
@@ -230,7 +320,24 @@ function summarizeCalls(
 export function classifyToolCallRun<P extends ToolCallLike>(
   run: ToolCallRun<P>,
 ): ToolCallGroup<P> {
-  const calls = run.calls.map(({ part, index }) => classifyCall(part, index));
+  const classified = run.calls.map(({ part, index }) =>
+    classifyCall(part, index),
+  );
+  const recovered = recoveredFailures(
+    classified.map((call) => {
+      const view = toolDisplayView(call.part);
+      return {
+        toolName: view.toolName,
+        args: view.args,
+        failed: call.failed,
+        succeeded: call.phase === 'done',
+      };
+    }),
+  );
+  const calls: ClassifiedToolCall<P>[] = classified.map((call, position) => ({
+    ...call,
+    recovered: recovered[position]!,
+  }));
   const inProgress = calls.some((c) => c.inProgress);
   const unresolvedCount = calls.filter((c) => c.unresolved).length;
   const awaitingApprovalCount = calls.filter((c) => c.awaitingApproval).length;
@@ -238,7 +345,8 @@ export function classifyToolCallRun<P extends ToolCallLike>(
   // durable projection's `state: 'call'`, e.g. the open turn's running call
   // when the transcript window renders it) cannot take the past tense
   // either: "Ran 2 commands" claimed a command that was still running. A
-  // plain failure keeps the past tense; its badge is the disclosure.
+  // plain failure does not make the batch pending: its badge is the
+  // disclosure, and `summarizeCalls` decides its own kind's tense.
   const pending = calls.some(
     (c) =>
       isToolCallBatchPending(c.part) || (c.phase === 'unresolved' && !c.failed),
@@ -252,7 +360,8 @@ export function classifyToolCallRun<P extends ToolCallLike>(
       ? latestRunningCall(calls)
       : undefined;
   const summary = liveCall ? `${liveCall.label}…` : aggregateSummary;
-  const failedCount = calls.filter((c) => c.failed).length;
+  const failedCount = calls.filter((c) => c.failed && !c.recovered).length;
+  const recoveredCount = calls.filter((c) => c.recovered).length;
   const deniedCount = calls.filter((c) => c.denied).length;
   const cancelledCount = calls.filter((c) => c.cancelled).length;
   const progressSource = liveCall;
@@ -269,10 +378,12 @@ export function classifyToolCallRun<P extends ToolCallLike>(
     aggregateSummary,
     inProgress,
     failedCount,
+    recoveredCount,
     unresolvedCount,
     awaitingApprovalCount,
     deniedCount,
     cancelledCount,
     progressMessage,
+    interludes: run.interludes ?? [],
   };
 }

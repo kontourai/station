@@ -1,0 +1,43 @@
+{
+  "path": "docs/design/automations.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Retained Station Automations proposal with Section 9 owner decisions and implemented contract, private configuration/ledger and unattended principal foundations. Runtime intake/dispatch and the complete automation journey remain unqualified. Original design was checked at 14c83da3cd; updated foundation status is source inspection only.",
+
+  "limits": "Proposal only. Cited owners were confirmed to exist, but no claim about current behavior was exercised by a test, live GitHub delivery or device. Purpose classification is separate from whole-document semantic review.",
+
+  "sources": [
+    "docs/design/approval-posture-server-ordered.md",
+
+    "docs/design/notification-delivery.md",
+
+    "docs/guides/deployment.md",
+
+    "docs/security/remote-access-threat-model.md",
+
+    "packages/contracts/src/external-monitor.ts",
+
+    "packages/contracts/src/inbound-webhook.ts",
+
+    "packages/contracts/src/scheduler.ts",
+
+    "scripts/qualification-repair.mjs",
+
+    "src-server/routes/webhooks/inbound-webhooks.ts",
+
+    "src-server/runtime/routes/runtime-route-support.ts",
+
+    "src-server/services/scheduling/external-monitor.ts",
+
+    "src-server/services/webhooks/inbound-webhook-store.ts",
+
+    "src-server/runtime/agents/unattended-principal-context.ts"
+  ],
+
+  "checks": [
+    "Every linked path confirmed present with git ls-tree origin/main; the proposal was checked against its design input, not against running behavior."
+  ]
+}

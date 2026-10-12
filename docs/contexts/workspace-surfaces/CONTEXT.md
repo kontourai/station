@@ -149,7 +149,9 @@ file. Its versioned state contains Project slug, relative path, optional bounded
 line range, wrap and Markdown mode preferences, and an optional Session `thread`.
 Without a thread it reads the Project checkout; with one, the route resolves
 that readable Session's directory and refuses an unavailable or unauthorized
-Session instead of falling back to the Project directory. Its opaque
+Session instead of falling back to the Project directory. The Session must
+belong to the Project its start recorded, whatever its engine; a read-only
+attached Session records none there and is refused. Its opaque
 instance and state keys never encode a path, and host geometry never contains
 file intent. The host restores it only when the builtin descriptor, renderer,
 provenance, bound Project/source context, and separately validated state all
@@ -211,8 +213,10 @@ _Avoid_: raw route push for project layout navigation
 - A coding workspace composes separate file, diff, terminal, chat and evidence
   panes. The built-in Coding layout shows Chat on its stack's Chat page and
   each pane as a drill-in of a chromeless host whose selection is
-  `navigationSelection="explicit"`; the Chat position's effects (the phone's
-  maximized dock, the File Preview deep link) are
+  `navigationSelection="explicit"` below the wide fold and `"replace"` past
+  it, where the pane is a side panel beside Chat (#3040); the Chat
+  position's effects (the phone's maximized dock, the File Preview deep
+  link — skipped for the intent the Files pane wrote itself) are
   `useCodingChatPositionEffects` in
   [CodingChatPane](../../../src-ui/src/workspace-panes/CodingChatPane.tsx),
   run by the stack while its Chat page is on screen. Neither owns the pane

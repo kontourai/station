@@ -1,0 +1,7 @@
+{
+  "revision": "f001e226f40b1483bae77de036d70596952aef94",
+
+  "notes": [
+    {"path":"examples/matt-pocock-engineering/README.md","note":"Checked the formatter-only stages-array reflow in the linked evaluation document. Parsed JSON is equal before and after; the single observed pass, all planned not-run cases, source revisions, qualification limits and output references are unchanged. This adds no runtime, native, canonical-questionnaire or release qualification.","inputs":["examples/matt-pocock-engineering/README.md"]}
+  ]
+}

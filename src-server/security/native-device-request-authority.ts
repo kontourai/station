@@ -19,7 +19,6 @@ import type {
   DevicePrincipalBinding,
   PairedDevice,
 } from '@kontourai/station-contracts/environment-security';
-import { pairingScopeIncludes } from '@kontourai/station-contracts/environment-security';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import { readVerifiedNativeVirtualApplicationRequest } from '../services/connections/virtual-application.js';
 import {
@@ -28,7 +27,11 @@ import {
   type NativeDeviceProofReplayStore,
   verifyNativeDeviceRequestProof,
 } from '../services/identity/native-device-proof-verifier.js';
-import { requiredExternalSurfaceCapability } from './pairing-route-scopes.js';
+import {
+  isRelayManagementHttpLeaf,
+  pairingScopeSatisfiesHttpRoute,
+  requiredExternalSurfaceCapability,
+} from './pairing-route-scopes.js';
 import {
   getRuntimeNativeDeviceProofPrincipal,
   isRuntimeNativeDeviceProofCurrent,
@@ -122,15 +125,30 @@ const accountBindingOf = (
 };
 
 /**
- * The explicit #2893 pilot route allowlist. Privileged, terminal, plugin,
- * pairing, consent and operator routes are NOT listed and refuse proof
+ * The explicit #2893 pilot route allowlist. Generic privileged, terminal, plugin,
+ * pairing and consent routes are NOT listed and refuse proof
  * authority even when the proven Device holds broad pairing scopes.
+ * The closed access-management leaves additionally require a live management
+ * grant and retain their existing Project IAM or relay-management checks.
  * Unmapped routes stay denied by the capability table above this.
  */
 export function nativeDeviceProofPilotRoute(
   method: string,
   path: string,
 ): boolean {
+  if (isRelayManagementHttpLeaf({ method, path })) return true;
+  if (
+    (method === 'GET' || method === 'HEAD') &&
+    /^\/api\/projects\/[A-Za-z0-9_-]{1,128}\/access$/u.test(path)
+  )
+    return true;
+  if (
+    method === 'POST' &&
+    /^\/api\/projects\/[A-Za-z0-9_-]{1,128}\/access\/(?:invitations(?:\/[A-Za-z0-9_-]{1,128}\/revoke)?|members|transfer)$/u.test(
+      path,
+    )
+  )
+    return true;
   if (method === 'POST')
     return (
       path === APPLICATION_SESSION_NATIVE_CHALLENGE_PATH ||
@@ -351,7 +369,10 @@ export class NativeDeviceRequestAuthority {
       (capability?.capability === 'public' ||
         (capability?.capability === 'pairing-scope' &&
           capability.scope !== undefined &&
-          pairingScopeIncludes(scope, capability.scope)))
+          pairingScopeSatisfiesHttpRoute(scope, capability.scope, {
+            method: request.method,
+            path,
+          })))
     );
   }
 

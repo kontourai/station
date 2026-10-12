@@ -1,0 +1,7 @@
+{
+  "revision": "09c6f7979363346b0182ff0900d5bb0c21ddb0e1",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Reviewed device-settings.ts at 09c6f79793: only equivalent Return help copy changed; automatic pointer behavior and explicit keyboard send/newline overrides remain unchanged. Starter-work launch, engine choice and form preconditions are unchanged. Focused contracts/SDK/readiness suites pass 28/28 after seven baseline failures.","inputs":["docs/guides/starter-work.md"]}
+  ]
+}

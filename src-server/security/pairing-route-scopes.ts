@@ -64,6 +64,7 @@ import {
   PAIRING_SCOPE_INFERENCE_INVOKE,
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_ORCHESTRATION_READ,
+  PAIRING_SCOPE_RELAY_MANAGE,
   PAIRING_SCOPE_TERMINAL_OPERATE,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts';
@@ -149,15 +150,57 @@ function isEngineLoginLeaf(request: { method: string; path: string }): boolean {
   );
 }
 
-/** Scope satisfaction only; credential authority must be checked first. */
+/** Exact relay HTTP leaves; this classification grants no authority. */
+export function isRelayManagementHttpLeaf(request: {
+  method: string;
+  path: string;
+}): boolean {
+  if (request.method === 'GET' || request.method === 'HEAD')
+    return (
+      request.path === '/api/relay-management' ||
+      request.path === '/api/relay-management/capabilities'
+    );
+  return (
+    request.method === 'POST' &&
+    ([
+      '/api/relay-management/approvals',
+      '/api/relay-management/approvals/revoke',
+      '/api/relay-management/invitations',
+    ].includes(request.path) ||
+      /^\/api\/relay-management\/devices\/[A-Za-z0-9_-]{43}\/(?:approve|deny)$/u.test(
+        request.path,
+      ))
+  );
+}
+
+function isProjectAccessManagementLeaf(request: {
+  method: string;
+  path: string;
+}): boolean {
+  return (
+    request.method === 'POST' &&
+    /^\/api\/projects\/[A-Za-z0-9_-]{1,128}\/access\/(?:invitations(?:\/[A-Za-z0-9_-]{1,128}\/revoke)?|members|transfer)$/u.test(
+      request.path,
+    )
+  );
+}
+
 export function pairingScopeSatisfiesHttpRoute(
   grantedScope: string,
   requiredScope: PairingScope,
   request: { method: string; path: string },
   verifiedOperator = false,
+  verifiedHomeOperator = false,
 ): boolean {
   return (
     pairingScopeIncludes(grantedScope, requiredScope) ||
+    (requiredScope === PAIRING_SCOPE_ORCHESTRATION_OPERATE &&
+      isProjectAccessManagementLeaf(request) &&
+      pairingScopeIncludes(grantedScope, PAIRING_SCOPE_RELAY_MANAGE)) ||
+    ((verifiedOperator || verifiedHomeOperator) &&
+      requiredScope === PAIRING_SCOPE_RELAY_MANAGE &&
+      request.path !== '/api/relay-management/capabilities' &&
+      isRelayManagementHttpLeaf(request)) ||
     (requiredScope === PAIRING_SCOPE_ENGINE_LOGIN &&
       request.method === 'GET' &&
       /^\/api\/connections\/agent\/[^/]+\/accounts$/.test(
@@ -873,6 +916,36 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
   },
+  ...(['GET', 'HEAD'] as const).map((method) => ({
+    id: `/api/relay-management/capabilities:${method}:read`,
+    method,
+    prefix: '/api/relay-management/capabilities',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit' as const,
+  })),
+  ...(['GET', 'HEAD'] as const).map((method) => ({
+    id: `/api/relay-management:${method}:manage`,
+    method,
+    prefix: '/api/relay-management',
+    exact: true,
+    scope: PAIRING_SCOPE_RELAY_MANAGE,
+    origin: 'explicit' as const,
+  })),
+  ...[
+    '/api/relay-management/approvals',
+    '/api/relay-management/approvals/revoke',
+    '/api/relay-management/invitations',
+    '/api/relay-management/devices/:enrollmentId/approve',
+    '/api/relay-management/devices/:enrollmentId/deny',
+  ].map((prefix) => ({
+    id: `${prefix}:POST:manage`,
+    method: 'POST' as const,
+    prefix,
+    exact: true,
+    scope: PAIRING_SCOPE_RELAY_MANAGE,
+    origin: 'explicit' as const,
+  })),
   // Pairing/device management (archive#1098's access:manage) — every method,
   // one tier. Registered by `configureDevicePairingHostRoutes`, not via
   // `context.app.route`, so it is not in the prefix list above.
@@ -991,6 +1064,13 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     method: 'GET',
     prefix: '/api/analytics/usage-rollup',
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/station-usage:operator-read',
+    method: 'GET',
+    prefix: '/api/analytics/station-usage',
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
   // archive#3385: the attachment blob route is a single GET leaf, declared
@@ -1579,7 +1659,9 @@ export async function credentialAuthorizedForScope(
  */
 export interface ConsentDecisionCredentialResolver {
   verifyOperatorCredential(candidate: string): boolean;
-  identifyDevice(candidate: string): { scope?: string } | null;
+  identifyDevice(
+    candidate: string,
+  ): { scope?: string; id?: string; name?: string; createdAt?: number } | null;
 }
 
 export type ConsentCredentialAuthority =
@@ -1929,6 +2011,16 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       reason: 'explicit HEAD semantics for public liveness probe',
     },
     {
+      id: 'mcp-token:station-knowledge',
+      transport: 'http',
+      method: '*',
+      prefix: '/mcp/station-knowledge',
+      match: 'exact',
+      capability: 'mcp-token',
+      reason:
+        'per-session Knowledge MCP token; loopback and server purpose verified by the MCP router',
+    },
+    {
       id: 'mcp-token:station-control',
       transport: 'http',
       method: '*',
@@ -2079,6 +2171,30 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       match: 'prefix',
       capability: 'pairing-scope',
       scope: PAIRING_SCOPE_CONSENT_DECIDE,
+    },
+    // #3257 (S2b): operator passkey enrollment. Public in THIS table's sense
+    // (no pairing scope applies) because each handler authenticates itself:
+    // it needs a paired-device or operator cookie, STATION_TRUSTED_CONSENT_ORIGIN,
+    // an exact Origin on every state change, and a host-confirmed request. The
+    // page and its script carry no secret and answer without a cookie.
+    {
+      id: 'consent-http:operator-passkey-enrollment',
+      transport: 'consent-http',
+      method: '*',
+      prefix: '/operator/passkeys/enroll',
+      match: 'prefix',
+      capability: 'public',
+      reason:
+        'operator passkey enrollment authenticates in-handler: paired-device cookie, exact consent origin, host-confirmed single-use request',
+    },
+    {
+      id: 'consent-http:operator-passkey-enrollment-script',
+      transport: 'consent-http',
+      method: 'GET',
+      prefix: '/operator/passkeys/enroll.js',
+      match: 'exact',
+      capability: 'public',
+      reason: 'static enrollment page script; carries no secret',
     },
     {
       id: 'consent-http:not-found',
@@ -2345,6 +2461,36 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // principal gets a 404 whatever its scope (station-control-caller-route.ts),
     // so a paired credential at the family's read tier learns nothing.
     { method: 'GET', path: '/api/orchestration/station-control/caller' },
+    // #3160 Station Control's Session tools: agent-only at the route (each
+    // answers 403 `station_control_caller_required` to a request with no
+    // verified station-control caller), so a paired credential at the
+    // family's tier reaches nothing. Send and interrupt mutate (the family's
+    // operate tier); the wait only reads.
+    { method: 'POST', path: '/api/orchestration/session-control/send' },
+    { method: 'POST', path: '/api/orchestration/session-control/interrupt' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/session-control/:sessionId/wait',
+    },
+    // #3413 Station Control's Project activity reads: agent-only at the route
+    // (each answers 403 `station_control_caller_required` to a request with no
+    // verified station-control caller), so a paired credential at the family's
+    // tier reaches nothing. Both only read.
+    { method: 'GET', path: '/api/orchestration/session-activity' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/session-activity/:sessionId/digest',
+    },
+    // #3161 `declare_pull_request`'s REST side. Internal-only at the route: a
+    // request the runtime boundary did not accept as Station's own internal
+    // principal gets a 404 whatever its scope, and the session it records on
+    // is the verified station-control caller's own. It writes the same
+    // candidate record Station's own engine does; the family's operate tier
+    // is the tier of that mutation.
+    {
+      method: 'POST',
+      path: '/api/orchestration/station-control/declare-pull-request',
+    },
     // #2061 Boards: the family read/mutate split is exactly right here —
     // every leaf resolves its owner from the request principal and can reach
     // no other principal's records, so none is more sensitive than the family.
@@ -2403,6 +2549,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/tasks/:taskId/tool-result-references' },
     { method: 'GET', path: '/api/tasks/:taskId/gate-evaluation-references' },
     { method: 'POST', path: '/api/tasks/:taskId/outputs' },
+    // #3161 a person's opt-in to close the Task when its kept pull requests
+    // merge. It mutates only that Task's own record, so the task family's
+    // operate tier is the intended scope; no station-control tool reaches it.
+    { method: 'PUT', path: '/api/tasks/:taskId/close-on-merge' },
     { method: 'DELETE', path: '/api/tasks/:taskId/outputs/:outputId' },
     {
       method: 'POST',
@@ -2417,6 +2567,9 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // room publications and an identity-free connected-client aggregate.
     { method: 'GET', path: '/api/live-activity' },
     { method: 'POST', path: '/api/tasks/:taskId/room/messages' },
+    // Human review appends to the caller's authorized personal Task room;
+    // it neither invokes an agent nor changes Task/workflow acceptance.
+    { method: 'POST', path: '/api/tasks/:taskId/room/output-feedback' },
     { method: 'POST', path: '/api/tasks/:taskId/room/live' },
     // These mutate only the exact task document resolved from the paired
     // caller's request. They mint no cross-environment authority and expose
@@ -2558,6 +2711,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/agents/:slug/conversations/:conversationId/stats',
     },
     { method: 'GET', path: '/agents/:slug/health' },
+    // #3284: an agent's MCP prompts. Listing reads the same tool servers the
+    // agent's tools already use; running one reads a prompt's text back to
+    // the caller, who then sends it as an ordinary turn. Neither crosses an
+    // Environment or Station boundary, so both inherit the agent family.
+    { method: 'GET', path: '/agents/:slug/mcp-prompts' },
+    { method: 'POST', path: '/agents/:slug/mcp-prompts/run' },
     { method: 'POST', path: '/agents/:slug/invoke' },
     { method: 'POST', path: '/agents/:slug/invoke/stream' },
     { method: 'GET', path: '/agents/:slug/tools' },
@@ -2681,10 +2840,21 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // and transcript facts as the ordinary conversation surface and performs
     // no mutation, so it inherits `orchestration:read`.
     { method: 'GET', path: '/api/conversations/:id/open' },
+    // #3159: a paged, bounded read of one conversation's transcript under
+    // the request's own authority (station-control callers are further
+    // limited to what their conversation may read). No mutation and nothing
+    // beyond this Station, so it inherits `orchestration:read`.
+    { method: 'GET', path: '/api/conversations/:id/read' },
     // Records the caller's own rendered conversation version. It does not
     // expose another Station's data, so the conversations family's normal
     // mutating `orchestration:operate` scope applies.
     { method: 'POST', path: '/api/conversations/:id/acknowledgement' },
+    // `rename_session`'s leaf. It writes one conversation title, so the
+    // family's mutating `orchestration:operate` scope applies. The handler
+    // answers only a station-control tool call with a verified caller (it
+    // stamps `titleSource: 'agent'`), so a paired device that reaches it is
+    // refused there; the scope is the floor, not the gate.
+    { method: 'POST', path: '/api/conversations/:id/agent-title' },
     { method: 'GET', path: '/api/diagnostics/bundle' },
     // archive#1896 logging slice 2: server log entries are redacted on
     // egress unless the caller's credential was minted with home-possession
@@ -2727,6 +2897,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // and live tool projection. They do not read another Environment/Station or
     // reveal secret environment values, so they inherit integration operate.
     { method: 'POST', path: '/integrations/:id/enabled' },
+    // #3279: the caller's own connected-account state and disconnect. They
+    // read or clear only the request principal's own credential.
+    { method: 'GET', path: '/integrations/:id/account' },
+    { method: 'DELETE', path: '/integrations/:id/account' },
     { method: 'POST', path: '/integrations/:id/oauth/authorize' },
     { method: 'POST', path: '/integrations/:id/oauth/callback' },
     { method: 'POST', path: '/integrations/:id/reconnect' },
@@ -2809,6 +2983,17 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     {
       method: 'GET',
       path: '/api/orchestration/conversations/:conversationId/event-window',
+    },
+    // A conversation's usage tree: read-only, re-checks the Session read ACL
+    // for the conversation and for every session in it, and returns only
+    // usage figures this Station recorded for sessions the caller can already
+    // read through the conversation `stats` leaf and the session reads at
+    // this tier. A delegate on a paired Station appears only as this
+    // Station's own record of it; no peer is contacted. Read tier, no
+    // override.
+    {
+      method: 'GET',
+      path: '/api/orchestration/conversations/:conversationId/usage-tree',
     },
     // Context-boundary reservations operate only on the current Station's
     // conversation authority. They neither resolve a peer environment nor
@@ -2899,6 +3084,24 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/sessions/:threadId/provider-tasks/:taskId/stop',
     },
+    // #3157: the usage-limit banner's recovery read and its two person-owned
+    // actions (Resume now, Cancel auto-resume). Deliberate family inheritance:
+    // the GET returns only the Session's recovery projection under the same
+    // session-read gate as its siblings; the POSTs resume or retire a stop on a
+    // Session the caller already owns (`canUserMutateSession`), the same
+    // authority as sending the next turn, so they take the operate tier.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/usage-limit',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/usage-limit/resume',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/sessions/:threadId/usage-limit/cancel',
+    },
     { method: 'GET', path: '/api/orchestration/sessions/:threadId/flow-run' },
     // archive#2802: a thread's recorded turn-checkpoint outcomes. Deliberate
     // family inheritance, considered: the records do carry the bound
@@ -2965,6 +3168,22 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/sessions/:threadId/turns/:turnId/basis',
     },
+    // #3163: one engine subagent's own transcript, a bounded read-only page.
+    // Deliberate family inheritance, considered: it never mutates, and it
+    // re-checks the Session read ACL and the request principal before AND
+    // after the engine read, so it reaches nothing a read credential could
+    // not already reach in that Session. The transcript is located from the
+    // child-work facts this Station persisted for the thread (no request
+    // input becomes a path) and read from this Station's own host, so it
+    // carries no other environment's or Station's data. Its content (the
+    // subagent's messages and tool calls, inline image data redacted, text
+    // cut) is the same kind the `messages` and `tool-results` leaves at this
+    // tier already return for the whole Session, a level deeper in the same
+    // work, so read tier is the right scope and no override is needed.
+    {
+      method: 'GET',
+      path: '/api/orchestration/sessions/:threadId/child-work/:childId/transcript',
+    },
     { method: 'GET', path: '/api/orchestration/sessions/loaded' },
     { method: 'GET', path: '/api/orchestration/sessions/read-model' },
     { method: 'GET', path: '/api/projects' },
@@ -2986,6 +3205,12 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // other-environment data. It was reachable but undeclared, which the
     // leaf-coverage gate had been failing on.
     { method: 'PUT', path: '/api/projects/order' },
+    // #3391: where each of this Station's own Projects runs, for the start
+    // composer. A read, and no more sensitive than `GET /api/projects`, which
+    // already returns each Project's working directory: it names the
+    // directories those records resolve to on this Station, mutates nothing,
+    // and carries no peer or other-environment data.
+    { method: 'GET', path: '/api/projects/run-locations' },
     { method: 'DELETE', path: '/api/projects/:slug' },
     { method: 'GET', path: '/api/projects/:slug' },
     { method: 'PUT', path: '/api/projects/:slug' },
@@ -3547,6 +3772,28 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/plugins/visibility' },
     { method: 'POST', path: '/api/plugins/visibility/grants' },
     { method: 'DELETE', path: '/api/plugins/visibility/grants' },
+    // kontourai/station#1418, #1419: plugin command effects. Admission and
+    // settlement are the family's ordinary mutate tier: admission answers
+    // only for a plugin the caller's own principal can see (an invisible one
+    // is refused as absent) and grants no capability beyond a local palette
+    // effect; a settlement is bound to that principal and a per-document key.
+    // Listing, reading and resolving withdrawals, listing uncaptured effects
+    // and abandoning one are refused to non-operators inside the handler, the
+    // same shape as the visibility grants above; none reaches another
+    // environment's or another Station's data.
+    { method: 'POST', path: '/api/plugins/:name/command-effects' },
+    { method: 'POST', path: '/api/plugins/command-effects/settlements' },
+    { method: 'GET', path: '/api/plugins/command-effects/withdrawals' },
+    { method: 'GET', path: '/api/plugins/command-effects/withdrawals/:id' },
+    { method: 'GET', path: '/api/plugins/command-effects/uncaptured' },
+    {
+      method: 'POST',
+      path: '/api/plugins/command-effects/effects/:effectId/abandon',
+    },
+    {
+      method: 'POST',
+      path: '/api/plugins/command-effects/withdrawals/:id/resolve',
+    },
     { method: 'GET', path: '/api/plugins/:name/retained-generations' },
     { method: 'GET', path: '/api/plugins/:name/recovery-preview' },
     { method: 'POST', path: '/api/plugins/:name/recover' },

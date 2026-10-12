@@ -132,6 +132,7 @@ vi.mock('../../components/coding-layout/DiffPanel', () => ({
 }));
 vi.mock('../../components/coding-layout/PullRequestsPanel', () => ({
   PullRequestsPanel: () => null,
+  CurrentBranchPullRequestLine: () => null,
 }));
 
 import { getBuiltinWorkspacePaneRenderer } from '../builtinWorkspacePaneRegistry';
@@ -258,11 +259,14 @@ test('a layout-less Files pane keeps a file click out of navigation; a layout-bo
 
   mount(WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR, withLayout(instance));
   fireEvent.click(screen.getByTestId('files'));
+  // Named as the pane's own row write: the Chat position leaves it to the
+  // pane, which opens its own preview (#3040 round 4).
   expect(mocks.setLayout).toHaveBeenCalledWith('alpha', 'coding', {
     openFilePreviewIntent: {
       version: '1.0',
       projectSlug: 'alpha',
       path: 'src/a.ts',
     },
+    from: 'pane',
   });
 });

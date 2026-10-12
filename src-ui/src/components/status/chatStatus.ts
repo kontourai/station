@@ -35,6 +35,8 @@ export interface ChatStatus {
 }
 
 export interface ChatStatusInput {
+  /** A history or continuation read failed; cached activity is not current proof. */
+  observationUnavailable?: boolean;
   /** This chat's open approval requests. */
   approvalCount: number;
   stream?: ChatStreamStatus;
@@ -70,12 +72,25 @@ export function deriveChatStatus(
   input: ChatStatusInput,
 ): ChatStatus | undefined {
   const { stream, activity } = input;
+  if (input.observationUnavailable)
+    return {
+      kind: 'blocked',
+      tone: 'broken',
+      glyph: 'attention',
+      label: 'Status unavailable',
+      details: [
+        {
+          text: 'Station could not verify this conversation. The remote turn may still be running.',
+        },
+      ],
+      action: 'repair',
+    };
   if (input.approvalCount > 0) {
     return {
       kind: 'approval',
       tone: 'attention',
       glyph: 'approval',
-      label: 'Approval needed',
+      label: 'Needs approval',
       count: input.approvalCount > 1 ? input.approvalCount : undefined,
       details: [],
       action: 'reveal-approval',
@@ -145,11 +160,11 @@ export function deriveChatStatus(
   }
   const silentSince = epochMs(activity?.progressSilence?.silentSinceEventAt);
   if (silentSince !== undefined && input.activityHint?.kind !== 'retrying') {
-    if (!running) label = 'Still waiting';
-    details.push({
-      text: 'No response from the engine for',
-      since: silentSince,
-    });
+    // The ladder's word for a quiet run, not a second one: the strip says
+    // "No progress" with the clock, and its detail reads exactly like the
+    // row, "No progress · 4m" (the pill appends " · <duration>").
+    if (!running) label = 'No progress';
+    details.push({ text: 'No progress', since: silentSince });
   }
   return {
     kind: 'working',

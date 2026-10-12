@@ -1,0 +1,7 @@
+{
+  "revision": "e219871c414d351695127ff92ee3280ca38dff9c",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Reviewed merged action inventory against theme guidance: preserved incoming Browser pane dialog/toolbar source owners and scoped evidence limits; retained Home goal form shared controls and phone evidence. Token roles, contrast requirements and theme ownership are unchanged.","inputs":["docs/guides/theming.md"]}
+  ]
+}

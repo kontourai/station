@@ -1,3 +1,5 @@
+import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 import * as nodeFs from 'node:fs';
 import {
   chmodSync,
@@ -6,7 +8,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { join, win32 } from 'node:path';
 import {
   readInstanceRegistry,
   upsertInstance,
@@ -18,6 +20,7 @@ import {
 } from '@kontourai/station-shared/station-home-schema';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
+import type { CollectedInstanceStatus } from '../commands/lifecycle.js';
 import type { ServiceFs } from '../commands/service.js';
 
 const makeTempDir = trackTempDirs();
@@ -1042,6 +1045,150 @@ describe('station service dispatch', () => {
     });
   });
 
+  // #2961 (ADR 0020 D4): a home has one live host. A live Desktop sidecar
+  // holds it under a DIFFERENT id, which the per-id #3047 guard never saw.
+  const liveDesktopSidecar = (baseDir: string) =>
+    upsertInstance(
+      'desktop-sidecar-4242',
+      {
+        port: 38141,
+        type: 'sidecar',
+        status: 'running',
+        pid: process.pid,
+        birth: lookupProcessBirthFingerprint(process.pid)!,
+      },
+      baseDir,
+    );
+
+  test('refuses install while a live Desktop sidecar owns the home (#2961)', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const baseDir = makeTempDir('station-service-test-');
+    ensureStationHomeSchemaSync(baseDir);
+    liveDesktopSidecar(baseDir);
+    const before = readInstanceRegistry(baseDir);
+
+    await expect(
+      runServiceCommand(['install'], lifecycle(baseDir), {
+        fs: serviceFs,
+        platform: 'darwin',
+        run: vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' })),
+      }),
+    ).rejects.toThrow(
+      `Station service 'service-test' cannot own Station home ${baseDir}: it is in use by Station Desktop's built-in server (registry id 'desktop-sidecar-4242', pid ${process.pid}). Quit Station Desktop so the background service can own this home, or install the service for a different home.`,
+    );
+    expect(installLaunchd).not.toHaveBeenCalled();
+    expect(readInstanceRegistry(baseDir)).toEqual(before);
+  });
+
+  test('fences a fresh install before backend start races a Desktop claim (#2961)', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const { superviseService: realSupervisor } = await vi.importActual<
+      typeof import('../commands/service-run.js')
+    >('../commands/service-run.js');
+    const baseDir = makeTempDir('station-service-test-');
+    ensureStationHomeSchemaSync(baseDir);
+    const installBackend = installLaunchd.getMockImplementation()!;
+    let host: ChildProcess | undefined;
+    let hostPort: Promise<number> | undefined;
+    const start = vi.fn(async () => {
+      host = spawn(
+        process.execPath,
+        [
+          '-e',
+          "require('node:http').createServer((req,res) => res.end('service-host')).listen(0,'127.0.0.1', function() {console.log(this.address().port)});",
+        ],
+        { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] },
+      );
+      hostPort = once(host.stdout!, 'data').then(([data]) =>
+        Number(String(data).trim()),
+      );
+    });
+    let supervision: Promise<void> | undefined;
+    const supervisorExit = vi.fn();
+    const supervisorStop = vi.fn();
+    installLaunchd.mockImplementationOnce((instanceId, input) => {
+      // Real supervisor starts at the OS-backend seam, before install returns.
+      supervision = realSupervisor(lifecycle(baseDir), {
+        start,
+        stop: supervisorStop,
+        exit: supervisorExit,
+        onSignal: vi.fn(),
+        needsBuildForInstance: () => false,
+        collect: vi.fn(
+          async (): Promise<CollectedInstanceStatus> => ({
+            found: true,
+            healthy: true,
+            bootId: 'boot',
+            sha: 'sha',
+            instanceId: 'service-test',
+            server: {
+              pid: host?.pid ?? null,
+              probe: 'ok',
+              listening: true,
+              reachable: true,
+            },
+            ui: {
+              pid: host?.pid ?? null,
+              probe: 'ok',
+              listening: true,
+              reachable: true,
+            },
+          }),
+        ),
+        setTimer: vi.fn(() => 1 as never),
+      });
+      const sidecar = spawnSync(
+        process.execPath,
+        [
+          '--import',
+          'tsx',
+          'src-server/tools/instance-registry-bridge.ts',
+          'claimSidecar',
+        ],
+        {
+          windowsHide: true,
+          encoding: 'utf8',
+          input: JSON.stringify({
+            home: baseDir,
+            id: 'racing-desktop',
+            instance: { type: 'sidecar', port: 38141, status: 'starting' },
+          }),
+        },
+      );
+      expect(sidecar.status).toBe(0);
+      expect(
+        JSON.parse(sidecar.stdout).claimed,
+        'backend must already be fenced against Desktop',
+      ).toBe(false);
+      return installBackend(instanceId, input);
+    });
+    try {
+      await runServiceCommand(['install'], lifecycle(baseDir), {
+        fs: serviceFs,
+        platform: 'darwin',
+        run: vi.fn(() => ({ status: 0, stdout: '/usr/bin:/bin\n' })),
+      });
+      await supervision;
+      const port = await hostPort!;
+      expect(port).toBeGreaterThan(0);
+      expect(await (await fetch(`http://127.0.0.1:${port}`)).text()).toBe(
+        'service-host',
+      );
+      expect(start).toHaveBeenCalledTimes(1);
+      expect(supervisorExit).not.toHaveBeenCalled();
+      expect(supervisorStop).not.toHaveBeenCalled();
+      expect(Object.keys(readInstanceRegistry(baseDir).instances)).toEqual([
+        'service-test',
+      ]);
+    } finally {
+      if (host) {
+        const exited = once(host, 'exit');
+        host.kill();
+        await exited;
+      }
+    }
+  });
+
   // station#2689: from a source checkout the launcher selects the development
   // channel and exports the checkout's derived dev identity, so a home left to
   // its default is that dev instance's home. The entry-point suite
@@ -1231,10 +1378,10 @@ describe('station service dispatch', () => {
 
     expect(installLaunchd).toHaveBeenCalled();
     const entry = readInstanceRegistry(baseDir).instances['service-test'];
-    // Replaced, not merged: the retired generation's liveness must not ride
-    // into the new record (#3047), while its origin policy is preserved.
-    expect(entry.pid).toBeUndefined();
-    expect(entry.birth).toBeUndefined();
+    // Policy publication must not erase a supervisor that is still live:
+    // it may have claimed while the backend was being installed.
+    expect(entry.pid).toBe(process.pid);
+    expect(entry.birth).toBe(lookupProcessBirthFingerprint(process.pid));
     expect(entry.env).toEqual({ ALLOWED_ORIGINS: 'https://paired.example' });
   });
 
@@ -1274,10 +1421,12 @@ describe('station service dispatch', () => {
       port: 3242,
       uiPort: 5274,
       type: 'service',
+      status: 'installing',
+      pid: process.pid,
+      birth: lookupProcessBirthFingerprint(process.pid),
       env: { ALLOWED_ORIGINS: '' },
     });
-    expect(entry.pid).toBeUndefined();
-    expect(entry.birth).toBeUndefined();
+    expect(entry.checkout).toBeUndefined();
   });
 
   test('rejects a manifest whose allowedOrigins field is malformed (#1672)', async () => {
@@ -1516,6 +1665,8 @@ describe('station service dispatch', () => {
       manifest,
       registry: {
         allowedOrigins: [],
+        pid: process.pid,
+        status: 'installing',
         port: 3242,
         type: 'service',
         uiPort: 5274,
@@ -3313,6 +3464,192 @@ describe('what an installed service runs (#2675 slice C)', () => {
         'utf8',
       ),
     ).toBe('// launcher v1\n');
+  });
+
+  test('on Windows the task runs the launcher with a node.exe frozen beside it (#2675 W3)', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const { resolveLifecycleCodeRoot } = await import(
+      '../commands/lifecycle-code-root.js'
+    );
+    const { installRoot, version } = installerArchive();
+    writeFileSync(join(version, 'runtime', 'node.exe'), 'node.exe v1');
+    const baseDir = makeTempDir('station-service-test-');
+    ensureStationHomeSchemaSync(baseDir);
+    const run = vi.fn(() => ({ status: 0, stdout: '' }));
+
+    await runServiceCommand(['install'], lifecycle(baseDir), {
+      codeRoot: resolveLifecycleCodeRoot(version),
+      fs: serviceFs,
+      platform: 'win32',
+      run,
+    });
+
+    expect(installWindowsService).toHaveBeenCalledWith(
+      'service-test',
+      expect.objectContaining({
+        kind: 'archive',
+        installRoot,
+        nodePath: win32.join(installRoot, 'runtime', 'node.exe'),
+      }),
+    );
+    expect(readFileSync(join(installRoot, 'runtime', 'node.exe'), 'utf8')).toBe(
+      'node.exe v1',
+    );
+    expect(
+      readFileSync(
+        join(installRoot, 'runtime', 'station-launcher.mjs'),
+        'utf8',
+      ),
+    ).toBe('// launcher v1\n');
+  });
+
+  test('stops a Windows launcher service from its wrapper down, and waits for the launcher (#2675 W3)', async () => {
+    const { runServiceCommand } = await import('../commands/service.js');
+    const { resolveLifecycleCodeRoot } = await import(
+      '../commands/lifecycle-code-root.js'
+    );
+    const { installRoot, version } = installerArchive();
+    writeFileSync(join(version, 'runtime', 'node.exe'), 'node.exe v1');
+    const baseDir = makeTempDir('station-service-test-');
+    ensureStationHomeSchemaSync(baseDir);
+    const run = vi.fn(() => ({ status: 0, stdout: '' }));
+    installWindowsService.mockImplementationOnce((instanceId, input) => ({
+      host: input.lifecycle.host,
+      installedAt: '',
+      instanceId,
+      kind: input.kind,
+      installRoot: input.installRoot,
+      nodePath: input.nodePath,
+      platform: 'win32',
+      repoPath: input.repoPath,
+      serverPort: input.lifecycle.serverPort,
+      taskName: `\\KontourStation-${instanceId}`,
+      uiPort: input.lifecycle.uiPort,
+      unitPath: `/tmp/${instanceId}.cmd`,
+    }));
+    await runServiceCommand(['install'], lifecycle(baseDir), {
+      codeRoot: resolveLifecycleCodeRoot(version),
+      fs: serviceFs,
+      platform: 'win32',
+      run,
+    });
+
+    // A live launcher holds the lock, with its pid and start time.
+    const launcher = spawn(
+      process.execPath,
+      ['-e', 'setInterval(() => {}, 1000)'],
+      {
+        stdio: 'ignore',
+      },
+    );
+    const pid = launcher.pid as number;
+    const lock = join(installRoot, 'runtime', 'service-state.lock');
+    writeFileSync(
+      lock,
+      `${JSON.stringify({ pid, birth: lookupProcessBirthFingerprint(pid), token: 't' })}\n`,
+    );
+    const order: string[] = [];
+    // `/End` ends the wrapper; the launcher notices, stops Station in order
+    // and exits, releasing its lock, a little later.
+    stopWindowsService.mockImplementation(() => {
+      order.push('end-task');
+      setTimeout(() => {
+        nodeFs.rmSync(lock, { force: true });
+        launcher.kill('SIGKILL');
+      }, 300);
+    });
+    stop.mockImplementation(() => {
+      order.push(nodeFs.existsSync(lock) ? 'stop-while-launcher-runs' : 'stop');
+    });
+    windowsServiceStatus.mockReturnValue({
+      active: true,
+      enabled: true,
+      present: true,
+    });
+    stopWindowsService.mockClear();
+    stop.mockClear();
+    order.length = 0;
+    const sleep = vi.fn(
+      (ms: number) =>
+        new Promise<void>((resolve) => setTimeout(resolve, Math.min(ms, 50))),
+    );
+    windowsServiceStatus
+      .mockReturnValueOnce({ active: true, enabled: true, present: true })
+      .mockReturnValue({ active: false, enabled: true, present: true });
+    collectInstanceStatus.mockResolvedValue({
+      found: false,
+      healthy: false,
+      instanceId: 'service-test',
+      server: { pid: null, reachable: false },
+      ui: { pid: null, reachable: false },
+    });
+    try {
+      await runServiceCommand(['stop'], lifecycle(baseDir), {
+        fs: serviceFs,
+        platform: 'win32',
+        run,
+        sleep,
+      });
+    } finally {
+      launcher.kill('SIGKILL');
+    }
+    // Stopping Station first would read to the launcher as a crash, which
+    // it answers by starting Station again.
+    expect(order).toEqual(['end-task', 'stop']);
+  });
+
+  test('ends a launcher that outlived its stop budget only when its start time proves the pid (#2675 W3)', async () => {
+    const { waitForServiceLauncherExit } = await import(
+      '../commands/service.js'
+    );
+    const installRoot = makeTempDir('station-launcher-lock-');
+    mkdirSync(join(installRoot, 'runtime'));
+    // A live process stands in for the launcher that holds the lock.
+    const holder = spawn(
+      process.execPath,
+      ['-e', 'setInterval(() => {}, 1000)'],
+      {
+        stdio: 'ignore',
+      },
+    );
+    const pid = holder.pid as number;
+    writeFileSync(
+      join(installRoot, 'runtime', 'service-state.lock'),
+      `${JSON.stringify({ pid, birth: 'recorded-birth', token: 't' })}\n`,
+    );
+    const kill = vi.fn();
+    try {
+      // Its start time cannot be read: nothing proves the pid is still the
+      // launcher's, so it is not signalled and the stop is refused.
+      await expect(
+        waitForServiceLauncherExit(installRoot, {}, serviceFs, {
+          deadlineMs: 0,
+          birthOf: () => null,
+          kill,
+        }),
+      ).rejects.toThrow(
+        `The Station service launcher (pid ${pid}, lock ${join(installRoot, 'runtime', 'service-state.lock')}) did not stop within 0s, and its start time could not be read`,
+      );
+      expect(kill).not.toHaveBeenCalled();
+      // Proven by its start time: it is ended.
+      await waitForServiceLauncherExit(installRoot, {}, serviceFs, {
+        deadlineMs: 0,
+        birthOf: () => 'recorded-birth',
+        kill,
+      });
+      expect(kill).toHaveBeenCalledWith(pid);
+      // Another start time: the pid was reused, the lock is stale, nothing
+      // is signalled and there is nothing to wait for.
+      kill.mockClear();
+      await waitForServiceLauncherExit(installRoot, {}, serviceFs, {
+        deadlineMs: 0,
+        birthOf: () => 'another-birth',
+        kill,
+      });
+      expect(kill).not.toHaveBeenCalled();
+    } finally {
+      holder.kill('SIGKILL');
+    }
   });
 
   test('refuses to install from an inactive installer version, before touching the backend', async () => {

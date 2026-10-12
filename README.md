@@ -1,6 +1,10 @@
 # Station
 
-**An agent workspace for projects, execution, and evidence.**
+**The agent workspace where work ships with receipts.**
+
+[![Docs](https://img.shields.io/badge/docs-kontourai.github.io-blue)](https://kontourai.github.io/station/)
+[![Site](https://img.shields.io/badge/site-station.kontourai.io-blue)](https://station.kontourai.io)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 Station is Kontour's open-source, local-first workspace for agent work. Bring
 your agents, projects, and devices together, hand a Task to the agent you
@@ -51,7 +55,7 @@ Station brings several parts of agent work into one workspace:
 | Keep a long piece of work alive | A Task spans as many Sessions as it needs. Follow it from a paired device and come back to the same context, files, and evidence. |
 | Use agents without a cloud account | A configured local model can provide inference without a cloud account. Tools, engines, and other enabled integrations retain their own network behavior. |
 | Coordinate several agents | Delegate bounded work from one agent to another, or run it on a remote computer over SSH with that machine's own agents, credentials, and workspace. |
-| Run Station on a server you control | Build the container image from this checkout, run it behind your own authenticated ingress, and pair devices with scoped, revocable access. |
+| Run Station on a server you control | Review the deployment recipe, image provenance, home ownership, and authenticated ingress. |
 | Build a purpose-built work surface | Write a plugin using the public SDK: a review workbench, a release console, or a domain-specific layout. |
 
 ## Get Station
@@ -112,6 +116,12 @@ without a host build. It may download a pinned Node.js for initial verification;
 installer support does not establish availability of a published manifest.
 
 ### Self-host with Docker
+
+The Dockerfile's foreground `service run` supervisor atomically claims a fresh
+home without requiring `service install`. While another live owner holds the
+home, it waits without running Station and starts after that owner is gone.
+See the [deployment guide](docs/guides/deployment.md) for this cooperative fence;
+direct server entrypoints do not claim it.
 
 The repository ships a `Dockerfile` and `docker-compose.yml`. The UI, HTTP API,
 and event streams share the exposed origin on port 3000; the home persists in a

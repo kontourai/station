@@ -1,0 +1,7 @@
+{
+  "revision": "c3707bab8c4516c52f0de635423319798336754b",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed the theming-guide delta adding native window-background coverage of Android's pre-paint gap. Its branding section still describes the same server provider, validated role overrides and canonical main.tsx application; the native launch mark has no new branding or distribution authority. No distribution/plugin design or evidence claim changed.","inputs":["docs/design/shell-plugins-distributions.md","docs/guides/theming.md"]}
+  ]
+}

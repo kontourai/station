@@ -2,29 +2,29 @@
   "path": "docs/learn/media/connections-models.png",
 
   "sources": [
-    {"path":"src-ui/src/components/header/Header.tsx","digest":"ce3ac4d0fb13aeeb8fa40aaa1474a552b9b92213b80a96bccdf7fad34905c9f2","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+    "src-ui/src/components/header/Header.tsx",
 
-    {"path":"src-ui/src/components/header/useHeaderViewModel.ts","digest":"589545ed487887bf4f8dd17aaaf236e5a74976589c00b7167a0bbb6998554061","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+    "src-ui/src/components/header/useHeaderViewModel.ts",
 
-    {"path":"src-ui/src/components/SplitPaneLayout.css","digest":"6433a2150e6308c6c3121af9c5beffdab52786e43723288790af24a41fdf630f","revision":"429c70d487f02c105a523de55b2f02f498520703"},
+    "src-ui/src/components/SplitPaneLayout.css",
 
-    {"path":"src-ui/src/components/SplitPaneLayout.tsx","digest":"afa5bac34d039da9bdb075158d39ca552af35b773c2ca0b7a5c79b5fd85681ff","revision":"c95c15c1da61afdef33a3aa6678286a794a98ef0"},
+    "src-ui/src/components/SplitPaneLayout.tsx",
 
-    {"path":"src-ui/src/index.css","digest":"e3bf9bb5c0dbeea17eb06bf2536ebcd445ce60875becb64ca97da08118422dcd","revision":"8fd71c3714eceeb651bd8e52f200aa1532fa33c6"},
+    "src-ui/src/index.css",
 
-    {"path":"src-ui/src/views/AgentConnectionView.tsx","digest":"8ec56bd2a4de7fc240781373aafdec325c2d3fc75ea3945c51258f90cf204d77","revision":"91d79c3f0ce9ca5ae304e4248b67b6189103016e"},
+    "src-ui/src/views/AgentConnectionView.tsx",
 
-    {"path":"src-ui/src/views/ConnectionsSectionFrame.tsx","digest":"78a8cef4a703a2eb9f0382386d738ecd1f0909a4b11a7219771ac0e92f2c7b6c","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+    "src-ui/src/views/ConnectionsSectionFrame.tsx",
 
-    {"path":"src-ui/src/views/page-layout.css","digest":"c36c04594f1f156ce8320772503607bcecfe8a1dcb11bbe589d004e4385ceef4","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+    "src-ui/src/views/page-layout.css",
 
-    {"path":"src-ui/src/views/provider-settings/ProviderConnectionForm.tsx","digest":"0ad7474fb672c1eafa97d2a517089f499b7dadcb9b7ac3366b75976bbedd7d2a","revision":"54fc4a556486e17d1f4f0546c02be91fedf3b6b7"},
+    "src-ui/src/views/provider-settings/ProviderConnectionForm.tsx",
 
-    {"path":"src-ui/src/views/provider-settings/ProviderStackOverview.tsx","digest":"5406c4305a3719253205722ab0b77c995556decab6ee6ba9ccee0c986f8a2208","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"},
+    "src-ui/src/views/provider-settings/ProviderStackOverview.tsx",
 
-    {"path":"src-ui/src/views/ProviderSettingsView.tsx","digest":"9d5cc117730655c3cba8987dbccd4b059acf287f1ace1677f720c43c17b8fcff","revision":"84fce0d121e631ed7bfd42048d113d9e34692594"},
+    "src-ui/src/views/ProviderSettingsView.tsx",
 
-    {"path":"tests/connections-crud.spec.ts","digest":"b0c33e5e552b3651adf99dbe92ef3d43a38bb130ca13c26f7dff1bfeb3dbc9e5","revision":"44468b740ff5c3e0c02b2cf684ba9437ec890ca8"}
+    "tests/connections-crud.spec.ts"
   ],
 
   "reviewNotes": []

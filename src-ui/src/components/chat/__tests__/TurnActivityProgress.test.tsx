@@ -39,7 +39,7 @@ describe('TurnActivityProgress', () => {
     };
     const { rerender } = render(<TurnActivityProgress activity={activity} />);
     expect(screen.getByTestId('turn-activity-progress').textContent).toBe(
-      'No response from Codex for 3m 0s. Still waiting.',
+      'No progress from Codex for 3m',
     );
     rerender(
       <TurnActivityProgress

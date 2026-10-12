@@ -1,0 +1,7 @@
+{
+  "revision": "39e1f4bbf14013fd9e91df90a3f285d57aed40d3",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Conflict integration review: inspected merged ChatDock intent handoff, captured-authority goal send and normal composer admission. Page/region placement and explicit conversation links retain the documented contract; existing source review scope is preserved. Refresh only the merged ChatDock bytes, without extending native or release proof.","inputs":["docs/design/placement.md"]}
+  ]
+}

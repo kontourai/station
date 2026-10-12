@@ -1,0 +1,7 @@
+{
+  "revision": "7080fcf23e8653173e0df7fffc2825f1f60f617b",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed hosted Gallery run 38005261311: 52 of 53 baselines match after the cascade fix. The remaining 9646 pixels are confined to the shipped observationUnavailable repair pill, present in both hosted captures. The mismatch fixture now explicitly returns 503 for conversation-open GET and awaits the accessible repair button. Only that image was accepted from the hosted artifact. Existing capture and hosted-baseline guidance remains accurate; Mac behavior capture and next-head hosted pixels are separate.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json","tests/screenshots.baseline/overlay-dock-project-mismatch.png","tests/screenshots.spec.ts"]}
+  ]
+}

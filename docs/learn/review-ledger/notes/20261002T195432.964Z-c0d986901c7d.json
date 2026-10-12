@@ -1,0 +1,7 @@
+{
+  "revision": "14ed8256e37a8984bedd979efc30e58fe6a04a18",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed and updated the user journey labels to Review saved connection access and Remove saved access. The preview names what is and is not changed, keeps technical routing details collapsed, and the success state sends the user to device approval while keeping sign-in and shared Projects separate. Native link-intake and route-profile mounted tests passed; installed-shell qualification remains separate.","inputs":["docs/guides/connections.md"]}
+  ]
+}

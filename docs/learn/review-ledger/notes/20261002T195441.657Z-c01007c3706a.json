@@ -1,0 +1,7 @@
+{
+  "revision": "14ed8256e37a8984bedd979efc30e58fe6a04a18",
+
+  "notes": [
+    {"path":"packages/connect/README.md","note":"Reviewed the Station wizard consumer delta against the package's public transport boundary. The wording change does not alter Connect APIs, transport lifecycle or Station/Device/account/Project authority. Focused mounted test passed; installed Nightly and physical-device limits remain unchanged.","inputs":["packages/connect/README.md"]}
+  ]
+}

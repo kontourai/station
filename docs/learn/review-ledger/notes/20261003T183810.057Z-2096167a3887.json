@@ -1,0 +1,7 @@
+{
+  "revision": "787534a6fb8a8fa78be13df4575796589671b704",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Integrated landed visual feature #3170 without reverting its full execution/SDK/host behavior. Generated MCP bytes now exactly match main and route the106 canonical topics. Static reading-path claims and original runtime/release limits remain accurate. Both append-only parent review histories are preserved; the remaining PR has zero production/source/test delta against main.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

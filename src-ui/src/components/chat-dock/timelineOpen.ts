@@ -15,7 +15,7 @@ export function openTimeline(
   selectChat: (storeId: string, routeId: string) => void,
 ) {
   if (opening) return opening;
-  const toastId = notify('Loading conversation history…', undefined, 0);
+  const toastId = notify('Loading history…', undefined, 0);
   opening = Promise.resolve()
     .then(() => {
       if (
@@ -25,9 +25,7 @@ export function openTimeline(
         authority.apiBase !== apiBase ||
         !authority.isCurrent()
       )
-        throw new Error(
-          'Conversation history authorization is no longer current.',
-        );
+        throw new Error('History authorization is no longer current.');
       return openConversationTimeline({
         apiBase,
         sourceChatId: session.id,
@@ -48,9 +46,7 @@ export function openTimeline(
     .then(() => undefined)
     .catch((error: unknown) => {
       notify(
-        error instanceof Error
-          ? error.message
-          : 'Could not open conversation history.',
+        error instanceof Error ? error.message : 'Could not open history.',
       );
     })
     .finally(() => {

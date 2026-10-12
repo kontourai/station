@@ -1,0 +1,7 @@
+{
+  "revision": "eb19c6da33f225d1659c3b4dc711e1684ac9bf7c",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"#3312: task-first-home now pins the compact start form's advertised identity against the started chat's Agent/Model controls and the New chat draft, the exact Continue label and the continued chat as the Coding layout's current inbox row; mobile-chat-composer follows the marker rename to Needs approval; default-agent-workflow follows History · N. Row ownership and surfaces are unchanged, so no table change.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/default-agent-workflow.spec.ts","tests/mobile-chat-composer.spec.ts","tests/task-first-home.spec.ts"]}
+  ]
+}

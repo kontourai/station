@@ -1,0 +1,7 @@
+{
+  "revision": "25f63f03a09eda855bc12e5b913d994478860035",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"#2799 added one Chromium layout test to tests/project-forms.spec.ts (Project settings Workspace section with a 200+ character working directory at 360, 768 and 1280px). The Projects row's project-forms claim (create/edit, phone-sized form containment) still describes the spec; the new test is further containment coverage of the edit surface in the same bucket and manifest entry. No prose change.","inputs":["docs/guides/e2e-coverage-matrix.md","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/services/connections/connection-service.ts","tests/agents-editor-gates.spec.ts","tests/agents-new-model-turn.spec.ts","tests/android/mobile-layout.spec.ts","tests/connect-modal.spec.ts","tests/connect-reconnect-banner.spec.ts","tests/mobile-chat-composer.spec.ts","tests/project-architecture.spec.ts","tests/project-forms.spec.ts","tests/registry.spec.ts","tests/root-route-restore.spec.ts","tests/schedule.spec.ts","tests/task-first-home.spec.ts"]}
+  ]
+}

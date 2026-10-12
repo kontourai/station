@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type {
   ConnectionRecoveryIntent,
   ConnectionRecoveryOutcome,
+  ConnectionRecoveryOutcomeReason,
   ConnectionRecoveryProjection,
 } from '@kontourai/station-contracts/connection-recovery';
 import {
@@ -32,6 +33,18 @@ export type RecoveryTransition =
   | { kind: 'unavailable' };
 
 /**
+ * One startup obligation read. `available` with no obligations proves storage
+ * holds none; `unavailable` proves nothing, so a caller must never treat it as
+ * an empty sweep (#2823). For the two credential scans, rows already fenced
+ * before a mid-scan failure stay durable and are read again by the next scan.
+ * The due scan selects only still-prepared rows, so a due row fenced before
+ * the failure is not returned again.
+ */
+export type RecoveryObligationScan<T> =
+  | { kind: 'available'; obligations: T[] }
+  | { kind: 'unavailable' };
+
+/**
  * The recovery state machine at the orchestration Seam.
  *
  * Callers arm an intent, inspect immutable redacted state, and claim a single
@@ -49,6 +62,8 @@ export interface RecoveryLedger {
   claim(input: {
     fingerprint: string;
     kind: 'due' | 'profile';
+    /** #3157: a user's "Resume now" on a usage-limit intent, before its due time. */
+    immediate?: boolean;
     now: string;
   }): { kind: 'owner'; attempt: RecoveryClaim } | { kind: 'unavailable' };
   observe(input: {
@@ -62,13 +77,15 @@ export interface RecoveryLedger {
     kind?: 'due' | 'profile',
     /** Legacy profile rows have no exact credential receipt authority. */
     unlinkedOnly?: boolean,
-  ): RecoveryIntentSnapshot[];
+  ): RecoveryObligationScan<RecoveryIntentSnapshot>;
   /**
    * Startup-only exact credential settlement work. Prepared rows are changed
    * to indeterminate before returning; accepted rows retain their provider
    * truth so the credential Module can terminalize an adopted receipt.
    */
-  reconcilePreparedCredentials(now: string): RecoveryCredentialStartupHandle[];
+  reconcilePreparedCredentials(
+    now: string,
+  ): RecoveryObligationScan<RecoveryCredentialStartupHandle>;
   terminal(
     fingerprint: string,
     outcome: Extract<
@@ -83,9 +100,34 @@ export interface RecoveryLedger {
     expectedOutcome?: 'resumed' | 'canceled' | 'indeterminate',
   ): RecoveryTransition;
   resolveCompensation(fingerprint: string, now: string): RecoveryTransition;
-  cancel(fingerprint: string, now: string): RecoveryTransition;
+  cancel(
+    fingerprint: string,
+    now: string,
+    reason?: ConnectionRecoveryOutcomeReason,
+  ): RecoveryTransition;
+  /**
+   * #3157: settles a still-waiting intent (armed, or a usage-limit intent left
+   * to the user as `manual`; never claimed) without a dispatch, recording
+   * why. A claimed intent is `stale` here.
+   */
+  retireWaiting(input: {
+    fingerprint: string;
+    outcome: 'manual' | 'canceled';
+    reason: ConnectionRecoveryOutcomeReason;
+    now: string;
+  }): RecoveryTransition;
+  /** #3157: usage-limit intents left to the user (`manual`), never claimed. */
+  awaitingUser(): RecoveryIntentSnapshot[];
   /** Startup repair: source-terminal events remain authoritative after a canceled write fault. */
   cancelSourceTerminated(now: string): RecoveryTransition;
+  /**
+   * #3563: the startup repair's rule for one intent, checked when its timer
+   * fires. `applied` canceled it; `stale` lets dispatch proceed.
+   */
+  cancelIfSourceTerminated(
+    fingerprint: string,
+    now: string,
+  ): RecoveryTransition;
   cancelShutdownRequested(now: string): RecoveryTransition;
 }
 
@@ -161,6 +203,7 @@ interface RecoveryLedgerCoordinator {
   claim(input: {
     fingerprint: string;
     kind: 'due' | 'profile';
+    immediate?: boolean;
     dispatchAttemptId: string;
     recoveryCorrelationId: string;
     owner: RecoveryOwner;
@@ -227,8 +270,23 @@ interface RecoveryLedgerCoordinator {
     expectedOutcome: 'resumed' | 'canceled' | 'indeterminate',
   ): RecoveryTransition;
   resolveCompensation(fingerprint: string, now: string): RecoveryTransition;
-  cancel(fingerprint: string, now: string): RecoveryTransition;
+  cancel(
+    fingerprint: string,
+    now: string,
+    reason?: ConnectionRecoveryOutcomeReason,
+  ): RecoveryTransition;
+  retireWaiting(input: {
+    fingerprint: string;
+    outcome: 'manual' | 'canceled';
+    reason: ConnectionRecoveryOutcomeReason;
+    now: string;
+  }): RecoveryTransition;
+  awaitingUser(): RecoveryIntentRecord[];
   cancelSourceTerminated(now: string): RecoveryTransition;
+  cancelIfSourceTerminated(
+    fingerprint: string,
+    now: string,
+  ): RecoveryTransition;
   cancelShutdownRequested(now: string): RecoveryTransition;
 }
 
@@ -296,7 +354,7 @@ export function createRecoveryLedger(options: {
     pending: () => options.coordinator.pending().map(snapshot),
     compensationSnapshot: () =>
       options.coordinator.compensationSnapshot().map(snapshot),
-    claim: ({ fingerprint, kind, now }) => {
+    claim: ({ fingerprint, kind, immediate, now }) => {
       const id = randomUUID();
       const correlationId = randomUUID();
       let claimed: ConnectionRecoveryIntent | null;
@@ -304,6 +362,7 @@ export function createRecoveryLedger(options: {
         claimed = options.coordinator.claim({
           fingerprint,
           kind,
+          ...(immediate ? { immediate } : {}),
           dispatchAttemptId: id,
           recoveryCorrelationId: correlationId,
           owner,
@@ -468,9 +527,9 @@ export function createRecoveryLedger(options: {
           });
           if (intent) reconciled.push(snapshot(intent));
         }
-        return reconciled;
+        return { kind: 'available', obligations: reconciled };
       } catch {
-        return [];
+        return { kind: 'unavailable' };
       }
     },
     reconcilePreparedCredentials: (now) => {
@@ -531,9 +590,9 @@ export function createRecoveryLedger(options: {
             );
           }
         }
-        return reconciled;
+        return { kind: 'available', obligations: reconciled };
       } catch {
-        return [];
+        return { kind: 'unavailable' };
       }
     },
     terminal: (fingerprint, outcome, now) => {
@@ -561,9 +620,23 @@ export function createRecoveryLedger(options: {
         return unavailable();
       }
     },
-    cancel: (fingerprint, now) => {
+    cancel: (fingerprint, now, reason) => {
       try {
-        return options.coordinator.cancel(fingerprint, now);
+        return options.coordinator.cancel(fingerprint, now, reason);
+      } catch {
+        return unavailable();
+      }
+    },
+    awaitingUser: () => {
+      try {
+        return options.coordinator.awaitingUser().map(snapshot);
+      } catch {
+        return [];
+      }
+    },
+    retireWaiting: (input) => {
+      try {
+        return options.coordinator.retireWaiting(input);
       } catch {
         return unavailable();
       }
@@ -571,6 +644,13 @@ export function createRecoveryLedger(options: {
     cancelSourceTerminated: (now) => {
       try {
         return options.coordinator.cancelSourceTerminated(now);
+      } catch {
+        return unavailable();
+      }
+    },
+    cancelIfSourceTerminated: (fingerprint, now) => {
+      try {
+        return options.coordinator.cancelIfSourceTerminated(fingerprint, now);
       } catch {
         return unavailable();
       }

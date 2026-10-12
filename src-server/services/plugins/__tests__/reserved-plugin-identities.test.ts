@@ -97,8 +97,11 @@ describe('STATION_RESERVED_PLUGIN_IDENTITIES', () => {
     // make loud: #2095 mounted `/api/plugins/visibility` without reserving
     // the name, and the scan above went red on main until somebody ran it.
     // Updating this list is meant to be a decision, not a formality.
+    // `command-effects` (kontourai/station#1419) was added deliberately with
+    // the settlement and withdrawal routes it reserves.
     expect([...STATION_RESERVED_PLUGIN_IDENTITIES]).toEqual([
       'check-updates',
+      'command-effects',
       'fetch',
       'home-role',
       'host-approvals',

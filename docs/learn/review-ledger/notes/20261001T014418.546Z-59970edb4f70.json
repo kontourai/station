@@ -1,0 +1,7 @@
+{
+  "revision": "33d9713a415de9a95880197220386f2d62955a5b",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed Home fixture requests against BrowserPaneAccessView and production browser route envelopes: local operator standing for p1, no acquired browser, and no sessions. The fixture remains fail-closed for other requests. Desktop Home journey now passes after the audit caught its undeclared access read; agent gates and desktop/phone first-run journeys pass.","inputs":["docs/guides/e2e-coverage-matrix.md"]}
+  ]
+}

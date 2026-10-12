@@ -1,9 +1,9 @@
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import {
   decodeProvisioningProfile,
   inspectAppStoreDistributionProfile,
 } from './check-ios-store-profile.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   assertRepositoryVersion,
@@ -23,7 +23,7 @@ function requireOption(name, args) {
   return value;
 }
 function run(program, args) {
-  return execFileSync(program, args, {
+  return execFileSyncBounded(program, args, {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,

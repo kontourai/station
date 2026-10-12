@@ -1,0 +1,7 @@
+{
+  "revision": "c02475e0d13466465df1d41b50dd9cc529553703",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"ChatMessageList now passes turn liveness (foldSettledWork, liveTurnId, liveTailRow) to MessageBubble for the phone fold. Form submission through the normal sender and UIBlock rendering are unchanged; ui-block parts are never folded (foldTurnWork keeps them visible).","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

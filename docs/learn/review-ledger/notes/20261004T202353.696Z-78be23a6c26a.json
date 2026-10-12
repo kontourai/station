@@ -1,0 +1,7 @@
+{
+  "revision": "e4e9354c4cbb9ad742c0cb2c7990bb51350c012c",
+
+  "notes": [
+    {"path":"docs/reference/verification-receipts.md","note":"Checked the environment-digest and product-law timeout claims (lines 101-111) against test-reliability.mjs. productLawObservationTimeoutMs stays the unscaled policy value feeding the digest and provenance, so the claim that the default normalizes to 30,000ms still holds; a test asserts the digest is identical with and without the liveness scale. run-verification.mjs only gains an ensureLivenessScale() call.","inputs":["docs/reference/verification-receipts.md","package.json","scripts/run-verification.mjs"]}
+  ]
+}

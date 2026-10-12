@@ -1,0 +1,7 @@
+{
+  "revision": "ff8d4704b92d64b50d39bdc28cd02c49f779de49",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Updated the cadence sentence: main qualification runs every six hours and starts a Nightly for the qualified commit at most about once a day (scripts/nightly-qualification-decide.mjs, 20h interval); the scheduled Nightly still runs daily. Checked against main-qualification.yml and nightly.yml.","inputs":["docs/guides/development.md"]}
+  ]
+}

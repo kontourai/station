@@ -1,0 +1,7 @@
+{
+  "revision": "5a194aab20dbb6b67819346c6cbd9dafb1c639c5",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"tauri-context.mjs delta: node/npm/tauri-cli version probes widened to a 30s bound (cold Windows start evidence in the commit); rustc/cargo/rustup keep the 10s default the stall-honesty tests pin; this guide's build steps and expectations are unchanged.","inputs":["docs/guides/desktop-build.md","scripts/__tests__/tauri-context.test.ts","scripts/tauri-context.mjs"]}
+  ]
+}

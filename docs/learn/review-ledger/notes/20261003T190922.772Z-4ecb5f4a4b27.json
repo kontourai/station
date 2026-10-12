@@ -1,0 +1,7 @@
+{
+  "revision": "e70cad9b9ed6b96c438871e21b7349e1ab3d8fe0",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Tightened Issue references to fit the 8192-byte/2048-token budget (now 8117/2011). Facts unchanged: archive# meaning; #27-#601 re-file archive issues, most with a migration line; bare means this repo except pre-reset text in untouched areas; check both when unsure.","inputs":["AGENTS.md"]}
+  ]
+}

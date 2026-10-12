@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import {
   classifyActionlintEvaluation,
   compareToBaseline,
+  DOCS_GATE_REUSABLE_WORKFLOW,
   expressionReadsCredential,
   FAST_CHECKS_JOB_TIMEOUT_MINUTES,
   findingKey,
@@ -1301,11 +1302,11 @@ describe('persistent runner policy', () => {
     });
   });
 
-  test('admits only the exact read-only hosted Secret Scan pull_request workflow', () => {
+  test('admits only the exact read-only hosted PR: Secret scan pull_request workflow', () => {
     const workflow = readWorkflowDocuments().find(
       ({ file }) => file === '.github/workflows/secret-scan.yml',
     );
-    if (!workflow) throw new Error('Expected the Secret Scan workflow.');
+    if (!workflow) throw new Error('Expected the PR: Secret scan workflow.');
 
     expect(persistentRunnerPolicyFindings([workflow])).toEqual([]);
 
@@ -3414,6 +3415,72 @@ describe('merge-queue regression workflow policy', () => {
     );
   });
 
+  // The callee travels with the caller, or the gate reports it missing and
+  // every mutation below would pass on that finding alone.
+  const fullRegression = () =>
+    readWorkflowDocuments().filter(
+      (candidate) => candidate.file === '.github/workflows/full-regression.yml',
+    );
+
+  test('admits the exact fail-closed full-regression call', () => {
+    const document = mergeQueueRegressionDocument();
+    expect(fullRegression()).toHaveLength(1);
+    expect(
+      persistentRunnerPolicyFindings([
+        { file, document },
+        ...fullRegression(),
+      ]).filter((finding) => finding.jobId === 'full-regression'),
+    ).toEqual([]);
+  });
+
+  test.each([
+    [
+      'a write permission',
+      (job: Record<string, unknown>) => {
+        (job.permissions as Record<string, string>).actions = 'write';
+      },
+    ],
+    [
+      'another callee',
+      (job: Record<string, unknown>) => {
+        job.uses = './.github/workflows/nightly.yml';
+      },
+    ],
+    [
+      'a fail-open guard that needs an explicit true',
+      (job: Record<string, unknown>) => {
+        job.if = `\${{ always() && !cancelled() && github.event_name != 'pull_request_target' && needs.plan.outputs.full-regression == 'true' }}`;
+      },
+    ],
+    [
+      'another source',
+      (job: Record<string, unknown>) => {
+        (job.with as Record<string, unknown>).source_sha =
+          `\${{ github.event.merge_group.base_sha }}`;
+      },
+    ],
+    [
+      'inherited secrets',
+      (job: Record<string, unknown>) => {
+        job.secrets = 'inherit';
+      },
+    ],
+  ])('removes the full-regression call exemption from %s', (_name, mutate) => {
+    const document = mergeQueueRegressionDocument();
+    mutate(document.jobs['full-regression'] as Record<string, unknown>);
+    const findings = persistentRunnerPolicyFindings([
+      { file, document },
+      ...fullRegression(),
+    ]).filter((finding) => finding.jobId === 'full-regression');
+    expect(
+      findings.some(
+        (finding) =>
+          finding.message !==
+          'reusable workflow called from a pull-request or merge-queue job was not found',
+      ),
+    ).toBe(true);
+  });
+
   test('rejects a test job that stops checking out the explicit candidate', () => {
     const document = mergeQueueRegressionDocument();
     const checkout = document.jobs.diff.steps.find((step) =>
@@ -3817,22 +3884,40 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
         ),
       );
       expect(cacheFindings(workflows)).toEqual([]);
-      // Drop the conjunct that excludes merge_group and the callee's cache
-      // becomes reachable: the cache: pnpm write and the automatic cache.
-      caller.if = expr(
-        "always() && !cancelled() && github.event_name != 'pull_request_target'",
-      );
+      // The callee's cache: pnpm write and automatic cache. The merge queue
+      // reaches it through merge-queue-regression.yml (deferred candidates
+      // run the full regression), so it is flagged there; ci.yml's if: still
+      // proves its own call unreachable.
       const node = docOf(workflows, FULL).jobs.static.steps?.find((step) =>
         String(step.uses).startsWith('actions/setup-node@'),
       );
       if (!node?.with) throw new Error('Setup Node missing');
       node.with.cache = 'pnpm';
       delete node.with['package-manager-cache'];
-      const jobId = calledFrom(CI, 'full-regression', 'static');
+      const queueJobId = calledFrom(
+        '.github/workflows/merge-queue-regression.yml',
+        'full-regression',
+        'static',
+      );
       expect(cacheFindings(workflows)).toEqual([
-        { file: FULL, jobId, message: WRITE },
-        { file: FULL, jobId, message: AUTO_CACHE },
+        { file: FULL, jobId: queueJobId, message: WRITE },
+        { file: FULL, jobId: queueJobId, message: AUTO_CACHE },
       ]);
+      // Drop the conjunct that excludes merge_group and ci.yml's call
+      // becomes reachable too.
+      caller.if = expr(
+        "always() && !cancelled() && github.event_name != 'pull_request_target'",
+      );
+      const jobId = calledFrom(CI, 'full-regression', 'static');
+      expect(cacheFindings(workflows)).toEqual(
+        expect.arrayContaining([
+          { file: FULL, jobId, message: WRITE },
+          { file: FULL, jobId, message: AUTO_CACHE },
+          { file: FULL, jobId: queueJobId, message: WRITE },
+          { file: FULL, jobId: queueJobId, message: AUTO_CACHE },
+        ]),
+      );
+      expect(cacheFindings(workflows)).toHaveLength(4);
     });
 
     test.each([
@@ -4036,11 +4121,21 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
 
     test('fails closed when a reachable callee is missing', () => {
       const workflows = real().filter(({ file }) => file !== FULL);
-      expect(cacheFindings(workflows)).toEqual([]);
+      // The merge queue's deferred-candidate call is reachable as written.
+      const queueMissing = {
+        file: '.github/workflows/merge-queue-regression.yml',
+        jobId: 'full-regression',
+        message: MISSING_CALLEE,
+      };
+      expect(cacheFindings(workflows)).toEqual([queueMissing]);
       docOf(workflows, CI).jobs['full-regression'].if = undefined;
-      expect(cacheFindings(workflows)).toEqual([
-        { file: CI, jobId: 'full-regression', message: MISSING_CALLEE },
-      ]);
+      expect(cacheFindings(workflows)).toEqual(
+        expect.arrayContaining([
+          { file: CI, jobId: 'full-regression', message: MISSING_CALLEE },
+          queueMissing,
+        ]),
+      );
+      expect(cacheFindings(workflows)).toHaveLength(2);
     });
 
     test.each(['workflow', 'job'])(
@@ -4474,4 +4569,182 @@ describe('Intel macOS pnpm provisioning (#2675)', () => {
       ).not.toContainEqual(INTEL_MESSAGE);
     },
   );
+});
+
+describe('landing policy revision and credential binding', () => {
+  function fixture() {
+    const entry = readWorkflowDocuments().find(
+      ({ file }) => file === '.github/workflows/landing-automation.yml',
+    );
+    if (!entry) throw new Error('Expected the checked-in landing workflow');
+    return {
+      file: entry.file,
+      document: structuredClone(entry.document) as {
+        jobs: Record<string, { steps: ParsedWorkflowStep[] }>;
+      },
+    };
+  }
+
+  test('admits the reviewed workflow-revision checkout topology', () => {
+    expect(persistentRunnerPolicyFindings([fixture()])).toEqual([]);
+  });
+
+  test.each([
+    ['arm', `\${{ github.event.pull_request.base.sha || github.sha }}`],
+    ['dequeue', `\${{ github.event.pull_request.base.sha }}`],
+    ['arm', `\${{ github.event.pull_request.head.sha }}`],
+    ['dequeue', `\${{ github.event.pull_request.head.sha }}`],
+    ['arm', 'main'],
+    ['dequeue', 'main'],
+  ])('rejects %s helper checkout at %s', (job, ref) => {
+    const entry = fixture();
+    const checkout = entry.document.jobs[job].steps.find((step) =>
+      String(step.uses).startsWith('actions/checkout@'),
+    );
+    if (!checkout?.with) throw new Error('Expected reviewed checkout');
+    checkout.with.ref = ref;
+    expect(persistentRunnerPolicyFindings([entry])).toContainEqual({
+      file: entry.file,
+      jobId: 'arm',
+      message:
+        'landing automation must retain its exact reviewed trusted-base credential topology',
+    });
+  });
+
+  test('rejects persisted credentials in the trusted checkout', () => {
+    const entry = fixture();
+    const checkout = entry.document.jobs.dequeue.steps.find((step) =>
+      String(step.uses).startsWith('actions/checkout@'),
+    );
+    if (!checkout?.with) throw new Error('Expected reviewed checkout');
+    checkout.with['persist-credentials'] = true;
+    expect(persistentRunnerPolicyFindings([entry])).toContainEqual({
+      file: entry.file,
+      jobId: 'arm',
+      message:
+        'landing automation must retain its exact reviewed trusted-base credential topology',
+    });
+  });
+});
+
+describe('the org docs gate runs on pull requests through one exact reviewed call', () => {
+  const FILE = '.github/workflows/docs-kit.yml';
+  // Literals pinned independently of the gate's constants, so the gate and
+  // this suite cannot drift together.
+  const REVIEWED_CALLEE =
+    'kontourai/.github/.github/workflows/docs-gate.yml@246be3494a5cfde4b76fb2e3dc0a84db44218893';
+  const HEAD_REPOSITORY =
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+    "${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}";
+  const HEAD_REF =
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+    "${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}";
+  const CHECKOUT =
+    'base-controlled PR jobs must explicitly check out the pull-request head repository and SHA';
+  const HOSTED =
+    'base-controlled PR workflows must run candidate code only on GitHub-hosted runners';
+  const UNREVIEWED =
+    'pull-request and merge-queue workflows may only use actions and reusable workflows whose cache behavior is reviewed in UNTRUSTED_ACTION_CACHE_POLICY';
+  const PERMISSION =
+    'base-controlled PR job permission overrides must declare only permissions: { contents: read }';
+
+  type GateJob = Record<string, unknown> & {
+    permissions: Record<string, unknown>;
+    with: Record<string, unknown>;
+  };
+  function realDocsKitWorkflow() {
+    const workflow = readWorkflowDocuments().find(({ file }) => file === FILE);
+    if (!workflow)
+      throw new Error('Expected the checked-in docs-kit workflow.');
+    return structuredClone(workflow.document) as {
+      on: Record<string, unknown>;
+      jobs: { gate: GateJob };
+    };
+  }
+  const findingsFor = (file: string, document: unknown) =>
+    persistentRunnerPolicyFindings([{ file, document }]).filter(
+      (finding: { file: string }) => finding.file === file,
+    );
+
+  test('the checked-in workflow is the reviewed call on pull requests and the merge queue', () => {
+    const document = realDocsKitWorkflow();
+    expect(DOCS_GATE_REUSABLE_WORKFLOW).toBe(REVIEWED_CALLEE);
+    expect(Object.keys(document.on)).toEqual(
+      expect.arrayContaining(['pull_request_target', 'merge_group', 'push']),
+    );
+    expect(document.on).not.toHaveProperty('pull_request');
+    expect(document.jobs.gate.uses).toBe(REVIEWED_CALLEE);
+    expect(document.jobs.gate.with.repository).toBe(HEAD_REPOSITORY);
+    expect(document.jobs.gate.with.ref).toBe(HEAD_REF);
+    expect(document.jobs.gate.permissions).toEqual({ contents: 'read' });
+    expect(document.jobs.gate).not.toHaveProperty('secrets');
+    expect(findingsFor(FILE, document)).toEqual([]);
+  });
+
+  test.each([
+    [
+      'checks out the base branch instead of the head SHA',
+      (job: GateJob) => {
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        job.with.ref = '${{ github.sha }}';
+      },
+      [CHECKOUT, HOSTED],
+    ],
+    [
+      'checks out the base repository for a fork',
+      (job: GateJob) => {
+        // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+        job.with.repository = '${{ github.repository }}';
+      },
+      [CHECKOUT, HOSTED],
+    ],
+    [
+      'omits the head inputs, so the callee checks out the base',
+      (job: GateJob) => {
+        delete job.with.repository;
+        delete job.with.ref;
+      },
+      [CHECKOUT, HOSTED],
+    ],
+    [
+      'calls the superseded revision that ran npx inside the checkout',
+      (job: GateJob) => {
+        job.uses =
+          'kontourai/.github/.github/workflows/docs-gate.yml@091ffabdaf151f0d873d40ac03a85855deee2a55';
+      },
+      [CHECKOUT, HOSTED, UNREVIEWED],
+    ],
+    [
+      'passes secrets to the callee',
+      (job: GateJob) => {
+        job.secrets = 'inherit';
+      },
+      [CHECKOUT, HOSTED],
+    ],
+    [
+      'widens the job token',
+      (job: GateJob) => {
+        job.permissions.contents = 'write';
+      },
+      [CHECKOUT, HOSTED, PERMISSION],
+    ],
+  ])('refuses a call that %s', (_name, mutate, expected) => {
+    const document = realDocsKitWorkflow();
+    mutate(document.jobs.gate);
+    const messages = findingsFor(FILE, document).map(
+      (finding: { message: string }) => finding.message,
+    );
+    expect(messages).toEqual(expect.arrayContaining(expected));
+  });
+
+  test('admits the exact call only in docs-kit.yml', () => {
+    const file = '.github/workflows/docs-kit-copy.yml';
+    expect(
+      findingsFor(file, realDocsKitWorkflow()).map(
+        (finding: { message: string }) => finding.message,
+      ),
+    ).toContain(
+      'pull_request_target is reserved for reviewed base-controlled PR workflows',
+    );
+  });
 });

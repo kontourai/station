@@ -125,6 +125,7 @@ export function useServerLogsQuery(
       if (!response.ok) throw new Error('Failed to fetch server logs');
       return (await response.json()) as ServerLogsResult;
     },
+    refetchInterval: config?.refetchInterval ?? false,
     staleTime: config?.staleTime ?? 10_000,
     gcTime: config?.gcTime,
     enabled: Boolean(apiBase) && (config?.enabled ?? true),

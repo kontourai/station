@@ -1,0 +1,13 @@
+{
+  "revision": "5fdca529d0e07573fb919ae6a060720bcfa2347f",
+
+  "notes": [
+    {"path":"docs/learn/walkthroughs.md","note":"The narrow Knowledge Library scene (line ~106) still shows the same record list and detail at narrow width; the retaken capture (4e900230b, same imported root) differs only in the record heading wrapping at KnowledgeStore / Provider. Caption and surrounding prose remain accurate.","inputs":["docs/learn/walkthroughs.md","docs/learn/media.json#/captures/7","docs/learn/media/repository-knowledge-narrow.png"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Depends on media capture 7 (narrow Knowledge Library); retaken capture shows the same records, links and canonical detail with the heading wrapped at its identifier boundary. No guide claim concerns title wrapping; no prose change.","inputs":["docs/guides/knowledge.md","docs/learn/media.json#/captures/7","docs/learn/media/repository-knowledge-narrow.png"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"Narrow-view evidence re-read against the retaken capture 7: selection and canonical detail unchanged, heading now wraps at KnowledgeStore / Provider. No prose change.","inputs":["examples/knowledge-library/README.md","docs/learn/media.json#/captures/7","docs/learn/media/repository-knowledge-narrow.png"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Depends on docs/learn/media.json as a whole; this change edits only capture 7 (repository-knowledge-narrow.png: digest, alt, evidence, capturedRevision). None of the starter-work captures or claims changed; no prose change.","inputs":["docs/guides/starter-work.md","docs/learn/media.json"]}
+  ]
+}

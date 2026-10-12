@@ -9,6 +9,7 @@ import {
   PAIRING_SCOPE_HOME_CONTROL,
   PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_PRESETS,
+  PAIRING_SCOPE_RELAY_MANAGE,
   type PairingScope,
   type PairingScopePreset,
   parsePairingScope,
@@ -131,6 +132,11 @@ const ELEVATED_GRANTS: ReadonlyArray<{
   {
     token: PAIRING_SCOPE_HOME_CONTROL,
     ...scopeCopy(PAIRING_SCOPE_HOME_CONTROL),
+    elevated: true,
+  },
+  {
+    token: PAIRING_SCOPE_RELAY_MANAGE,
+    ...scopeCopy(PAIRING_SCOPE_RELAY_MANAGE),
     elevated: true,
   },
   {

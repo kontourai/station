@@ -21,6 +21,7 @@ import { NATIVE_DEVICE_PROOF_SELF_RECEIPT_BASE_PATH } from '@kontourai/station-c
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { nativeDeviceOnlyObservationRoute } from '../../security/native-device-request-authority.js';
+import { isRelayManagementHttpLeaf } from '../../security/pairing-route-scopes.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   getRuntimeNativeDeviceProofPrincipal,
@@ -264,7 +265,13 @@ export function installAccountBoundDeviceGate(
       const permitted =
         path === '/' ||
         path.startsWith('/assets/') ||
-        nativeDeviceOnlyObservationRoute(method, path) ||
+        // Neutral observations are open only to a verified native Device
+        // proof, as in the account check above; a credential-bound device
+        // still reaches /api/system/identity alone below.
+        (getRuntimeNativeDeviceProofPrincipal(c.req.raw) &&
+          nativeDeviceOnlyObservationRoute(method, path)) ||
+        (getRuntimeNativeDeviceProofPrincipal(c.req.raw) &&
+          isRelayManagementHttpLeaf({ method, path })) ||
         path === '/api/projects' ||
         /^\/api\/projects\/[^/]+$/.test(path) ||
         /^\/api\/projects\/[^/]+\/shared-work(?:\/[^/]+\/(?:history|document|publication))?$/.test(

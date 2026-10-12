@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -590,6 +591,91 @@ describe('host-wide cap across processes', { timeout: 90_000 }, () => {
 });
 
 describe('tsc-slot runner', () => {
+  test('Bun diagnostics refuse a check script inherited from a parent directory', () => {
+    const parent = tempDir('tc-bun-shadow-');
+    const nested = join(parent, 'nested');
+    mkdirSync(nested);
+    writeFileSync(
+      join(parent, 'package.json'),
+      JSON.stringify({
+        scripts: { check: 'echo WRONG_CHECK' },
+      }),
+    );
+    writeFileSync(
+      join(nested, 'tsconfig.json'),
+      JSON.stringify({ files: ['bad.ts'] }),
+    );
+    writeFileSync(join(nested, 'bad.ts'), 'export const bad: string = 42;\n');
+    const result = spawnSync(
+      process.execPath,
+      [
+        join(REPO_ROOT, 'scripts', 'tsc-slot.mjs'),
+        '--bun',
+        '--noEmit',
+        '-p',
+        'tsconfig.json',
+      ],
+      {
+        cwd: nested,
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 10_000,
+        env: {
+          ...process.env,
+          STATION_BUN_EXECUTABLE: join(parent, 'missing-bun'),
+        },
+      },
+    );
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stderr).toContain('package check script shadows the checker');
+    expect(result.stdout).toBe('');
+  });
+
+  test.each([
+    ['--bun', '--noEmit'],
+    ['--bun', '-p', 'tsconfig.json'],
+  ])('Bun diagnostics refuse incomplete project arguments: %j', (...args) => {
+    const result = spawnSync(
+      process.execPath,
+      [join(REPO_ROOT, 'scripts', 'tsc-slot.mjs'), ...args],
+      { encoding: 'utf8', windowsHide: true, timeout: 10_000 },
+    );
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stderr).toContain(
+      'require --noEmit and an explicit -p project',
+    );
+    expect(result.stdout).toBe('');
+  });
+
+  test('Bun diagnostics refuse an installed runtime with the wrong checker version', () => {
+    const project = tempDir('tc-bun-version-');
+    const probe = join(project, 'probe.cjs');
+    writeFileSync(probe, "global.Bun = { version: '1.3.14' };\n");
+    const result = spawnSync(
+      process.execPath,
+      [
+        join(REPO_ROOT, 'scripts', 'tsc-slot.mjs'),
+        '--bun',
+        '--noEmit',
+        '-p',
+        'tsconfig.json',
+      ],
+      {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 10_000,
+        env: {
+          ...process.env,
+          STATION_BUN_EXECUTABLE: process.execPath,
+          NODE_OPTIONS: `--require ${JSON.stringify(probe)}`,
+        },
+      },
+    );
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stderr).toContain('require Bun 1.4.3 with TypeScript 7.0.2');
+    expect(result.stdout).toBe('');
+  });
+
   test('adds incremental flags with a per-project build info file', () => {
     const env = { STATION_TSBUILDINFO_DIR: '/cache' } as NodeJS.ProcessEnv;
     const plan = planTscArgs(
@@ -693,6 +779,63 @@ describe('tsc-slot runner', () => {
       '--noEmit',
       '--listFiles',
     ]);
+  });
+
+  test('the scripts coverage gate reads a --listFiles listing larger than 1 MiB (#2787)', () => {
+    // The real spawn, against a stand-in runner that prints the listing a
+    // larger program (or a deeper checkout root) would: one absolute path per
+    // line, past Node's default 1 MiB capture limit.
+    const root = realpathSync(tempDir('station-listfiles-'));
+    const count = 6000;
+    const stem = 'p'.repeat(200);
+    mkdirSync(join(root, 'scripts'));
+    writeFileSync(
+      join(root, 'scripts', 'tsc-slot.mjs'),
+      [
+        "const root = process.cwd().split('\\\\').join('/');",
+        "let out = '';",
+        `for (let i = 0; i < ${count}; i++)`,
+        `  out += root + '/scripts/generated/${stem}-' + i + '.ts\\n';`,
+        'process.stdout.write(out);',
+        '',
+      ].join('\n'),
+    );
+    // The fixture is only a proof if it is past the old limit.
+    expect(
+      count * (stem.length + '/scripts/generated/'.length),
+    ).toBeGreaterThan(1_048_576);
+
+    const { status, compiled, diagnostics } = compileProject(root);
+    expect(diagnostics).toEqual([]);
+    expect(status).toBe(0);
+    expect(compiled).toHaveLength(count);
+    expect(compiled).toContain(`scripts/generated/${stem}-${count - 1}.ts`);
+  });
+
+  test('a listing past the capture bound fails naming the cause, not a bare spawn error (#2787)', () => {
+    let requested: unknown;
+    expect(() =>
+      compileProject(REPO_ROOT, {
+        run: (
+          _command: string,
+          _args: string[],
+          options: { maxBuffer?: number },
+        ) => {
+          requested = options.maxBuffer;
+          return {
+            status: null,
+            stdout: `${REPO_ROOT}/scripts/truncated.ts\n`,
+            stderr: '',
+            error: Object.assign(new Error('spawnSync node ENOBUFS'), {
+              code: 'ENOBUFS',
+            }),
+          };
+        },
+      } as never),
+    ).toThrow(
+      /tsc-slot\.mjs -p tsconfig\.scripts\.json --noEmit --listFiles wrote more than 67108864 bytes/,
+    );
+    expect(requested).toBe(67_108_864);
   });
 
   test('the typecheck aggregate never runs more lanes at once than there are slots', () => {
@@ -823,9 +966,9 @@ describe('tsc-slot runner', () => {
     );
   });
 
-  test('a warm incremental run still reports an unchanged type error, and releases its slot', {
+  test('a warm incremental run reports unchanged errors and leaves its slot reclaimable', {
     timeout: 90_000,
-  }, () => {
+  }, async () => {
     const project = tempDir('tc-slots-project-');
     const cache = tempDir('tc-slots-cache-');
     const slotDir = tempDir('tc-slots-runner-');
@@ -888,6 +1031,14 @@ describe('tsc-slot runner', () => {
     expect(again.status).not.toBe(0);
     expect(again.stdout).toMatch(/b\.ts\(2,14\): error TS2322/);
 
+    const reclaimed = await acquireTypecheckSlot({
+      env: noEnv,
+      dir: slotDir,
+      slots: 1,
+      waitMs: 0,
+    });
+    expect(reclaimed.index).toBe(0);
+    reclaimed.release();
     expect(readdirSync(slotDir).filter((n) => n.endsWith('.lock'))).toEqual([]);
   });
 });

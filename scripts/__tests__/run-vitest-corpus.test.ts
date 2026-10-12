@@ -367,6 +367,34 @@ describe('Vitest corpus runner', () => {
     }
   });
 
+  it('preserves named failure headings before a source diff overflows the printed tail', () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    try {
+      emitResult({
+        name: 'ordinary-8-of-8',
+        passed: false,
+        status: 1,
+        error: 'Vitest exited 1',
+        stdout: '',
+        stderr:
+          '\u001b[31m FAIL \u001b[39m src-ui/authority.test.ts > native boundary > keeps renderer secret-free\n' +
+          'source excerpt\n'.repeat(5_000),
+        outputBytes: 80_000,
+      });
+      const output = stderr.mock.calls.flat().join('');
+      expect(output).toContain(
+        'failure headings:\n FAIL  src-ui/authority.test.ts > native boundary > keeps renderer secret-free',
+      );
+      expect(output).toContain('stderr tail:');
+      expect(output).toContain('source excerpt');
+      expect(output).not.toContain('\u001b[31m');
+    } finally {
+      stdout.mockRestore();
+      stderr.mockRestore();
+    }
+  });
+
   it('still reports a genuine non-zero Vitest status as FAIL', () => {
     const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
     const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);

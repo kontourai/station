@@ -1,0 +1,41 @@
+{
+  "revision": "8ec74bb51cbfd263becc171d032caafd03c05f2d",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Fix round for #176: reviewed the one changed input, docs/architecture/module-map.md (a sentence on the bound-operator owner-check exemption in the rename_session paragraph). This document cites it for other owners and makes no claim about Station Control scope, conversation titles or rename, so no claim changes.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Fix round for #176: reviewed the one changed input, docs/architecture/module-map.md (a sentence on the bound-operator owner-check exemption in the rename_session paragraph). This document cites it for other owners and makes no claim about Station Control scope, conversation titles or rename, so no claim changes.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Fix round for #176: reviewed the one changed input, docs/architecture/module-map.md (a sentence on the bound-operator owner-check exemption in the rename_session paragraph). This document cites it for other owners and makes no claim about Station Control scope, conversation titles or rename, so no claim changes.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Fix round for #176: reviewed the one changed input, docs/architecture/module-map.md (a sentence on the bound-operator owner-check exemption in the rename_session paragraph). This document cites it for other owners and makes no claim about Station Control scope, conversation titles or rename, so no claim changes.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Fix round for #176: reviewed the one changed input, docs/architecture/module-map.md (a sentence on the bound-operator owner-check exemption in the rename_session paragraph). This document cites it for other owners and makes no claim about Station Control scope, conversation titles or rename, so no claim changes.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Fix round for #176: reviewed the one changed input, docs/architecture/module-map.md (a sentence on the bound-operator owner-check exemption in the rename_session paragraph). This document cites it for other owners and makes no claim about Station Control scope, conversation titles or rename, so no claim changes.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Fix round for #176: reviewed the one changed input, docs/architecture/module-map.md (a sentence on the bound-operator owner-check exemption in the rename_session paragraph). This document cites it for other owners and makes no claim about Station Control scope, conversation titles or rename, so no claim changes.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"Fix round for #176: reviewed the one changed input, docs/architecture/module-map.md (a sentence on the bound-operator owner-check exemption in the rename_session paragraph). This document cites it for other owners and makes no claim about Station Control scope, conversation titles or rename, so no claim changes.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Fix round for #176: reviewed the one changed input, docs/architecture/module-map.md (a sentence on the bound-operator owner-check exemption in the rename_session paragraph). This document cites it for other owners and makes no claim about Station Control scope, conversation titles or rename, so no claim changes.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Fix round for #176: reviewed the one changed input, docs/architecture/module-map.md (a sentence on the bound-operator owner-check exemption in the rename_session paragraph). This document cites it for other owners and makes no claim about Station Control scope, conversation titles or rename, so no claim changes.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Fix round for #176: reviewed the one changed input, docs/architecture/module-map.md (a sentence on the bound-operator owner-check exemption in the rename_session paragraph). This document cites it for other owners and makes no claim about Station Control scope, conversation titles or rename, so no claim changes.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/api.md","note":"Fix round for #176: reviewed the one changed input, docs/architecture/module-map.md (a sentence on the bound-operator owner-check exemption in the rename_session paragraph). This document cites it for other owners and makes no claim about Station Control scope, conversation titles or rename, so no claim changes.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Fix round for #176: reviewed the one changed input, docs/architecture/module-map.md (a sentence on the bound-operator owner-check exemption in the rename_session paragraph). This document cites it for other owners and makes no claim about Station Control scope, conversation titles or rename, so no claim changes.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Fix round for #176: reviewed the one changed input, docs/architecture/module-map.md (a sentence on the bound-operator owner-check exemption in the rename_session paragraph). This document cites it for other owners and makes no claim about Station Control scope, conversation titles or rename, so no claim changes.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Fix round for #176: reviewed the one changed input, docs/architecture/module-map.md (a sentence on the bound-operator owner-check exemption in the rename_session paragraph). This document cites it for other owners and makes no claim about Station Control scope, conversation titles or rename, so no claim changes.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Fix round for #176: reviewed the one changed input, docs/architecture/module-map.md (a sentence on the bound-operator owner-check exemption in the rename_session paragraph). This document cites it for other owners and makes no claim about Station Control scope, conversation titles or rename, so no claim changes.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Fix round for #176: reviewed the one changed input, docs/architecture/module-map.md (a sentence on the bound-operator owner-check exemption in the rename_session paragraph). This document cites it for other owners and makes no claim about Station Control scope, conversation titles or rename, so no claim changes.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Fix round for #176: reviewed the one changed input, docs/architecture/module-map.md (a sentence on the bound-operator owner-check exemption in the rename_session paragraph). This document cites it for other owners and makes no claim about Station Control scope, conversation titles or rename, so no claim changes.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

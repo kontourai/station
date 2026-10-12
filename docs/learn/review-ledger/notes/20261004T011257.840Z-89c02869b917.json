@@ -1,0 +1,7 @@
+{
+  "revision": "f575b48480af7db79f68548006fdd1b0ff71a72a",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the new SDK reference plugin-command passage against the published-surface separation instructions. Explicit client subpath and installed declaration/effect authority remain correct; member-publication API projection and operator-only mutation claims are unchanged. No package publication or exact-main hosted qualification is claimed.","inputs":["packages/sdk/AGENTS.md"]}
+  ]
+}

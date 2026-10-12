@@ -1,0 +1,7 @@
+{
+  "revision": "e4e9354c4cbb9ad742c0cb2c7990bb51350c012c",
+
+  "notes": [
+    {"path":"docs/reference/agent-plugins.md","note":"Flagged by the .githooks/pre-push change. The pre-push scoping of the plugin check (line 190) is untouched; the hook only exports the liveness scale before its checks.","inputs":["docs/reference/agent-plugins.md",".githooks/pre-push"]}
+  ]
+}

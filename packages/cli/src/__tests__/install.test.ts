@@ -35,9 +35,14 @@ const target = vi.hoisted(() => ({
   station: undefined as string | undefined,
 }));
 
-vi.mock('@kontourai/station-sdk/client', () => ({
+vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
   authenticatedFetch,
   listPlugins,
+  // The real class: the commands tell a deadline miss from a refused
+  // connection with `instanceof` (#369).
+  StationRequestTimeoutError: (
+    await importOriginal<typeof import('@kontourai/station-sdk/client')>()
+  ).StationRequestTimeoutError,
 }));
 
 vi.mock('../commands/core-api.js', async (importOriginal) => {
@@ -557,6 +562,41 @@ describe('plugin CLI API authority', () => {
     expect(authenticatedFetch).toHaveBeenCalledWith(
       'http://127.0.0.1:3141/api/plugins/demo',
       expect.objectContaining({ method: 'DELETE' }),
+    );
+  });
+
+  test('says a removal is still winding down when Station answers 202 with outstanding command effects', async () => {
+    authenticatedFetch.mockResolvedValue(
+      Response.json(
+        {
+          success: true,
+          commandEffects: {
+            withdrawalId: 'pcw-1',
+            status: 'winding-down',
+            outstanding: 2,
+          },
+        },
+        { status: 202 },
+      ),
+    );
+    const { remove } = await import('../commands/install.js');
+    await remove('demo', parsed);
+    expect(vi.mocked(console.log)).toHaveBeenLastCalledWith(
+      '✅ Removed demo through Station. 2 plugin command effects are still winding down (withdrawal pcw-1).',
+    );
+  });
+
+  test('says completion cannot be confirmed when Station could not record the withdrawal', async () => {
+    authenticatedFetch.mockResolvedValue(
+      Response.json(
+        { success: true, commandEffectsUnavailable: true },
+        { status: 202 },
+      ),
+    );
+    const { remove } = await import('../commands/install.js');
+    await remove('demo', parsed);
+    expect(vi.mocked(console.log)).toHaveBeenLastCalledWith(
+      '✅ Removed demo through Station. Its plugin command effects could not be recorded, so completion cannot be confirmed.',
     );
   });
 

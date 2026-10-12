@@ -1,0 +1,7 @@
+{
+  "revision": "d481f01f4e633a32b51e723778ce41e4a59e94e2",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed new actual empty-agent scheduling journey: disabled submit, explanatory requirement, canonical agent-new navigation and model-connection choice. Existing CRUD assertions and dialog submit locators retained.","inputs":["docs/guides/e2e-coverage-matrix.md"]}
+  ]
+}

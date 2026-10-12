@@ -13,14 +13,14 @@ describe('StatusGlyph', () => {
     // archive#1783): 'Unanswerable' is the system's internal term and must
     // never be spoken to a screen reader.
     const cases = [
-      ['Needs attention', 'Needs attention', '!', 'attention'],
+      ['Needs attention', 'Needs you', '!', 'attention'],
       ['Failed', 'Failed', '×', 'danger'],
       ['Stopped', 'Stopped', '■', 'muted'],
       ['Running', 'Running', '●', 'active'],
-      ['Ready', 'Ready', '○', 'muted'],
+      ['Ready', 'Idle', '○', 'muted'],
       ['Draft', 'Draft', '◇', 'muted'],
-      ['Unanswerable', "Can't answer here", '?', 'warning'],
-      ['Completed', 'Completed', '✓', 'success'],
+      ['Unanswerable', 'Elsewhere', '?', 'warning'],
+      ['Completed', 'Done', '✓', 'success'],
     ] as const;
     expect(Object.keys(STATUS_GLYPH_BY_STATE)).toEqual(
       cases.map(([state]) => state),

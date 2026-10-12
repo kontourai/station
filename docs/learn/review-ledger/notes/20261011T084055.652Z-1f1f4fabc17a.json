@@ -1,0 +1,7 @@
+{
+  "revision": "4bc62305a8a790babb41ec89987171cbc6d0cf50",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Upstream ci-workflow-contract.test.ts change adds the docs-kit.yml push-only reason; the guide's workflow inventory already lists Main: Docs kit as main pushes and manual dispatch, consistent with that reason. No prose change.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-workflow-contract.test.ts"]}
+  ]
+}

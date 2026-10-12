@@ -1,0 +1,7 @@
+{
+  "revision": "b1fbfae1c6049b764aa73b7d10450f117255d69f",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Reviewed the attention section against attention-projection.ts, station-control-delegation.ts and AttentionCard: peerPendingRequest storage and clearing, peerRequestReference never feeding local request routes, viewerCanRespond checks, the 403 wording and the input-keeps-note rule are accurate.","inputs":["docs/reference/session-api.md","src-server/services/projects/attention-projection.ts","src-ui/src/components/attention/AttentionCard.tsx"]}
+  ]
+}

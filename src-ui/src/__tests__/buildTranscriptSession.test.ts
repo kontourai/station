@@ -13,6 +13,7 @@
 import { describe, expect, test } from 'vitest';
 import { buildTranscriptSession } from '../components/acp-connections/ACPChatPanel';
 import type { ChatUIState } from '../contexts/active-chats-state';
+import { requestsWaitingOnUser } from '../utils/waiting-approvals';
 
 function baseState(overrides: Partial<ChatUIState> = {}): ChatUIState {
   return {
@@ -60,5 +61,19 @@ describe('buildTranscriptSession', () => {
     expect(session.id).toBe('acp-session-42');
     expect(session.id).not.toBe('undefined');
     expect(session.id).not.toBeUndefined();
+  });
+
+  test('carries both approval lists, so the transcript can subtract the answered ones', () => {
+    const session = buildTranscriptSession(
+      'acp-session-42',
+      'codex',
+      baseState({
+        pendingApprovals: ['req-1', 'req-2'],
+        answeredApprovals: ['req-1'],
+      }),
+    );
+    expect(session.pendingApprovals).toEqual(['req-1', 'req-2']);
+    expect(session.answeredApprovals).toEqual(['req-1']);
+    expect(requestsWaitingOnUser(session)).toEqual(['req-2']);
   });
 });

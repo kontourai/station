@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { projectReviewLayoutHref } from '@kontourai/station-contracts/layout';
-import ts from 'typescript';
+import ts from 'typescript-api';
 import { describe, expect, it } from 'vitest';
 import { renderInline } from '../build-github-pages.mjs';
 

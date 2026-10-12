@@ -1,0 +1,7 @@
+{
+  "revision": "4d7a0cd6aaf3957181c58eb26911797ff47a8cce",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the tiny-header spacing delta: at widths through 360px the toolbar and action cluster use 2px gaps while existing 44px controls stay unchanged. The existing 320px gallery now asserts the app wordmark does not clip, with computed-width diagnostics. Before the fix the check failed with 66px available and 68px required; the same normal rendered capture passes after the spacing correction. No navigation, grants or platform-boundary change; prior design and historical capture limits remain unchanged.","inputs":["docs/design/placement.md"]}
+  ]
+}

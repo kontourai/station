@@ -1,0 +1,7 @@
+{
+  "revision": "08fd77f74f71bf494dbf0ae3171da6e9622ff015",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked: mobile-chat-composer row still describes mobile geometry and composer reachability; the spec only gained visibility assertions and a screenshot attachment in an existing test. No prose change needed.","inputs":["docs/guides/e2e-coverage-matrix.md"]}
+  ]
+}

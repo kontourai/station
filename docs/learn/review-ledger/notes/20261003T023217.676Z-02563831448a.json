@@ -1,0 +1,7 @@
+{
+  "revision": "31f4009ab463545288900a3ca2a9dfac04fd1791",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed curated MCP setup paragraph against the compact Tools picker, read-only/default and whole-server paths, explicit Claude/Codex composition and native Claude loading setting. Configuration/catalog evidence is separate from real model tool use, publication and physical UI proof.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

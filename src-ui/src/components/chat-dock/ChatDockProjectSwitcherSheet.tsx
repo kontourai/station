@@ -1,10 +1,10 @@
 import { type ReactNode, type RefObject, useId, useState } from 'react';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { useLongPress } from '../../hooks/useLongPress';
+import { useProjectAccents } from '../../hooks/useProjectAccents';
 import { CheckGlyph, HomeGlyph } from '../icons/Glyph';
-import { LayoutIcon } from '../icons/LayoutIcon';
+import { ProjectIcon } from '../icons/ProjectIcon';
 import { PickerCreateAction } from '../PickerCreateAction';
-import { projectAccents } from '../project-sidebar/projectAccent';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
@@ -136,7 +136,10 @@ export function ChatDockProjectSwitcherSheet({
   onClose,
 }: ChatDockProjectSwitcherSheetProps) {
   const [help, setHelp] = useState<string | null>(null);
-  const accents = projectAccents(projects.map((project) => project.slug));
+  // The sidebar's allocation, not one over whatever list this sheet is
+  // handed: `projectAccents` is set-aware, so allocating over a different
+  // list would give a project a different colour here than in the sidebar.
+  const accents = useProjectAccents();
   const run = (action: () => void) => {
     onClose();
     action();
@@ -188,14 +191,14 @@ export function ChatDockProjectSwitcherSheet({
                     className="chat-dock__project-switcher-icon"
                     aria-hidden="true"
                   >
-                    {project.icon ? (
-                      <LayoutIcon layout={project} size={28} />
-                    ) : (
-                      <span
-                        className="chat-dock__project-switcher-accent"
-                        style={{ backgroundColor: accents.get(project.slug) }}
-                      />
-                    )}
+                    {/* The project's icon, else the sidebar's colour bar. */}
+                    <ProjectIcon
+                      project={project}
+                      size={28}
+                      accent={accents.get(project.slug)}
+                      fallback="bar"
+                      swatchClassName="chat-dock__project-switcher-accent"
+                    />
                   </span>
                   <span className="chat-dock__project-switcher-name">
                     <span className="chat-dock__project-switcher-label">

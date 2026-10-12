@@ -1,0 +1,7 @@
+{
+  "revision": "c504d5902ffdb4fcb222f7f46939f48feb6fe4bc",
+
+  "notes": [
+    {"path":"docs/design/developer-surface.md","note":"Re-read the Developer route, tab, redirect and shortcut claims against App.tsx after the layout-query gate change (isLoading -> isPending for the ambient Chat mount). The change touches only the layout-route Chat gate; the Cmd/Ctrl+Shift+D registration and the Developer routing it documents are unchanged. No prose change.","inputs":["docs/design/developer-surface.md"]}
+  ]
+}

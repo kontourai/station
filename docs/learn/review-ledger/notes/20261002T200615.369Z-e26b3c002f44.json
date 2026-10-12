@@ -1,0 +1,7 @@
+{
+  "revision": "74a5cf14585db34917d862e6c8b79276c35ebe50",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Reviewed the verification-guide delta: only native recovery button labels and collapsed technical detail wording changed. This decision record does not make conflicting UI claims; existing recorded scope and platform evidence remain accurate.","inputs":["docs/adr/0015-restore-desktop-owned-command-station-sidecar.md"]}
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "revision": "555c5aa3646e08ef44d26002f81508daf7a32305",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Slice D follow-up source review: verifyFastChecks declares shardCount as an optional number, defaulting to the plan at runtime. This repairs TypeScript caller inference without changing threshold, matrix, receipt validation, admission, required names, browser smoke or documented evidence limits. Scripts typecheck and the clean-revision threshold/skipped-shard fault injections pass.","inputs":[".veritas/README.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Slice D follow-up source review: verifyFastChecks declares shardCount as an optional number, defaulting to the plan at runtime. This repairs TypeScript caller inference without changing threshold, matrix, receipt validation, admission, required names, browser smoke or documented evidence limits. Scripts typecheck and the clean-revision threshold/skipped-shard fault injections pass.","inputs":["docs/guides/code-quality.md"]},
+
+    {"path":"docs/guides/development.md","note":"Slice D follow-up source review: verifyFastChecks declares shardCount as an optional number, defaulting to the plan at runtime. This repairs TypeScript caller inference without changing threshold, matrix, receipt validation, admission, required names, browser smoke or documented evidence limits. Scripts typecheck and the clean-revision threshold/skipped-shard fault injections pass.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Slice D follow-up source review: verifyFastChecks declares shardCount as an optional number, defaulting to the plan at runtime. This repairs TypeScript caller inference without changing threshold, matrix, receipt validation, admission, required names, browser smoke or documented evidence limits. Scripts typecheck and the clean-revision threshold/skipped-shard fault injections pass.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Slice D follow-up source review: verifyFastChecks declares shardCount as an optional number, defaulting to the plan at runtime. This repairs TypeScript caller inference without changing threshold, matrix, receipt validation, admission, required names, browser smoke or documented evidence limits. Scripts typecheck and the clean-revision threshold/skipped-shard fault injections pass.","inputs":["docs/testing/browser-smoke.md"]}
+  ]
+}

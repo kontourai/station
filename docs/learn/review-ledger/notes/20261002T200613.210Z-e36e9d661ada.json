@@ -1,0 +1,7 @@
+{
+  "revision": "74a5cf14585db34917d862e6c8b79276c35ebe50",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed final recovery preview copy: one short description, a saved-connection count, and a clear limit that saved access on this device is cleared while Station confirmation and shared Project access are unchanged. Success directs users to device approval and keeps account sign-in and shared Projects separate. Both mounted UI suites passed; installed-shell qualification remains separate.","inputs":["docs/guides/connections.md"]}
+  ]
+}

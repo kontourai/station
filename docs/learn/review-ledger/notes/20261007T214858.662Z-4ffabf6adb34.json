@@ -1,0 +1,7 @@
+{
+  "revision": "c271d233c44d224dad003dae0907d4df633ab614",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Rechecked the production-route SDK pagination assertion after narrowing nextCursor null to undefined for the request input. Wire response still distinguishes null from a supplied cursor; the actual MCP and authenticated SDK HTTP pages passed. This is a fixture type correction, with no provider or publication proof.","inputs":["docs/reference/sdk.md","packages/contracts/src/provider.ts","packages/sdk/src/client/conversations.ts","src-server/services/orchestration/orchestration-service.ts","src-server/runtime/routes/__tests__/runtime-routes-station-control-conversation-read.test.ts"]}
+  ]
+}

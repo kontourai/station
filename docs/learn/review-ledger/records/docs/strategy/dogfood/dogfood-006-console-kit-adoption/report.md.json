@@ -9,8 +9,6 @@
 
   "limits": "PASS and completion statements belong to that recorded run. The embedded evidence IDs and digests were not re-executed or treated as evidence for this checkout; see docs/strategy/station-delivery-retirement.md.",
 
-  "document": {"digest":"4f7e2f433fcaeaae2c88f0bdf07bd4b6770ccee99da017d1d9f5b215b906aa5d","revision":"eec64aa6defda8dd84ffebbe430eea95b35aea3f"},
-
   "sources": [],
 
   "checks": []

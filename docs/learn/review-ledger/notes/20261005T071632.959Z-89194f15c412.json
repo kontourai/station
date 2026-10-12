@@ -1,0 +1,7 @@
+{
+  "revision": "2f03103f48025ded7fe165abce2c1e7e4a913f00",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"useContextAgent now subscribes to the remembered Agent per context (useRecentAgents) and useNewChatSelectionModel derives its preferred Agent from it, so a mounted surface sees an Agent remembered elsewhere without a remount. The page's claims about remembering the Agent per project still hold and become true without reload; no prose change.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/useNewChatSelectionModel.revalidation.test.tsx","src-ui/src/hooks/useNewChatSelectionModel.ts","src-ui/src/hooks/useRecentAgents.ts"]}
+  ]
+}

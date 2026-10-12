@@ -1,0 +1,13 @@
+{
+  "revision": "a597f1d194a4f41c8b0fb6cfc41b7ee489229621",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"#3394: testing.md changed only its ci-health ledger-merge measurement row (note compaction excluded); the routes this file takes to testing.md are unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"#3394: testing.md changed only its ci-health ledger-merge measurement row; the testing-guide routes cited here are unchanged.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"#3394: testing.md changed only its ci-health ledger-merge measurement row; the canonical test guidance routed here is unchanged.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"#3394: testing.md changed only its ci-health ledger-merge measurement row; fixture and helper requirements routed here are unchanged.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

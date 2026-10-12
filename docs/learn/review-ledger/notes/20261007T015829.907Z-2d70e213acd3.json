@@ -1,0 +1,7 @@
+{
+  "revision": "2dbfb6cd8a2fac9bae401fdea2835542875adc59",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Scoped VerificationCoordinator boundary review against exact2db keeper fix and temporary atomic-FIFO removal. Production request/provenance, weighted/FIFO/host-pressure admission capability, execution and receipt publication remain unchanged. Updated keeper waits at the real queued/healthy boundary within its existing test budget and detects early runner admission via zero-call assertion. Named bypass fails, exact restore121/121PASS; prior aa4 timeout retained. Section roles and structural-versus-behavior disclosure remain accurate; other module-map domains were not rereviewed.","inputs":["docs/architecture/module-map.md","scripts/__tests__/verification-coordinator.test.ts"]}
+  ]
+}

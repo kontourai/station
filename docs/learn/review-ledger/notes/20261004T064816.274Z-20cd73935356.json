@@ -1,0 +1,7 @@
+{
+  "revision": "4dd83f452ac04a0a95e813846be17b3b0b56be9f",
+
+  "notes": [
+    {"path":"CLAUDE.md","note":"Imports AGENTS.md; AGENTS.md changed on main (bare issue numbers refer to this repository, #3181), brought in by the merge. The import and the governance block are unchanged. No prose change.","inputs":["CLAUDE.md","AGENTS.md"]}
+  ]
+}

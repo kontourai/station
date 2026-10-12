@@ -1,0 +1,7 @@
+{
+  "revision": "2fb58e17deb6d5b85ed927005168c0493939c33f",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Added the dated section for #3040/#3051: the 1280px wide fold and its derivation, the side panel as the same ?pane= written in place (no history entry per toggle), the Terminal as a URL-less lower panel drawn once by renderCodingPane, the per-session codingPanels device setting (bound 32, parser-validated, direct manipulation), separator bounds and keyboard, quiet-chrome rail toggles, and the stated limits. Traced through CodingWorkbench.tsx, codingPanels.ts, coding-panels-record.ts, ProjectLayoutRenderer.tsx and device-settings.ts.","inputs":["docs/design/placement.md","packages/contracts/src/device-settings.ts","packages/contracts/src/engine-capability-matrix.ts","src-ui/src/App.tsx","src-ui/src/app-shell/ProjectLayoutRenderer.tsx","src-ui/src/app-shell/RegionShells.tsx","src-ui/src/app-shell/destination-registry.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/chat.css","src-ui/src/contexts/RegionModelContext.tsx","src-ui/src/contexts/navigation-store.ts","src-ui/src/hooks/useDockShellChrome.ts","src-ui/src/hooks/useLongPress.ts","src-ui/src/index.css","src-ui/src/lib/device-settings-store.ts","src-ui/src/workspace-panes/RegionPaneHost.tsx","src-ui/src/workspace-panes/__tests__/RegionPaneHost.project.test.tsx","src-ui/src/workspace-panes/workspacePaneHostController.ts"]}
+  ]
+}

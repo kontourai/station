@@ -1,0 +1,7 @@
+{
+  "revision": "bad750f9e9f14414b07c2c9d4c5464b3dc7b0c3f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#3164 fix round: conversation-lineage.ts now passes the no-text message count to the shared seed builder. Re-read the ConversationSessionLineage section; 'a bounded transcript fallback' remains accurate and no seed wording or limit is stated.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

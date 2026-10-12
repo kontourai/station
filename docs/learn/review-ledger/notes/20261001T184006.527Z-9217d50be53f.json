@@ -1,0 +1,7 @@
+{
+  "revision": "dc9cc92e6c6fc958ca431904ae18c3f71253cb78",
+
+  "notes": [
+    {"path":"docs/design/task-room-agent-requests.md","note":"Executed isolated production UI brief-preview check at build 6a80212ea87b0321ad4843619e5bfa1325e6ce0b (built 2026-10-01T12:37:15.958Z): saved brief A, selected Codex, pinned A, saved B through the real editor, observed A retained, explicitly selected Use latest brief and observed B/digest change. At 390px page had no horizontal overflow, preview width306 and include-choice height44. Receipt /tmp/station-room-context-browser-receipt.json and screenshot /tmp/station-room-context-preview-mobile.png are local diagnostic artifacts. No Send/model invocation; team/public/native/provider consumption and full context acceptance remain unverified. Source bytes in that build match the context production implementation retained in dc9cc92e6; current merged focused tests passed93.","inputs":["docs/design/task-room-agent-requests.md"]}
+  ]
+}

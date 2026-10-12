@@ -2046,15 +2046,16 @@ describe('OnboardingGate', () => {
     // archive#4470b: the disclosure toggle's label is the constant "Details"
     // now (was "More"/"Less").
     fireEvent.click(screen.getByRole('button', { name: 'Details' }));
-    expect((await screen.findByRole('alert')).textContent).toMatch(
+    // station#529: the revealed detail renders outside the live region, so it
+    // is read from the card, not the alert.
+    const card = alert.closest<HTMLElement>('.banner-host__item');
+    expect(card?.textContent).toMatch(
       /isn't authorised there\. Request access to Tailnet Station again/i,
     );
     // The copy must not send the reader at the network. This banner is the
     // surface that told a phone its answering host "may be off, asleep, or on
     // another network" while it returned 401.
-    expect((await screen.findByRole('alert')).textContent).not.toMatch(
-      /off, asleep|another network/i,
-    );
+    expect(card?.textContent).not.toMatch(/off, asleep|another network/i);
   });
 
   test('does not ask the real connectionFailureCopy to explain awaiting approval', async () => {
@@ -2459,7 +2460,12 @@ describe('OnboardingGate', () => {
       document.head.append(style);
       try {
         showCredentialBanner();
-        const banner = await screen.findByRole('alert');
+        // station#529: the live region is the message cell; the card is
+        // what is positioned.
+        const banner = (await screen.findByRole('alert')).closest(
+          '.banner-host__item',
+        ) as HTMLElement;
+        expect(banner).not.toBeNull();
 
         const computed = getComputedStyle(banner);
         expect(
@@ -2478,8 +2484,10 @@ describe('OnboardingGate', () => {
 
     test('marks the strip as a drag region so the overlay title bar still drags', async () => {
       showCredentialBanner();
-      const banner = await screen.findByRole('alert');
-      expect(banner.hasAttribute('data-tauri-drag-region')).toBe(true);
+      const banner = (await screen.findByRole('alert')).closest(
+        '.banner-host__item',
+      );
+      expect(banner?.hasAttribute('data-tauri-drag-region')).toBe(true);
     });
 
     test('offers a named, keyboard-reachable dismiss that hides the banner', async () => {

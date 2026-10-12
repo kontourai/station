@@ -27,7 +27,7 @@ describe('listConnectedRemoteSessions', () => {
   test('fetches sessions only from connected environments, skipping idle/disconnected/error ones without a new connect attempt', async () => {
     const service = {
       list: vi.fn(() => [
-        connectedView('env-1', 'Brian media', 'http://127.0.0.1:1'),
+        connectedView('env-1', 'Home media', 'http://127.0.0.1:1'),
         {
           profile: { id: 'env-2', name: 'Idle box' },
           state: { phase: 'idle' },
@@ -57,7 +57,7 @@ describe('listConnectedRemoteSessions', () => {
       environments: [
         {
           environmentId: 'env-1',
-          environmentName: 'Brian media',
+          environmentName: 'Home media',
           // archive#1778: the reader normalizes an undecorated remote session at
           // the wire boundary, so the decoration appears here even though the
           // fetcher above returned none.
@@ -107,7 +107,7 @@ describe('listConnectedRemoteSessions', () => {
   test('a malformed (non-array) remote response is treated as unavailable, not thrown to the caller', async () => {
     const service = {
       list: vi.fn(() => [
-        connectedView('env-1', 'Brian media', 'http://127.0.0.1:1'),
+        connectedView('env-1', 'Home media', 'http://127.0.0.1:1'),
       ]),
     };
     const fetchSessions = vi.fn(async () => ({ notAnArray: true }) as any);
@@ -119,14 +119,14 @@ describe('listConnectedRemoteSessions', () => {
 
     expect(result.environments).toEqual([]);
     expect(result.unavailable).toEqual([
-      { environmentId: 'env-1', environmentName: 'Brian media' },
+      { environmentId: 'env-1', environmentName: 'Home media' },
     ]);
   });
 
   test('bounds one environment session count independent of what the remote returns', async () => {
     const service = {
       list: vi.fn(() => [
-        connectedView('env-1', 'Brian media', 'http://127.0.0.1:1'),
+        connectedView('env-1', 'Home media', 'http://127.0.0.1:1'),
       ]),
     };
     const oversized = Array.from({ length: 500 }, (_, index) => ({

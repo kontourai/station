@@ -1,0 +1,7 @@
+{
+  "revision": "1ac8069c32480355596ff5e29a8deb80df5fab1c",
+
+  "notes": [
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed the merged #3191 publication paragraph against the landed service and real Device-session routes: a member gets only the shared summary; unshared, stale, unknown and other-scope Tasks remain uniform not-found; operators retain unshared and sharing/unsharing remain operator-only. The separate native-proof observation exception and denial for ordinary account-bound Device status reads remain unchanged and match this branch guard/owner tests. Preserved both merge anchors; no further prose change needed.","inputs":["docs/guides/deployment-authentication.md","src-server/runtime/bootstrap/account-bound-device-gate.ts"]}
+  ]
+}

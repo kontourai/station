@@ -1,4 +1,4 @@
-name: Add issue to org project
+name: "Repo: Add to project"
 
 on:
   issues:

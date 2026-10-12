@@ -1,0 +1,7 @@
+{
+  "revision": "42c6acac29ae1ed79bb95eefbcd2de84f8b6f456",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed late native recovery: iOS inspector measured job inputs13.6px causing1.1766x focus zoom and lateral clipping; mobile fields now use browser-base font floor. Native stream adapter supplies null bodies for HTTP204/205/304 while retaining broker end/error and cancellation cleanup. Three constructor cases fail baseline,17 pass repaired; four browser scheduler journeys pass. Existing native first-task, approval and reconnect evidence remains distinct; final rebuilt keyboard/draft visual check pending. No permission, endpoint or API payload change.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

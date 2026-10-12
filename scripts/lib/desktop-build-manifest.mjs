@@ -35,7 +35,7 @@
  * have) and `deriveServerBuildIdentity` bakes that same server's identity into
  * the esbuild banner. Android imports the shared derivation, not either writer.
  */
-import { execFileSync } from 'node:child_process';
+
 import {
   existsSync,
   mkdirSync,
@@ -45,6 +45,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { execFileSyncBounded } from './bounded-capture.mjs';
 import { sanitizedGitEnvironment } from './git-environment.mjs';
 
 export const BUILD_MANIFEST_FILENAME = 'station-build.json';
@@ -66,7 +67,7 @@ const FULL_GIT_SHA = /^[0-9a-f]{40}$/i;
 export { sanitizedGitEnvironment } from './git-environment.mjs';
 
 function runGit(args, cwd) {
-  return execFileSync('git', args, {
+  return execFileSyncBounded('git', args, {
     cwd,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],

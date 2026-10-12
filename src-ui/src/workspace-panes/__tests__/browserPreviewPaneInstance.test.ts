@@ -4,9 +4,11 @@ import {
   WORKSPACE_BROWSER_PANE_STATE_VERSION,
   type WorkspaceBrowserPaneState,
 } from '@kontourai/station-contracts/workspace-browser-pane';
+import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import { describe, expect, test } from 'vitest';
 import {
   admitRestoredBrowserPreviewPaneInstance,
+  browserPreviewPaneOrdinal,
   browserPreviewPanePresentationLabel,
   createBrowserPreviewPaneInstance,
   isCanonicalBrowserPreviewPaneInstance,
@@ -144,5 +146,30 @@ describe('Browser pane instance and state boundary (v2)', () => {
         storage,
       ),
     ).toBeNull();
+  });
+});
+
+describe('Browser pane ordinals on the rail (design audit D8)', () => {
+  test('a second Browser is numbered in the host’s order; one alone, and other panes, are not', () => {
+    const first = createBrowserPreviewPaneInstance(
+      state,
+      'project-uuid-1',
+      'a'.repeat(32),
+    )!;
+    const second = createBrowserPreviewPaneInstance(
+      state,
+      'project-uuid-1',
+      'b'.repeat(32),
+    )!;
+    const other: WorkspacePaneInstance = {
+      ...first,
+      descriptorId:
+        'pane:builtin:other' as WorkspacePaneInstance['descriptorId'],
+    };
+    expect(browserPreviewPaneOrdinal([first], first)).toBeNull();
+    expect(browserPreviewPaneOrdinal([other, first, second], first)).toBe(1);
+    expect(browserPreviewPaneOrdinal([other, first, second], second)).toBe(2);
+    expect(browserPreviewPaneOrdinal([other, first, second], other)).toBeNull();
+    expect(browserPreviewPaneOrdinal([first], second)).toBeNull();
   });
 });

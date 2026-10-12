@@ -40,6 +40,7 @@ import {
   type WebPushSubscription,
 } from '@kontourai/station-contracts';
 import {
+  deviceRequestedExtraScopes,
   PAIRING_SCOPE_ORCHESTRATION_READ,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
@@ -50,6 +51,7 @@ import {
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
 import { renameFileSyncRetrying } from '@kontourai/station-shared/fs-windows-compat';
+import { RelayManagementApproval } from '../../security/relay-management-authority.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import {
   isValidNativePushRequest,
@@ -375,7 +377,8 @@ export type PairingApproval =
   | { readonly kind: 'local-grant' }
   /** Single-use launcher capability exchanged by the Station UI. */
   | { readonly kind: 'ui-bootstrap' }
-  | { readonly kind: 'unauthenticated' };
+  | { readonly kind: 'unauthenticated' }
+  | RelayManagementApproval;
 
 type DeviceRevocationActor = 'operator-credential';
 
@@ -1166,7 +1169,7 @@ export class DevicePairingService {
    *   offer emits the byte-identical string it always did and never picks up
    *   a newly-added scope such as `inference:invoke`.
    * @param input.kind archive#1123: `'device'` (default) or
-   *   `'delegation'` — a host-side label only, never encoded into the
+   *   `'delegation'` — a receiver-owned category disclosed in the
    *   wire {@link DevicePairingOffer} the joiner scans/types. Carried
    *   through to the exchanged {@link PairedDevice.kind} so a delegation
    *   grant is visibly distinct from an ordinary device in the same list.
@@ -1291,6 +1294,7 @@ export class DevicePairingService {
         provenance,
       ),
       scope: offer.scope,
+      kind: offer.kind,
       createdAt: this.#now(),
       expiresAt: offer.expiresAt,
       ...provenance,
@@ -1314,6 +1318,7 @@ export class DevicePairingService {
       deviceName: string;
       clientInstanceId?: string;
       scope?: string;
+      kind?: PairedDeviceKind;
       requesterPosition: PairingRequesterPosition;
       accountCandidate?: DeviceAccountBindingCandidate;
       accountCandidateSessionId?: string;
@@ -1323,6 +1328,7 @@ export class DevicePairingService {
     const offer = this.createOffer({
       endpoint: input.endpoint,
       scope: input.scope,
+      kind: input.kind,
     });
     try {
       const provenance = pairingProvenance({
@@ -1342,6 +1348,7 @@ export class DevicePairingService {
       });
       return {
         environmentId: offer.environmentId,
+        kind: input.kind ?? 'device',
         offerId: offer.offerId,
         proof: offer.challenge,
         requestId: request.requestId,
@@ -1490,6 +1497,14 @@ export class DevicePairingService {
    *   identity reachable before archive#2051 retired the generic loopback
    *   floor.
    */
+  /**
+   * @param grant.scope What the approver keeps of the requested scope: a
+   *   non-empty subset of it, for a device request only. Omitted, the device
+   *   gets what it asked for. Whatever is kept, a requested extra
+   *   ({@link DEVICE_REQUESTABLE_EXTRA_SCOPES}: full access, running
+   *   commands) needs a credentialed approval; the route further limits that
+   *   to the operator.
+   */
   confirmRequest(
     requestId: string,
     approval: PairingApproval,
@@ -1497,8 +1512,15 @@ export class DevicePairingService {
       readonly principalId: string;
       readonly kind?: 'verified-ingress' | 'account';
     },
+    grant?: { readonly scope?: string },
   ): DevicePairingConfirmation {
-    return this.#confirmRequest(requestId, approval, personBindingApproval);
+    return this.#confirmRequest(
+      requestId,
+      approval,
+      personBindingApproval,
+      undefined,
+      grant?.scope,
+    );
   }
 
   /** Dedicated server path after the pending provider hook verified this exact attempt. */
@@ -1524,6 +1546,7 @@ export class DevicePairingService {
       readonly kind?: 'verified-ingress' | 'account';
     },
     relayVerification?: VerifiedRelayEnrollmentCandidate,
+    grantedScope?: string,
   ): DevicePairingConfirmation {
     const offer = [...this.#offers.values()].find(
       (candidate) => candidate.request?.requestId === requestId,
@@ -1532,6 +1555,28 @@ export class DevicePairingService {
     this.#ensureNotExpired(offer);
     if (offer.status !== 'requested' || !offer.request) {
       throw new DevicePairingError('offer_unavailable');
+    }
+    // The approver may keep less than was requested, never more, and only
+    // of an ordinary device request (a delegation or relay grant is fixed).
+    if (
+      grantedScope !== undefined &&
+      (offer.kind !== 'device' ||
+        offer.relayEnrollmentId !== undefined ||
+        !parsePairingScope(grantedScope)?.length ||
+        !isPairingScopeSubset(grantedScope, offer.scope))
+    ) {
+      throw new DevicePairingError('invalid_request');
+    }
+    const finalScope = grantedScope ?? offer.scope;
+    // Full access or running commands, asked for at pairing, is kept only by
+    // a credentialed approval, never by the unauthenticated floor.
+    if (
+      deviceRequestedExtraScopes(finalScope).length > 0 &&
+      approval.kind !== 'presented-credential' &&
+      approval.kind !== 'local-grant' &&
+      approval.kind !== 'ui-bootstrap'
+    ) {
+      throw new DevicePairingError('approval_requires_operator');
     }
     if (offer.relayEnrollmentId) {
       const candidate = offer.request.accountCandidate;
@@ -1547,14 +1592,20 @@ export class DevicePairingService {
     } else if (relayVerification) {
       throw new DevicePairingError('invalid_request');
     }
-    // Anything that is not a verified presented credential or an equally
-    // strong local-grant secret is treated as the unauthenticated floor, so a
+    const managedRelayApproval =
+      approval instanceof RelayManagementApproval &&
+      relayVerification?.enrollmentId === approval.subjectId &&
+      offer.relayEnrollmentId === approval.subjectId &&
+      approval.isCurrent();
+    // A scoped relay decision is valid only for its exact verified native attempt.
+    // Other unrecognized approval sources use the unauthenticated floor, so a
     // future new approval kind fails closed here rather than inheriting the
     // floor's permission by omission.
     if (
       approval.kind !== 'presented-credential' &&
       approval.kind !== 'local-grant' &&
       approval.kind !== 'ui-bootstrap' &&
+      !managedRelayApproval &&
       !unauthenticatedApprovalAllowed(offer)
     ) {
       throw new DevicePairingError('approval_requires_operator');
@@ -1568,7 +1619,7 @@ export class DevicePairingService {
       throw new DevicePairingError('invalid_request');
     if (personBindingApproval) {
       if (
-        approval.kind !== 'presented-credential' ||
+        (approval.kind !== 'presented-credential' && !managedRelayApproval) ||
         offer.kind !== 'device' ||
         !isPrincipalRef({
           id: personBindingApproval.principalId,
@@ -1604,6 +1655,8 @@ export class DevicePairingService {
         };
       }
     }
+    offer.scope = finalScope;
+    offer.request.scope = finalScope;
     offer.status = 'confirmed';
     offer.request.status = 'confirmed';
     return {
@@ -1955,7 +2008,7 @@ export class DevicePairingService {
       device.revokedAt !== null ||
       device.relayEnrollmentId !== enrollmentId ||
       device.pendingEnrollmentId !== undefined ||
-      device.scope !== PAIRING_SCOPE_ORCHESTRATION_READ ||
+      !pairingScopeIncludes(device.scope, PAIRING_SCOPE_ORCHESTRATION_READ) ||
       !binding ||
       !('kind' in binding) ||
       binding.kind !== 'account'
@@ -3146,12 +3199,9 @@ export class DevicePairingService {
   }
 
   #publicOffer(offer: PairingOfferState): DevicePairingOffer {
-    // `kind` is a host-side label — never part of the wire DevicePairingOffer
-    // a joiner scans/types (archive#1123).
     const {
       status: _status,
       request: _request,
-      kind: _kind,
       clientInstanceId: _clientInstanceId,
       ...safe
     } = offer;

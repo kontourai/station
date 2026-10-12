@@ -1,0 +1,7 @@
+{
+  "revision": "5ca325e6fcd43dec9a5466a593c7c37826d1081b",
+
+  "notes": [
+    {"path":"docs/user/workspace-checkpoints.md","note":"MessageBubble.tsx change only adds the turn-recorded engine id to the assistant avatar (resolveTurnEngineId); checkpoint/restore affordances and their wording on the row are untouched. Checked the page's claims about the row's checkpoint actions. No prose change.","inputs":["docs/user/workspace-checkpoints.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

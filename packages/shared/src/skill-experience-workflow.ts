@@ -169,9 +169,10 @@ export function inspectSkillLibrary(
     string,
     { name: string; path: string; dependsOn: string[] }
   >();
-  function add(path: string): void {
-    if (files.has(path)) return;
-    const file = readFile(root, path);
+  function add(path: string, collected: Set<string>): void {
+    if (collected.has(path)) return;
+    collected.add(path);
+    const file = files.get(path) ?? readFile(root, path);
     files.set(path, file);
     if (
       [...files.values()].reduce(
@@ -188,7 +189,7 @@ export function inspectSkillLibrary(
         root,
         resolve(root, dirname(path), target),
       ).replaceAll(sep, '/');
-      if (paths.includes(local)) add(local);
+      if (paths.includes(local)) add(local, collected);
       else gaps.add(`${path}: unresolved reference ${target}`);
     }
     if (/\.(?:sh|js|mjs|cjs|py)$/.test(path))
@@ -203,10 +204,12 @@ export function inspectSkillLibrary(
     if (!path) continue;
     const prefix = dirname(path) === '.' ? '' : `${dirname(path)}/`;
     const dependencies = new Set<string>();
+    const collected = new Set<string>();
     for (const child of paths.filter((candidate) =>
       candidate.startsWith(prefix),
-    )) {
-      add(child);
+    ))
+      add(child, collected);
+    for (const child of collected) {
       const text = files.get(child)?.text ?? '';
       const called = [
         ...text.matchAll(
@@ -238,7 +241,7 @@ export function inspectSkillLibrary(
     'AGENTS.md',
     'GLOSSARY.md',
   ])
-    if (paths.includes(path)) add(path);
+    if (paths.includes(path)) add(path, new Set());
   const content = {
     version: '1.0' as const,
     entries: [...new Set(entries)].sort(),

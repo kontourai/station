@@ -1,0 +1,39 @@
+{
+  "revision": "6f7521ea2fc94d945814f683c64bdfccccb480bd",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Reviewed its native-shell guide dependency after iOS URL association repair; desktop sidecar lifecycle and packaged-build evidence limits are unchanged.","inputs":["docs/adr/0015-restore-desktop-owned-command-station-sidecar.md"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed native-shell guide delta: build.rs restores only the configured iOS pairing and relay URL schemes; broker routing, confidentiality, grant admission and G8/G9 limits are unchanged.","inputs":["docs/design/connection-broker.md"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed Cargo.toml and build.rs: plist 1.10.0 is a pinned build-only dependency for iOS Info.plist generation; no runtime capability or permission broadening.","inputs":["docs/design/native-capabilities.md"]},
+
+    {"path":"docs/guides/android-build.md","note":"Reviewed Cargo lock/build script delta against Android path: new association code is guarded to iOS on macOS, so Android manifest, native permissions and build claims remain unchanged.","inputs":["docs/guides/android-build.md"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed pinned Cargo build dependency and target guard: desktop packaging and sidecar behavior remain unchanged; the release-style iOS association check is separate.","inputs":["docs/guides/desktop-build.md"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Reviewed Cargo build-only plist addition and native verification guide: tray/menu authority and startup evidence are unaffected by iOS URL scheme generation.","inputs":["docs/guides/desktop-tray.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed native verification guide change: pairing scheme restoration is iOS build composition only; lab broker, local account and Project acceptance boundaries remain unchanged.","inputs":["docs/guides/local-collaboration-lab.md"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed release iOS build path: active Tauri deep-link channel now owns the restored pairing scheme even when dependency build scripts are cached; stable release-style simulator archive passed locally, signed/TestFlight delivery remains unverified.","inputs":["docs/guides/mobile-release.md"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Reviewed Cargo lock addition: pinned plist 1.10.0 is build-only; release artifacts and promotion receipts remain separate from the local stable simulator archive.","inputs":["docs/guides/native-releases.md"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed source and executed stable release-style simulator archive: generated Info.plist lacked pairing after ios init; build.rs restored exact station-stable and station-relay-stable, and a station-only cached-plugin rebuild reproduced restoration. No signed/physical or beta/nightly artifact claim.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/nightly.md","note":"Reviewed iOS build-script and Cargo lock delta: active channel configuration remains the URL scheme authority; nightly signed artifact and provider processing still require their own hosted receipts.","inputs":["docs/guides/nightly.md"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Reviewed iOS-only build-script guard and configured deep-link scheme validation; desktop/server channel port allocation and instance identity rules are unchanged.","inputs":["docs/guides/release-channel-ports.md"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed native-shell guide delta: release URL association bootstrap affects iOS link intake only, not broker TURN, grants, deployment or G8/G9 live test limits.","inputs":["docs/guides/self-hosted-broker.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed native-shell verification link and build evidence classes: local stable release-style archive plus cached-plugin reproduction do not establish signed mobile or physical-device behavior.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Reviewed build-only Cargo lock update: desktop recovery and user-visible service behavior are unchanged; iOS scheme restoration does not alter this desktop path.","inputs":["docs/user/native-recovery.md"]},
+
+    {"path":"patches/android-native-keyring-store/README.md","note":"Reviewed Cargo lock/Toml: plist is a pinned iOS build-script dependency; Android keyring patch and provider behavior remain unchanged.","inputs":["patches/android-native-keyring-store/README.md"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Reviewed linked native shell verification guide: iOS build script now restores exact configured pairing/relay schemes after xcodegen; native proof ladder and shell scope instructions remain accurate.","inputs":["src-desktop/AGENTS.md"]}
+  ]
+}

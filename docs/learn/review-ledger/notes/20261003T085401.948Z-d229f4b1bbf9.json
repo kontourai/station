@@ -1,0 +1,7 @@
+{
+  "revision": "f5c6562112f72b72d04ccdcb9d8dc5d865e5f57d",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed NativeRelayMemberShell presentation-only changes: safe insets, PageFrameActions and canonical local theme/shortcut controls. Member SDK calls and captured-authority epoch fencing are unchanged. Mounted local theme toggle makes no protected/operator request. This adds no SDK permission or physical/public journey qualification.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

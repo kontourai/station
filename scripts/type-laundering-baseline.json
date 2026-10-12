@@ -1761,12 +1761,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "src-server/services/orchestration/conversation-fork.ts",
-      "rule": "as-unknown",
-      "fingerprint": "0688f7bc96e4526512872a9c16b40c03e97cd0d9dce2fb97a2a7094ebb49f41a",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-server/services/orchestration/delta-coalescer.ts",
       "rule": "as-unknown",
       "fingerprint": "8ffdd7b4094778f16d7cedb68c90d4522bb0b521e5e2c206ff82dd55a5549376",
@@ -2472,12 +2466,6 @@
       "file": "src-server/services/terminal/terminal-ws-server.ts",
       "rule": "as-unknown",
       "fingerprint": "5d68cbf34deb5f5f1809132b66dfa43c18a3c5b8a5e9311c4bf760cf24b26ec9",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-server/services/usage-telemetry-inventory.ts",
-      "rule": "as-unknown",
-      "fingerprint": "0f3961ab077ab80c70fb1ec97e7fdec8a7fe432c244e98044c9925a6ae6ab30f",
       "reason": "legacy-cast"
     },
     {

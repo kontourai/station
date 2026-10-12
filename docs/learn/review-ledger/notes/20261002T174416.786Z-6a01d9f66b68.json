@@ -1,0 +1,7 @@
+{
+  "revision": "82fea394a09cdf62071b073d09aa6cb08ebbca48",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed current control owners and added composer attention policy: status and scroll share the composer rail, narrow panes stack above settings, desktop list toggle is direct, user menus reserve padding, tool errors stay in transcript, and toast diagnostics use Details. Focused regression tests and a T3 component fixture were executed; no native or real-provider proof.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

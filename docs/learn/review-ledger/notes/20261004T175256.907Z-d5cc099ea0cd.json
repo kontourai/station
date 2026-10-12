@@ -1,0 +1,7 @@
+{
+  "revision": "4fd7361dd75692638daceec6af8aab2bc97ab42b",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"AttentionCard change only relabels the peer link 'Open in Activity'; the attention section's claim that peer items link to the Activity detail and offer no local reply remains accurate.","inputs":["docs/reference/session-api.md","src-ui/src/components/attention/AttentionCard.tsx"]}
+  ]
+}

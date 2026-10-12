@@ -4,6 +4,7 @@ import type { AgentData } from '../../contexts/AgentsContext';
 import type { ChatSession, FileAttachment } from '../../types';
 import type { ForkTurnSource } from '../chat/fork-turn-source';
 import { LazyBoundary } from '../LazyBoundary';
+import { NewChatAction } from '../NewChatAction';
 import { Empty, SkeletonList } from '../state';
 import '../skill-experiences/skill-experiences.css';
 import { ChatDockBody } from './ChatDockBody';
@@ -57,6 +58,10 @@ interface ChatDockContentAreaProps {
     typeof ChatDockBody
   >['toolPolicyDelivery'];
   availableModels: ComponentProps<typeof ChatDockBody>['availableModels'];
+  executionModels?: ComponentProps<typeof ChatDockBody>['executionModels'];
+  onExecutionModelSelect?: ComponentProps<
+    typeof ChatDockBody
+  >['onExecutionModelSelect'];
   modelsLoading?: ComponentProps<typeof ChatDockBody>['modelsLoading'];
   chatInput: ComponentProps<typeof ChatDockBody>['chatInput'];
   secondaryActions?: ComposerActionsMenuProps;
@@ -116,6 +121,8 @@ function ChatDockContentAreaImpl({
   stationApprovalModeDefault,
   toolPolicyDelivery,
   availableModels,
+  executionModels,
+  onExecutionModelSelect,
   modelsLoading,
   chatInput,
   secondaryActions,
@@ -140,7 +147,7 @@ function ChatDockContentAreaImpl({
           <button
             type="button"
             className="conversation-history__backdrop"
-            aria-label="Close conversation history"
+            aria-label="Close history"
             tabIndex={-1}
             onClick={onCloseHistory}
           />
@@ -152,7 +159,7 @@ function ChatDockContentAreaImpl({
                   <span className="conversation-history__title">History</span>
                 </div>
                 <div className="conversation-history__list">
-                  <SkeletonList label="Loading conversation history" />
+                  <SkeletonList label="Loading history" />
                 </div>
               </div>
             }
@@ -248,6 +255,8 @@ function ChatDockContentAreaImpl({
               stationApprovalModeDefault={stationApprovalModeDefault}
               toolPolicyDelivery={toolPolicyDelivery}
               availableModels={availableModels}
+              executionModels={executionModels}
+              onExecutionModelSelect={onExecutionModelSelect}
               modelsLoading={modelsLoading}
               chatInput={chatInput}
               secondaryActions={secondaryActions}
@@ -262,20 +271,13 @@ function ChatDockContentAreaImpl({
           ) : (
             // #800: this instructed the user to click "New", which renders as a
             // bare + icon on phone — naming a control the eye cannot find. The
-            // empty state carries the action itself now.
+            // empty state carries the action itself: the one New chat action,
+            // not a second "Start a chat" wording for the same act.
             <Empty
               variant="prominent"
               className="chat-dock__no-chat"
               label="No chat open"
-              action={
-                <button
-                  type="button"
-                  className="button button--primary"
-                  onClick={() => onNewChat()}
-                >
-                  Start a chat
-                </button>
-              }
+              action={<NewChatAction onClick={() => onNewChat()} />}
             />
           )}
         </div>

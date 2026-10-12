@@ -77,6 +77,9 @@ function bindCatalogInstallation(
     readiness,
     artifact: {
       pluginId,
+      ...(captured?.installation
+        ? { generation: captured.installation.incarnation }
+        : {}),
       digest,
       isCurrent: () =>
         selectionCurrent() &&

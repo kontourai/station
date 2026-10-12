@@ -1,0 +1,7 @@
+{
+  "revision": "0341ddb564a105ebed51ca810d7e9a1d75a06eb9",
+
+  "notes": [
+    {"path":"docs/patterns/backend.md","note":"This branch's only change to its watched source is the UI action-surface inventory; no backend route, persistence or service claim is affected.","inputs":["docs/ui/responsive-action-surfaces.txt","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

@@ -10,7 +10,7 @@ publish = false
 links = "tauri-plugin-station-agent-activity"
 
 [build-dependencies]
-tauri-plugin = { version = "=2.6.3", features = ["build"] }
+tauri-plugin = { version = "=2.7.1", features = ["build"] }
 
 [dependencies]
-tauri = { version = "=2.11.5" }
+tauri = { version = "=2.12.1" }

@@ -91,6 +91,10 @@ describe('chat interaction accessibility', () => {
     }) as HTMLButtonElement;
     expect(toggle.type).toBe('button');
     expect(toggle.querySelector('div, pre')).toBeNull();
+    // #3382: a pending call opens with what it will do on screen. Collapse
+    // it to check what the collapsed row shows.
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(toggle);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     // Raw internal state strings never render (the old card printed
     // `state` verbatim as a badge).

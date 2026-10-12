@@ -20,6 +20,7 @@ import { capturePluginConfigurationMutation } from './plugin-configuration-activ
 
 import { join } from 'node:path';
 import { type Context, Hono } from 'hono';
+import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { unregisterPluginEngineConnections } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { PROTOTYPE_AFFECTING_KEYS } from '../../domain/skill-paths.js';
@@ -42,6 +43,7 @@ import {
 } from '../../services/kits/kit-observability-host.js';
 import { StationKitObservabilityRegistry } from '../../services/kits/kit-observability-registry.js';
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
+import { settlePluginCommandEffectsForResponse } from '../../services/plugins/plugin-command-effects.js';
 import {
   findPluginContentLockCycleError,
   pluginContentLockCycleMessage,
@@ -73,6 +75,7 @@ import {
   configurationActivationPayload,
   configurationMutationStatus,
 } from '../system/configuration-activation.js';
+import { refuseUngrantedCommandChoice } from '../working-directory-authority.js';
 import {
   operatorOnly,
   type PluginPrincipalResolution,
@@ -147,6 +150,18 @@ function stripDisplayNameQualifiers(value: string): string {
   }
   parts.push(value.slice(textStart));
   return parts.join('').trim();
+}
+
+/**
+ * Who may install a plugin from the registry: a person (not Station's own
+ * agent tools or another Station), and, because installing runs the package's
+ * code, one with the authority to run commands.
+ */
+function refusePluginInstallCaller(c: Context): Response | undefined {
+  return (
+    refuseInternalControlCaller(c, 'install a plugin') ??
+    refuseUngrantedCommandChoice(c)
+  );
 }
 
 export function createRegistryRoutes(
@@ -493,13 +508,20 @@ export function createRegistryRoutes(
         source: 'plugin',
         outcome: mutation.value.success ? 'success' : 'failed',
       });
+      // LP-C: the lifecycle released its locks; wait briefly for settlements.
+      const settled = await settlePluginCommandEffectsForResponse(
+        pluginInstallDeps!.projectHomeDir,
+        mutation.value,
+        configurationMutationStatus(mutation.activation, 200),
+      );
       return c.json(
         {
           ...mutation.value,
+          ...settled.fields,
           success: mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
         },
-        configurationMutationStatus(mutation.activation, 200),
+        settled.status as ContentfulStatusCode,
       );
     } catch (error: unknown) {
       registryOps.add(1, { operation: 'remove-layout', outcome: 'rejected' });
@@ -557,6 +579,12 @@ export function createRegistryRoutes(
         }
       }
 
+      // This provider's install copies a plugin tree into the plugins
+      // directory (`json-manifest-registry.ts` `install`, which the agent
+      // face delegates to), so it is code Station will load: the same
+      // authority as installing a plugin.
+      const commandRefused = refuseUngrantedCommandChoice(c);
+      if (commandRefused) return commandRefused;
       const result = await getAgentRegistryProvider().install(id);
       if (result.success) {
         // Refresh ACP modes so the new agent appears
@@ -611,13 +639,20 @@ export function createRegistryRoutes(
               );
             }
           }
+          // LP-C: the lifecycle released its locks; wait briefly for settlements.
+          const settled = await settlePluginCommandEffectsForResponse(
+            pluginInstallDeps!.projectHomeDir,
+            mutation.value,
+            configurationMutationStatus(mutation.activation, 200),
+          );
           return c.json(
             {
               ...mutation.value,
+              ...settled.fields,
               success: mutation.activation?.status !== 'pending',
               ...configurationActivationPayload(mutation.activation),
             },
-            configurationMutationStatus(mutation.activation, 200),
+            settled.status as ContentfulStatusCode,
           );
         } catch (error: unknown) {
           const message =
@@ -682,6 +717,10 @@ export function createRegistryRoutes(
     '/integrations/install',
     validate(registryInstallSchema),
     async (c) => {
+      // A registry entry is stored as a tool server with the command its
+      // manifest names (a marketplace source can be a device's choice).
+      const commandRefused = refuseUngrantedCommandChoice(c);
+      if (commandRefused) return commandRefused;
       const { id } = getBody(c);
       registryOps.add(1, { operation: 'install-integration', item: id });
 
@@ -1197,7 +1236,7 @@ export function createRegistryRoutes(
   ) => {
     // #2323 S5: the plugin install path for both catalog faces, so the
     // person-only refusal lives here rather than on each route.
-    const refused = refuseInternalControlCaller(c, 'install a plugin');
+    const refused = refusePluginInstallCaller(c);
     if (refused) return refused;
     const requestGrantRevisions = observePluginGrantRevisions(projectHomeDir);
     const {
@@ -1278,9 +1317,18 @@ export function createRegistryRoutes(
           );
         }
       }
+      // LP-C: the lifecycle released its locks; wait briefly for settlements.
+      const settled = await settlePluginCommandEffectsForResponse(
+        pluginInstallDeps!.projectHomeDir,
+        mutation.value,
+        mutation.value.success
+          ? configurationMutationStatus(mutation.activation, 200)
+          : 500,
+      );
       return c.json(
         {
           ...mutation.value,
+          ...settled.fields,
           // Activation can only narrow a successful install. It must never
           // turn the installer's `success: false` into a 200/success response:
           // that false success makes Registry optimistically mark the card
@@ -1289,9 +1337,7 @@ export function createRegistryRoutes(
             mutation.value.success && mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
         },
-        mutation.value.success
-          ? configurationMutationStatus(mutation.activation, 200)
-          : 500,
+        settled.status as ContentfulStatusCode,
       );
     } catch (error: unknown) {
       if (isRegistryAcquisitionRefusal(error))
@@ -1412,13 +1458,20 @@ export function createRegistryRoutes(
           );
         }
       }
+      // LP-C: the lifecycle released its locks; wait briefly for settlements.
+      const settled = await settlePluginCommandEffectsForResponse(
+        pluginInstallDeps!.projectHomeDir,
+        mutation.value,
+        configurationMutationStatus(mutation.activation, 200),
+      );
       return c.json(
         {
           ...mutation.value,
+          ...settled.fields,
           success: mutation.activation?.status !== 'pending',
           ...configurationActivationPayload(mutation.activation),
         },
-        configurationMutationStatus(mutation.activation, 200),
+        settled.status as ContentfulStatusCode,
       );
     } catch (error: unknown) {
       const message =

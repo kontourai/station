@@ -1,4 +1,5 @@
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
+import type { ThreadUsageTree } from '@kontourai/station-contracts/thread-usage-tree';
 import {
   cacheInclusivePromptTokens,
   cacheInclusiveTotalTokens,
@@ -17,6 +18,7 @@ import {
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
 import { describeReadFailure, ErrorState, SkeletonBlock } from '../state';
+import { ThreadUsageBreakdown } from './ThreadUsageBreakdown';
 import type { ConversationStatsSnapshot } from './types';
 import {
   formatAverageTokens,
@@ -38,6 +40,10 @@ interface ConversationStatsModalProps {
   error?: unknown;
   onRetry?: () => void;
   onToggle: () => void;
+  /** The conversation's usage with its children; absent when it has none. */
+  usageTree?: ThreadUsageTree;
+  usageTreeLoading?: boolean;
+  usageTreeError?: unknown;
 }
 
 function SectionCard({
@@ -89,6 +95,9 @@ export function ConversationStatsModal({
   error,
   onRetry,
   onToggle,
+  usageTree,
+  usageTreeLoading,
+  usageTreeError,
 }: ConversationStatsModalProps) {
   if (!isVisible) return null;
 
@@ -395,6 +404,11 @@ export function ConversationStatsModal({
               )}
             </SectionCard>
           </div>
+          <ThreadUsageBreakdown
+            tree={usageTree}
+            isLoading={usageTreeLoading}
+            error={usageTreeError}
+          />
           {unreportedNote && (
             <div
               style={{

@@ -2,6 +2,7 @@ import {
   httpDevelopmentOrigin,
   isCleartextNonLoopback,
 } from '@kontourai/station-connect';
+
 /**
  * Desktop's authenticated HTTP bridge.  The WebView receives response bytes
  * and status only; the selected Station's bearer is resolved by Rust for each
@@ -10,6 +11,7 @@ import {
 
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { Channel, invoke } from '@tauri-apps/api/core';
+import { withNativeDnsRetry } from './dnsRetry';
 import {
   type NativeHttpCapacitySnapshot,
   readNativeCommandError,
@@ -87,7 +89,7 @@ async function requestBody(
 }
 
 /** A Fetch-compatible transport backed by the host-owned profile authority. */
-export const nativeAuthenticatedTransport: ClientAuthenticatedTransport =
+const nativeAuthenticatedTransportWithoutDnsRetry: ClientAuthenticatedTransport =
   async (input, init) => {
     const authorityGuard = (
       init as NativeAuthenticatedTransportInit | undefined
@@ -304,4 +306,19 @@ export const nativeAuthenticatedTransport: ClientAuthenticatedTransport =
     };
     void dispatch();
     return await responseReady;
+  };
+
+export const nativeAuthenticatedTransport: ClientAuthenticatedTransport =
+  async (input, init) => {
+    const signal =
+      init?.signal ?? (input instanceof Request ? input.signal : undefined);
+    const nativeInit = init as NativeAuthenticatedTransportInit | undefined;
+    return withNativeDnsRetry(
+      () => nativeAuthenticatedTransportWithoutDnsRetry(input, init),
+      {
+        signal,
+        disabled: nativeInit?.livenessProbe,
+        beforeRetry: nativeInit?.authorityGuard,
+      },
+    );
   };

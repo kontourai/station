@@ -1,0 +1,7 @@
+{
+  "revision": "fed7d14336a7270578e7e17e53892b76d8c10cfa",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"vitest-resource-manifest.mjs gained two Chromium-owning geometry tests (BrandIcon.glyph.geometry, ProjectSidebarRow.iconSlot.geometry), classified as the guide requires. The guide's rule is unchanged and accurate.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

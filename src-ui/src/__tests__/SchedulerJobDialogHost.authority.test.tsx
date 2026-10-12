@@ -261,3 +261,33 @@ test('a reconciling final read refreshes unchanged snapshots until a current cat
   });
   expect(inputs.refetch).toHaveBeenCalledTimes(3);
 });
+
+test('an edit cannot save while its setup destination is waiting for navigation admission', async () => {
+  inputs.agents = [broken, ready];
+  const job: SchedulerJob = {
+    name: 'edit-pending',
+    provider: 'built-in',
+    agent: 'a',
+    prompt: 'retained instructions',
+    schedule: { kind: 'every', everyMs: 300000 },
+    enabled: true,
+  };
+  schedulerJobDialogStore.open({ authority: inputs.authority, job });
+  render(<SchedulerJobDialogHost />);
+  const unregister = navigationStore.registerNavigationGuard(
+    Symbol('hold setup'),
+    () => {},
+  );
+  try {
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Repair this agent’s setup' }),
+    );
+    const save = screen.getByRole('button', { name: 'Save Changes' });
+    expect((save as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(save);
+    expect(inputs.edit).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeTruthy();
+  } finally {
+    unregister();
+  }
+});

@@ -1,0 +1,7 @@
+{
+  "revision": "15bc63871a85030d2ee5dc32e2961f22d7e250e3",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Checked the pre-push fixture repair: the linked-worktree test fixture now copies the liveness-scale resolver and its relative-import closure that .githooks/pre-push runs since #3309. Test-only; no documented pre-push behavior changed.","inputs":["docs/guides/testing.md","scripts/__tests__/prepush-typecheck.test.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "7a1f282efec16b0b12d791aed707c00fa7c26174",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the fixture-only typecheck repair: selected readiness arguments are narrowed from the JavaScript catalog union before npmInvocation; a missing argument list fails the test as a prerequisite error. No production behavior or diagnostic contract changes. The scripts typecheck lane passed and all 8 readiness boundary tests passed on the corrected bytes. Prior-head broader CI passed 1393 affected tests, docs truth/readiness and 11 typecheck lanes but failed scripts typing; that prior result is not a current-head all-green claim.","inputs":["docs/guides/testing.md","scripts/__tests__/veritas-readiness-evidence.test.ts"]}
+  ]
+}

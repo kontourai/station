@@ -7,6 +7,12 @@ import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { parseExperienceIdentity } from '../../services/orchestration/skill-experience-model.js';
 import type { PackageMcpAdmissionJournal } from '../../services/plugins/package-mcp-admission.js';
 import {
+  type PluginCommandWithdrawalCapture,
+  pluginCommandEffectFields,
+  settlePluginCommandEffectsForResponse,
+  withdrawPluginCommandEffects,
+} from '../../services/plugins/plugin-command-effects.js';
+import {
   type PluginGrantReconciliationService,
   pluginPermissionsNeedRuntimeReconciliation,
 } from '../../services/plugins/plugin-grant-reconciliation.js';
@@ -246,6 +252,19 @@ export function registerPluginPublicRoutes(
       deps.eventBus?.emit(SERVER_EVENTS.PLUGINS_GRANTS_CHANGED, {
         name,
       });
+      // LP-W (grant withdrawal, kontourai/station#1419): a grant against a
+      // changed binding can withdraw `plugin.server`. The grants write is
+      // durable, and admissions that need it append inside the grants lease.
+      // Ledger trouble never un-commits the grant change: it is reported as
+      // commandEffectsUnavailable on a 202, never as completion.
+      const withdrawal: PluginCommandWithdrawalCapture =
+        outcome.withdrawn.includes('plugin.server')
+          ? await withdrawPluginCommandEffects(projectHomeDir, {
+              pluginId: name,
+              cause: 'grant-withdrawal',
+              captures: (effect) => effect.requiresPluginServer,
+            })
+          : { kind: 'none' };
       const reconciliation = pluginPermissionsNeedRuntimeReconciliation(
         outcome.withdrawn,
       )
@@ -267,14 +286,20 @@ export function registerPluginPublicRoutes(
       // loss as a success carrying exactly what was asked for. `DELETE
       // /:name/grant` already answers with derived state; this makes the two
       // verbs agree.
+      const settled = await settlePluginCommandEffectsForResponse(
+        projectHomeDir,
+        pluginCommandEffectFields(withdrawal),
+        reconciliation?.status === 'winding-down' ? 202 : 200,
+      );
       return c.json(
         {
           success: true,
           granted: outcome.granted,
           withdrawn: outcome.withdrawn,
           ...(reconciliation ? { reconciliation } : {}),
+          ...settled.fields,
         },
-        reconciliation?.status === 'winding-down' ? 202 : 200,
+        settled.status as 200 | 202,
       );
     } catch (error: unknown) {
       if (isContextSafetyError(error)) {
@@ -344,6 +369,20 @@ export function registerPluginPublicRoutes(
       deps.eventBus?.emit(SERVER_EVENTS.PLUGINS_GRANTS_CHANGED, {
         name,
       });
+      // LP-W (grant withdrawal, kontourai/station#1419): `revokeGrants` waited
+      // on the grants lease every plugin-server admission appends inside, so
+      // each such effect admitted before the revoke is already in the ledger.
+      // Ledger trouble never un-commits the grant change: it is reported as
+      // commandEffectsUnavailable on a 202, never as completion.
+      const withdrawal: PluginCommandWithdrawalCapture = permissions.includes(
+        'plugin.server',
+      )
+        ? await withdrawPluginCommandEffects(projectHomeDir, {
+            pluginId: name,
+            cause: 'grant-withdrawal',
+            captures: (effect) => effect.requiresPluginServer,
+          })
+        : { kind: 'none' };
       const reconciliation = pluginPermissionsNeedRuntimeReconciliation(
         permissions,
       )
@@ -360,14 +399,20 @@ export function registerPluginPublicRoutes(
             status: 'completed' as const,
             effects: [] as const,
           };
+      const settled = await settlePluginCommandEffectsForResponse(
+        projectHomeDir,
+        pluginCommandEffectFields(withdrawal),
+        reconciliation.status === 'winding-down' ? 202 : 200,
+      );
       return c.json(
         {
           success: true,
           revoked: permissions,
           granted: getPluginGrants(projectHomeDir, name),
           reconciliation,
+          ...settled.fields,
         },
-        reconciliation.status === 'winding-down' ? 202 : 200,
+        settled.status as 200 | 202,
       );
     } catch (error: unknown) {
       if (error instanceof PluginGrantsUnavailableError) {

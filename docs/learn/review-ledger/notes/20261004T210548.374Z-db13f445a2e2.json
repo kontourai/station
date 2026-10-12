@@ -1,0 +1,7 @@
+{
+  "revision": "1e29ba6ca985181adf2c097e84a4abc3fbb57258",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"No prose change: it makes no claim about the paired-Station host lookup or request bounds; session-api.md only states the host lookup authority and the code-point bounds.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

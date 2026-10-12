@@ -1,0 +1,17 @@
+{
+  "revision": "74ea6b45091d8c283308590da4e3bf157bbc0e64",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed the documentation-truth timeout-only policy delta against the documented required gate, protected-policy authority and command graph. Owner explicitly approved 10 to20 minutes. Commands, assertions, required selection, failure behavior and historical evidence remain unchanged; this grants no semantic or runtime qualification.","inputs":[".veritas/README.md",".veritas/repo-map.json"]},
+
+    {"path":".veritas/init-plans/documentation-maintenance.md","note":"Reviewed the documentation-truth timeout-only policy delta against the documented required gate, protected-policy authority and command graph. Owner explicitly approved 10 to20 minutes. Commands, assertions, required selection, failure behavior and historical evidence remain unchanged; this grants no semantic or runtime qualification.","inputs":[".veritas/init-plans/documentation-maintenance.md",".veritas/attestations/HEAD",".veritas/repo-map.json"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the documentation-truth timeout-only policy delta against the documented required gate, protected-policy authority and command graph. Owner explicitly approved 10 to20 minutes. Commands, assertions, required selection, failure behavior and historical evidence remain unchanged; this grants no semantic or runtime qualification.","inputs":["docs/guides/code-quality.md",".veritas/repo-map.json"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the documentation-truth timeout-only policy delta against the documented required gate, protected-policy authority and command graph. Owner explicitly approved 10 to20 minutes. Commands, assertions, required selection, failure behavior and historical evidence remain unchanged; this grants no semantic or runtime qualification.","inputs":["docs/guides/development.md",".veritas/repo-map.json"]},
+
+    {"path":"docs/guides/documentation.md","note":"Reviewed the documentation-truth timeout-only policy delta against the documented required gate, protected-policy authority and command graph. Owner explicitly approved 10 to20 minutes. Commands, assertions, required selection, failure behavior and historical evidence remain unchanged; this grants no semantic or runtime qualification.","inputs":["docs/guides/documentation.md",".veritas/attestations/HEAD",".veritas/repo-map.json"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the documentation-truth timeout-only policy delta against the documented required gate, protected-policy authority and command graph. Owner explicitly approved 10 to20 minutes. Commands, assertions, required selection, failure behavior and historical evidence remain unchanged; this grants no semantic or runtime qualification.","inputs":["docs/guides/testing.md",".veritas/repo-map.json"]}
+  ]
+}

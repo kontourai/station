@@ -1,0 +1,7 @@
+{
+  "revision": "2fb58e17deb6d5b85ed927005168c0493939c33f",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed against the manifest change: tests/coding-stack-navigation.spec.ts stays in the extended bucket with an extended rationale (wide fold: side and lower panels, per-session memory). No bucket, surface or primary assignment moved; the matrix prose stands.","inputs":["docs/guides/e2e-coverage-matrix.md","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/services/connections/connection-service.ts","tests/agents-editor-gates.spec.ts","tests/agents-new-model-turn.spec.ts","tests/android/mobile-layout.spec.ts","tests/connect-modal.spec.ts","tests/connect-reconnect-banner.spec.ts","tests/default-agent-workflow.spec.ts","tests/e2e-manifest.mjs","tests/mobile-chat-composer.spec.ts","tests/project-architecture.spec.ts","tests/registry.spec.ts","tests/root-route-restore.spec.ts","tests/schedule.spec.ts","tests/task-first-home.spec.ts"]}
+  ]
+}

@@ -1,4 +1,4 @@
-name: Desktop clean-checkout build
+name: "PR: Desktop clean checkout"
 
 on:
   workflow_dispatch:
@@ -20,6 +20,7 @@ on:
       - 'scripts/build-windows-nightly.ps1'
       - 'scripts/windows-nightly-config.mjs'
       - 'scripts/verify-windows-updater.mjs'
+      - 'scripts/lib/bounded-capture.mjs'
       - 'scripts/lib/desktop-build-command.mjs'
       - 'scripts/lib/desktop-server-runtime.mjs'
       - 'scripts/lib/windows-nightly.mjs'
@@ -46,6 +47,7 @@ on:
       - 'scripts/build-windows-nightly.ps1'
       - 'scripts/windows-nightly-config.mjs'
       - 'scripts/verify-windows-updater.mjs'
+      - 'scripts/lib/bounded-capture.mjs'
       - 'scripts/lib/desktop-build-command.mjs'
       - 'scripts/lib/desktop-server-runtime.mjs'
       - 'scripts/lib/windows-nightly.mjs'
@@ -71,7 +73,7 @@ jobs:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with: { install: false }
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -103,7 +105,7 @@ jobs:
           repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with: { install: false }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with: { node-version-file: .nvmrc, package-manager-cache: false }

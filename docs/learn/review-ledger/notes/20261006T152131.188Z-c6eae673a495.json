@@ -1,0 +1,7 @@
+{
+  "revision": "c02475e0d13466465df1d41b50dd9cc529553703",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"chat.css change is phone transcript density (row margin, exchange rule), the answer meta row, folded-sheet notes and the header project glyph container query. None touch region, dock, maximize, phone layer or overflow-sheet behaviour this design describes.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]}
+  ]
+}

@@ -81,7 +81,9 @@ Two compatibility contracts exist.
 - The web and desktop client refuses when the host's minimum is above its
   own protocol, or when the host's protocol is below the client's minimum
   ([`compatibility.ts`](../../src-ui/src/lib/compatibility.ts)).
-- Clients send no protocol version, so a host cannot refuse an old client.
+- At this decision's baseline, clients sent no protocol version, so a host
+  could not refuse an old client. The #2962 addendum below records the current
+  host rejection path.
 
 **Desktop sidecar trust.** The desktop trusts its sidecar through a startup
 ticket that binds generation, instance ID, boot ID, and API base. It proves
@@ -160,7 +162,7 @@ Every boundary refuses an out-of-range peer with readable remediation:
 | --- | --- | --- | --- |
 | Installer and archive update | launcher | Yes | `install.sh`, `archive-update.ts` |
 | Desktop spawn of a host | launcher | **No** | Shell, before spawn (#2961) |
-| Client meets host | API | Client side only | Also the host, at pairing and handshake, once clients send their protocol (#2962 adds that field) |
+| Client meets host | API | Client and host HTTP admission (#2962) | Host checks paired-scope HTTP and pairing request/access-request/exchange; the public handshake stays reachable (see addendum) |
 
 **Rollout window.** During a rollout, a host accepts clients from the
 previous client train across both contracts (owner decision). Engineering
@@ -212,7 +214,33 @@ system Node.
   stays removed for ADR 0015's reasons.
 - The ownership logic collapses to one atomic claim path. `sidecar` and
   `service` differ only in supervisor (the app, or launchd, systemd, or Task
-  Scheduler) and lifetime policy.
+  Scheduler) and lifetime policy. #2961 implements this as `claimHostOwner`
+  ([Instance Registry](../design/instance-registry.md)): the desktop launch,
+  `station service install`, and the service supervisor all claim through it,
+  and the desktop maps its result to an owner without a separate launch read.
+  Installation reserves the home with the installer's live PID and writes
+  policy before starting the OS backend; backend failure restores the prior
+  registry entry. A supervisor without installed policy takes the same atomic
+  claim itself, publishing a service owner with its PID and birth before start.
+  A conflicting live owner keeps it alive and waiting, without running Station;
+  polling backs off to at most 30 seconds and logs only reason changes. Lost
+  ownership at readiness or on an existing five-second health tick stops and
+  reaps Station before the same wait. The tick checks the service id, type,
+  PID and birth without refreshing the claim; recovery also waits for a live
+  replacement service at the same registry id. Only a successful registry read
+  proving a missing or different owner triggers recovery. An unreadable tick
+  read keeps Station running until the next tick; an unreadable startup claim
+  still fails closed. Desktop records the spawned child's PID and birth before
+  waiting for Listening, so
+  an orphan still shutting down holds the reservation after desktop death.
+  Runtime preparation's safety read does not choose the launch owner.
+  This is cooperative fencing for service supervisors and Desktop sidecars,
+  not an OS lock around every server. Direct `command-station.js` launches
+  do not claim the registry, including a container that invokes that entry
+  point directly; when bound to `0.0.0.0`, they are reachable through the
+  container's exposed/published ports. The Dockerfile's existing
+  `service run --instance=container` command self-claims a fresh home without
+  requiring `service install` or a separate policy-registration lifecycle.
 
 Mobile apps keep their bundled web UI and store-gated builds. Store rules
 forbid downloading executable code, so the download model applies only to
@@ -333,15 +361,53 @@ roots keyed by channel until promotion.
 
 ## NOT_VERIFIED
 
-Nothing here is implemented. Each decision is unproven until its phase lands
-with enforcing tests. These packaged-build divergences from
+Decisions remain implementation targets until their phases land with
+enforcing tests. The #2961 claim-path notes describe that bounded source
+slice, not delivery of D4's first-run fetch or package changes. These packaged-build divergences from
 [ADR 0015's evidence addendum](0015-restore-desktop-owned-command-station-sidecar.md#evidence-addendum-2026-09-29-2957)
 bear on D4's claim path and startup, and the implementing phases carry them:
 
 - the Windows first launch exceeded the 30 s readiness budget;
 - a Windows sidecar outlived its dead desktop by about 100 s;
-- stale `type: sidecar` entries remain after an abrupt death;
+- stale `type: sidecar` entries remain after an abrupt death (since #2961
+  the next host claim reaps an entry whose pid and birth prove it gone; a
+  test covers this with a real `SIGKILL`, a packaged run does not);
 - shared roots without saved metadata refuse the first launch.
+
+## Addendum, 2026-10-03: host-side client API rejection (#2962)
+
+The "Client meets host" row now has a host rejection path. Clients declare
+`X-Station-Client-Protocol`, and the host refuses a protocol below
+`minClientProtocol` with `426 client_protocol_unsupported`. It applies this
+on paired-scope routes and at the pairing request, access-request, and
+exchange routes; the handshake stays open. An absent header reads as
+protocol 1. The contract and the
+exempt routes are specified in the
+[remote-access threat model](../security/remote-access-threat-model.md#client-api-protocol-admission-2962).
+Cross-origin carriage is capability-gated; the remaining caller gaps must
+close before any host raises its minimum above 1:
+
+- cross-origin browser requests send the header only after the host advertises
+  `compatibility.capabilities.clientProtocolHeader >= 1`; older or unobserved
+  hosts receive an unlabelled request, interpreted as protocol 1;
+- the native pairing exchange request, built in Rust, does not send it;
+- terminal and voice WebSockets are not checked (separate listeners, and a
+  browser socket cannot send a header; the threat model records the planned
+  query-parameter carriage);
+- direct `fetch` calls that bypass the SDK seam do not send it.
+
+The minimum remains 1. The admission ratchet test names the native pairing
+exchange, notification action, local UI identity request and CLI operate event
+stream, and fails if the minimum rises while those callers remain listed.
+Malformed declarations return `400 client_protocol_invalid`; unsupported and
+malformed refusals emit denial audits without retaining raw header text.
+Those refusals use a separate direct-socket-peer audit budget (default: 10 per
+60 seconds), reusing the existing limiter and its 1,024-peer cap. Exhaustion
+suppresses protocol audits while 400/426 responses continue; refusals neither
+consult nor consume the authentication budget. The UI clears prior header
+acceptance when a handshake starts. Only the latest-started handshake per
+origin may restore it; its non-OK response, invalid JSON or transport error
+leaves acceptance cleared, even if an older overlapping handshake succeeds.
 
 ## Consequences
 

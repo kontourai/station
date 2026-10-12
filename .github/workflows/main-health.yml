@@ -1,17 +1,19 @@
-name: Main pipeline health
+name: "Main: Health"
 
 on:
   workflow_run:
     # Self-exclusion is by omission: watching this workflow would recurse.
     workflows:
-      - Nightly
-      - Container smoke
-      - Secret Scan
-      - Scheduled dependency advisory floor
-      # Chained: Android Tests is itself a workflow_run of the Android build
+      - "Nightly"
+      - "Nightly: Gallery"
+      - "Main: Qualification health"
+      - "Main: Container smoke"
+      - "PR: Secret scan"
+      - "Repo: Dependency advisory"
+      # Chained: Main: Android tests is itself a workflow_run of the Android build
       # (two levels, within GitHub's limit of three). Its green runs have no
       # skipped jobs, so the close guard below can clear its tracker (#1315).
-      - Android Tests
+      - "Main: Android tests"
     types: [completed]
 
 permissions:
@@ -203,6 +205,10 @@ jobs:
                 '3 · Stage portable fleet evidence / Admit portable bytes',
               ];
               if (!requiredJobs.every((name) => jobs.some((job) => job.name === name && job.conclusion === 'success'))) return;
+            } else if (workflowName === 'Nightly: Gallery') {
+              // API image review is optional; only the capture and exact diff
+              // settle a pixel-drift tracker.
+              if (!jobs.some((job) => job.name === 'Capture and diff screenshot gallery' && job.conclusion === 'success')) return;
             } else if (!hasSuccessfulJob || hasSkippedJob) return;
             const issues = await github.paginate(github.rest.issues.listForRepo, {
               owner: context.repo.owner,

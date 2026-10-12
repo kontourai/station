@@ -1,0 +1,7 @@
+{
+  "revision": "9b4a4a89e948a7c6836209eb71128e722c801e8b",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"#3159: the API reference gained the GET /api/conversations/:id/read route; this guide only routes readers to the API reference and its routing claim is unchanged."}
+  ]
+}

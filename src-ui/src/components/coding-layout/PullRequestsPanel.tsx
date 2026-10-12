@@ -4,22 +4,33 @@ import type {
 } from '@kontourai/station-contracts/conversation-pull-request-links';
 import type {
   PullRequest,
-  PullRequestMergeMethod,
-  PullRequestMergeResult,
   PullRequestResult,
 } from '@kontourai/station-contracts/pull-request-provider';
 import {
-  useMergePullRequestMutation,
   usePullRequestContextQuery,
   usePullRequestsQuery,
 } from '@kontourai/station-sdk';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { Button } from '../Button';
+import { openExternalLink } from '../../platform/openExternalLink';
+import type { OverflowAction } from '../ActionOverflowMenu';
+import { IconButton } from '../IconButton';
+import { ArrowRightGlyph, PlusGlyph, RefreshGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
-import { ConfirmModal } from '../modals/ConfirmModal';
-import { ConversationPullRequestLinks } from '../pull-requests/ConversationPullRequestLinks';
-import { Empty, ErrorState, SkeletonBlock, SkeletonList } from '../state';
+import { LinkPullRequestField } from '../pull-requests/LinkPullRequestField';
+import { PullRequestRow } from '../pull-requests/PullRequestRow';
+import {
+  PullRequestChip,
+  type PullRequestChipValue,
+  pullRequestStateChip,
+  reviewDecisionChip,
+} from '../pull-requests/pull-request-chips';
+import { pullRequestExternalLabel } from '../pull-requests/pull-request-external';
+import {
+  linkKey,
+  useConversationPullRequestLinks,
+} from '../pull-requests/useConversationPullRequestLinks';
+import { SkeletonBlock, SkeletonList } from '../state';
 import { PullRequestDependencyStacks } from './PullRequestDependencyStacks';
 import './PullRequestsPanel.css';
 
@@ -28,16 +39,52 @@ const loadReview = () =>
     default: module.PullRequestReviewPanel,
   }));
 
-type StateFilter = 'ALL' | 'OPEN' | 'CLOSED' | 'MERGED';
+type StateFilter = 'OPEN' | 'MERGED' | 'CLOSED' | 'ALL';
+const FILTERS: readonly { value: StateFilter; label: string }[] = [
+  { value: 'OPEN', label: 'Open' },
+  { value: 'MERGED', label: 'Merged' },
+  { value: 'CLOSED', label: 'Closed' },
+  { value: 'ALL', label: 'All' },
+];
 
 function normalizedState(state: string) {
   return state.trim().toUpperCase();
 }
 
+const sameRepository = (
+  a: { host: string; repository: { owner: string; name: string } },
+  b: { host: string; repository: { owner: string; name: string } },
+) =>
+  a.host === b.host &&
+  a.repository.owner === b.repository.owner &&
+  a.repository.name === b.repository.name;
+
+/** Row chips for a pull request: its state, then the review decision. */
+function rowChips(pullRequest: {
+  state: string;
+  reviewStatus?: string;
+  mergeability?: PullRequest['mergeability'];
+}): PullRequestChipValue[] {
+  const chips = [pullRequestStateChip(pullRequest.state)];
+  const decision = pullRequest.reviewStatus
+    ? reviewDecisionChip(pullRequest.reviewStatus)
+    : null;
+  if (decision) chips.push(decision);
+  if (pullRequest.mergeability === 'conflicting')
+    chips.push({ label: 'Has conflicts', tone: 'failure' });
+  return chips;
+}
+
+/**
+ * The pull requests view of the Diff pane: this checkout's pull requests as
+ * quiet rows, the chat's own links, and the review of whichever is opened —
+ * which takes the whole pane, with Back returning here.
+ */
 export function PullRequestsPanel({
   projectSlug,
   activeRepoRoot,
   onOpenLinkedAsPane,
+  initialSelected = null,
 }: {
   projectSlug: string;
   activeRepoRoot?: string | null;
@@ -58,12 +105,30 @@ export function PullRequestsPanel({
   onOpenLinkedAsPane?: (
     link: ConversationPullRequestLinkObservation,
   ) => boolean;
+  /** Open on this review rather than the list (the Diff view's branch line). */
+  initialSelected?: PullRequestLinkIdentity | null;
 }) {
   const activeChat = useNavigation((state) => state.activeChat);
   const [selected, setSelected] = useState<PullRequestLinkIdentity | null>(
-    null,
+    initialSelected,
   );
+  // Focus bookkeeping: the row a review was opened from gets focus back on
+  // Back (else the first row), rather than focus falling to <body> when the
+  // review unmounts. A review this panel mounted on (the Changes view's
+  // branch line) puts focus on its own heading instead.
+  const rowButtons = useRef(new Map<string, HTMLButtonElement>());
+  const [returnFocusTo, setReturnFocusTo] = useState<string | null>(null);
+  const [focusReviewTitle, setFocusReviewTitle] = useState(!!initialSelected);
+  useEffect(() => {
+    if (selected !== null || returnFocusTo === null) return;
+    const target =
+      rowButtons.current.get(returnFocusTo) ??
+      rowButtons.current.values().next().value;
+    target?.focus();
+    setReturnFocusTo(null);
+  }, [selected, returnFocusTo]);
   const [filter, setFilter] = useState<StateFilter>('OPEN');
+  const [linking, setLinking] = useState(false);
   const resolvingContext = {
     project: projectSlug,
     workingDirectory: activeRepoRoot ?? undefined,
@@ -79,50 +144,37 @@ export function PullRequestsPanel({
     { state: filter },
     { enabled: !!identity },
   );
+  const chatLinks = useConversationPullRequestLinks(activeChat ?? '');
 
-  if (context.isLoading) return <SkeletonList count={4} />;
+  if (context.isLoading) return <SkeletonList count={3} />;
   if (context.error) {
     return (
-      <ErrorState
-        variant="compact"
-        title="Pull requests unavailable"
-        description={context.error.message}
+      <Note
+        tone="error"
+        text={context.error.message}
+        onRetry={() => void context.refetch()}
       />
     );
   }
   if (!context.data?.available) {
     // #1536 G5: a checkout with no remote is the ordinary local repository —
-    // nothing is broken and nothing the operator asked for is missing. It read
-    // as a warning-triangle "Pull requests unavailable" card, the same
-    // presentation as a forge that refused. The cause comes from the server
-    // (`PullRequestUnavailableCause`), never from matching on the sentence.
+    // nothing is broken and nothing the operator asked for is missing. The
+    // cause comes from the server (`PullRequestUnavailableCause`), never
+    // from matching on the sentence.
     if (context.data?.cause === 'no-remote') {
       return (
-        <Empty
-          variant="compact"
-          label="Pull requests need a remote"
-          description="This checkout has no remote configured, so there is nothing to list. Add one on a supported forge to see pull requests here."
-        />
+        <Note text="No remote. Add a GitHub or GitLab remote to see pull requests." />
       );
     }
     return (
-      <ErrorState
-        variant="compact"
-        title="Pull requests unavailable"
-        description={
-          context.data?.reason ?? 'Repository context is unavailable'
-        }
+      <Note
+        tone="error"
+        text={context.data?.reason ?? 'Repository context is unavailable'}
+        onRetry={() => void context.refetch()}
       />
     );
   }
-  if (
-    selected &&
-    identity &&
-    selected.provider === identity.provider &&
-    selected.host === identity.host &&
-    selected.repository.owner === identity.repository.owner &&
-    selected.repository.name === identity.repository.name
-  ) {
+  if (selected) {
     return (
       <LazyBoundary
         load={loadReview}
@@ -134,21 +186,27 @@ export function PullRequestsPanel({
             repository: selected.repository.name,
             ref: selected.ref,
             project: projectSlug,
-            repositoryRootHint: activeRepoRoot ?? undefined,
+            ...(identity && sameRepository(selected, identity)
+              ? { repositoryRootHint: activeRepoRoot ?? undefined }
+              : {}),
           },
-          onBack: () => setSelected(null),
+          onBack: () => {
+            setReturnFocusTo(linkKey(selected));
+            setSelected(null);
+          },
+          focusTitleOnOpen: focusReviewTitle,
         }}
         pending={<SkeletonBlock label="Opening pull request review" />}
       />
     );
   }
-  if (pullRequests.isLoading) return <SkeletonList count={4} />;
+  if (pullRequests.isLoading) return <SkeletonList count={3} />;
   if (pullRequests.error) {
     return (
-      <ErrorState
-        variant="compact"
-        title="Pull requests unavailable"
-        description={pullRequests.error.message}
+      <Note
+        tone="error"
+        text={pullRequests.error.message}
+        onRetry={() => void pullRequests.refetch()}
       />
     );
   }
@@ -158,87 +216,174 @@ export function PullRequestsPanel({
     | undefined;
   if (!result?.available) {
     return (
-      <ErrorState
-        variant="compact"
-        title="Pull requests unavailable"
-        description={result?.reason ?? 'The forge did not report availability'}
+      <Note
+        tone="error"
+        text={result?.reason ?? 'Pull requests could not be read'}
+        onRetry={() => void pullRequests.refetch()}
       />
     );
   }
-  const visible = (result.data ?? []).filter(
+  const listed = result.data ?? [];
+  const visible = listed.filter(
     (pullRequest) =>
       filter === 'ALL' || normalizedState(pullRequest.state) === filter,
   );
   const observedAt = new Date(
     pullRequests.dataUpdatedAt || Date.now(),
   ).toISOString();
+  // The chat's own links that the list does not already show: explicit links
+  // and Task-declared ones, in any repository. A link to a listed pull
+  // request is the listed row (its `⋯` carries Unlink).
+  const links = activeChat ? (chatLinks.links.data?.links ?? []) : [];
+  const listedKeys = new Set(
+    listed.map((pullRequest) =>
+      linkKey({
+        provider: pullRequest.provider,
+        host: pullRequest.host,
+        repository: pullRequest.repository,
+        ref: pullRequest.ref,
+      }),
+    ),
+  );
+  const elsewhere = links.filter((link) => !listedKeys.has(linkKey(link)));
+  const explicitByKey = new Map(
+    links
+      .filter((link) => link.source === 'explicit')
+      .map((link) => [linkKey(link), link] as const),
+  );
+  const open = (link: PullRequestLinkIdentity) => {
+    setFocusReviewTitle(false);
+    setSelected(link);
+  };
+  const openLinked = (link: ConversationPullRequestLinkObservation) => {
+    if (onOpenLinkedAsPane?.(link) === true) return;
+    open(link);
+  };
+  const rowRef = (key: string) => (element: HTMLButtonElement | null) => {
+    if (element) rowButtons.current.set(key, element);
+    else rowButtons.current.delete(key);
+  };
+  const unlinkAction = (
+    link: ConversationPullRequestLinkObservation | undefined,
+  ): OverflowAction[] =>
+    link
+      ? [
+          {
+            key: 'unlink',
+            label: 'Unlink from chat',
+            disabled: chatLinks.pending !== null,
+            onSelect: () => void chatLinks.mutate('unlink', link),
+          },
+        ]
+      : [];
 
   return (
     <section className="pull-requests-panel" aria-label="Pull requests">
-      {activeChat && identity && (
-        <ConversationPullRequestLinks
-          conversationId={activeChat}
-          suggested={{
-            provider: identity.provider,
-            host: identity.host,
-            repository: identity.repository,
-          }}
-          derived={(result.data ?? [])
-            .filter(
-              (pullRequest) => pullRequest.sourceBranch === identity.branch,
-            )
-            .map((pullRequest) => ({
-              provider: pullRequest.provider,
-              host: pullRequest.host,
-              repository: pullRequest.repository,
-              ref: pullRequest.ref,
-              source: 'branch-derived' as const,
-              observedAt,
-              status: {
-                state: 'current' as const,
-                title: pullRequest.title,
-                pullRequestState: pullRequest.state,
-                ...(pullRequest.headSha ? { head: pullRequest.headSha } : {}),
-              },
-            }))}
-          onOpen={(link) => {
-            if (onOpenLinkedAsPane?.(link) === true) return;
-            setSelected(link);
+      <div className="pull-requests-panel__bar">
+        <fieldset className="pull-requests-panel__filter">
+          <legend className="sr-only">Pull request state</legend>
+          {FILTERS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className="pull-requests-panel__filter-option"
+              aria-pressed={filter === option.value}
+              onClick={() => setFilter(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </fieldset>
+        <div className="pull-requests-panel__tools">
+          {activeChat && chatLinks.canWrite && (
+            <IconButton
+              className="pull-requests-panel__icon"
+              aria-label="Link a pull request"
+              title="Link a pull request to this chat"
+              aria-expanded={linking}
+              active={linking}
+              onClick={() => setLinking((value) => !value)}
+            >
+              <PlusGlyph />
+            </IconButton>
+          )}
+          <IconButton
+            className="pull-requests-panel__icon"
+            aria-label="Refresh"
+            title="Refresh"
+            disabled={pullRequests.isFetching}
+            onClick={() => {
+              void pullRequests.refetch();
+              if (activeChat) void chatLinks.links.refetch();
+            }}
+          >
+            <RefreshGlyph />
+          </IconButton>
+        </div>
+      </div>
+      {linking && activeChat && (
+        <LinkPullRequestField
+          scope={identity ?? {}}
+          pending={chatLinks.pending?.startsWith('link:') ?? false}
+          autoFocus
+          onLink={(link) => {
+            void chatLinks.mutate('link', link).then((ok) => {
+              if (ok) setLinking(false);
+            });
           }}
         />
       )}
-      <PullRequestDependencyStacks
-        pullRequests={result.data ?? []}
-        observedAt={observedAt}
-        refreshing={pullRequests.isFetching}
-        onRefresh={() => void pullRequests.refetch()}
-        onOpen={setSelected}
-      />
-      <header className="pull-requests-panel__header">
-        <div>
-          <h2>Pull requests</h2>
-          <p>
-            {context.data.repository.owner}/{context.data.repository.name}
-          </p>
-        </div>
-        <label>
-          <span>State</span>
-          <select
-            aria-label="Pull request state"
-            value={filter}
-            onChange={(event) => setFilter(event.target.value as StateFilter)}
-          >
-            <option value="ALL">All</option>
-            <option value="OPEN">Open</option>
-            <option value="CLOSED">Closed</option>
-            <option value="MERGED">Merged</option>
-          </select>
-        </label>
-      </header>
+      {chatLinks.mutationError && (
+        <p className="pull-requests-panel__note" role="alert">
+          {chatLinks.mutationError}
+        </p>
+      )}
+      {elsewhere.length > 0 && (
+        <>
+          <h3 className="pull-requests-panel__label">Linked to this chat</h3>
+          <ul className="pull-requests-panel__list">
+            {elsewhere.map((link) => {
+              const status = link.status;
+              // A link elsewhere names its host: two hosts may hold the
+              // same owner/name/number, and they are two pull requests.
+              const reference = `${link.host}/${link.repository.owner}/${link.repository.name} #${link.ref}`;
+              return (
+                <PullRequestRow
+                  key={`${link.source}:${linkKey(link)}`}
+                  title={status.state === 'current' ? status.title : reference}
+                  reference={reference}
+                  chips={
+                    status.state === 'current'
+                      ? rowChips({ state: status.pullRequestState })
+                      : []
+                  }
+                  meta={[
+                    link.source === 'task-declared'
+                      ? 'from a Task'
+                      : link.source === 'branch-derived'
+                        ? 'from branch'
+                        : 'linked',
+                  ]}
+                  note={status.state === 'current' ? undefined : status.reason}
+                  openRef={rowRef(linkKey(link))}
+                  onOpen={
+                    status.state === 'current'
+                      ? () => openLinked(link)
+                      : undefined
+                  }
+                  overflow={unlinkAction(
+                    link.source === 'explicit' ? link : undefined,
+                  )}
+                  overflowLabel={`More actions for #${link.ref}`}
+                />
+              );
+            })}
+          </ul>
+        </>
+      )}
       {visible.length === 0 ? (
-        <Empty
-          variant="compact"
-          label={
+        <Note
+          text={
             filter === 'ALL'
               ? 'No pull requests'
               : `No ${filter.toLowerCase()} pull requests`
@@ -246,190 +391,139 @@ export function PullRequestsPanel({
         />
       ) : (
         <ul className="pull-requests-panel__list">
-          {visible.map((pullRequest) => (
-            <PullRequestRow
-              key={pullRequest.ref}
-              pullRequest={pullRequest}
-              result={result}
-              projectSlug={projectSlug}
-              activeRepoRoot={activeRepoRoot}
-              onMerged={() => void pullRequests.refetch()}
-              onOpen={() => setSelected(pullRequest)}
-            />
-          ))}
+          {visible.map((pullRequest) => {
+            const key = linkKey({
+              provider: pullRequest.provider,
+              host: pullRequest.host,
+              repository: pullRequest.repository,
+              ref: pullRequest.ref,
+            });
+            return (
+              <PullRequestRow
+                key={pullRequest.ref}
+                title={pullRequest.title}
+                reference={`#${pullRequest.ref}`}
+                chips={rowChips(pullRequest)}
+                meta={[pullRequest.author.login]}
+                current={pullRequest.sourceBranch === identity?.branch}
+                openRef={rowRef(key)}
+                onOpen={() => open(pullRequest)}
+                overflow={[
+                  {
+                    key: 'external',
+                    label: pullRequestExternalLabel(pullRequest.url),
+                    onSelect: () => void openExternalLink(pullRequest.url),
+                  },
+                  ...unlinkAction(explicitByKey.get(key)),
+                ]}
+                overflowLabel={`More actions for #${pullRequest.ref}`}
+              />
+            );
+          })}
         </ul>
       )}
+      <PullRequestDependencyStacks
+        pullRequests={listed}
+        observedAt={observedAt}
+        onOpen={open}
+      />
     </section>
   );
 }
 
-function PullRequestRow({
-  pullRequest,
-  result,
+/** One line, and one action when there is one. No box. */
+function Note({
+  text,
+  tone,
+  onRetry,
+}: {
+  text: string;
+  tone?: 'error';
+  onRetry?: () => void;
+}) {
+  return (
+    <p
+      className={`pull-requests-panel__note${tone === 'error' ? ' pull-requests-panel__note--error' : ''}`}
+      {...(tone === 'error' ? { role: 'alert' } : {})}
+    >
+      {text}
+      {onRetry && (
+        <>
+          {' '}
+          <button
+            type="button"
+            className="button button--link"
+            onClick={onRetry}
+          >
+            Retry
+          </button>
+        </>
+      )}
+    </p>
+  );
+}
+
+/**
+ * The Diff view's one line about pull requests: the checked-out branch's
+ * open pull request, when there is one, as a quiet row that opens its
+ * review. Nothing when the branch has none, when the checkout has no
+ * remote, or while the read is in flight — a line that says "reading" would
+ * be chrome for a fact that is usually absent.
+ */
+export function CurrentBranchPullRequestLine({
   projectSlug,
   activeRepoRoot,
-  onMerged,
   onOpen,
 }: {
-  pullRequest: PullRequest;
-  result: PullRequestResult<PullRequest[]>;
   projectSlug: string;
   activeRepoRoot?: string | null;
-  onMerged: () => void;
-  onOpen: () => void;
+  onOpen: (pullRequest: PullRequestLinkIdentity) => void;
 }) {
-  const [method, setMethod] = useState<PullRequestMergeMethod>(
-    result.effectiveMergeMethods[0] ?? 'merge',
-  );
-  const [intent, setIntent] = useState<'merge' | 'auto-merge' | null>(null);
-  const [outcome, setOutcome] = useState<PullRequestMergeResult | null>(null);
-  const dispatchingRef = useRef(false);
-  const [isDispatching, setIsDispatching] = useState(false);
-  useEffect(() => {
-    if (!result.effectiveMergeMethods.includes(method)) {
-      setMethod(result.effectiveMergeMethods[0] ?? 'merge');
-    }
-  }, [method, result.effectiveMergeMethods]);
-  const mutation = useMergePullRequestMutation(
-    pullRequest.provider,
-    pullRequest.host,
-    pullRequest.repository.owner,
-    pullRequest.repository.name,
-    pullRequest.ref,
-    {
-      project: projectSlug,
-      workingDirectory: activeRepoRoot ?? undefined,
-    },
-  );
-  const canMerge =
-    result.effectiveCapabilities.merge &&
-    pullRequest.mergeability !== 'conflicting' &&
-    result.effectiveMergeMethods.length > 0;
-  const canAutoMerge =
-    result.effectiveCapabilities.autoMerge &&
-    result.effectiveMergeMethods.length > 0;
-
-  const dispatch = async () => {
-    if (dispatchingRef.current) return;
-    const requestedIntent = intent;
-    if (!requestedIntent) return;
-    dispatchingRef.current = true;
-    setIsDispatching(true);
-    try {
-      const response = await mutation.mutateAsync({
-        method,
-        autoMerge: requestedIntent === 'auto-merge',
-      });
-      if (!response.available) {
-        setOutcome({
-          status: 'refused',
-          reason: response.reason ?? 'Pull request operation unavailable',
-        });
-        return;
-      }
-      const next = response.data ?? {
-        status: 'indeterminate' as const,
-        reason: 'The forge returned no operation result',
-        observed: response,
-      };
-      setOutcome(next);
-      if (next.status === 'merged') onMerged();
-    } catch (error) {
-      setOutcome({
-        status: 'refused',
-        reason: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      dispatchingRef.current = false;
-      setIsDispatching(false);
-      setIntent(null);
-    }
+  const resolvingContext = {
+    project: projectSlug,
+    workingDirectory: activeRepoRoot ?? undefined,
   };
-
+  const context = usePullRequestContextQuery(resolvingContext);
+  const identity = context.data?.available ? context.data : undefined;
+  const pullRequests = usePullRequestsQuery(
+    identity?.provider ?? '',
+    identity?.host ?? '',
+    identity?.repository.owner ?? '',
+    identity?.repository.name ?? '',
+    resolvingContext,
+    { state: 'OPEN' },
+    { enabled: !!identity },
+  );
+  const result = pullRequests.data as
+    | PullRequestResult<PullRequest[]>
+    | undefined;
+  const pullRequest = result?.available
+    ? (result.data ?? []).find(
+        (candidate) =>
+          candidate.sourceBranch === identity?.branch &&
+          normalizedState(candidate.state) === 'OPEN',
+      )
+    : undefined;
+  if (!pullRequest) return null;
   return (
-    <li className="pull-request-card">
-      <div className="pull-request-card__title-row">
-        <Button variant="link" onClick={onOpen}>
-          {pullRequest.title}
-        </Button>
-        <span className="pull-request-card__chip">
-          {normalizedState(pullRequest.state)}
-        </span>
-      </div>
-      <p>
-        {pullRequest.sourceBranch} → {pullRequest.targetBranch} ·{' '}
-        {pullRequest.author.login}
-      </p>
-      {(canMerge || canAutoMerge) && (
-        <div className="pull-request-card__actions">
-          <label>
-            <span>Merge method</span>
-            <select
-              aria-label={`Merge method for ${pullRequest.title}`}
-              value={method}
-              onChange={(event) =>
-                setMethod(event.target.value as PullRequestMergeMethod)
-              }
-            >
-              {result.effectiveMergeMethods.map((mergeMethod) => (
-                <option key={mergeMethod} value={mergeMethod}>
-                  {mergeMethod}
-                </option>
-              ))}
-            </select>
-          </label>
-          {canMerge && (
-            <button type="button" onClick={() => setIntent('merge')}>
-              Merge
-            </button>
-          )}
-          {canAutoMerge && (
-            <button type="button" onClick={() => setIntent('auto-merge')}>
-              Enable auto-merge
-            </button>
-          )}
-        </div>
-      )}
-      {result.mergeMethodsSource === 'provider-default' &&
-        (canMerge || canAutoMerge) && (
-          <p className="pull-request-card__note">
-            Merge methods are provider defaults; repository settings could not
-            be read.
-          </p>
-        )}
-      {pullRequest.mergeability === 'conflicting' &&
-        result.effectiveCapabilities.merge && (
-          <p className="pull-request-card__note">
-            Merge is unavailable because this pull request has conflicts.
-          </p>
-        )}
-      {outcome?.status === 'queued-auto-merge' && (
-        <p role="status">Auto-merge armed.</p>
-      )}
-      {outcome?.status === 'merged' && (
-        <p role="status">Pull request merged.</p>
-      )}
-      {outcome?.status === 'refused' && <p role="alert">{outcome.reason}</p>}
-      {outcome?.status === 'indeterminate' && (
-        <details>
-          <summary>{outcome.reason}</summary>
-          <pre>{JSON.stringify(outcome.observed, null, 2)}</pre>
-        </details>
-      )}
-      {mutation.error && !outcome && (
-        <p role="alert">{mutation.error.message}</p>
-      )}
-      <ConfirmModal
-        isOpen={intent !== null}
-        title={
-          intent === 'auto-merge' ? 'Enable auto-merge?' : 'Merge pull request?'
-        }
-        message={`${intent === 'auto-merge' ? 'Arm auto-merge for' : 'Merge'} “${pullRequest.title}” using ${method}?`}
-        confirmLabel={intent === 'auto-merge' ? 'Enable auto-merge' : 'Merge'}
-        onCancel={() => setIntent(null)}
-        onConfirm={() => void dispatch()}
-        pending={isDispatching}
-      />
-    </li>
+    <button
+      type="button"
+      className="pull-requests-panel__branch-line"
+      aria-label={`Open pull request #${pullRequest.ref}: ${pullRequest.title}`}
+      onClick={() => onOpen(pullRequest)}
+    >
+      <span className="pull-requests-panel__branch-line-reference">
+        PR #{pullRequest.ref}
+      </span>
+      <span className="pull-requests-panel__branch-line-title">
+        {pullRequest.title}
+      </span>
+      {rowChips(pullRequest)
+        .slice(1)
+        .map((chip) => (
+          <PullRequestChip key={chip.label} {...chip} />
+        ))}
+      <ArrowRightGlyph className="pull-requests-panel__branch-line-arrow" />
+    </button>
   );
 }

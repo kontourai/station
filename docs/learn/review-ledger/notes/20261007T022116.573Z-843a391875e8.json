@@ -1,0 +1,7 @@
+{
+  "revision": "305355b474a30b93dbca4d3310bb17d484ce5296",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed #3405 MessageBubble and MessageContent deltas: bubble passes its existing anchor key as the legacy UI-block identity fallback; current result-backed forms use sourceEventId and result-local ordinal. Only UI-block React keys and form draft ownership change. Existing mobile work folding keeps UI blocks outside the fold, narration order and action-menu/checkpoint composition remain unchanged. Composer policy prose remains accurate; this is source review, not native qualification.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/MessageBubble.tsx","src-ui/src/components/chat/message-bubble/MessageContent.tsx"]}
+  ]
+}

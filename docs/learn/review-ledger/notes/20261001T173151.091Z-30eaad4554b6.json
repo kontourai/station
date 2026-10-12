@@ -1,0 +1,7 @@
+{
+  "revision": "e219871c414d351695127ff92ee3280ca38dff9c",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Reviewed merged inventory entries for Browser pane/page dialogs and Home goal form against shared action primitives and evidence scope. Preserved incoming pointer/geometry limitations and Home phone evidence. Current main Activity navigation uses its canonical main-page placement; no new local route mutation.","inputs":["docs/patterns/frontend.md"]}
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "revision": "eab3ee7d1b629970b698a3d18c2deaa2c1144d0a",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Searched for sessions list paging claims; the change adds repeated-cursor detection and id de-dupe to the existing bounded cursor follow in session-client.ts. No documented command shape or flag changes.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","packages/cli/src/commands/session-client.ts"]},
+
+    {"path":"docs/design/station-peer-pairing.md","note":"Checked for the not-ready connection message text; the change appends a fixed 'Check this connection in Connections or run station connections test <id>' step when no prerequisite is recorded. This document makes no claim about that message.","inputs":["docs/design/station-peer-pairing.md","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked for the not-ready connection message text; the change appends a fixed 'Check this connection in Connections or run station connections test <id>' step when no prerequisite is recorded. This document makes no claim about that message.","inputs":["docs/design/task-room-agent-requests.md","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"Checked for the not-ready connection message text; the change appends a fixed 'Check this connection in Connections or run station connections test <id>' step when no prerequisite is recorded. This document makes no claim about that message.","inputs":["docs/guides/agents.md","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked for the not-ready connection message text; the change appends a fixed 'Check this connection in Connections or run station connections test <id>' step when no prerequisite is recorded. This document makes no claim about that message.","inputs":["docs/guides/connections.md","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Checked for the not-ready connection message text; the change appends a fixed 'Check this connection in Connections or run station connections test <id>' step when no prerequisite is recorded. This document makes no claim about that message.","inputs":["docs/guides/delegation-attempt-claims.md","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Checked for the not-ready connection message text; the change appends a fixed 'Check this connection in Connections or run station connections test <id>' step when no prerequisite is recorded. This document makes no claim about that message.","inputs":["docs/guides/home-transfer-controller.md","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked for the not-ready connection message text; the change appends a fixed 'Check this connection in Connections or run station connections test <id>' step when no prerequisite is recorded. This document makes no claim about that message.","inputs":["docs/guides/machine-relationships.md","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Checked for the not-ready connection message text; the change appends a fixed 'Check this connection in Connections or run station connections test <id>' step when no prerequisite is recorded. This document makes no claim about that message.","inputs":["docs/guides/private-runner-partition.md","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Checked for the not-ready connection message text; the change appends a fixed 'Check this connection in Connections or run station connections test <id>' step when no prerequisite is recorded. This document makes no claim about that message.","inputs":["docs/guides/product-law-authoring.md","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Checked for the not-ready connection message text; the change appends a fixed 'Check this connection in Connections or run station connections test <id>' step when no prerequisite is recorded. This document makes no claim about that message.","inputs":["docs/guides/repository-layout.md","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked for the not-ready connection message text; the change appends a fixed 'Check this connection in Connections or run station connections test <id>' step when no prerequisite is recorded. This document makes no claim about that message.","inputs":["docs/guides/self-configuring-agent.md","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Checked for the not-ready connection message text; the change appends a fixed 'Check this connection in Connections or run station connections test <id>' step when no prerequisite is recorded. This document makes no claim about that message.","inputs":["docs/guides/work-board-security.md","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Checked for the not-ready connection message text; the change appends a fixed 'Check this connection in Connections or run station connections test <id>' step when no prerequisite is recorded. This document makes no claim about that message.","inputs":["docs/guides/workspace-packages.md","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked for the not-ready connection message text; the change appends a fixed 'Check this connection in Connections or run station connections test <id>' step when no prerequisite is recorded. This document makes no claim about that message.","inputs":["docs/reference/api.md","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Searched for sessions list paging claims; the change adds repeated-cursor detection and id de-dupe to the existing bounded cursor follow in session-client.ts. No documented command shape or flag changes.","inputs":["docs/reference/cli.md","packages/cli/src/commands/session-client.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked for the not-ready connection message text; the change appends a fixed 'Check this connection in Connections or run station connections test <id>' step when no prerequisite is recorded. This document makes no claim about that message.","inputs":["docs/reference/contracts.md","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked for the not-ready connection message text; the change appends a fixed 'Check this connection in Connections or run station connections test <id>' step when no prerequisite is recorded. This document makes no claim about that message.","inputs":["examples/self-configuring-agent/README.md","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Searched for sessions list paging claims; the change adds repeated-cursor detection and id de-dupe to the existing bounded cursor follow in session-client.ts. No documented command shape or flag changes.","inputs":["packages/cli/README.md","packages/cli/src/commands/session-client.ts"]}
+  ]
+}

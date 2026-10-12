@@ -35,6 +35,13 @@ export interface FullAccessRefusalIdentitySource {
   environmentId(): string | undefined;
   /** A paired device's display name, by its id. */
   deviceName(deviceId: string): string | undefined;
+  /**
+   * The operator CLI command for this Station's channel
+   * (`npx @kontourai/station-cli@nightly` for a nightly). A bare `station`
+   * is on no PATH for a nightly or desktop install, and in a checkout it can
+   * be an older CLI without the command.
+   */
+  hostCli?(): string | undefined;
 }
 
 const identitySources = new WeakMap<Request, FullAccessRefusalIdentitySource>();
@@ -68,12 +75,30 @@ const FULL_ACCESS_GRANT_UI_STEPS: readonly string[] = [
   "Open the Station desktop app on the Station's host.",
   'Select the Station name (top right), then Paired devices.',
   'Select the device by its name, then Change access.',
-  'Turn on Allow full access, then Apply.',
+  'Turn on Skip approval prompts, then Apply.',
 ];
 
 /** The operator command, run on the Station's own host. */
-function fullAccessGrantCommand(deviceId: string): string {
-  return `station environment access scope ${shortDeviceId(deviceId)} --add approval:full-access`;
+function fullAccessGrantCommand(deviceId: string, cli: string): string {
+  return `${cli} environment access scope ${shortDeviceId(deviceId)} --add approval:full-access`;
+}
+
+/**
+ * The operator CLI command on this Station's host, for any refusal that
+ * names a host command (`station` when no identity source is bound).
+ */
+export function operatorHostCli(request: Request): string {
+  try {
+    return identitySources.get(request)?.hostCli?.() || 'station';
+  } catch {
+    return 'station';
+  }
+}
+
+/** The short id of the paired device a request came from, if it did. */
+export function requestingDeviceShortId(request: Request): string | undefined {
+  const deviceId = getRuntimeAuthenticatedRequestPrincipal(request)?.deviceId;
+  return deviceId ? shortDeviceId(deviceId) : undefined;
 }
 
 function requesterOf(request: Request): ApprovalFullAccessRequester {
@@ -122,7 +147,12 @@ function detailsFor(
             scope: 'approval:full-access',
             uiSteps: FULL_ACCESS_GRANT_UI_STEPS,
             ...(fullDeviceId
-              ? { cli: fullAccessGrantCommand(fullDeviceId) }
+              ? {
+                  cli: fullAccessGrantCommand(
+                    fullDeviceId,
+                    operatorHostCli(request),
+                  ),
+                }
               : {}),
           },
   };

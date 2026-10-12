@@ -33,12 +33,14 @@
  * rate key (never per caller-supplied attribution — review MED 5) — the
  * review surface must stay legible under that pressure.
  */
+
 import {
   createHash,
   randomBytes,
   randomUUID,
   timingSafeEqual,
 } from 'node:crypto';
+import type { PluginCommandEffectsWithdrawalSummary } from '@kontourai/station-contracts/plugin-command-effect';
 
 export const LOCAL_CONSENT_TENANT = 'local';
 
@@ -108,6 +110,8 @@ export interface ConsentEffectProjection {
   readonly generation: number;
   readonly effects?: readonly string[];
   readonly failures?: readonly string[];
+  /** Present when the approval withdrew `plugin.server` from outstanding command effects. */
+  readonly commandEffects?: PluginCommandEffectsWithdrawalSummary;
 }
 
 interface ConsentAuditEvent {

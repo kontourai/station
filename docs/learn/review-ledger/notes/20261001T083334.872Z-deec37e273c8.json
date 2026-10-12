@@ -1,0 +1,13 @@
+{
+  "revision": "b525642b054eadc1aba6f6f5801a82cac60b4e33",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"docs/ui/responsive-action-surfaces.txt: the Details sheet no longer has an action strip of its own (its ChatInboxHoverCard.tsx entry is removed); the row's remaining touch actions are a menu list on the shared menu primitive, described and evidenced under the ChatDockInboxRows.tsx entry. An intermediate commit in this round left the inventory with a stale entry and the responsive ratchet failing; it passes at this revision (151 action surfaces). This document does not enumerate inventory entries, so its text stands.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/guides/theming.md","note":"docs/ui/responsive-action-surfaces.txt: the Details sheet no longer has an action strip of its own (its ChatInboxHoverCard.tsx entry is removed); the row's remaining touch actions are a menu list on the shared menu primitive, described and evidenced under the ChatDockInboxRows.tsx entry. An intermediate commit in this round left the inventory with a stale entry and the responsive ratchet failing; it passes at this revision (151 action surfaces). This document does not enumerate inventory entries, so its text stands.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/patterns/backend.md","note":"docs/ui/responsive-action-surfaces.txt: the Details sheet no longer has an action strip of its own (its ChatInboxHoverCard.tsx entry is removed); the row's remaining touch actions are a menu list on the shared menu primitive, described and evidenced under the ChatDockInboxRows.tsx entry. An intermediate commit in this round left the inventory with a stale entry and the responsive ratchet failing; it passes at this revision (151 action surfaces). This document does not enumerate inventory entries, so its text stands.","inputs":["docs/patterns/backend.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"docs/ui/responsive-action-surfaces.txt: the Details sheet no longer has an action strip of its own (its ChatInboxHoverCard.tsx entry is removed); the row's remaining touch actions are a menu list on the shared menu primitive, described and evidenced under the ChatDockInboxRows.tsx entry. An intermediate commit in this round left the inventory with a stale entry and the responsive ratchet failing; it passes at this revision (151 action surfaces). This document does not enumerate inventory entries, so its text stands.","inputs":["docs/patterns/frontend.md"]}
+  ]
+}

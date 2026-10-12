@@ -1,0 +1,7 @@
+{
+  "revision": "96bf944d5f3aa38147aa746ddc9bc4fafbc89c43",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"PairedDevicesPanel.tsx changed only its native-host scope-change 401 message (#3256). This guide documents notification delivery and pairing for web push, and says nothing about the panel's error copy, so its claims still hold.","inputs":["docs/guides/web-push-notifications.md","packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx"]}
+  ]
+}

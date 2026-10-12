@@ -27,10 +27,11 @@
  * still yields a measurement, and both are measured by the same
  * `measureEntryBundle`, so the two numbers share one definition.
  */
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { appendFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { changedPathsSince, describeMatches } from './lib/change-scope.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { npmInvocation } from './lib/npm-cli.mjs';
@@ -186,7 +187,7 @@ export function runDeltaReport(deps) {
 }
 
 function git(args, options = {}) {
-  return execFileSync('git', args, {
+  return execFileSyncBounded('git', args, {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,

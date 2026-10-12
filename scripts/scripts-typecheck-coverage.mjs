@@ -61,6 +61,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 /**
@@ -130,7 +131,7 @@ export function baselineDeferrals(repoRoot) {
  * which is both a supply-chain hazard and, observed while building this gate, a
  * silent correctness one: the placeholder `tsc` package exits 1 with a friendly
  * message, which this gate would have reported as a compile failure. The
- * runner resolves `typescript/lib/tsc.js` from `repoRoot`'s own install.
+ * runner resolves the native TypeScript compiler from `repoRoot`'s own install.
  */
 function resolveCompilerRunner(repoRoot) {
   return join(repoRoot, 'scripts', 'tsc-slot.mjs');
@@ -142,7 +143,11 @@ function resolveCompilerRunner(repoRoot) {
  * would double the gate's cost for a number it already has.
  */
 export function compileProject(repoRoot, { run = spawnSync } = {}) {
-  const result = run(
+  // `--listFiles` prints one absolute path per program file, so the output
+  // grows with the program and with the length of the checkout path. Node's
+  // default 1 MiB capture limit was within reach of both (#2787); the bounded
+  // capture raises it and names the cause if it is ever crossed.
+  const result = spawnSyncBounded(
     process.execPath,
     [
       resolveCompilerRunner(repoRoot),
@@ -152,6 +157,7 @@ export function compileProject(repoRoot, { run = spawnSync } = {}) {
       '--listFiles',
     ],
     { cwd: repoRoot, encoding: 'utf8', windowsHide: true },
+    { run },
   );
   if (result.error) throw result.error;
   const stdout = result.stdout ?? '';

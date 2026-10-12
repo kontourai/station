@@ -1,0 +1,9 @@
+{
+  "revision": "14c535b9047b2ae8bb9b659ed18325939d0b017e",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Correction to the preceding merge-review note: this delta concerns GitHub Skill discovery and acquisition only; no ClawHub or dual-manifest claim was reviewed here. Inspected the added API reference: commit-pinned tree/blob snapshots, explicit refresh and incomplete-discovery failures, inspectable unsupported names/formats, request validation and typed refusal before publication, exclusive portable staging, local acquisition during GitHub discovery failure, and declared source-selection/network-budget limits. Existing integration behavior remains accurately described; source anchors retain their prior implementation reviews. This is a documentation-delta review, not new execution or Windows filesystem qualification.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/reference/api.md","note":"Correction to the preceding merge-review note: this delta concerns GitHub Skill discovery and acquisition only; no ClawHub or dual-manifest claim was reviewed here. Inspected the added API reference: commit-pinned tree/blob snapshots, explicit refresh and incomplete-discovery failures, inspectable unsupported names/formats, request validation and typed refusal before publication, exclusive portable staging, local acquisition during GitHub discovery failure, and declared source-selection/network-budget limits. Existing integration behavior remains accurately described; source anchors retain their prior implementation reviews. This is a documentation-delta review, not new execution or Windows filesystem qualification.","inputs":["docs/reference/api.md"]}
+  ]
+}

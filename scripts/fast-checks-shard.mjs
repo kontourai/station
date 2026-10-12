@@ -70,6 +70,39 @@ export function parseFastChecksArgs(args) {
   return { command, options };
 }
 
+/** Beside the receipt; ci.yml uploads it when a shard fails (#3101 C). */
+const FAILED_REPORT_DIR = 'vitest-reports';
+// GitHub keeps at most ten error annotations per step.
+const ANNOTATION_LIMIT = 10;
+
+function escapeCommandData(value) {
+  return String(value)
+    .replaceAll('%', '%25')
+    .replaceAll('\r', '%0D')
+    .replaceAll('\n', '%0A');
+}
+function escapeCommandProperty(value) {
+  return escapeCommandData(value).replaceAll(':', '%3A').replaceAll(',', '%2C');
+}
+
+/**
+ * One `::error` workflow command per failed test, so the check run's
+ * annotations name the failing tests: the merge-queue dequeue report reads
+ * them from the Checks API instead of parsing logs.
+ */
+function failedTestAnnotations(receipt) {
+  const failed = (receipt.executions ?? []).flatMap(
+    (execution) => execution.failedTests ?? [],
+  );
+  return failed.slice(0, ANNOTATION_LIMIT).map((test) => {
+    const message = String(test.excerpt ?? '')
+      .split('\n')
+      .slice(0, 6)
+      .join('\n');
+    return `::error file=${escapeCommandProperty(test.file)},title=${escapeCommandProperty(test.name)}::${escapeCommandData(message)}`;
+  });
+}
+
 function headSha(cwd) {
   return execFileSync('git', ['rev-parse', 'HEAD'], {
     cwd,
@@ -252,7 +285,11 @@ async function runCommand(
         runShard ??
         (await import('./run-changed-verification.mjs'))
           .runChangedVerificationShard
-      )(plan, slice, { root: cwd, signal: controller.signal });
+      )(plan, slice, {
+        root: cwd,
+        signal: controller.signal,
+        failedReportDir: resolve(cwd, dirname(receiptPath), FAILED_REPORT_DIR),
+      });
     } catch (error) {
       outcome = {
         status: 'infrastructure_error',
@@ -286,6 +323,8 @@ async function runCommand(
   if (errors.length)
     throw new Error(`fast-checks receipt is invalid: ${errors.join('; ')}`);
   writeJson(resolve(cwd, receiptPath), receipt);
+  if (env.GITHUB_ACTIONS === 'true')
+    for (const line of failedTestAnnotations(receipt)) report(`${line}\n`);
   report(
     `[fast-checks] shard ${shardValue}: ${receipt.status}; ${slice.files.length} file(s), ${receipt.counts.executed} test(s) executed, ${receipt.counts.failed} failed\n`,
   );

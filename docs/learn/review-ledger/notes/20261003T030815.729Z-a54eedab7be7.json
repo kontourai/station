@@ -1,0 +1,13 @@
+{
+  "revision": "6e3408d08ee4a1f3fe901fda08fd13d5f7ba6fd6",
+
+  "notes": [
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"Reviewed receipt boundary repairs: bounded canonical plugin-tree digest covers all staged assets/transcripts and symlink topology; only root Git metadata excluded; closed receipt schema enums/keys/bounds and FIFO-safe64KiB reader. Focused75tests passed, asset omission mutation caught exact intended failure then restored green, POSIX FIFO CLI refused exit1. Semantic assertions remain author-owned; no installed model/native/release qualification.","inputs":["docs/guides/authoring-skill-experiences.md"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"Reviewed added standalone local author-review receipt schema and generated validator export. Portable Agent Plugins and Station extension grammars are unchanged; source/vendor attribution remains accurate. Validator generation gate passed; focused authored definition and real loader tests passed. Runtime authorization is unaffected.","inputs":["docs/reference/agent-plugins.md"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed receipt boundary repairs: bounded canonical plugin-tree digest covers all staged assets/transcripts and symlink topology; only root Git metadata excluded; closed receipt schema enums/keys/bounds and FIFO-safe64KiB reader. Focused75tests passed, asset omission mutation caught exact intended failure then restored green, POSIX FIFO CLI refused exit1. Semantic assertions remain author-owned; no installed model/native/release qualification.","inputs":["docs/reference/shared.md"]},
+
+    {"path":"schemas/agent-plugins/1.0.0/UPSTREAM.md","note":"Reviewed added standalone local author-review receipt schema and generated validator export. Portable Agent Plugins and Station extension grammars are unchanged; source/vendor attribution remains accurate. Validator generation gate passed; focused authored definition and real loader tests passed. Runtime authorization is unaffected.","inputs":["schemas/agent-plugins/1.0.0/UPSTREAM.md"]}
+  ]
+}

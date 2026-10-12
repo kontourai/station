@@ -1,0 +1,11 @@
+{
+  "revision": "600193649f09f1aed154cc2b260ed07bfb27c12c",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"#3386 Grok fix round: Grok paragraph rechecked against grok-session-source.ts a06a327d5f: displayText preferred over model-facing text (renderContent), abandoned turn -> turn.aborted with open tools unresolved (abortOpenTurn), rewind_marker recorded as conversation-rewound notification and rewound turns kept (append-only log, no retraction), one warning per file kind, discovery lists all names and stats at most 16,384 folders (priority: listed, unvisited, recent; reserved rotating sweep) and inspects at most 1,024. Poll-snapshot source unchanged.","inputs":["docs/reference/session-api.md","src-server/providers/sessions/grok-session-source.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"#3386 Grok fix round: grok-session-source.ts changed discovery scheduling (all names listed, stats prioritized with a sweep), displayText, abandoned-turn and rewind handling. The guide's claims (GROK_HOME/~/.grok, listed once prompted, subagents and Station-started chats not listed, 128 most recently changed) still hold; no prose change.","inputs":["docs/user/getting-started.md","src-server/providers/sessions/grok-session-source.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"#3386 Grok fix round: grok-session-source.ts still resolves STATION_EXTERNAL_GROK_SOURCE_ROOT, then GROK_HOME, then ~/.grok; the fix round changed discovery and mapping only. No prose change.","inputs":["docs/reference/env-vars.md","src-server/providers/sessions/grok-session-source.ts"]}
+  ]
+}

@@ -1,0 +1,161 @@
+opencode/big-pickle
+{
+  "id": "big-pickle",
+  "providerID": "opencode",
+  "name": "Big Pickle",
+  "family": "big-pickle",
+  "api": {
+    "id": "big-pickle",
+    "url": "https://opencode.ai/zen/v1",
+    "npm": "@ai-sdk/openai-compatible"
+  },
+  "status": "active",
+  "headers": {},
+  "options": {},
+  "cost": {
+    "input": 0,
+    "output": 0,
+    "cache": {
+      "read": 0,
+      "write": 0
+    }
+  },
+  "limit": {
+    "context": 200000,
+    "input": 160000,
+    "output": 32000
+  },
+  "capabilities": {
+    "temperature": true,
+    "reasoning": true,
+    "attachment": false,
+    "toolcall": true,
+    "input": {
+      "text": true,
+      "audio": false,
+      "image": false,
+      "video": false,
+      "pdf": false
+    },
+    "output": {
+      "text": true,
+      "audio": false,
+      "image": false,
+      "video": false,
+      "pdf": false
+    },
+    "interleaved": {
+      "field": "reasoning_content"
+    }
+  },
+  "release_date": "2025-10-17",
+  "variants": {}
+}
+opencode/fledge-alpha-free
+{
+  "id": "fledge-alpha-free",
+  "providerID": "opencode",
+  "name": "Fledge Alpha Free",
+  "api": {
+    "id": "fledge-alpha-free",
+    "url": "https://opencode.ai/zen/v1",
+    "npm": "@ai-sdk/openai-compatible"
+  },
+  "status": "active",
+  "headers": {},
+  "options": {},
+  "cost": {
+    "input": 0,
+    "output": 0,
+    "cache": {
+      "read": 0,
+      "write": 0
+    }
+  },
+  "limit": {
+    "context": 1048576,
+    "output": 131072
+  },
+  "capabilities": {
+    "temperature": true,
+    "reasoning": true,
+    "attachment": true,
+    "toolcall": true,
+    "input": {
+      "text": true,
+      "audio": false,
+      "image": true,
+      "video": false,
+      "pdf": false
+    },
+    "output": {
+      "text": true,
+      "audio": false,
+      "image": false,
+      "video": false,
+      "pdf": false
+    },
+    "interleaved": false
+  },
+  "release_date": "2026-10-01",
+  "variants": {
+    "low": {
+      "reasoningEffort": "low"
+    },
+    "high": {
+      "reasoningEffort": "high"
+    },
+    "max": {
+      "reasoningEffort": "max"
+    }
+  }
+}
+openrouter/aion-labs/aion-2.0
+{
+  "id": "aion-labs/aion-2.0",
+  "providerID": "openrouter",
+  "name": "Aion-2.0",
+  "api": {
+    "id": "aion-labs/aion-2.0",
+    "url": "https://openrouter.ai/api/v1",
+    "npm": "@openrouter/ai-sdk-provider"
+  },
+  "status": "active",
+  "headers": {},
+  "options": {},
+  "cost": {
+    "input": 0.8,
+    "output": 1.6,
+    "cache": {
+      "read": 0.2,
+      "write": 0
+    }
+  },
+  "limit": {
+    "context": 131072,
+    "output": 32768
+  },
+  "capabilities": {
+    "temperature": true,
+    "reasoning": true,
+    "attachment": false,
+    "toolcall": true,
+    "input": {
+      "text": true,
+      "audio": false,
+      "image": false,
+      "video": false,
+      "pdf": false
+    },
+    "output": {
+      "text": true,
+      "audio": false,
+      "image": false,
+      "video": false,
+      "pdf": false
+    },
+    "interleaved": false
+  },
+  "release_date": "2026-02-23",
+  "variants": {}
+}

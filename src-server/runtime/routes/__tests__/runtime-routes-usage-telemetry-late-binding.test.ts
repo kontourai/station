@@ -42,9 +42,13 @@ vi.mock('../runtime-route-support.js', () => ({
 
 // The runtime's credential policy has its own boundary suite; this test is
 // about route composition, so ingress is a no-op here.
-vi.mock('../../bootstrap/runtime-http.js', () => ({
+vi.mock('../../bootstrap/runtime-http.js', async (importOriginal) => ({
   configureRuntimeHttp: () => undefined,
   configureRuntimeRouteClassificationGate: () => undefined,
+  // Real: it holds no credential policy, and composition installs it itself.
+  installStationEnvelopeMarker: (
+    await importOriginal<typeof import('../../bootstrap/runtime-http.js')>()
+  ).installStationEnvelopeMarker,
   LOOPBACK_DEVICE_SESSION_COOKIE: 'station-device',
   SECURE_DEVICE_SESSION_COOKIE: '__Host-station-device',
 }));
@@ -189,13 +193,60 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
       data: disclosure,
     });
 
+    for (const [body, status] of [
+      [undefined, 426],
+      [
+        JSON.stringify({
+          acknowledgementProtocol: 1,
+          inventoryRevision: disclosure.inventoryRevision,
+        }),
+        426,
+      ],
+      [
+        JSON.stringify({
+          acknowledgementProtocol: 3,
+          inventoryRevision: disclosure.inventoryRevision,
+        }),
+        426,
+      ],
+      [JSON.stringify({ acknowledgementProtocol: 2 }), 400],
+      [
+        JSON.stringify({
+          acknowledgementProtocol: 2,
+          inventoryRevision: 'stale-revision',
+        }),
+        409,
+      ],
+    ] as const) {
+      const refused = await app.request(
+        '/api/usage-telemetry/disclosure/acknowledgements',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          ...(body ? { body } : {}),
+        },
+        loopbackEnv(),
+      );
+      expect(refused.status).toBe(status);
+      expect(acknowledgeDisclosure).not.toHaveBeenCalled();
+    }
+
     const acknowledged = await app.request(
       '/api/usage-telemetry/disclosure/acknowledgements',
-      { method: 'POST' },
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          acknowledgementProtocol: 2,
+          inventoryRevision: disclosure.inventoryRevision,
+        }),
+      },
       loopbackEnv(),
     );
     expect(acknowledged.status).toBe(200);
-    expect(acknowledgeDisclosure).toHaveBeenCalledOnce();
+    expect(acknowledgeDisclosure).toHaveBeenCalledExactlyOnceWith(
+      disclosure.inventoryRevision,
+    );
     await expect(acknowledged.json()).resolves.toEqual({
       success: true,
       data: disclosure,

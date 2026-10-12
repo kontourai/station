@@ -1,0 +1,47 @@
+{
+  "revision": "fcf0e14248623a3bf99bcd969de574fd89e24dd6",
+
+  "notes": [
+    {"path":"docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md","note":"Checked the package.json delta: it only adds scripts/__tests__/documentation-review-notes.test.ts to the docs:foundations:test file list (and, for testing.md, the same path to three test-impact manifest entries). This document does not describe that lane file list or those entries; no claim changed.","inputs":["docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md","package.json"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the package.json delta: it only adds scripts/__tests__/documentation-review-notes.test.ts to the docs:foundations:test file list (and, for testing.md, the same path to three test-impact manifest entries). This document does not describe that lane file list or those entries; no claim changed.","inputs":["docs/conformance/tool-policy-delivery.md","package.json"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"Checked the package.json delta: it only adds scripts/__tests__/documentation-review-notes.test.ts to the docs:foundations:test file list (and, for testing.md, the same path to three test-impact manifest entries). This document does not describe that lane file list or those entries; no claim changed.","inputs":["docs/design/inference-fleet.md","package.json"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Checked the package.json delta: it only adds scripts/__tests__/documentation-review-notes.test.ts to the docs:foundations:test file list (and, for testing.md, the same path to three test-impact manifest entries). This document does not describe that lane file list or those entries; no claim changed.","inputs":["docs/design/pnpm-workspace-installation.md","package.json"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Checked the package.json delta: it only adds scripts/__tests__/documentation-review-notes.test.ts to the docs:foundations:test file list (and, for testing.md, the same path to three test-impact manifest entries). This document does not describe that lane file list or those entries; no claim changed.","inputs":["docs/design/survey-flow-review.md","package.json"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Checked the package.json delta: it only adds scripts/__tests__/documentation-review-notes.test.ts to the docs:foundations:test file list (and, for testing.md, the same path to three test-impact manifest entries). This document does not describe that lane file list or those entries; no claim changed.","inputs":["docs/guides/code-quality.md","package.json"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Checked the package.json delta: it only adds scripts/__tests__/documentation-review-notes.test.ts to the docs:foundations:test file list (and, for testing.md, the same path to three test-impact manifest entries). This document does not describe that lane file list or those entries; no claim changed.","inputs":["docs/guides/delegation-attempt-claims.md","package.json"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Checked the package.json delta: it only adds scripts/__tests__/documentation-review-notes.test.ts to the docs:foundations:test file list (and, for testing.md, the same path to three test-impact manifest entries). This document does not describe that lane file list or those entries; no claim changed.","inputs":["docs/guides/dependency-security.md","package.json"]},
+
+    {"path":"docs/guides/development.md","note":"Checked the package.json delta: it only adds scripts/__tests__/documentation-review-notes.test.ts to the docs:foundations:test file list (and, for testing.md, the same path to three test-impact manifest entries). This document does not describe that lane file list or those entries; no claim changed.","inputs":["docs/guides/development.md","package.json"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Checked the package.json delta: it only adds scripts/__tests__/documentation-review-notes.test.ts to the docs:foundations:test file list (and, for testing.md, the same path to three test-impact manifest entries). This document does not describe that lane file list or those entries; no claim changed.","inputs":["docs/guides/private-runner-partition.md","package.json"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Checked the package.json delta: it only adds scripts/__tests__/documentation-review-notes.test.ts to the docs:foundations:test file list (and, for testing.md, the same path to three test-impact manifest entries). This document does not describe that lane file list or those entries; no claim changed.","inputs":["docs/guides/product-law-authoring.md","package.json"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"Checked the package.json delta: it only adds scripts/__tests__/documentation-review-notes.test.ts to the docs:foundations:test file list (and, for testing.md, the same path to three test-impact manifest entries). This document does not describe that lane file list or those entries; no claim changed.","inputs":["docs/guides/repository-knowledge-graph.md","package.json"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Checked the package.json delta: it only adds scripts/__tests__/documentation-review-notes.test.ts to the docs:foundations:test file list (and, for testing.md, the same path to three test-impact manifest entries). This document does not describe that lane file list or those entries; no claim changed.","inputs":["docs/guides/store-listing.md","package.json"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked the package.json delta: it only adds scripts/__tests__/documentation-review-notes.test.ts to the docs:foundations:test file list (and, for testing.md, the same path to three test-impact manifest entries). This document does not describe that lane file list or those entries; no claim changed.","inputs":["docs/guides/testing.md","package.json","scripts/test-impact-manifest.mjs"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Checked the package.json delta: it only adds scripts/__tests__/documentation-review-notes.test.ts to the docs:foundations:test file list (and, for testing.md, the same path to three test-impact manifest entries). This document does not describe that lane file list or those entries; no claim changed.","inputs":["docs/guides/work-board-security.md","package.json"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Checked the package.json delta: it only adds scripts/__tests__/documentation-review-notes.test.ts to the docs:foundations:test file list (and, for testing.md, the same path to three test-impact manifest entries). This document does not describe that lane file list or those entries; no claim changed.","inputs":["docs/guides/workspace-packages.md","package.json"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Checked the package.json delta: it only adds scripts/__tests__/documentation-review-notes.test.ts to the docs:foundations:test file list (and, for testing.md, the same path to three test-impact manifest entries). This document does not describe that lane file list or those entries; no claim changed.","inputs":["docs/reference/verification-receipts.md","package.json"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Checked the package.json delta: it only adds scripts/__tests__/documentation-review-notes.test.ts to the docs:foundations:test file list (and, for testing.md, the same path to three test-impact manifest entries). This document does not describe that lane file list or those entries; no claim changed.","inputs":["docs/security/remote-access-threat-model.md","package.json"]},
+
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Checked the package.json delta: it only adds scripts/__tests__/documentation-review-notes.test.ts to the docs:foundations:test file list (and, for testing.md, the same path to three test-impact manifest entries). This document does not describe that lane file list or those entries; no claim changed.","inputs":["docs/strategy/kontour-integration-surface.md","package.json"]},
+
+    {"path":"scripts/AGENTS.md","note":"Checked the package.json delta: it only adds scripts/__tests__/documentation-review-notes.test.ts to the docs:foundations:test file list (and, for testing.md, the same path to three test-impact manifest entries). This document does not describe that lane file list or those entries; no claim changed.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/__tests__/fixtures/sbom/README.md","note":"Checked the package.json delta: it only adds scripts/__tests__/documentation-review-notes.test.ts to the docs:foundations:test file list (and, for testing.md, the same path to three test-impact manifest entries). This document does not describe that lane file list or those entries; no claim changed.","inputs":["scripts/__tests__/fixtures/sbom/README.md","package.json"]}
+  ]
+}

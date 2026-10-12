@@ -1,0 +1,7 @@
+{
+  "revision": "241bfe879370faf6c63e3b1503522b9bf3eaeaca",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"The Vitest resource manifest gained one classified process test (#3160); this routing document's scripts guidance and the manifest rule it points to are unchanged. No prose change.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

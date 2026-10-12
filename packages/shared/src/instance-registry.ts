@@ -17,8 +17,10 @@
  * acquisition, so there is no window in which a reader could observe a
  * torn intermediate state that a backup would need to roll back from.
  *
- * Producers as of station#2904 slice 2: `station service install`
- * (type 'service'), the Desktop bridge (type 'sidecar'), and `station start`
+ * Producers as of station#2904 slice 2: `station service install` and the
+ * service supervisor (type 'service') and the Desktop bridge (type 'sidecar'),
+ * which claim the home's single host through `claimHostOwner` (#2961), and
+ * `station start`
  * (types 'inline'/'worktree', with pid + birth fingerprint; removed on stop,
  * including the already-absent stop path). The station#1985 "unwired
  * foundation" framing is historical. Still out of scope: any migration of
@@ -26,7 +28,7 @@
  *
  * Liveness contract: `findRunning` filters on pid aliveness AND, where a
  * producer recorded a `birth` fingerprint, rejects pid reuse on mismatch
- * (fail-open on lookup failure, mirroring `claimDesktopSidecar`).
+ * (fail-open on lookup failure, mirroring `claimHostOwner`).
  */
 import { randomUUID } from 'node:crypto';
 import {
@@ -60,6 +62,8 @@ export type InstanceType = 'service' | 'sidecar' | 'worktree' | 'inline';
 export interface InstanceConfig {
   port: number;
   uiPort?: number;
+  /** Address the UI listener bound (`--host`); absent for older entries. */
+  host?: string;
   /** Consent-listener port (station#3677); producers default it to port + 3. */
   consentPort?: number;
   checkout?: string;
@@ -678,7 +682,8 @@ export type ClaimInstanceEntryResult =
  * Refuses when the existing entry's type is in `protectedTypes` (dead or
  * alive), or when the existing entry is owned by a LIVE process other than
  * `entry.pid` — pid alive and `birth` not proving reuse (fail-open on probe
- * failure, mirroring `claimDesktopSidecar`). A matching `entry.pid` may
+ * failure, mirroring `claimHostOwner`). Per-id only: host owners (sidecar,
+ * service) claim through `claimHostOwner`, which also excludes other ids. A matching `entry.pid` may
  * always refresh its own entry.
  */
 export function claimInstanceEntry(
@@ -792,6 +797,13 @@ export interface RemoveOwnedInstanceOptions {
   pid: number | null;
   /** Remove only when the entry's type is one the caller owns. */
   ownTypes: readonly InstanceType[];
+  /**
+   * Also remove an owned-type entry recorded under a DIFFERENT pid when that
+   * process is provably gone (dead, or birth-proven reused). A supervisor
+   * that already reaped the child it published cannot name a live pid; a
+   * still-live foreign pid is never removed.
+   */
+  removeWhenOwnerGone?: boolean;
 }
 
 /**
@@ -810,7 +822,11 @@ export function removeOwnedInstance(
     const existing = current.instances[id];
     if (!existing) return current;
     if (!options.ownTypes.includes(existing.type)) return current;
-    if (typeof existing.pid === 'number' && existing.pid !== options.pid) {
+    if (
+      typeof existing.pid === 'number' &&
+      existing.pid !== options.pid &&
+      !(options.removeWhenOwnerGone && !entryOwnedByLiveProcess(existing))
+    ) {
       return current;
     }
     const next = { ...current.instances };
@@ -821,71 +837,182 @@ export function removeOwnedInstance(
   return removed;
 }
 
-/** Atomically reserves the one desktop-sidecar slot for a home. */
-export function claimDesktopSidecar(
+/**
+ * The instance types that own a home's single Station host (ADR 0020 D4). A
+ * desktop-owned sidecar and a durable service differ only in who supervises
+ * them and how long they live; at most one live host owner may hold a home.
+ * CLI `station start` entries (`inline`/`worktree`) are not host owners.
+ */
+export type HostOwnerType = Extract<InstanceType, 'sidecar' | 'service'>;
+
+/** A live host owner that refused a claim, as reported to the claimant. */
+export interface HostOwnerSummary {
+  id: string;
+  type: HostOwnerType;
+  port: number;
+  pid?: number;
+}
+
+export interface ClaimHostOwnerOptions {
+  home?: string;
+  /** The host type this claimant is (and the only type it may publish). */
+  type: HostOwnerType;
+  /**
+   * Processes that speak for this claimant: its supervisor and any child it
+   * publishes. An entry at the claimant's own id recorded by one of them is
+   * its own, even while that process is live.
+   */
+  ownerPids?: readonly number[];
+  /**
+   * Builds the entry to publish from a deep copy of the current entry at
+   * `id`, or returns null to publish nothing. Runs only after the claim is
+   * won, inside the same lock, so it can preserve fields another writer owns
+   * (a service's `env.ALLOWED_ORIGINS`, #1983) without a read-then-write gap.
+   */
+  publish: (existing: InstanceConfig | undefined) => InstanceConfig | null;
+}
+
+export type ClaimHostOwnerResult =
+  | { won: true; published: boolean }
+  | { won: false; reason: 'host-owned'; owners: HostOwnerSummary[] }
+  | { won: false; reason: 'id-held'; existing: InstanceConfig };
+
+function isHostOwnerType(type: InstanceType): type is HostOwnerType {
+  return type === 'sidecar' || type === 'service';
+}
+
+/**
+ * Whether a host-owner entry under another id currently holds the home.
+ *
+ * - A sidecar is live unless its producer stopped it or its PID + birth pair
+ *   proves it gone. An active sidecar record without that pair cannot prove
+ *   staleness, so it fences (an interrupted writer must not admit a second
+ *   host).
+ * - A service is live only while a supervisor has published a PID that is
+ *   alive and not birth-proven reused. A service record without a PID is
+ *   installed policy, not a running host (#3064).
+ */
+function isLiveHostOwner(entry: InstanceConfig): boolean {
+  if (entry.status === 'stopped') return false;
+  if (entry.type === 'sidecar') {
+    if (typeof entry.pid !== 'number' || typeof entry.birth !== 'string') {
+      return true;
+    }
+    return entryOwnedByLiveProcess(entry);
+  }
+  if (entry.type === 'service') {
+    return typeof entry.pid === 'number' && entryOwnedByLiveProcess(entry);
+  }
+  return false;
+}
+
+/**
+ * Live host owners (sidecar or service) under ids other than `exceptId`,
+ * sorted by id. `claimHostOwner` applies this inside its lock; a caller may
+ * also apply it to a plain read as an early, advisory pre-check.
+ */
+export function liveHostOwners(
+  registry: InstanceRegistry,
+  exceptId: string,
+): HostOwnerSummary[] {
+  const owners: HostOwnerSummary[] = [];
+  for (const [id, entry] of Object.entries(registry.instances)) {
+    if (id === exceptId || !isHostOwnerType(entry.type)) continue;
+    if (!isLiveHostOwner(entry)) continue;
+    owners.push({
+      id,
+      type: entry.type,
+      port: entry.port,
+      ...(typeof entry.pid === 'number' ? { pid: entry.pid } : {}),
+    });
+  }
+  return owners.sort((left, right) => left.id.localeCompare(right.id));
+}
+
+/**
+ * The one atomic host-owner claim for a home (ADR 0020 D4, #2961). Desktop's
+ * sidecar and the durable service both claim through here, under the
+ * registry's single mutation lock:
+ *
+ * 1. Reconcile: drop other ids' non-service records whose PID + birth prove
+ *    them stale (a desktop killed with `kill -9` leaves one behind). Service
+ *    records are durable policy and are never reaped here.
+ * 2. Refuse while any OTHER id holds a live host owner of either type, and
+ *    report every such owner so the caller learns the decision atomically.
+ * 3. Guard the claimant's own id: never displace a service record with a
+ *    sidecar, and never displace a live foreign owner. A service claim adopts
+ *    its own service id even while live — reinstall and update hand-offs
+ *    replace that generation themselves (#3064). Any other own-id entry is
+ *    adoptable when one of `ownerPids` recorded it or its process is gone.
+ * 4. Publish whatever `publish` returns for the won claim.
+ *
+ * A refusal publishes only the reconciliation, never the claim.
+ */
+export function claimHostOwner(
   id: string,
-  instance: InstanceConfig,
-  home?: string,
-): boolean {
-  return (
-    lockedReadModifyWrite(home, (current) => {
-      // A desktop startup is a natural convergence point after its previous
-      // supervisor was killed: clear only entries whose PID/birth identity
-      // proves they are stale.  Keep services because their record is durable
-      // origin-policy authority, not merely a liveness lease.
-      let reconciledInstances: Record<string, InstanceConfig> | undefined;
-      for (const [existingId, entry] of Object.entries(current.instances)) {
-        if (
-          existingId !== id &&
-          entry.type !== 'service' &&
-          isProvablyStaleEphemeralInstance(entry)
-        ) {
-          reconciledInstances ??= { ...current.instances };
-          delete reconciledInstances[existingId];
-        }
+  options: ClaimHostOwnerOptions,
+): ClaimHostOwnerResult {
+  const ownerPids = options.ownerPids ?? [];
+  let result: ClaimHostOwnerResult = { won: true, published: false };
+  lockedReadModifyWrite(options.home, (current) => {
+    let reconciledInstances: Record<string, InstanceConfig> | undefined;
+    for (const [existingId, entry] of Object.entries(current.instances)) {
+      if (
+        existingId !== id &&
+        entry.type !== 'service' &&
+        isProvablyStaleEphemeralInstance(entry)
+      ) {
+        reconciledInstances ??= { ...current.instances };
+        delete reconciledInstances[existingId];
       }
-      const reconciled =
-        reconciledInstances === undefined
-          ? current
-          : { version: 1 as const, instances: reconciledInstances };
-      const live = Object.entries(reconciled.instances).some(
-        ([existingId, entry]) => {
-          if (
-            existingId === id ||
-            entry.type !== 'sidecar' ||
-            entry.status === 'stopped'
-          ) {
-            return false;
-          }
-          // A current claimant is live only when PID and birth both match. An
-          // incomplete active record cannot prove staleness, so fail closed
-          // instead of admitting a second sidecar beside an interrupted writer.
-          if (
-            typeof entry.pid !== 'number' ||
-            typeof entry.birth !== 'string'
-          ) {
-            return true;
-          }
-          const liveness = processLiveness(entry.pid);
-          if (liveness === 'dead') return false;
-          // A process-birth lookup failure cannot prove that a claimant is
-          // stale, so retain the claim rather than licensing a second sidecar.
-          // NB: the previous check compared against `undefined`, but the
-          // lookup returns NULL on failure — so the documented fail-open was
-          // actually fail-closed (a `ps` timeout stole a live claim). The
-          // shared predicate encodes the documented intent.
-          return (
-            liveness !== 'alive' || !birthProvesReuse(entry.birth, entry.pid)
-          );
-        },
+    }
+    const reconciled: InstanceRegistry =
+      reconciledInstances === undefined
+        ? current
+        : { version: 1, instances: reconciledInstances };
+    const owners = liveHostOwners(reconciled, id);
+    if (owners.length > 0) {
+      result = { won: false, reason: 'host-owned', owners };
+      return reconciled;
+    }
+    const existing = reconciled.instances[id];
+    if (existing) {
+      const sameServiceUnit =
+        existing.type === 'service' && options.type === 'service';
+      const displacesService =
+        existing.type === 'service' && options.type !== 'service';
+      const recordedByClaimant =
+        typeof existing.pid === 'number' && ownerPids.includes(existing.pid);
+      if (
+        displacesService ||
+        (!sameServiceUnit &&
+          !recordedByClaimant &&
+          entryOwnedByLiveProcess(existing))
+      ) {
+        result = { won: false, reason: 'id-held', existing };
+        return reconciled;
+      }
+    }
+    const next = options.publish(
+      existing === undefined ? undefined : structuredClone(existing),
+    );
+    if (next === null) return reconciled;
+    if (
+      typeof next.port !== 'number' ||
+      !Number.isFinite(next.port) ||
+      next.type !== options.type
+    ) {
+      throw new Error(
+        `host owner "${id}" must publish a numeric port and type '${options.type}'`,
       );
-      if (live) return reconciled;
-      return {
-        version: 1,
-        instances: { ...reconciled.instances, [id]: instance },
-      };
-    }).instances[id] === instance
-  );
+    }
+    result = { won: true, published: true };
+    return {
+      version: 1,
+      instances: { ...reconciled.instances, [id]: next },
+    };
+  });
+  return result;
 }
 
 /**
@@ -906,7 +1033,7 @@ export function findRunning(home?: string): InstanceConfig[] {
     // crash or reboot can permanently block fail-closed consumers
     // (`station home backup|restore` refuses while "something" is running,
     // with no id in the message and no stop that can clear it). Mirrors
-    // `claimDesktopSidecar`: a lookup FAILURE stays fail-open — absence of
+    // `claimHostOwner`: a lookup FAILURE stays fail-open — absence of
     // proof of reuse is not proof of reuse.
     if (liveness === 'alive' && birthProvesReuse(instance.birth, instance.pid))
       return false;

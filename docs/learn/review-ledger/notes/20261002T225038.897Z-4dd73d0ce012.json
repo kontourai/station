@@ -1,0 +1,7 @@
+{
+  "revision": "224e1f29005a8afc5495fe69e55445e8d0d4e12c",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed added Skills journey against the loaded library, authoritative origin/writability, template variable defaults and substitution, shared dialog, existing new-chat send owner, and standalone Markdown import per-file outcomes/open action. Executed 58 rendered focused tests and built UI; live provider task outcomes NOT_VERIFIED. Existing guide sections are unchanged by this slice; no claims upgraded outside the added Skills section.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

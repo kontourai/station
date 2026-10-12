@@ -1,0 +1,7 @@
+{
+  "revision": "01ea0bcee0115d386bfb75a5d395a79856332d3a",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Changed inputs add only the dev-server file-access narrowing and the start --watch refusals; nothing this document claims changes. No prose change.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

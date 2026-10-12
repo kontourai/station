@@ -1,0 +1,7 @@
+{
+  "revision": "74a5cf14585db34917d862e6c8b79276c35ebe50",
+
+  "notes": [
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed the verification-guide delta: only native recovery labels and collapsed technical detail wording changed. The local lab's broker and transport instructions remain accurate; no new platform qualification is claimed.","inputs":["docs/guides/local-collaboration-lab.md"]}
+  ]
+}

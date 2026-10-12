@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "rich-skill-experience",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Independent isolated pane for an original adaptive interview Skill.",
   "extensions": {
     "io.kontourai.station": {

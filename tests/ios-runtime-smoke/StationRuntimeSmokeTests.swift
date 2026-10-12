@@ -82,49 +82,50 @@ final class StationRuntimeSmokeTests: XCTestCase {
 
         connect.tap()
 
-        let addAddress = app.buttons["Add a Station address"]
-        if !addAddress.waitForExistence(timeout: 2) {
+        let connectStation = app.buttons["Connect a Station"]
+        if !connectStation.waitForExistence(timeout: 2) {
             // The notification sheet can still win the final race between the
             // post-shell dismissal and the first WebView tap. Recover once,
             // then let the existing bounded manager assertion decide the run.
             if dismissSystemAlertIfPresent() {
                 app.activate()
             }
-            XCTAssertTrue(
-                connect.waitForExistence(timeout: 5),
-                "Connect to a Station disappeared while recovering from a post-tap notification sheet. Accessibility hierarchy:\n\(app.debugDescription)"
-            )
-            XCTAssertTrue(connect.isHittable)
-            connect.tap()
+            if !connectStation.exists {
+                XCTAssertTrue(
+                    connect.waitForExistence(timeout: 5),
+                    "Neither the connection shell nor the Station manager appeared after notification recovery. Accessibility hierarchy:\n\(app.debugDescription)"
+                )
+                XCTAssertTrue(connect.isHittable)
+                connect.tap()
+            }
         }
         XCTAssertTrue(
-            tap(connect, until: addAddress, budget: 20),
-            "Station manager did not expose Add a Station address. Accessibility hierarchy:\n\(app.debugDescription)"
+            tap(connect, until: connectStation, budget: 20),
+            "Station manager did not expose Connect a Station. Accessibility hierarchy:\n\(app.debugDescription)"
         )
 
-        let name = app.textFields["Name (optional)"]
         let address = app.textFields["Station address"]
         XCTAssertTrue(
-            tap(addAddress, until: name, budget: 20),
-            "Add Station name input did not appear. Accessibility hierarchy:\n\(app.debugDescription)"
+            tap(connectStation, until: address, budget: 20),
+            "Station setup address input did not appear. Accessibility hierarchy:\n\(app.debugDescription)"
         )
         XCTAssertTrue(address.exists)
 
         let appFrame = app.frame
-        assertContained(name.frame, within: appFrame, label: "Name (optional)")
         assertContained(
             address.frame,
             within: appFrame,
             label: "Station address"
         )
 
-        let title = app.staticTexts["Add Station"]
+        let title = app.staticTexts["Connect a Station"]
         XCTAssertTrue(title.exists)
+        assertContained(title.frame, within: appFrame, label: "Connect a Station")
         let titleFrameBeforeAddressFocus = title.frame
         address.tap()
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
 
-        assertContained(name.frame, within: appFrame, label: "focused Name (optional)")
+        assertContained(title.frame, within: appFrame, label: "focused Connect a Station")
         assertContained(
             address.frame,
             within: appFrame,
@@ -134,13 +135,13 @@ final class StationRuntimeSmokeTests: XCTestCase {
             title.frame.origin.x,
             titleFrameBeforeAddressFocus.origin.x,
             accuracy: 1,
-            "Focusing the address field shifted the Add Station surface horizontally."
+            "Focusing the address field shifted the Station setup surface horizontally."
         )
         XCTAssertEqual(
             title.frame.width,
             titleFrameBeforeAddressFocus.width,
             accuracy: 1,
-            "Focusing the address field changed the Add Station surface scale."
+            "Focusing the address field changed the Station setup surface scale."
         )
     }
 

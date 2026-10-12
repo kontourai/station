@@ -1,0 +1,7 @@
+{
+  "revision": "04dded92fb12792e7091859330e2cce926387999",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"connection-service.ts delta is this PR's env-overlay plumbing; this matrix's coverage claims were checked against the merged service; the overlay adds no suite removed none; unchanged.","inputs":["docs/guides/e2e-coverage-matrix.md","src-server/services/connections/connection-service.ts"]}
+  ]
+}

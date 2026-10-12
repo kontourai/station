@@ -127,6 +127,7 @@ import {
   FilePreviewPane,
   MAX_SOURCE_HIGHLIGHT_TOKENS,
 } from '../FilePreviewPane';
+import { PaneHeadSlotsContext } from '../PaneHeadSlots';
 
 // Receipt 3ea2e798 recorded the first real lazy Markdown chunk taking longer
 // than Testing Library's default 1 s polling budget under full-lane load. Keep
@@ -1694,5 +1695,85 @@ index 3b18e51..a0423896 100644
         expect.objectContaining({ enabled: false }),
       );
     });
+  });
+});
+
+describe('FilePreviewPane inside a host that draws the head (design audit C4)', () => {
+  test('under head slots the pane draws no bar of its own: the view toggle joins the head after the name and the actions before the close', () => {
+    previewQuery.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      data: {
+        path: 'src/example.ts',
+        status: 'ready',
+        renderKind: 'source',
+        content: 'export const example = 1;',
+      },
+    });
+    const leading = document.createElement('div');
+    const trailing = document.createElement('div');
+    document.body.append(leading, trailing);
+    const removePane = vi.fn();
+    const takeHostActions = vi.fn();
+    try {
+      const view = render(
+        <PaneHeadSlotsContext.Provider
+          value={{
+            leading,
+            trailing,
+            hostActions: [
+              {
+                key: 'remove-pane',
+                label: 'Remove pane',
+                onSelect: removePane,
+              },
+            ],
+            takeHostActions,
+          }}
+        >
+          {pane({
+            projectSlug: 'demo',
+            stateKey: 'file-preview:test',
+            state: {
+              version: '1.0',
+              projectSlug: 'demo',
+              path: 'src/example.ts',
+              wrap: true,
+            },
+          })}
+        </PaneHeadSlotsContext.Provider>,
+      );
+      expect(document.querySelector('.workspace-file-preview__bar')).toBeNull();
+      expect(
+        screen.queryByRole('navigation', { name: 'File path' }),
+      ).toBeNull();
+      expect(
+        within(leading).getByRole('button', { name: 'File' }),
+      ).toBeTruthy();
+      expect(
+        within(leading).getByRole('button', { name: /^Changes vs HEAD/ }),
+      ).toBeTruthy();
+      expect(
+        within(trailing).getByRole('button', { name: 'Copy path' }),
+      ).toBeTruthy();
+      expect(
+        within(trailing).getByRole('button', { name: 'More file actions' }),
+      ).toBeTruthy();
+      // The file itself still renders below.
+      expect(screen.getByText('export const example = 1;')).toBeTruthy();
+      // The host's rows ride in the pane's own overflow, so the head keeps
+      // one ⋯; the pane says it took them, and gives them back on unmount.
+      expect(takeHostActions).toHaveBeenLastCalledWith(true);
+      fireEvent.click(
+        within(trailing).getByRole('button', { name: 'More file actions' }),
+      );
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Remove pane' }));
+      expect(removePane).toHaveBeenCalledTimes(1);
+      view.unmount();
+      expect(takeHostActions).toHaveBeenLastCalledWith(false);
+    } finally {
+      leading.remove();
+      trailing.remove();
+    }
   });
 });

@@ -674,6 +674,9 @@ export function ensureOrchestrationRecoverySettlementColumns(
       ['dispatch_owner_identity_kind', 'TEXT'],
       ['credential_attempt_id', 'TEXT'],
       ['shutdown_cancel_requested_at', 'TEXT'],
+      // #3157: why a waiting intent was left to the user or retired unsent.
+      ['outcome_reason', 'TEXT'],
+      ['usage_limit', 'INTEGER'],
     ] as const) {
       if (!names.has(name)) {
         db.exec(

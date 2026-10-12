@@ -1,0 +1,7 @@
+{
+  "revision": "586180539945f147e2cf80adc3feae611c18c799",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"User guide names no control the spec edits renamed; cross-runtime spec changes are selector-only.","inputs":["docs/user/getting-started.md","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}

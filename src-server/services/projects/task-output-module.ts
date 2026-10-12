@@ -22,11 +22,12 @@ import {
   type TaskOutputCreateInput,
   type TaskOutputRecord,
 } from '@kontourai/station-contracts';
+import type { ProjectTaskRoomOutputFeedback } from '@kontourai/station-contracts/project-task-room';
+import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { isRecord } from '../../utils/is-record.js';
 import { expandTilde } from '../../utils/paths';
-import type { TaskGraphService } from './task-graph-service.js';
 
 const TASK_OUTPUT_MAX_BYTES = 5 * 1024 * 1024;
 const TASK_OUTPUT_MAX_PER_TASK = 100;
@@ -48,18 +49,29 @@ const SHA256_REF = /^sha256:[a-f0-9]{64}$/;
 const CANONICAL_UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
+export type TaskOutputDeclarationSource = {
+  sessionId: string;
+  eventId: string;
+  turnId: string;
+  toolCallId: string;
+  declarationId: string;
+};
+type TaskIdentity = { id: string; projectId: string; createdAt: string };
 type StoredOutput = TaskOutputRecord & {
+  taskCreatedAt?: string;
+  declaredBy?: TaskOutputDeclarationSource;
   operationId: string;
   fingerprint: string;
 };
 type DeletedOperation = {
   taskId: string;
+  taskCreatedAt?: string;
   operationId: string;
   fingerprint: string;
   outputId: string;
 };
 type Store = {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   outputs: StoredOutput[];
   tombstones: string[];
   deletedOperations: DeletedOperation[];
@@ -100,7 +112,17 @@ export class TaskOutputModule {
   constructor(
     private readonly input: {
       homeDir: string;
-      taskGraphService: TaskGraphService;
+      taskGraphService: {
+        readTask(
+          taskId: string,
+        ): Pick<TaskRecord, 'id' | 'projectId' | 'createdAt'> | null;
+        readTaskForOpen(
+          taskId: string,
+        ): Promise<Pick<
+          TaskRecord,
+          'id' | 'projectId' | 'createdAt' | 'workspaceBinding'
+        > | null>;
+      };
       hosted?: () => boolean;
       now?: () => Date;
       /** Test-only bounded fixtures; production uses the exported limits. */
@@ -129,18 +151,45 @@ export class TaskOutputModule {
 
   async list(taskId: string): Promise<TaskOutputRecord[]> {
     this.assertPersonal();
-    this.assertTaskExists(taskId);
+    const task = this.captureTask(taskId);
     const { store } = await this.withLock(() => this.reconcileStoreLocked());
+    this.assertTaskIdentity(task);
     return store.outputs
-      .filter((output) => output.taskId === taskId)
+      .filter((output) => belongsToTask(output, task))
       .map(stripStoredOutput);
   }
 
   async read(taskId: string, outputId: string): Promise<TaskOutputRecord> {
     this.assertPersonal();
-    this.assertTaskExists(taskId);
+    const task = this.captureTask(taskId);
     const { store } = await this.withLock(() => this.reconcileStoreLocked());
-    return stripStoredOutput(this.findInStore(store, taskId, outputId));
+    this.assertTaskIdentity(task);
+    return stripStoredOutput(this.findInStore(store, task, outputId));
+  }
+
+  /** Identity admission only; the output lock is released before the room commits. */
+  async validateFeedbackTarget(
+    scope: { projectId: string; taskId: string },
+    target: ProjectTaskRoomOutputFeedback['target'],
+  ): Promise<'admitted' | 'denied' | 'unavailable'> {
+    try {
+      this.assertPersonal();
+      const task = this.captureTask(scope.taskId);
+      if (
+        task.projectId !== scope.projectId ||
+        task.createdAt !== target.taskCreatedAt
+      )
+        return 'denied';
+      const output = await this.read(scope.taskId, target.outputId);
+      this.assertTaskIdentity(task);
+      return output.materialization.digest === target.digest
+        ? 'admitted'
+        : 'denied';
+    } catch (error) {
+      return error instanceof TaskOutputNotFoundError
+        ? 'denied'
+        : 'unavailable';
+    }
   }
 
   /** Startup callers may reconcile the bounded snapshot/index authority. */
@@ -155,8 +204,10 @@ export class TaskOutputModule {
     createdClientOrigin?: ClientOrigin,
   ): Promise<TaskOutputRecord> {
     this.assertPersonal();
+    const identity = this.captureTask(taskId);
     const task = await this.assertTaskWorkspace(taskId);
     return this.withLock(() => {
+      this.assertTaskIdentity(identity);
       const normalized = normalizeCreateInput(input);
       const fingerprint = digest(
         JSON.stringify({
@@ -173,6 +224,8 @@ export class TaskOutputModule {
           output.operationId === normalized.operationId,
       );
       if (prior) {
+        if (prior.taskCreatedAt !== identity.createdAt)
+          throw new TaskOutputNotFoundError('Task output not found');
         if (prior.fingerprint !== fingerprint)
           throw new TaskOutputConflictError('Task output operation conflicts');
         return stripStoredOutput(prior);
@@ -183,13 +236,15 @@ export class TaskOutputModule {
           receipt.operationId === normalized.operationId,
       );
       if (deleted) {
+        if (deleted.taskCreatedAt !== identity.createdAt)
+          throw new TaskOutputNotFoundError('Task output not found');
         if (deleted.fingerprint !== fingerprint)
           throw new TaskOutputConflictError('Task output operation conflicts');
         throw new TaskOutputDeletedOperationError('Task output was deleted');
       }
       if (
-        store.outputs.filter((output) => output.taskId === taskId).length >=
-        this.limits.maxPerTask
+        store.outputs.filter((output) => belongsToTask(output, identity))
+          .length >= this.limits.maxPerTask
       ) {
         throw new TaskOutputUnavailableError('Task output limit reached');
       }
@@ -219,12 +274,14 @@ export class TaskOutputModule {
       ) {
         throw new TaskOutputUnavailableError('Task output storage is full');
       }
+      this.assertTaskIdentity(identity);
       this.publishSnapshot(digestValue, snapshot.bytes);
       const output: StoredOutput = {
         schemaVersion: 1,
         id: randomUUID(),
         taskId,
-        projectId: task.projectId,
+        projectId: identity.projectId,
+        taskCreatedAt: identity.createdAt,
         title: normalized.title,
         source: {
           kind: 'workspace-file',
@@ -246,7 +303,9 @@ export class TaskOutputModule {
         fingerprint,
       };
       store.outputs.push(output);
+      store.schemaVersion = 2;
       assertStore(store);
+      this.assertTaskIdentity(identity);
       this.writeStore(store);
       return stripStoredOutput(output);
     });
@@ -270,16 +329,20 @@ export class TaskOutputModule {
       length: number;
       declaredMediaType?: string;
       fingerprintContext: string;
+      declaredBy?: TaskOutputDeclarationSource;
       /** Route-owned principal/task witness, evaluated while publication locks. */
       isAuthorized?: () => boolean;
     },
     createdClientOrigin?: ClientOrigin,
   ): Promise<{ outcome: 'kept' | 'already-kept'; output: TaskOutputRecord }> {
     this.assertPersonal();
+    const identity = this.captureTask(taskId);
     return this.withLock(() => {
+      this.assertTaskIdentity(identity);
+      if (input.declaredBy && !isDeclarationSource(input.declaredBy))
+        throw new TaskOutputNotFoundError('Task output not found');
       if (input.isAuthorized?.() === false)
         throw new TaskOutputNotFoundError('Task output not found');
-      const task = this.assertTaskExists(taskId);
       const normalized = normalizeCreateInput(input);
       if (
         !SHA256_HEX.test(input.digest) ||
@@ -305,6 +368,8 @@ export class TaskOutputModule {
           output.operationId === normalized.operationId,
       );
       if (prior) {
+        if (prior.taskCreatedAt !== identity.createdAt)
+          throw new TaskOutputNotFoundError('Task output not found');
         if (prior.fingerprint !== fingerprint)
           throw new TaskOutputConflictError('Task output operation conflicts');
         return { outcome: 'already-kept', output: stripStoredOutput(prior) };
@@ -315,6 +380,8 @@ export class TaskOutputModule {
           receipt.operationId === normalized.operationId,
       );
       if (deleted) {
+        if (deleted.taskCreatedAt !== identity.createdAt)
+          throw new TaskOutputNotFoundError('Task output not found');
         if (deleted.fingerprint !== fingerprint)
           throw new TaskOutputConflictError('Task output operation conflicts');
         throw new TaskOutputDeletedOperationError('Task output was deleted');
@@ -322,7 +389,10 @@ export class TaskOutputModule {
       if (
         store.deletedOperations.some(
           (receipt) =>
-            receipt.taskId === taskId && receipt.fingerprint === fingerprint,
+            receipt.taskId === taskId &&
+            (receipt.taskCreatedAt === undefined ||
+              receipt.taskCreatedAt === identity.createdAt) &&
+            receipt.fingerprint === fingerprint,
         )
       ) {
         // A later operation id cannot resurrect an exact candidate that its
@@ -335,7 +405,9 @@ export class TaskOutputModule {
       // bytes, but only after its own operation receipt has been checked.
       const existingTarget = store.outputs.find(
         (output) =>
-          output.taskId === taskId && output.fingerprint === fingerprint,
+          belongsToTask(output, identity) &&
+          output.taskCreatedAt === identity.createdAt &&
+          output.fingerprint === fingerprint,
       );
       if (existingTarget)
         return {
@@ -343,8 +415,8 @@ export class TaskOutputModule {
           output: stripStoredOutput(existingTarget),
         };
       if (
-        store.outputs.filter((output) => output.taskId === taskId).length >=
-        this.limits.maxPerTask
+        store.outputs.filter((output) => belongsToTask(output, identity))
+          .length >= this.limits.maxPerTask
       )
         throw new TaskOutputUnavailableError('Task output limit reached');
       this.assertReservedDeletionIdentityCapacity(store, 1);
@@ -381,12 +453,14 @@ export class TaskOutputModule {
         throw new TaskOutputUnavailableError('Task output storage is full');
       if (input.isAuthorized?.() === false)
         throw new TaskOutputNotFoundError('Task output not found');
+      this.assertTaskIdentity(identity);
       this.publishSnapshot(input.digest, snapshot.bytes);
       const output: StoredOutput = {
         schemaVersion: 1,
         id: randomUUID(),
         taskId,
-        projectId: task.projectId,
+        projectId: identity.projectId,
+        taskCreatedAt: identity.createdAt,
         title: normalized.title,
         source: {
           kind: 'workspace-file',
@@ -406,11 +480,14 @@ export class TaskOutputModule {
         ...(createdClientOrigin ? { createdClientOrigin } : {}),
         operationId: normalized.operationId,
         fingerprint,
+        ...(input.declaredBy ? { declaredBy: { ...input.declaredBy } } : {}),
       };
       store.outputs.push(output);
+      store.schemaVersion = 2;
       assertStore(store);
       if (input.isAuthorized?.() === false)
         throw new TaskOutputNotFoundError('Task output not found');
+      this.assertTaskIdentity(identity);
       this.writeStore(store);
       return { outcome: 'kept', output: stripStoredOutput(output) };
     });
@@ -421,10 +498,11 @@ export class TaskOutputModule {
     outputId: string,
   ): Promise<{ output: TaskOutputRecord; bytes: Buffer }> {
     this.assertPersonal();
-    this.assertTaskExists(taskId);
-    return this.withLock(() => {
+    const task = this.captureTask(taskId);
+    const result = await this.withLock(() => {
+      this.assertTaskIdentity(task);
       const { store } = this.reconcileStoreLocked();
-      const output = this.findInStore(store, taskId, outputId);
+      const output = this.findInStore(store, task, outputId);
       if (!output.materialization.contentAvailable) {
         throw new TaskOutputUnavailableError('Task output content unavailable');
       }
@@ -435,23 +513,29 @@ export class TaskOutputModule {
       }
       return { output: stripStoredOutput(output), bytes };
     });
+    this.assertTaskIdentity(task);
+    return result;
   }
 
   async delete(taskId: string, outputId: string): Promise<void> {
     this.assertPersonal();
-    this.assertTaskExists(taskId);
+    const task = this.captureTask(taskId);
     await this.withLock(() => {
+      this.assertTaskIdentity(task);
       const { store } = this.reconcileStoreLocked();
+      const candidate = this.findInStore(store, task, outputId);
       const index = store.outputs.findIndex(
-        (output) => output.taskId === taskId && output.id === outputId,
+        (output) => output.id === candidate.id,
       );
       if (index < 0) throw new TaskOutputNotFoundError('Task output not found');
-      const candidate = store.outputs[index]!;
       this.assertReservedDeletionIdentityCapacity(store);
       const [removed] = store.outputs.splice(index, 1);
       store.tombstones.push(tombstoneFor(taskId, outputId));
       store.deletedOperations.push({
         taskId,
+        ...(removed.taskCreatedAt
+          ? { taskCreatedAt: removed.taskCreatedAt }
+          : {}),
         operationId: removed.operationId,
         fingerprint: removed.fingerprint,
         outputId,
@@ -475,6 +559,10 @@ export class TaskOutputModule {
       );
     }
     await this.withLock(() => {
+      if (this.input.taskGraphService.readTask(taskId))
+        throw new TaskOutputUnavailableError(
+          'Task outputs require completed Task deletion',
+        );
       const { store } = this.reconcileStoreLocked();
       store.outputs = store.outputs.filter(
         (output) => output.taskId !== taskId,
@@ -532,6 +620,7 @@ export class TaskOutputModule {
           (entry) =>
             entry.taskId === taskId &&
             entry.outputId === candidate.id &&
+            entry.taskCreatedAt === candidate.taskCreatedAt &&
             entry.operationId === candidate.operationId &&
             entry.fingerprint === candidate.fingerprint,
         ),
@@ -580,6 +669,26 @@ export class TaskOutputModule {
     return task;
   }
 
+  private captureTask(taskId: string): TaskIdentity {
+    const task = this.assertTaskExists(taskId);
+    if (!validTaskCreatedAt(task.createdAt))
+      throw new TaskOutputNotFoundError('Task output not found');
+    return {
+      id: task.id,
+      projectId: task.projectId,
+      createdAt: task.createdAt,
+    };
+  }
+
+  private assertTaskIdentity(task: TaskIdentity): void {
+    const current = this.input.taskGraphService.readTask(task.id);
+    if (
+      current?.projectId !== task.projectId ||
+      current.createdAt !== task.createdAt
+    )
+      throw new TaskOutputNotFoundError('Task output not found');
+  }
+
   private async assertTaskWorkspace(taskId: string) {
     const task = await this.input.taskGraphService.readTaskForOpen(taskId);
     if (!task) throw new TaskOutputNotFoundError('Task output not found');
@@ -621,11 +730,12 @@ export class TaskOutputModule {
 
   private findInStore(
     store: Store,
-    taskId: string,
+    task: TaskIdentity,
     outputId: string,
   ): StoredOutput {
     const output = store.outputs.find(
-      (candidate) => candidate.taskId === taskId && candidate.id === outputId,
+      (candidate) =>
+        belongsToTask(candidate, task) && candidate.id === outputId,
     );
     if (!output) throw new TaskOutputNotFoundError('Task output not found');
     return output;
@@ -904,6 +1014,8 @@ function stripStoredOutput(output: StoredOutput): TaskOutputRecord {
   const {
     operationId: _operationId,
     fingerprint: _fingerprint,
+    taskCreatedAt: _taskCreatedAt,
+    declaredBy: _declaredBy,
     ...record
   } = output;
   return record;
@@ -1090,7 +1202,7 @@ function assertStore(value: unknown): asserts value is Store {
     throw new TaskOutputUnavailableError('Task output storage unavailable');
   const store = value as Store;
   if (
-    store.schemaVersion !== 1 ||
+    (store.schemaVersion !== 1 && store.schemaVersion !== 2) ||
     !Array.isArray(store.outputs) ||
     !Array.isArray(store.tombstones) ||
     !Array.isArray(store.deletedOperations) ||
@@ -1099,7 +1211,13 @@ function assertStore(value: unknown): asserts value is Store {
     store.deletedOperations.length > STORE_MAX_RECEIPTS ||
     !store.outputs.every(isStoredOutput) ||
     !store.tombstones.every(isTombstone) ||
-    !store.deletedOperations.every(isDeletedOperation)
+    !store.deletedOperations.every(isDeletedOperation) ||
+    (store.schemaVersion === 1 &&
+      (store.outputs.some(
+        (row) =>
+          row.taskCreatedAt !== undefined || row.declaredBy !== undefined,
+      ) ||
+        store.deletedOperations.some((row) => row.taskCreatedAt !== undefined)))
   ) {
     throw new TaskOutputUnavailableError('Task output storage unavailable');
   }
@@ -1148,6 +1266,8 @@ function isStoredOutput(value: unknown): value is StoredOutput {
   ];
   if (!isRecord(value)) return false;
   if ('createdClientOrigin' in value) keys.push('createdClientOrigin');
+  if ('taskCreatedAt' in value) keys.push('taskCreatedAt');
+  if ('declaredBy' in value) keys.push('declaredBy');
   if (!isExactRecord(value, keys)) return false;
   const output = value as unknown as StoredOutput;
   return (
@@ -1161,6 +1281,11 @@ function isStoredOutput(value: unknown): value is StoredOutput {
     isCanonicalIso(output.createdAt) &&
     isOperationId(output.operationId) &&
     SHA256_HEX.test(output.fingerprint) &&
+    (output.taskCreatedAt === undefined ||
+      validTaskCreatedAt(output.taskCreatedAt)) &&
+    (output.declaredBy === undefined ||
+      (output.taskCreatedAt !== undefined &&
+        isDeclarationSource(output.declaredBy))) &&
     (output.createdClientOrigin === undefined ||
       isExactClientOrigin(output.createdClientOrigin))
   );
@@ -1205,13 +1330,13 @@ function isMaterialization(
 }
 
 function isDeletedOperation(value: unknown): value is DeletedOperation {
+  if (!isRecord(value)) return false;
+  const keys = ['taskId', 'operationId', 'fingerprint', 'outputId'];
+  if ('taskCreatedAt' in value) keys.push('taskCreatedAt');
   return (
-    isExactRecord(value, [
-      'taskId',
-      'operationId',
-      'fingerprint',
-      'outputId',
-    ]) &&
+    isExactRecord(value, keys) &&
+    (value.taskCreatedAt === undefined ||
+      validTaskCreatedAt(value.taskCreatedAt)) &&
     isCanonicalText(value.taskId, TASK_ID_MAX_LENGTH) &&
     isOperationId(value.operationId) &&
     typeof value.fingerprint === 'string' &&
@@ -1434,4 +1559,36 @@ function mediaTypeFor(path: string): string {
   if (extension === 'gif') return 'image/gif';
   if (extension === 'webp') return 'image/webp';
   return 'application/octet-stream';
+}
+
+function validTaskCreatedAt(value: unknown): value is string {
+  return isCanonicalText(value, 40) && !Number.isNaN(Date.parse(value));
+}
+function belongsToTask(output: StoredOutput, task: TaskIdentity): boolean {
+  return (
+    output.taskId === task.id &&
+    output.projectId === task.projectId &&
+    (output.taskCreatedAt === undefined ||
+      output.taskCreatedAt === task.createdAt)
+  );
+}
+function isDeclarationSource(
+  value: unknown,
+): value is TaskOutputDeclarationSource {
+  const keys = [
+    'sessionId',
+    'eventId',
+    'turnId',
+    'toolCallId',
+    'declarationId',
+  ];
+  return (
+    isExactRecord(value, keys) &&
+    keys.every(
+      (key) =>
+        typeof value[key] === 'string' &&
+        value[key].length > 0 &&
+        Buffer.byteLength(value[key]) <= 1024,
+    )
+  );
 }

@@ -1,0 +1,7 @@
+{
+  "revision": "42811285ef04d069daf576d46253ac833573f848",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Reviewed setup attention title delta through resolver and projection. It names the affected Agent without implying all engines are blocked. Requirement identity, body, timestamp, actions and authority unchanged; projection regression passed after failing baseline. Model/engine bindings remain accurate.","inputs":["docs/guides/agents.md"]}
+  ]
+}

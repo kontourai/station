@@ -1,0 +1,7 @@
+{
+  "revision": "5aeea67b79900b1ad56fb88fdddf138a1d90a104",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Corrected note: the stale source is src-ui/src/lib/device-settings-store.ts, where this branch adds a typed composite-record parser table (codingPanels) used by import validation; the architecture's envelope, migration and export/import claims are unchanged. No prose change.","inputs":["src-ui/src/lib/device-settings-store.ts"]}
+  ]
+}

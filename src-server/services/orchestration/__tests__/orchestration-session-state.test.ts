@@ -4335,3 +4335,84 @@ test('nonblocking questions retain running/settled status and snapshot blocking 
       ?.status,
   ).toBe(settled);
 });
+
+test('configured sessions retain their actual safe proxy route and a direct re-launch clears it', () => {
+  const sessions = new Map<string, ProviderSession>();
+  const providers = new Map();
+  const apply = (modelRoute?: unknown) =>
+    projectOrchestrationEventToReadModel({
+      event: {
+        provider: 'codex',
+        threadId: 'proxy-route',
+        method: 'session.configured',
+        sessionId: 'proxy-route',
+        createdAt: '2026-10-03T00:00:00Z',
+        metadata: { modelRoute },
+      } as any,
+      threadProviders: providers,
+      sessionReadModel: sessions,
+    });
+  apply({
+    connectionId: 'proxy-home',
+    label: 'home-media',
+    endpoint: 'https://proxy.example:8317/v1',
+  });
+  expect(sessions.get('proxy-route')?.modelRoute).toEqual({
+    connectionId: 'proxy-home',
+    label: 'home-media',
+    endpoint: 'https://proxy.example:8317',
+  });
+  apply({
+    connectionId: 'proxy-home',
+    label: 'bad',
+    endpoint: 'https://user:key@proxy.example',
+  });
+  expect(sessions.get('proxy-route')?.modelRoute).toBeUndefined();
+  apply({
+    connectionId: 'proxy-home',
+    label: 'home-media',
+    endpoint: 'https://proxy.example',
+  });
+  apply();
+  expect(sessions.get('proxy-route')?.modelRoute).toBeUndefined();
+});
+
+test('session summaries expose the captured route when the loaded runtime has no new route field', () => {
+  const route = {
+    connectionId: 'proxy-home',
+    label: 'home-media',
+    endpoint: 'https://proxy.example',
+  };
+  const loaded: ProviderSession = {
+    provider: 'codex',
+    threadId: 'route-summary',
+    status: 'ready',
+    createdAt: '2026-10-03T00:00:00Z',
+    updatedAt: '2026-10-03T00:00:00Z',
+  };
+  const events: CanonicalRuntimeEvent[] = [
+    {
+      eventId: 'route-summary-configured',
+      provider: 'codex',
+      threadId: loaded.threadId,
+      createdAt: loaded.createdAt,
+      method: 'session.configured',
+      sessionId: loaded.threadId,
+      metadata: { modelRoute: route },
+    },
+  ];
+  expect(
+    buildOrchestrationSessionSummary({
+      loaded,
+      events,
+      answerability: OBSERVATION,
+    }).modelRoute,
+  ).toEqual(route);
+  expect(
+    buildOrchestrationSessionSummary({
+      loaded: { ...loaded, modelRoute: undefined },
+      events,
+      answerability: OBSERVATION,
+    }).modelRoute,
+  ).toBeUndefined();
+});

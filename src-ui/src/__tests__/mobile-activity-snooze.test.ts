@@ -131,21 +131,36 @@ describe('groupMobileActivity snooze', () => {
 });
 
 describe('snoozeWakeAt', () => {
-  it('adds fixed durations', () => {
-    expect(snoozeWakeAt(SNOOZE_OPTIONS[0], 1_000)).toBe(1_801_000);
+  it('the one preset set: two durations and two mornings', () => {
+    expect(SNOOZE_OPTIONS.map((option) => option.label)).toEqual([
+      '1 hour',
+      '3 hours',
+      'Tomorrow 9am',
+      'Next Monday 9am',
+    ]);
   });
 
-  it('uses today at 9am before the local boundary', () => {
+  it('adds fixed durations', () => {
+    expect(snoozeWakeAt(SNOOZE_OPTIONS[0], 1_000)).toBe(3_601_000);
+    expect(snoozeWakeAt(SNOOZE_OPTIONS[1], 1_000)).toBe(10_801_000);
+  });
+
+  it('"Tomorrow 9am" is always tomorrow, even before 9 today', () => {
     const now = new Date(2026, 7, 13, 8, 59).getTime();
     expect(snoozeWakeAt(SNOOZE_OPTIONS[2], now)).toBe(
-      new Date(2026, 7, 13, 9).getTime(),
+      new Date(2026, 7, 14, 9).getTime(),
     );
   });
 
-  it('uses tomorrow at 9am at and after the local boundary', () => {
-    const atNine = new Date(2026, 7, 13, 9).getTime();
-    expect(snoozeWakeAt(SNOOZE_OPTIONS[2], atNine)).toBe(
-      new Date(2026, 7, 14, 9).getTime(),
+  it('"Next Monday 9am" lands in a later week, skipping a Monday today', () => {
+    // 2026-08-13 is a Thursday; 2026-08-17 is a Monday.
+    const thursday = new Date(2026, 7, 13, 15).getTime();
+    expect(snoozeWakeAt(SNOOZE_OPTIONS[3], thursday)).toBe(
+      new Date(2026, 7, 17, 9).getTime(),
+    );
+    const monday = new Date(2026, 7, 17, 8).getTime();
+    expect(snoozeWakeAt(SNOOZE_OPTIONS[3], monday)).toBe(
+      new Date(2026, 7, 24, 9).getTime(),
     );
   });
 });

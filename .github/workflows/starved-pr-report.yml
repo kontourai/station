@@ -1,4 +1,4 @@
-name: Starved pull request report
+name: "Repo: Starved PR report"
 
 # station#1153: a PR that is CLEAN, outside the merge queue and unarmed is
 # finished work that nothing will land. It is the only PR state with no

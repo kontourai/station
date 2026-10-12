@@ -1,0 +1,7 @@
+{
+  "revision": "59d3d5ae54cbcb63b06e7b6539e5a304493cf7c0",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed merged chat stylesheet: upstream activity/status controls and relocated touch rules compose with mobile picker typography and scrolling; region placement and persistence contracts are unchanged. Historical placement evidence and its stated limitations remain unchanged.","inputs":["docs/design/placement.md"]}
+  ]
+}

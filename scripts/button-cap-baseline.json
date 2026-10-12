@@ -31,10 +31,6 @@
       "labelledActions": 3
     },
     {
-      "row": "src-ui/src/components/coding-layout/DiffPanel.tsx :: ObservedDiffPanel :: div",
-      "labelledActions": 3
-    },
-    {
       "row": "src-ui/src/components/live-activity/LiveCollaboratorsSection.tsx :: LiveCollaboratorsSection :: div.live-collaborators__actions",
       "labelledActions": 3
     },

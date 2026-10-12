@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import {
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -234,6 +235,29 @@ test('exports deterministic scoped provenance without untracked content or inven
     }),
   );
   expect(alpha.body).toContain('Historical reason for addition is unknown');
+});
+
+test('exports path-only dependencies without presenting stored digest approval', () => {
+  const { root, put } = repository();
+  const file = recordFile('docs/architecture/module-map.md');
+  const record = JSON.parse(readFileSync(join(root, file), 'utf8'));
+  delete record.document;
+  record.sources = record.sources.map((source) => source.path);
+  put(file, serializeRecordFile(record));
+  put(
+    REVIEW_LEDGER_INDEX,
+    serializeLedgerIndex({ version: 3, coverageBaseline: 'a'.repeat(40) }),
+  );
+  const graph = validateKnowledgeSnapshot(exportRepositoryKnowledge({ root }));
+  expect(graph.records.flatMap((record) => record.links)).toContainEqual(
+    expect.objectContaining({
+      label: 'Whole-document review dependency: recorded-dependency',
+    }),
+  );
+  expect(JSON.stringify(graph)).toContain(
+    'history-derived-not-judged-by-export',
+  );
+  expect(JSON.stringify(graph)).not.toContain('matches-recorded-digest');
 });
 
 test('refuses missing module owners, symlinked references and altered exported payloads', () => {

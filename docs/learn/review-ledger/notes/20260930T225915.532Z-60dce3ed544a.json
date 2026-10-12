@@ -1,0 +1,7 @@
+{
+  "revision": "e56b7b6bf847135adcce152d99112d104542d029",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Reviewed AttentionProjection pairing URL and AttentionCard self-link removal against attention API contract. Request IDs, caller capability, decision endpoints, scoping and session targets are unchanged; the pairing open target now names its exact Inbox request. Focused attention and NotificationsPage suites pass; provider execution NOT_VERIFIED.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

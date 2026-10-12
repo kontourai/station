@@ -1,0 +1,7 @@
+{
+  "revision": "b2274ad211de833226e73f8b8c5a4b4a375944a8",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Delta review for #2675: updated the Windows portable floor paragraph to name the real-process Windows identity probe test that test:windows:portable now runs (skipped off Windows); the resource manifest classifies it as process-heavy and the CI workflow contract pins it. Other claims unchanged.","inputs":["docs/guides/testing.md","package.json","scripts/__tests__/ci-workflow-contract.test.ts","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

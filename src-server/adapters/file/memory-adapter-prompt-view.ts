@@ -66,6 +66,33 @@ function isChatErrorMarkerMessage(message: unknown): boolean {
   );
 }
 
+/**
+ * #3112: an assistant message that carries no reply — no parts, or only
+ * step boundaries and blank text/reasoning. VoltAgent opens such a
+ * placeholder for every streamed response and flushes it to memory when the
+ * stream fails before producing anything.
+ */
+export function isContentlessAssistantMessage(message: unknown): boolean {
+  if (
+    !message ||
+    typeof message !== 'object' ||
+    (message as { role?: unknown }).role !== 'assistant'
+  )
+    return false;
+  const content = (message as { content?: unknown }).content;
+  if (typeof content === 'string' && content.trim()) return false;
+  const parts = (message as { parts?: unknown }).parts;
+  if (!Array.isArray(parts)) return true;
+  return parts.every((part) => {
+    if (!part || typeof part !== 'object') return true;
+    const { type, text } = part as { type?: unknown; text?: unknown };
+    if (type === 'step-start') return true;
+    if (type === 'text' || type === 'reasoning')
+      return typeof text !== 'string' || text.trim() === '';
+    return false;
+  });
+}
+
 /** Filters `[CHAT_ERROR]` marker messages out of a message list. */
 export function excludeChatErrorMarkers<T>(messages: T[]): T[] {
   return messages.filter((message) => !isChatErrorMarkerMessage(message));
@@ -87,6 +114,30 @@ export function createPromptOnlyMemoryView(
 ): StorageAdapter {
   return new Proxy(adapter, {
     get(target, prop, _receiver) {
+      // #3112: a failed stream's empty response placeholder is not a reply;
+      // the turn's `[CHAT_ERROR]` marker records the failure. A cancelled
+      // turn is still written: the store marks it cancelled.
+      const keep = (
+        message: unknown,
+        context?: { abortController?: AbortController },
+      ) =>
+        !isContentlessAssistantMessage(message) ||
+        context?.abortController?.signal.aborted === true;
+      if (prop === 'addMessage') {
+        return async (...args: Parameters<StorageAdapter['addMessage']>) => {
+          if (keep(args[0], args[3] as { abortController?: AbortController }))
+            await target.addMessage(...args);
+        };
+      }
+      if (prop === 'addMessages') {
+        return async (...args: Parameters<StorageAdapter['addMessages']>) => {
+          const kept = args[0].filter((message) =>
+            keep(message, args[3] as { abortController?: AbortController }),
+          );
+          if (kept.length > 0)
+            await target.addMessages(kept, args[1], args[2], args[3]);
+        };
+      }
       if (prop === 'getMessages') {
         return async (...args: Parameters<StorageAdapter['getMessages']>) => {
           const nativeMemory = currentNativeMemoryHistory();

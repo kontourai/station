@@ -97,7 +97,7 @@ export type ApprovalOutcome = ApprovalStatus | 'unbound';
 interface PendingApproval {
   binding?: ApprovalBinding;
   metadata?: ApprovalLifecycleMetadata;
-  resolve: (outcome: ApprovalOutcome) => void;
+  resolve: (outcome: ApprovalOutcome, answer?: unknown) => void;
   reject: (error: Error) => void;
   createdAt: number;
 }
@@ -164,6 +164,21 @@ export class ApprovalRegistry {
     approvalId: string,
     options: ApprovalRegisterOptions | number = MS_PER_MINUTE,
   ): Promise<ApprovalOutcome> {
+    return this.registerForAnswer(approvalId, options).then(
+      ({ outcome }) => outcome,
+    );
+  }
+
+  /**
+   * #3284: the same wait, keeping the data a request carries back with its
+   * decision (an MCP elicitation's form answer). `answer` is whatever the
+   * settling caller passed to {@link resolve}; a timeout, `cancel` or
+   * `cancelAll` carries none. Callers validate it — the registry does not.
+   */
+  registerForAnswer(
+    approvalId: string,
+    options: ApprovalRegisterOptions | number = MS_PER_MINUTE,
+  ): Promise<{ outcome: ApprovalOutcome; answer?: unknown }> {
     const timeoutMs =
       typeof options === 'number'
         ? options
@@ -180,7 +195,7 @@ export class ApprovalRegistry {
       this.logger.warn('[ApprovalRegistry] Rejected unbound hosted approval', {
         approvalId,
       });
-      return Promise.resolve('unbound');
+      return Promise.resolve({ outcome: 'unbound' });
     }
 
     // In hosted mode, bind the public lifecycle frame to precisely the
@@ -191,38 +206,44 @@ export class ApprovalRegistry {
       ? { ...metadata, conversationId: binding.sessionId }
       : metadata;
 
-    return new Promise<ApprovalOutcome>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        const entry = this.pending.get(approvalId);
-        if (entry) {
-          this.pending.delete(approvalId);
-          this.logger.warn('[ApprovalRegistry] Timeout', { approvalId });
-          // One value for both the emitted lifecycle status and the awaited
-          // outcome, so the event and the caller can never disagree.
-          const outcome: ApprovalOutcome = 'expired';
-          this.emitResolved(approvalId, outcome, entry.metadata);
-          resolve(outcome);
-        }
-      }, timeoutMs);
+    return new Promise<{ outcome: ApprovalOutcome; answer?: unknown }>(
+      (resolve, reject) => {
+        const timeout = setTimeout(() => {
+          const entry = this.pending.get(approvalId);
+          if (entry) {
+            this.pending.delete(approvalId);
+            this.logger.warn('[ApprovalRegistry] Timeout', { approvalId });
+            // One value for both the emitted lifecycle status and the awaited
+            // outcome, so the event and the caller can never disagree.
+            const outcome: ApprovalOutcome = 'expired';
+            this.emitResolved(approvalId, outcome, entry.metadata);
+            resolve({ outcome });
+          }
+        }, timeoutMs);
 
-      const wrappedResolve = (value: ApprovalOutcome) => {
-        clearTimeout(timeout);
-        resolve(value);
-      };
+        const wrappedResolve = (value: ApprovalOutcome, answer?: unknown) => {
+          clearTimeout(timeout);
+          resolve(
+            answer === undefined
+              ? { outcome: value }
+              : { outcome: value, answer },
+          );
+        };
 
-      this.pending.set(approvalId, {
-        binding,
-        metadata: eventMetadata,
-        resolve: wrappedResolve,
-        reject,
-        createdAt: Date.now(),
-      });
-      approvalOps.add(1, { operation: 'request' });
-      this.eventBus?.emit(SERVER_EVENTS.APPROVAL_OPENED, {
-        approvalId,
-        ...serializeMetadata(eventMetadata),
-      });
-    });
+        this.pending.set(approvalId, {
+          binding,
+          metadata: eventMetadata,
+          resolve: wrappedResolve,
+          reject,
+          createdAt: Date.now(),
+        });
+        approvalOps.add(1, { operation: 'request' });
+        this.eventBus?.emit(SERVER_EVENTS.APPROVAL_OPENED, {
+          approvalId,
+          ...serializeMetadata(eventMetadata),
+        });
+      },
+    );
   }
 
   /**
@@ -238,10 +259,25 @@ export class ApprovalRegistry {
     approvalId: string,
     approved: boolean,
     clientOrigin?: ClientOrigin,
+    /** Carried to a {@link registerForAnswer} waiter (#3284). */
+    answer?: unknown,
   ): boolean {
     const entry = this.pending.get(approvalId);
     if (!entry || !this.canSettleInternally(entry)) return false;
-    return this.settle(approvalId, entry, approved, clientOrigin);
+    return this.settle(approvalId, entry, approved, clientOrigin, answer);
+  }
+
+  /**
+   * Close one pending request with nobody's decision — the turn that asked
+   * was stopped (#3284). Same internal-settlement rule as {@link resolve}.
+   */
+  cancel(approvalId: string): boolean {
+    const entry = this.pending.get(approvalId);
+    if (!entry || !this.canSettleInternally(entry)) return false;
+    this.pending.delete(approvalId);
+    entry.resolve('cancelled');
+    this.emitResolved(approvalId, 'cancelled', entry.metadata);
+    return true;
   }
 
   /**
@@ -361,12 +397,13 @@ export class ApprovalRegistry {
     entry: PendingApproval,
     approved: boolean,
     clientOrigin?: ClientOrigin,
+    answer?: unknown,
   ): boolean {
     const elapsed = Date.now() - entry.createdAt;
     // A settlement is always somebody's decision; only the timeout path above
     // produces an outcome nobody chose.
     const outcome: ApprovalOutcome = approved ? 'approved' : 'denied';
-    entry.resolve(outcome);
+    entry.resolve(outcome, answer);
     this.pending.delete(approvalId);
     approvalOps.add(1, { operation: approved ? 'approve' : 'deny' });
     approvalDuration.record(elapsed, {

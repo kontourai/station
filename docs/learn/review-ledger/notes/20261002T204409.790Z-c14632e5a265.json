@@ -1,0 +1,7 @@
+{
+  "revision": "b38fa3bf89210ebfba30a32ced0c7f5027261bcd",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"Reviewed the updated mounted Station route-card test against Connect reference claims. It changes only rendered wording for locally saved grant metadata and collapsed expiry; no Connect transport, invitation API or authorization behavior changed.","inputs":["docs/reference/connect.md"]}
+  ]
+}

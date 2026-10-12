@@ -1,0 +1,7 @@
+{
+  "revision": "42c6acac29ae1ed79bb95eefbcd2de84f8b6f456",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed phone scheduler journey's added computed-font floor against actual cascade. It failed at13.6px baseline; mobile schedule controls now meet16px and all four scheduler browser workflows pass. Scope remains browser geometry and controlled API journeys, not WebKit zoom or physical-device proof.","inputs":["docs/guides/e2e-coverage-matrix.md"]}
+  ]
+}

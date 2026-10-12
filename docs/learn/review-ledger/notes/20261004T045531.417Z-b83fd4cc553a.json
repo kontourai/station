@@ -1,0 +1,7 @@
+{
+  "revision": "ac4c3cdb8eafd739e8e7091bb33beb1af7370902",
+
+  "notes": [
+    {"path":"docs/learn/README.md","note":"The atlas gained one module (SessionMessageDelivery) under the existing session-turn branch; this README's description of the atlas structure, branches and build is unchanged. No prose change."}
+  ]
+}

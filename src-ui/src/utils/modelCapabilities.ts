@@ -1,3 +1,4 @@
+import type { AgentProfileCapability } from '@kontourai/station-contracts/enriched-agent';
 import type { ModelOption } from '@kontourai/station-contracts/tool';
 
 export type SelectableModel = Pick<
@@ -8,6 +9,12 @@ export type SelectableModel = Pick<
     providerId?: string;
     providerName?: string;
     providerType?: string;
+    executionAgentId?: string;
+    engineId?: string;
+    engineName?: string;
+    stationName?: string;
+    environmentId?: string;
+    expectedDefinitionFingerprint?: string;
     available?: boolean;
     unavailableReason?: string;
     description?: string;
@@ -50,6 +57,9 @@ export function prettifyModelId(modelId: string): string {
   return label.trim() || id;
 }
 
+/** The label for no model id: a gap to hide, never a model to show. */
+export const MODEL_NOT_REPORTED = 'Model not reported';
+
 /**
  * The one derivation of "what do we call this model id" (archive#3391).
  *
@@ -69,7 +79,7 @@ export function modelDisplayLabel(
   catalog: readonly SelectableModel[] = [],
 ): string {
   const id = modelId?.trim();
-  if (!id) return 'Model not reported';
+  if (!id) return MODEL_NOT_REPORTED;
   const known = catalog.find(
     (model) => model.id === id || model.originalId === id,
   );
@@ -143,7 +153,7 @@ export function modelIdentityLabel(
   catalog: readonly SelectableModel[] = [],
 ): string {
   const id = modelId?.trim();
-  if (!id) return 'Model not reported';
+  if (!id) return MODEL_NOT_REPORTED;
   const entry = catalog.find(
     (model) => model.id === id || model.originalId === id,
   );
@@ -157,6 +167,9 @@ export function modelIdentityLabel(
 
 export type NewChatModelChoice = {
   modelId?: string;
+  executionAgentId?: string;
+  environmentId?: string;
+  expectedDefinitionFingerprint?: string;
   /** Exact Station model-connection instance selected before launch. */
   providerId?: string;
   providerType?: string;
@@ -351,4 +364,54 @@ export function groupModelsByCanonicalIdentity(
     });
   }
   return sections;
+}
+
+export function resolveModelChoice(
+  choice: NewChatModelChoice | undefined,
+  effective: {
+    id?: string | null;
+    label: string;
+    source: import('./execution').EffectiveModelSource;
+  },
+  models: readonly SelectableModel[],
+  sourceModel?: string,
+) {
+  const selected = choice?.modelId
+    ? models.find(
+        (model) =>
+          model.id === choice.modelId &&
+          (!choice.providerId || model.providerId === choice.providerId) &&
+          model.executionAgentId === choice.executionAgentId,
+      )
+    : undefined;
+  return {
+    id: choice?.modelId ?? sourceModel ?? effective.id ?? undefined,
+    label: choice?.modelId
+      ? (selected?.name ?? choice.modelId)
+      : (sourceModel ?? effective.label),
+    source: choice?.modelId
+      ? ('session override' as const)
+      : sourceModel
+        ? ('source turn' as const)
+        : effective.source,
+    engineName: selected?.engineName,
+    executionAgentId: choice?.executionAgentId,
+  };
+}
+
+export function profileCompatibilityReason(
+  requirements: readonly AgentProfileCapability[] | undefined,
+  unsupported: readonly AgentProfileCapability[] | undefined,
+): string | undefined {
+  const missing =
+    requirements?.filter((capability) => unsupported?.includes(capability)) ??
+    [];
+  if (!missing.length) return undefined;
+  const labels: Record<AgentProfileCapability, string> = {
+    instructions: 'Agent instructions',
+    skills: 'skills',
+    toolServers: 'tool servers',
+    toolSelection: 'tool restrictions',
+  };
+  return `This engine cannot apply this Agent's ${missing.map((capability) => labels[capability]).join(', ')}.`;
 }

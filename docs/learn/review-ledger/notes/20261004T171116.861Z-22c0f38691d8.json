@@ -1,0 +1,7 @@
+{
+  "revision": "2cf35d3446c6d501f4a36f0185be54cf56f9fec5",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed the Get Conversation Messages section against readConversationMessages/readSessionSegment: updated it for the lineage-ordered read (each Session store-first then orchestration projection, concatenated; export/fork/summary share it) and the typed-text-only stored user turn with context composed only into the model input.","inputs":["docs/reference/api.md","src-server/routes/chat/conversations.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

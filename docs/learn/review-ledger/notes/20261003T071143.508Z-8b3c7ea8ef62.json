@@ -1,0 +1,7 @@
+{
+  "revision": "68257f50971037b3fd9df5b134bbd599142cd6d8",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Reproduced Git 2.55 auto-merging away legacy capture fields: the retained outcome assertions failed because the migrated capture lost the other branch's review. Reviewed recovery from merge parent blobs, structural metadata merging and preservation of working review edits; repaired owner and all 34 documentation freshness tests passed on Linux. Guide now requires no-commit merging for legacy capture reviews and folding before the merge commit, including a clean automatic merge. No new delivery, runtime or device claims.","inputs":["docs/guides/documentation.md"]}
+  ]
+}

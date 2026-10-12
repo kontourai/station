@@ -1,0 +1,9 @@
+{
+  "revision": "ebcea85f60ac9b05379c5b4b69b2be67dd123e33",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"#3390 follow-up: InputRequestCard and inputRequestDrafts only moved the custom-answer sentinel into the drafts module and stopped exporting it; the question form behaviour this guide describes is unchanged.","inputs":["docs/guides/agents.md","src-ui/src/components/chat/InputRequestCard.tsx","src-ui/src/components/chat/inputRequestDrafts.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"#3390 follow-up: harness-questions.ts only stopped exporting its message constant; the Claude/Codex form mapping and answer translation documented here are unchanged.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/harness-questions.ts"]}
+  ]
+}

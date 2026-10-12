@@ -1,0 +1,7 @@
+{
+  "revision": "fc48e9b7a9d2f61097454d52661555a1be456ed1",
+
+  "notes": [
+    {"path":"packaging/manifest/README.md","note":"install-smoke.yml only renames the Windows job to 'install.ps1 (win32-x64)' and its step, now that it also installs, upgrades and uninstalls; the README's consumer table is unaffected.","inputs":["packaging/manifest/README.md",".github/workflows/install-smoke.yml"]}
+  ]
+}

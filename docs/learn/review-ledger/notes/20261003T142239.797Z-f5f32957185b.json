@@ -1,0 +1,7 @@
+{
+  "revision": "9330f3941806d4e9c52fa4774d66c91079bd7431",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Inspected actual frame producer and preserved source/grant/origin bridge checks; metadata escaping passes HTML-parser and JavaScript roundtrip tests, with unescaped mutation failure. Existing live/native limits retained.","inputs":["docs/guides/plugins.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "e496df4415ccd31aebf9eeb2578854974de8c327",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed new scheduler phone-sized repair journey. Controlled existing-model PUT and runtime-health SSE trigger the real shell catalog invalidation and automatic return; instructions, name and 17-minute interval survive, and normal scheduler POST saves the job. Executed browser case at 55dad29e8. Fixture readiness is not a live provider check; existing Schedule coverage claims remain accurate.","inputs":["docs/guides/e2e-coverage-matrix.md"]}
+  ]
+}

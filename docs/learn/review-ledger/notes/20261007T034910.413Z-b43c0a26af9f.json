@@ -1,0 +1,7 @@
+{
+  "revision": "1c677669887600d0e1ad99aee0d98b8eb70deed6",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed the fixed PR browser smoke contract and its manifest owner against adding the mobile request sheet to the product suite. The new spec does not enter or expand the fixed PR-smoke journey set; existing smoke constraints, authenticated boot and canonical runner remain unchanged. No browser pass is inferred from inventory membership.","inputs":["docs/testing/browser-smoke.md","tests/e2e-manifest.mjs"]}
+  ]
+}

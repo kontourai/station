@@ -45,6 +45,106 @@ function baseInput(
 }
 
 describe('createSessionAgentResolver', () => {
+  test.each(['claude', 'station-agent'])(
+    'verified %s execution rechecks the freshly loaded authored definition before delivering it',
+    async (provider) => {
+      let prompt = 'Keep my profile';
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () => agentSpec({ prompt }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      });
+      const input = baseInput({
+        provider,
+        metadata: {
+          agentSlug: 'writer',
+          executionAgentId: provider === 'station-agent' ? 'station' : 'claude',
+          expectedDefinitionFingerprint:
+            'sha256:07e2f1010053306310f0e32b8a29e56261d824ef38ed1242506656d5a531ebbd',
+        },
+      });
+      const result = await resolver(input);
+      if (provider === 'station-agent')
+        expect(result.metadata?.agentSlug).toBe('writer');
+      else expect(result.agent?.systemPrompt).toBe('Keep my profile');
+      prompt = 'Changed after catalog discovery';
+      await expect(resolver(input)).rejects.toThrow(
+        'definition changed before execution',
+      );
+    },
+  );
+
+  test('an engine override refuses a missing authored skill instead of starting a reduced profile', async () => {
+    const resolver = createSessionAgentResolver({
+      loadAgentSpec: async () =>
+        agentSpec({ prompt: 'Keep my profile', skills: ['required-skill'] }),
+      resolveToolServer: async () => null,
+      resolveSkillDir: async () => null,
+    });
+    await expect(
+      resolver(
+        baseInput({
+          provider: 'claude',
+          metadata: { agentSlug: 'writer', executionAgentId: 'claude' },
+        }),
+      ),
+    ).rejects.toThrow('skills:required-skill (not-found)');
+  });
+
+  test.each([
+    {
+      tools: { mcpServers: [], mcpMode: 'add' as const, available: [] },
+      mode: 'add',
+      allowed: [],
+    },
+    {
+      tools: {
+        mcpServers: ['base'],
+        mcpMode: 'replace' as const,
+        available: ['read'],
+        autoApprove: ['base_read'],
+      },
+      mode: 'replace',
+      allowed: ['read'],
+    },
+  ])(
+    'Project additions preserve Agent restrictions and mode $mode',
+    async ({ tools, mode, allowed }) => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () => agentSpec({ tools }),
+        resolveProjectToolServers: async () => ['weather'],
+        resolveToolServer: async (id) => ({
+          id,
+          kind: 'mcp',
+          transport: 'stdio',
+          command: 'fixture',
+          probe: {
+            ok: true,
+            checkedAt: '2026-10-03T00:00:00Z',
+            toolCount: 2,
+            toolNames: ['read', 'write'],
+          },
+        }),
+        resolveSkillDir: async () => null,
+      });
+      const result = await resolver(
+        baseInput({
+          provider: 'codex',
+          metadata: { agentSlug: 'reader', projectSlug: 'demo' },
+        }),
+      );
+      expect(result.agent?.toolServerMode).toBe(mode);
+      expect(
+        result.agent?.toolServers?.find((server) => server.id === 'weather')
+          ?.allowedTools,
+      ).toEqual(allowed);
+      expect(result.agent?.autoApprove ?? []).not.toContain('weather_read');
+      expect(result.agent?.toolServers?.map((server) => server.id)).toEqual(
+        mode === 'replace' ? ['base', 'weather'] : ['weather'],
+      );
+    },
+  );
+
   test.each([
     { available: ['weather_read'], allowed: ['read'] },
     { available: ['read'], allowed: ['read'] },
@@ -278,8 +378,13 @@ describe('createSessionAgentResolver', () => {
           // what makes `undelivered` the interesting assertion: a requested
           // server the host cannot resolve must be receipted, never dropped
           // silently.
-          requested: ['station-control', 'station-docs'],
+          requested: ['station-control', 'station-knowledge', 'station-docs'],
           undelivered: [
+            {
+              capability: 'toolServers',
+              id: 'station-knowledge',
+              reason: 'not-found',
+            },
             {
               capability: 'toolServers',
               id: 'station-docs',
@@ -370,8 +475,14 @@ describe('createSessionAgentResolver', () => {
       result.metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY],
     ).toMatchObject({
       toolServers: {
-        requested: ['station-control', 'station-docs'],
-        undelivered: [],
+        requested: ['station-control', 'station-knowledge', 'station-docs'],
+        undelivered: [
+          {
+            capability: 'toolServers',
+            id: 'station-knowledge',
+            reason: 'not-found',
+          },
+        ],
       },
     });
   });

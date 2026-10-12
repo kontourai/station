@@ -9,18 +9,16 @@
 
   "limits": "Reviewed the documented contract and actual callers, not every implementation branch. No new external engine, provider, cross-host, native/device or power-loss result. Historical test and issue receipts keep their original scope.",
 
-  "document": {"digest":"030e3190c7601f472287b079f0d147d29603638c0637ccba96f8fdaaa01b09e4","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
-
   "sources": [
-    {"path":"src-server/domain/__tests__/live-work-session.test.ts","digest":"e6eec2c08fe3145fd0c936d45407ab07b29ed91a5df822fb5537765c91b8e4f0","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-server/domain/__tests__/live-work-session.test.ts",
 
-    {"path":"src-server/domain/live-work-session.ts","digest":"9ba60ab57c0876cb67459ff2547666f385319d9ded88fa35b63c3d60cc5ed72d","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-server/domain/live-work-session.ts",
 
-    {"path":"src-server/services/orchestration/__tests__/project-task-live-work-history-adapter.test.ts","digest":"c49b0801559536fc5fd6cdd58f0c3bd8ee7e3038750c1b27f3e088579d7c6bda","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-server/services/orchestration/__tests__/project-task-live-work-history-adapter.test.ts",
 
-    {"path":"src-server/services/orchestration/project-task-live-work-history-adapter.ts","digest":"850b3432f4586d56bf87e644e54549864801baf94db127630f030146e6753127","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-server/services/orchestration/project-task-live-work-history-adapter.ts",
 
-    {"path":"src-server/services/orchestration/project-task-room-runtime.ts","digest":"feb48a41131f04260c92e3a7757eda5aa61799a7015b3386a931d950250e3d58","revision":"9f8b407fac4a9e5536d72ca49be3a0b77715e1d8"}
+    "src-server/services/orchestration/project-task-room-runtime.ts"
   ],
 
   "checks": [

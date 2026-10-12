@@ -1,0 +1,55 @@
+{
+  "revision": "71c69cadad789baff389812ff52e9efae397c316",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/design/task-room-agent-requests.md"]},
+
+    {"path":"docs/guides/acp.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/guides/acp.md"]},
+
+    {"path":"docs/guides/agents.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/guides/delegation-attempt-claims.md"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/guides/home-transfer-controller.md"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/guides/private-runner-partition.md"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/guides/product-law-authoring.md"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/guides/repository-layout.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/guides/work-board-security.md"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/guides/workspace-packages.md"]},
+
+    {"path":"docs/reference/api.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/config.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/reference/config.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/user/concepts.md"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/user/workspace-checkpoints.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["examples/self-configuring-agent/README.md"]}
+  ]
+}

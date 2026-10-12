@@ -10,6 +10,29 @@ import {
 export function builtinStationControlServerPath(): string {
   return resolve(import.meta.dirname || process.cwd(), 'station-control.js');
 }
+export const BUILTIN_STATION_KNOWLEDGE_TOOL_SERVER_ID = 'station-knowledge';
+
+export function builtinStationKnowledgeServerPath(): string {
+  return resolve(import.meta.dirname || process.cwd(), 'station-knowledge.js');
+}
+
+export function builtinStationApiServerId(
+  toolId: string,
+  toolDef: ToolDef,
+): 'station-control' | 'station-knowledge' | undefined {
+  if (isBuiltinStationControl(toolId, toolDef)) return 'station-control';
+  const serverPath = toolDef.args?.[0];
+  if (
+    toolId === BUILTIN_STATION_KNOWLEDGE_TOOL_SERVER_ID &&
+    (toolDef.transport === undefined || toolDef.transport === 'stdio') &&
+    toolDef.endpoint === undefined &&
+    toolDef.command === 'node' &&
+    typeof serverPath === 'string' &&
+    resolve(serverPath) === builtinStationKnowledgeServerPath()
+  )
+    return 'station-knowledge';
+  return undefined;
+}
 
 /**
  * archive#1547: the sibling built-in `station-docs` stdio server, resolved the
@@ -139,7 +162,7 @@ export function withStationControlRuntimeEnv(
     // the exact built-in child.
     delete runtimeEnv.STATION_INTERNAL_TENANT;
   }
-  if (!isBuiltinStationControl(toolId, toolDef)) return runtimeEnv;
+  if (!builtinStationApiServerId(toolId, toolDef)) return runtimeEnv;
   return {
     ...runtimeEnv,
     [INTERNAL_API_TOKEN_ENV]: getInternalApiToken(),
@@ -202,6 +225,16 @@ export function stationControlRuntimeIdentity(
   };
 }
 
+export function stationKnowledgeRuntimeIdentity(
+  port: number,
+): Pick<ToolDef, 'command' | 'args' | 'env'> {
+  return {
+    command: BUILTIN_INTEGRATION_SPAWN_COMMAND,
+    args: [builtinStationKnowledgeServerPath()],
+    env: stationControlSpawnEnv(port),
+  };
+}
+
 /**
  * archive#3063: the one spawn executable both built-in tool servers use.
  * Shared so surfaces that read the PERSISTED files directly (which carry no
@@ -242,6 +275,7 @@ export const BUILTIN_STATION_CONTROL_TOOL_SERVER_ID = 'station-control';
 export function isRuntimeManagedIntegrationId(id: string): boolean {
   return (
     id === BUILTIN_STATION_CONTROL_TOOL_SERVER_ID ||
+    id === BUILTIN_STATION_KNOWLEDGE_TOOL_SERVER_ID ||
     id === BUILTIN_STATION_DOCS_TOOL_SERVER_ID
   );
 }
@@ -249,8 +283,7 @@ export function isRuntimeManagedIntegrationId(id: string): boolean {
 export function builtinIntegrationRuntimeSpawnCommand(
   id: string,
 ): string | undefined {
-  return id === BUILTIN_STATION_CONTROL_TOOL_SERVER_ID ||
-    id === BUILTIN_STATION_DOCS_TOOL_SERVER_ID
+  return isRuntimeManagedIntegrationId(id)
     ? BUILTIN_INTEGRATION_SPAWN_COMMAND
     : undefined;
 }

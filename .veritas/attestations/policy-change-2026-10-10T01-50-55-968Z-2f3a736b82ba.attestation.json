@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-10-10T01-50-55-968Z-2f3a736b82ba",
+  "kind": "policy-change",
+  "actor": {
+    "id": "brian",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": null,
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-10-10T01:50:55.968Z",
+  "repoStandardsHash": "sha256:03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed",
+  "repoMapHash": "sha256:8fc9938f121d8e94a115d60f4f7f65657a1d89392bf599b8ba2057f6532bde71",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-10-07T11-10-37-735Z-5402f3546c75",
+  "validUntilDays": 7,
+  "notes": "Brian explicitly approved ONLY http-cache-semantics root/sdk/shared GHSA-ch52-4w7c-c8xp and braces root GHSA-vfj7-8cjw-p6xm through2026-10-17T00:00:00Z. Temporary scoped risk acceptance under cross-user shared-cache disclosure and untrusted brace-pattern stack-exhaustion threats; Station exploitability and non-reachability remain unproved. No verified upstream remediation claimed. All other exceptions/residuals/floors/matching remain unchanged; station#3150.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-10-07T11-10-37-735Z-5402f3546c75",
+    "approvalRef": "t3-thread:547e89a2-9a39-4f72-b419-98efcddb47c3:four-record-renewal-approval-2026-10-10",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-10-10T01-50-55-968Z-2f3a736b82ba",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "7b42e9aae2d22c5f7bfba53a9d7f87dafd7f2e93fa1c9382cf682b1df75a5416",
+        "validUntil": "2026-10-17T01:50:55.968Z"
+      },
+      "createdAt": "2026-10-10T01:50:55.968Z",
+      "updatedAt": "2026-10-10T01:50:55.968Z",
+      "status": "verified",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "strong",
+        "reviewerAuthority": "human",
+        "evidenceStrength": "strong",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-10-10T01-50-55-968Z-2f3a736b82ba",
+      "claimId": "veritas.attestation.policy-change-2026-10-10T01-50-55-968Z-2f3a736b82ba",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Brian explicitly approved ONLY http-cache-semantics root/sdk/shared GHSA-ch52-4w7c-c8xp and braces root GHSA-vfj7-8cjw-p6xm through2026-10-17T00:00:00Z. Temporary scoped risk acceptance under cross-user shared-cache disclosure and untrusted brace-pattern stack-exhaustion threats; Station exploitability and non-reachability remain unproved. No verified upstream remediation claimed. All other exceptions/residuals/floors/matching remain unchanged; station#3150.",
+      "observedAt": "2026-10-10T01:50:55.968Z",
+      "collectedBy": "brian",
+      "integrityRef": "7b42e9aae2d22c5f7bfba53a9d7f87dafd7f2e93fa1c9382cf682b1df75a5416",
+      "metadata": {
+        "actor": {
+          "id": "brian",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-10-10T01:50:55.968Z",
+        "validUntil": "2026-10-17T01:50:55.968Z",
+        "contentHash": "7b42e9aae2d22c5f7bfba53a9d7f87dafd7f2e93fa1c9382cf682b1df75a5416"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-10-10T01-50-55-968Z-2f3a736b82ba.verified",
+      "claimId": "veritas.attestation.policy-change-2026-10-10T01-50-55-968Z-2f3a736b82ba",
+      "status": "verified",
+      "actor": "brian",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-10-10T01-50-55-968Z-2f3a736b82ba"
+      ],
+      "createdAt": "2026-10-10T01:50:55.968Z",
+      "verifiedAt": "2026-10-10T01:50:55.968Z"
+    }
+  }
+}

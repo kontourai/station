@@ -19,6 +19,7 @@ import { useProject } from '../../contexts/ProjectsContext';
 import { useGitStatus } from '../../hooks/useGitStatus';
 import type { ChatSession } from '../../types';
 import {
+  catalogModelImageSupport,
   connectionEngineId,
   connectionStatusLabel,
   resolveBindingStatus,
@@ -43,7 +44,9 @@ type ModelOption = { id: string; name: string };
  * error text when the selected model lacks image input, and nothing in ACP
  * reports per-model modalities. Parsing model ids for "several providers"
  * was a guess in both directions (single-prefix routers, `org/model` ids), so
- * this names the evidence instead; an engine without it gets no note.
+ * this names the evidence instead; an engine without it gets no note. The
+ * server fills `capabilities.imageInput` on each model from OpenCode's own
+ * listing; the note now appears only for a model that listing did not cover.
  */
 const PER_MODEL_IMAGE_SUPPORT_ENGINES = new Set(['opencode']);
 const EMPTY_CONNECTIONS: never[] = [];
@@ -430,9 +433,20 @@ export function useChatDockViewModel({
   // ever wrote), so the composer refused every pasted image on the one engine
   // whose relay was built to carry them. The resolver's own no-connection
   // default is `station`, which is exactly the unbound Station agent's engine.
-  const selectedModelImageSupport = useModelImageSupport(
+  const bedrockModelImageSupport = useModelImageSupport(
     typeof currentModelId === 'string' ? currentModelId : undefined,
   );
+  // The connected engine's own per-model answer (OpenCode's listing, filled
+  // server-side after the handshake) is about THIS connection's model, so it
+  // outranks the Bedrock-only catalog, which has no row for an ACP model id.
+  const engineModelImageSupport = catalogModelImageSupport(
+    runtimeConnection,
+    typeof currentModelId === 'string' ? currentModelId : undefined,
+  );
+  const selectedModelImageSupport =
+    engineModelImageSupport !== 'unknown'
+      ? engineModelImageSupport
+      : bedrockModelImageSupport;
   // `resolveEngineCapabilityMatrix` reads CONNECTION records, and its
   // no-id-no-connection default only fires when `agentConnectionId` is
   // genuinely absent. A live Station session can carry an `agentConnectionId`

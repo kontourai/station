@@ -1,0 +1,7 @@
+{
+  "revision": "534e4a52bc7cea488e6b98cffaf40ccff8c486b8",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"#3193: docs/reference/sdk.md gained the member publication read description. This file only routes to the SDK reference and states plugin import and cancellation-race rules, none of which changed. No prose change.","inputs":["packages/sdk/AGENTS.md"]}
+  ]
+}

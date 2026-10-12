@@ -9,7 +9,7 @@ import type {
   BoardReference,
   BoardWidgetSize,
 } from '@kontourai/station-contracts/board';
-import { apiErrorMessage } from './api-error-message';
+import { envelopeError } from './api-error-message';
 import {
   type ClientRequestOptions,
   getJson,
@@ -25,17 +25,26 @@ interface BoardEnvelope<T> {
   code?: string;
 }
 
+const BOARD_PROVENANCE_REFUSED_CODE = 'board_provenance_refused';
+
 /**
  * The board answered, and the answer was a failure. `code` mirrors the
  * route's `RouteError.code` (`src-server/routes/board.ts`) verbatim.
  */
 export class BoardResponseError extends StationHttpError {
+  /** Built from the envelope helper's error: status, `code`, `details`. */
+  constructor(failure: StationHttpError);
+  constructor(status: number, message: string, code: string | undefined);
   constructor(
-    status: number,
-    message: string,
-    readonly code: string | undefined,
+    first: number | StationHttpError,
+    message?: string,
+    code?: string,
   ) {
-    super(status, message);
+    if (typeof first === 'number') {
+      super(first, message, code === undefined ? undefined : { code });
+    } else {
+      super(first.status, first.message, first);
+    }
     this.name = 'BoardResponseError';
   }
 }
@@ -48,33 +57,31 @@ export class BoardResponseError extends StationHttpError {
  * server's `UIBlockProvenanceRefusedError`.
  */
 export class BoardProvenanceRefusedError extends BoardResponseError {
-  constructor(message: string) {
-    super(422, message, 'board_provenance_refused');
+  /** A message alone is the route's 422; a refusal keeps what it observed. */
+  constructor(failure: string | StationHttpError) {
+    if (typeof failure === 'string') {
+      super(422, failure, BOARD_PROVENANCE_REFUSED_CODE);
+    } else {
+      super(failure);
+    }
     this.name = 'BoardProvenanceRefusedError';
   }
 }
 
 async function unwrapBoardResponse<T>(response: Response): Promise<T> {
+  const fallback = `Board API error: ${response.status}`;
   let result: BoardEnvelope<T> | null = null;
   try {
     result = (await response.json()) as BoardEnvelope<T>;
   } catch (error) {
     rethrowDeadline(error);
-    throw new BoardResponseError(
-      response.status,
-      `Board API error: ${response.status}`,
-      undefined,
-    );
+    throw new BoardResponseError(envelopeError(response, undefined, fallback));
   }
   if (!response.ok || !result.success) {
-    const message = apiErrorMessage(
-      result,
-      `Board API error: ${response.status}`,
-    );
-    if (result.code === 'board_provenance_refused') {
-      throw new BoardProvenanceRefusedError(message);
-    }
-    throw new BoardResponseError(response.status, message, result.code);
+    const failure = envelopeError(response, result, fallback);
+    throw failure.code === BOARD_PROVENANCE_REFUSED_CODE
+      ? new BoardProvenanceRefusedError(failure)
+      : new BoardResponseError(failure);
   }
   return result.data as T;
 }

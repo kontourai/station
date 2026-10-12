@@ -1,5 +1,8 @@
 import path from 'node:path';
 import { defineConfig } from 'vitest/config';
+import { scaleLivenessMs } from './scripts/lib/liveness-scale.mjs';
+
+const BASE_TEST_TIMEOUT_MS = 30_000;
 
 export default defineConfig({
   resolve: {
@@ -84,8 +87,12 @@ export default defineConfig({
     // takes a busy machine to do real work. A test whose SUBJECT is latency
     // should assert that itself — the performance suite already does, with
     // thresholds it chose (station#3162).
-    testTimeout: 30_000,
-    hookTimeout: 30_000,
+    //
+    // Local gates multiply this liveness bound by the host-pressure factor an
+    // entry point published in STATION_LIVENESS_SCALE (1 when absent or in CI,
+    // capped at 8): see scripts/lib/liveness-scale.mjs (#3302).
+    testTimeout: scaleLivenessMs(BASE_TEST_TIMEOUT_MS),
+    hookTimeout: scaleLivenessMs(BASE_TEST_TIMEOUT_MS),
     maxWorkers: 4,
     environment: 'node',
     setupFiles: ['./vitest.setup.ts'],

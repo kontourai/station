@@ -1,0 +1,15 @@
+{
+  "revision": "1dde14efce650455537b176038ccb5098b335552",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Re-record after merging main: responsive-action-surfaces.txt and vitest-resource-manifest.mjs carry this PR own reviewed changes (responsive inventory and highlight-worker manifest); main record lines were taken during the merge, rebinding to the branch bytes.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/guides/theming.md","note":"Re-record after merging main: responsive-action-surfaces.txt and vitest-resource-manifest.mjs carry this PR own reviewed changes (responsive inventory and highlight-worker manifest); main record lines were taken during the merge, rebinding to the branch bytes.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/patterns/backend.md","note":"Re-record after merging main: responsive-action-surfaces.txt and vitest-resource-manifest.mjs carry this PR own reviewed changes (responsive inventory and highlight-worker manifest); main record lines were taken during the merge, rebinding to the branch bytes.","inputs":["docs/patterns/backend.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Re-record after merging main: responsive-action-surfaces.txt and vitest-resource-manifest.mjs carry this PR own reviewed changes (responsive inventory and highlight-worker manifest); main record lines were taken during the merge, rebinding to the branch bytes.","inputs":["docs/patterns/frontend.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Re-record after merging main: responsive-action-surfaces.txt and vitest-resource-manifest.mjs carry this PR own reviewed changes (responsive inventory and highlight-worker manifest); main record lines were taken during the merge, rebinding to the branch bytes.","inputs":["scripts/AGENTS.md"]}
+  ]
+}

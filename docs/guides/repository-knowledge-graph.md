@@ -20,7 +20,7 @@ for them.
 | `documented-in` | The module has that canonical module-map section. |
 | `references-source` / `references-test` | That exact section references the tracked file. This does not establish a call relationship or a passing test. |
 | `references-document` / `references-decision` | The section links that document or public Station issue/PR. Remote content is not fetched. |
-| `review-dependency` | The whole document's review record names the source, with a digest comparison. This is not per-module claim certification. |
+| `review-dependency` | The whole document's review record names the source. Path-only records export this relationship without judging review history; legacy records include a digest comparison. This is not per-module claim certification. |
 
 The current export includes the atlas's module set, including retained contract
 work. A graph node does not mean that a feature is mounted in production. Read
@@ -44,9 +44,10 @@ the Knowledge store.
 
 The exporter records Git HEAD plus independent hashes of the selected tracked
 working files. Intentional dirty documentation can therefore be explored without
-pretending it belongs to the recorded commit. A changed source dependency is
-visible even when the review ledger still names older bytes. Matching hashes
-do not prove the prose is correct.
+pretending it belongs to the recorded commit. Changed source bytes are
+visible in snapshot observations. Review freshness is derived separately by
+`npm run docs:freshness:check`; this exporter does not judge the Git history.
+Snapshot hashes do not prove the prose is correct.
 
 Each input digest creates a distinct record identity set. Ingestion into a
 dedicated isolated root verifies existing records and preserves earlier snapshots.

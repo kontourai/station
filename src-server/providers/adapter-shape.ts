@@ -6,7 +6,7 @@ import {
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ConnectionQuotaResult } from '@kontourai/station-contracts/connection-quota';
 import type { ConnectionRecoveryCapability } from '@kontourai/station-contracts/connection-recovery';
-import type { HarnessQuestionAnswers } from '@kontourai/station-contracts/harness-questions';
+import type { InputRequestContent } from '@kontourai/station-contracts/input-request';
 import type { ModelInventoryExecutionIdentity } from '@kontourai/station-contracts/model-inventory';
 import type {
   EngineId,
@@ -15,6 +15,7 @@ import type {
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionAdoptInput,
+  ProviderSessionRetirement,
   ProviderSessionSourceAffinity,
   ProviderSessionStartInput,
   ProviderTurnStartResult,
@@ -77,6 +78,32 @@ export class AttachmentInputUnsupportedError extends SendTurnRefusedError {
   constructor(message: string) {
     super(message);
     this.name = 'AttachmentInputUnsupportedError';
+  }
+}
+
+/**
+ * An adapter's `startSession` refused the session DEFINITIVELY: the engine
+ * answered with a refusal and the adapter has torn down what it spawned, so
+ * nothing of this start is left running. The expected source is a requested
+ * model the engine's own fresh session options did not offer
+ * ({@link MODEL_NOT_ADVERTISED_CODE}). Throwing it is also a promise to publish
+ * the cause and then `session.exited` for a `session.started` already sent (the
+ * ACP adapter does): the service binds the thread to the adapter on the first
+ * event, and only that exit ends the session it announced.
+ *
+ * Throw ONLY when that is true. The start boundary otherwise records every
+ * adapter failure as an indeterminate start and keeps the thread fenced until
+ * it is inspected, which is right for a start that MAY have created a session.
+ * This type is how the adapter, the only layer that knows, tells it the start
+ * is settled; the dispatch receipt is then `rejected` and `code` is forwarded.
+ */
+export class SessionStartRefusedError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+  ) {
+    super(message);
+    this.name = 'SessionStartRefusedError';
   }
 }
 
@@ -330,11 +357,19 @@ export interface ProviderAdapterShape {
      */
     context?: {
       clientOrigin?: ClientOrigin;
-      answers?: HarnessQuestionAnswers;
+      /**
+       * #3390: accepted content for a form input request (a harness question
+       * or a tool server's elicitation), already validated against the
+       * stored request. An adapter that holds its own copy of the form
+       * checks it again before it reaches the engine.
+       */
+      inputContent?: InputRequestContent;
       expectedRequestEventId?: string;
     },
   ): Promise<void>;
   stopSession(threadId: string): Promise<void>;
+  /** Native ownership may move only after this reports confirmed retirement. */
+  retireSession?(threadId: string): Promise<ProviderSessionRetirement>;
   listSessions(): Promise<ProviderSession[]>;
   /**
    * Whether THIS PROCESS currently holds a live engine binding for the

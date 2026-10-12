@@ -48,7 +48,9 @@ const loadChatSettingsPanel = () =>
     default: m.ChatSettingsPanel,
   }));
 const loadNewChatModal = () =>
-  import('../modals/NewChatModal').then((m) => ({ default: m.NewChatModal }));
+  import('./DockStartComposer').then((m) => ({
+    default: m.DockStartComposer,
+  }));
 const loadSessionPickerModal = () =>
   import('../modals/SessionPickerModal').then((m) => ({
     default: m.SessionPickerModal,
@@ -68,6 +70,16 @@ interface ChatDockModalStackProps {
   newChatRequestEpoch?: number;
   newChatStartWithDefault?: boolean;
   newChatInitialPrompt?: string;
+  newChatSelection?: ComponentProps<typeof NewChatModal>['startSelection'];
+  newChatHandoff?: ComponentProps<typeof NewChatModal>['handoff'];
+  newChatSelectionInvalid?: boolean;
+  onNewChatDraftChange?: (text: string) => void;
+  projectBindable?: boolean;
+  projectsLoaded?: boolean;
+  projectAccentBySlug?: ReadonlyMap<string, string>;
+  /** The sidebar's project icons, for the start composer's project chip. */
+  projectIconBySlug: ReadonlyMap<string, string>;
+  recentChats?: ComponentProps<typeof NewChatModal>['recentChats'];
   showChatSettings: boolean;
   showSessionPicker: boolean;
   chatFontSize: number;
@@ -88,8 +100,13 @@ interface ChatDockModalStackProps {
     providerId?: string,
     providerType?: string,
     experienceDraft?: SkillExperienceDraft,
+    sendInitialMessage?: boolean,
+    executionAgentId?: string,
+    expectedDefinitionFingerprint?: string,
+    executionOnCurrentStation?: boolean,
   ) => void;
   onCloseNewChat: () => void;
+  onNewTaskStarted?: () => void;
   onCloseSettings: () => void;
   onCloseSessionPicker: () => void;
   onSessionPickerSelect: (
@@ -99,7 +116,7 @@ interface ChatDockModalStackProps {
   onShowReasoningChange: (show: boolean) => void;
   onShowToolDetailsChange: (show: boolean) => void;
   onAutoHideChange: (v: boolean) => void;
-  /** #3310: the settings panel's "Summarize session" entry point. */
+  /** #3310: the settings panel's "Summarize chat" entry point. */
   sessionSummary?: {
     isGenerating: boolean;
     onGenerate: () => void;
@@ -123,6 +140,15 @@ export function ChatDockModalStack({
   newChatRequestEpoch,
   newChatStartWithDefault,
   newChatInitialPrompt,
+  newChatSelection,
+  newChatHandoff,
+  newChatSelectionInvalid,
+  onNewChatDraftChange,
+  projectBindable,
+  projectsLoaded,
+  projectAccentBySlug,
+  projectIconBySlug,
+  recentChats,
   showChatSettings,
   showSessionPicker,
   chatFontSize,
@@ -132,6 +158,7 @@ export function ChatDockModalStack({
   autoHideEnabled,
   onSelectNewChat,
   onCloseNewChat,
+  onNewTaskStarted,
   onCloseSettings,
   onCloseSessionPicker,
   onSessionPickerSelect,
@@ -168,10 +195,21 @@ export function ChatDockModalStack({
             requestAuthority,
             startWithDefault: newChatStartWithDefault,
             initialPrompt: newChatInitialPrompt,
+            startSelection: forkMode ? undefined : newChatSelection,
+            handoff: forkMode ? undefined : newChatHandoff,
+            selectionInvalid: forkMode ? false : newChatSelectionInvalid,
+            onDraftChange: onNewChatDraftChange,
+            projectBindable,
+            projectsLoaded,
+            projectAccentBySlug,
+            projectIconBySlug,
+            startSurface: true,
+            recentChats,
             activeProjectSlug:
               newChatProjectOverride?.slug ?? activeProjectSlug,
             onSelect: handleNewChatSelect,
             onClose: onCloseNewChat,
+            onTaskStarted: onNewTaskStarted,
             draftContext: forkMode
               ? undefined
               : composerDraftContext(newChatProjectOverride?.composerDraft),

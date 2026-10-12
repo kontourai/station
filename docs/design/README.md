@@ -32,6 +32,7 @@ category.
 - [ai-ui-bridge-expansion.md](ai-ui-bridge-expansion.md) — AI↔UI bridge expansion — scoping
 - [answer-share-permalinks.md](answer-share-permalinks.md) — Scoped answer share permalinks (station#1423)
 - [approval-posture-server-ordered.md](approval-posture-server-ordered.md) — Design: server-ordered approval posture
+- [automations.md](automations.md) — Station Automations
 - [browser-preview-host-spike.md](browser-preview-host-spike.md) — Browser-preview host spike (Station #1376)
 - [browser-preview-pane-mvp.md](browser-preview-pane-mvp.md) — Browser Preview Pane MVP (Station #1375)
 - [channel-home-authority.md](channel-home-authority.md) — Channel home authority and planned transfer
@@ -65,6 +66,7 @@ category.
 - [native-relay-enrollment.md](native-relay-enrollment.md) — Native relay enrollment
 - [notification-delivery.md](notification-delivery.md) — Notification delivery on native shells
 - [offline-outbound-queue.md](offline-outbound-queue.md) — Offline outbound queue scope
+- [operator-device-access.md](operator-device-access.md) — Operator device access from a paired browser (#2894)
 - [orchestration-decomposition-map.md](orchestration-decomposition-map.md) — The Seam Map — `OrchestrationService`
 - [pane-host-contract.md](pane-host-contract.md) — The pane-host contract: one interface, two transports
 - [pane-or-shell.md](pane-or-shell.md) — Pane or shell: the criterion
@@ -79,6 +81,7 @@ category.
 - [project-membership.md](project-membership.md) — Project membership and device enrollment
 - [project-task-room-history.md](project-task-room-history.md) — Project/Task room history
 - [registry-trust-policy.md](registry-trust-policy.md) — Applied registry trust policy
+- [remote-execution-preparation.md](remote-execution-preparation.md) — Remote execution preparation
 - [revision-bound-evidence.md](revision-bound-evidence.md) — Design: revision-bound evidence
 - [session-tape-replay.md](session-tape-replay.md) — Session tape replay
 - [settings-architecture.md](settings-architecture.md) — Settings Architecture: scope-first settings for Station

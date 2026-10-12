@@ -1,0 +1,11 @@
+{
+  "revision": "e696a023cb8eac902dcd45cffb81acf84e708f95",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Carried forward after merging origin/main into #3094, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Carried forward after merging origin/main into #3094, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Carried forward after merging origin/main into #3094, whose ledger conflicted: this page's review against the PR's delta was recorded on the branch before the merge; the merge changed no reviewed input beyond the ledger itself.","inputs":["packages/sdk/AGENTS.md"]}
+  ]
+}

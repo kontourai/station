@@ -1,0 +1,7 @@
+{
+  "revision": "71c69cadad789baff389812ff52e9efae397c316",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Re-record after the digest bound fix: orchestration.ts gained the machine-visible .max(64) on the task-room context digest (the regex already fixed the length; only the seam walker visibility changed); the documented seam-bounds claims are unchanged and now enforced for the new field.","inputs":["docs/architecture.md"]}
+  ]
+}

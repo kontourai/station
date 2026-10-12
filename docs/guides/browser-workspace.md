@@ -89,13 +89,39 @@ The proxy checks current target registrations on new connection decisions.
 ## Agent authority and human input
 
 The built-in [station-browser tools](../../src-server/tools/station-browser-mcp-server.ts)
-provide status, open, navigate, resize, snapshot, click, type, press, scroll,
-wait and evaluation operations through
+provide status, open, close, navigate, resize, snapshot, click, type, press,
+scroll, wait and evaluation operations through
 [browser-agent routes](../../src-server/routes/browser-agent.ts). They require
 a verified, bound calling Session, its recorded owner and Project, and current
 operator/admin standing. Bearer-exposed or delegated-custody credentials do not
 satisfy that caller contract. A tool-supplied Session or Project ID cannot
 create authority.
+
+Only engines Station runs in-process get `station-browser`: Claude Agents,
+unless the Agent switched browser tools off. Codex reaches Station over a
+URL-token connection (`bearer-exposed`: the token sits in the spawn argv any
+same-user process can read) and agents connected over ACP with an HTTP-header token
+(`delegated-custody`: the connected app holds it). Neither credential can be attributed
+to one Session, so those engines are not offered the tools and a browser call
+from them is refused `caller-not-bound`. This is deliberate; it is not a gap in
+MCP support. Offering them would need a new bound channel, not a wiring change.
+
+`browser_status` lists the caller's sessions newest-created first, at most 20
+per page (`limit` 1–20; a larger or fractional limit or a malformed `cursor`
+is refused `invalid-request`). Each page's `nextCursor` resumes after the last
+session it listed, so a session opened, closed or driven between calls does
+not make an earlier one repeat or go missing; it is `null` on the last page. A
+cursor is an unauthenticated position marker, not a capability: any
+well-formed one is accepted and only sets where listing resumes, while what a
+page may contain is still limited to the caller's own Project profile.
+`browser_close` closes a session through the same registry effect as
+the pane's **Close session**, recorded with the Agent as actor, and only when an
+Agent opened the session, it is bound to the caller's own conversation, and no
+person or other Agent Session holds control. Otherwise it is refused
+`opened-by-person`, `other-thread`, `human-controlling` or `held-by-other`; a
+session outside the caller's Project profile is `session-not-found`. The
+opened-by-Agent check reads the session's `created` history entry, so a
+session whose history no longer keeps it is refused rather than assumed.
 
 [BrowserAutomation](../../src-server/services/browser/browser-automation.ts)
 selects only the caller's authorized Project profile. Its control operations
@@ -151,9 +177,10 @@ decides each JavaScript dialog when it opens:
 - A dialog that opens while an Agent holds control, or nobody does, is
   answered automatically as before (dismissed; `beforeunload` accepted), and
   the pane says so. `beforeunload` is never held.
-- While a person's dialog is held, every Browser tool action is refused
-  `dialog-open` and `browser_status` reports `dialogWaitingForPerson`. Agents
-  cannot answer it.
+- While a person's dialog is held, every Browser tool action on the page is
+  refused `dialog-open` and `browser_status` reports `dialogWaitingForPerson`.
+  Agents cannot answer it. `browser_close` is refused `human-controlling`
+  then, because the dialog is held only while the person holds control.
 
 Each live session captures its page's console in memory for that browser
 generation ([BrowserConsoleLog](../../src-server/services/browser/browser-console-log.ts)):
@@ -185,6 +212,17 @@ Viewport, Sessions, Agent access, Local servers and, last, Close session. On
 a coarse pointer or a window up to 768px wide every control is at least 44px
 and the row does not wrap; the path gives way first, then the host. The 390px
 check below found no control under 44px.
+
+On narrow screens, editing the address hides its navigation buttons until
+editing ends, leaving room for the URL. Back and forward occupy space on a fine
+pointer only while the toolbar is hovered or focused. Touch takeover hints say
+**Tap**. The console scrolls within its share of the pane; it does not force the
+live page beneath the dock. On the standalone Browser route, the page frame
+passes its available height through to both views. The actions menu fits between
+the current toolbar/banner stack and the dock, with its own scroll when needed.
+Very short panes scroll internally so the console retains readable rows and the
+page remains reachable. Escape cancels an unsubmitted address and restores the
+committed URL; leaving the field restores navigation while retaining its draft.
 
 ## State, evidence and remaining limits
 

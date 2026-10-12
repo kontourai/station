@@ -214,6 +214,7 @@ export function agentActivityRowFromSummary(
 ): AgentActivitySessionRow {
   return {
     sessionId: summary.threadId,
+    controlMode: summary.controlMode,
     ...(summary.displayTitle ? { title: summary.displayTitle } : {}),
     ...(summary.projectSlug
       ? {

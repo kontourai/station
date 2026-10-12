@@ -1,3 +1,4 @@
+import type { HostResourceSnapshot } from '@kontourai/station-contracts/system-status';
 import { _getApiBase } from '../api';
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch } from '../client/http';
@@ -14,6 +15,8 @@ export type ResourcePostureKind =
   | 'unavailable';
 
 export interface ResourcePostureVM {
+  /** Absent on older hosts. Resource samples have their own observation time. */
+  resources?: HostResourceSnapshot;
   kind: ResourcePostureKind;
   /** Latest raw sample; absent only when observation is unavailable. */
   busyPercent?: number;

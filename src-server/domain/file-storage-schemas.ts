@@ -10,6 +10,7 @@ import {
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import { isSafeToolServerId } from '@kontourai/station-contracts/tool';
 import { z } from 'zod';
 import type { ConversationRecord, DocumentRecord } from './storage-adapter.js';
 
@@ -59,12 +60,23 @@ const projectSchema = z
       .optional(),
     defaultProviderId: optionalString,
     defaultModel: optionalString,
+    defaultAgent: z.string().regex(CLEAN_ID_PATTERN).optional(),
     defaultEmbeddingProviderId: optionalString,
     defaultEmbeddingModel: optionalString,
     similarityThreshold: z.number().finite().optional(),
     topK: z.number().int().nonnegative().optional(),
     agents: z.array(z.string().regex(CLEAN_ID_PATTERN)).optional(),
     knowledgeNamespaces: z.array(knowledgeNamespaceSchema).optional(),
+    toolDefaults: z
+      .object({
+        mcpServers: z
+          .array(z.string().min(1).max(128).refine(isSafeToolServerId))
+          .max(32)
+          .optional(),
+        knowledge: z.boolean().optional(),
+      })
+      .strict()
+      .optional(),
     position: z.number().int().nonnegative().optional(),
     createdAt: timestamp,
     updatedAt: timestamp,

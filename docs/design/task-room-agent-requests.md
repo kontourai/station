@@ -59,8 +59,11 @@ the checks passed all 11 mounted principal-suite tests. These are local
 implementation receipts, not shipped, browser or actual-provider proof.
 
 This publishes lifecycle facts and agent presence, not an accepted result. Agent
-document edits still use the lead Task/session association. Explicit shared brief context is implemented locally as described below;
-artifact/result links, versioned previews and feedback remain unfinished. The
+document edits still use the lead Task/session association. Explicit shared brief context is implemented locally as described below. Personal
+output previews and human review statements are implemented in the
+[Task-room history contract](project-task-room-history.md); these local slices do
+not complete agent result attribution, invited/public review or the accepted-work
+journey. The
 existing private room agent principal includes its requesting owner identity;
 this history is not a public publication projection.
 
@@ -92,6 +95,13 @@ The public request/record protocol remains v1. The private journal promotes to
 `station.task-room-work-store/v2` when the first snapshot is saved; newer servers
 continue reading context-free v1 journals. Older servers fail closed on the new
 private format, so downgrading after context use needs an explicit migration.
+Requests with explicit engine, model, options or definition-fingerprint intent
+promote the private journal to `station.task-room-work-store/v3`. The public
+protocol remains v1. These fields join operation identity: a changed binding,
+model or canonical options digest conflicts rather than reusing an old result.
+Options are represented by their digest, not persisted raw values. New servers
+read prior v1/v2 journals; old readers refuse v3 rather than dropping its intent.
+
 No text is silently truncated to fit; the existing four-MiB/256-request journal
 bound remains. Context is not provider authority or an accepted result.
 

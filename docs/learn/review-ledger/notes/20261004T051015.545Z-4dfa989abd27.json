@@ -1,0 +1,9 @@
+{
+  "revision": "1f1968ffd03c6561ab83ba0a2d594cae9af35b55",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"#2961 resource review: Read both instruction files and the process-pool manifest. service-run.test.ts now launches real listener children for fencing and refusal cleanup and is explicitly placed in the existing bounded process-heavy group. No worker cap, host-exclusive classification, runner deadline or policy standard was weakened. EXECUTED: generic resource-manifest suite 23 passed; verification policy gate passed, including 33 fixture-guard tests.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/CLAUDE.md","note":"#2961 resource review: Read both instruction files and the process-pool manifest. service-run.test.ts now launches real listener children for fencing and refusal cleanup and is explicitly placed in the existing bounded process-heavy group. No worker cap, host-exclusive classification, runner deadline or policy standard was weakened. EXECUTED: generic resource-manifest suite 23 passed; verification policy gate passed, including 33 fixture-guard tests.","inputs":[]}
+  ]
+}

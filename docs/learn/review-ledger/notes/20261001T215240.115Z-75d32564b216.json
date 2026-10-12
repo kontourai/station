@@ -1,0 +1,7 @@
+{
+  "revision": "5c4715178ae1172f03cd2d819c40985302e56ee7",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed scheduler selected-agent, authority, epoch and catalog freshness through the real dialog host/form/store caller. Edits and prefilled/manual agents retain their identity; missing or externally bound agents never acquire another agent's repair. Reconciling catalogs block automatic return and submission, including a final-refetch race; current reads restore the retained fields. Two freshness cases failed before repair; 34 caller/form checks and UI typecheck pass. Same-page page requests now reveal their output while explicit conversation links and rejected guards remain intact. Independent review found no remaining blocker before the additional freshness finding; final native visual and hosted receipt remain separate.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

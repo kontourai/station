@@ -866,6 +866,12 @@ export function useChatInput({
     ],
   );
 
+  const openModelForExecution = useCallback(() => {
+    if (!sessionId) return;
+    closeCommand();
+    openModel();
+  }, [sessionId, closeCommand, openModel]);
+
   const handleModelOpen = useCallback(() => {
     if (!sessionId) return;
     if (!canModelSelect) {
@@ -920,14 +926,20 @@ export function useChatInput({
       const update = approvalPickUpdate(current, mode);
       if (!update) return;
       updateChat(sessionId, update);
-      addEphemeralMessage(sessionId, {
-        role: 'system',
-        content: `Approval mode set to **${approvalModeLabel(mode)}**; it applies from the next turn.`,
-      });
+      const notePickSet = () =>
+        addEphemeralMessage(sessionId, {
+          role: 'system',
+          content: `Approval mode set to **${approvalModeLabel(mode)}**; it applies from the next turn.`,
+        });
       const threadId = current?.orchestrationSessionStarted
         ? (current.currentSessionId ?? sessionId)
         : undefined;
-      if (!threadId) return;
+      if (!threadId) {
+        notePickSet();
+        return;
+      }
+      // With a session the server decides now, so the note waits for it: a
+      // refused or superseded pick must not first read as set.
       void setOrchestrationApprovalMode({
         threadId,
         approvalMode: mode,
@@ -940,7 +952,8 @@ export function useChatInput({
           const latest = activeChatsStore.getSnapshot()[sessionId];
           if (!latest) return;
           updateChat(sessionId, approvalPickReceived(latest, mode, result));
-          if (!result.recorded) {
+          if (result.recorded) notePickSet();
+          else {
             addEphemeralMessage(sessionId, {
               role: 'system',
               content: supersededPickNote(result.approvalMode),
@@ -961,9 +974,11 @@ export function useChatInput({
                 'pick-not-applied',
               ),
             });
+            return;
           }
           // Otherwise still queued: the next send carries it, and the server
           // records it on receipt.
+          notePickSet();
         });
     },
     [apiBase, sessionId, updateChat, addEphemeralMessage],
@@ -1167,6 +1182,7 @@ export function useChatInput({
       handleApprovalModeChange,
       handleAcpSessionModeChange,
       handleModelOpen,
+      openModelForExecution,
       handleModelClose: closeModel,
       handleCommandSelect,
       handleCommandClose: closeCommand,
@@ -1213,6 +1229,7 @@ export function useChatInput({
       handleApprovalModeChange,
       handleAcpSessionModeChange,
       handleModelOpen,
+      openModelForExecution,
       closeModel,
       handleCommandSelect,
       closeCommand,

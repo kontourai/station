@@ -1,0 +1,7 @@
+{
+  "revision": "5de4e826780e99e45500d6c8d4344a166746556c",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Re-read after #3284 changed MCP elicitation routing in packages/shared/src/mcp-connection.ts: the guarded client now registers every request in flight on a connection, and elicitation/create is routed only when exactly one request is in flight and it carries an open withElicitationRoute route (otherwise refused). Searched this document for elicitation, routing, in-flight and concurrency claims about MCP connections; it makes none that this changes. No prose change.","inputs":["docs/architecture.md","packages/shared/src/mcp-connection.ts"]}
+  ]
+}

@@ -25,20 +25,35 @@ export type MobileActivityGroupId =
   | 'snoozed'
   | 'earlier';
 
+/**
+ * THE snooze presets — one set for the dock, the phone picker and Home
+ * (design round 2026-10, V49: the dock said "30 min / 3 hours / Until 9 AM"
+ * while Home said "In 1 hour / This evening / Tomorrow 9am / Next week Mon
+ * 9am"). Two durations and two mornings, in local time.
+ */
 export const SNOOZE_OPTIONS = [
-  { label: '30 min', ms: 30 * 60_000 },
+  { label: '1 hour', ms: 3_600_000 },
   { label: '3 hours', ms: 3 * 3_600_000 },
-  { label: 'Until 9 AM', ms: null },
+  { label: 'Tomorrow 9am', ms: null, morning: 'tomorrow' },
+  { label: 'Next Monday 9am', ms: null, morning: 'next-monday' },
 ] as const;
 
 export type SnoozeOption = (typeof SNOOZE_OPTIONS)[number];
 
-/** Resolve a preset against an injected clock; null means the next local 9am. */
+const MORNING_HOUR = 9;
+
+/** Resolve a preset against an injected clock, in local time. */
 export function snoozeWakeAt(option: SnoozeOption, now: number): number {
   if (option.ms !== null) return now + option.ms;
   const wake = new Date(now);
-  wake.setHours(9, 0, 0, 0);
-  if (wake.getTime() <= now) wake.setDate(wake.getDate() + 1);
+  if (option.morning === 'tomorrow') {
+    wake.setDate(wake.getDate() + 1);
+  } else {
+    // "Next Monday" always lands in a later week: on a Monday it skips today.
+    const day = wake.getDay(); // 0 = Sunday .. 6 = Saturday
+    wake.setDate(wake.getDate() + ((8 - day) % 7 || 7));
+  }
+  wake.setHours(MORNING_HOUR, 0, 0, 0);
   return wake.getTime();
 }
 

@@ -1,0 +1,7 @@
+{
+  "revision": "2fb58e17deb6d5b85ed927005168c0493939c33f",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed against the manifest change: only the rationale of an extended-bucket spec changed; the PR browser smoke contract and its journeys are untouched.","inputs":[".github/workflows/ci.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts","scripts/fast-checks-shard.mjs","scripts/lib/fast-checks-shards.mjs","tests/connect-modal.spec.ts","tests/cross-runtime-chat-switching.spec.ts","tests/csp-shell.spec.ts","tests/e2e-manifest.mjs","tests/orchestration-chat-flow.spec.ts","tests/pr-smoke-live-chat-send.spec.ts","tests/ui-crud-smoke.spec.ts"]}
+  ]
+}

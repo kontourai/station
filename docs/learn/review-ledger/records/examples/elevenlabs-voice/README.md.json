@@ -9,22 +9,20 @@
 
   "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
 
-  "document": {"digest":"465b2b8b45896c461975da2e613d17ae8d364ca1f356e5ebaa45d1ff51b7e33a","revision":"d0ca944c58c8dd4de5a17563eb97d06dbdbe3512"},
-
   "sources": [
-    {"path":"examples/elevenlabs-voice/plugin.json","digest":"01649508a08c5fd059bd97116789de3e376b28b6b0b8926733fe40ee9330fb21","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
+    "examples/elevenlabs-voice/plugin.json",
 
-    {"path":"examples/elevenlabs-voice/plugin.mjs","digest":"167f505744860406e201fc0bc33e43799bbe90e3c3d0c01f3902b212e549447a","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
+    "examples/elevenlabs-voice/plugin.mjs",
 
-    {"path":"examples/elevenlabs-voice/src/ElevenLabsSTTProvider.ts","digest":"26591e5f2081224cedf341e97e09228d8c5431b70f819af677f9273277e0ce91","revision":"d0ca944c58c8dd4de5a17563eb97d06dbdbe3512"},
+    "examples/elevenlabs-voice/src/ElevenLabsSTTProvider.ts",
 
-    {"path":"examples/elevenlabs-voice/src/ElevenLabsTTSProvider.ts","digest":"99e216e28924d8cd08659d86c54013a56c1d1a62cd01c86300e6d513e39b292f","revision":"d0ca944c58c8dd4de5a17563eb97d06dbdbe3512"},
+    "examples/elevenlabs-voice/src/ElevenLabsTTSProvider.ts",
 
-    {"path":"examples/elevenlabs-voice/src/index.ts","digest":"d16e526e39c872e1abb3b07c1fe16be89c0fd210d97a9042f5fe06160bb31dc2","revision":"d0ca944c58c8dd4de5a17563eb97d06dbdbe3512"},
+    "examples/elevenlabs-voice/src/index.ts",
 
-    {"path":"scripts/voice-realtime-live-smoke.mjs","digest":"522da05c91bbf433c890a7924670a9ed537b258835cc2fcaecdfad35b2428e47","revision":"6676a48eefb1138e35b49af59b100d086c9fff01"},
+    "scripts/voice-realtime-live-smoke.mjs",
 
-    {"path":"src-ui/src/core/PluginRegistry.ts","digest":"69836e5e1dd4762f58da6f2495e96f0cab41d586e65327fc4c1dc08d80acc8f9","revision":"1373230550904315438e5bd2869a3c41a9e419ca"}
+    "src-ui/src/core/PluginRegistry.ts"
   ],
 
   "checks": [

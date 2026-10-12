@@ -1,0 +1,7 @@
+{
+  "revision": "de578f06e536525b707d11d4fa59b447effb23ca",
+
+  "notes": [
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed release compatibility for longer/no-expiry invitations: older native link and connector validators enforce five minutes, so deployment updates broker/operator/receiver together or selects 5m for older clients. Independent identity/enrollment/account/proof windows remain unchanged. Connect minor changeset declares broadened decoding, without a wire-shape or authority change.","inputs":["docs/guides/self-hosted-broker.md"]}
+  ]
+}

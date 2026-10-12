@@ -1,0 +1,9 @@
+{
+  "revision": "267d3483b61817e66cbf3d71f5b165024e05aa54",
+
+  "notes": [
+    {"path":"docs/design/native-relay-enrollment.md","note":"Reviewed the complete latest NativeRelayEnrollmentWizard input delta since its recorded revision: operator invitation is now a password input with completion/capitalization/correction/spellcheck disabled. Token bytes and production registration adapter remain unchanged. Existing source contract and evidence limits remain accurate. Secure routing invitation AX masking was separately observed on simulator source65f0; this is not enrollment, account membership, physical Nightly or public application qualification.","inputs":["docs/design/native-relay-enrollment.md"]},
+
+    {"path":"packages/connect/README.md","note":"Reviewed the complete latest NativeRelayEnrollmentWizard input delta since its recorded revision: operator invitation is now a password input with completion/capitalization/correction/spellcheck disabled. Token bytes and production registration adapter remain unchanged. Existing source contract and evidence limits remain accurate. Secure routing invitation AX masking was separately observed on simulator source65f0; this is not enrollment, account membership, physical Nightly or public application qualification.","inputs":["packages/connect/README.md"]}
+  ]
+}

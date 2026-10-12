@@ -1,0 +1,7 @@
+{
+  "revision": "4f9492dc2129a5671d62119a81038beb2507213c",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"Reviewed 4f9492dc21 layout and SDK refusal delta. Profile stats reuse the existing 700px breakpoint; operator metric grid uses auto-fit without a new page-local breakpoint. Ranked activity, token/cost disclosure and source limitations remain as documented. Analytics fetchers now use canonical envelopeError and retain HTTP status/code/details; focused SDK/operator checks passed7 tests and static CSS/state/error/glyph gates passed. Independent delta source review found no issues. No new provider billing or native-device proof.","inputs":["docs/guides/monitoring.md","src-ui/src/pages/ProfilePage.css"]}
+  ]
+}

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 // Counted-baseline gate for #2773 (unguarded code-split surfaces).
 //
 // A `lazy()` import that rejects is cached by React FOREVER — the rejected
@@ -30,8 +31,8 @@
 // files that held a bare mount when the gate was introduced, and the gate
 // fails if any of them falls out of the scanned list.
 
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const SCAN_PATHSPECS = ['src-ui/src'];
@@ -53,9 +54,13 @@ const BASELINE_PATH = 'scripts/lazy-boundary-baseline.json';
 const BARE_SUSPENSE = /<Suspense\b[^>]*\bfallback\s*=\s*\{\s*null\s*\}[^>]*>/g;
 
 export function listScannedFiles() {
-  const output = execFileSync('git', ['ls-files', '--', ...SCAN_PATHSPECS], {
-    encoding: 'utf8',
-  });
+  const output = execFileSyncBounded(
+    'git',
+    ['ls-files', '--', ...SCAN_PATHSPECS],
+    {
+      encoding: 'utf8',
+    },
+  );
   return output
     .split('\n')
     .filter((line) => line.endsWith('.tsx'))

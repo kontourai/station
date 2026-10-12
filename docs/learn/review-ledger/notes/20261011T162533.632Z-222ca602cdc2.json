@@ -1,0 +1,7 @@
+{
+  "revision": "4d7dd9b704305e729ae5da64e12ce8223c98fc04",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"#3552: the continuation control is now the conversation's message box (no Continue in Station button); reworded the two disabled-with-reason claims. Capability gating (externalSessionContinuationAvailability: engine, source affinity, Codex completed boundary) unchanged and still enforced by the adoption owner.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

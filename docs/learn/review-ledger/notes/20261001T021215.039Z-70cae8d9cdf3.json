@@ -1,0 +1,7 @@
+{
+  "revision": "ce3f4c795551e3838afb14389cd5a0fd7f260649",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed retained root restore, reconnect and Home journeys with the compact Home heading. Only visible-heading locators changed; recovery/navigation/authority assertions and fixture refusal remain intact. Browser first-run and primary Home/model gates pass.","inputs":["docs/guides/e2e-coverage-matrix.md"]}
+  ]
+}

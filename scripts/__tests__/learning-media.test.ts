@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { buildLearningGuide } from '../build-learning-guide.mjs';
+import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
 import {
   freshnessRequirement,
   resolveDocumentationFreshness,
@@ -52,28 +53,48 @@ const tracked = new Set([capture.path, 'guide.md', 'code.ts']);
 const read = async (path: string) => (path === capture.path ? image : source);
 const makeTempDir = trackTempDirs();
 
-it('renders only admitted local captures inline, with provenance and no external image fetch', async () => {
-  const media = await compileLearningMedia(
-    { version: 1, captures: [capture] },
-    tracked,
-    read,
-  );
-  const rendered = renderLearningDocument(
-    '![Task](docs/learn/media/task.png)\n\n![Remote](https://example.invalid/remote.png)',
-    'guide.md',
-    new Set(['guide.md']),
-    'a'.repeat(40),
-    tracked,
-    media,
-  );
-  expect(rendered.html).toContain('<img');
-  expect(rendered.html).toContain(`src="${media.get(capture.path).url}"`);
-  expect(rendered.html).toContain(capture.evidence);
-  expect(rendered.html).not.toContain('src="https://');
-  expect(rendered.links.map((link) => link.target)).toContain(
-    'docs/learn/media/task.png',
-  );
-});
+it.each(['legacy', 'path-only'])(
+  'renders admitted %s captures inline with provenance and no external image fetch',
+  async (layout) => {
+    const media = await compileLearningMedia(
+      {
+        version: 1,
+        captures: [
+          layout === 'legacy'
+            ? capture
+            : {
+                ...capture,
+                historyChanges: [],
+                reviewBaseline: 'b'.repeat(40),
+                sources: [{ path: 'code.ts' }],
+              },
+        ],
+      },
+      tracked,
+      read,
+    );
+    const rendered = renderLearningDocument(
+      '![Task](docs/learn/media/task.png)\n\n![Remote](https://example.invalid/remote.png)',
+      'guide.md',
+      new Set(['guide.md']),
+      'a'.repeat(40),
+      tracked,
+      media,
+    );
+    expect(rendered.html).toContain('<img');
+    expect(rendered.html).toContain(`src="${media.get(capture.path).url}"`);
+    expect(rendered.html).toContain(capture.evidence);
+    expect(rendered.html).toContain(
+      layout === 'legacy'
+        ? 'sources reviewed at aaaaaaaaaaaa'
+        : 'source reviews are recorded in append-only notes. Review history since bbbbbbbbbbbb',
+    );
+    expect(rendered.html).not.toContain('src="https://');
+    expect(rendered.links.map((link) => link.target)).toContain(
+      'docs/learn/media/task.png',
+    );
+  },
+);
 it('emits local video controls without autoplay and preserves explanatory text', async () => {
   const video = {
     ...capture,
@@ -306,7 +327,7 @@ it('the real builder publishes immutable media bytes and its strict entry detect
 it('checks the actual capture manifest and recorded source bytes in the required documentation lane', async () => {
   const reader = createLearningSourceReader(process.cwd());
   const files = new Set(
-    execFileSync('git', ['ls-files', '-z'], {
+    execFileSyncBounded('git', ['ls-files', '-z'], {
       encoding: 'utf8',
       env: sanitizedGitEnvironment(),
       windowsHide: true,

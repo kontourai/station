@@ -1,0 +1,7 @@
+{
+  "revision": "82fea394a09cdf62071b073d09aa6cb08ebbca48",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Reviewed the ChatMessageList delta: only the scroll control portal destination changes; UIBlockActionsContext and form dispatch remain intact. Historical form/bridge claims remain accurate. No live provider proof added.","inputs":["docs/design/ai-ui-bridge-expansion.md"]}
+  ]
+}

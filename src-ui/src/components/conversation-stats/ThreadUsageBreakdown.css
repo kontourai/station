@@ -1,0 +1,97 @@
+/* A conversation's usage roll-up and its breakdown, inside the stats dialog. */
+
+.thread-usage-breakdown {
+  margin-bottom: var(--k-space-4);
+  padding: var(--k-space-3);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
+}
+
+.thread-usage-breakdown__title {
+  margin: 0 0 var(--k-space-1);
+  font-size: var(--k-text-sm);
+  font-weight: 600;
+  color: var(--k-text-muted);
+}
+
+.thread-usage-breakdown__total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--k-space-1) var(--k-space-3);
+  font-weight: 600;
+}
+
+.thread-usage-breakdown__partial {
+  padding: 0 var(--k-space-2);
+  border: var(--k-border-thin) solid var(--k-caution);
+  border-radius: var(--k-radius-sm);
+  color: var(--k-caution);
+  font-size: var(--k-text-xs);
+  font-weight: 600;
+}
+
+.thread-usage-breakdown__reasons {
+  margin: var(--k-space-2) 0 0;
+  padding-inline-start: var(--k-space-4);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  line-height: var(--k-leading-normal);
+}
+
+.thread-usage-breakdown__toggle {
+  margin-top: var(--k-space-2);
+}
+
+.thread-usage-breakdown__rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  margin: var(--k-space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.thread-usage-breakdown__row {
+  padding-block: var(--k-space-1);
+  padding-inline-start: calc(var(--thread-usage-level, 0) * var(--k-space-4));
+  border-top: var(--k-border-thin) solid var(--k-line);
+}
+
+.thread-usage-breakdown__row:first-child {
+  border-top: 0;
+}
+
+.thread-usage-breakdown__row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--k-space-2);
+}
+
+.thread-usage-breakdown__label {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.thread-usage-breakdown__kind {
+  color: var(--k-text-faint);
+  font-size: var(--k-text-xs);
+}
+
+.thread-usage-breakdown__figures {
+  font-variant-numeric: tabular-nums;
+}
+
+.thread-usage-breakdown__relation,
+.thread-usage-breakdown__note {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  line-height: var(--k-leading-normal);
+}
+
+.thread-usage-breakdown__relation[data-partial="true"] {
+  color: var(--k-caution);
+}

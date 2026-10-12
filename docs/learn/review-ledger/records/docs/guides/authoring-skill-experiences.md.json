@@ -9,18 +9,16 @@
 
   "limits": "Local author schema/source/transcript assertions only. Curated model evaluations, fresh published external consumer, installed browser/native/mobile, rich interface and release qualification remain NOT_VERIFIED.",
 
-  "document": {"digest":"0abf7f15713bfe40a704ed2afd10d09d94d4b436a7a71d0c7f858962c8f86e06","revision":"d4944ee82b611c537951425d63539e8d5e597a5d"},
-
   "sources": [
-    {"path":"packages/shared/src/skill-experience-workflow.ts","digest":"159ea0bea45a3af7093a4948071104fb422dd708c12e5f192dcc20207f8254c0","revision":"d4944ee82b611c537951425d63539e8d5e597a5d"},
+    "packages/shared/src/skill-experience-workflow.ts",
 
-    {"path":"packages/shared/src/__tests__/skill-experience-workflow.test.ts","digest":"eff6fd27aae5352931550dbefc3365fe871f61113da74609a721d19fc73be1ec","revision":"d4944ee82b611c537951425d63539e8d5e597a5d"},
+    "packages/shared/src/__tests__/skill-experience-workflow.test.ts",
 
-    {"path":"packages/cli/src/commands/experience.ts","digest":"3e123ebf5382d862e14457170f62ee8cbea8d0a6c1bbd52f275491fe0a68cd86","revision":"d4944ee82b611c537951425d63539e8d5e597a5d"},
+    "packages/cli/src/commands/experience.ts",
 
-    {"path":"packages/cli/src/cli.ts","digest":"041c54fff5c3dc2848cf234cf13e4ea52e5069548c273755ee77b53955be1f27","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"},
+    "packages/cli/src/cli.ts",
 
-    {"path":"packages/cli/src/help.ts","digest":"43ae7ddeaa469ae6177b797f45fc3efa9e4b092827a467ee5b0febf82c900d8d","revision":"036d5d3d2289fc22e325a9ded733e8de561e9b30"}
+    "packages/cli/src/help.ts"
   ],
 
   "checks": [

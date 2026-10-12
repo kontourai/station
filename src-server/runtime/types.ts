@@ -149,11 +149,35 @@ export interface IStreamResult {
   finishReason?: Promise<string>;
 }
 
+/** One authored chat message as `streamText` may receive it. */
+export interface ModelInputMessage {
+  id?: string;
+  role: string;
+  parts?: Array<{ type: string; text?: string }>;
+}
+
+/**
+ * #3112: composes the model-facing form of one turn's authored input — the
+ * ambient, skill, project and retrieval context the model reads ahead of the
+ * typed text.
+ */
+export type ModelInputComposer = (
+  input: string | ModelInputMessage[],
+) => string | ModelInputMessage[];
+
 export interface IAgent {
   readonly id: string;
   readonly name: string;
   readonly model?: any;
+  readonly instructions?: string | (() => string);
+  withAdditionalTools?(tools: ITool[]): IAgent;
   generateText(prompt: string, options?: any): Promise<IGenerateResult>;
+  /**
+   * `input` is the authored turn: what the framework persists as the user
+   * message and titles a conversation from. `options.composeModelInput`
+   * ({@link ModelInputComposer}), when present, is applied only where the
+   * model reads that turn — never to what is stored.
+   */
   streamText(input: string, options?: any): Promise<IStreamResult>;
   generateObject?(prompt: string, options?: any): Promise<IGenerateResult>;
   getMemory(): IMemory | null;
@@ -196,12 +220,15 @@ export interface ToolCallResult {
  * real executing target. This is descriptive identity for future standing-
  * grant resolution only; it MUST NOT by itself change an approval decision.
  * `delegated-child` is the target shape for the next slice: production code
- * does not construct it yet.
+ * does not construct it yet. `automation-rule` names the server-issued id of
+ * an Automation rule (a recreated rule is a new principal); its dispatch path
+ * is a later slice, so production code does not construct it yet either.
  */
 export type UnattendedPrincipal =
   | { kind: 'voice'; agentSlug: string; sessionId: string }
   | { kind: 'scheduled-job'; jobId: string }
-  | { kind: 'delegated-child'; originAgentSlug: string };
+  | { kind: 'delegated-child'; originAgentSlug: string }
+  | { kind: 'automation-rule'; ruleId: string };
 
 /**
  * What an unattended standing-grant lookup found. Only literal `true`
@@ -559,6 +586,10 @@ export type AgentConfigurationMutationRunner = <T>(
 ) => Promise<T>;
 
 export interface RuntimeContext {
+  loadProjectTools?: (
+    slug: string,
+    projectSlug: string,
+  ) => Promise<ITool[] | undefined>;
   // Maps
   activeAgents: Map<string, any>;
   agentSpecs: Map<string, AgentSpec>;

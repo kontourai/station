@@ -27,7 +27,18 @@ export interface ProviderContinuityCapabilities {
   fork: 'native' | 'replay-seed' | 'none';
   /** Move an existing execution Session back to a prior turn. */
   rewind: 'in-place' | 'none';
+  /** Opt-in enforcement of an exact native identity at the provider open seam. */
+  resumeIdentity?: 'require-match';
+  /** Resume a prior Session only within its recorded engine-home/profile binding. */
+  nativeReturn?: 'same-binding';
 }
+
+export const NATIVE_RESUME_IDENTITY_METADATA_KEY = 'nativeResumeIdentity';
+export const NATIVE_RESUME_BINDING_METADATA_KEY = 'nativeResumeBindingKey';
+export type NativeResumeIdentityStatus = 'matched' | 'mismatch';
+export type ProviderSessionRetirement =
+  | { status: 'retired' }
+  | { status: 'indeterminate' };
 
 export const NO_PROVIDER_CONTINUITY: ProviderContinuityCapabilities = {
   resume: 'none',
@@ -96,6 +107,14 @@ export interface ModelLaunchCapabilities extends ModelLifecycleCapabilities {
 export type ModelLifecyclePoint = 'start' | 'resume' | 'turn';
 
 export const MODEL_OVERRIDE_UNSUPPORTED_CODE = 'model-override-unsupported';
+/**
+ * A new session was refused because the model the request names is not one
+ * the engine's own fresh session options offered. The engine answered, so the
+ * start is settled rather than uncertain. Deterministic for that engine and
+ * catalog, so NOT retryable as sent: the caller has to choose a model the
+ * engine offers.
+ */
+export const MODEL_NOT_ADVERTISED_CODE = 'model_not_advertised';
 export const SESSION_REATTACH_CONFLICT_CODE = 'session-reattach-conflict';
 export type SessionReattachConflictReason =
   | 'model-change'
@@ -245,6 +264,28 @@ export const STATION_CONFINEMENT_GRANTOR_METADATA_KEY =
   'stationConfinementGrantor';
 
 /**
+ * #3323: how Station came by the delegation context a dispatch route stamped
+ * on the session it started (or on a paired-Station dispatch record):
+ *
+ * - `caller-derived`: from the verified station-control caller's own session
+ *   records (`createRequestDelegationResolver`).
+ * - `runtime-attested`: a claim Station's own runtime attested
+ *   (`delegation-attestation.ts`), e.g. its own engine's pooled child.
+ * - `direct-claim`: passed through from a request outside this Station's
+ *   process (a peer Station, an operator, device or hosted-user credential),
+ *   which this Station cannot verify.
+ *
+ * Absent on a session no dispatch route started with a context. Reserved: a
+ * caller-supplied value is stripped before the route's own value is written.
+ */
+export const DELEGATION_PROVENANCE_METADATA_KEY = 'stationDelegationProvenance';
+
+export type DelegationProvenance =
+  | 'caller-derived'
+  | 'runtime-attested'
+  | 'direct-claim';
+
+/**
  * Complete set of orchestration evidence fields a public caller may never
  * provide. Keep this list aligned with session-summary model projections:
  * launch plan, typed receipt, requested/effective selector and options, and
@@ -254,6 +295,8 @@ export const SKILL_EXPERIENCE_METADATA_KEY = 'stationSkillExperience' as const;
 
 export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   'usageAccountKey',
+  NATIVE_RESUME_IDENTITY_METADATA_KEY,
+  NATIVE_RESUME_BINDING_METADATA_KEY,
   SKILL_EXPERIENCE_METADATA_KEY,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
@@ -273,6 +316,7 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
   STATION_CONFINEMENT_METADATA_KEY,
   STATION_CONFINEMENT_GRANTOR_METADATA_KEY,
+  DELEGATION_PROVENANCE_METADATA_KEY,
 ] as const;
 
 /**
@@ -1038,6 +1082,14 @@ export interface ProviderSessionStartInput {
   resumeCursor?: unknown;
   workspaceIsolation?: WorkspaceIsolationConfig;
   /**
+   * Refuse a different native thread instead of silently starting fresh.
+   * Requires an adapter declaring continuity.resumeIdentity; a queued prompt
+   * or locally retained cursor is not proof that the provider matched it.
+   */
+  requireNativeResumeIdentity?: true;
+  /** Server-owned opaque binding copied from the prior native activation. */
+  nativeResumeBindingKey?: string;
+  /**
    * Server-owned independent-review policy. Public orchestration commands
    * omit this field. Supporting Adapters must enforce it at their native
    * process sandbox boundary; a detached worktree alone is not read-only.
@@ -1148,6 +1200,8 @@ export interface ProviderSendTurnInput {
 }
 
 export interface ProviderSession {
+  /** Safe route captured from the configuration used to launch this session. */
+  modelRoute?: { connectionId: string; label: string; endpoint: string };
   provider: EngineId;
   threadId: string;
   /**

@@ -1,0 +1,7 @@
+{
+  "revision": "82fea394a09cdf62071b073d09aa6cb08ebbca48",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed ChatInputArea delta against the file/conversation reference journey: a settings wrapper and status slot change layout only; mention resolution, limits, captured authority and conversation-reference actions are unchanged. Existing getting-started prose remains accurate.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

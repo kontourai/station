@@ -1,10 +1,9 @@
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
-import type { ToolDef } from '@kontourai/station-contracts/tool';
 import {
   classifyStationBrowserTool,
   STATION_BROWSER_MCP_SERVER_ID,
 } from '../../tools/station-browser-policy.js';
-import { isBuiltinStationControl } from '../bootstrap/station-control-runtime-env.js';
+import { builtinStationApiServerId } from '../bootstrap/station-control-runtime-env.js';
 import type { MCPToolNameMappingEntry } from './mcp-tool-names.js';
 
 export function isAutoApproved(toolName: string, patterns: string[]): boolean {
@@ -86,6 +85,7 @@ export function canonicalizeExternalToolName(toolName: string): string {
  */
 const RESERVED_BUILTIN_SERVER_IDS = new Set([
   'station-control',
+  'station-knowledge',
   // #90 D14: the built-in browser tools, delivered in-process by Station
   // itself (never through an authored integration).
   STATION_BROWSER_MCP_SERVER_ID,
@@ -178,22 +178,24 @@ function masqueradesAsReserved(toolName: string, reserved: string): boolean {
 const INTRINSIC_STATION_CONTROL_TOOL = 'notify_user';
 const INTRINSIC_EXTERNAL_TOOL_NAME = `mcp__station-control__${INTRINSIC_STATION_CONTROL_TOOL}`;
 
-function deliveredGenuineStationControl(
+function deliveredGenuineStationApi(
   resolvedToolServers: readonly ResolvedAgentToolServer[] | undefined,
+  serverId = 'station-control',
 ): boolean {
   const delivered = (resolvedToolServers ?? [])
-    .filter((server) => server.id === 'station-control')
+    .filter((server) => server.id === serverId)
     .at(-1);
   return (
     !!delivered &&
     // The whole delivered shape, transport and endpoint included (#2614).
-    isBuiltinStationControl(delivered.id, {
+    builtinStationApiServerId(delivered.id, {
+      kind: 'mcp',
       id: delivered.id,
       transport: delivered.transport,
       command: delivered.command,
       args: delivered.args,
       endpoint: delivered.endpoint,
-    } as ToolDef)
+    }) === serverId
   );
 }
 
@@ -211,7 +213,7 @@ function isIntrinsicExternalGrant(
   return (
     toolName === INTRINSIC_EXTERNAL_TOOL_NAME &&
     toolNameProvenance === 'authentic' &&
-    deliveredGenuineStationControl(resolvedToolServers)
+    deliveredGenuineStationApi(resolvedToolServers)
   );
 }
 
@@ -308,8 +310,8 @@ export function isAutoApprovedExternalTool(
     if (toolNameProvenance !== 'authentic') return false;
     // Check the entry that actually wins delivery (last-write-wins per id),
     // not merely "some entry with this id looks genuine" (Probe B).
-    // (The only other reserved id, station-browser, returned above.)
-    return deliveredGenuineStationControl(resolvedToolServers);
+    // station-browser returned above; API servers use their own identity.
+    return deliveredGenuineStationApi(resolvedToolServers, reservedServer);
   }
   return true;
 }

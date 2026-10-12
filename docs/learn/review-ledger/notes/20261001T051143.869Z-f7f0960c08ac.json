@@ -1,0 +1,9 @@
+{
+  "revision": "6beb4f4c4ad7ede751a1e1d51483ada91198d3e6",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"docs/reference/sdk.md changed one sentence (useSendToChat shows Chat: the dock, or the Chat page where a layout's centre is Chat). Searched this guide for useSendToChat and for any statement that sending opens the dock: none. No prose change.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"docs/reference/sdk.md changed one sentence about useSendToChat. This file makes no statement about that hook or about the dock opening. No prose change.","inputs":["packages/sdk/AGENTS.md"]}
+  ]
+}

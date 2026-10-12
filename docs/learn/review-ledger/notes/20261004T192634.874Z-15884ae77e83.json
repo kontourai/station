@@ -1,0 +1,7 @@
+{
+  "revision": "b1fbfae1c6049b764aa73b7d10450f117255d69f",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"No prose change: grep found no claim about attention items, paired-Station requests, the delegated respond route or request-route access; orchestration-service only adds recordPeerDelegationPendingRequest, a session.configured observation on delegator-side peer records; station-control-delegation only stores the paired Station pendingRequest from the status read, clears it after a forwarded respond, and names a paired-Station 403.","inputs":["docs/guides/self-configuring-agent.md","src-server/services/orchestration/orchestration-service.ts","src-server/tools/station-control-delegation.ts"]}
+  ]
+}

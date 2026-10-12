@@ -95,6 +95,10 @@ const sdkMocks = vi.hoisted(() => ({
 const pluginRegistryState = vi.hoisted(() => ({
   loadStatus: {} as { failure?: string },
 }));
+vi.mock('../components/home/HomeStartComposer', () => ({
+  HomeStartComposer: () => <div>Project start composer</div>,
+}));
+
 vi.mock('../core/PluginRegistry', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../core/PluginRegistry')>()),
   pluginRegistry: {
@@ -474,6 +478,34 @@ describe('ProjectPage (#762 query-failure regression)', () => {
     expect(sdkMocks.operatorAgentsQuery).not.toHaveBeenCalled();
     expect(sdkMocks.operatorKnowledgeDocsQuery).not.toHaveBeenCalled();
     expect(sdkMocks.operatorConversationsQuery).not.toHaveBeenCalled();
+  });
+
+  test('a member sees the Project icon by the same rule as every surface: an uploaded image draws, a link does not', async () => {
+    // The writer's shape: the picker and discovery store base64 data URLs.
+    const png =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    selectCurrentNativeRelayAccount();
+    sdkMocks.isMemberProject = true;
+    sdkMocks.memberProject = { ...memberProjectFixture, icon: png };
+    const withImage = await renderProjectPage();
+    const identity = withImage.container.querySelector(
+      '.project-page__identity',
+    );
+    expect(identity?.querySelector('img')?.getAttribute('src')).toBe(png);
+    withImage.unmount();
+
+    // A legacy link icon would be a raw request outside the broker: refused,
+    // so the member sees the initials tile.
+    sdkMocks.memberProject = {
+      ...memberProjectFixture,
+      icon: 'https://example.com/logo.png',
+    };
+    const withLink = await renderProjectPage();
+    const linked = withLink.container.querySelector('.project-page__identity');
+    expect(linked?.querySelector('img')).toBeNull();
+    expect(linked?.querySelector('.brand-icon__initials')?.textContent).toBe(
+      'SD',
+    );
   });
 
   test('native relay operator project response stops before operator queries', async () => {

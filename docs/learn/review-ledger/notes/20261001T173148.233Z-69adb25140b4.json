@@ -1,0 +1,7 @@
+{
+  "revision": "e219871c414d351695127ff92ee3280ca38dff9c",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed merged responsive inventory: the main Browser pane/page-dialog entries retain their own pointer, keyboard and geometry limits; the Home goal form remains a shared-Button action row with 96px textarea and measured phone bounds. No responsive primitive or guide claim changes.","inputs":["docs/guides/responsive-ui.md"]}
+  ]
+}

@@ -9,38 +9,36 @@
 
   "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery. No merge, push, queue mutation, release, full regression, or behavioral conformance audit was performed. GitHub rules are a time-specific observation.",
 
-  "document": {"digest":"f5409d83bf1c7772c37b3738209f5f8a4602d8f29ead5fb9f7f8918bc9929c8c","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
-
   "sources": [
-    {"path":".agents/skills/documentation-audit/SKILL.md","digest":"2f5e193ebfb24a08597fd9dc31663a7d293bceaf1847e2df508b093e898845a6","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    ".agents/skills/documentation-audit/SKILL.md",
 
-    {"path":".githooks/pre-push","digest":"eb2d5cdd2c9f91b4e2dc96dd0d4ef36c55f313074f4f05aa30e0269cd5c0a6c9","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    ".githooks/pre-push",
 
-    {"path":".veritas/GOVERNANCE.md","digest":"896ca1d26e71e4e8d691fb2539888282903f15024cd1dc2585299d682b9d269c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    ".veritas/GOVERNANCE.md",
 
-    {"path":"scripts/dependency-lifecycle.mjs","digest":"59182737dece9f0981ba7857efd524e5c6a30eb45c25dc963d3a0c9bba7b6163","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/dependency-lifecycle.mjs",
 
-    {"path":"scripts/gate-for.mjs","digest":"6cb1fa0145dee1a979cf8d31c47bfd71f78313437a86d85ba29437605183f68f","revision":"a1478b242401c5da824956478bd77fef1f4dfa51"},
+    "scripts/gate-for.mjs",
 
-    {"path":"scripts/lib/typecheck-host-slots.mjs","digest":"26e76900f135282106e245c4946798b5a084cb98de3074750629e9a96d0bef1d","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/lib/typecheck-host-slots.mjs",
 
-    {"path":"scripts/orchestration-transfer-gate.mjs","digest":"c10941f00e2d434ca22c4cc4e4bdfb1c892cde9e18e7fb8cf558d4acf3c5eaed","revision":"10355abb29c67ba8bac4c9ad44c8718d0f42a85c"},
+    "scripts/orchestration-transfer-gate.mjs",
 
-    {"path":"scripts/run-focused-tests.mjs","digest":"7587827cfbb7d8f6cde2181a8a0e392a4788acad7df3e69c5155ff849abea79c","revision":"9a2f2f9966d4bb47ce78aa6480a446f0afd632bc"},
+    "scripts/run-focused-tests.mjs",
 
-    {"path":"package.json#/scripts/ci:fast","digest":"63205403780b83bab17755e05d5bd616a956950093d8d92a59955a74e5ce0364","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+    "package.json#/scripts/ci:fast",
 
-    {"path":"package.json#/scripts/dependencies:ci","digest":"4f9751f48dd155865c373a4ee637655fc83ed148d6185e490570e09b81359848","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+    "package.json#/scripts/dependencies:ci",
 
-    {"path":"package.json#/scripts/full:regression","digest":"c9515f8d1266c6f66972172476fdf896a72e73b3f8c995b57e0273b3ba1b41e0","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+    "package.json#/scripts/full:regression",
 
-    {"path":"package.json#/scripts/gate:for","digest":"7b50a6ae44d67b5b14d5c599d38f14aff7b09c798e012e48625037826834eb2b","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+    "package.json#/scripts/gate:for",
 
-    {"path":"package.json#/scripts/test:changed","digest":"448b70b57d2edff1276025401924ec201d2bdc24e5dacb738fc4384951bbd593","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+    "package.json#/scripts/test:changed",
 
-    {"path":"package.json#/scripts/test:focused","digest":"d9cac783fed6a1be9353f6b5be8a3f85b2059024cc299c96cc342e3d4a3ca282","revision":"c526c4a93bd752e4020ff51303125379f404bb4c"},
+    "package.json#/scripts/test:focused",
 
-    {"path":"package.json#/packageManager","digest":"50fca3fe5c025e96dd5375620d17ab71c3e90fec05d7fe4a572a638193d73bd0","revision":"d2094611d03f80d1a96d7cd7cfa5302d34681392"}
+    "package.json#/packageManager"
   ],
 
   "checks": [

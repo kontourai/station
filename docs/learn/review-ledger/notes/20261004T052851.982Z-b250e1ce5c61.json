@@ -1,0 +1,7 @@
+{
+  "revision": "21445de4f554dd17687e7e2c013b4a5adeeefb7b",
+
+  "notes": [
+    {"path":"docs/design/operator-device-access.md","note":"Re-recorded after the path-only ledger migration (#3227). This design page was authored in this change. A delta review of 6c4a6537b9..5af9c6ecb3 checked it against these sources: forwarding headers count as off-host evidence only (host-operator-credential.ts carriesForwardingEvidence, the UI-proxy marker in lifecycle.ts and internal-api-token.ts), S1b must rest on a host-only secret rather than network position, the residual covers any same-host proxy or tunnel, and the observer is wrapped in runtime-routes.ts. The temp-dir fix in 4427a6e648 touched only a test.","inputs":["docs/design/operator-device-access.md","packages/cli/src/commands/lifecycle.ts","src-desktop/src/lib.rs","src-server/runtime/__tests__/operator-credential-host-locality.test.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/host-operator-credential.ts","src-server/security/runtime-request-security.ts","src-server/services/consent/consent-transactions.ts","src-server/utils/internal-api-token.ts"]}
+  ]
+}

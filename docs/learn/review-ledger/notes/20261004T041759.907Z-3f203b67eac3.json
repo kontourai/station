@@ -1,0 +1,7 @@
+{
+  "revision": "3ff57bc91496fd66f7b97eb67df16f6d49bd7ed5",
+
+  "notes": [
+    {"path":"docs/learn/media/project-with-task.png","note":"ProjectPage.css delta only adds display:block to the header path line. The existing capture shows a short path (/tmp/station-docs-sample-...) starting at the left, parent muted and leaf accent, with edit pencil and Copy beside it; I viewed that image. That short-path layout is the behavior the CSS comment says is preserved, but I did NOT recapture it after this change: the browser render could not start (host load ~69, 3 startup timeouts), so this is reasoned, not executed.","inputs":["src-ui/src/views/ProjectPage.css"]}
+  ]
+}

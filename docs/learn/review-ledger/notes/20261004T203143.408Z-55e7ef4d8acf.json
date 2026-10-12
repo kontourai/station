@@ -1,0 +1,7 @@
+{
+  "revision": "2dce1aec1da50b6a615488dc1d0cd132ac5ec136",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"No prose change: it makes no claim about attention items, paired-Station requests, the delegated respond route or request-route access; session-api.md only rewords viewerCanRespond and adds the host-check and bounds paragraph.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

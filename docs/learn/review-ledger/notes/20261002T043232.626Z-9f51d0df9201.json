@@ -1,0 +1,7 @@
+{
+  "revision": "ec6faf20ba1d2fff4e72712303ea1a9c8c22d13b",
+
+  "notes": [
+    {"path":"packaging/manifest/README.md","note":"Re-record after merging main #3062: install-smoke.yml gained this PR's installer path filters and #2970's throwaway Windows Task Scheduler legs; the manifest README's packaging claims do not rest on either.","inputs":["packaging/manifest/README.md"]}
+  ]
+}

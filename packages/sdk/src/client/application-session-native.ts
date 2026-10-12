@@ -58,6 +58,13 @@ export interface NativeApplicationSessionProofProvider {
       readonly path: string;
     };
   }): Promise<Readonly<Record<string, string>>>;
+  managementHeaders?(input: {
+    readonly continuation: NativeAccountOpaqueContinuation;
+    readonly request: {
+      readonly method: 'GET' | 'HEAD' | 'POST';
+      readonly path: string;
+    };
+  }): Promise<Readonly<Record<string, string>>>;
   prepareRevocation?(input: {
     readonly continuation: NativeAccountOpaqueContinuation;
   }): Promise<NativeAccountRevocationPreparation>;
@@ -294,6 +301,51 @@ async function verifyHostProof(
   )
     throw new Error('Native host account proof signature is invalid.');
   return claims;
+}
+
+export function isNativeRelayManagementRequest(
+  method: string,
+  path: string,
+): boolean {
+  if (method === 'GET' || method === 'HEAD')
+    return (
+      path === '/api/relay-management' ||
+      path === '/api/relay-management/capabilities'
+    );
+  return (
+    method === 'POST' &&
+    ([
+      '/api/relay-management/approvals',
+      '/api/relay-management/approvals/revoke',
+      '/api/relay-management/invitations',
+    ].includes(path) ||
+      /^\/api\/relay-management\/devices\/[A-Za-z0-9_-]{43}\/(?:approve|deny)$/u.test(
+        path,
+      ))
+  );
+}
+
+export function isNativeProjectAccessManagementRequest(
+  method: string,
+  path: string,
+): boolean {
+  if (method === 'GET' || method === 'HEAD')
+    return /^\/api\/projects\/[A-Za-z0-9_-]{1,128}\/access$/u.test(path);
+  return (
+    method === 'POST' &&
+    /^\/api\/projects\/[A-Za-z0-9_-]{1,128}\/access\/(?:invitations(?:\/[A-Za-z0-9_-]{1,128}\/revoke)?|members|transfer)$/u.test(
+      path,
+    )
+  );
+}
+export function isNativeManagementRequest(
+  method: string,
+  path: string,
+): boolean {
+  return (
+    isNativeRelayManagementRequest(method, path) ||
+    isNativeProjectAccessManagementRequest(method, path)
+  );
 }
 
 function localReadRequest(request: {
@@ -946,10 +998,27 @@ export class NativeApplicationSessionClient {
     });
   }
 
+  async managementHeaders(
+    continuation: NativeApplicationSessionContinuationV1,
+    request: { readonly method: string; readonly path: string },
+    nowMs = Date.now(),
+  ): Promise<Record<string, string>> {
+    if (!isNativeManagementRequest(request.method, request.path))
+      throw new Error('Native relay management request is unsupported.');
+    return this.requestHeadersFor(continuation, request, nowMs, true);
+  }
   async headers(
     continuation: NativeApplicationSessionContinuationV1,
     request: { readonly method: string; readonly path: string },
-    nowMs: number = Date.now(),
+    nowMs = Date.now(),
+  ): Promise<Record<string, string>> {
+    return this.requestHeadersFor(continuation, request, nowMs, false);
+  }
+  private async requestHeadersFor(
+    continuation: NativeApplicationSessionContinuationV1,
+    request: { readonly method: string; readonly path: string },
+    nowMs: number,
+    management: boolean,
   ): Promise<Record<string, string>> {
     const trust = this.current();
     const thumbprint = await applicationSessionKeyThumbprint(
@@ -970,15 +1039,31 @@ export class NativeApplicationSessionClient {
     )
       throw new Error('Native application session target changed.');
     if (isHostProofProvider(this.key)) {
+      if (management && !this.key.managementHeaders)
+        throw new Error('Native relay management proof is unavailable.');
+      const hostContinuation = Object.freeze({
+        credential: current.credential,
+        nonce: current.nonce,
+        expiresAtMs: Date.parse(current.expiresAt),
+      });
       const headers = hostRequestHeaders.parse(
-        await this.key.requestHeaders({
-          continuation: Object.freeze({
-            credential: current.credential,
-            nonce: current.nonce,
-            expiresAtMs: Date.parse(current.expiresAt),
-          }),
-          request: localReadRequest(request),
-        }),
+        management
+          ? await this.key.managementHeaders!({
+              continuation: hostContinuation,
+              request: {
+                method:
+                  request.method === 'POST'
+                    ? 'POST'
+                    : request.method === 'HEAD'
+                      ? 'HEAD'
+                      : 'GET',
+                path,
+              },
+            })
+          : await this.key.requestHeaders({
+              continuation: hostContinuation,
+              request: localReadRequest(request),
+            }),
       );
       if (headers[APPLICATION_SESSION_NATIVE_HEADER] !== current.credential)
         throw new Error('Native host account continuation changed.');

@@ -1,0 +1,11 @@
+{
+  "revision": "3d17bdaa94fc3328152d21f92484bacf368b7822",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed stable reading/action-row and canonical request response claims against unified transcript records in MessageContent. New input-request records display requester/message/outcome only, never submitted content; existing text/tool UI blocks and sourced transcript markers retain their owners. The composer send/continuation and permission endpoint rules are unchanged; records are not approval authority. No native or live-provider claim.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/message-bubble/MessageContent.tsx"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed the complete dependency-security guide and the actual Shared/Contracts export-map deltas. Unified input helpers and retained legacy MCP types/readers add no vendor/version/patch/credential trust changes. MCP transport rejects forbidden schema keys before vendor normalization while existing HTTP context-aware OAuth provider and exact October13 formatter acceptance/binding remain unchanged. No new advisory exception or production-reachability claim.","inputs":["docs/guides/dependency-security.md","packages/shared/src/mcp-connection.ts","packages/shared/package.json"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed legacy MCP form event adaptation, retained DTO/subpath and canonical unified admission. The form-only compatibility reader delegates to inputRequestFromRequestEvent; request/body validation remains one owner. Added real-stdio wire injection for optional/required forbidden __proto__ fields in modern/legacy eras: four cases failed before connection interception and all24 connection tests pass after the owning raw-message refusal. Typecheck:shared passed; no parser-only result is called transport proof. No async admission/credential/budget exception introduced.","inputs":["docs/reference/shared.md","packages/shared/src/mcp-connection.ts","packages/shared/src/mcp-elicitation-form.ts"]}
+  ]
+}

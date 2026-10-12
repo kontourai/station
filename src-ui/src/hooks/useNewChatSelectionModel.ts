@@ -24,6 +24,7 @@ import {
 } from '../components/modals/new-chat-modal-utils';
 import { activeChatsStore } from '../contexts/ActiveChatsContext';
 import type { AgentData } from '../contexts/AgentsContext';
+import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
 import { useConfig } from '../contexts/ConfigContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import {
@@ -32,6 +33,7 @@ import {
   useScopedProjectsQuery,
 } from '../contexts/ProjectsContext';
 import {
+  acpAdvertisedModels,
   defaultManagedRuntimeConnection,
   guaranteeConcreteModel,
   resolveEffectiveModel,
@@ -44,7 +46,8 @@ import type {
   NewChatModelChoice,
   SelectableModel,
 } from '../utils/modelCapabilities';
-import { getLastChosenModelMap } from './lastChosenModel';
+import { profileCompatibilityReason } from '../utils/modelCapabilities';
+import { useLastChosenModelMap } from './lastChosenModel';
 
 const EMPTY_CONNECTIONS: never[] = [];
 
@@ -68,7 +71,7 @@ export function resolveProviderManagedAgentConnectionId(
   return managedRuntimeId ? engineConnectionId(managedRuntimeId) : undefined;
 }
 
-import { getRecentAgentSlugs } from './useRecentAgents';
+import { getRecentAgentSlugs, useContextAgent } from './useRecentAgents';
 
 export interface ACPSelectionConnection {
   id: string;
@@ -98,18 +101,9 @@ export function acpCatalogModelOptions(
   agentConnectionId: string | undefined,
 ): Array<{ id: string; name: string }> {
   if (!agentConnectionId) return [];
-  return (
-    acpConnections.find((acp) => acp.id === agentConnectionId)?.configOptions ??
-    []
-  )
-    .filter((option) => option.category === 'model')
-    .flatMap((option) => option.options ?? [])
-    .map((entry) =>
-      typeof entry === 'string'
-        ? { id: entry, name: entry }
-        : { id: entry.value, name: entry.name ?? entry.value },
-    )
-    .filter((model) => model.id.length > 0);
+  return acpAdvertisedModels(
+    acpConnections.find((acp) => acp.id === agentConnectionId)?.configOptions,
+  );
 }
 
 /**
@@ -182,6 +176,7 @@ export function useNewChatSelectionModel({
       selectedProjectLayout: state.selectedProjectLayout,
     }));
   const appConfig = useConfig();
+  const { namespace } = useAuthorityPersistence();
   const agentCatalog = useAgentsQuery();
   useReconcilingCatalogRefresh(
     agentCatalog.catalogState,
@@ -208,7 +203,12 @@ export function useNewChatSelectionModel({
             const current = (
               projectCatalog.data as ProjectMetadata[] | undefined
             )?.find((candidate) => candidate.slug === project.slug);
-            return current ? [current] : [];
+            if (!current) return [];
+            // `runsAt` comes from the separate run-locations read (#3391),
+            // never from the catalogue, so the fresh record keeps it.
+            return [
+              project.runsAt ? { ...current, runsAt: project.runsAt } : current,
+            ];
           })
         : projects,
     [projects, projectCatalog.data, revalidateSelection],
@@ -263,6 +263,7 @@ export function useNewChatSelectionModel({
       agents?: AgentId[];
       defaultProviderId?: string;
       defaultModel?: string;
+      defaultAgent?: AgentId;
     };
   };
 
@@ -334,10 +335,14 @@ export function useNewChatSelectionModel({
     [modalAgents, providerManagedExecution],
   );
 
-  // Read once per modal mount, matching the "lost on remount" fix for
-  // recent agents — pure resolver/view-model functions stay localStorage-free.
-  const lastChosenModelByBinding = useMemo(() => getLastChosenModelMap(), []);
+  // Read live: a surface that stays mounted (Home) must see a model chosen
+  // in a docked chat meanwhile. The pure resolver/view-model functions stay
+  // localStorage-free.
+  const lastChosenModelByBinding = useLastChosenModelMap();
   const activeChatsSnapshot = activeChatsStore.getSnapshot();
+  // Live, like the Model memory above: a choice remembered on one surface
+  // re-derives the other surface's default Agent.
+  const rememberedAgentSlug = useContextAgent(namespace, selectedContext);
   const viewModel = useMemo(
     () =>
       buildNewChatModalViewModel({
@@ -379,6 +384,16 @@ export function useNewChatSelectionModel({
     modelConnections,
     acpConnections,
     projectDefaultModel: selectedProjectConfig?.defaultModel,
+    preferredAgentSlug:
+      rememberedAgentSlug ??
+      getRecentAgentSlugsForContext(
+        activeChatsSnapshot,
+        selectedContext,
+        [],
+      )[0] ??
+      selectedProjectConfig?.defaultAgent ??
+      layout?.defaultAgent,
+
     lastChosenModelByBinding,
   });
   const [modelChoices, setModelChoices] = useState<
@@ -442,6 +457,61 @@ export function useNewChatSelectionModel({
       providerType: connection?.type,
     }));
   };
+  const executionModelsForAgent = (profile: AgentData): SelectableModel[] => {
+    const describe = (
+      binding: AgentData,
+      override: boolean,
+    ): SelectableModel[] => {
+      const connection = agentConnections.find(
+        (entry) => entry.id === binding.execution?.agentConnectionId,
+      );
+      const stationEngine = !binding.execution?.agentConnectionId;
+      const ready =
+        stationEngine || (connection?.enabled && connection.status === 'ready');
+      const incompatibility = override
+        ? profileCompatibilityReason(
+            profile.profileCapabilities,
+            binding.unsupportedProfileCapabilities,
+          )
+        : undefined;
+      const unavailableReason =
+        profile.available === false
+          ? (profile.unavailableReason ?? 'This Agent is not ready.')
+          : incompatibility
+            ? incompatibility
+            : override && stationEngine
+              ? 'This Station engine cannot apply an external Agent profile as an override.'
+              : !ready
+                ? 'Engine connection is not ready.'
+                : undefined;
+      return modelsForAgent(binding).map((model) => ({
+        ...model,
+        ...(override
+          ? {
+              executionAgentId: binding.slug,
+              expectedDefinitionFingerprint: profile.definitionFingerprint,
+            }
+          : {}),
+        engineId: binding.engineId,
+        engineName: binding.engineDisplayName ?? connection?.name ?? 'Station',
+        available: unavailableReason ? false : model.available,
+        unavailableReason: unavailableReason ?? model.unavailableReason,
+      }));
+    };
+    const defaults = describe(profile, false);
+    const boundConnection = profile.execution?.agentConnectionId;
+    const alternatives = modalAgents.filter(
+      (binding) =>
+        binding.executionDefault &&
+        binding.slug !== profile.slug &&
+        binding.execution?.agentConnectionId !== boundConnection,
+    );
+    return [
+      ...defaults,
+      ...alternatives.flatMap((binding) => describe(binding, true)),
+    ];
+  };
+
   const modelChoiceKey = (agent: AgentData) =>
     buildNewChatModelOverrideKey(agent, selectedContext);
   const defaultEffectiveModelForAgent = (agent: AgentData) => {
@@ -460,6 +530,7 @@ export function useNewChatSelectionModel({
           runtimeCurrentMode: acpConnection?.configOptions?.find(
             (option) => option.category === 'mode',
           )?.currentValue,
+          advertisedModels: acpAdvertisedModels(acpConnection?.configOptions),
           projectDefaultModel: newChatProjectDefaultModel(
             agent,
             selectedProjectConfig?.defaultModel,
@@ -545,6 +616,14 @@ export function useNewChatSelectionModel({
     setupFetching,
     projectCatalogResolved:
       projectCatalog.isSuccess && !projectCatalog.isFetching,
+    /**
+     * True once `defaultSelection` reflects `selectedContext`: always for the
+     * global context, and for a project only after its detail (default
+     * Model, default Agent, Agents filter) has loaded. Until then the default
+     * selection is the global one, which a project chat would not use.
+     */
+    selectedContextResolved:
+      !selectedProjectSlug || selectedProjectQuery.isSuccess,
     setupError,
     refreshSetup,
     // archive#771: both flow into a single `flatList.length === 0` gate in
@@ -561,6 +640,7 @@ export function useNewChatSelectionModel({
     modelPickerAgent,
     setModelPickerAgent,
     modelsForAgent,
+    executionModelsForAgent,
     modelChoiceKey,
     defaultEffectiveModelForAgent,
   };

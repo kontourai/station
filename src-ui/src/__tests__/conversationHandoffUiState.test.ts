@@ -13,6 +13,7 @@ describe('conversation handoff UI state', () => {
       orchestrationModel: 'predecessor-model',
       requestedProviderOptions: { reasoningEffort: 'high' },
       pendingApprovals: ['approval-old'],
+      answeredApprovals: ['approval-old'],
       unacknowledgedDecisions: [
         { requestId: 'approval-older', reason: 'no-acknowledgement' },
       ],
@@ -70,6 +71,7 @@ describe('conversation handoff UI state', () => {
       currentSessionId: 'session-b',
       queuedMessages: [],
       pendingApprovals: [],
+      answeredApprovals: [],
       unacknowledgedDecisions: [],
       sessionAutoApprove: [],
       orchestrationTurnOpen: false,

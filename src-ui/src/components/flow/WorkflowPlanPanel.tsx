@@ -300,28 +300,28 @@ export function deriveWorkflowRuntimeStrip(
 ): WorkflowPlanRuntimeStrip | null {
   if ((runtimeState?.pendingApprovals || 0) > 0) {
     return {
-      label: `Approval required (${runtimeState?.pendingApprovals})`,
+      label: `Needs approval (${runtimeState?.pendingApprovals})`,
       tone: 'attention',
       live: true,
     };
   }
   if (runtimeState?.isProcessingStep) {
-    return { label: 'Tool activity running', tone: 'live', live: true };
+    return { label: 'Running · tool', tone: 'live', live: true };
   }
   if (runtimeState?.status === 'awaiting-approval') {
-    return { label: 'Awaiting approval', tone: 'attention', live: true };
+    return { label: 'Needs approval', tone: 'attention', live: true };
   }
   if (
     runtimeState?.status === 'running' ||
     runtimeState?.status === 'sending'
   ) {
-    return { label: 'Engine running', tone: 'live', live: true };
+    return { label: 'Running', tone: 'live', live: true };
   }
   if (
     runtimeState?.status === 'completed' ||
     runtimeState?.status === 'exited'
   ) {
-    return { label: 'Engine complete', tone: 'complete', live: false };
+    return { label: 'Done', tone: 'complete', live: false };
   }
   return null;
 }

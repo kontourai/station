@@ -1,0 +1,7 @@
+{
+  "revision": "2fb58e17deb6d5b85ed927005168c0493939c33f",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed against the codingPanels device setting (#3051): the device store gains one composite record validated by its own parser on import (COMPOSITE_RECORD_PARSERS) and the contracts registry one direct-manipulation key; no claim in this document names the device-setting inventory, the store's import path or the Coding layout's panels, so the prose stands.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","docs/ui/responsive-surfaces.json","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","packages/sdk/src/query-core.ts","packages/shared/package.json","pnpm-lock.yaml","src-server/runtime/bootstrap/runtime-http.ts","src-server/security/pairing-route-scopes.ts","src-ui/src/index.css","src-ui/src/lib/device-settings-store.ts","src-ui/src/main.tsx","src-ui/src/platform/PlatformProfileContext.tsx","src-ui/src/tokens.css","src-ui/src/components/ActionOverflowMenu.tsx"]}
+  ]
+}

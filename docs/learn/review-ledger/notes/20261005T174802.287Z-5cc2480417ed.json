@@ -1,0 +1,7 @@
+{
+  "revision": "d6b83a58534742fd1e1796a3563bf8965a0911ac",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"#3386 fix round: AppConfig gained one optional boolean; this reference's shared-package claims are unaffected. No prose change.","inputs":["docs/reference/shared.md","packages/contracts/src/config.ts"]}
+  ]
+}

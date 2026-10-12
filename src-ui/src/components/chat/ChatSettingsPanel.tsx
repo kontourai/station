@@ -35,7 +35,7 @@ interface ChatSettingsPanelProps {
   autoHideEnabled: boolean;
   setAutoHideEnabled: (v: boolean) => void;
   /**
-   * archive#3310: "Summarize session" demoted out of the transcript
+   * archive#3310: "Summarize chat" demoted out of the transcript
    * the un-generated state no longer costs a permanent band above every
    * chat, so this gear panel is its entry point (reachable from the desktop
    * header's gear and the mobile overflow's "Chat settings"). Absent when no
@@ -304,7 +304,7 @@ export function ChatSettingsPanel({
             >
               {sessionSummary.isGenerating
                 ? 'Generating summary…'
-                : 'Summarize session'}
+                : 'Summarize chat'}
             </button>
             <button
               type="button"

@@ -1,0 +1,7 @@
+{
+  "revision": "ff8d4704b92d64b50d39bdc28cd02c49f779de49",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"testing.md gained one sentence that a passing main qualification may start a Nightly. code-quality.md's references to testing.md are unaffected. No prose change.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]}
+  ]
+}

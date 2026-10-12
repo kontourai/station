@@ -1,0 +1,7 @@
+{
+  "revision": "3ff57bc91496fd66f7b97eb67df16f6d49bd7ed5",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"ProjectPage.css delta only adds display:block to the Project header working-directory line. getting-started.md describes install, connections and chat; none of its claims concern the Project header path styling. Reasoned from the diff, no check executed.","inputs":["src-ui/src/views/ProjectPage.css"]}
+  ]
+}

@@ -24,6 +24,7 @@
 import {
   type CapabilityDeliveryCapability,
   type CapabilityDeliveryChannelReport,
+  type CapabilityUndelivered,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
   type SessionCapabilityDeliveryMetadata,
 } from '@kontourai/station-contracts/provider';
@@ -87,4 +88,15 @@ export function mergeCapabilityDeliveryMetadata(
       },
     },
   };
+}
+
+/** Explicit engine overrides cannot silently reduce the selected Agent's profile. */
+export function assertExecutionOverrideDelivery(
+  metadata: Record<string, unknown> | undefined,
+  undelivered: readonly CapabilityUndelivered[],
+): void {
+  if (!metadata?.executionAgentId || undelivered.length === 0) return;
+  throw new Error(
+    `Execution override cannot deliver the selected Agent capabilities: ${undelivered.map((entry) => `${entry.capability}:${entry.id ?? 'unknown'} (${entry.reason})`).join(', ')}`,
+  );
 }

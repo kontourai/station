@@ -48,12 +48,14 @@ export function UsageSummaryCards({
   totalConversations,
   totalCost,
   totalMessages,
+  costMeasured = true,
 }: {
   avgCostPerMessage: number;
   engineUsageCoverage?: EngineUsageCoverage;
   totalConversations: number;
   totalCost: number;
   totalMessages: number;
+  costMeasured?: boolean;
 }) {
   const costCoverage = describeCostCoverage(engineUsageCoverage);
   return (
@@ -71,14 +73,16 @@ export function UsageSummaryCards({
       />
       <StatCard
         icon={<MoneyGlyph />}
-        label="Total Cost"
-        value={`$${totalCost.toFixed(2)}`}
+        label="Recorded cost"
+        value={costMeasured ? `$${totalCost.toFixed(2)}` : 'Not reported'}
         detail={costCoverage}
       />
       <StatCard
         icon={<ChartGlyph />}
         label="Avg/Message"
-        value={`$${avgCostPerMessage.toFixed(4)}`}
+        value={
+          costMeasured ? `$${avgCostPerMessage.toFixed(4)}` : 'Not reported'
+        }
         detail={costCoverage ? 'Over the measured cost above.' : undefined}
       />
     </div>

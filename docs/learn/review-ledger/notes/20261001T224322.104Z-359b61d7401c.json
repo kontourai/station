@@ -1,0 +1,7 @@
+{
+  "revision": "fb91b0deacf9ac3d59fd86e8e5eaaa3182df74e5",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed against the manifest change: coding-stack-navigation.spec.ts keeps its extended bucket, rationale extended with the folded inbox's edge and the fold judged on resize; no assignment moved.","inputs":["docs/guides/e2e-coverage-matrix.md","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/services/connections/connection-service.ts","tests/agents-editor-gates.spec.ts","tests/agents-new-model-turn.spec.ts","tests/android/mobile-layout.spec.ts","tests/connect-modal.spec.ts","tests/connect-reconnect-banner.spec.ts","tests/e2e-manifest.mjs","tests/mobile-chat-composer.spec.ts","tests/project-architecture.spec.ts","tests/registry.spec.ts","tests/root-route-restore.spec.ts","tests/schedule.spec.ts","tests/task-first-home.spec.ts"]}
+  ]
+}

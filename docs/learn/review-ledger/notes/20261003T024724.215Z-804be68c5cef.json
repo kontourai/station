@@ -1,0 +1,7 @@
+{
+  "revision": "0c7e662906e06fd356753bcc2c0e64d84c7f7541",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the mobile-layout delta: Settings topic selections now use My knowledge and Advanced; the ordinary drawer actions, optional-store controls, exact provenance assertions, touch targets and overflow checks are unchanged. Android viewport suite passes 10/10 on 0c7e662906. The coverage guide remains accurate and distinguishes browser viewport evidence from installed or physical Android proof.","inputs":["docs/guides/e2e-coverage-matrix.md"]}
+  ]
+}

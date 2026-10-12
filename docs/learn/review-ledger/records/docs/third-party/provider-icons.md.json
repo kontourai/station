@@ -9,16 +9,14 @@
 
   "limits": "September 25 upstream asset hashes are historical attribution; upstream files were not fetched again.",
 
-  "document": {"digest":"1478ad129e1cd7d80e31b633a4de38242ee4852dc466d0c5d8ec797f2a6713f9","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
-
   "sources": [
-    {"path":"src-server/services/plugins/integration-icon-assets.ts","digest":"7ce02f23953abe935bae6f9a6dda5c5011e9345925953d598f15a5c3b1577d43","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-server/services/plugins/integration-icon-assets.ts",
 
-    {"path":"src-ui/src/components/icons/BrandIcon.css","digest":"ed359196b023ff34c28636d3f39f1169caefd84bb30050af224895eb3c7370d3","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-ui/src/components/icons/BrandIcon.css",
 
-    {"path":"src-ui/src/components/icons/BrandIcon.tsx","digest":"bfd5aa20b5b1d230b480c8a01388c349ec0b624f41448d4b435c103cf07b2784","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"},
+    "src-ui/src/components/icons/BrandIcon.tsx",
 
-    {"path":"src-ui/src/components/icons/BrandMarks.tsx","digest":"65391987381f7d81913749572e4dd3a63588cc21e924027b6c209489821775b6","revision":"7eb2a21b0400fc44b24c93e6ee46471f98117319"}
+    "src-ui/src/components/icons/BrandMarks.tsx"
   ],
 
   "checks": [

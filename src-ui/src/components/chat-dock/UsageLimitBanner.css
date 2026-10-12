@@ -1,0 +1,57 @@
+/*
+ * #3157: the usage-limit banner above the composer. A warning-toned callout
+ * built from the app's tokens (the same tone scale `PageCallout` resolves), so
+ * both themes get their own contrast pairs. Its text wraps and the actions
+ * wrap under it, so at 320px nothing scrolls sideways; there is no animation,
+ * so nothing needs a reduced-motion branch. Focus rings come from the global
+ * `:focus-visible` rule, and the 44px touch floor from the global phone rule for
+ * direct controls of a `[class*="__actions"]` row (index.css), so this sheet
+ * carries no responsive at-rule of its own.
+ */
+.usage-limit-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2, 8px) var(--space-3, 12px);
+  margin: 0 12px 8px;
+  padding: var(--space-3, 12px);
+  min-width: 0;
+  border: 1px solid var(--tone-border-warning);
+  border-radius: var(--radius-md, 8px);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: var(--text-md);
+}
+
+.usage-limit-banner--notice {
+  border-color: var(--border-primary);
+}
+
+.usage-limit-banner__title,
+.usage-limit-banner__body,
+.usage-limit-banner__error {
+  margin: 0;
+  min-width: 0;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.usage-limit-banner__title {
+  flex: 1 1 100%;
+}
+
+.usage-limit-banner__body {
+  flex: 1 1 14rem;
+  color: var(--text-secondary);
+}
+
+.usage-limit-banner__error {
+  flex: 1 1 100%;
+  color: var(--error-text, var(--status-error));
+}
+
+.usage-limit-banner__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2, 8px);
+}

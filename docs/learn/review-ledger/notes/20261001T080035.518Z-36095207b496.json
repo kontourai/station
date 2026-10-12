@@ -1,0 +1,7 @@
+{
+  "revision": "c5364f269c1fa068755974e957adba21c461a6fa",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"#3071 final round, after merging origin/main. Changed inputs: claude-adapter.ts (merged bytes: main's #2933 autoApprove change, reviewed in main's record, plus this branch's #3071 hunks: main-thread request.opened carries turnId, and interruptTurn cancels every request raised during the SDK interrupt before turn.aborted; the two auto-merged in separate hunks and the Claude adapter suite passes on the merged file). Re-read the #3071 passage against the final code: recovery arm window (since the dead turn's turn.started, before any other turn's) in packages/shared/src/request-settlement.ts and interrupted-turn-recovery.ts; live arm by name; Claude main-thread and Muse non-subagent stamping (source and adapter tests); Claude cancelling a subagent's requests on interrupt (source and test); the 409 refusal. Executed request-turn-settlement.test.ts, interrupted-turn-recovery.test.ts, claude-adapter.test.ts, muse-serve-adapter.test.ts. Station-agent stamping and Codex/ACP not stamping are from reading source only. Main's #2933 sentence was not reviewed by me. Rest of the page not re-reviewed.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

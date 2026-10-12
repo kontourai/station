@@ -1,0 +1,7 @@
+{
+  "revision": "ca82efb07216fbe7c6fc963308ded70d7dcefb21",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"No impact: the guide routes to the contracts reference and makes no attention-item field claims.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]}
+  ]
+}

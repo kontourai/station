@@ -35,7 +35,7 @@ intercepts before extending its evidence to a backend or provider.
 | Surface | Current spec owners | What to inspect |
 | --- | --- | --- |
 | Home / continuity rail | `task-first-home`, `root-route-restore`, Android `mobile-layout`, `mobile-chat-composer` | Continuation, first steps, deep links, loading/retry state, mobile geometry, and composer reachability; many Home responses are mocked |
-| Projects | `project-lifecycle`, `project-forms`, `project-architecture`, `coding-layout-plan-panel` | Create/edit/delete, layout selection, unsaved guards, failed saves, and phone-sized form containment |
+| Projects | `project-lifecycle`, `project-forms`, `project-architecture`, `project-icons`, `coding-layout-plan-panel` | Create/edit/delete, layout selection, unsaved guards, failed saves, phone-sized form containment, and an icon set in settings reaching the sidebar, a Home row and the switcher through the live server |
 | Settings / Customize | `settings`, `project-architecture`, `registry` | Topic navigation, legacy links, scope captions, save/readback and discard guards, mobile controls and overflow, and Customize → Plugins → Registry |
 | Agents | `agents-pane`, `agents-readiness-board`, `agents-editor-gates`, `agents-editor-roundtrip`, `agents-copy-existing`, `agents-new-model-turn`, `agents-new-cli-turn`, `agents-new-muse-echo-turn`, `default-agent-workflow` | Separate browsing, readiness, editing, copying, and engine-specific turn journeys; `agents.spec.ts` is no longer the owner |
 | Skills | `skills` | Create/edit/source labeling, command switches, variable resolution, test runs, read-only explanation, the retired playbook redirect, and the detail header's two-labelled-action cap at 1280 and 390 pixels |
@@ -43,7 +43,7 @@ intercepts before extending its evidence to a backend or provider.
 | Connections | `connections-crud`, `connect-modal`, `connect-remote-auth-recovery`, `connect-reconnect-banner` | Model/runtime/tool-server setup, manual consent, connection repair, keyboard focus, and phone-sized dialogs |
 | Plugins | `plugin-update`, `plugin-preview`, `plugin-pane-sdk-context`, `minimal-workspace-example`, `bundled-plugin-registry-lifecycle` | Update success/failure, permission denial, installed plugin panes rendering, settings, removal, and dialog containment |
 | Schedule | `schedule`, `schedule-runs` | CRUD, explicit run, filter/toggle, keyboard sorting, run history, output, and exact-run deep links |
-| Monitoring | `monitoring` | Fixture history, event/search filters, chips, time ranges, and sidebar/metric rendering; this does not establish telemetry producer completeness |
+| Monitoring | `monitoring` | Fixture history, event/search filters, chips, time ranges, stable toolbar actions at desktop and phone widths, and sidebar/metric rendering; this does not establish telemetry producer completeness |
 
 The [manifest](../../tests/e2e-manifest.mjs) assigns each spec's bucket and
 execution class. The [coverage runner](../../scripts/run-e2e-coverage.mjs) runs

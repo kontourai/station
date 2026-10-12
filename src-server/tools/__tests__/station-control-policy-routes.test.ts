@@ -23,7 +23,10 @@ import {
   test,
 } from 'vitest';
 import type { StationControlCallerRecordResolver } from '../../runtime/mcp/station-control-caller.js';
-import { claudeInProcessStationControlOptions } from '../../runtime/mcp/station-control-in-process.js';
+import {
+  claudeInProcessStationControlOptions,
+  type InProcessStationControlServer,
+} from '../../runtime/mcp/station-control-in-process.js';
 import { __resetStationControlMcpTokensForTests } from '../../runtime/mcp/station-control-mcp-token.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { INTERNAL_API_TOKEN_HEADER } from '../../utils/internal-api-token.js';
@@ -115,7 +118,10 @@ const ARGS: Record<string, Record<string, unknown>> = {
   delete_agent: { slug: 'a' },
   list_conversations: { agent: 'a' },
   get_conversation_messages: { agent: 'a', conversationId: 'c' },
+  read_conversation: { conversationId: 'c', limit: 5 },
   delete_conversation: { agent: 'a', conversationId: 'c' },
+  search_sessions: { query: 'cobalt' },
+  rename_session: { conversationId: 'c', title: 'A title' },
   board_pin: {
     reference: { kind: 'session', id: 's' },
     name: 'w',
@@ -124,6 +130,12 @@ const ARGS: Record<string, Record<string, unknown>> = {
   board_unpin: { reference: { kind: 'session', id: 's' }, name: 'w' },
   board_move: { reference: { kind: 'session', id: 's' }, name: 'w' },
   board_read: { reference: { kind: 'session', id: 's' } },
+  declare_pull_request: {
+    provider: 'github',
+    host: 'github.com',
+    repository: { owner: 'o', name: 'r' },
+    ref: '1',
+  },
   install_skill: { id: 's' },
   uninstall_skill: { id: 's' },
   update_skill: { name: 's', description: 'd' },
@@ -184,9 +196,22 @@ const ARGS: Record<string, Record<string, unknown>> = {
     decision: 'decline',
   },
   interrupt_task: { taskId: 't' },
+  send_to_session: {
+    sessionId: 'session-1',
+    text: 'hello',
+    requestKey: 'key-0000001',
+  },
+  interrupt_session: { sessionId: 'session-1', requestKey: 'key-0000002' },
+  wait_session: { sessionId: 'session-1', until: 'idle' },
+  list_project_activity: {},
+  get_session_digest: { sessionId: 'session-1' },
   update_config: { updates: { theme: 'dark' } },
   reindex_knowledge: {},
   search_knowledge: { query: 'q' },
+  list_knowledge_roots: {},
+  list_knowledge_records: { rootId: 'root-a', type: 'raw' },
+  get_knowledge_record: { rootId: 'root-a', id: 'record-a' },
+  add_knowledge_record: { rootId: 'root-a', title: 't', body: 'b' },
   migrate_knowledge: {},
   get_integration: { id: 'i' },
   delete_integration: { id: 'i' },
@@ -204,54 +229,109 @@ const ARGS: Record<string, Record<string, unknown>> = {
   notify_user: { title: 't' },
 };
 
+type PolicyServerId = 'station-control' | 'station-knowledge';
+
+/**
+ * The server(s) a tool is registered on. An entry without `serverIds` is a
+ * station-control tool, the same default `qualifiedToolNamesOfClass` applies
+ * (`runtime-control-tools.ts`); #3196 gave the Knowledge data tools
+ * `serverIds: ['station-knowledge']` and removed them from station-control.
+ */
+function policyServerIds(name: string): readonly PolicyServerId[] {
+  const policy = STATION_CONTROL_TOOL_POLICY[
+    name as keyof typeof STATION_CONTROL_TOOL_POLICY
+  ] as { serverIds?: readonly PolicyServerId[] };
+  return policy.serverIds ?? ['station-control'];
+}
+
 describe('the authority table routes are the routes the tools call', () => {
   test('every internal request each tool sends resolves to a leaf that tool owns', async () => {
     const options = claudeInProcessStationControlOptions(() => resolveRecord);
-    const instance = options.createInProcessStationControl('op-route-capture');
-    const { transport, request } = memoryTransport();
-    await instance.connect(transport);
-    await request(1, 'initialize', {
-      protocolVersion: '2025-06-18',
-      capabilities: {},
-      clientInfo: { name: 'engine', version: '1' },
-    });
+    const servers: Record<PolicyServerId, () => InProcessStationControlServer> =
+      {
+        'station-control': () =>
+          options.createInProcessStationControl('op-route-capture-control'),
+        'station-knowledge': () =>
+          options.createInProcessStationKnowledge('op-route-capture-knowledge'),
+      };
     const undeclared: string[] = [];
     const silent: string[] = [];
+    const driven = new Set<string>();
     let id = 10;
-    for (const name of Object.keys(STATION_CONTROL_TOOL_POLICY)) {
-      recorded.length = 0;
-      id += 1;
-      const result = await request(id, 'tools/call', {
-        name,
-        arguments: ARGS[name] ?? {},
+    for (const serverId of Object.keys(servers) as PolicyServerId[]) {
+      const instance = servers[serverId]();
+      const { transport, request } = memoryTransport();
+      await instance.connect(transport);
+      await request(1, 'initialize', {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'engine', version: '1' },
       });
-      const internal = recorded.filter((entry) => entry.internal);
-      const policy =
-        STATION_CONTROL_TOOL_POLICY[
-          name as keyof typeof STATION_CONTROL_TOOL_POLICY
-        ];
-      // A person-only tool is refused before it calls anything.
-      if (
-        policy.routes.length > 0 &&
-        policy.personOnly !== 'always' &&
-        internal.length === 0
-      )
-        silent.push(`${name}: ${JSON.stringify(result).slice(0, 300)}`);
-      for (const entry of internal) {
-        const owners =
-          matchStationControlRoute(entry.method, entry.path)?.owners ?? [];
+      // Drive each tool only through the server its policy says serves it: a
+      // tool another server owns is "not found" here, which is not a route.
+      for (const name of Object.keys(STATION_CONTROL_TOOL_POLICY)) {
+        if (!policyServerIds(name).includes(serverId)) continue;
+        driven.add(name);
+        recorded.length = 0;
+        id += 1;
+        const result = await request(id, 'tools/call', {
+          name,
+          arguments: ARGS[name] ?? {},
+        });
+        const internal = recorded.filter((entry) => entry.internal);
+        const policy =
+          STATION_CONTROL_TOOL_POLICY[
+            name as keyof typeof STATION_CONTROL_TOOL_POLICY
+          ];
+        // A person-only tool is refused before it calls anything.
         if (
-          !owners.includes(name) &&
-          !owners.includes('station-control-caller')
+          policy.routes.length > 0 &&
+          policy.personOnly !== 'always' &&
+          internal.length === 0
         )
-          undeclared.push(`${name}: ${entry.method} ${entry.path}`);
+          silent.push(
+            `${serverId}/${name}: ${JSON.stringify(result).slice(0, 300)}`,
+          );
+        for (const entry of internal) {
+          const owners =
+            matchStationControlRoute(entry.method, entry.path)?.owners ?? [];
+          if (
+            !owners.includes(name) &&
+            !owners.includes('station-control-caller')
+          )
+            undeclared.push(
+              `${serverId}/${name}: ${entry.method} ${entry.path}`,
+            );
+        }
       }
+      await instance.close();
     }
-    await instance.close();
     expect(undeclared).toEqual([]);
     // Tools the recording Station's generic answer cannot drive to a request:
     // their routes are proved by reading, not by this capture. Pinned so the
     // list only shrinks.
     expect(silent).toEqual([]);
+    // No policy entry is skipped because no server was asked for it.
+    expect([...driven].sort()).toEqual(
+      Object.keys(STATION_CONTROL_TOOL_POLICY).sort(),
+    );
+  });
+
+  test('the Knowledge-only tools are the four #3196 moved off station-control, and both servers drive search_knowledge', () => {
+    const only = (serverId: PolicyServerId) =>
+      Object.keys(STATION_CONTROL_TOOL_POLICY)
+        .filter((name) => policyServerIds(name).includes(serverId))
+        .filter((name) => policyServerIds(name).length === 1)
+        .sort();
+    expect(only('station-knowledge')).toEqual([
+      'add_knowledge_record',
+      'get_knowledge_record',
+      'list_knowledge_records',
+      'list_knowledge_roots',
+    ]);
+    expect(policyServerIds('search_knowledge')).toEqual([
+      'station-control',
+      'station-knowledge',
+    ]);
   });
 });

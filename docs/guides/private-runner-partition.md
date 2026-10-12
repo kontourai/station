@@ -50,7 +50,7 @@ or tested. Inspect current runner inventory before any change.
 2. Register or reconfigure exactly one fast listener and one heavy listener
    with the contract above, then verify their labels in GitHub's runner list.
 3. Merge the workflow routing only after both listeners are online. Dispatch
-   `CI` and a representative heavy workflow; confirm `fast-checks` is assigned
+   `PR: CI` and a representative heavy workflow; confirm `fast-checks` is assigned
    to the fast listener and the heavy job to the heavy listener.
 4. Keep the physical-host capacity action enabled and inspect its lease output.
    Label partition prevents listener starvation; it does not replace resource

@@ -1,0 +1,7 @@
+{
+  "revision": "d6562d74f67948b07be90e49e643474d432c0e07",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the changed workflow-contract keeper: health watch inventory now includes the qualification watchdog, and the redundant independent Nightly schedule assertion was removed in favor of the qualified entry graph owner. The six-hour qualification, hosted exact-source completion and manual diagnostic guidance remains accurate; no test or publication authority is weakened.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-workflow-contract.test.ts"]}
+  ]
+}

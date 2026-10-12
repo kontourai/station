@@ -1,0 +1,7 @@
+{
+  "revision": "e7b093ea168b59a71aac06af6a7c6c9ec2e765b0",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.webm","note":"The capture shows a local request's Inspect request dialog. This change only adds a viewer predicate to the attention route and a peer-record pending-request writer; the local inspection flow and its rendered UI are unchanged.","inputs":["docs/learn/media/inspect-request.webm","src-server/routes/orchestration/attention.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

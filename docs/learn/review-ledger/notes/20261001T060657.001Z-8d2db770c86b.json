@@ -1,0 +1,7 @@
+{
+  "revision": "c7dcc1ff793055c5bc1161b9a7db519cfb9d6e96",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"#3071 source delta in orchestration-session-state.ts (openRequestIds and run-status open-request filter). The page's claim routed to that file is the inputOrigin derivation from session.started/session.configured metadata, which the delta does not touch. No prose change.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

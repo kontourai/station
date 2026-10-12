@@ -1,0 +1,7 @@
+{
+  "revision": "1e2395d8589cfcb313b8fdc80020bf7564f2edac",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"#3391 round 8: runsAt left GET /api/projects and /api/boot (back to main's catalogue) for a separate operator-only GET /api/projects/run-locations (projects.ts), with SDK listProjectRunLocations/useProjectRunLocationsQuery, ProjectsContext useScopedProjectRunLocationsQuery, and the composer merging it in (HomeStartComposer, ChatDock to NewChatModal); the route is declared in pairing-route-scopes.ts and projectReadGuard refuses member-scoped callers. The workingDirectory write-authority claims are unchanged; the new read returns only paths the operator's Project list already carries.","inputs":["docs/security/remote-access-threat-model.md","packages/sdk/src/client/projects.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts"]}
+  ]
+}

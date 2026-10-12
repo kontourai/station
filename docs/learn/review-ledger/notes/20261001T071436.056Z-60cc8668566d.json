@@ -1,0 +1,7 @@
+{
+  "revision": "b03622e2007e22ff75c7280a41396526c75a7b6e",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#3071 review-fix round. Changed inputs: claude-adapter.test.ts (two tests for the above); claude-adapter.ts (a main-thread request.opened carries its turnId, a subagent's none; interruptTurn cancels the turn's own requests raised during the SDK interrupt before turn.aborted). Read the canUseTool statements (autoApprove honoring, settings-tier shadowing, payload field names): the delta adds turnId to the request.opened envelope, not to its payload, and changes no approval decision. No prose change.","inputs":["docs/conformance/tool-policy-delivery.md"]}
+  ]
+}

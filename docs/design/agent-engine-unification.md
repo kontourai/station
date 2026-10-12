@@ -25,6 +25,16 @@
 > per-capability instead of per-type. `entity-hierarchy.md` gets revised in the same
 > commits as the code that moves each boundary, per the standing rule.
 
+## Conversation execution overrides
+
+The saved Agent continues to bind one default engine. A conversation can now
+explicitly choose another receiver-owned default engine Agent as its execution
+binding while retaining its authored profile. Engine and model appear together
+in the shared picker, and reverting to Agent defaults uses an explicit handoff
+on an existing conversation. This does not edit the saved definition or relocate
+the conversation between Stations. See the [execution target contract](../reference/session-api.md#preserve-an-agent-profile-with-an-execution-override)
+and [composer interaction policy](chat-composer.md#starting-and-resuming-work).
+
 ## 1. The unification: one agent, executed by an engine
 
 Station's former model was a two-type taxonomy (Station agent / External agent) with a
@@ -234,7 +244,7 @@ Seed matrix (initial honest state — entries move as slices land):
 | Capability | Station engine | Claude Code | Codex | ACP CLIs |
 | --- | --- | --- | --- | --- |
 | System prompt | native | session/flag — **shipped** (#895 wave B: SDK `systemPrompt` preset+append; authored prompt appends to the engine's own prompt) | session/wire — evidence-gathered, NOT shipped (#896 wave 2: `codex app-server generate-json-schema` against codex-cli 0.145.0 confirms `developerInstructions` on `ThreadStartParams`/`ThreadResumeParams`/`ThreadForkParams` — the wire channel this row names IS real — but the app-server protocol has no version/server-capability signal anywhere (`InitializeResponse` carries only `codexHome`/`platformFamily`/`platformOs`/`userAgent`; `InitializeParams`/`InitializeCapabilities` are client-declared only), so §5's version-skew honesty guard has nothing to gate on; authored prompts stay receipted `engine-unsupported` (#895 wave B) until a real signal exists) | unsupported — per-CLI initialize evidence recorded (#895 wave B probes: loadSession, mcp/prompt/session capabilities); no ACP CLI exposes a system-prompt surface; receipts unchanged |
-| MCP tool servers | native | session/subprocess — **shipped** (#1157: SDK `mcpServers` wired in `claude-adapter.ts buildOptions`; station-control-only token injection, safe because the SDK spawns each MCP server itself inside Station's own process) | session/wire — **shipped** (station#1195, the Codex analog of #1157: `-c mcp_servers.<id>....` session-layer overrides appended to the `codex app-server` spawn argv, confirmed live against codex-cli 0.145.0; this superseded the app-home hypothesis this row originally seeded — `codex app-server` independently manages its own MCP connections, so the channel is 'wire' like ACP, not 'app-home'. The built-in station-control server is delivered via a per-session, short-lived, station-control-scoped bearer token riding the station-control HTTP/SSE MCP endpoint's URL query string — never env, since env can never safely cross a wire channel to an external process) | session/wire — shipped for `session/new` (#888) and `session/load` (#895 wave B) on loadSession-capable CLIs; a resume against a CLI without `loadSession` fails closed with a named error, never a silent fresh session. Authored passthrough stays stdio-only. The built-in station-control server (station#1684) is the one HTTP entry: an ACP `type: 'http'` server whose `Authorization: Bearer` header carries the same per-session token Codex carries in a URL query string — the header rather than the URL because an ACP `session/new` payload is handed to the external agent app. `basis: 'runtime_observation'`, so it is delivered only to a connection whose live `initialize` advertised `mcpCapabilities.http` |
+| MCP tool servers | native | session/subprocess — **shipped** (#1157: SDK `mcpServers` wired in `claude-adapter.ts buildOptions`; Station API MCP delivery uses session-bound in-process servers for Control and Knowledge) | session/wire — **shipped** (station#1195, the Codex analog of #1157: `-c mcp_servers.<id>....` session-layer overrides appended to the `codex app-server` spawn argv, confirmed live against codex-cli 0.145.0; this superseded the app-home hypothesis this row originally seeded — `codex app-server` independently manages its own MCP connections, so the channel is 'wire' like ACP, not 'app-home'. The built-in station-control server is delivered via a per-session, short-lived, station-control-scoped bearer token riding the station-control HTTP/SSE MCP endpoint's URL query string — never env, since env can never safely cross a wire channel to an external process) | session/wire — shipped for `session/new` (#888) and `session/load` (#895 wave B) on loadSession-capable CLIs; a resume against a CLI without `loadSession` fails closed with a named error, never a silent fresh session. Authored passthrough stays stdio-only. The built-in Control and Knowledge servers use separate HTTP credentials: an ACP `type: 'http'` server whose `Authorization: Bearer` header carries the same per-session token Codex carries in a URL query string — the header rather than the URL because an ACP `session/new` payload is handed to the external agent app. `basis: 'runtime_observation'`, so it is delivered only to a connection whose live `initialize` advertised `mcpCapabilities.http` |
 | Skills | native | session/workspace-overlay — **shipped** (#897); app-home variant per #896 | session/app-home (if probe proves a skills surface; else unsupported) | unsupported (slash-command shims are a recorded follow-up) |
 | Commands | native | unsupported (native slash commands are the engine's own) | unsupported | unsupported |
 | Model + knobs | native (Model connection) | session (model, effort, thinking, fastMode) | session (model, approvalPolicy, sandbox, serviceTier) | model selection unavailable until the adapter invokes an ACP model-category configuration operation |
@@ -385,10 +395,12 @@ channel — is **invalid-as-authored**, and the system says so where authoring h
   with save allowed (an agent definition is portable data). Fields whose capability is
   `unsupported` never render as silently-editable-but-ignored, and authored content is
   never invisible.
-- **API:** agent save responses carry the validation findings; session start against
-  an invalid pairing succeeds only for the deliverable subset and records the
-  undelivered fields in the session's configuration receipt (`session.configured`
-  metadata) — visible in receipts, never dropped on the floor.
+- **API:** Agent save responses carry the validation findings. The existing saved-binding
+  path records undelivered fields in its configuration receipt (`session.configured`)
+  when starting with the deliverable subset. An explicit conversation engine override
+  is stricter: required profile delivery must be supported and must actually succeed;
+  otherwise resolution or adapter startup refuses it. It cannot silently reduce the
+  profile to fit the selected engine.
 - **Never at session time as silence.** The one thing forbidden is the current de
   facto behavior: accepting configuration and quietly not delivering it.
 
@@ -588,6 +600,8 @@ Decisions:
   there is no default case, and the engine is precisely the fact that disambiguates
   the two-identical-OpenCodes problem the badges were built for. Visual weight stays
   quiet (the existing status-badge family); chips are informative, not alarming.
+  The start pickers (the New Chat list and the start composer's Agent menu) carry
+  the same pill right after the Agent's name rather than on a line of its own, and leave it out where it only repeats the Agent's name.
 - **ACP never appears on a chip.** Transport is not identity. The engine's name and
   icon come from its connection/registry entry.
 - The badge components/tests (`AgentTypeBadge.tsx`, `agentTypeBadgeKind`, their four
@@ -611,9 +625,10 @@ editor, matrix-driven — the third hardcoded tab set (`ACP_TABS`) disappears.
 The Connections hub remains **engine setup** (plus Models/Knowledge): its "Agent apps"
 section becomes the engine section — cards for Claude Code, Codex, configured
 command-backed engines, and detected-but-unadded CLIs (detection principle unchanged).
-Agents never live in the hub. The new-chat picker groups by engine (today's
-"External" + per-ACP-connection groups converge), with default agents appearing as
-ordinary members of their engine's group; Recent stays first.
+Agents never live in the hub. The current new-chat picker groups **Station**,
+**Coding apps**, and **My agents**. Engine defaults sit in Coding apps; recency
+orders rows within each group. Engine/model execution overrides are selected in
+the shared model picker without substituting the authored profile.
 
 First run asks two separate questions through shared production seams: which
 detected engines should receive ordinary default Agent wrappers, and which

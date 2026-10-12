@@ -9,10 +9,8 @@
 
   "limits": "No native build, simulator/device, keychain, Linux artifact, transport/broker/provider, cloud or release execution. Source/fixture checks do not renew dated runtime/security evidence.",
 
-  "document": {"digest":"08ffb93c3185012538246b7e824153c5e38e1219e8738a8b37e39ade795c3127","revision":"a5ccc5ac0cce41f37919efe90b260458d105917d"},
-
   "sources": [
-    {"path":"experiments/mobile-device/tauri-host/src/main.rs","digest":"268206e798aba4489807e1db05dcb2e473f6dc5df2b409bc853afe642e6f3a55","revision":"a5ccc5ac0cce41f37919efe90b260458d105917d"}
+    "experiments/mobile-device/tauri-host/src/main.rs"
   ],
 
   "checks": [

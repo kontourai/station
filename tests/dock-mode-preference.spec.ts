@@ -217,21 +217,31 @@ test.describe('Dock Mode Preference', () => {
     await settleDock(page);
     await dismissSetupLauncher(page);
 
+    // The collapsed, empty bar offers the one New chat action, icon-only,
+    // and no second "Start a chat" wording (owner, 2026-10).
+    const collapsedNew = page
+      .locator('.chat-dock__header')
+      .getByRole('button', { name: 'New chat', exact: true });
+    await expect(collapsedNew).toHaveCount(1);
+    await expect(collapsedNew).toHaveClass(/new-chat-action--icon/);
+    await expect(
+      page.locator('.chat-dock__header').getByText('Start a chat'),
+    ).toHaveCount(0);
+
     await page.locator('.chat-dock__header').click();
     await settleDock(page);
 
-    const openButton = page
-      .locator('.chat-dock__tab-actions .chat-dock__new')
-      .first();
+    // One New and no Open in the dock bar (design round 2026-10, B1).
     const newButton = page
-      .locator('.chat-dock__tab-actions .chat-dock__new')
-      .nth(1);
+      .locator('.chat-dock__tab-actions')
+      .getByRole('button', { name: 'New chat', exact: true });
+    await expect(newButton).toHaveCount(1);
     const maximizeButton = page.locator('.chat-dock__maximize-btn');
 
     // Consistent sizing is the rendered box, not the CSS that produces it:
-    // the three controls share one row height and none drops below 28px.
+    // the controls share one row height and none drops below 28px.
     const heights = await Promise.all(
-      [openButton, newButton, maximizeButton].map(
+      [newButton, maximizeButton].map(
         async (button) => (await button.boundingBox())!.height,
       ),
     );
@@ -247,34 +257,23 @@ test.describe('Dock Mode Preference', () => {
     await page.goto('/?dock=open');
     await settleDock(page);
     await dismissSetupLauncher(page);
-    const more = page.getByRole('button', {
-      name: 'More dock actions',
-      exact: true,
-    });
-    await more.click();
-    const expand = page.getByRole('menuitemcheckbox', {
-      name: 'Expand chat list',
-      exact: true,
-    });
-    if (await expand.isVisible()) {
-      await expand.click();
-      await more.click();
-    }
-    const collapse = page.getByRole('menuitemcheckbox', {
-      name: 'Collapse chat list',
-      exact: true,
-    });
-    await expect(collapse).toHaveAttribute('aria-checked', 'true');
+    // The bar's inbox toggle is a pressed/unpressed button named for what
+    // it does: "Hide inbox" while open, "Show inbox" (with what is waiting)
+    // while hidden.
+    const hide = page.getByRole('button', { name: 'Hide inbox', exact: true });
+    const show = page.getByRole('button', { name: /^Show inbox/ });
+    await expect(hide.or(show)).toBeVisible();
+    if (await show.isVisible()) await show.click();
+    await expect(hide).toHaveAttribute('aria-pressed', 'true');
     const landmark = page.getByRole('complementary', { name: 'Inbox chats' });
     await expect(landmark).toHaveCount(1);
     const openBox = await landmark.boundingBox();
     expect(openBox!.width).toBeGreaterThanOrEqual(240);
     expect(openBox!.width).toBeLessThanOrEqual(360);
-    await collapse.click();
+    await hide.click();
     await expect(landmark).toHaveCount(0);
-    await more.click();
-    await expect(expand).toHaveAttribute('aria-checked', 'false');
-    await expand.click();
+    await expect(show).toHaveAttribute('aria-pressed', 'false');
+    await show.click();
     await expect(landmark).toHaveCount(1);
     await expect
       .poll(async () => (await landmark.boundingBox())?.width)
@@ -299,11 +298,12 @@ test.describe('Dock Mode Preference', () => {
     await expect(
       page.getByRole('complementary', { name: 'Inbox chats' }),
     ).toHaveCount(0);
-    await page
-      .getByRole('button', { name: 'More dock actions', exact: true })
-      .click();
+    // The toggle is the bar's "Hide inbox" / "Show inbox…" button, the one
+    // `bottom-mode inbox toggle…` above presses. (This used to look for a
+    // `menuitemcheckbox` named "chat list" that nothing renders any more, so
+    // it passed with the toggle on screen; #3312.)
     await expect(
-      page.getByRole('menuitemcheckbox', { name: /chat list/ }),
+      page.getByRole('button', { name: /^(Hide|Show) inbox/ }),
     ).toHaveCount(0);
   });
 

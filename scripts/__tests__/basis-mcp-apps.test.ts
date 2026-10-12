@@ -199,10 +199,12 @@ describe('Basis MCP app output routing', () => {
         output: 'src/app.generated.ts',
       },
     ];
+    const fixtureRoot = resolve('/repo');
     const has = (...present: string[]) => ({
-      repoRoot: '/repo',
+      repoRoot: fixtureRoot,
       manifest,
-      exists: (path: string) => present.some((p) => path.endsWith(p)),
+      exists: (path: string) =>
+        present.some((p) => path === resolve(fixtureRoot, p)),
     });
     const missing = inspectGeneratedBuildInputs(has('src/app.browser.ts'));
     expect(missing.failures).toHaveLength(1);

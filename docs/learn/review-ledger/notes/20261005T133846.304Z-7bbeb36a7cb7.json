@@ -1,0 +1,7 @@
+{
+  "revision": "eef021bb201ffdd196449fcd86f0eee308f454e5",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"ProjectSidebar.tsx changed only to read useProjectIcons and pass the accent and icon maps it holds to the lazily loaded Open chats rows (SidebarOpenChats), which now wear project marks. This record covers shell ownership, Boards placement and owner routing; it makes no claim about Open chats row content, project colours or icons, so it stays accurate.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]}
+  ]
+}

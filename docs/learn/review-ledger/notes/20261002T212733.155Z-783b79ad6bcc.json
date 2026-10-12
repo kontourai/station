@@ -1,0 +1,37 @@
+{
+  "revision": "585dab19b97279b8e074fc192c8dd2a97c052ace",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Reviewed the settings navigation delta against this document: Customize owns management entry points; topic navigation and concise copy preserve row scopes, existing routes, save guards, and runtime contracts. Unrelated claims remain unchanged; no new release or native-device evidence is asserted.","inputs":["CONTEXT-MAP.md"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed the settings navigation delta against this document: Customize owns management entry points; topic navigation and concise copy preserve row scopes, existing routes, save guards, and runtime contracts. Unrelated claims remain unchanged; no new release or native-device evidence is asserted.","inputs":["CONTEXT.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the settings navigation delta against this document: Customize owns management entry points; topic navigation and concise copy preserve row scopes, existing routes, save guards, and runtime contracts. Unrelated claims remain unchanged; no new release or native-device evidence is asserted.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the settings navigation delta against this document: Customize owns management entry points; topic navigation and concise copy preserve row scopes, existing routes, save guards, and runtime contracts. Unrelated claims remain unchanged; no new release or native-device evidence is asserted.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reviewed the settings navigation delta against this document: Customize owns management entry points; topic navigation and concise copy preserve row scopes, existing routes, save guards, and runtime contracts. Unrelated claims remain unchanged; no new release or native-device evidence is asserted.","inputs":["docs/design/event-store-ledger-migration.md"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the settings navigation delta against this document: Customize owns management entry points; topic navigation and concise copy preserve row scopes, existing routes, save guards, and runtime contracts. Unrelated claims remain unchanged; no new release or native-device evidence is asserted.","inputs":["docs/design/placement.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed the settings navigation delta against this document: Customize owns management entry points; topic navigation and concise copy preserve row scopes, existing routes, save guards, and runtime contracts. Unrelated claims remain unchanged; no new release or native-device evidence is asserted.","inputs":["docs/design/settings-architecture.md"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the settings navigation delta against this document: Customize owns management entry points; topic navigation and concise copy preserve row scopes, existing routes, save guards, and runtime contracts. Unrelated claims remain unchanged; no new release or native-device evidence is asserted.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"Reviewed the settings navigation delta against this document: Customize owns management entry points; topic navigation and concise copy preserve row scopes, existing routes, save guards, and runtime contracts. Unrelated claims remain unchanged; no new release or native-device evidence is asserted.","inputs":["docs/guides/repository-knowledge-graph.md"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the settings navigation delta against this document: Customize owns management entry points; topic navigation and concise copy preserve row scopes, existing routes, save guards, and runtime contracts. Unrelated claims remain unchanged; no new release or native-device evidence is asserted.","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed the settings navigation delta against this document: Customize owns management entry points; topic navigation and concise copy preserve row scopes, existing routes, save guards, and runtime contracts. Unrelated claims remain unchanged; no new release or native-device evidence is asserted.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md"]},
+
+    {"path":"docs/README.md","note":"Reviewed the settings navigation delta against this document: Customize owns management entry points; topic navigation and concise copy preserve row scopes, existing routes, save guards, and runtime contracts. Unrelated claims remain unchanged; no new release or native-device evidence is asserted.","inputs":["docs/README.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed the settings navigation delta against this document: Customize owns management entry points; topic navigation and concise copy preserve row scopes, existing routes, save guards, and runtime contracts. Unrelated claims remain unchanged; no new release or native-device evidence is asserted.","inputs":["docs/reference/settings-deep-links.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the settings navigation delta against this document: Customize owns management entry points; topic navigation and concise copy preserve row scopes, existing routes, save guards, and runtime contracts. Unrelated claims remain unchanged; no new release or native-device evidence is asserted.","inputs":["docs/user/concepts.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Reviewed the settings navigation delta against this document: Customize owns management entry points; topic navigation and concise copy preserve row scopes, existing routes, save guards, and runtime contracts. Unrelated claims remain unchanged; no new release or native-device evidence is asserted.","inputs":["examples/repository-knowledge-graph/README.md"]},
+
+    {"path":"README.md","note":"Reviewed the settings navigation delta against this document: Customize owns management entry points; topic navigation and concise copy preserve row scopes, existing routes, save guards, and runtime contracts. Unrelated claims remain unchanged; no new release or native-device evidence is asserted.","inputs":["README.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "9357cb58eaa5f24274257fe80fb34267393c1546",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Agent list paragraph now says the engine reads as quiet text at the end of the name line, after its state; matches AgentPickerRow at this revision, along with the qualifier, host-line and unreported-model sentences.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-start/AgentPickerRow.tsx","src-ui/src/components/home/HomeStartComposer.tsx"]}
+  ]
+}

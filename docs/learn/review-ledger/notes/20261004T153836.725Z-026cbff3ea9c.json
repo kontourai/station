@@ -1,0 +1,7 @@
+{
+  "revision": "c71edf641824e9d15b5c19de604c73fee73769d5",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"After merging #3229: the One bar paragraph now says the Coding bar keeps one verb, an icon-only New (the shared NewChatAction iconOnly, named 'New chat', tipped with its chord via ChatDockWorkspaceActions iconOnly), with no Open (the inbox sits beside Chat). The 'Session count on the Open icon' item is replaced by 'No session count' (no N sessions text or badge), and the ChatDockHeader summary no longer lists a session counter. Checked against ChatDockWorkspaceControls.tsx, NewChatAction.tsx, ChatDockHeader.tsx (counter only on a collapsed, unnamed bar: Start a chat), CodingWorkbench.css (badge CSS removed), and ChatDockHeaderNamesPane.test.tsx / coding-stack-navigation.spec.ts. Everything else #3229 recorded (rail, splitters, folded inbox, panels) is unchanged.","inputs":["docs/design/placement.md"]}
+  ]
+}

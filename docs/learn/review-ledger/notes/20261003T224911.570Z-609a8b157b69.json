@@ -1,0 +1,11 @@
+{
+  "revision": "3d4674bf8f60442c202efe5872b616324a808484",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the ChatDockProjectContext.tsx delta against the recorded source: an eager component stylesheet import only. Its new stylesheet clips the stacked badge and keeps caption/name single-line without changing labels, project selection, navigation, or chat-default authority. Re-read the New chats/mobile picker claims and traced the component, header caller, MobileTaskSwitcher and actual owner geometry suites. The existing prose remains accurate. Executed Chromium geometry at 320/800/1200 in both themes and phone cards at 320/390; physical devices and full-app fonts/provider flows were not verified.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the ChatDockProjectContext.tsx delta against the recorded source: an eager component stylesheet import only. Its new stylesheet clips the stacked badge and keeps caption/name single-line without changing labels, project selection, navigation, or chat-default authority. Re-read the New chats/mobile picker claims and traced the component, header caller, MobileTaskSwitcher and actual owner geometry suites. The existing prose remains accurate. Executed Chromium geometry at 320/800/1200 in both themes and phone cards at 320/390; physical devices and full-app fonts/provider flows were not verified.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the ChatDockProjectContext.tsx delta against the recorded source: an eager component stylesheet import only. Its new stylesheet clips the stacked badge and keeps caption/name single-line without changing labels, project selection, navigation, or chat-default authority. Re-read the New chats/mobile picker claims and traced the component, header caller, MobileTaskSwitcher and actual owner geometry suites. The existing prose remains accurate. Executed Chromium geometry at 320/800/1200 in both themes and phone cards at 320/390; physical devices and full-app fonts/provider flows were not verified.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

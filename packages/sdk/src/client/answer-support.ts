@@ -6,8 +6,13 @@ import type {
   TaskAnswerSupportStanding,
 } from '@kontourai/station-contracts';
 import type { FoundAnswerCardProjection } from '@kontourai/surface';
-import { apiErrorMessage } from './api-error-message';
-import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import { envelopeError, type StationHttpError } from './api-error-message';
+import {
+  type ClientRequestOptions,
+  getJson,
+  mutateJson,
+  readJsonBody,
+} from './http';
 
 /** An opaque, authorized selection handle. It is never a report location. */
 export type AnswerSupportBundle = { id: string };
@@ -18,13 +23,38 @@ type Envelope<T> = { success: boolean; data?: T; error?: string };
 
 /** A protected route failure with the status needed to revoke cached authority. */
 export class AnswerSupportRequestError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-  ) {
-    super(message);
+  readonly status: number;
+  /** The refusal's machine `code`, `details` and `Retry-After` (#2708). */
+  readonly code?: string;
+  readonly details?: unknown;
+  readonly retryAfterMs?: number;
+
+  constructor(failure: StationHttpError);
+  constructor(message: string, status: number);
+  constructor(failure: string | StationHttpError, status?: number) {
+    super(typeof failure === 'string' ? failure : failure.message);
     this.name = 'AnswerSupportRequestError';
+    if (typeof failure === 'string') {
+      this.status = status as number;
+      return;
+    }
+    this.status = failure.status;
+    if (failure.code !== undefined) this.code = failure.code;
+    if (failure.details !== undefined) this.details = failure.details;
+    if (failure.retryAfterMs !== undefined)
+      this.retryAfterMs = failure.retryAfterMs;
   }
+}
+
+/** The refusal, read out; one whose body is not JSON keeps its status. */
+async function refusal(
+  response: Response,
+): Promise<{ body: Envelope<unknown> | undefined; failure: StationHttpError }> {
+  const body = (await readJsonBody(response)) as Envelope<unknown> | undefined;
+  return {
+    body,
+    failure: envelopeError(response, body, `HTTP ${response.status}`),
+  };
 }
 
 /**
@@ -52,22 +82,16 @@ export type TaskAnswerSupportTurnReferenceCard<TAnswer = unknown> =
   | { state: 'unavailable' };
 
 async function unwrap<T>(response: Response): Promise<T> {
-  const body = (await response.json()) as Envelope<T>;
-  if (!response.ok || !body.success || body.data === undefined)
-    throw new AnswerSupportRequestError(
-      apiErrorMessage(body, `HTTP ${response.status}`),
-      response.status,
-    );
-  return body.data;
+  const { body, failure } = await refusal(response);
+  if (!response.ok || !body?.success || body.data === undefined)
+    throw new AnswerSupportRequestError(failure);
+  return body.data as T;
 }
 
 async function unwrapSuccess(response: Response): Promise<void> {
-  const body = (await response.json()) as Envelope<unknown>;
-  if (!response.ok || !body.success)
-    throw new AnswerSupportRequestError(
-      apiErrorMessage(body, `HTTP ${response.status}`),
-      response.status,
-    );
+  const { body, failure } = await refusal(response);
+  if (!response.ok || !body?.success)
+    throw new AnswerSupportRequestError(failure);
 }
 
 const supportPath = (taskId: string, referenceId: string, suffix = '') =>

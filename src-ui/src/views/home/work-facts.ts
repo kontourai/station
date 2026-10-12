@@ -8,6 +8,7 @@ import {
   orchestrationLifecycleLabel,
   sessionAttentionKind,
 } from '../../utils/session-state';
+import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
 import type { HomeWorkItem } from './home-view-model';
 
 /**
@@ -135,7 +136,9 @@ function workActivityFrom(
  * says only "waiting".
  */
 function chatAttentionKind(chat: ChatUIState): WorkAttentionKind | undefined {
-  if (chat.pendingApprovals?.length) return 'approval';
+  // Requests still waiting on the user, not every one open on the server: an
+  // answered one waits on the engine (utils/waiting-approvals).
+  if (requestsWaitingOnUser(chat).length > 0) return 'approval';
   if (chat.status === 'queued') return 'queued';
   if (chat.orchestrationStatus === 'awaiting-approval') return 'waiting';
   return undefined;

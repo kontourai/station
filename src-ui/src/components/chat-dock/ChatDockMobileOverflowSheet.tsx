@@ -1,9 +1,9 @@
-import { ChatDockMobileConnection } from './ChatDockMobileConnection';
 import './ChatDockMobileOverflowSheet.css';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
+import { ChatDockMobileConnection } from './ChatDockMobileConnection';
 import type { ChatDockMobileOverflowActions } from './ChatDockMobileHeader';
 
 /**
@@ -93,7 +93,7 @@ export function ChatDockMobileOverflowSheet({
           className="composer-actions-menu__item"
           onClick={() => run(overflow.onToggleHistory)}
         >
-          Chats
+          Inbox
         </button>
         {overflow.onOpenConversationHistory && (
           <button
@@ -102,7 +102,7 @@ export function ChatDockMobileOverflowSheet({
             className="composer-actions-menu__item"
             onClick={() => run(overflow.onOpenConversationHistory!)}
           >
-            Conversation history
+            History
           </button>
         )}
         {overflow.onOpenBackgroundTasks && (

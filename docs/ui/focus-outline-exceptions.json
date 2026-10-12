@@ -52,11 +52,6 @@
       "reason": "Legacy suppression covered by the global keyboard-focus floor."
     },
     {
-      "path": "src-ui/src/components/coding-layout/CodingLayout.css",
-      "selector": ".coding-layout__terminal-tab-rename",
-      "reason": "Legacy suppression covered by the global keyboard-focus floor."
-    },
-    {
       "path": "src-ui/src/components/coding-layout/FileTreePanel.css",
       "selector": ".file-tree-panel__search-input",
       "reason": "Legacy suppression covered by the global keyboard-focus floor."
@@ -124,11 +119,6 @@
     {
       "path": "src-ui/src/views/PluginManagementView.css",
       "selector": ".plugins__setting-input",
-      "reason": "Legacy suppression covered by the global keyboard-focus floor."
-    },
-    {
-      "path": "src-ui/src/views/ProjectPage.css",
-      "selector": ".project-page__dir-input",
       "reason": "Legacy suppression covered by the global keyboard-focus floor."
     },
     {

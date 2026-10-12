@@ -1,0 +1,7 @@
+{
+  "revision": "080190580ad96131ede77da73167a481ec963482",
+
+  "notes": [
+    {"path":"docs/design/plugin-installation-lifecycle.md","note":"Read the two cited test files after the change: the install, update and recover route mounts now bind the operator's principal because the routes refuse a request no auth boundary saw; every lifecycle assertion (409 conflicts, recovery preview, restart behaviour) is unchanged, so the lifecycle design text still matches the tests.","inputs":["docs/design/plugin-installation-lifecycle.md","src-server/services/plugins/__tests__/plugin-installation-restart.test.ts","src-server/services/plugins/__tests__/plugin-installation.integration.test.ts"]}
+  ]
+}

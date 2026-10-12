@@ -160,34 +160,35 @@ export class UsageRollupService {
         }
       }),
     );
-    const result = foldUsageReceipts({
-      ...request,
-      pageSize,
-      receipts: results.flatMap((result) => result.receipts).filter(matches),
-      aggregateReceipts: results
-        .flatMap((result) => result.aggregateReceipts ?? result.receipts)
-        .filter(matches),
-      coverage: [
-        ...results.map((result) =>
-          request.credentialProfileRef === undefined
-            ? result.coverage
-            : {
-                ...result.coverage,
-                state:
-                  result.coverage.state === 'complete'
-                    ? ('partial' as const)
-                    : result.coverage.state,
-                reason: [
-                  result.coverage.reason,
-                  'Account totals exclude usage without recorded credential-profile attribution. Capture counts describe the engine.',
-                ]
-                  .filter(Boolean)
-                  .join(' '),
-              },
-        ),
-        ...this.unqueriedCoverage,
-      ],
-    });
+    const { aggregateReceipts: canonicalAggregateReceipts, ...result } =
+      foldUsageReceipts({
+        ...request,
+        pageSize,
+        receipts: results.flatMap((result) => result.receipts).filter(matches),
+        aggregateReceipts: results
+          .flatMap((result) => result.aggregateReceipts ?? result.receipts)
+          .filter(matches),
+        coverage: [
+          ...results.map((result) =>
+            request.credentialProfileRef === undefined
+              ? result.coverage
+              : {
+                  ...result.coverage,
+                  state:
+                    result.coverage.state === 'complete'
+                      ? ('partial' as const)
+                      : result.coverage.state,
+                  reason: [
+                    result.coverage.reason,
+                    'Account totals exclude usage without recorded credential-profile attribution. Capture counts describe the engine.',
+                  ]
+                    .filter(Boolean)
+                    .join(' '),
+                },
+          ),
+          ...this.unqueriedCoverage,
+        ],
+      });
     const next = Object.fromEntries(
       results.map((result, index) => {
         const stationId = this.sources[index]!.stationId;
@@ -205,9 +206,7 @@ export class UsageRollupService {
       ...result,
       ...(request.includeAggregate
         ? {
-            aggregateReceipts: results
-              .flatMap((item) => item.aggregateReceipts ?? item.receipts)
-              .filter(matches),
+            aggregateReceipts: canonicalAggregateReceipts,
           }
         : {}),
       // The public route must not expose source-transfer material. The remote
@@ -463,6 +462,12 @@ function parseReceipt(value: unknown, stationId: string): UsageReceipt {
     !validIsoDate(receipt.occurredAt)
   )
     throw new Error('mismatched usage receipt');
+  if (
+    receipt.sourceSequence !== undefined &&
+    (!Number.isSafeInteger(receipt.sourceSequence) ||
+      Number(receipt.sourceSequence) < 1)
+  )
+    throw new Error('invalid usage source sequence');
   for (const key of [
     'inputTokens',
     'outputTokens',

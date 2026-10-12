@@ -9,6 +9,7 @@ import {
   outboundDispatch,
 } from '../../../lib/outboundQueue';
 import { handleOrchestrationEvent } from '../eventHandlers';
+import { drainQueuedMessageOnTurnCompleted } from '../queueDrain';
 import type { OrchestrationEvent } from '../types';
 
 function event(
@@ -318,6 +319,88 @@ describe('handleOrchestrationEvent — station#3451 finding 7 (queue drain on ru
     expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([
       'queued follow-up',
     ]);
+  });
+
+  // #3157: the failed turn stopped on a usage limit. Draining would send the
+  // follow-up into the same limit and retire the resume waiting for the reset.
+  test('a usage-limit runtime.error holds the queued message', () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['queued follow-up'],
+    });
+
+    handleOrchestrationEvent(
+      'http://api',
+      event('runtime.error', {
+        threadId,
+        message: "You've hit your usage limit.",
+        provider: 'codex',
+        code: 'usageLimitExceeded',
+        retriable: false,
+        details: {
+          codexErrorInfo: 'usageLimitExceeded',
+          usageLimit: true,
+          scope: 'account',
+          resetAt: '2026-07-29T05:00:00.000Z',
+        },
+      }),
+    );
+
+    expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([
+      'queued follow-up',
+    ]);
+  });
+
+  const usageLimitStop = () =>
+    event('runtime.error', {
+      threadId,
+      turnId: 'limited-turn',
+      message: "You've hit your usage limit.",
+      provider: 'codex',
+      code: 'usageLimitExceeded',
+      retriable: false,
+      details: { usageLimit: true, scope: 'account' },
+    });
+
+  test('a turn starting after a usage-limit stop lets its end drain the queue', () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['queued follow-up'],
+    });
+    handleOrchestrationEvent('http://api', usageLimitStop());
+    expect(activeChatsStore.getSnapshot()[threadId].usageLimitStopped).toBe(
+      true,
+    );
+    handleOrchestrationEvent(
+      'http://api',
+      event('turn.started', {
+        threadId,
+        turnId: 'resumed-turn',
+        prompt: 'the resumed turn',
+      }),
+    );
+    expect(
+      activeChatsStore.getSnapshot()[threadId].usageLimitStopped,
+    ).toBeUndefined();
+    handleOrchestrationEvent(
+      'http://api',
+      event('turn.completed', {
+        threadId,
+        turnId: 'resumed-turn',
+        finishReason: 'stop',
+      }),
+    );
+    expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([]);
+  });
+
+  test('Send now still sends while a usage-limit stop holds the queue', () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['queued follow-up'],
+    });
+    handleOrchestrationEvent('http://api', usageLimitStop());
+    expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([
+      'queued follow-up',
+    ]);
+    drainQueuedMessageOnTurnCompleted('http://api', threadId, true, true);
+    expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([]);
   });
 
   // Negative control: a DEFINITIVE (non-retriable) codex runtime.error is

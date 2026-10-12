@@ -1,0 +1,35 @@
+{
+  "revision": "b0dd2f755f96fbd8650bbcf8036feb43655ab4ed",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"#3394 note archives. Checked the new ledger-layout row, the advance-baseline compaction paragraph (notes in the tree at the previous baseline move byte for byte into notes/archive/<previous-baseline>.json; loose files deleted in one writeReviewFiles batch), the five-guard list (note-removed exception only into an archive the change adds with exact merge-base bytes; archive-unbacked; archive-changed for a modified or removed landed archive), the one-store reader sentence (duplicate-note, not-canonical) and the replaced never-pruned sentence against review-ledger-store.mjs, documentation-freshness.mjs appendOnlyNoteProblems, review-history.mjs committed-note set and record-documentation-review.mjs. Stated that nothing advances the baseline automatically (docs-freshness-sweep.yml never edits the ledger). migrate-review-ledger.mjs now skips archives when deriving covered inputs.","inputs":["docs/guides/documentation.md","scripts/lib/documentation-freshness.mjs","scripts/lib/review-history.mjs","scripts/lib/review-ledger-store.mjs","scripts/migrate-review-ledger.mjs","scripts/record-documentation-review.mjs"]},
+
+    {"path":"docs/learn/README.md","note":"#3394: re-read Review status and capture notes. Notes stay append-only and readable after compaction: the reader loads archived and loose notes as one store in file-name order, and an archived note counts as committed in history, so Review out of date and the PR note requirement are unchanged. 'The note is added to the ledger's notes files' still holds; archives are written only by --advance-baseline.","inputs":["docs/learn/README.md","scripts/lib/documentation-freshness.mjs","scripts/lib/review-history.mjs","scripts/lib/review-ledger-store.mjs","scripts/record-documentation-review.mjs"]},
+
+    {"path":".veritas/README.md","note":"#3394: documentation-truth and freshness-scoping claims unchanged. The scoped check adds archive-changed and archive-unbacked rules to the same append-only block; merge queue, main and Nightly still only report. The documentation guide link targets still exist.","inputs":[".veritas/README.md","docs/guides/documentation.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"#3394: freshness-scoping paragraph unchanged; the new archive rules run inside the same scoped docs:truth:gate freshness test and do not change which job reports or blocks. Links to documentation.md#keep-reviews-fresh still resolve.","inputs":["docs/guides/code-quality.md","docs/guides/documentation.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/README.md","note":"#3394: only the guide's ledger-layout and guard sections changed; this map's routes to guides/documentation.md and its descriptions remain accurate.","inputs":["docs/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"#3394: the documentation follow-through anchor it links (turn-findings-into-maintained-improvements) is untouched; no claim here describes note storage.","inputs":["docs/architecture/abstraction-review.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/development.md","note":"#3394: links to the documentation guide for maintenance and public pages only; no ledger or note-storage claim affected.","inputs":["docs/guides/development.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#3394: routes to the documentation maintenance workflow only; the workflow is unchanged apart from note archiving inside --advance-baseline.","inputs":["docs/guides/integrating-station.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/testing.md","note":"#3394: test-impact-manifest now also selects review-ledger-guards.test.ts for check-documentation-freshness.mjs and record-documentation-review.mjs, which that suite spawns as child processes; the guide's selection description stays accurate. The ledger-merge measurement row still counts changed files under docs/learn/review-ledger/ (a compaction PR counts its deleted notes and added archive).","inputs":["docs/guides/testing.md","docs/guides/documentation.md","scripts/test-impact-manifest.mjs"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"#3394: .gitignore change only re-includes docs/learn/review-ledger/notes/archive/ under the existing archive/ rule; no mobile build output or archive-preparation path is affected.","inputs":["docs/guides/mobile-release.md",".gitignore"]},
+
+    {"path":"docs/guides/native-releases.md","note":"#3394: .gitignore change only re-includes docs/learn/review-ledger/notes/archive/; release assets, server archives and simulator archive handling are unaffected.","inputs":["docs/guides/native-releases.md",".gitignore"]},
+
+    {"path":"docs/guides/nightly.md","note":"#3394: .gitignore change only re-includes docs/learn/review-ledger/notes/archive/; Nightly staging outputs and ignored build paths are unchanged.","inputs":["docs/guides/nightly.md",".gitignore"]},
+
+    {"path":"docs/guides/release-rings.md","note":"#3394: .gitignore change only re-includes docs/learn/review-ledger/notes/archive/; source-archive installer inputs are unaffected.","inputs":["docs/guides/release-rings.md",".gitignore"]},
+
+    {"path":"docs/guides/store-entry.md","note":"#3394: .gitignore change only re-includes docs/learn/review-ledger/notes/archive/; no store-entry artifact path is affected.","inputs":["docs/guides/store-entry.md",".gitignore"]},
+
+    {"path":"docs/guides/store-listing.md","note":"#3394: .gitignore change only re-includes docs/learn/review-ledger/notes/archive/; no store-listing artifact path is affected.","inputs":["docs/guides/store-listing.md",".gitignore"]}
+  ]
+}

@@ -247,6 +247,10 @@ function runtimeComposition(
   store: EventStore,
   options: {
     unavailableAfterCommitOnce?: boolean;
+    outputFeedbackTargets?: ConstructorParameters<
+      typeof ProjectTaskRoomRuntime
+    >[0]['outputFeedbackTargets'];
+    afterAppend?: () => void;
     readAgentRequests?: ConstructorParameters<
       typeof ProjectTaskRoomRuntime
     >[0]['readAgentRequests'];
@@ -283,6 +287,7 @@ function runtimeComposition(
           },
         },
         agents: authority.agents,
+        outputFeedbackTargets: authority.outputFeedbackTargets,
         ...(options.unavailableAfterCommitOnce
           ? { unavailableAfterCommitOnce: true }
           : {}),
@@ -292,6 +297,7 @@ function runtimeComposition(
         append: async (input: Parameters<typeof history.append>[0]) => {
           const outcome = await history.append(input);
           appendOutcomes.push(outcome.kind);
+          options.afterAppend?.();
           return outcome;
         },
       };
@@ -307,6 +313,7 @@ function runtimeComposition(
         ? { responseTimeoutMs: options.responseTimeoutMs }
         : {}),
     }),
+    outputFeedbackTargets: options.outputFeedbackTargets,
     requestAuthority: options.requestAuthority ?? {
       resolve: async () => ({
         kind: 'granted' as const,
@@ -3512,4 +3519,78 @@ describe('ProjectTaskRoomRuntime', () => {
     });
     expect(restartedStore.close()).toEqual({ kind: 'closed' });
   }, 20_000);
+});
+
+test('feedback delivery rechecks authority and Task incarnation after a durable append settles', async () => {
+  const path = join(
+    makeTempDir('station-feedback-delivery-'),
+    'orchestration.sqlite',
+  );
+  const store = new EventStore(path);
+  const currentTask: TaskRecord = { ...task };
+  let revokeAfterAppend = false;
+  let revoked = false;
+  const validate = vi.fn(async () => 'admitted' as const);
+  const { runtime } = runtimeComposition(store, {
+    taskRecord: currentTask,
+    outputFeedbackTargets: { validate },
+    requestAuthority: {
+      resolve: async () =>
+        revoked
+          ? { kind: 'revoked' }
+          : {
+              kind: 'granted',
+              operatorId: 'operator-1',
+              deviceId: 'device-1',
+              policyRevision: 'pairing-v1',
+            },
+    },
+    afterAppend: () => {
+      if (revokeAfterAppend) revoked = true;
+    },
+  });
+  const request = new Request('http://station');
+  const input = {
+    taskId: task.id,
+    request,
+    proposalId: 'exact-review',
+    occurredAt: '2026-10-03T00:00:00.000Z',
+    feedback: {
+      kind: 'output-feedback' as const,
+      target: {
+        outputId: 'output-1',
+        digest: `sha256:${'a'.repeat(64)}` as const,
+        taskCreatedAt: task.createdAt,
+      },
+      review: 'accepted' as const,
+      text: 'Human statement',
+    },
+  };
+  try {
+    expect((await runtime.discover({ taskId: task.id, request })).kind).toBe(
+      'opened',
+    );
+    revokeAfterAppend = true;
+    expect(await runtime.outputFeedback(input)).toEqual({ kind: 'not-found' });
+    const db = new DatabaseSync(path);
+    expect(
+      db
+        .prepare(
+          'SELECT proposal_id FROM project_task_room_records WHERE proposal_id=?',
+        )
+        .get(input.proposalId),
+    ).toEqual({ proposal_id: input.proposalId });
+    db.close();
+    expect(validate).toHaveBeenCalledOnce();
+    revoked = false;
+    revokeAfterAppend = false;
+    expect((await runtime.outputFeedback(input)).kind).toBe('duplicate');
+    expect(validate).toHaveBeenCalledOnce();
+    currentTask.createdAt = '2026-10-03T01:00:00.000Z';
+    expect(await runtime.outputFeedback(input)).toEqual({ kind: 'not-found' });
+    expect(validate).toHaveBeenCalledOnce();
+  } finally {
+    await runtime.close();
+    store.close();
+  }
 });

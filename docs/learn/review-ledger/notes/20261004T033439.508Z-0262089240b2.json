@@ -1,0 +1,11 @@
+{
+  "revision": "5b3093012be1fc69505faecb25482bab17158d9b",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Integrated main b406f8de after joint #3201 landed. Reviewed the incoming New chat prose delta and retained its source bindings and existing limits. The geometry component import and stylesheet are unchanged from reviewed 6af8b61566: scoped label stretching, left alignment and caption ellipsis preserve the stacked labels and readable phone-card contract. Add the owner stylesheet and refresh only changed source bytes through the supported recorder. Prior isolated geometry and hosted gallery evidence remains scoped to its recorded revisions; no new full-app font, provider, physical-device or native proof is inferred.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Integrated main b406f8de after joint #3201 landed. Reviewed the incoming New chat prose delta and retained its source bindings and existing limits. The geometry component import and stylesheet are unchanged from reviewed 6af8b61566: scoped label stretching, left alignment and caption ellipsis preserve the stacked labels and readable phone-card contract. Add the owner stylesheet and refresh only changed source bytes through the supported recorder. Prior isolated geometry and hosted gallery evidence remains scoped to its recorded revisions; no new full-app font, provider, physical-device or native proof is inferred.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Integrated main b406f8de after joint #3201 landed. Reviewed the incoming New chat prose delta and retained its source bindings and existing limits. The geometry component import and stylesheet are unchanged from reviewed 6af8b61566: scoped label stretching, left alignment and caption ellipsis preserve the stacked labels and readable phone-card contract. Add the owner stylesheet and refresh only changed source bytes through the supported recorder. Prior isolated geometry and hosted gallery evidence remains scoped to its recorded revisions; no new full-app font, provider, physical-device or native proof is inferred.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

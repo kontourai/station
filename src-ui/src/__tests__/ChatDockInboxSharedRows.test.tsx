@@ -11,11 +11,14 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { createRef } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
-import { InboxRow } from '../components/chat-dock/ChatDockInboxRows';
+import {
+  InboxRow,
+  inboxRowIconAgent,
+} from '../components/chat-dock/ChatDockInboxRows';
 import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
@@ -197,16 +200,29 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     expect(screen.getByRole('button', { name: 'Close chat' })).toBeTruthy();
   });
 
-  it('the desktop panel keeps the one-tap snooze beside its duration caret', () => {
+  it('the desktop panel’s snooze is one control that opens the duration choice (D7)', () => {
     renderPanelHost(workItem());
     const snooze = screen.getByRole('button', {
       name: 'Snooze Shared row title',
     });
-    expect(snooze.getAttribute('aria-haspopup')).toBeNull();
-    const caret = screen.getByRole('button', {
-      name: 'Choose snooze duration for Shared row title',
-    });
-    expect(caret.querySelector('svg.choice-caret')).not.toBeNull();
+    expect(snooze.getAttribute('aria-haspopup')).toBe('menu');
+    expect(
+      screen.queryByRole('button', {
+        name: 'Choose snooze duration for Shared row title',
+      }),
+    ).toBeNull();
+    // Pressing it opens the choice and snoozes nothing: a one-tap default
+    // would hide the row before the user said for how long.
+    fireEvent.click(snooze);
+    const menu = screen.getByRole('menu', { name: 'Snooze Shared row title' });
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((option) => option.textContent?.trim()),
+    ).toEqual(['1 hour', '3 hours', 'Tomorrow 9am', 'Next Monday 9am']);
+    expect(screen.queryByRole('button', { name: 'Snoozed · 1' })).toBeNull();
+    fireEvent.click(within(menu).getByRole('menuitem', { name: '1 hour' }));
+    expect(screen.getByRole('button', { name: 'Snoozed · 1' })).not.toBeNull();
   });
 
   it('sheet host renders the answerability observation through the shared row', () => {
@@ -247,11 +263,11 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Details for Shared row title' }),
     );
-    fireEvent.click(await screen.findByRole('button', { name: '30 min' }));
+    fireEvent.click(await screen.findByRole('button', { name: '1 hour' }));
     sheet.unmount();
 
     renderPanelHost(item);
-    const snoozedToggle = screen.getByRole('button', { name: 'Snoozed (1)' });
+    const snoozedToggle = screen.getByRole('button', { name: 'Snoozed · 1' });
     fireEvent.click(snoozedToggle);
     expect(
       screen.getByRole('button', { name: 'Unsnooze Shared row title' }),
@@ -395,5 +411,107 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
     renderSheetHost(sessionItem({ agentSlug: 'codex' }), vi.fn(), AGENTS);
     const dialog = screen.getByRole('dialog', { name: 'Chats and tasks' });
     expect(avatarOf(dialog)?.getAttribute('data-brand-key')).toBe('codex');
+  });
+});
+
+/**
+ * #3355: the catalog resolved the row's agent but could not report its
+ * engine (the server's attribution read failed). The row's own recorded
+ * `provider` then supplies the mark — gated so it never names an engine for
+ * an unresolved agent, an ACP agent, or an agent with no engine binding.
+ */
+describe('inbox row engine fallback for a resolved agent without engineId (#3355)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    deviceSettingsStore.reloadFromStorage();
+  });
+
+  const reviewer = {
+    slug: 'reviewer',
+    name: 'Reviewer',
+    execution: { agentConnectionId: 'codex' },
+  };
+
+  function rowFor(overrides: Partial<HomeWorkItem>) {
+    return workItem({
+      kind: 'orchestration',
+      kindLabel: 'Session',
+      chatSessionId: undefined,
+      orchestrationThreadId: 'thread-1',
+      agentLabel: 'Reviewer',
+      agentSlug: 'reviewer',
+      ...overrides,
+    });
+  }
+
+  function avatar(agents: unknown[], item: HomeWorkItem) {
+    const { container } = renderPanelHost(item, vi.fn(), agents as any);
+    return container.querySelector('.chat-dock-inbox__avatar');
+  }
+
+  it('draws the recorded engine mark, not initials, for an engine-bound agent', () => {
+    expect(
+      avatar([reviewer], rowFor({ provider: 'codex' as never }))?.getAttribute(
+        'data-brand-key',
+      ),
+    ).toBe('codex');
+  });
+
+  it('keeps the agent’s own identicon when the row recorded no engine', () => {
+    const icon = avatar([reviewer], rowFor({}));
+    expect(icon?.getAttribute('data-brand-key')).toBeNull();
+    expect(icon?.textContent).toBe('RE');
+  });
+
+  it('never stands an engine in for an agent the catalog does not resolve', () => {
+    expect(
+      avatar(
+        [reviewer],
+        rowFor({ agentSlug: 'gone', provider: 'codex' as never }),
+      ),
+    ).toBeNull();
+  });
+
+  it('an ACP-bound agent keeps its initials even beside a branded provider', () => {
+    const acpAgent = {
+      slug: 'reviewer',
+      name: 'Reviewer',
+      execution: { agentConnectionId: 'kiro' },
+      engineConnectionType: 'acp',
+    };
+    const icon = avatar([acpAgent], rowFor({ provider: 'codex' as never }));
+    expect(icon?.getAttribute('data-brand-key')).toBeNull();
+    expect(icon?.textContent).toBe('RE');
+  });
+
+  it('an agent reporting acp keeps its initials', () => {
+    const icon = avatar(
+      [{ ...reviewer, engineId: 'acp' }],
+      rowFor({ provider: 'codex' as never }),
+    );
+    expect(icon?.getAttribute('data-brand-key')).toBeNull();
+    expect(icon?.textContent).toBe('RE');
+  });
+
+  it('an agent with no engine binding is not given the Station mark', () => {
+    const icon = avatar(
+      [{ slug: 'reviewer', name: 'Reviewer' }],
+      rowFor({ provider: 'station-agent' as never }),
+    );
+    expect(icon?.getAttribute('data-brand-key')).toBeNull();
+    expect(icon?.textContent).toBe('RE');
+  });
+
+  it('a recorded engine with no bundled mark adds nothing', () => {
+    const icon = avatar([reviewer], rowFor({ provider: 'acp' as never }));
+    expect(icon?.getAttribute('data-brand-key')).toBeNull();
+    expect(icon?.textContent).toBe('RE');
+  });
+
+  it('returns the catalog entry by reference when no fallback applies', () => {
+    const agents = [{ ...reviewer, engineId: 'codex' as never }];
+    expect(
+      inboxRowIconAgent(rowFor({ provider: 'claude' as never }), agents),
+    ).toBe(agents[0]);
   });
 });

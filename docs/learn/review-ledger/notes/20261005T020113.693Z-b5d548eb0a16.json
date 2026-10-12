@@ -1,0 +1,7 @@
+{
+  "revision": "4707a2a6772ec3babece6e26c5c78c8ec0e521cd",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"ChatDock.tsx change only replaces the inline gitLocationByThreadId derivation with the shared hook and adds the project accent map passed to the inbox panel and phone sheet. No dock placement, region, pane-host or chooser behavior changed; placement claims remain accurate.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

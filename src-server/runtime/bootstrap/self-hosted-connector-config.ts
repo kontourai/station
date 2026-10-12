@@ -21,6 +21,7 @@ import type {
 import { stationConnectionSigningKeyId } from '@kontourai/station-shared/connection-proof';
 import { calculateJwkThumbprint, importJWK } from 'jose';
 import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
+import type { RelayInvitationOwner } from '../../services/connections/relay-invitation-owner.js';
 import { SelfHostedBrokerClient } from '../../services/connections/self-hosted-broker-client.js';
 import type { VirtualApplication } from '../../services/connections/virtual-application.js';
 import { ConnectionKeyCandidateIssuer } from '../../services/ssh/connection-key-candidate-issuer.js';
@@ -56,6 +57,7 @@ const CREDENTIAL_SECRET = /^[A-Za-z0-9_-]{43}$/;
 
 interface SelfHostedConnectorFactory {
   readonly applicationOrigin: string;
+  readonly invitationOwner: RelayInvitationOwner;
   /** Local operator only. No credential or runtime handle crosses this seam. */
   issueNativeInvitation(
     prepare: unknown,
@@ -686,8 +688,46 @@ export function loadSelfHostedBrokerConnectorConfig(options?: {
     bundle.routing as { id: string; secret: string },
   );
   const trustOwner = createConnectorTrustOwner(homeDir);
-  return {
-    applicationOrigin: snapshot.applicationOrigin,
+  const invitationOwner: RelayInvitationOwner = {
+    async describe(signal) {
+      signal.throwIfAborted();
+      const trust = trustOwner.current();
+      if (
+        !trust ||
+        trust.stationId !== snapshot.scope.stationId ||
+        trust.enrollmentId !== snapshot.scope.enrollmentId
+      )
+        fail('connector_config_signing_unavailable');
+      await routingClient.requireOnline(signal);
+      if (!trustOwner.isCurrent(trust))
+        fail('connector_config_signing_unavailable');
+      return {
+        route: {
+          applicationOrigin: snapshot.applicationOrigin,
+          brokerOrigin,
+          stationId: snapshot.scope.stationId,
+          enrollmentId: snapshot.scope.enrollmentId,
+        },
+        trust,
+        routingGeneration: snapshot.scope.routingGeneration,
+      };
+    },
+    async prepare(value) {
+      const surface = await nativePrepareSurface(
+        value,
+        brokerOrigin,
+        snapshot.scope.stationId,
+        snapshot.scope.enrollmentId,
+      );
+      return {
+        scope: {
+          stationId: snapshot.scope.stationId,
+          enrollmentId: snapshot.scope.enrollmentId,
+          routingGeneration: snapshot.scope.routingGeneration,
+        },
+        surface,
+      };
+    },
     async issueNativeInvitation(prepare, signal, invitationTtlMs) {
       signal.throwIfAborted();
       const trust = trustOwner.current();
@@ -720,6 +760,11 @@ export function loadSelfHostedBrokerConnectorConfig(options?: {
       signal.throwIfAborted();
       return invitation;
     },
+  };
+  return {
+    applicationOrigin: snapshot.applicationOrigin,
+    invitationOwner,
+    issueNativeInvitation: invitationOwner.issueNativeInvitation,
     virtualApplication: {
       origin: snapshot.applicationOrigin,
       ready: () => {},

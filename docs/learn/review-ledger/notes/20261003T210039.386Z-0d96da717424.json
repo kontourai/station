@@ -1,0 +1,7 @@
+{
+  "revision": "ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Independent source-delta review: composer submission and recent-chat opening retain existing runtime model, approval and attachment behavior. Project defaultAgent is separate from documented app and Agent configuration fields. No prose change required.","inputs":["docs/reference/config.md"]}
+  ]
+}

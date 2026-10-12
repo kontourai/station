@@ -32,6 +32,14 @@ vi.mock('@kontourai/station-sdk', () => ({
     statsQueryConfig.push(config);
     return { data: undefined, error: null, refetch, isLoading: false };
   },
+  // The usage tree is its own read; these triggers are about the stats one.
+  StationHttpError: class extends Error {},
+  useConversationUsageTreeQuery: () => ({
+    data: undefined,
+    error: null,
+    isPending: false,
+    fetchStatus: 'idle',
+  }),
 }));
 
 vi.mock('./ConversationStatsModal', () => ({

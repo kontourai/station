@@ -6,7 +6,10 @@
    narrow viewports are covered by construction. */
 .chat-dock-inbox-hover-card {
   position: fixed;
-  z-index: var(--layer-popover);
+  /* The surface-popover layer, not the page popover layer: a row on Home
+     beside a right-docked region opens its card over that region, and the
+     dock (--layer-dock) paints above --layer-popover. */
+  z-index: var(--layer-surface-popover);
   width: 340px;
   max-width: calc(100vw - 16px);
   max-height: min(70vh, 560px);
@@ -54,6 +57,16 @@
   overflow-wrap: anywhere;
 }
 
+/* The Project row's mark: the project's icon, else its colour dot. */
+.chat-dock-inbox-hover-card__project-mark {
+  margin-right: var(--space-2);
+  vertical-align: middle;
+}
+.chat-dock-inbox-hover-card__project-mark.brand-icon {
+  display: inline-flex;
+  vertical-align: -3px;
+}
+
 .chat-dock-inbox-hover-card__status {
   display: flex;
   align-items: center;
@@ -69,13 +82,18 @@
   font-weight: 650;
 }
 
-.chat-dock-inbox-hover-card__status-word[data-tone="attention"],
+/* The row's four tones (InboxRow.css, C6): accent for act-now, amber for a
+   quiet run, green for in-motion, red for broken. */
+.chat-dock-inbox-hover-card__status-word[data-tone="attention"] {
+  color: var(--accent-primary);
+}
+
 .chat-dock-inbox-hover-card__status-word[data-tone="caution"] {
   color: var(--warning-text);
 }
 
 .chat-dock-inbox-hover-card__status-word[data-tone="active"] {
-  color: var(--accent-primary);
+  color: var(--success-text);
 }
 
 .chat-dock-inbox-hover-card__status-word[data-tone="broken"] {

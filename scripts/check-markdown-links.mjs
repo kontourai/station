@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { renderLearningDocument } from './lib/learning-markdown.mjs';
 import { createLearningSourceReader } from './lib/learning-source-reader.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -10,7 +10,7 @@ export function parseTrackedMarkdownFiles(output) {
 }
 
 function git(root, args) {
-  return execFileSync('git', args, {
+  return execFileSyncBounded('git', args, {
     cwd: root,
     encoding: 'utf8',
     windowsHide: true,

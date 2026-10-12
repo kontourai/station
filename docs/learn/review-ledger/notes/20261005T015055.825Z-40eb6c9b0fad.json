@@ -1,0 +1,9 @@
+{
+  "revision": "13d4b7c83bea789378fcb5b44c4b2f77c8cb1fd1",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Delta is one entry added to STATION_HOME_SQLITE_STORES (authentication/operator-passkeys.sqlite). The home backup text says SQLite stores are checkpointed and integrity-checked per the registry, which now includes this store under the existing state root 'authentication'; the claim holds and no list of stores is enumerated in the text.","inputs":["docs/reference/cli.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Delta is one SQLite store entry in the home store registry. The ADR is about distribution trains and channel pointers and makes no claim about home stores, so it stands.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/shared/src/station-home-store-registry.ts"]}
+  ]
+}

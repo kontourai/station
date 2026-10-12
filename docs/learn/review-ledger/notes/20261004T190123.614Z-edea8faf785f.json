@@ -1,0 +1,7 @@
+{
+  "revision": "1274059ae6e8caecc3a2c34d95af78a63c782cd9",
+
+  "notes": [
+    {"path":"docs/guides/store-entry.md","note":"nightly.yml gained a workflow_call entry. The sentence about the scheduled Nightly's reserved build number holds for both entries: both reserve through nightly-native-stage.yml. No prose change.","inputs":["docs/guides/store-entry.md",".github/workflows/nightly.yml"]}
+  ]
+}

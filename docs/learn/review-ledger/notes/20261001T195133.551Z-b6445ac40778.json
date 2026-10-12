@@ -1,0 +1,85 @@
+{
+  "revision": "50fecf62c1354c54d754f1b5d14402ff61680944",
+
+  "notes": [
+    {"path":"docs/learn/media/connections-models.png","note":"The capture's image is unchanged; this branch's index.css delta (three File Preview syntax rungs and the `.button--icon` Button variant) paints nothing in it.","inputs":["docs/learn/media/connections-models.png"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"The capture's image is unchanged; this branch's index.css delta (three File Preview syntax rungs and the `.button--icon` Button variant) paints nothing in it.","inputs":["docs/learn/media/connections-tour.webm"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"The capture's image is unchanged; this branch's index.css delta (three File Preview syntax rungs and the `.button--icon` Button variant) paints nothing in it.","inputs":["docs/learn/media/inspect-request.png"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"The capture's image is unchanged; this branch's index.css delta (three File Preview syntax rungs and the `.button--icon` Button variant) paints nothing in it.","inputs":["docs/learn/media/inspect-request.webm"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"The capture's image is unchanged; this branch's index.css delta (three File Preview syntax rungs and the `.button--icon` Button variant) paints nothing in it.","inputs":["docs/learn/media/project-with-task.png"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"The capture's image is unchanged; this branch's index.css delta (three File Preview syntax rungs and the `.button--icon` Button variant) paints nothing in it.","inputs":["docs/learn/media/repository-knowledge-narrow.png"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"The capture's image is unchanged; this branch's index.css delta (three File Preview syntax rungs and the `.button--icon` Button variant) paints nothing in it.","inputs":["docs/learn/media/repository-knowledge.png"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"The capture's image is unchanged; this branch's index.css delta (three File Preview syntax rungs and the `.button--icon` Button variant) paints nothing in it.","inputs":["docs/learn/media/shared-task-document.png"]},
+
+    {"path":"docs/design/collaborative-editor-pane.md","note":"This branch's index.css delta is three File Preview syntax rungs (--syntax-function, --syntax-tag, --syntax-variable) in the dark and light theme blocks and the shared `.button--icon` Button variant (a 30px round ghost with an accent wash); nothing this document shows or claims depends on them. Re-reviewed after merging main; no prose change.","inputs":["docs/design/collaborative-editor-pane.md"]},
+
+    {"path":"docs/design/placement.md","note":"This branch's index.css delta is three File Preview syntax rungs (--syntax-function, --syntax-tag, --syntax-variable) in the dark and light theme blocks and the shared `.button--icon` Button variant (a 30px round ghost with an accent wash); nothing this document shows or claims depends on them. Re-reviewed after merging main; no prose change.","inputs":["docs/design/placement.md"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"This branch's index.css delta is three File Preview syntax rungs (--syntax-function, --syntax-tag, --syntax-variable) in the dark and light theme blocks and the shared `.button--icon` Button variant (a 30px round ghost with an accent wash); nothing this document shows or claims depends on them. Re-reviewed after merging main; no prose change.","inputs":["docs/design/session-tape-replay.md"]},
+
+    {"path":"docs/guides/connections.md","note":"This branch's index.css delta is three File Preview syntax rungs (--syntax-function, --syntax-tag, --syntax-variable) in the dark and light theme blocks and the shared `.button--icon` Button variant (a 30px round ghost with an accent wash); nothing this document shows or claims depends on them. Re-reviewed after merging main; no prose change.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/knowledge.md","note":"This branch's index.css delta is three File Preview syntax rungs (--syntax-function, --syntax-tag, --syntax-variable) in the dark and light theme blocks and the shared `.button--icon` Button variant (a 30px round ghost with an accent wash); nothing this document shows or claims depends on them. Re-reviewed after merging main; no prose change.","inputs":["docs/guides/knowledge.md"]},
+
+    {"path":"docs/guides/starter-work.md","note":"This branch's index.css delta is three File Preview syntax rungs (--syntax-function, --syntax-tag, --syntax-variable) in the dark and light theme blocks and the shared `.button--icon` Button variant (a 30px round ghost with an accent wash); nothing this document shows or claims depends on them. Re-reviewed after merging main; no prose change.","inputs":["docs/guides/starter-work.md"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"This branch's index.css delta is three File Preview syntax rungs (--syntax-function, --syntax-tag, --syntax-variable) in the dark and light theme blocks and the shared `.button--icon` Button variant (a 30px round ghost with an accent wash); nothing this document shows or claims depends on them. Re-reviewed after merging main; no prose change.","inputs":["docs/learn/walkthroughs.md"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"This branch's index.css delta is three File Preview syntax rungs (--syntax-function, --syntax-tag, --syntax-variable) in the dark and light theme blocks and the shared `.button--icon` Button variant (a 30px round ghost with an accent wash); nothing this document shows or claims depends on them. Re-reviewed after merging main; no prose change.","inputs":["docs/reference/agent-smoke-confidence.md"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"This branch's index.css delta is three File Preview syntax rungs (--syntax-function, --syntax-tag, --syntax-variable) in the dark and light theme blocks and the shared `.button--icon` Button variant (a 30px round ghost with an accent wash); nothing this document shows or claims depends on them. Re-reviewed after merging main; no prose change.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"This branch's index.css delta is three File Preview syntax rungs (--syntax-function, --syntax-tag, --syntax-variable) in the dark and light theme blocks and the shared `.button--icon` Button variant (a 30px round ghost with an accent wash); nothing this document shows or claims depends on them. Re-reviewed after merging main; no prose change.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"This branch's index.css delta is three File Preview syntax rungs (--syntax-function, --syntax-tag, --syntax-variable) in the dark and light theme blocks and the shared `.button--icon` Button variant (a 30px round ghost with an accent wash); nothing this document shows or claims depends on them. Re-reviewed after merging main; no prose change.","inputs":["examples/knowledge-library/README.md"]},
+
+    {"path":"src-desktop/icons/README.md","note":"This branch's index.css delta is three File Preview syntax rungs (--syntax-function, --syntax-tag, --syntax-variable) in the dark and light theme blocks and the shared `.button--icon` Button variant (a 30px round ghost with an accent wash); nothing this document shows or claims depends on them. Re-reviewed after merging main; no prose change.","inputs":["src-desktop/icons/README.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"This branch's index.css delta is three File Preview syntax rungs (--syntax-function, --syntax-tag, --syntax-variable) in the dark and light theme blocks and the shared `.button--icon` Button variant (a 30px round ghost with an accent wash); nothing this document shows or claims depends on them. Re-reviewed after merging main; no prose change. docs/ui/responsive-action-surfaces.txt gains one line: the File Preview pane's inventory entry (its actions, including Try again after a busy repository).","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/guides/theming.md","note":"This branch's index.css delta is three File Preview syntax rungs (--syntax-function, --syntax-tag, --syntax-variable) in the dark and light theme blocks and the shared `.button--icon` Button variant (a 30px round ghost with an accent wash); nothing this document shows or claims depends on them. Re-reviewed after merging main; no prose change. docs/ui/responsive-action-surfaces.txt gains one line: the File Preview pane's inventory entry (its actions, including Try again after a busy repository).","inputs":["docs/guides/theming.md"]},
+
+    {"path":"docs/patterns/backend.md","note":"This branch's index.css delta is three File Preview syntax rungs (--syntax-function, --syntax-tag, --syntax-variable) in the dark and light theme blocks and the shared `.button--icon` Button variant (a 30px round ghost with an accent wash); nothing this document shows or claims depends on them. Re-reviewed after merging main; no prose change. docs/ui/responsive-action-surfaces.txt gains one line: the File Preview pane's inventory entry (its actions, including Try again after a busy repository).","inputs":["docs/patterns/backend.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"This branch's index.css delta is three File Preview syntax rungs (--syntax-function, --syntax-tag, --syntax-variable) in the dark and light theme blocks and the shared `.button--icon` Button variant (a 30px round ghost with an accent wash); nothing this document shows or claims depends on them. Re-reviewed after merging main; no prose change. docs/ui/responsive-action-surfaces.txt gains one line: the File Preview pane's inventory entry (its actions, including Try again after a busy repository).","inputs":["docs/patterns/frontend.md"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"packages/sdk/src/client/projects.ts adds readProjectWorkspaceFileChanges (POST file-preview/changes) and isRepositoryBusyError (the 503 repository-busy classifier), both on the workspace-file-preview subpath like previewProjectWorkspaceFile; this document's claims do not concern them and are unchanged.","inputs":["docs/guides/deployment-authentication.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"packages/sdk/src/client/projects.ts adds readProjectWorkspaceFileChanges (POST file-preview/changes) and isRepositoryBusyError (the 503 repository-busy classifier), both on the workspace-file-preview subpath like previewProjectWorkspaceFile; this document's claims do not concern them and are unchanged.","inputs":["docs/guides/local-collaboration-lab.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"packages/sdk/src/client/projects.ts adds readProjectWorkspaceFileChanges (POST file-preview/changes) and isRepositoryBusyError (the 503 repository-busy classifier), both on the workspace-file-preview subpath like previewProjectWorkspaceFile; this document's claims do not concern them and are unchanged.","inputs":["docs/guides/machine-relationships.md"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"packages/sdk/src/client/projects.ts adds readProjectWorkspaceFileChanges (POST file-preview/changes) and isRepositoryBusyError (the 503 repository-busy classifier), both on the workspace-file-preview subpath like previewProjectWorkspaceFile; this document's claims do not concern them and are unchanged.","inputs":["docs/guides/workspace-packages.md"]},
+
+    {"path":"docs/guides/distribution-profiles.md","note":"packages/sdk/src/query-domains/workspaceProjects.ts adds useProjectWorkspaceFileChangesQuery (the File Preview Changes read, which asks again after a 503 repository-busy answer when Retry-After says to, twice, before it is an error), exported on the workspace-file-preview subpath and kept off the root barrel like its preview sibling. Nothing in this guide concerns it; prose unchanged.","inputs":["docs/guides/distribution-profiles.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed this branch's SDK delta: readProjectWorkspaceFileChanges, isRepositoryBusyError and useProjectWorkspaceFileChangesQuery on the workspace-file-preview subpath (not inventoried here, as its sibling preview hook and client are not), and the review snapshot's checks/reviewComments observations in pull-request-review.ts, which the contracts reference documents. No API heading here changes.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/glossary.md","note":"docs/reference/contracts.md adds a paragraph on the review snapshot's optional `checks` and `reviewComments` observations (pull-request-provider.ts, pull-request-review.ts and its test); this document introduces no vocabulary or routing that conflicts with it, and its prose is unchanged.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"docs/reference/contracts.md adds a paragraph on the review snapshot's optional `checks` and `reviewComments` observations (pull-request-provider.ts, pull-request-review.ts and its test); this document introduces no vocabulary or routing that conflicts with it, and its prose is unchanged.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"docs/reference/contracts.md adds a paragraph on the review snapshot's optional `checks` and `reviewComments` observations (pull-request-provider.ts, pull-request-review.ts and its test); this document introduces no vocabulary or routing that conflicts with it, and its prose is unchanged.","inputs":["packages/contracts/AGENTS.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Added the paragraph on the review snapshot's `checks` and `reviewComments` as observations: absent means unobserved, `partial` when an entry cannot be classified, `line` null once the forge no longer maps a comment onto the diff, neither an empty list standing in for none. Checked against pull-request-provider.ts, pull-request-review.ts and pull-request-review.test.ts.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"The File Preview's Changes view now reads through the shared confined repository read (git-read-repository.ts: the Project's own repository, a judged copy of its config, the output discarded when the repository changed under the read, a repository being written answered 503 repository-busy, which the pane offers to ask again); the prose says so now. Checked against workspace-pane-previews.ts, workspace-file-changes-service.ts, the preview service's changesTarget, the WorkspaceFileChanges contract and FilePreviewPane.tsx.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md"]},
+
+    {"path":"CONTEXT-MAP.md","note":"Reviewed the workspace-surfaces CONTEXT edit (the Changes view's confined repository read and its busy state); the responsibility areas and relationships this document states are unchanged.","inputs":["CONTEXT-MAP.md"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed the workspace-surfaces CONTEXT edit (the Changes view's confined repository read and its busy state); the responsibility areas and relationships this document states are unchanged.","inputs":["CONTEXT.md"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Added the File Preview's Changes read to the Station-owned-git-directory paragraph: the same resolver and read as the coding diff, 503 repository-busy, and the deterministic plants its route tests drive (a .git file, a linked .git, alternates, core.worktree above the Project, each program key, and config.worktree, .git/config and .git changed between the judgement and git diff), each with plain git as the control. packages/sdk/src/client/projects.ts adds the client and the busy classifier; no other claim here changes, and no new measurement is claimed.","inputs":["docs/security/remote-access-threat-model.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"scripts/vitest-resource-manifest.mjs adds workspace-file-changes.routes.test.ts to the real-git resource class beside main's confinement tests; the routing this file describes is unchanged.","inputs":["scripts/AGENTS.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Button.tsx gains variant='icon' (round, icon-only, aria-label at the call site); this scope's guidance to use Button for standard actions is unchanged.","inputs":["src-ui/AGENTS.md"]}
+  ]
+}

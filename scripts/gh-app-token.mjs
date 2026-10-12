@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
  * one, narrowed to the one repository and to the permissions the call needs:
  *
  *     GH_TOKEN=$(node scripts/gh-app-token.mjs) gh api repos/kontourai/station/pulls/1
- *     node scripts/gh-app-token.mjs --permissions pull_requests:write,contents:write -- gh pr merge 1 --repo kontourai/station --auto
+ *     node scripts/gh-app-token.mjs --permissions pull_requests:write,contents:write,workflows:write -- gh pr merge 1 --repo kontourai/station --auto
  *
  * Setup, the least-privilege reasoning and key rotation are in
  * docs/guides/development.md#github-automation-token.
@@ -51,10 +51,13 @@ const REQUESTABLE_PERMISSIONS = Object.freeze({
   metadata: Object.freeze(['read']),
   pull_requests: Object.freeze(['read', 'write']),
   statuses: Object.freeze(['read']),
+  workflows: Object.freeze(['write']),
 });
 export const DEFAULT_PERMISSIONS = Object.freeze(
   Object.fromEntries(
-    Object.keys(REQUESTABLE_PERMISSIONS).map((name) => [name, 'read']),
+    Object.entries(REQUESTABLE_PERMISSIONS)
+      .filter(([, levels]) => levels.includes('read'))
+      .map(([name]) => [name, 'read']),
   ),
 );
 

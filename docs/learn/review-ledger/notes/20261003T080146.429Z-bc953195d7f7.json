@@ -1,0 +1,7 @@
+{
+  "revision": "90e5e9d8fc3f4d80e1e9b1de1b91bcd3ec03e2c3",
+
+  "notes": [
+    {"path":"examples/docs-snippets/README.md","note":"Reviewed the existing snippet guard after normalizing guide paths with platform-aware relative and separator handling. Named marker, verbatim block/file equality and inclusion in typecheck:examples remain intact. Windows old code failed only the forward-slash document-path pin; POSIX repaired suite passes 3/3. Type compilation and runtime behavior remain separate claims.","inputs":["examples/docs-snippets/README.md"]}
+  ]
+}

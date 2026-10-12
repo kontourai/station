@@ -16,6 +16,8 @@ import type {
 import {
   EXECUTION_RESOLUTION_RECEIPT_SCHEMA_VERSION,
   environmentId,
+  executionBindingAgentId,
+  executionProfileAgentId,
 } from '@kontourai/station-contracts/execution-target';
 import {
   type EngineId,
@@ -25,7 +27,10 @@ import {
   unsupportedModelOptionError,
   unsupportedModelOptionKeys,
 } from '@kontourai/station-contracts/provider';
-import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
+import {
+  type ConnectionConfig,
+  describeConnectionBlockers,
+} from '@kontourai/station-contracts/tool';
 import {
   resolveWorkspaceIsolationMode,
   type WorkspaceIsolationMode,
@@ -60,6 +65,10 @@ export interface EnvironmentAccess {
 
 export interface ExecutionTargetAgentView extends Partial<AgentSpec> {
   slug?: string;
+  executionDefault?: boolean;
+  definitionFingerprint?: string;
+  engineDefault?: boolean;
+  enable?: { engineConnectionId: string };
   available?: boolean;
   unavailableReason?: string;
 }
@@ -144,6 +153,8 @@ interface ResolvedExecutionTarget {
   /** Private access authority. Never serialize this object. */
   access: EnvironmentAccess;
   agentId: AgentId;
+  executionAgentId?: AgentId;
+  expectedDefinitionFingerprint?: string;
   engine: ResolvedExecutionEngine;
   provider: EngineId;
   modelLaunchPlan: ModelLaunchPlan;
@@ -175,12 +186,23 @@ export function assertConnectionReady(connection: ConnectionConfig): void {
   if (!connection.enabled || connection.status === 'disabled') {
     throw new Error(`Engine connection '${connection.id}' is disabled`);
   }
-  if (
-    connection.status !== 'ready' ||
-    !connection.capabilities.includes('agent-runtime')
-  ) {
+  // #355: name the failed predicate and its remedy. The status is the same
+  // ConnectionConfig.status `station connections list` shows, read now.
+  if (connection.status !== 'ready') {
+    const blockers = describeConnectionBlockers(connection);
     throw new Error(
-      `Engine connection '${connection.id}' is not ready for execution`,
+      `Engine connection '${connection.id}' is not ready for execution (status: ${connection.status})${
+        blockers
+          ? `: ${blockers}`
+          : // Readiness evidence can carry remote error text, so the remedy
+            // is a fixed next step, never the connection's own free text.
+            `. Check this connection in Connections or run \`station connections test ${connection.id}\``
+      }`,
+    );
+  }
+  if (!connection.capabilities.includes('agent-runtime')) {
+    throw new Error(
+      `Engine connection '${connection.id}' does not advertise the agent-runtime capability, so it cannot run Agent sessions. Bind the Agent to an engine connection that provides an agent runtime`,
     );
   }
 }
@@ -362,7 +384,12 @@ async function resolveWorkspace(
     };
   }
 
-  if (workspace.kind === 'project-portable') {
+  if (
+    workspace.kind === 'project-portable' ||
+    // #2875: a prepared intent resolves exactly like the portable intent;
+    // its version check runs in the delegation owner after admission.
+    workspace.kind === 'project-portable-prepared'
+  ) {
     // #484 phase A: the portable intent has NO caller-owned address — no
     // slug, no cwd, no isolation override. The whole workspace resolves
     // from the receiver-owned admission; a composition without one refuses
@@ -502,7 +529,7 @@ export async function resolveExecutionTarget(
   target: ExecutionTarget,
   deps: ExecutionTargetResolverDependencies,
 ): Promise<ResolvedExecutionTarget> {
-  const resolvedAgentId = agentId(String(target.agent));
+  const resolvedAgentId = agentId(executionProfileAgentId(target.agent));
   const access = await deps.resolveEnvironmentAccess(target);
   const trustedEnvironmentId = environmentId(access.environmentId);
   const agent = await deps.getAgent(access, resolvedAgentId);
@@ -517,7 +544,52 @@ export async function resolveExecutionTarget(
     );
   }
 
-  const boundConnectionId = agent.execution?.agentConnectionId;
+  const expectedDefinitionFingerprint =
+    typeof target.agent === 'string'
+      ? undefined
+      : target.agent.expectedDefinitionFingerprint;
+  if (
+    expectedDefinitionFingerprint !== undefined &&
+    agent.definitionFingerprint !== expectedDefinitionFingerprint
+  ) {
+    throw new Error(
+      'The selected Agent definition changed or cannot be verified on this Station; select it again',
+    );
+  }
+
+  const executionAgentId =
+    typeof target.agent === 'string'
+      ? undefined
+      : agentId(executionBindingAgentId(target.agent));
+  const executionAgent = executionAgentId
+    ? await deps.getAgent(access, executionAgentId)
+    : agent;
+  if (
+    executionAgentId &&
+    (executionAgent.slug !== executionAgentId ||
+      executionAgent.executionDefault !== true ||
+      (executionAgent.available === false &&
+        !(
+          executionAgent.engineDefault === true &&
+          executionAgent.enable?.engineConnectionId ===
+            executionAgent.execution?.agentConnectionId &&
+          executionAgent.enable !== undefined
+        )))
+  ) {
+    throw new Error(
+      'Execution override requires an available receiver-owned default engine Agent',
+    );
+  }
+  const boundConnectionId = executionAgent.execution?.agentConnectionId;
+  if (
+    executionAgentId &&
+    !boundConnectionId &&
+    agent.execution?.agentConnectionId
+  ) {
+    throw new Error(
+      'This execution override cannot deliver the selected Agent profile on the Station engine',
+    );
+  }
   let engine: ResolvedExecutionEngine;
   let provider: EngineId;
   if (boundConnectionId) {
@@ -543,7 +615,9 @@ export async function resolveExecutionTarget(
   // declared model is the request. Trimmed-empty on either side means "not
   // stated", never an empty model id handed to an adapter.
   const overrideModelId = target.model?.override?.trim();
-  const agentModelId = agent.execution?.modelId?.trim();
+  const agentModelId = (
+    boundConnectionId ? executionAgent.execution : agent.execution
+  )?.modelId?.trim();
   const effectiveModelId = overrideModelId || agentModelId || undefined;
 
   assertModelOptionsSupported(provider, target.model?.options, resolvedAgentId);
@@ -587,6 +661,10 @@ export async function resolveExecutionTarget(
     resolvedAt: (deps.now?.() ?? new Date()).toISOString(),
     environmentId: trustedEnvironmentId,
     agentId: resolvedAgentId,
+    ...(executionAgentId ? { executionAgentId } : {}),
+    ...(agent.definitionFingerprint
+      ? { definitionFingerprint: agent.definitionFingerprint }
+      : {}),
     engine,
     provider,
     modelLaunchPlan,
@@ -596,6 +674,8 @@ export async function resolveExecutionTarget(
   return {
     access,
     agentId: resolvedAgentId,
+    ...(executionAgentId ? { executionAgentId } : {}),
+    ...(expectedDefinitionFingerprint ? { expectedDefinitionFingerprint } : {}),
     engine,
     provider,
     modelLaunchPlan,

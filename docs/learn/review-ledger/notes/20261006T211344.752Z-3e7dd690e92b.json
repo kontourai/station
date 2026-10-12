@@ -1,0 +1,7 @@
+{
+  "revision": "62d70891214c3dad9553ca83fbedcad1a6ca2fa5",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed work-status.ts at 62d708: removed only the duplicate attention-word reference table; labels, rung selection, responsive geometry, focus and shared surface ownership are unchanged. Existing status and word-consistency tests passed 67 cases. No prose change or new visual/runtime claim.","inputs":["docs/guides/responsive-ui.md","src-ui/src/views/home/work-status.ts"]}
+  ]
+}

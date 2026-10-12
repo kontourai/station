@@ -1,0 +1,7 @@
+{
+  "revision": "ebe99f7f54f29debd11ee4e9500253c0f80691cf",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Re-read against tests/e2e-manifest.mjs after #3284 extended only the mcp-elicitation-form rationale string (slash-menu MCP prompt coverage). No bucket, tier, execution class, PR_BROWSER_SMOKE_CONTRACT selection or spec membership changed; the document's claims about manifest ownership and bucket rules still hold. No prose change.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "815be63fb3290477afd270f738afbdf3799da8f6",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed generated station-docs-content continuity diff: only content digest and ConversationSessionLineage topic changed, preserving one Conversation with linked Sessions, requested-return versus identity distinction, bounded context and explicit fork semantics. The credential-free Docs server remains read-only prose; Control authorization and runtime retirement are separate. Generator succeeded; no live provider or native device proof implied.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "39e1f4bbf14013fd9e91df90a3f285d57aed40d3",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Conflict integration review: inspected merged ChatDock goal handoff through normal composer send and host authority fence. No API route, request shape, credential or permission contract changes in this delta; prior complete API review remains scoped as recorded.","inputs":["docs/reference/api.md"]}
+  ]
+}

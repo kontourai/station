@@ -15,10 +15,12 @@ describe('client plugin collection', () => {
     await expect(listPlugins('https://station.example')).resolves.toEqual([
       { name: 'demo', version: '1.0.0' },
     ]);
-    expect(fetchMock).toHaveBeenCalledWith(
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
       'https://station.example/api/plugins',
-      { method: 'GET' },
+      { method: 'GET', headers: { 'X-Station-Client-Protocol': '2' } },
     );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   test('fails closed on a malformed successful collection', async () => {
@@ -184,5 +186,47 @@ test('preserves typed pending readiness and rejects malformed readiness without 
   await expect(listPlugins('https://station.example')).rejects.toThrow(
     'malformed',
   );
+  vi.unstubAllGlobals();
+});
+
+test('carries a ready record’s commands and generation and fails closed on malformed ones', async () => {
+  const ready = {
+    name: 'demo',
+    version: '1.0.0',
+    installationReadiness: { state: 'ready' },
+    commands: [
+      {
+        version: '1.0',
+        id: 'demo.open',
+        title: 'Open',
+        intent: { kind: 'navigate', surfaceId: 'plugins' },
+      },
+    ],
+    installationGeneration: '["incarnation","digest"]',
+  };
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ plugins: [ready] })),
+  );
+  await expect(listPlugins('https://station.example')).resolves.toEqual([
+    ready,
+  ]);
+  for (const malformed of [
+    { ...ready, installationGeneration: 42 },
+    { ...ready, installationGeneration: '' },
+    { ...ready, commands: { open: true } },
+  ]) {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(Response.json({ plugins: [malformed] })),
+    );
+    await expect(listPlugins('https://station.example')).rejects.toThrow(
+      'Plugin collection response is malformed',
+    );
+  }
   vi.unstubAllGlobals();
 });

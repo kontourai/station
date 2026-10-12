@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ensureLivenessScale } from './lib/liveness-scale-resolve.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { assertWorkspacePackageProvenance } from './workspace-dependency-provenance.mjs';
 
@@ -222,6 +223,7 @@ export async function runFocusedTests(
 
 async function main() {
   try {
+    await ensureLivenessScale();
     process.exitCode = await runFocusedTests(process.argv.slice(2));
   } catch (error) {
     process.stderr.write(

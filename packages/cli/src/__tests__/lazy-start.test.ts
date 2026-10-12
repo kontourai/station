@@ -56,6 +56,27 @@ describe('runLazyStart — a Station is already running', () => {
     expect(deps.runners.inline).not.toHaveBeenCalled();
   });
 
+  test('opens the host the instance recorded, localhost for a wildcard (#3304)', async () => {
+    for (const [host, expected] of [
+      ['127.0.0.1', 'http://127.0.0.1:5000'],
+      ['0.0.0.0', 'http://localhost:5000'],
+      [undefined, 'http://localhost:5000'],
+    ] as const) {
+      const openBrowser = vi.fn(async () => true);
+      await runLazyStart(
+        {},
+        baseDeps({
+          findRunning: () => [
+            instance({ uiPort: 5000, ...(host ? { host } : {}) }),
+          ],
+          openBrowser,
+          mintToken: async () => null,
+        }),
+      );
+      expect(openBrowser).toHaveBeenCalledWith(expected);
+    }
+  });
+
   test('opens without a fragment when the token mint fails', async () => {
     const openBrowser = vi.fn(async () => true);
     const deps = baseDeps({

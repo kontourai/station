@@ -9,18 +9,16 @@
 
   "limits": "No actual plugin installation, native/device/audio journey, public package distribution, provider operation or cross-host qualification. Source/fixture checks do not establish those outcomes.",
 
-  "document": {"digest":"99449dc9abc3b1af63fc65ee22455ed7ce894c39b27ab8fe87f4097d59fc166b","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
   "sources": [
-    {"path":"examples/registry/signed-package/package.json","digest":"97c2112ae79ae778f2138275597ecab94c56936c4ce653650519071212105ee9","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "examples/registry/signed-package/package.json",
 
-    {"path":"examples/registry/signed-package/prepare.ts","digest":"7f03ba775f63bbba1fda53345475597092c3e35647a971475e439a72f6ad6157","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "examples/registry/signed-package/prepare.ts",
 
-    {"path":"examples/registry/signed-package/verify.ts","digest":"823fb50ac10715e93a08d31a684733d5aa7728af787a9843755cd77e74383386","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "examples/registry/signed-package/verify.ts",
 
-    {"path":"packages/shared/src/plugin-registry-signature.ts","digest":"49bee9910d27cbe2112b9bf53287eedf254ba5df0da99785b74478ae51df2c8b","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "packages/shared/src/plugin-registry-signature.ts",
 
-    {"path":"packages/shared/src/plugin-tree-digest.ts","digest":"04812da769074e8021b798e569e1f474b5ab86f26ab7556548426e1f6de91f7d","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
+    "packages/shared/src/plugin-tree-digest.ts"
   ],
 
   "checks": [

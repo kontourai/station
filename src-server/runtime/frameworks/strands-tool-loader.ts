@@ -21,10 +21,12 @@ import {
   isHostedTenantExecutionRequired,
 } from '../bootstrap/runtime-tenant-context.js';
 import {
+  builtinStationApiServerId,
   isBuiltinStationControl,
   withStationControlRuntimeEnv,
 } from '../bootstrap/station-control-runtime-env.js';
 import { sameMCPConnectionDefinition } from '../mcp/mcp-definition-currentness.js';
+import { createNativeStationKnowledgeTools } from '../mcp/station-knowledge-native-tools.js';
 import {
   describeLoaderFailure,
   isLoaderProgrammingFailure,
@@ -45,50 +47,16 @@ import {
   createCustodiedStrandsClient,
   isStrandsClientCurrent,
 } from './strands-mcp-custody.js';
+import {
+  type NativeClientEntry,
+  nativeStationControlPools,
+} from './strands-native-client-pool.js';
 import { extractToolPurpose, toolSchemaWithPurpose } from './tool-purpose.js';
 import type { CreateAgentOptions } from './voltagent-adapter.js';
 
 interface StrandsToolLoaderState {
   mcpClients: Map<string, McpClient>;
   agentMcpClients: Map<string, string[]>;
-}
-
-type NativeClientEntry = {
-  current: boolean;
-  claim: MCPLocalClaim;
-  client?: McpClient;
-  creation?: Promise<McpClient>;
-};
-// This is a publication projection of the existing per-runtime custody owner.
-const nativeStationControlPools = new Map<
-  MCPLocalConnectionCustody,
-  Map<string, NativeClientEntry>
->();
-
-/** Bounded local SDK-handle retirement, never descendant/remote drain proof. */
-export async function releaseAllNativeStationControlClients(
-  owner?: MCPLocalConnectionCustody,
-): Promise<void> {
-  const settlements: Promise<unknown>[] = [];
-  for (const [custody, pool] of nativeStationControlPools) {
-    if (owner && custody !== owner) continue;
-    const selected = [...pool];
-    for (const [, entry] of selected) entry.current = false;
-    settlements.push(
-      custody
-        .releaseClaims(selected.map(([, entry]) => entry.claim))
-        .then((cleanup) => {
-          if (cleanup.state !== 'settled')
-            throw new MCPLocalCustodyError(cleanup.state);
-          for (const [id, entry] of selected)
-            if (pool.get(id) === entry) pool.delete(id);
-          if (!pool.size) nativeStationControlPools.delete(custody);
-        }),
-    );
-  }
-  const results = await Promise.allSettled(settlements);
-  if (results.some((result) => result.status === 'rejected'))
-    throw new Error('Native station-control cleanup failed.');
 }
 
 async function nativeStationControlClient(
@@ -180,6 +148,7 @@ export type StrandsToolLoadOptions = Pick<
   | 'mcpToolProvenanceGeneration'
   | 'integrationSecretResolver'
   | 'logger'
+  | 'serverPort'
 >;
 
 export function createStrandsFunctionTools(
@@ -301,6 +270,56 @@ export async function loadStrandsTools(options: {
       if (!claim.isCurrent()) throw new MCPLocalCustodyError('stale');
 
       if (toolDef.enabled === false) {
+        opts.mcpConnectionStatus.set(toolId, { connected: false });
+        continue;
+      }
+
+      if (builtinStationApiServerId(toolId, toolDef) === 'station-knowledge') {
+        const native = createNativeStationKnowledgeTools(
+          toolDef,
+          opts.serverPort,
+          claim,
+          opts.mcpCustody,
+        );
+        const registered = native.tools;
+        const normalized = normalizeLoadedMCPTools(
+          slug,
+          registered.map((tool) => ({
+            ...tool,
+            name: `${toolId}_${tool.name}`,
+          })),
+          opts.toolNameMapping,
+          opts.toolNameReverseMapping,
+          provenanceGeneration,
+          toolId,
+          (tool) => ({
+            serverId: toolId,
+            originalToolName: originalMcpToolName(toolId, tool.name),
+          }),
+          opts.logger,
+        );
+        allTools.push(
+          ...wrapPlatformMutationGatedTools(
+            normalized.filter(
+              (tool) =>
+                !mcpToolDisabled(
+                  toolId,
+                  originalMcpToolName(
+                    toolId,
+                    opts.toolNameMapping.get(tool.name)?.original ?? tool.name,
+                  ),
+                  toolDef.disabledTools,
+                ),
+            ),
+            { agentSlug: slug, toolId },
+          ),
+        );
+        retained = native.retained;
+        opts.integrationMetadata.set(toolId, {
+          type: 'mcp',
+          transport: 'streamable-http',
+          toolCount: registered.length,
+        });
         opts.mcpConnectionStatus.set(toolId, { connected: false });
         continue;
       }
@@ -520,7 +539,9 @@ export async function loadStrandsTools(options: {
     }
   }
 
-  state.agentMcpClients.set(slug, agentClientIds);
+  state.agentMcpClients.set(slug, [
+    ...new Set([...(state.agentMcpClients.get(slug) ?? []), ...agentClientIds]),
+  ]);
   return applyStrandsAvailableToolFilter(
     allTools,
     spec.tools.available || ['*'],

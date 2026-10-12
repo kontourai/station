@@ -26,6 +26,7 @@ import {
 import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
 import {
   type EffectiveModelSource,
+  modelResetSourceLabel,
   modelSourceLabel,
 } from '../../utils/execution';
 import {
@@ -55,6 +56,11 @@ import {
   reconcileComposerDisplay,
   sessionReferenceBlockReason,
 } from './composer-mentions';
+import {
+  CONVERSATION_REFERENCE_DRAG_TYPE,
+  draggedConversationReference,
+  endConversationReferenceDrag,
+} from './conversationReferenceDrag';
 import './chat.css';
 import { SkeletonBlock, SkeletonList } from '../state';
 
@@ -192,6 +198,7 @@ interface ChatInputAreaProps {
    * refusal names something actionable instead of a generic line.
    */
   modelProviderLabel?: string;
+  executionEngineLabel?: string;
   // Display
   fontSize: number;
   dockHeight: number;
@@ -205,8 +212,10 @@ interface ChatInputAreaProps {
   agentDefaultModel?: string;
   defaultModelSource?: EffectiveModelSource;
   availableModels: SelectableModel[];
+  pickerModels?: SelectableModel[];
   modelProviders?: ModelProviderOption[];
   currentProviderId?: string;
+  currentExecutionAgentId?: string;
   modelQuery: string | null;
   agentConnectionId?: string;
   modelRuntimeOptions?: Record<string, unknown>;
@@ -253,6 +262,15 @@ interface ChatInputAreaProps {
    * a dock too short for the transcript steps it aside (the notice lives there).
    */
   sendFailureNotice?: string;
+  /**
+   * A send queued to retry by itself, with its Discard. The controls row shows
+   * the button only when the dock is too short to show the transcript that
+   * holds the same notice (`data-composer-priority`). It takes no height of its
+   * own there (the row is already a touch row), so the draft keeps its floor;
+   * the notice's words are its description. A queued send is not a failure, so
+   * this is not the send-failure line.
+   */
+  queuedRetryNotice?: { text: string; onDiscard: () => void };
   onRetryAttachmentStage?: (id: string) => void | Promise<void>;
   onCancelAttachmentStage?: (id: string) => void | Promise<void>;
   onReplaceAttachmentFile?: (id: string, files: File[]) => void | Promise<void>;
@@ -365,6 +383,7 @@ export function ChatInputArea({
   modelSupportsAttachments,
   fileAttachmentsSupported = modelSupportsAttachments,
   modelProviderLabel,
+  executionEngineLabel,
   fontSize,
   dockHeight,
   currentModel,
@@ -376,8 +395,10 @@ export function ChatInputArea({
   agentDefaultModel,
   defaultModelSource,
   availableModels,
+  pickerModels,
   modelProviders,
   currentProviderId,
+  currentExecutionAgentId,
   modelQuery,
   agentConnectionId,
   modelRuntimeOptions,
@@ -399,6 +420,7 @@ export function ChatInputArea({
   attachmentError = null,
   attachmentNotice,
   sendFailureNotice,
+  queuedRetryNotice,
   attachUnavailableReason,
   onAttachUnavailable,
   removalUnblocksSend = false,
@@ -562,7 +584,9 @@ export function ChatInputArea({
     ? `${aliasLabel} → ${resolvedLabel}`
     : aliasLabel;
   const modelAccessibleLabel = [
-    'Model:',
+    'Engine & model:',
+    executionEngineLabel,
+    currentExecutionAgentId ? 'Conversation override.' : '',
     modelProviderLabel
       ? `${modelProviderLabel} — ${fullModelIdentity}`
       : fullModelIdentity,
@@ -608,13 +632,28 @@ export function ChatInputArea({
       ? composerMentionWireLength(input, composerTokens)
       : composerMentionWireLength(draftText)) - CHAT_INPUT_MAX_CHARS;
   const isOverLimit = overLimitBy > 0;
+  // A blocked Send is disabled; it must not keep the active accent that reads
+  // as "ready". The send-mode segment takes the same accent when Send is ready
+  // so the pair reads as one split button.
+  const sendReady =
+    !isOverLimit &&
+    !sendBlockedReason &&
+    (workspaceRefused || hasSendableDraft);
   const mentionAutocompleteAvailable = Boolean(
     mentionLocation && mentionRequestScope,
   );
+  const syncMentionQuery = (value: string, cursor: number) => {
+    const trigger = mentionAutocompleteAvailable
+      ? mentionQueryAt(value, cursor)
+      : null;
+    setMentionQuery(trigger ? { ...trigger, end: cursor } : null);
+  };
   const mentionAutocompleteOpen = Boolean(
     mentionQuery && mentionAutocompleteAvailable,
   );
 
+  const queuedRetryText = queuedRetryNotice?.text;
+  const queuedRetryDescriptionId = React.useId();
   const composerRootRef = useRef<HTMLDivElement | null>(null);
   // The draft's two-line floor, written by the per-keystroke sizing below and
   // read by the reservation.
@@ -787,6 +826,7 @@ export function ChatInputArea({
     void attachmentError;
     void attachmentNotice;
     void sendFailureNotice;
+    void queuedRetryText;
     const textarea = textareaRef.current;
     if (!textarea) return;
     draftFloorRef.current = sizeDraft(
@@ -803,6 +843,7 @@ export function ChatInputArea({
     input,
     sendBlockedReason,
     sendFailureNotice,
+    queuedRetryText,
     textareaRef,
     visualViewport.height,
   ]);
@@ -824,7 +865,7 @@ export function ChatInputArea({
           overlayClassName="composer-popover-overlay composer-popover-overlay--start"
           panelClassName="composer-popover-panel chat-input__model-popover-panel"
         >
-          {availableModels.length === 0 ? (
+          {(pickerModels ?? availableModels).length === 0 ? (
             modelsLoading ? (
               // The wrapper keeps its class: index.css uses it to supply the
               // popover's border/radius/shadow while the picker's own chunk
@@ -856,17 +897,19 @@ export function ChatInputArea({
               }
             >
               <SessionModelPicker
-                models={availableModels}
+                models={pickerModels ?? availableModels}
                 stale={modelsStale}
                 providers={modelProviders}
                 currentProviderId={currentProviderId}
+                currentExecutionAgentId={currentExecutionAgentId}
+                bindingLabel={
+                  currentExecutionAgentId
+                    ? 'Conversation override'
+                    : 'Agent default'
+                }
                 currentModel={currentModel}
                 defaultModel={agentDefaultModel}
-                defaultSourceLabel={
-                  defaultModelSource
-                    ? modelSourceLabel(defaultModelSource).toLowerCase()
-                    : 'default model'
-                }
+                defaultSourceLabel={modelResetSourceLabel(defaultModelSource)}
                 runtimeOptions={modelRuntimeOptions}
                 onSelect={onModelSelect}
                 onReset={onModelReset}
@@ -916,7 +959,8 @@ export function ChatInputArea({
           >
             <span className="chat-input__chip-stack">
               <span className="chat-input__chip-caption" aria-hidden="true">
-                Model
+                {executionEngineLabel ?? 'Engine & model'}
+                {currentExecutionAgentId ? ' · Conversation override' : ''}
               </span>
               <span className="chat-input__model-name" aria-hidden="true">
                 {modelLabel}
@@ -929,12 +973,9 @@ export function ChatInputArea({
               type="button"
               className="chat-input__model-reset"
               onClick={onModelReset}
-              title="Reset this session to its default model"
+              title="Reset this chat to its default model"
             >
-              Use{' '}
-              {defaultModelSource
-                ? modelSourceLabel(defaultModelSource).toLowerCase()
-                : 'default'}
+              Use {modelResetSourceLabel(defaultModelSource)}
             </button>
           )}
           {acpSessionModes.length > 0 && onAcpSessionModeChange ? (
@@ -1054,56 +1095,49 @@ export function ChatInputArea({
             </React.Suspense>
           )}
           {mentionQuery && mentionLocation && mentionRequestScope && (
-            <div>
-              <React.Suspense
-                fallback={
-                  <div className="file-mention-picker__status">
-                    Finding files…
-                  </div>
-                }
-              >
-                <FileMentionAutocomplete
-                  location={mentionLocation}
-                  requestScope={mentionRequestScope}
-                  query={mentionQuery.query}
-                  listboxId={mentionListboxId}
-                  keyboardController={mentionKeyboardController}
-                  onActiveDescendantChange={setMentionActiveDescendant}
-                  onSelect={(entry) => {
-                    const generation = mentionGeneration.current;
-                    const next = insertComposerMention(
-                      input,
-                      mentionQuery.start,
-                      mentionQuery.end,
-                      {
-                        label: entry.name,
-                        path: entry.path,
-                        workspace: mentionLocation.workingDir,
-                        authority: mentionAuthority ?? '',
-                        type: entry.type,
-                      },
-                    );
-                    onInputChange(next);
-                    updateFromInput(next);
-                    setMentionQuery(null);
-                    requestAnimationFrame(() => {
-                      if (mentionGeneration.current !== generation) return;
-                      const textarea = textareaRef.current;
-                      if (!textarea) return;
-                      textarea.focus();
-                      const cursor = mentionQuery.start + entry.name.length + 2;
-                      textarea.setSelectionRange(cursor, cursor);
-                    });
-                  }}
-                />
-              </React.Suspense>
-            </div>
+            <React.Suspense fallback={null}>
+              <FileMentionAutocomplete
+                location={mentionLocation}
+                requestScope={mentionRequestScope}
+                query={mentionQuery.query}
+                listboxId={mentionListboxId}
+                keyboardController={mentionKeyboardController}
+                onActiveDescendantChange={setMentionActiveDescendant}
+                anchorRef={textareaRef}
+                onSelect={(entry) => {
+                  const generation = mentionGeneration.current;
+                  const next = insertComposerMention(
+                    input,
+                    mentionQuery.start,
+                    mentionQuery.end,
+                    {
+                      label: entry.name,
+                      path: entry.path,
+                      workspace: mentionLocation.workingDir,
+                      authority: mentionAuthority ?? '',
+                      type: entry.type,
+                    },
+                  );
+                  onInputChange(next);
+                  updateFromInput(next);
+                  setMentionQuery(null);
+                  requestAnimationFrame(() => {
+                    if (mentionGeneration.current !== generation) return;
+                    const textarea = textareaRef.current;
+                    if (!textarea) return;
+                    textarea.focus();
+                    const cursor = mentionQuery.start + entry.name.length + 2;
+                    textarea.setSelectionRange(cursor, cursor);
+                  });
+                }}
+              />
+            </React.Suspense>
           )}
           {modelQuery !== null && input.startsWith('/model ') && (
             <React.Suspense fallback={null}>
               <ModelSelectorAutocomplete
                 query={modelQuery}
-                models={availableModels.map((m) => ({
+                models={(pickerModels ?? availableModels).map((m) => ({
                   ...m,
                   originalId: m.originalId || m.id,
                 }))}
@@ -1142,24 +1176,41 @@ export function ChatInputArea({
             value={displayInput}
             disabled={disabled && !allowDraftWhileDisabled}
             tabIndex={0}
-            onFocus={() => {
+            onFocus={(e) => {
               setShortcutContext('composerFocused', true);
               updateFromInput(input);
+              // Blur closes the file picker; refocusing inside an `@` query brings it
+              // back, as it does for the other pickers. Read the caret a frame later: a
+              // click focuses on mousedown, before the caret moves to the click point.
+              const textarea = e.currentTarget;
+              const focusedValue = textarea.value;
+              requestAnimationFrame(() => {
+                if (
+                  document.activeElement !== textarea ||
+                  textarea.value !== focusedValue
+                )
+                  return;
+                syncMentionQuery(
+                  input,
+                  textarea.selectionStart ?? focusedValue.length,
+                );
+              });
             }}
             onBlur={() => {
               setShortcutContext('composerFocused', false);
               closeAll();
+              // The file picker is portaled out of the composer, so it no
+              // longer hides with it; close it like the other pickers.
+              setMentionQuery(null);
             }}
             onChange={(e) => {
               const next = reconcileComposerDisplay(input, e.target.value);
               onInputChange(next);
               updateFromInput(next);
-              const cursor = e.target.selectionStart ?? e.target.value.length;
-              const trigger =
-                mentionLocation && mentionRequestScope
-                  ? mentionQueryAt(next, cursor)
-                  : null;
-              setMentionQuery(trigger ? { ...trigger, end: cursor } : null);
+              syncMentionQuery(
+                next,
+                e.target.selectionStart ?? e.target.value.length,
+              );
             }}
             onPaste={(event) => {
               const files = filesFromDataTransfer(event.clipboardData);
@@ -1170,19 +1221,22 @@ export function ChatInputArea({
             onDragOver={(event) => {
               if (
                 !event.dataTransfer.types.includes(
-                  'application/x-station-conversation-reference',
+                  CONVERSATION_REFERENCE_DRAG_TYPE,
                 )
               )
                 return;
               const conversationId = event.dataTransfer.getData(
-                'application/x-station-conversation-reference',
+                CONVERSATION_REFERENCE_DRAG_TYPE,
               );
               const candidate =
                 draggedSessionReference.current?.id === conversationId &&
                 draggedSessionReference.current.ownerKey ===
                   sessionReferenceOwnerKey
                   ? draggedSessionReference.current
-                  : null;
+                  : draggedConversationReference(
+                      conversationId,
+                      mentionRequestScope,
+                    );
               if (
                 (!conversationId || candidate) &&
                 !sessionReferenceBlockReason({
@@ -1197,17 +1251,23 @@ export function ChatInputArea({
             }}
             onDrop={(event) => {
               const conversationId = event.dataTransfer.getData(
-                'application/x-station-conversation-reference',
+                CONVERSATION_REFERENCE_DRAG_TYPE,
               );
               if (!conversationId) return;
               event.preventDefault();
+              // The picker's own drag, or an Activity or inbox row this
+              // window is dragging from the same Station access scope.
               const candidate =
                 draggedSessionReference.current?.id === conversationId &&
                 draggedSessionReference.current.ownerKey ===
                   sessionReferenceOwnerKey
                   ? draggedSessionReference.current
-                  : null;
+                  : draggedConversationReference(
+                      conversationId,
+                      mentionRequestScope,
+                    );
               draggedSessionReference.current = null;
+              endConversationReferenceDrag();
               if (!candidate) return;
               const reason = sessionReferenceBlockReason({
                 value: input,
@@ -1442,6 +1502,20 @@ export function ChatInputArea({
               </svg>
             </ComposerIconAction>
           )}
+          {queuedRetryNotice && (
+            <span className="chat-input__queued-retry-actions">
+              <button
+                type="button"
+                aria-describedby={queuedRetryDescriptionId}
+                onClick={queuedRetryNotice.onDiscard}
+              >
+                Discard
+              </button>
+              <span id={queuedRetryDescriptionId} className="sr-only">
+                {queuedRetryNotice.text}
+              </span>
+            </span>
+          )}
           <span className="chat-controls-row__spacer" />
           <div className="chat-input__send-group">
             {turnInFlight && (
@@ -1511,16 +1585,7 @@ export function ChatInputArea({
                     : (sendBlockedReason ?? 'Send')
                 }
                 className={`send-button chat-input__send-btn ${
-                  !isOverLimit &&
-                  // A blocked Send is disabled; it must not keep the active
-                  // accent that reads as "ready".
-                  !sendBlockedReason &&
-                  (
-                    workspaceRefused ||
-                      input.trim() ||
-                      hasQuotedContext ||
-                      attachments.length > 0
-                  )
+                  sendReady
                     ? 'chat-input__send-btn--active'
                     : 'chat-input__send-btn--inactive'
                 }`}
@@ -1544,7 +1609,9 @@ export function ChatInputArea({
               {turnInFlight && onQueueFollowUp && (
                 <button
                   type="button"
-                  className="choice-trigger chat-input__send-mode"
+                  className={`chat-input__send-mode ${
+                    sendReady ? 'chat-input__send-mode--active' : ''
+                  }`}
                   aria-label={`Send mode: ${sendMode === 'steer' && busyFollowUp === 'steer' ? 'Steer' : 'Queue'}`}
                   title={`Send mode: ${sendMode === 'steer' && busyFollowUp === 'steer' ? 'Steer' : 'Queue'}`}
                   tabIndex={hideMobileSubmit ? -1 : 0}
@@ -1559,9 +1626,6 @@ export function ChatInputArea({
                   </span>
                   <ArrowDownGlyph />
                 </button>
-              )}
-              {!(turnInFlight && onQueueFollowUp) && (
-                <span className="chat-input__mode-slot" aria-hidden="true" />
               )}
             </div>
           </div>

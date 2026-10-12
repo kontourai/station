@@ -1,0 +1,7 @@
+{
+  "revision": "8ec45046bcf8616dd8adb26169d4468a9498b47e",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed Android suite runner and mobile-layout coverage after replacing only the raw 44px comparison with the existing shared browser-measurement floor and three-decimal diagnostics. Candidate-count guard and real interactive controls remain; unchanged local Android suite passed10tests. Hosted precise undersize mechanism remains unverified. Fixture worker cleanup and retired implementation-import guards do not add product or native-device claims.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/android/mobile-layout.spec.ts"]}
+  ]
+}

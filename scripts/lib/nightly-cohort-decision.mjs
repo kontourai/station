@@ -107,9 +107,13 @@ export function ledgerRecordsShip(ledgerEntries, channel, sha) {
  *   for that marker — HEAD with generated ledger commits peeled, stopping at
  *   the marker. The marker is "at HEAD" exactly when the two are equal.
  * @param {unknown} input.ledgerEntries `docs/reference/deploy-ledger.json`, parsed.
+ *   A platform may also carry `markerAhead: true` when its marker is a
+ *   strict descendant of the source: a newer source already shipped there.
  * @param {string} [input.rebuildIndex] `inputs.rebuild_index`; non-empty forces a build.
  * @returns {{ build: boolean, reasons: string[] }} `reasons` names every
- *   platform (or the manual request) that requires a build; empty when none does.
+ *   platform (or the manual request) that requires a build; empty when none
+ *   does. A refusal to publish backwards returns `build: false` with the
+ *   refusal as its reasons.
  */
 export function decideNativeCohort({
   headSha,
@@ -129,6 +133,7 @@ export function decideNativeCohort({
   assertLedgerEntries(ledgerEntries);
 
   const reasons = [];
+  const ahead = [];
   for (const { platform, marker, channel } of NATIVE_COHORT_PLATFORMS) {
     const state = platforms[platform];
     if (!state || typeof state !== 'object') {
@@ -140,6 +145,12 @@ export function decideNativeCohort({
 
     if (markerSha === '') {
       reasons.push(`${platform}: ${marker} does not exist yet (bootstrap)`);
+      continue;
+    }
+    if (markerSha !== candidateSha && state.markerAhead === true) {
+      ahead.push(
+        `${platform}: ${marker} is at ${markerSha}, which already contains source ${candidateSha}`,
+      );
       continue;
     }
     if (markerSha !== candidateSha) {
@@ -155,6 +166,20 @@ export function decideNativeCohort({
         `${platform}: marker at HEAD without a ledger row for this source (no ${channel} entry at ${markerSha})`,
       );
     }
+  }
+  // Two entry points (the scheduled Nightly on HEAD and Main qualification on
+  // the commit it qualified) queue behind one concurrency group, so a run can
+  // start after a newer source already shipped. Publishing it would move the
+  // rolling markers backwards under a higher version code; no request,
+  // including a rebuild index, overrides that.
+  if (ahead.length > 0) {
+    return {
+      build: false,
+      reasons: [
+        'refusing to publish an older source than the one already shipped',
+        ...ahead,
+      ],
+    };
   }
   if (rebuildIndex !== '') {
     reasons.push(`manual rebuild requested (rebuild_index=${rebuildIndex})`);

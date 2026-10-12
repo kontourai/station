@@ -13,12 +13,23 @@ import { ResponsiveDialogHeader } from '../ResponsiveDialogSurface';
  */
 export function ModelPickerDialogFrame({
   children,
+  title = 'Model',
   onClose,
+  returnFocusTarget,
 }: {
   children: ReactNode;
+  title?: string;
   onClose: () => void;
+  /**
+   * The control that opened the picker. Without it the frame returns focus to
+   * whatever was focused when it mounted, which is wrong for a frame that
+   * replaces a loading frame: focus then sits inside the frame being removed.
+   */
+  returnFocusTarget?: HTMLElement | null;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
+  // Read once, at mount, like the focus it stands in for.
+  const returnFocusTargetRef = useRef(returnFocusTarget);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -52,7 +63,7 @@ export function ModelPickerDialogFrame({
   };
 
   useEffect(() => {
-    const previouslyFocused = captureReturnFocus();
+    const previouslyFocused = captureReturnFocus(returnFocusTargetRef.current);
     const panel = panelRef.current;
     const handlePointerDown = (event: PointerEvent) => {
       if (!panelRef.current?.contains(event.target as Node)) {
@@ -82,8 +93,8 @@ export function ModelPickerDialogFrame({
       onKeyDownCapture={containFocus}
     >
       <ResponsiveDialogHeader
-        title="Model"
-        subtitle="For this chat · Favorites stay on this device"
+        title={title}
+        subtitle="For this conversation"
         closeLabel="Close model picker"
         onClose={onClose}
       />

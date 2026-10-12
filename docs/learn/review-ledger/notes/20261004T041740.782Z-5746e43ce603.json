@@ -1,0 +1,7 @@
+{
+  "revision": "3ff57bc91496fd66f7b97eb67df16f6d49bd7ed5",
+
+  "notes": [
+    {"path":"docs/learn/walkthroughs.md","note":"ProjectPage.css delta only makes the header working-directory line a block with the same start-truncation. The walkthrough's Project description (workspace, durable identity, technical identity kept behind details) makes no claim on the path line layout, so it is unaffected. Reasoned from the diff, no check executed.","inputs":["src-ui/src/views/ProjectPage.css"]}
+  ]
+}

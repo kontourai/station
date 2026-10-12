@@ -79,6 +79,51 @@ function hasUsageSignal(aggregate: SessionUsageAggregate): boolean {
   );
 }
 
+function sumReported(values: Array<number | null | undefined>) {
+  const numbers = values.filter(
+    (value): value is number => typeof value === 'number',
+  );
+  return numbers.length > 0
+    ? numbers.reduce((total, value) => total + value, 0)
+    : undefined;
+}
+
+/**
+ * #3112: one conversation's stats from its lineage Sessions' records, oldest
+ * first. Cumulative figures sum; context occupancy and the token breakdown
+ * describe the current prompt, so they come from the newest record. A
+ * single record is returned as it is.
+ */
+function combineLineageStats(
+  list: ConversationStats[],
+): ConversationStats | undefined {
+  if (list.length <= 1) return list[0];
+  const latest = list[list.length - 1]!;
+  const cost = sumReported(list.map((stats) => stats.estimatedCost));
+  return {
+    ...latest,
+    inputTokens: sumReported(list.map((stats) => stats.inputTokens)),
+    outputTokens: sumReported(list.map((stats) => stats.outputTokens)),
+    totalTokens: sumReported(list.map((stats) => stats.totalTokens)),
+    turns: list.reduce((total, stats) => total + (stats.turns ?? 0), 0),
+    toolCalls: list.reduce((total, stats) => total + (stats.toolCalls ?? 0), 0),
+    ...(cost !== undefined ? { estimatedCost: cost } : {}),
+  };
+}
+
+function combineLineageModelStats(
+  list: Array<Record<string, any>>,
+): Record<string, any> {
+  if (list.length <= 1) return list[0] ?? {};
+  const byModel = new Map<string, ConversationStats[]>();
+  for (const modelStats of list)
+    for (const [model, stats] of Object.entries(modelStats))
+      if (stats) byModel.set(model, [...(byModel.get(model) ?? []), stats]);
+  return Object.fromEntries(
+    [...byModel].map(([model, stats]) => [model, combineLineageStats(stats)]),
+  );
+}
+
 /**
  * Get conversation statistics for an agent and conversation
  */
@@ -114,6 +159,12 @@ export async function getConversationStats(
   resolveContextWindowTokens?: (
     modelId: string,
   ) => number | undefined | Promise<number | undefined>,
+  /**
+   * #3112: the conversation's execution Sessions in lineage order. A
+   * follow-up after a failed Station-agent turn runs in a successor whose
+   * usage is recorded on its own store record. Defaults to the one id.
+   */
+  sessionIds: readonly string[] = conversationId ? [conversationId] : [],
 ) {
   if (!slug || slug === 'undefined') {
     throw new Error('Invalid agent slug');
@@ -235,8 +286,27 @@ export async function getConversationStats(
     );
   }
 
-  const stats: ConversationStats = (conversation as ConversationWithMetadata)
-    .metadata?.stats || {
+  const lineageRecords: Array<{
+    id: string;
+    record: ConversationWithMetadata;
+  }> = [
+    { id: conversationId, record: conversation as ConversationWithMetadata },
+  ];
+  for (const sessionId of sessionIds) {
+    if (sessionId === conversationId) continue;
+    const record = await adapter.getConversation(sessionId);
+    if (record)
+      lineageRecords.push({
+        id: sessionId,
+        record: record as ConversationWithMetadata,
+      });
+  }
+
+  const stats: ConversationStats = combineLineageStats(
+    lineageRecords.flatMap(({ record }) =>
+      record.metadata?.stats ? [record.metadata.stats] : [],
+    ),
+  ) || {
     inputTokens: 0,
     outputTokens: 0,
     totalTokens: 0,
@@ -245,8 +315,9 @@ export async function getConversationStats(
     estimatedCost: 0,
   };
 
-  const modelStats =
-    (conversation as ConversationWithMetadata).metadata?.modelStats || {};
+  const modelStats = combineLineageModelStats(
+    lineageRecords.map(({ record }) => record.metadata?.modelStats ?? {}),
+  );
 
   // Get token breakdown from stats or calculate on-the-fly
   const breakdown = stats.tokenBreakdown || {};
@@ -256,10 +327,9 @@ export async function getConversationStats(
   // If breakdown doesn't exist, calculate user message tokens from conversation
   // Note: messages are stored separately, not on conversation object
   if (userMessageTokens === undefined) {
-    const messages = await adapter.getMessages(
-      conversation.userId,
-      conversationId,
-    );
+    const messages = [];
+    for (const { id, record } of lineageRecords)
+      messages.push(...(await adapter.getMessages(record.userId, id)));
     userMessageTokens = resolveConversationUserMessageTokens(messages);
   }
 

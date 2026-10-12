@@ -11,6 +11,7 @@ import {
   listTaskOutputs,
 } from './client/task-outputs';
 import { type QueryConfig, resolveApiBase, useApiQuery } from './query-core';
+import type { TaskRoomWorkRequestScope } from './query-domains/taskRoomWork';
 import { sessionInventoryQueries } from './session-inventory';
 
 export {
@@ -64,15 +65,45 @@ export async function keepDeclaredOutput(input: {
 }
 export function useTaskOutputsQuery(
   taskId: string,
-  config?: QueryConfig<TaskOutputRecord[]>,
+  config?: QueryConfig<TaskOutputRecord[]> & {
+    requestScope?: TaskRoomWorkRequestScope;
+    taskCreatedAt?: string;
+  },
 ) {
   const query = taskOutputQueries.outputs(taskId);
-  return useApiQuery(query.queryKey, () => fetchTaskOutputs(taskId), {
-    staleTime: config?.staleTime ?? query.staleTime,
-    gcTime: config?.gcTime,
-    enabled: config?.enabled ?? taskId.length > 0,
-    refetchOnMount: config?.refetchOnMount ?? 'always',
-  });
+  const scope = config?.requestScope;
+  const scoped = config?.taskCreatedAt !== undefined;
+  const key = scoped
+    ? [
+        ...query.queryKey,
+        scope?.apiBase ?? null,
+        scope?.authorityKey ?? null,
+        config?.taskCreatedAt ?? null,
+      ]
+    : query.queryKey;
+  return useApiQuery(
+    key,
+    async (signal) => {
+      if (!scoped) return fetchTaskOutputs(taskId);
+      if (!scope?.isCurrent())
+        throw new Error('Task output connection changed.');
+      const value = await listTaskOutputs(scope.apiBase, taskId, {
+        requestScope: scope,
+        signal,
+      });
+      if (!scope.isCurrent())
+        throw new Error('Task output connection changed.');
+      return value;
+    },
+    {
+      staleTime: config?.staleTime ?? query.staleTime,
+      gcTime: config?.gcTime,
+      enabled:
+        (config?.enabled ?? taskId.length > 0) &&
+        (!scoped || !!scope?.isCurrent()),
+      refetchOnMount: config?.refetchOnMount ?? 'always',
+    },
+  );
 }
 export function useCreateTaskOutputMutation() {
   const client = useQueryClient();

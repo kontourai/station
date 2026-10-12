@@ -11,8 +11,7 @@ import {
   sessionReferenceBlockReason,
 } from './composer-mentions';
 
-const SESSION_REFERENCE_DRAG_TYPE =
-  'application/x-station-conversation-reference';
+import { CONVERSATION_REFERENCE_DRAG_TYPE as SESSION_REFERENCE_DRAG_TYPE } from './conversationReferenceDrag';
 
 export interface SessionReferenceCandidate {
   id: string;

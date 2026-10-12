@@ -1,0 +1,9 @@
+{
+  "revision": "764272385918e4c20c3d1a7b91675f38c83b7e72",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Read the deployment routing, GCP historical qualification, AWS delivery target, drain/fence replacement and tenant-isolation distinctions. Replaced the inherited container policy-registration requirement with service run self-claim and wait-while-held, tracing Dockerfile and supervisor source. This does not establish current image/GCP/AWS/Marketplace delivery or tenant-safe storage; those limits remain explicit.","inputs":["docs/guides/integrating-station.md","deploy/gcp-dev/README.md","docs/guides/deployment.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Read the container HTTP/SSE versus dedicated WebSocket ingress finding (#2769) and dogfood raw npm candidate-preparation finding (#2776) against the changed deployment guide and owning proxy/staging callers. Service run now claims and waits without install policy, but it changes neither the missing voice/terminal upgrade bridge nor legacy dogfood dependency staging. Both findings and their runtime qualification limits remain accurate; no prose change or new container/proxy/phone voice journey claimed.","inputs":["docs/architecture/abstraction-review.md","docs/guides/deployment.md"]}
+  ]
+}

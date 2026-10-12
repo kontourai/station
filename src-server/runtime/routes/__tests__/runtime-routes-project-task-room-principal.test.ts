@@ -38,9 +38,13 @@ import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../r
 // credential pipeline (device pairing, cookies, proxy attestation) is a
 // separately-covered boundary and only adds unrelated setup here — same
 // rationale as `runtime-routes-hosted-mcp-composition.test.ts`.
-vi.mock('../../bootstrap/runtime-http.js', () => ({
+vi.mock('../../bootstrap/runtime-http.js', async (importOriginal) => ({
   configureRuntimeHttp: () => undefined,
   configureRuntimeRouteClassificationGate: () => undefined,
+  // Real: it holds no credential policy, and composition installs it itself.
+  installStationEnvelopeMarker: (
+    await importOriginal<typeof import('../../bootstrap/runtime-http.js')>()
+  ).installStationEnvelopeMarker,
   LOOPBACK_DEVICE_SESSION_COOKIE: 'station-device',
   SECURE_DEVICE_SESSION_COOKIE: '__Host-station-device',
 }));

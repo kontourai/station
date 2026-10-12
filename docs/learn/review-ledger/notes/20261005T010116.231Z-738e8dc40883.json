@@ -1,0 +1,7 @@
+{
+  "revision": "4de275495bfff9019a8dcb8ebe474e2b080b0e65",
+
+  "notes": [
+    {"path":"docs/reference/verification-receipts.md","note":"Planner change adds mergeQueueRegressionPaths to the fast-checks plan only; changed-verification receipts and their schema are untouched. Canonical-completion text remains true: hosted Nightly/tagged promotions own completion, and merge-queue full-regression runs are not trusted reuse sources in qualification-evidence.mjs.","inputs":["docs/reference/verification-receipts.md","scripts/run-changed-verification.mjs"]}
+  ]
+}

@@ -531,6 +531,17 @@ export function useAgentsViewModel({
   const dirty = isAgentFormDirty(form, savedForm);
   const { guard, DiscardModal } = useUnsavedGuard(dirty);
 
+  // See `handleDuplicate`: the prepared copy goes to /agents/new once the
+  // form it replaced no longer needs guarding.
+  const [pendingNewNavigation, setPendingNewNavigation] = useState(false);
+  useEffect(() => {
+    if (!pendingNewNavigation || dirty) return;
+    setPendingNewNavigation(false);
+    if (urlSlug === 'new') return;
+    createNavigationRef.current = true;
+    urlSelect('new');
+  }, [dirty, pendingNewNavigation, urlSelect, urlSlug]);
+
   // See `handleSave`: navigate to the created Agent only once the guard has
   // nothing to guard.
   useEffect(() => {
@@ -639,12 +650,21 @@ export function useAgentsViewModel({
 
   function handleDuplicate(source: AgentData) {
     guard(() => {
-      createNavigationRef.current = true;
-      urlSelect('new');
       setIsCreating(true);
       setStartingPointChosen(true);
       setCopyPicking(false);
       handleCopyAgent(source);
+      if (urlSlug === 'new') return;
+      // Confirming the discard prompt does not make the form clean in this
+      // tick, and the route guard is still registered: navigating now asked
+      // "Discard?" a second time for the same decision. Navigate once the
+      // prepared copy has rendered clean, as `handleSave` does after a create.
+      if (dirty) {
+        setPendingNewNavigation(true);
+        return;
+      }
+      createNavigationRef.current = true;
+      urlSelect('new');
     });
   }
 

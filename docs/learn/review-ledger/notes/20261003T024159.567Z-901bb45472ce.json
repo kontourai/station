@@ -1,0 +1,7 @@
+{
+  "revision": "8c0170f5d9fb2a224c36326efbebb56b609f323a",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the sole source delta: acquisition refusal assertions list only setup() temporary Station homes; directory-walk policy still detects every repository walker and checks classifications for stale entries. The guide evidence-selection and fixture rules remain accurate. Focused path-read-pin-boundary suite executed 42 assertions successfully; this does not establish hosted Windows execution.","inputs":["docs/guides/testing.md"]}
+  ]
+}

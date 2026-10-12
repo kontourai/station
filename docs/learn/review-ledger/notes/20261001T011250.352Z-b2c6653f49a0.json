@@ -1,0 +1,7 @@
+{
+  "revision": "2acae44ff0fa0592bc6e4c0c08b9c7cca4fcaa8c",
+
+  "notes": [
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed separate versus shared broker topology, late CLI provisioning into one live database, per-Station credential and Project refusals, renewal and peer reconnect, one-child withdrawal versus group cleanup, and retained clean 363462bb4 local Pion/TURN/Chromium PASS after 4b64ec1b1 group-stop FAIL. Fixture tests and source checks remain distinct from this runtime receipt; native, public remote TLS/TURN/NAT, physical humans, compute/plugins and hostile tenant/process isolation remain unverified.","inputs":["docs/guides/local-collaboration-lab.md"]}
+  ]
+}

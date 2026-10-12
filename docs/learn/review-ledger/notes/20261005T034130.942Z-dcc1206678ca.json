@@ -1,0 +1,7 @@
+{
+  "revision": "ad30dbea5f0eb5bc07431d5d233cf05b62725e6a",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Edited: Home rows draw no project mark for a row read from another Station. Checked against rowProjectMarks (components/inbox-row/row-project-marks.ts), which returns neither accent nor icon when environmentId is set, and its callers renderHomeWorkRow and InboxGroupList; the hover card and Git sentences are unchanged by this round.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]}
+  ]
+}

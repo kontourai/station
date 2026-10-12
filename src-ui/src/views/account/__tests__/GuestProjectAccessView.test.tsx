@@ -204,7 +204,7 @@ test('an approved admin creates a manual invitation link stamped with the captur
     /\/account\/join#invitation=/,
   )) as HTMLInputElement;
   expect(link.value).toContain('/account/join#invitation=');
-  expect(screen.getByText(/copy the link now, it is shown once/)).toBeTruthy();
+  expect(screen.getByText(/Copy the link to share it/)).toBeTruthy();
   expect(stub.posts).toHaveLength(1);
   expect(stub.posts[0].body).toMatchObject({ expectedActor: admin.id });
 });

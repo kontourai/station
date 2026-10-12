@@ -1,5 +1,7 @@
+import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   flowRunsStarted: { add: vi.fn() },
@@ -190,11 +192,23 @@ function createApp(
     continuePausedGate: ReturnType<typeof vi.fn>;
   },
 ) {
-  const app = createFlowRunRoutes(service as any, {
+  const routes = createFlowRunRoutes(service as any, {
     getWorkspacePath: vi.fn().mockReturnValue(workspace),
     readinessBridge: readinessBridge as any,
     surveyReview: surveyReview as any,
   });
+  // Running a command line takes the operator in person (or a device holding
+  // coding:exec); a request no auth boundary saw is refused.
+  const app = new Hono<any>();
+  app.use('*', async (c, next) => {
+    setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+      credential: 'operator-credential',
+      authority: 'operator-credential',
+      source: 'bearer',
+    });
+    await next();
+  });
+  app.route('/', routes);
   return { app, service };
 }
 

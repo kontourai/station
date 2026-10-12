@@ -1,0 +1,7 @@
+{
+  "revision": "ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e",
+
+  "notes": [
+    {"path":"docs/design/shell-skeletons.md","note":"Independent source-delta review: ProjectSettingsView passes its slug to AgentsSection for eligible project-owned default choices. Added control does not alter root classes, heading ownership, skeleton selection or ratchet behavior. No prose change required; retained historical measurements are not refreshed runtime proof.","inputs":["docs/design/shell-skeletons.md"]}
+  ]
+}

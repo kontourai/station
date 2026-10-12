@@ -1,0 +1,9 @@
+{
+  "revision": "88140f72c92f5a9690eaef7e7f6c56377418dc28",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"conversations.ts now serves a fixed refusal text for the 422 conversation_lineage_too_long instead of the error's message; the documented status and code are unchanged. Merge with #3208: the unified read moved to conversation-message-reader.ts and keeps the lineage read and bound the reference documents.","inputs":["docs/reference/api.md","src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Only the 422 refusal text source changed in conversations.ts (and the #3208 merge moved the shared read to its own module); no claim in the guide depends on either. No prose change.","inputs":["docs/user/getting-started.md","src-server/routes/chat/conversations.ts"]}
+  ]
+}

@@ -1,8 +1,9 @@
 # Public ecosystem manifest
 
 [install.sh](../../install.sh) uses the ecosystem-manifest path when
-`STATION_INSTALL_PUBLIC_MANIFEST_URL` is set. Otherwise it uses the GitHub
-release/attestation path. The manifest is a JSON envelope containing a payload,
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` is set, and for `STATION_CHANNEL=nightly`,
+which defaults it to the rolling `portable-nightly` manifest. Otherwise it
+uses the GitHub release/attestation path. The manifest is a JSON envelope containing a payload,
 key ID and detached Ed25519 signature over the canonical payload; the installer
 checks the selected portable archive against the signed hash before promotion.
 
@@ -40,7 +41,7 @@ shape is no longer accepted by the installer or manifest CLI.
 | --- | --- | --- |
 | v1: `artifacts.macos` and `artifacts.portable`, stable/preview | Manifest CLI `create`; ecosystem dry-run fixture | CLI `verify`/`cask`; `install.sh` selects `station-portable.tar.gz` |
 | Former v2: `artifacts.portable`, including Nightly | Historical installer fixtures | Refused by current `install.sh` and manifest CLI |
-| Platform v2: `artifacts[]` with OS, architecture, format, size and digest; `nodeVersion`; `launcherProtocol` | CLI `assemble` then `create`; owner-gated portable Nightly workflow | CLI `verify`, shared verifier, macOS/Linux `install.sh` host selection, and the Windows `install.ps1` core (stage-only so far); no cask rendering |
+| Platform v2: `artifacts[]` with OS, architecture, format, size and digest; `nodeVersion`; `launcherProtocol` | CLI `assemble` then `create`; owner-gated portable Nightly workflow | CLI `verify`, shared verifier, macOS/Linux `install.sh` host selection, and the Windows `install.ps1` core; no cask rendering |
 
 [release-manifest.mjs](../../packages/shared/src/release-manifest.mjs) and
 [portable-server-targets.mjs](../../packages/shared/src/portable-server-targets.mjs)
@@ -51,9 +52,10 @@ archive is not a download/readback receipt.
 
 The [archive workflow](../../.github/workflows/portable-server-archives.yml)
 builds, smokes and uploads CI artifacts. The separate
-[portable Nightly publication workflow](../../docs/guides/nightly.md#portable-server-nightly-dry-run-until-the-owner-enables-it)
+[portable Nightly publication workflow](../../docs/guides/nightly.md#portable-server-nightly)
 assembles v2 and can publish its signed rolling manifest only behind the owner
-gate. The installer requires an explicit public manifest URL.
+gate. For Nightly the installers default to that rolling manifest; other
+channels need an explicit public manifest URL.
 
 The [ecosystem dry-run](../../scripts/exercise-ecosystem-packaging-dry-run.sh)
 uses v1 through a disposable local endpoint. The separate

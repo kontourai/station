@@ -1,0 +1,7 @@
+{
+  "revision": "fddbe13fa0a0ea4ad7e3323d71c718212f540f93",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Design round 2: stale through the action-surface inventory line for PullRequestReviewPanel; the guide makes no claim about that surface; the round's sheets stay on tokens (--radius-pill, --space-*, --text-*, the accent wash). No prose change.","inputs":["docs/ui/responsive-action-surfaces.txt","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","pnpm-lock.yaml","src-server/runtime/bootstrap/runtime-http.ts","src-server/security/pairing-route-scopes.ts","src-ui/AGENTS.md","src-ui/src/main.tsx","src-ui/src/platform/PlatformProfileContext.tsx"]}
+  ]
+}

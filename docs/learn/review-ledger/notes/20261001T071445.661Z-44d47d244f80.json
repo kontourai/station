@@ -1,0 +1,7 @@
+{
+  "revision": "b03622e2007e22ff75c7280a41396526c75a7b6e",
+
+  "notes": [
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"#3071 review-fix round. Changed inputs: orchestration-service.ts (request inspection reports a request settled by its turn's abort as resolved; respondToRequest refuses a resolved or settled request with request_event_changed before adapter resolution). A dated decomposition map whose line numbers and member counts describe named historical revisions; it lists respondToRequest as a dispatch arm and states nothing about refusal of settled requests. The new private settledRequestRefusal method is not in its inventory and the map was not re-counted. No prose change.","inputs":["docs/design/orchestration-decomposition-map.md"]}
+  ]
+}

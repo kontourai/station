@@ -1,0 +1,7 @@
+{
+  "revision": "f0f20e6125e5e41bbb691d806ea3cf866ac15769",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed latest SettingsView copy delta: project selector caption now distinguishes Station and device scope instead of implying all controls are shared. Destination registry, picker inventory and canonical navigation unchanged; focused settings coverage passes.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

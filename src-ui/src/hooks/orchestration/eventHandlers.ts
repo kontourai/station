@@ -195,6 +195,28 @@ export function handleOrchestrationEvent(
  * through the Station this frame came from. A chat the event already routes
  * to is drained by its own handler, exactly as before.
  */
+/**
+ * #3157: a usage-limit stop ends its turn but is no cue for the queue. The
+ * provider would refuse the follow-up, and a newer turn retires the resume
+ * Station holds for the reset. Recorded on the chat, where the one drain
+ * decision (`drainQueuedMessageOnTurnCompleted`) reads it; a snapshot records
+ * the server's same verdict. The queue waits for the resumed turn's end, or
+ * for the user (Send now).
+ */
+function markUsageLimitStop(chatKey: string, event: OrchestrationEvent): void {
+  const stopped =
+    event.method === 'runtime.error' &&
+    (event.details as { usageLimit?: unknown } | undefined)?.usageLimit ===
+      true;
+  if (
+    Boolean(activeChatsStore.getSnapshot()[chatKey]?.usageLimitStopped) !==
+    stopped
+  )
+    activeChatsStore.updateChat(chatKey, {
+      usageLimitStopped: stopped ? true : undefined,
+    });
+}
+
 function drainUnroutedConversationTurnEnd(
   apiBase: string,
   event: OrchestrationEvent,
@@ -210,6 +232,7 @@ function drainUnroutedConversationTurnEnd(
     conversation.conversationId,
   );
   if (!chatKey || isReplayThread(chatKey)) return;
+  markUsageLimitStop(chatKey, event);
   drainQueuedMessageOnTurnCompleted(apiBase, chatKey);
 }
 
@@ -233,6 +256,12 @@ function dispatchProjectedOrchestrationEvent(
       handleSessionExitedEvent(event);
       return;
     case 'turn.started':
+      if (chat.usageLimitStopped)
+        activeChatsStore.updateChat(
+          activeChatsStore.getChatKeyForExecutionSession(event.threadId) ??
+            event.threadId,
+          { usageLimitStopped: undefined },
+        );
       handleTurnStartedEvent(event);
       return;
     case 'content.text-delta':
@@ -288,6 +317,11 @@ function dispatchProjectedOrchestrationEvent(
         !isDeferredRetriableTurnError(event) &&
         !isReplayThread(event.threadId)
       ) {
+        markUsageLimitStop(
+          activeChatsStore.getChatKeyForExecutionSession(event.threadId) ??
+            event.threadId,
+          event,
+        );
         const terminalTurnId = event.details?.turnId ?? event.turnId;
         if (typeof terminalTurnId === 'string')
           resumePendingSendNowOnTurnTerminal(

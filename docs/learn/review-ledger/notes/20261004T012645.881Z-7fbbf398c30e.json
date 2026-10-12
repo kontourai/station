@@ -1,0 +1,19 @@
+{
+  "revision": "b0584a1db91f7155b3b0f2714d6ad46e43767531",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the real recorder, budget-refusal owner and capture writer: 128 checkpoint-relative identities; known routing names/numeric cursors and hashed method/thread/turn only; unchanged byte/frame limits and nonzero refusal. Four real HTTP keeper cases passed; raw-payload mutation was caught by the private sentinel and restoration passed. The ONE prior216c instrumented ec2 capture was successful, not evidence of failure-file writing or final qualification. Subsequent digest ordering repair is independently source-reviewed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/fixtures/orchestration-transfer/README.md","note":"Reviewed the fixed logical clock calibration and envelope attribution claims against the observability delta. Diagnostic identity collection does not change measured bytes/frame accounting, timeouts, clocks or budgets; two-baseline/candidate comparison remains the admission owner. Failure output is separate and cannot replace a successful matrix. No calibration numbers or policy attribution were changed.","inputs":["scripts/fixtures/orchestration-transfer/README.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the added testing-guide paragraph against pre-push transfer admission and code-health evidence limits. Failed phase diagnostics remain nonzero and cannot satisfy the full baseline/candidate comparison, Veritas or promotion receipt. Existing scoped gates and independent code-health ownership are unchanged.","inputs":["docs/guides/code-quality.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed the testing-guide delta against fail-closed tooling, bounded output and causal failure evidence policy. The new artifact retains measured refusal and excludes payloads; limits and scope routing remain unchanged. Required gates are not bypassed.","inputs":["scripts/AGENTS.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed the added testing-guide refusal diagnostic against focused owner-boundary evidence and server authority rules. Internal measurement metadata adds no server route or grant and makes no model/device qualification claim.","inputs":["src-server/AGENTS.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed the testing-guide delta against UI journey/profile boundaries. Transfer failure metadata is diagnostic tooling only; it does not establish mounted UI geometry, host consent or physical device behavior. Existing UI instructions remain accurate.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed the testing-guide delta against real-action, fixture-fidelity and evidence rules. No browser fixture, deadline, grant or domain-event injection changed; a failed capture remains failure, and diagnostic keeper evidence is distinct from canonical completion.","inputs":["tests/AGENTS.md"]}
+  ]
+}

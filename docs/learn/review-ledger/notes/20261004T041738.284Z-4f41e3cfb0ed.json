@@ -1,0 +1,7 @@
+{
+  "revision": "e4b858f11c208d3dd0d7814a18fa0022a6a20be5",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"After merging origin/main 726b3ccd99 (which took main's record for this page): re-read both changed paragraphs of the merged page. Main's chat-creation paragraph: NewChatAction (src-ui/src/components/NewChatAction.tsx) is a primary Button with aria-label \"New chat\" and is used by ChatDockMobileHeader, MobileTaskSwitcher, ChatDockInboxPanel, ChatDockWorkspaceControls and HomeChatStartForm; PickerCreateAction remains the project picker's add button; main's record covers the rest of that paragraph. This branch's overflow-menu paragraph, checked against ActionOverflowMenu.tsx: `checked` renders menuitemcheckbox with aria-checked, `exclusive` switches it to menuitemradio, and `separatorBefore` draws the separator hr above an item that is not first (index > 0). The paragraph was re-wrapped to its neighbours' width with no wording change. The inventory delta (docs/ui/responsive-action-surfaces.txt BranchToolbar and PullRequestReviewPanel lines) is this branch's own and makes no claim this page restates. Not re-checked: the rest of the page, unchanged since its last record.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","src-ui/src/components/ActionOverflowMenu.tsx"]}
+  ]
+}

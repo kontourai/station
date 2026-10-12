@@ -1,0 +1,7 @@
+{
+  "revision": "614888f3540f509781dad9c199d297e0ae3b951f",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the Windows fixture delta in changed-verification and fast-checks-shard-cli against the fixture-fidelity, exact-file runner, mutation/restoration and Windows portable-floor sections. Repairs use native path joining and basename plus the real Git Bash workflow bytes with process-local path conversion; selection, assertions, deadlines and resource profiles remain unchanged. Exact ed92 Windows four-file fixed 357/357, pre-repair 346 passed and 11 named failures, then byte-identical restored 357/357 are retained; later formatting and main integration require their own candidate qualification. Existing guide remains accurate; no new hosted, cold-start performance or Windows full-corpus claim.","inputs":["docs/guides/testing.md","scripts/__tests__/changed-verification.test.ts","scripts/__tests__/fast-checks-shard-cli.test.ts"]}
+  ]
+}

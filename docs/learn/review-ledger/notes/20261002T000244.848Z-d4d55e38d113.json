@@ -1,0 +1,11 @@
+{
+  "revision": "cab0dfc89250d8e5d31c5708de319db272ed56c1",
+
+  "notes": [
+    {"path":"deploy/gcp-dev/README.md","note":"#2959: container-release.test.ts only adds host-manifest to its pinned assemble-draft needs list; the container build, provenance and smoke claims this document cites are unchanged.","inputs":["deploy/gcp-dev/README.md"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"#2959: container-release.test.ts only adds host-manifest to its pinned assemble-draft needs list; the container build, provenance and smoke claims this document cites are unchanged.","inputs":["deploy/public-ingress/README.md"]},
+
+    {"path":"docs/guides/deployment.md","note":"#2959: container-release.test.ts only adds host-manifest to its pinned assemble-draft needs list; the container build, provenance and smoke claims this document cites are unchanged.","inputs":["docs/guides/deployment.md"]}
+  ]
+}

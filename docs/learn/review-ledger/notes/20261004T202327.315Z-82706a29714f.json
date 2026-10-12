@@ -1,0 +1,7 @@
+{
+  "revision": "e4e9354c4cbb9ad742c0cb2c7990bb51350c012c",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Checked the readiness-through-pre-push freshness claim against .githooks/pre-push and run-focused-tests.mjs. The hook gains only an environment export for liveness bounds; readiness invocation and its evidence limits are unchanged. The external 600 s Veritas default is not touched.","inputs":[".veritas/README.md",".githooks/pre-push","scripts/run-focused-tests.mjs"]}
+  ]
+}

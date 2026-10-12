@@ -1,0 +1,7 @@
+{
+  "revision": "913da0b4838c0c929420ce1a4de4f37e8efa14fb",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Re-read the shell navigation, built-in registry, CodingChatPane and File Preview claims against navigation-store.ts (setLayout gains from:'pane' and the preview-intent writer marker), builtinWorkspacePaneRegistry.tsx (the Files pane names its write), CodingChatPane.tsx (position effects skip the pane's own intent and dedupe an open preview) and FilePreviewPane.tsx (head-slot treatment beside Chat). Corrected the host selection claim: explicit below the fold, replace past it.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","src-ui/src/contexts/navigation-store.ts","src-ui/src/workspace-panes/CodingChatPane.tsx","src-ui/src/workspace-panes/FilePreviewPane.tsx","src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]}
+  ]
+}

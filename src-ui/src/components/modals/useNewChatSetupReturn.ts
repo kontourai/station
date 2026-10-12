@@ -134,8 +134,7 @@ export function useNewChatSetupReturn({
         entered: false,
         controller: new AbortController(),
       };
-      // Synchronous ownership fences the old dialog's history cleanup before
-      // React removes it. The route changes only after that dialog unmounts.
+      // Retain the dialog until navigation commits, so its history cleanup cannot queue Back over the destination.
       current.current = next;
       setJourney(next);
       return true;
@@ -213,6 +212,15 @@ export function useNewChatSetupReturn({
           if (committed) {
             journey.entered = true;
             setJourney({ ...journey });
+          } else {
+            current.current = null;
+            setJourney(null);
+            bannerStore.dismiss(id, { reason: 'system' });
+            callbacks.current.onResume(
+              new Error(
+                'Could not open setup. Your draft is retained; try again.',
+              ),
+            );
           }
         });
     }
@@ -260,11 +268,16 @@ export function useNewChatSetupReturn({
   );
 
   return {
-    suspended: journey !== null,
+    pending: journey !== null,
+    suspended:
+      journey !== null && (journey.entered || journey.revalidating === true),
     begin,
     retry,
     close: () => {
-      if (!current.current) callbacks.current.onCancel();
+      // Navigation also closes the registered dialog; the pending journey still owns its draft.
+      if (current.current) return false;
+      callbacks.current.onCancel();
+      return true;
     },
   };
 }

@@ -1,0 +1,7 @@
+{
+  "revision": "540e333a79fee816719cfb110466541ce12cf90e",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#3164 review: re-read the ConversationSessionLineage section. 'foreground execution starts that child with copied binding/cursor or a bounded transcript fallback' remains accurate: the fallback is now whole recent messages under an estimated-token budget with an omission count, still bounded and still text-only; reservation rules and cursor handling are unchanged.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "revision": "37716c32ca6d96db821744448e5427940974d48d",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the final selected-Station push receipt, cancellation, and explicit replacement changes, plus scope-qualified evidence refresh and SDK cancellation semantics. Existing destination/recipient privacy claims and provider boundaries remain unchanged. Isolated pre-fix controls and primary focused/cache/browser tests are diagnostic evidence, not physical-device delivery proof.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the final selected-Station push receipt, cancellation, and explicit replacement changes, plus scope-qualified evidence refresh and SDK cancellation semantics. Existing destination/recipient privacy claims and provider boundaries remain unchanged. Isolated pre-fix controls and primary focused/cache/browser tests are diagnostic evidence, not physical-device delivery proof.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed the final selected-Station push receipt, cancellation, and explicit replacement changes, plus scope-qualified evidence refresh and SDK cancellation semantics. Existing destination/recipient privacy claims and provider boundaries remain unchanged. Isolated pre-fix controls and primary focused/cache/browser tests are diagnostic evidence, not physical-device delivery proof.","inputs":["docs/guides/web-push-notifications.md"]},
+
+    {"path":"docs/privacy-policy.md","note":"Reviewed the final selected-Station push receipt, cancellation, and explicit replacement changes, plus scope-qualified evidence refresh and SDK cancellation semantics. Existing destination/recipient privacy claims and provider boundaries remain unchanged. Isolated pre-fix controls and primary focused/cache/browser tests are diagnostic evidence, not physical-device delivery proof.","inputs":["docs/privacy-policy.md"]},
+
+    {"path":"docs/reference/play-data-safety.md","note":"Reviewed the final selected-Station push receipt, cancellation, and explicit replacement changes, plus scope-qualified evidence refresh and SDK cancellation semantics. Existing destination/recipient privacy claims and provider boundaries remain unchanged. Isolated pre-fix controls and primary focused/cache/browser tests are diagnostic evidence, not physical-device delivery proof.","inputs":["docs/reference/play-data-safety.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the final selected-Station push receipt, cancellation, and explicit replacement changes, plus scope-qualified evidence refresh and SDK cancellation semantics. Existing destination/recipient privacy claims and provider boundaries remain unchanged. Isolated pre-fix controls and primary focused/cache/browser tests are diagnostic evidence, not physical-device delivery proof.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the final selected-Station push receipt, cancellation, and explicit replacement changes, plus scope-qualified evidence refresh and SDK cancellation semantics. Existing destination/recipient privacy claims and provider boundaries remain unchanged. Isolated pre-fix controls and primary focused/cache/browser tests are diagnostic evidence, not physical-device delivery proof.","inputs":["packages/sdk/AGENTS.md"]}
+  ]
+}

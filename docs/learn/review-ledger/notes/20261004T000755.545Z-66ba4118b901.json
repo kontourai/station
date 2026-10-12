@@ -1,0 +1,7 @@
+{
+  "revision": "12e2341b5f3f4b34b15e7a11eedf51d11873323d",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the fixture-only region delta: lazy imports settle before asserting the mounted Chat occupant; preview assertions reacquire the current pane within the right region rather than retain a DOM node detached during restoration. The same descriptor, project, dock ancestry, tabs and persistence assertions remain. A prior focused run observed the detached-node failure; the corrected region owner passes12/12. Placement production behavior and documented authority/binding contracts are unchanged; no hosted qualification or runtime UI claim is added.","inputs":["docs/design/placement.md"]}
+  ]
+}

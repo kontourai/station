@@ -11,10 +11,13 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { inventoryCodeHealthFiles } from './code-health-inventory.mjs';
 import { createFallowReview } from './fallow-review-status.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import {
   fallowChildEnvironment,
   prepareFallowRun,
 } from './lib/fallow-base-cache.mjs';
+import { scaleLivenessMs } from './lib/liveness-scale.mjs';
+import { ensureLivenessScale } from './lib/liveness-scale-resolve.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
   captureOwnedProcessOutput,
@@ -22,6 +25,7 @@ import {
   terminateSuiteExecution,
   waitForSuiteSettlement,
 } from './lib/owned-process.mjs';
+import { redactVerificationOutput } from './lib/verification-redaction.mjs';
 
 function count(value, field) {
   if (!Number.isSafeInteger(value) || value < 0)
@@ -79,7 +83,16 @@ export function fallowCommands(scope) {
   throw new Error(`Unknown Fallow scope: ${scope}`);
 }
 
-export async function runFallowAnalysis(root, command, outputFile, args = []) {
+/** Watchdog for one fallow command; a liveness bound, scaled by host pressure. */
+export const FALLOW_WATCHDOG_BASE_MS = 120_000;
+
+export async function runFallowAnalysis(
+  root,
+  command,
+  outputFile,
+  args = [],
+  options = {},
+) {
   // `fallow audit` leaves a full base checkout in its temp directory for every
   // base commit: give each run a private one under Station's temp root and
   // remove it when the run ends (#2529).
@@ -123,7 +136,10 @@ export async function runFallowAnalysis(root, command, outputFile, args = []) {
     maxBytes: 128 * 1024,
     onOverflow: stop,
   });
-  const timeout = setTimeout(onSignal, 120_000);
+  const timeout = setTimeout(
+    onSignal,
+    scaleLivenessMs(FALLOW_WATCHDOG_BASE_MS, options.env),
+  );
   process.once('SIGINT', onSignal);
   process.once('SIGTERM', onSignal);
   try {
@@ -138,10 +154,22 @@ export async function runFallowAnalysis(root, command, outputFile, args = []) {
       result.signal ||
       ![0, 1].includes(result.status) ||
       output.truncated
-    )
+    ) {
+      let reason = result.error?.message ?? output.stderr.text;
+      if (!output.truncated) {
+        try {
+          // Fallow emits runtime refusals as JSON on stdout, not stderr.
+          const refusal = JSON.parse(output.stdout.text);
+          if (refusal?.error === true && typeof refusal.message === 'string')
+            reason = refusal.message;
+        } catch {
+          // Interrupted output may not contain a complete error envelope.
+        }
+      }
       throw new Error(
-        `Fallow ${command} did not complete: ${result.error?.message ?? output.stderr.text}`,
+        `Fallow ${command} did not complete (status=${result.status ?? 'unknown'}, signal=${result.signal ?? 'none'}, errorCode=${typeof result.error?.code === 'string' ? redactVerificationOutput(result.error.code).slice(0, 80) : 'none'}, interrupted=${interrupted}, truncated=${output.truncated}): ${redactVerificationOutput(reason).slice(0, 1200)}`,
       );
+    }
     if (statSync(outputFile).size > 32 * 1024 * 1024)
       throw new Error('Fallow report exceeds the 32 MiB read budget');
     return JSON.parse(readFileSync(outputFile, 'utf8'));
@@ -215,7 +243,7 @@ export async function runFallowAudit(root, scope = 'changed') {
       windowsHide: true,
     }).trim(),
     working_tree_clean:
-      execFileSync('git', ['status', '--porcelain'], {
+      execFileSyncBounded('git', ['status', '--porcelain'], {
         cwd: root,
         encoding: 'utf8',
         windowsHide: true,
@@ -264,6 +292,7 @@ export async function runFallowAudit(root, scope = 'changed') {
 }
 
 if (invokedDirectly(import.meta.url)) {
+  await ensureLivenessScale();
   const args = process.argv.slice(2);
   if (args.some((arg) => arg !== '--whole-tree')) {
     console.error('usage: run-fallow-audit.mjs [--whole-tree]');

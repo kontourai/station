@@ -1,0 +1,9 @@
+{
+  "revision": "e3c64e0788ed7b5ad96c7f011294969d8f5657d0",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"#3386 delta round 2: a folder refusal through the continue-session launch is now a certain 'failed' outcome with retrySafe false, and the Continue control shows only Station's reason. The guide's continue-session text (own folder, refusals, uncertain responses retried with the same identity) stays accurate. No prose change.","inputs":["docs/guides/starter-work.md","src-server/services/starter-work/__tests__/starter-session-owner.test.ts","src-server/services/starter-work/starter-session-owner.ts","src-ui/src/components/session-detail/AttachedSessionDetail.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"#3386 delta round 2: a folder refusal is a typed 'failed' launch with retrySafe false (200, not 201), matching 'other typed dispositions use 200; always inspect the data'. No prose change.","inputs":["docs/reference/api.md","src-server/services/starter-work/starter-session-owner.ts"]}
+  ]
+}

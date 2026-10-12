@@ -49,6 +49,7 @@ import {
   FAST_CHECKS_SLICE_RUN,
   REQUIRED_FAST_CHECKS_AGGREGATE_CONDITION,
 } from './ci-workflow-governance.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -279,6 +280,39 @@ export const REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA =
   '28deabbf24f0ab55911d311df5372d30bea0dba4';
 const SECRET_SCAN_WORKFLOW = '.github/workflows/secret-scan.yml';
 export const SECRET_SCAN_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflows/secret-scan.yml@${REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA}`;
+/** The reviewed revision of the org's docs-kit gate reusable workflow:
+ * kontourai/.github 246be34, "fix(docs-gate): run docs-kit outside the
+ * checkout with npm config isolated (#55)", on top of #52's repository and
+ * ref inputs and #50's `package-manager-cache: false`. Reviewed at that SHA
+ * for a pull_request_target and merge_group caller:
+ * - one hosted job (ubuntu-latest, 10-minute timeout) with
+ *   `permissions: contents: read`; it declares no secrets and no cache-mode;
+ * - actions/checkout@df4cb1c (v6.0.3) of `inputs.repository || github.repository`
+ *   at `inputs.ref || github.sha`, `fetch-depth: 0`,
+ *   `persist-credentials: false`;
+ * - actions/setup-node@2499707 (v6) with `package-manager-cache: false` and no
+ *   `cache`, so it neither restores nor saves an Actions cache;
+ * - one run step, `npx -y github:kontourai/docs-kit#<docs-kit-ref> check`, plus
+ *   `--base` on pull requests and merge-queue entries. The inputs reach the
+ *   shell only through `env`, never by expression interpolation.
+ * The run step does not execute the candidate: it `cd`s to `$RUNNER_TEMP`,
+ * which is not inside the checkout, so the checkout is not on npm's
+ * project-config lookup path from the working directory; it points
+ * `NPM_CONFIG_USERCONFIG` and `NPM_CONFIG_GLOBALCONFIG` at fresh empty files,
+ * and passes the checkout only as `--root "$GITHUB_WORKSPACE"`. So no
+ * candidate `.npmrc` or package.json reaches npm (the 091ffab revision ran npx
+ * inside the checkout, where a pull request's `.npmrc` steered it), and
+ * docs-kit, pinned by `docs-kit-ref`, only reads the checked-out files. The
+ * remaining controls still apply: a read-only contents token that is not
+ * persisted, no secrets, a GitHub-hosted runner, and GitHub's read-only cache
+ * token for pull_request_target (see UNTRUSTED_ACTION_CACHE_POLICY).
+ * The callee's own `docs-kit-ref` default moved to v0.5.0 here; docs-kit.yml
+ * passes its pin explicitly. A bump re-opens this review. */
+export const REVIEWED_DOCS_GATE_REUSABLE_WORKFLOW_SHA =
+  '246be3494a5cfde4b76fb2e3dc0a84db44218893';
+export const DOCS_GATE_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflows/docs-gate.yml@${REVIEWED_DOCS_GATE_REUSABLE_WORKFLOW_SHA}`;
+const DOCS_KIT_WORKFLOW = '.github/workflows/docs-kit.yml';
+const DOCS_KIT_GATE_JOB = 'gate';
 /**
  * `owner-lifetime-seconds` is part of the host manifest, so it is one shared
  * physical-host setting rather than a per-job tuning knob. The pinned action
@@ -427,7 +461,7 @@ const WINDOWS_PR_EVIDENCE_PATHS =
  * written down is not. Landing a bump is now one deliberate edit here.
  */
 export const PNPM_SETUP_ACTION =
-  'pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b';
+  'pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024';
 /**
  * #2675: pnpm/setup installs only pnpm's native single-executable build, and
  * for pnpm v11 it refuses Intel macOS ("does not provide a working binary for
@@ -552,6 +586,7 @@ const BASE_CONTROLLED_PR_WORKFLOWS = new Set([
   '.github/workflows/ci.yml',
   '.github/workflows/desktop-clean-checkout.yml',
   '.github/workflows/desktop-rust.yml',
+  '.github/workflows/docs-kit.yml',
   '.github/workflows/ecosystem-packaging.yml',
   '.github/workflows/gallery-pr-check.yml',
   '.github/workflows/install-smoke.yml',
@@ -633,7 +668,7 @@ const MISSING_CALLEE_MESSAGE =
  *   pull_request (checked before the default branch), saves only in
  *   OverlayBase mode, and merge_group gets neither.
  * - pnpm/setup restores and saves a lockfile-verification log on every run,
- *   independently of its `cache` input, with no opt-out (dist at 703c526: the
+ *   independently of its `cache` input, with no opt-out (reviewed dist at fbda4c85: the
  *   post step calls the save unconditionally). That save is NOT safe on its
  *   own merits: the key is the hash of the checked-out (candidate) lockfile,
  *   the pre-upload check only confirms earlier records survived (appended
@@ -717,10 +752,13 @@ const UNTRUSTED_ACTION_CACHE_POLICY = Object.freeze({
  * Remote reusable workflows a pull-request or merge-queue job may call. The
  * gate cannot read them offline, so each is reviewed at its pinned SHA:
  * kontourai/.github secret-scan.yml@28deabb uses only actions/checkout, the
- * physical-host-capacity action and run steps (no cache).
+ * physical-host-capacity action and run steps (no cache). docs-gate.yml@246be34
+ * uses checkout and setup-node with package-manager-cache: false and no
+ * `cache` (reviewed above REVIEWED_DOCS_GATE_REUSABLE_WORKFLOW_SHA).
  */
 const UNTRUSTED_REVIEWED_REMOTE_WORKFLOWS = new Set([
   SECRET_SCAN_REUSABLE_WORKFLOW,
+  DOCS_GATE_REUSABLE_WORKFLOW,
 ]);
 const MERGE_QUEUE_WORKFLOWS = new Set([
   '.github/workflows/build-ios.yml',
@@ -788,8 +826,59 @@ function isExactPortableServerArchiveUpload(file, jobId, step) {
 }
 const MERGE_QUEUE_REGRESSION_AGGREGATE_JOB = 'merge-queue-regression';
 const MERGE_QUEUE_REGRESSION_AGGREGATE_RUN = `echo "$NEEDS" | jq -r 'to_entries[] | "\\(.key): \\(.value.result)"'
-echo "$NEEDS" | jq -e 'length > 0 and (to_entries | all(.value.result == "success"))' > /dev/null
+echo "$NEEDS" | jq -r 'if .plan.outputs["full-regression"] == "false" then "no deferred lane: fast path" else "full regression: \\(.["full-regression"].result)" end'
+echo "$NEEDS" | jq -e '.diff.result == "success" and (.["full-regression"].result == "success" or (.plan.result == "success" and .plan.outputs["full-regression"] == "false" and .["full-regression"].result == "skipped"))' > /dev/null
 `;
+const MERGE_QUEUE_FULL_REGRESSION_JOB = 'full-regression';
+const MERGE_QUEUE_FULL_REGRESSION_GUARD = `\${{ always() && !cancelled() && github.event_name != 'pull_request_target' && needs.plan.outputs.full-regression != 'false' }}`;
+
+/**
+ * The merge queue's one reusable call: the hosted full regression of this
+ * candidate (github.sha), fail-closed on its plan decision. It needs
+ * `actions: read` for full-regression.yml's exact-source evidence reuse, the
+ * same grant as ci.yml's dispatch call. Any other callee, guard, input,
+ * secret or permission loses the exemption.
+ */
+function isExactMergeQueueFullRegressionCall(file, jobId, job) {
+  return (
+    file === MERGE_QUEUE_REGRESSION_WORKFLOW &&
+    jobId === MERGE_QUEUE_FULL_REGRESSION_JOB &&
+    hasExactKeys(job, ['needs', 'if', 'permissions', 'uses', 'with']) &&
+    job.needs === 'plan' &&
+    job.if === MERGE_QUEUE_FULL_REGRESSION_GUARD &&
+    job.uses === './.github/workflows/full-regression.yml' &&
+    hasExactKeys(job.permissions, ['contents', 'actions']) &&
+    job.permissions.contents === 'read' &&
+    job.permissions.actions === 'read' &&
+    hasExactKeys(job.with, ['source_sha', 'allow_reuse']) &&
+    job.with.source_sha === `\${{ github.sha }}` &&
+    job.with.allow_reuse === true
+  );
+}
+
+/**
+ * docs-kit.yml's one job: the reviewed org docs gate (see
+ * REVIEWED_DOCS_GATE_REUSABLE_WORKFLOW_SHA). A reusable call has no steps and
+ * no runner of its own, so the base-controlled checkout and hosted-runner
+ * rules are met inside the reviewed callee instead: these inputs make it
+ * check out exactly the pull request's head repository and SHA, the same
+ * expressions every other base-controlled job's checkout must use. Any other
+ * callee, input, guard, secret or permission loses the exemption.
+ */
+function isExactDocsGateCall(file, jobId, job) {
+  return (
+    file === DOCS_KIT_WORKFLOW &&
+    jobId === DOCS_KIT_GATE_JOB &&
+    hasExactKeys(job, ['name', 'uses', 'with', 'permissions']) &&
+    job.uses === DOCS_GATE_REUSABLE_WORKFLOW &&
+    hasExactKeys(job.permissions, ['contents']) &&
+    job.permissions.contents === 'read' &&
+    hasExactKeys(job.with, ['docs-kit-ref', 'repository', 'ref']) &&
+    /^[0-9a-f]{40}$/.test(String(job.with['docs-kit-ref'])) &&
+    job.with.repository === FAST_CHECKOUT_REPOSITORY &&
+    job.with.ref === FAST_CHECKOUT_REF
+  );
+}
 
 /**
  * The merge-queue regression aggregate reads only its needed jobs' results. It
@@ -2080,7 +2169,7 @@ function hasExactPullRequestSecretScanWorkflow(file, document) {
       'concurrency',
       'jobs',
     ]) &&
-    document.name === 'Secret Scan' &&
+    document.name === 'PR: Secret scan' &&
     hasExactKeys(document.on, ['push', 'pull_request', 'workflow_dispatch']) &&
     hasExactMainBranchTrigger(document.on.push) &&
     hasExactMainBranchTrigger(document.on.pull_request) &&
@@ -2109,7 +2198,7 @@ function hasExactSecurityAnalysisWorkflow(document) {
       'concurrency',
       'jobs',
     ]) &&
-    document?.name === 'Security analysis' &&
+    document?.name === 'PR: Security analysis' &&
     hasExactKeys(document?.on, [
       'push',
       PULL_REQUEST_TARGET,
@@ -2224,7 +2313,24 @@ const FAST_CHECKS_SHARD_ZSH_STEP = Object.freeze({
   // package and reads no secret or credential; the shard's selection can
   // include tests that exec zsh (ops/nightly/macos-build-only-cleanup).
   name: 'Provision and preflight zsh for process-heavy installer fixtures',
-  run: 'if [[ ! -x /bin/zsh ]]; then\n  sudo apt-get update\n  sudo apt-get install --yes zsh\nfi\ncommand -v zsh\ntest -x /bin/zsh\n/bin/zsh --version\n',
+  env: {
+    BOOTSTRAP_SOURCE_REPOSITORY: `\${{ github.repository }}`,
+    BOOTSTRAP_SOURCE_SHA: `\${{ github.workflow_sha }}`,
+  },
+  run: `set -euo pipefail
+if [[ ! -x /bin/zsh ]]; then
+  bootstrap="$RUNNER_TEMP/install-ci-ubuntu-packages.sh"
+  curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \\
+    "https://raw.githubusercontent.com/\${BOOTSTRAP_SOURCE_REPOSITORY}/\${BOOTSTRAP_SOURCE_SHA}/scripts/install-ci-ubuntu-packages.sh" \\
+    --output "$bootstrap"
+  printf 'Ubuntu bootstrap workflow source: %s@%s\\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"
+  sha256sum "$bootstrap"
+  sudo bash "$bootstrap" zsh
+fi
+command -v zsh
+test -x /bin/zsh
+/bin/zsh --version
+`,
 });
 
 /**
@@ -2620,10 +2726,11 @@ function primaryCiRouterFindings(file, document) {
   return findings;
 }
 
-// This credentialed ingress executes only trusted base policy, never PR code.
+// This credentialed ingress executes only trusted base policy, never PR code
+// (the dequeue job fetches the candidate head as Git objects for merge-tree).
 // Any topology/authority change requires review and a new policy digest.
 const LANDING_POLICY_SHA256 =
-  '94dd1a86e579bd4d1ab948ce86064c841d83d9d43cbd018555cf344f1817f3f7';
+  'cc0241a3b1655e3dc5ededeb69de44109656ef287171c49073b1509cabbf59e9';
 function orderedPolicy(value) {
   if (Array.isArray(value)) return value.map(orderedPolicy);
   if (value && typeof value === 'object')
@@ -2704,9 +2811,15 @@ function baseControlledPrWorkflowFindings(file, document) {
   if (file === SECURITY_ANALYSIS_WORKFLOW)
     findings.push(...securityAnalysisTopologyFindings(file, jobs));
   for (const [jobId, job] of Object.entries(jobs)) {
+    const exactFullRegressionCall = isExactMergeQueueFullRegressionCall(
+      file,
+      jobId,
+      job,
+    );
     if (
       job?.permissions !== undefined &&
-      !hasOnlyReadContentsPermission(job.permissions)
+      !hasOnlyReadContentsPermission(job.permissions) &&
+      !exactFullRegressionCall
     )
       findings.push({
         file,
@@ -2714,8 +2827,12 @@ function baseControlledPrWorkflowFindings(file, document) {
         message:
           'base-controlled PR job permission overrides must declare only permissions: { contents: read }',
       });
+    const exactDocsGateCall = isExactDocsGateCall(file, jobId, job);
     const runner = classifyRunner(job);
-    if (!runner.hosted)
+    // The exact calls have no runner of their own. This rule does not follow
+    // them into full-regression.yml, whose jobs run on ubuntu-22.04 today, or
+    // the reviewed remote docs-gate.yml, which runs on ubuntu-latest.
+    if (!runner.hosted && !exactFullRegressionCall && !exactDocsGateCall)
       findings.push({
         file,
         jobId,
@@ -2731,6 +2848,8 @@ function baseControlledPrWorkflowFindings(file, document) {
           : file === SECURITY_ANALYSIS_WORKFLOW
             ? false
             : isExactMergeQueueRegressionAggregate(file, jobId, job) ||
+              exactFullRegressionCall ||
+              exactDocsGateCall ||
               hasExplicitCheckout(
                 job,
                 FAST_CHECKOUT_REPOSITORY,
@@ -3124,14 +3243,16 @@ function main() {
   let stdout = '';
   let status = 0;
   try {
-    stdout = execFileSync(binary, [], {
+    stdout = execFileSyncBounded(binary, [], {
       cwd: REPO_ROOT,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
   } catch (error) {
     status = typeof error.status === 'number' ? error.status : -1;
-    stdout = `${error.stdout ?? ''}${error.stderr ?? ''}`;
+    // A capture overflow or spawn failure carries no child output; its
+    // message is the only diagnostic, so never print an empty detail.
+    stdout = `${error.stdout ?? ''}${error.stderr ?? ''}` || error.message;
   }
 
   if (status !== 0 && status !== 1) {

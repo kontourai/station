@@ -19,6 +19,10 @@ export interface CliCommandResult {
   stdout: string;
   stderr: string;
   code: number | null;
+  /** Set only when the probe was killed at its deadline; `stdout` is then partial. */
+  timedOut?: true;
+  /** Set only when output passed the `maxBuffer` bound and the child was killed; `stdout` is then partial. */
+  outputTruncated?: true;
 }
 
 // archive#977: Station may run as a launchd/systemd service, which starts
@@ -342,6 +346,17 @@ export async function runCliCommand(
    * empty-string value masks the inherited one; TMPDIR stays Station's.
    */
   envOverlay?: Record<string, string>,
+  /**
+   * A tighter deadline or capture bound than the shared defaults (#3303).
+   * `killSignal: 'SIGKILL'` makes the deadline real for a child that ignores
+   * SIGTERM. It kills the direct child only: a grandchild of a wrapper
+   * launcher (mise/npx) can outlive it, as with the login-shell probe below.
+   */
+  bounds?: {
+    timeoutMs?: number;
+    maxBuffer?: number;
+    killSignal?: NodeJS.Signals;
+  },
 ): Promise<CliCommandResult | null> {
   try {
     const augmented = await augmentedSpawnEnv();
@@ -356,8 +371,10 @@ export async function runCliCommand(
       encoding: 'utf-8',
       // User-managed launchers may resolve the real CLI through mise/npx.
       // Keep the probe bounded, but allow that indirection to finish on a
-      // cold cache (observed at ~6s on the brian-media dogfood host).
-      timeout: CLI_PROBE_TIMEOUT_MS,
+      // cold cache (observed at ~6s on the media-server dogfood host).
+      timeout: bounds?.timeoutMs ?? CLI_PROBE_TIMEOUT_MS,
+      ...(bounds?.maxBuffer ? { maxBuffer: bounds.maxBuffer } : {}),
+      ...(bounds?.killSignal ? { killSignal: bounds.killSignal } : {}),
       windowsHide: true,
       signal,
       env,
@@ -373,12 +390,21 @@ export async function runCliCommand(
       const result = error as {
         stdout?: string;
         stderr?: string;
-        code?: number | null;
+        code?: number | string | null;
+        killed?: boolean;
       };
+      // `execFile` kills the child for two reasons, told apart by the error
+      // code: the deadline (code null) and the `maxBuffer` bound.
+      const overflowed = result.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER';
       return {
         stdout: result.stdout ?? '',
         stderr: result.stderr ?? '',
-        code: result.code ?? 1,
+        code: typeof result.code === 'number' ? result.code : 1,
+        ...(overflowed
+          ? { outputTruncated: true as const }
+          : result.killed === true
+            ? { timedOut: true as const }
+            : {}),
       };
     }
     return null;

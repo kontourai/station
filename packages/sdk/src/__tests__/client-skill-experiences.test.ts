@@ -6,7 +6,8 @@ import type {
   SkillExperienceSessionViewV1,
 } from '@kontourai/station-contracts/skill-experience';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { sendExecutionMessage } from '../client/execution';
+import { sendExecutionMessageWithInventory } from '../client/execution';
+import { sendExecutionMessage } from '../client/send-execution-message';
 import {
   fetchSkillExperienceInventory,
   fetchSkillExperienceSession,
@@ -130,6 +131,58 @@ describe('visual skill HTTP boundary', () => {
     ).rejects.toThrow(expected);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][1]?.method ?? 'GET').toBe('GET');
+  });
+  test('an injected inventory reader replaces the static fetch and gates the POST', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () =>
+      response({
+        conversationId: 'conversation-1',
+        sessionId: 'thread-1',
+        providerTurnId: 'turn-1',
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const opts = { headers: { 'x-test': '1' } };
+    const readInventory = vi.fn().mockResolvedValue({
+      executionContract: '1.0',
+      experiences: [entry],
+      diagnostics: [],
+    });
+    await expect(
+      sendExecutionMessageWithInventory(
+        'http://station.test',
+        input,
+        readInventory,
+        opts,
+      ),
+    ).resolves.toMatchObject({ providerTurnId: 'turn-1' });
+    expect(readInventory).toHaveBeenCalledWith('http://station.test', opts);
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      'http://station.test/api/orchestration/chat',
+    ]);
+
+    fetchMock.mockClear();
+    readInventory.mockResolvedValueOnce({
+      experiences: [entry],
+      diagnostics: [],
+    });
+    await expect(
+      sendExecutionMessageWithInventory(
+        'http://station.test',
+        input,
+        readInventory,
+      ),
+    ).rejects.toThrow(/cannot execute/);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    readInventory.mockClear();
+    const { skillExperience: _start, ...plain } = input;
+    await sendExecutionMessageWithInventory(
+      'http://station.test',
+      plain,
+      readInventory,
+    );
+    expect(readInventory).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
   test('background replay cannot acquire a visual skill start', async () => {
     const fetchMock = vi.fn<typeof fetch>();

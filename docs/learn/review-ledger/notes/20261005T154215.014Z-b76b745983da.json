@@ -1,0 +1,7 @@
+{
+  "revision": "2a8eff6e776caee7cee82ede9a18541ccc120e84",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Searched the API reference for the project list and run-location claims against projects.ts; it documents per-project review/layout routes, not the GET /api/projects list shape (that lives in shared.md ProjectMetadata, updated with runsAt). No claim here changes.","inputs":["docs/reference/api.md","src-server/routes/projects/projects.ts"]}
+  ]
+}

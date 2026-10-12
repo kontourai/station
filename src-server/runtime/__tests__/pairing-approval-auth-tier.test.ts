@@ -127,7 +127,9 @@ async function createHarness(
       allowedOrigins: [ORIGIN],
     },
   });
+  const audits: Array<{ event: string; approver: string }> = [];
   configureDevicePairingHostRoutes(app as never, security.devicePairing, {
+    audit: (record) => audits.push(record),
     verifyOperatorCredential: (credential) =>
       security.verifyOperatorCredential(credential),
     isApprovalCurrent: (request) =>
@@ -246,10 +248,14 @@ async function createHarness(
   /** A pending inbound request awaiting an approve/deny decision. */
   const createPendingRequest = async (
     name: string,
+    scope?: string,
   ): Promise<DevicePairingRequest> => {
     const offerResponse = await request(
       '/api/pairing/offers',
-      json({ endpoint: ORIGIN }, operatorCredential),
+      json(
+        { endpoint: ORIGIN, ...(scope ? { scope } : {}) },
+        operatorCredential,
+      ),
     );
     expect(offerResponse.status).toBe(201);
     const offer = (await offerResponse.json()) as DevicePairingOffer;
@@ -265,8 +271,30 @@ async function createHarness(
     return (await requestResponse.json()) as DevicePairingRequest;
   };
 
+  /** A device's own access request, as the Station app sends it. */
+  const deviceAccessRequest = async (
+    name: string,
+    scope: string,
+  ): Promise<DevicePairingRequest> => {
+    const response = await request(
+      '/.well-known/station/v1/pairing/access-request',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
+        body: JSON.stringify({ deviceName: name, scope }),
+      },
+    );
+    expect(response.status).toBe(202);
+    const { requestId } = (await response.json()) as { requestId: string };
+    return security.devicePairing
+      .listRequests()
+      .find((candidate) => candidate.requestId === requestId)!;
+  };
+
   configure?.(app, security);
   return {
+    audits,
+    deviceAccessRequest,
     security,
     operatorCredential,
     localGrantSecret: () =>
@@ -301,7 +329,14 @@ async function attentionPairingItems(
   harness: Awaited<ReturnType<typeof createHarness>>,
   init: RequestInit,
   peer: string,
-): Promise<Array<{ viewerCanDecide: boolean; source: { requestId: string } }>> {
+): Promise<
+  Array<{
+    viewerCanDecide: boolean;
+    source: { requestId: string };
+    deviceName: string;
+    requestedScope?: string;
+  }>
+> {
   const response = await harness.request('/api/attention', init, peer);
   expect(response.status).toBe(200);
   const body = (await response.json()) as {
@@ -311,6 +346,8 @@ async function attentionPairingItems(
         kind: string;
         viewerCanDecide: boolean;
         source: { requestId: string };
+        deviceName: string;
+        requestedScope?: string;
       }>;
     };
   };
@@ -498,6 +535,156 @@ describe('pairing approve/deny auth tier over the real boundary (#765 D5)', () =
   });
 });
 
+describe('a request that asks for an elevated grant', () => {
+  // Literal: Standard plus full access, as the Station app asks for it.
+  const WITH_FULL_ACCESS =
+    'orchestration:read orchestration:operate terminal:operate approval:full-access';
+
+  test('lists what it asks for, and an access:approve device may approve it only with the elevated grant left out', async () => {
+    const harness = await createHarness();
+    const promoted = await harness.pairDevice('Promoted tablet');
+    harness.security.devicePairing.setDeviceApprovalAuthority(
+      promoted.device.id,
+      true,
+      { kind: 'presented-credential' },
+    );
+    const pending = await harness.deviceAccessRequest(
+      'New phone',
+      WITH_FULL_ACCESS,
+    );
+
+    const items = await attentionPairingItems(
+      harness,
+      cookieInit(promoted.credential, 'GET'),
+      '203.0.113.51',
+    );
+    expect(items).toEqual([
+      expect.objectContaining({ requestedScope: WITH_FULL_ACCESS }),
+    ]);
+
+    // Keeping full access is the operator's call, not the promoted device's.
+    const kept = await harness.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      { ...cookieInit(promoted.credential, 'POST'), body: '{}' },
+      '203.0.113.51',
+    );
+    expect(kept.status).toBe(403);
+    expect(await kept.json()).toEqual({
+      error: 'approval_requires_operator',
+      operatorCli: 'station',
+    });
+    // Refused and recorded as a refusal, like the service's own refusals.
+    expect(harness.audits).toContainEqual(
+      expect.objectContaining({ event: 'station.pairing.refused' }),
+    );
+
+    const trimmed = await harness.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      {
+        ...cookieInit(promoted.credential, 'POST'),
+        headers: {
+          ...(cookieInit(promoted.credential, 'POST').headers as Record<
+            string,
+            string
+          >),
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          scope: 'orchestration:read orchestration:operate terminal:operate',
+        }),
+      },
+      '203.0.113.51',
+    );
+    expect(trimmed.status).toBe(200);
+    expect(await trimmed.json()).toMatchObject({
+      scope: 'orchestration:read orchestration:operate terminal:operate',
+    });
+  });
+
+  test('a peer Station delegation is listed without a scope to trim', async () => {
+    const harness = await createHarness();
+    const response = await harness.request(
+      '/.well-known/station/v1/pairing/access-request',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
+        body: JSON.stringify({
+          deviceName: 'Peer Station',
+          kind: 'delegation',
+        }),
+      },
+    );
+    expect(response.status).toBe(202);
+    await harness.deviceAccessRequest('Phone', WITH_FULL_ACCESS);
+    const items = await attentionPairingItems(
+      harness,
+      { headers: { Authorization: `Bearer ${harness.operatorCredential}` } },
+      '203.0.113.53',
+    );
+    const byName = new Map(items.map((item) => [item.deviceName, item]));
+    expect(byName.get('Peer Station')).not.toHaveProperty('requestedScope');
+    expect(byName.get('Phone')?.requestedScope).toBe(WITH_FULL_ACCESS);
+  });
+
+  test("an operator's own offer carrying an elevated grant is held to the same rule", async () => {
+    const harness = await createHarness();
+    const promoted = await harness.pairDevice('Promoted tablet');
+    harness.security.devicePairing.setDeviceApprovalAuthority(
+      promoted.device.id,
+      true,
+      { kind: 'presented-credential' },
+    );
+    const pending = await harness.createPendingRequest(
+      'Scanned phone',
+      WITH_FULL_ACCESS,
+    );
+    const kept = await harness.request(
+      `/api/pairing/requests/${pending.requestId}/confirm`,
+      { ...cookieInit(promoted.credential, 'POST'), body: '{}' },
+      '203.0.113.52',
+    );
+    expect(kept.status).toBe(403);
+  });
+
+  test('the operator keeps it, or unticks part of it, and never adds to it', async () => {
+    const harness = await createHarness();
+    const confirm = (requestId: string, body: unknown) =>
+      harness.request(
+        `/api/pairing/requests/${requestId}/confirm`,
+        harness.json(body, harness.operatorCredential),
+      );
+
+    const asked = await harness.deviceAccessRequest('Phone', WITH_FULL_ACCESS);
+    const keptAll = await confirm(asked.requestId, {});
+    expect(keptAll.status).toBe(200);
+    expect(await keptAll.json()).toMatchObject({ scope: WITH_FULL_ACCESS });
+
+    const trimmedRequest = await harness.deviceAccessRequest(
+      'Tablet',
+      WITH_FULL_ACCESS,
+    );
+    const trimmed = await confirm(trimmedRequest.requestId, {
+      scope: 'orchestration:read',
+    });
+    expect(trimmed.status).toBe(200);
+    expect(await trimmed.json()).toMatchObject({ scope: 'orchestration:read' });
+
+    const narrow = await harness.deviceAccessRequest(
+      'Watch',
+      'orchestration:read',
+    );
+    const widened = await confirm(narrow.requestId, {
+      scope: 'orchestration:read coding:exec',
+    });
+    expect(widened.status).toBe(400);
+    expect(
+      harness.security.devicePairing
+        .listRequests()
+        .find((candidate) => candidate.requestId === narrow.requestId)?.status,
+    ).toBe('pending');
+  });
+});
+
 test('the desktop home-proven local grant can invite and approve a phone without elevating that phone', async () => {
   const h = await createHarness();
   const mint = await h.request(
@@ -669,6 +856,7 @@ describe('delegated engine sign-in HTTP admission', () => {
             upsertCredentialProfile: mutations,
             deleteCredentialProfile: mutations,
             setCredentialProfileEnrollment: mutations,
+            setCredentialProfileEnv: mutations,
             setCredentialRecoveryAutomaticPolicy: mutations,
             applyCredentialProfile: async () => ({
               capability: 'unsupported',

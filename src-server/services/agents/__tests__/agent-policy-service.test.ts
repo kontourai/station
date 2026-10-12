@@ -15,6 +15,7 @@ import {
 } from '@kontourai/flow-agents';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { WorkflowSidecarService } from '../../evidence/workflow-sidecar-service';
 import {
   AgentPolicyService,
   extractToolFilePath,
@@ -52,9 +53,9 @@ function optedInWorkspace(): string {
 }
 
 /**
- * Workspace with an active delivery artifact — the canonical stop-goal-fit
- * fixture shape (markdown artifact only; no sidecar JSON, so the hook's
- * external sidecar validator is not spawned).
+ * Workspace with an active delivery artifact bound to the test actor — the
+ * canonical stop-goal-fit fixture shape. state.json comes from Station's real
+ * sidecar writer, as it does before every production bind.
  *
  * flow-agents 3.x's stop-goal-fit/workflow-steering hooks read active-work
  * artifacts only from the durable `.kontourai/flow-agents/` root (their
@@ -72,6 +73,15 @@ function activeDeliveryWorkspace(): string {
     join(taskDir, 'demo--deliver.md'),
     ['status: executing', 'type: deliver', '', '# Demo task', ''].join('\n'),
   );
+  // Flow Agents 6.5 only judges a bound workflow, and a bound workflow
+  // always has state.json: Station's real writer creates it before binding.
+  const sidecar = new WorkflowSidecarService();
+  const { state } = sidecar.ensureTask(dir, 'demo-task');
+  sidecar.writeState(dir, 'demo-task', {
+    ...state,
+    status: 'in_progress',
+    phase: 'execution',
+  });
   bindTestActor(dir, taskDir);
   return dir;
 }
@@ -359,8 +369,10 @@ describe('stop-goal-fit (checkStop, blocking in strict mode)', () => {
     expect(result.verdict).toBe('warn');
     expect(result.strict).toBe(false);
     expect(result.warnings.join('\n')).toMatch(/still status:executing/);
+    // Flow Agents 6.5 judges only bound workflows, which always carry
+    // state.json, so the finding reports that state instead of its absence.
     expect(result.warnings.join('\n')).toMatch(
-      /no trust\.bundle or state\.json/,
+      /workflow state: status:in_progress phase:execution/,
     );
   });
 

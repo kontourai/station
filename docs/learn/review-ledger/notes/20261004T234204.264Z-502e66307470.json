@@ -1,0 +1,7 @@
+{
+  "revision": "be2ce137c752a3108459c55bcb88cc7228a96908",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"#3308: only docs/reference/contracts.md child-work row changed (usageProvisional); glossary defines no child-work usage vocabulary. No prose change.","inputs":["docs/glossary.md","docs/reference/contracts.md"]}
+  ]
+}

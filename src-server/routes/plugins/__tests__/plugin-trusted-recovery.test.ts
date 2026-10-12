@@ -10,6 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test, vi } from 'vitest';
+import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import {
   getProvider,
   replacePluginProviders,
@@ -120,18 +121,20 @@ test('retained recovery reaches separate trusted approval without exposing pendi
     runtime.agentMetadataMap = new Map();
     runtime.logger = logger;
     runtime.reloadConfigurationFromDisk = async () => {};
-    const app = createPluginRoutes(home, logger, undefined, {
-      visibility: operatorPluginVisibility(home),
-      applyConfigurationMutation: (operation, options) =>
-        runtime.applyAgentConfigurationMutation(operation, options),
-      packageMcpJournal: journal,
-      consentChannel: channel,
-      settleProviderAdapterRetirements: async () => {},
-      reconcileEngineConnections: async () => {},
-      removeEngineConnections: async () => {},
-      quiesceEventSubscriptions: async () => ({ release() {} }),
-      reconcileEventSubscriptions: async () => ({ kind: 'applied' }),
-    });
+    const app = withOperatorPrincipal(
+      createPluginRoutes(home, logger, undefined, {
+        visibility: operatorPluginVisibility(home),
+        applyConfigurationMutation: (operation, options) =>
+          runtime.applyAgentConfigurationMutation(operation, options),
+        packageMcpJournal: journal,
+        consentChannel: channel,
+        settleProviderAdapterRetirements: async () => {},
+        reconcileEngineConnections: async () => {},
+        removeEngineConnections: async () => {},
+        quiesceEventSubscriptions: async () => ({ release() {} }),
+        reconcileEventSubscriptions: async () => ({ kind: 'applied' }),
+      }),
+    );
     const open = () =>
       app.request('/host-approvals', {
         method: 'POST',

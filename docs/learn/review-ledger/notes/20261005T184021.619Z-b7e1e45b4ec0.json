@@ -1,0 +1,23 @@
+{
+  "revision": "ba7bdae19d769af0094aa28e7a940e858eb8fad5",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"#3394 fix round. Re-checked the compaction paragraph and the note-removed exception against documentation-freshness.mjs appendOnlyNoteProblems: an added archive is accepted only when it is named noteArchiveFile(merge-base coverageBaseline), the change moves coverageBaseline (validity judged by baselineAdvanceProblem), and it holds exactly the merge-base loose notes present at that baseline with exact merge-base bytes; otherwise archive-unbacked, and its moved notes stay note-removed. Rewrapped the advance-baseline paragraph (HEAD-reachability sentence back in its own paragraph). Dated the first-advance count: planNoteCompaction at HEAD archives 316 notes (2.29 MB); 1,038 were in the eff24ab tree but #3227 rewrote 722 under new names after that baseline and 38 more were deleted. Paths now come from the leaf review-ledger-paths.mjs; behaviour unchanged.","inputs":["docs/guides/documentation.md","scripts/lib/documentation-freshness.mjs","scripts/lib/review-history.mjs","scripts/lib/review-ledger-store.mjs"]},
+
+    {"path":"docs/learn/README.md","note":"#3394 fix round: review-history.mjs and the store now share paths from review-ledger-paths.mjs; the archive acceptance rule got stricter. Archived notes are still read as committed notes, so Review out of date and the PR note requirement are unchanged.","inputs":["docs/learn/README.md","scripts/lib/documentation-freshness.mjs","scripts/lib/review-history.mjs","scripts/lib/review-ledger-store.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"#3394 fix round: ci-health ledgerMetrics now counts a commit that touches a note archive by its non-note ledger files only (the index), so a compaction of ~1,000 notes does not read as a 1,000-file review merge; updated the measurement row to say so. Checked against ci-health.mjs and its test.","inputs":["docs/guides/testing.md","docs/guides/documentation.md","scripts/__tests__/ci-health.test.ts","scripts/ci-health.mjs"]},
+
+    {"path":".veritas/README.md","note":"#3394 fix round: the stricter archive rule still runs inside the same scoped freshness test of docs:truth:gate; queue, main and Nightly still only report. Claims unchanged.","inputs":[".veritas/README.md","docs/guides/documentation.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"#3394 fix round: freshness scoping and job ownership unchanged by the stricter archive acceptance rule.","inputs":["docs/guides/code-quality.md","docs/guides/documentation.md","docs/guides/testing.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/README.md","note":"#3394 fix round: only documentation.md's compaction and guard prose changed; this map's route and description stay accurate.","inputs":["docs/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"#3394 fix round: the linked documentation follow-through anchor is unchanged; no note-storage claim here.","inputs":["docs/architecture/abstraction-review.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/development.md","note":"#3394 fix round: links to documentation.md only; no ledger claim affected.","inputs":["docs/guides/development.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#3394 fix round: routes to the documentation workflow only; unaffected.","inputs":["docs/guides/integrating-station.md","docs/guides/documentation.md"]}
+  ]
+}

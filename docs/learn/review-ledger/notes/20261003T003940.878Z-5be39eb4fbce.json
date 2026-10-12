@@ -1,0 +1,7 @@
+{
+  "revision": "588eae2a9ce0653a1ea92b44de34c56bce5a5c78",
+
+  "notes": [
+    {"path":"examples/shared-providers/README.md","note":"Reviewed final Profile rendering and authority delta. Achievement placement still routes the existing links through AchievementsBadge; the paired-person panel uses approved device bindings, not the example's alias fallback. Source remains an illustrative provider integration with its documented limits.","inputs":["examples/shared-providers/README.md"]}
+  ]
+}

@@ -30,6 +30,10 @@ import {
 } from '../../domain/settings-registry-server.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
+import {
+  persistableCredentialProfiles,
+  projectPublicCredentialProfiles,
+} from '../../providers/app-home/credential-profile-registry.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
 import { mayGrantFullAccess } from '../../security/coding-authority.js';
 import {
@@ -51,18 +55,31 @@ import { fullAccessRefusal } from '../orchestration/approval-authority.js';
 const FULL_ACCESS_DEFAULT_NOT_GRANTED = 'FULL_ACCESS_DEFAULT_NOT_GRANTED';
 
 import {
+  COMMAND_NOT_GRANTED_CODE,
+  requestMayBeAnAgent,
+} from '../../security/coding-authority.js';
+import {
   appConfigUpdateSchema,
   errorMessage,
   getBody,
   validate,
 } from '../schemas/schemas.js';
 import {
+  changesAny,
+  refuseUngrantedCommandChoice,
+} from '../working-directory-authority.js';
+import {
   captureConfigurationMutation,
   configurationActivationPayload,
   configurationMutationStatus,
 } from './configuration-activation.js';
 
-/** Legacy-file projection only. New application authority is private SQLite. */
+/**
+ * Legacy-file projection only. New application authority is private SQLite.
+ * Credential profiles go through the registry's own projection (#2966): an
+ * invalid env overlay, possibly a pasted secret in a hand-edited app.json,
+ * is returned only as its value-free `envInvalid` marker.
+ */
 function projectPublicAppConfig(config: Record<string, any>) {
   if (!config.agentConnections) return config;
   return {
@@ -77,11 +94,35 @@ function projectPublicAppConfig(config: Record<string, any>) {
             applicationReceipts: _receipts,
             ...safe
           } = recovery;
+          if (safe.profiles !== undefined) {
+            safe.profiles = projectPublicCredentialProfiles(safe.profiles);
+          }
           return [id, { ...settings, credentialRecovery: safe }];
         },
       ),
     ),
   };
+}
+
+function persistPublicSafeProfiles(
+  agentConnections: Record<string, any>,
+): Record<string, any> {
+  return Object.fromEntries(
+    Object.entries(agentConnections).map(([id, settings]) => {
+      const recovery = settings?.credentialRecovery;
+      if (!recovery || recovery.profiles === undefined) return [id, settings];
+      return [
+        id,
+        {
+          ...settings,
+          credentialRecovery: {
+            ...recovery,
+            profiles: persistableCredentialProfiles(recovery.profiles),
+          },
+        },
+      ];
+    }),
+  );
 }
 
 /**
@@ -406,6 +447,30 @@ export function createConfigRoutes(
         );
       }
 
+      // The terminal shell is a program Station will start; changing it is
+      // choosing a command.
+      if (Object.hasOwn(body as object, 'terminalShell')) {
+        const current = await configLoader.loadAppConfig();
+        if (changesAny(body as object, current, ['terminalShell'])) {
+          // An agent's station-control call is the internal principal, which
+          // the folder and command rule otherwise leaves to its own policy;
+          // the terminal shell is the one setting it may not change, as it
+          // may not raise the default approval mode to full access.
+          if (requestMayBeAnAgent(c.req.raw))
+            return c.json(
+              {
+                success: false,
+                code: COMMAND_NOT_GRANTED_CODE,
+                error:
+                  'An agent cannot change the terminal shell. The operator can, in Settings.',
+              },
+              403,
+            );
+          const commandRefused = refuseUngrantedCommandChoice(c);
+          if (commandRefused) return commandRefused;
+        }
+      }
+
       if (Object.hasOwn(body as object, 'logLevel')) {
         return c.json(
           {
@@ -528,6 +593,19 @@ export function createConfigRoutes(
       }
       if (ignored.length > 0) {
         configOps.add(1, { op: 'update_app_ignored_keys' });
+      }
+      // `agentConnections` is a composite that replaces the stored value
+      // wholesale. Credential profiles written this way (including a settings
+      // import) are normalized like any registry write, so an invalid env
+      // overlay is persisted only as its value-free marker (#2966).
+      if (
+        accepted.agentConnections &&
+        typeof accepted.agentConnections === 'object' &&
+        !Array.isArray(accepted.agentConnections)
+      ) {
+        accepted.agentConnections = persistPublicSafeProfiles(
+          accepted.agentConnections as Record<string, any>,
+        );
       }
       if (
         Object.hasOwn(accepted, 'builtinAgentEngineConnectionId') &&

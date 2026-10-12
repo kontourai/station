@@ -1,0 +1,17 @@
+{
+  "revision": "487bd978d1599eaf52ad405d36bbe20d5bd638a7",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Bounded review of the connection-quota export repair: the existing provider-reported snapshot/unavailable and pure merge contract is now reachable through its package subpath. CLI typecheck previously failed TS2307 at this boundary and now passes; no quota runtime behavior, authentication, model invocation or MCP selection algorithm changes. Relevant package-boundary and inventory claims remain accurate; no publication or full semantic reread claim.","inputs":["docs/architecture.md"]},
+
+    {"path":"docs/glossary.md","note":"Bounded review of the connection-quota export repair: the existing provider-reported snapshot/unavailable and pure merge contract is now reachable through its package subpath. CLI typecheck previously failed TS2307 at this boundary and now passes; no quota runtime behavior, authentication, model invocation or MCP selection algorithm changes. Relevant package-boundary and inventory claims remain accurate; no publication or full semantic reread claim.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Bounded review of the connection-quota export repair: the existing provider-reported snapshot/unavailable and pure merge contract is now reachable through its package subpath. CLI typecheck previously failed TS2307 at this boundary and now passes; no quota runtime behavior, authentication, model invocation or MCP selection algorithm changes. Relevant package-boundary and inventory claims remain accurate; no publication or full semantic reread claim.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Bounded review of the connection-quota export repair: the existing provider-reported snapshot/unavailable and pure merge contract is now reachable through its package subpath. CLI typecheck previously failed TS2307 at this boundary and now passes; no quota runtime behavior, authentication, model invocation or MCP selection algorithm changes. Relevant package-boundary and inventory claims remain accurate; no publication or full semantic reread claim.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Bounded review of the connection-quota export repair: the existing provider-reported snapshot/unavailable and pure merge contract is now reachable through its package subpath. CLI typecheck previously failed TS2307 at this boundary and now passes; no quota runtime behavior, authentication, model invocation or MCP selection algorithm changes. Relevant package-boundary and inventory claims remain accurate; no publication or full semantic reread claim.","inputs":["packages/contracts/AGENTS.md"]},
+
+    {"path":"packages/contracts/README.md","note":"Bounded review of the connection-quota export repair: the existing provider-reported snapshot/unavailable and pure merge contract is now reachable through its package subpath. CLI typecheck previously failed TS2307 at this boundary and now passes; no quota runtime behavior, authentication, model invocation or MCP selection algorithm changes. Relevant package-boundary and inventory claims remain accurate; no publication or full semantic reread claim.","inputs":["packages/contracts/README.md"]}
+  ]
+}

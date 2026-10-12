@@ -1,0 +1,7 @@
+{
+  "revision": "f53294edd8d016bc94c6714b2c1d317e45766eb2",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Re-read after #3284 refined elicitation counting in packages/shared/src/mcp-connection.ts: on the 2026-07-28 era tools/list, prompts/list, resources/list, resources/templates/list, ping and completion/complete are no longer counted as in flight (only tools/call, prompts/get and resources/read can elicit there); the 2025 era still counts every request. This document makes no claim about elicitation routing or in-flight counting (searched elicit, in-flight, concurrent). No prose change.","inputs":["docs/reference/station-docs.md","docs/design/mcp-ui-host.md"]}
+  ]
+}

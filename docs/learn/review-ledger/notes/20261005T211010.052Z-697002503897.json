@@ -1,0 +1,7 @@
+{
+  "revision": "9281b930f3c3128a9674cc333d11a1aa086ea632",
+
+  "notes": [
+    {"path":"docs/design/portable-project-identity.md","note":"Round 5 for #3391: resolution semantics unchanged; only the list read's not-checked outcomes get their own runsAt kind.","inputs":["docs/design/portable-project-identity.md","src-server/services/projects/project-resource-resolver.ts"]}
+  ]
+}

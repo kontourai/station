@@ -16,6 +16,7 @@ import {
 } from '@kontourai/station-sdk/setup-imports-query';
 import { SETUP_IMPORT_MAX_TARGET_NAME_LENGTH } from '@kontourai/station-shared/setup-import-bounds';
 import { useEffect, useMemo, useState } from 'react';
+import { userFacingErrorMessage } from '../../utils/errorText';
 import { Button } from '../Button';
 import { Checkbox } from '../Checkbox';
 import { ResponsiveSurfaceActions } from '../ResponsiveDialogSurface';
@@ -167,7 +168,7 @@ export function ExistingSetupImportStepper({
 
       <p className="existing-setup-import__status" role="status">
         {previewMutation.isError
-          ? previewMutation.error.message
+          ? userFacingErrorMessage(previewMutation.error)
           : applyMutation.isPending
             ? 'Importing reviewed items…'
             : rollbackMutation.isPending
@@ -311,7 +312,7 @@ export function ExistingSetupImportStepper({
           </ResponsiveSurfaceActions>
           {reviewMutation.isError && (
             <p className="existing-setup-import__error" role="alert">
-              {reviewMutation.error.message}
+              {userFacingErrorMessage(reviewMutation.error)}
             </p>
           )}
           {targetReview && (
@@ -395,8 +396,8 @@ export function ExistingSetupImportStepper({
           </ResponsiveSurfaceActions>
           {rollbackMutation.isError && (
             <p className="existing-setup-import__error" role="alert">
-              {rollbackMutation.error.message} Check this receipt before
-              retrying a rollback.
+              {userFacingErrorMessage(rollbackMutation.error)} Check this
+              receipt before retrying a rollback.
             </p>
           )}
         </div>

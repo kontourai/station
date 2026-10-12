@@ -1,0 +1,7 @@
+{
+  "revision": "6c2cd5fa91bdd90c87d03e9f55df59b7e6a7f247",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed SDK reference #2941 hook and optional owner additions against SDK public-contract guidance. Consumers still use stable SDK exports, with real routes/hooks/chip evidence; cancellation guidance is unaffected.","inputs":["packages/sdk/AGENTS.md"]}
+  ]
+}

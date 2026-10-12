@@ -1,7 +1,7 @@
 # Computer relationships: pairing vs. remote work
 
 Station's Connections hub has one **Add computer** entry point. It routes to
-device pairing, an ordinary Station address, remote work over SSH, or native
+device invitations, a Station connection, remote work over SSH, or native
 saved broker-route preparation based on what the user wants to do. The flows differ in **direction**
 (who reaches whom), **trust model**, and **what becomes possible afterward**.
 This guide explains those relationships; [Connections](connections.md) owns the
@@ -16,6 +16,13 @@ Device, Project binding, room authority, and execution offer separate, see
 [Station topology](../design/station-topology.md).
 
 ## Device access and remote work
+
+**Connect another Station** identifies one destination, then lets you request
+Device access, Station peer access, or both. The grants have different holders
+and independent approval. Saving Device access preserves an existing selected
+Station; peer enrollment stores its credential only on the controlling server.
+The peer ceremony requires that server's operator authority and the receiver's
+trusted approval. It does not elevate an ordinary paired device.
 
 **Pair a device** — device reaches Station. Another device (a phone, a
 browser, a CLI) is granted a scoped credential and drives **this** Station.
@@ -60,9 +67,15 @@ public application, physical-device and release qualification limits.
 
 A paired device holds scopes: `orchestration:read`, `orchestration:operate`,
 `terminal:operate`, and the elevated ones the operator adds to an
-already-paired device (`station environment access scopes` lists them all with
-their meanings). The operator changes them per device on the Station's own
-host:
+already-paired device, or keeps when approving a request that asked for
+`coding:exec` or `approval:full-access`, as the Station app does (**Limit
+access** leaves them out; `station environment access scopes` lists them all
+with their meanings). The operator changes them per device on the Station's own
+host. Without a global install, prefix these with
+`npx @kontourai/station-cli@<tag>` (`nightly` for a nightly Station, otherwise
+`latest`); a full-access refusal's command already includes the prefix. A
+device paired by an older Station may also hold `access:manage`, which no device
+can be granted again; the first change removes it and says so:
 
 ```bash
 station environment access devices
@@ -70,8 +83,11 @@ station environment access scope <device> --add approval:full-access
 station environment access scope <device> --remove approval:full-access
 ```
 
-or, in the Station desktop app on that host, from the Station name (top
-right) → **Paired devices** → the device → **Change access**.
+The **Paired devices** panel (Station name, top right → **Paired devices** →
+the device → **Change access**) does not apply the change from the desktop
+app: the app holds a device credential, not the operator credential, and the
+route refuses it. Use the host CLI above. Remote operator access is
+[a proposal](../design/operator-device-access.md) (#2894).
 
 **Full access** (`approval:full-access`) is the scope that lets a device put a
 chat, or an Agent's default, at approval mode `never`: the agent runs with no
@@ -93,15 +109,19 @@ access), Station records a new decision of **Ask**, attributed to the
 operator's revocation. Nothing is deleted from the conversation's history.
 
 The sessions its grant had unconfined also run confined again (inside the
-workspace), because Station checks the grant each time it hands the engine a
-posture. That happens at every turn while a decision stands, and at the
-session's next start. A turn already running finishes. The next turn is
-confined and asks. The command lists these conversations as re-confined.
+workspace), from their next turn, without restarting the engine. Station
+checks the grant each time it hands the engine a posture: at every turn while
+a decision stands, at the session's next start, and on the first turns after
+the grant was taken back even when no decision stands (for example a session
+at full access only because of its Agent's or the Station's default). A turn
+already running finishes, but it cannot be given new instructions by steering:
+Station refuses the steer and keeps the message for the next turn, which is
+confined.
 
-One case waits: a running session with no decision standing, at full access
-only because of its Agent's or the Station's default. Station re-applies no
-posture on a turn of such a session, so it stays unconfined until its engine
-restarts. It is listed as "still unconfined".
+The command lists each session whose engine is still running unconfined as
+"still unconfined" until its next turn, and a conversation whose sessions are
+stopped or have already taken a confined turn as re-confined. The desktop app's notice offers **Stop now** on each running
+session, which stops its engine at once; its next start is confined.
 
 Some conversations stay at full access, and the command lists them without
 changing them:
@@ -185,8 +205,9 @@ delivery. A collaborator does not need to contribute a computer, checkout, or
 provider credentials to read that shared work.
 
 The guest entry also mounts Project access controls. Administration requires
-the appropriate current membership plus a separately approved Device operate
-scope; the UI does not confer either. Base Project views remain metadata-only
+the appropriate current membership plus a separately approved Device
+`orchestration:operate` or `relay:manage` scope; the UI does not confer either.
+Base Project views remain metadata-only
 and omit local paths, provider/model configuration, knowledge settings, and
 layouts. See [deployment authentication](deployment-authentication.md#browser-invitation-entry)
 and its linked source owners for the current guest boundaries.

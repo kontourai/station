@@ -1,0 +1,7 @@
+{
+  "revision": "2dce1aec1da50b6a615488dc1d0cd132ac5ec136",
+
+  "notes": [
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"No prose change: it makes no claim about attention items, paired-Station requests, the delegated respond route or request-route access; runtime-routes only moves the attention route reader predicates into runtime-attention-route-options with unchanged behaviour.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

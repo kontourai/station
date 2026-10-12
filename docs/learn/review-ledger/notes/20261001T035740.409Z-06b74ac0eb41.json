@@ -1,0 +1,23 @@
+{
+  "revision": "47499155aa2312d22441161d527cd4bbe3579128",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed discovery copy and broker disclosure. Existing provider tests, key approval, route custody, consent and bounded lab proof remain unchanged.","inputs":["docs/design/connections-onboarding.md"]},
+
+    {"path":"docs/guides/agents.md","note":"Reviewed discovery copy and broker disclosure. Existing provider tests, key approval, route custody, consent and bounded lab proof remain unchanged.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed discovery copy and broker disclosure. Existing provider tests, key approval, route custody, consent and bounded lab proof remain unchanged.","inputs":["docs/guides/local-collaboration-lab.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed discovery copy and broker disclosure. Existing provider tests, key approval, route custody, consent and bounded lab proof remain unchanged.","inputs":["docs/guides/machine-relationships.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed discovery copy and broker disclosure. Existing provider tests, key approval, route custody, consent and bounded lab proof remain unchanged.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed discovery copy and broker disclosure. Existing provider tests, key approval, route custody, consent and bounded lab proof remain unchanged.","inputs":["docs/guides/self-hosted-broker.md"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed discovery copy and broker disclosure. Existing provider tests, key approval, route custody, consent and bounded lab proof remain unchanged.","inputs":["docs/learn/walkthroughs.md"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed discovery copy and broker disclosure. Existing provider tests, key approval, route custody, consent and bounded lab proof remain unchanged.","inputs":["docs/reference/agent-smoke-confidence.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed discovery copy and broker disclosure. Existing provider tests, key approval, route custody, consent and bounded lab proof remain unchanged.","inputs":["examples/self-configuring-agent/README.md"]}
+  ]
+}

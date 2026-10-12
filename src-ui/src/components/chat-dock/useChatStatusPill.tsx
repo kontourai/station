@@ -9,10 +9,12 @@ import {
 import type { ChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import type { ChatSession } from '../../types';
+import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
 import { LazyBoundary } from '../LazyBoundary';
 import {
   claimApprovalThreads,
   OPEN_APPROVAL_QUEUE_EVENT,
+  type RevealApprovalDetail,
   revealApprovalCard,
 } from '../status/approvalReveal';
 import type { ChatStatusInput } from '../status/chatStatus';
@@ -49,11 +51,15 @@ export function useChatStatusPill({
   streamStatus,
   turnLive,
   enabled,
+  windowRequests,
+  observationUnavailable = false,
 }: {
   activeSession: ChatSession;
   streamStatus: ChatStreamStatus | undefined;
   turnLive: boolean;
   enabled: boolean;
+  windowRequests?: readonly RevealApprovalDetail[];
+  observationUnavailable?: boolean;
 }): { pill: ReactNode; statusInPill: boolean } {
   const [view, setView] = useState<'loading' | 'mounted' | 'unavailable'>(
     'loading',
@@ -62,16 +68,26 @@ export function useChatStatusPill({
   const onUnavailable = useCallback(() => setView('unavailable'), []);
   // Requests still waiting on the user: open on the server and not yet
   // answered here (an answered one stays open until `request.resolved`).
-  const answeredApprovals = activeSession.answeredApprovals;
   const pendingApprovals = useMemo(
     () =>
-      (activeSession.pendingApprovals ?? []).filter(
-        (id) => !answeredApprovals?.includes(id),
-      ),
-    [activeSession.pendingApprovals, answeredApprovals],
+      requestsWaitingOnUser({
+        pendingApprovals: [
+          ...new Set([
+            ...(activeSession.pendingApprovals ?? []),
+            ...(windowRequests ?? []).map((request) => request.requestId),
+          ]),
+        ],
+        answeredApprovals: activeSession.answeredApprovals,
+      }),
+    [
+      activeSession.pendingApprovals,
+      activeSession.answeredApprovals,
+      windowRequests,
+    ],
   );
   const approvalCount = pendingApprovals.length;
   const input: ChatStatusInput = {
+    observationUnavailable,
     approvalCount,
     stream: streamStatus,
     turnLive,
@@ -117,12 +133,23 @@ export function useChatStatusPill({
   const requestKey = pendingApprovals.join('\u0000');
   const latestRequests = useRef(pendingApprovals);
   latestRequests.current = pendingApprovals;
+  const latestWindowRequests = useRef(windowRequests);
+  latestWindowRequests.current = windowRequests;
+  const latestThreadId = useRef(
+    activeSession.currentSessionId ?? activeSession.id,
+  );
+  latestThreadId.current = activeSession.currentSessionId ?? activeSession.id;
   const onRevealApproval = useCallback(() => {
     const requests = latestRequests.current;
     if (requests.length === 0) return;
     const requestId = requests[next.current % requests.length]!;
     next.current += 1;
-    void revealApprovalCard({ requestId }).then((shown) => {
+    const reference = latestWindowRequests.current?.find(
+      (request) => request.requestId === requestId,
+    );
+    void revealApprovalCard(
+      reference ?? { requestId, threadId: latestThreadId.current },
+    ).then((shown) => {
       if (!shown) window.dispatchEvent(new Event(OPEN_APPROVAL_QUEUE_EVENT));
     });
   }, []);

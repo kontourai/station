@@ -22,6 +22,7 @@ import { join } from 'node:path';
 import { computePluginTreeDigest } from '@kontourai/station-shared/plugin-tree-digest';
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
+import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
@@ -158,8 +159,10 @@ function harness(root: string) {
       }),
     }),
   );
+  // Installing takes the operator in person; a bare mount is refused.
+  const operatorApp = withOperatorPrincipal(app);
   const post = async (path: string, body: unknown) => {
-    const response = await app.request(path, {
+    const response = await operatorApp.request(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -198,7 +201,7 @@ function harness(root: string) {
     return { preview: basis, install: install.body };
   };
   const listed = async () => {
-    const response = await app.request('/');
+    const response = await operatorApp.request('/');
     const body = (await readJson(response)) as any;
     const plugins = Array.isArray(body) ? body : body.plugins;
     return plugins.find((plugin: any) => plugin.name === 'checkout-plugin');

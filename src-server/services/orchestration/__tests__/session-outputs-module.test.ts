@@ -1,20 +1,32 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   TaskDeclaredOutputKeepConflictError,
   TaskDeclaredOutputKeepDeletedError,
+  TaskGraphService,
 } from '../../projects/task-graph-service.js';
 import {
   TaskOutputConflictError,
   TaskOutputDeletedOperationError,
+  TaskOutputModule,
 } from '../../projects/task-output-module.js';
 import { EventStore } from '../event-store.js';
 import { createSessionOutputsModule } from '../session-outputs-module.js';
 
 const directories: string[] = [];
+const makeTempDir = trackTempDirs();
 afterEach(() =>
   directories
     .splice(0)
@@ -90,6 +102,100 @@ function source(rows: ReturnType<typeof row>[]) {
 }
 
 describe('SessionOutputsModule', () => {
+  test('real admitted declaration identity reaches the immutable Task output store', async () => {
+    const home = makeTempDir('station-output-producer-');
+    const workspace = join(home, 'workspace');
+    mkdirSync(workspace);
+    const bytes = 'real declared snapshot';
+    writeFileSync(join(workspace, 'report.txt'), bytes);
+    const graph = new TaskGraphService(home, {
+      resolveProjectWorkspace: async () => workspace,
+    });
+    const task = await graph.createTask({
+      projectId: 'project-a',
+      title: 'Report',
+    });
+    const outputs = new TaskOutputModule({
+      homeDir: home,
+      taskGraphService: graph,
+    });
+    const store = new EventStore(join(home, 'orchestration.sqlite'));
+    try {
+      const event: Extract<
+        CanonicalRuntimeEvent,
+        { method: 'turn.completed' }
+      > = {
+        eventId: randomUUID(),
+        provider: 'station-agent',
+        threadId: 'session-a',
+        turnId: 'turn-a',
+        createdAt: '2026-10-01T00:00:00.000Z',
+        method: 'turn.completed',
+        finishReason: 'stop',
+      };
+      store.appendEvent(event, [
+        {
+          handle: 'producer-handle',
+          declaration: {
+            version: 'declared-output/v1',
+            declarationId: 'declaration-real',
+            sessionId: 'session-a',
+            eventId: event.eventId,
+            turnId: 'turn-a',
+            toolCallId: 'call-real',
+            declaredAt: event.createdAt,
+            descriptor: {
+              kind: 'workspace-file',
+              relativePath: 'report.txt',
+              digest: createHash('sha256').update(bytes).digest('hex'),
+              length: Buffer.byteLength(bytes),
+              mediaType: 'text/plain',
+            },
+          },
+        },
+      ]);
+      const module = createSessionOutputsModule({
+        eventStore: store,
+        canReadSession: (id) => id === 'session-a',
+        workspaceForSession: (id) =>
+          id === 'session-a' ? workspace : undefined,
+      });
+      const kept = await module.keep({
+        taskId: task.id,
+        sessionId: 'session-a',
+        eventId: event.eventId,
+        operationId: 'real-source-keep',
+        taskWorkspace: workspace,
+        authority,
+        current: () => true,
+        canKeepForTask: () =>
+          graph.readTask(task.id)?.createdAt === task.createdAt,
+        outputs,
+        keepPullRequest: () => {
+          throw new Error('Unexpected pull-request keep');
+        },
+      });
+      expect(kept.status).toBe('kept');
+      if (kept.status !== 'kept' || kept.kind !== 'workspace-file')
+        throw new Error('File snapshot was not kept');
+      expect(
+        (await outputs.readContent(task.id, kept.output.id)).bytes.toString(),
+      ).toBe(bytes);
+      const privateStore = JSON.parse(
+        readFileSync(join(home, 'task-outputs', 'index.json'), 'utf8'),
+      );
+      expect(privateStore.outputs[0].declaredBy).toEqual({
+        sessionId: 'session-a',
+        eventId: event.eventId,
+        turnId: 'turn-a',
+        toolCallId: 'call-real',
+        declarationId: 'declaration-real',
+      });
+    } finally {
+      store.close();
+    }
+  });
+
   test('rejects forged or cross-authority cursors while preserving a real cursor over restart', () => {
     const root = mkdtempSync(join(tmpdir(), 'station-output-cursor-'));
     directories.push(root);

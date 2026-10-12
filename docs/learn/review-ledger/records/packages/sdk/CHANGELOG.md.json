@@ -9,8 +9,6 @@
 
   "limits": "Entries describe the named version and can differ from this checkout. A changelog entry is not a current installation or publication receipt.",
 
-  "document": {"digest":"ef4901151e6c50a5c58de961991fbf96734ae2c93fe17d0a4035d8926c0dbf15","revision":"693d3c2389b988f5d65373a769a45c5d63094aaa"},
-
   "sources": [],
 
   "checks": []

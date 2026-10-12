@@ -1,0 +1,79 @@
+{
+  "revision": "f69dec76a0ade0dee258155c313ede9bfc31d0be",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Rechecked the retained packaged-startup decision against native-shell-verification and the current Tauri command registration. Relay link recovery commands do not change sidecar readiness, startup reveal, retry, or ownership policy.","inputs":["docs/adr/0015-restore-desktop-owned-command-station-sidecar.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Rechecked relay module ownership against current Tauri command registration, native link intake/redemption, UI review caller, and broker service. The map keeps route intent, host custody, broker scope observation, and application authority in their separate owners.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Rechecked superseded-scope observation against the broker transaction and native host cleanup. The invitation-bound proof is closed and nonce-bound; it only establishes an older generation is inadmissible and does not report or retire an individual grant.","inputs":["docs/design/connection-broker.md"]},
+
+    {"path":"docs/design/instance-registry.md","note":"Checked the changed Tauri command registration against the documented instance registry and sidecar lifecycle. Native relay recovery does not change instance identity, registration, or service ownership.","inputs":["docs/design/instance-registry.md"]},
+
+    {"path":"docs/design/mobile-credential-authority.md","note":"Checked the new host command registrations and relay proof-key path against the mobile credential authority boundary. Superseded-scope observation uses the installation routing key and invitation; it does not widen account or Device credentials.","inputs":["docs/design/mobile-credential-authority.md"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Rechecked native proof-key and custody claims against invitation observation, recovery fencing, and the intake commands. The new recovery basis remains separate from trust approval, Device approval, account sessions, and application authority.","inputs":["docs/design/native-capabilities.md"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Rechecked invitation intake and recovery claims against current host intake, redemption journal, proof-key observation, and UI review. Reset preserves the pending invitation, requires explicit confirmation, and does not enroll or activate a Device.","inputs":["docs/design/native-relay-enrollment.md"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Checked the changed desktop command registration against notification delivery ownership. Relay-link preview/reset commands do not alter notification permission, transport, or delivery behavior.","inputs":["docs/design/notification-delivery.md"]},
+
+    {"path":"docs/design/ssh-launched-environments.md","note":"Checked the Tauri command registration change against SSH-launched environment ownership. Native relay invitation recovery does not change SSH environment launch or credential handling.","inputs":["docs/design/ssh-launched-environments.md"]},
+
+    {"path":"docs/glossary.md","note":"Rechecked the glossary terms introduced by the contracts reference update, including native relay link, enrollment, and relay ICE. Definitions preserve routing, installation proof, account, Device, and Project authority as distinct concepts.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/android-build.md","note":"Checked current native command registration and platform gates against the Android build guide. Relay link intake and invitation reset remain unsupported on Android as the connection guide states; no Android qualification claim was added.","inputs":["docs/guides/android-build.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Rechecked broker lifecycle and native host recovery, then added the missing user action: preview and explicitly confirm Reset connection invitation for multiple grants. The text explains normal retirement first, older-scope observation, pending failure behavior, unchanged trust/Device/account state, and the installed-shell evidence limit.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Checked the new Tauri command registrations against the desktop build instructions. The commands do not alter build prerequisites, artifacts, signing, or packaging claims.","inputs":["docs/guides/desktop-build.md"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Checked the new Tauri command registrations against tray behavior and ownership. Relay invitation recovery is a route-management action and does not change tray activation or service controls.","inputs":["docs/guides/desktop-tray.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Rechecked the contracts reference additions against integration guidance. Native relay contracts describe transport and enrollment DTOs; they do not grant authority or change the supported integration path.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Rechecked lab broker setup and evidence boundaries against current observation endpoint, proof checks, and native recovery docs. The lab remains source/fixture scoped and does not establish public broker or installed-client qualification.","inputs":["docs/guides/local-collaboration-lab.md"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Checked native command registration and current platform qualification statements against mobile release guidance. Recovery implementation does not establish a mobile release or background/foreground qualification.","inputs":["docs/guides/mobile-release.md"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Checked command registration against release guidance and reviewed its evidence limits. New relay recovery commands do not change signing, notarization, artifact, or release qualification claims.","inputs":["docs/guides/native-releases.md"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Rechecked the explicit reset preview/confirmation, host-side exact profile/key/vault fences, invitation retention, restart journal, and older-scope proof against the current Tauri host and UI. The guide correctly requires installed-shell qualification and does not treat source or broker tests as that proof.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/nightly.md","note":"Checked Tauri command registration against Nightly operating guidance. The added native recovery commands do not change Nightly channel, installation, or runtime evidence claims.","inputs":["docs/guides/nightly.md"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Checked command registration against release-channel port ownership. Relay invitation reset does not change channel port selection or isolation.","inputs":["docs/guides/release-channel-ports.md"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Checked command registration against release-ring policy. The native recovery flow adds no channel, promotion, or release-ring behavior.","inputs":["docs/guides/release-rings.md"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Rechecked the new broker endpoint and host consumer against proof construction, lease/invitation revalidation, replay handling, exact old-generation condition, and no-lifecycle-mutation guarantee. The UI cleanup section correctly distinguishes scope observation from grant retirement and keeps installed-shell/public-deployment proof unverified.","inputs":["docs/guides/self-hosted-broker.md"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the cited UI stylesheet change against the starter-work task guidance. The stylesheet change does not alter the documented starter workflow or acceptance steps.","inputs":["docs/guides/starter-work.md"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Checked Tauri command registration against store-entry guidance. Relay invitation recovery does not change store acquisition or first-launch claims.","inputs":["docs/guides/store-entry.md"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Checked Tauri command registration against store listing guidance. The new recovery commands do not change store metadata or listing claims.","inputs":["docs/guides/store-listing.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Rechecked the linked native-shell evidence instructions and fixture limits against the new reset behavior. Tests and source checks remain distinct from installed-shell, physical-device, and release evidence.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/reference/api.md","note":"Checked native command registration and redemption implementation against API reference claims. Recovery preview/reset are fixed host operations; the invitation remains unconsumed and commands do not grant application authority.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/connect.md","note":"Checked native link intake host commands against the Connect reference. Opaque handles and public metadata remain the renderer boundary; recovery does not expose invitation bytes or widen Connect API authority.","inputs":["docs/reference/connect.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Rechecked the contract index and native relay composition section against the link, enrollment, broker observation, and ICE contracts. DTO declarations remain authority-free; the broker observation is bound to an unconsumed invitation and exact old scope.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Rechecked the added native command surface against the remote-access threat model. Recovery requires invitation possession and installation proof, is bounded to same Station/enrollment older scope, rejects changed custody, and does not disclose grant existence or broaden application access.","inputs":["docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Checked relay recovery command registration against desktop startup recovery guidance. It is a separate connection-management flow and does not change hidden-window readiness, sidecar retry, or data-home recovery behavior.","inputs":["docs/user/native-recovery.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Rechecked the contracts reference additions against package authoring boundaries. New native relay and ICE contracts remain closed wire/data shapes; authority is composed by server and host callers, not declarations.","inputs":["packages/contracts/AGENTS.md"]},
+
+    {"path":"patches/android-native-keyring-store/README.md","note":"Checked the README's Android patch/build evidence against the changed transfer measurement selection. The newly classified native fixture test affects process-heavy test resource accounting only and does not change the Android patch or keyring evidence.","inputs":["patches/android-native-keyring-store/README.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Rechecked the process-heavy test manifest change against the scripts guidance. The native fresh-relay fixture is classified because it exercises a real Node child lifecycle; this is scheduling/resource metadata and does not imply that the test was executed here.","inputs":["scripts/AGENTS.md"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Rechecked native shell routing guidance against current preview/reset commands and the updated verification guide. It continues to distinguish host/UI checks from packaged and physical-device proof.","inputs":["src-desktop/AGENTS.md"]},
+
+    {"path":"src-server/services/connections/pion-peer/README.md","note":"Rechecked the broker observation and native recovery changes against the Pion README's connector/lab boundary. The new endpoint is separate from peer signaling and does not alter Pion lifecycle, channel handling, or native application admission.","inputs":["src-server/services/connections/pion-peer/README.md"]}
+  ]
+}

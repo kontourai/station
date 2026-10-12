@@ -1,4 +1,4 @@
-name: Portable Install Smoke
+name: "PR: Install smoke"
 
 on:
   pull_request_target:
@@ -6,11 +6,18 @@ on:
       - 'install.sh'
       - 'install.ps1'
       - 'packages/shared/src/installer/**'
+      # Bundled into install.ps1's installer core (#2675 W2).
+      - 'packages/shared/src/windows-path-trust.ts'
+      - 'packages/shared/src/windows-system-utility.mjs'
+      # Which installer packaged `station upgrade` runs.
+      - 'packages/shared/src/prebuilt-archive.ts'
       - 'scripts/smoke-install-ps1.mjs'
+      - 'scripts/install-smoke-file-server.mjs'
       - 'scripts/install-script-generated.mjs'
       - '.gitattributes'
       - 'scripts/package-portable-release.sh'
       - 'scripts/build-portable-server-archive.mjs'
+      - 'scripts/lib/bounded-capture.mjs'
       - 'scripts/lib/portable-server-archive.mjs'
       - 'scripts/smoke-install-prebuilt-archive.sh'
       - 'packaging/portable-server/**'
@@ -164,22 +171,44 @@ jobs:
               response.setHeader("content-type", "application/json");
               response.end(JSON.stringify({ models: [] }));
             }).listen(11434, "127.0.0.1");
-          ' &
+          ' >/tmp/station-ollama-fixture.log 2>&1 &
           ollama_pid=$!
-          python3 -m http.server 8765 --bind 127.0.0.1 \
-            --directory "$serve_dir" >/tmp/station-artifact-server.log 2>&1 &
+          node scripts/install-smoke-file-server.mjs 8765 "$serve_dir" >/tmp/station-artifact-server.log 2>&1 &
           artifact_pid=$!
-          python3 -m http.server 8766 --bind 127.0.0.1 \
-            --directory "$manifests_dir" >/tmp/station-manifest-server.log 2>&1 &
+          node scripts/install-smoke-file-server.mjs 8766 "$manifests_dir" >/tmp/station-manifest-server.log 2>&1 &
           manifest_pid=$!
-          python3 -m http.server 8767 --bind 127.0.0.1 \
-            --directory "$keys_dir" >/tmp/station-key-server.log 2>&1 &
+          node scripts/install-smoke-file-server.mjs 8767 "$keys_dir" >/tmp/station-key-server.log 2>&1 &
           key_pid=$!
           cleanup() {
             "$launcher" stop --base="$station_home" >/dev/null 2>&1 || true
             kill "$ollama_pid" "$artifact_pid" "$manifest_pid" "$key_pid" >/dev/null 2>&1 || true
           }
           trap cleanup EXIT
+
+          wait_for_fixture() {
+            local label=$1 pid=$2 url=$3 log=$4
+            local deadline=$((SECONDS + 30))
+            while [ "$SECONDS" -lt "$deadline" ]; do
+              if ! kill -0 "$pid" 2>/dev/null; then
+                echo "Fixture $label exited before readiness (pid=$pid)." >&2
+                tail -100 "$log" >&2 || true
+                return 1
+              fi
+              if curl --noproxy '*' --silent --fail --head --connect-timeout 1 --max-time 2 "$url" >/dev/null; then
+                echo "Fixture $label ready (pid=$pid)."
+                return 0
+              fi
+              sleep 0.2
+            done
+            echo "Fixture $label did not become reachable within 30 seconds (pid=$pid)." >&2
+            ps -p "$pid" -o pid=,ppid=,stat=,comm= >&2 || true
+            tail -100 "$log" >&2 || true
+            return 1
+          }
+          wait_for_fixture artifact "$artifact_pid" http://127.0.0.1:8765/station-portable.tar.gz /tmp/station-artifact-server.log
+          wait_for_fixture manifest "$manifest_pid" http://127.0.0.1:8766/manifest.json /tmp/station-manifest-server.log
+          wait_for_fixture key "$key_pid" http://127.0.0.1:8767/public.pem /tmp/station-key-server.log
+          wait_for_fixture ollama "$ollama_pid" http://127.0.0.1:11434/api/tags /tmp/station-ollama-fixture.log
 
           public_install_env=(
             STATION_INSTALL_PUBLIC_MANIFEST_URL=http://127.0.0.1:8766/manifest.json
@@ -313,7 +342,7 @@ jobs:
           repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with: { install: false }
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -354,7 +383,7 @@ jobs:
           repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with: { install: false }
       # Node.js builds and signs; install.sh and the launcher never see it.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -430,7 +459,7 @@ jobs:
   # (#2484), and refuses tampered bytes and a foreign signature. Stage-only
   # is all install.ps1 does so far; the full install joins in slice W2.
   install-ps1-windows:
-    name: install.ps1 stage-only (win32-x64)
+    name: install.ps1 (win32-x64)
     runs-on: windows-latest
     timeout-minutes: 90
     defaults:
@@ -443,7 +472,7 @@ jobs:
           repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
       - name: Setup pinned pnpm
-        uses: pnpm/setup@703c52620218391530e48b9e8870d5c0082e1b9b # v2.1.0
+        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
         with: { install: false }
       # Node.js builds and signs; install.ps1 never sees it (the smoke runs it
       # with a PATH that has no node.exe).
@@ -467,7 +496,7 @@ jobs:
             commit --quiet --allow-empty -m 'test(install-smoke): second archive generation'
           npm run build:portable-server -- --ref v0.0.0-preview.2 \
             --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/archive-2"
-      - name: Stage both archives with install.ps1, no Node.js on PATH
+      - name: Stage, install, upgrade and uninstall with install.ps1, no Node.js on PATH
         run: |
           node scripts/smoke-install-ps1.mjs \
             --archive1 "$RUNNER_TEMP/archive-1/station-server-win32-x64.zip" \

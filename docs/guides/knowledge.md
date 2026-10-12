@@ -6,6 +6,33 @@ split is the key to everything else in this guide — see
 rationale ("why sqlite-vec") and [docs/design/knowledge-foundation.md](../design/knowledge-foundation.md)
 for the implementation contract.
 
+## Agent tools
+
+Add **Station Knowledge** in an agent’s Tools tab to read and capture records.
+The Station role includes it by default. This small MCP contains
+`list_knowledge_roots`, `list_knowledge_records`, `get_knowledge_record`,
+`add_knowledge_record`, and `search_knowledge`. Search needs an embedding
+connection; listing and reading records do not.
+
+Station Control retains index rebuild and migration controls, plus its existing
+search tool for compatibility. Capture creates a new raw record and never
+replaces a record. A session’s owner must have access to the selected store;
+Project writes also require edit access. Personal stores belong to the local
+operator. Session-backed conversation stores remain read only.
+
+Claude receives an in-process server. Codex and ACP receive separate,
+short-lived Knowledge credentials for the local HTTP endpoint; ACP requires
+observed HTTP MCP support. Native agents use a local HTTP connection only
+inside an active, authorized turn. Credentials are scoped to the session and
+server, and session stop revokes them. HTTP custody does not claim bound
+session attribution; capture records its assurance and omits a session ID
+unless the connection is bound. Per-tool restrictions retain the engine’s
+existing support limits, including ACP’s refusal of individual selections.
+
+The [data tool registrations](../../src-server/tools/station-knowledge-tools.ts)
+and [native caller bridge](../../src-server/runtime/mcp/station-knowledge-native-tools.ts)
+own these paths.
+
 ## Two layers: store vs. index
 
 **Store records are authoritative.** File-backed roots use Station adapters
@@ -315,6 +342,34 @@ document-upload panel), for that project's **project-scoped** knowledge store:
   This button runs the [migration described above](#the-non-destructive-guarantee).
   It does not cut over or clean up the source corpus, but source reading can
   recover an interrupted earlier transaction before records are copied.
+
+### Project tools and automatic store detection
+
+Project Settings → Tools adds configured MCP servers to Agents working in that
+Project. The default **Use Knowledge** setting adds `station-knowledge` when a
+registered Project store exists; disabling it removes the Project's addition.
+An Agent can still carry Knowledge independently in its own configuration.
+
+The [Project Knowledge panel](../../src-ui/src/views/project-page/ProjectKnowledgeStores.tsx)
+detects registered stores and offers **Create store** when none exists. Expand a
+store to browse its derived record graph; selecting a record reads it through
+the canonical store adapter. Detection never creates, imports, or migrates a
+store automatically, and records are not added wholesale to Agent prompts.
+
+[Project tool defaults](../../src-server/services/projects/project-tools.ts)
+preserve the Agent's tool selections, disabled tools, approval policy, and
+explicit harness replacement choice. With no authored server list or mode,
+Project additions keep inherited harness discovery. External engines capture
+defaults when a new session starts; native chats read them on the next turn and
+use an [Agent-owned tool view](../../src-server/routes/chat/project-tool-context.ts)
+that preserves its prompt, memory, and hooks. An unavailable Agent recovered only
+with a temporary model and no approval hooks cannot receive Project additions;
+a Project with no additions keeps the existing recovery behavior.
+
+Knowledge MCP access retains the session owner's store permissions. Adding it
+because a Project store exists does not restrict it exclusively to that Project;
+other stores remain accessible only if the owner is allowed to use them. Project
+MCP choices are delivery defaults, not new approval or credential grants.
 
 ## Knowledge Library: general, read-only recall
 

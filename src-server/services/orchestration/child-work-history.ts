@@ -3,6 +3,7 @@ import {
   type ChildWorkDelta,
   childWorkDeltaFromLegacyClaudeTaskNotification,
   childWorkForReporter,
+  childWorkSettleFromItem,
   createEmptyChildWorkRegistry,
   forgetChildWorkReporter,
 } from '@kontourai/station-contracts/child-work';
@@ -48,26 +49,8 @@ export function settledChildWorkFromHistory(
   }
   const settlements: Array<Extract<ChildWorkDelta, { kind: 'settle' }>> = [];
   for (const item of childWorkForReporter(historical, threadId)) {
-    const {
-      producer,
-      reporterThreadId,
-      childId,
-      status,
-      result,
-      usage,
-      ...identity
-    } = item;
-    if (status === 'running') continue;
-    settlements.push({
-      kind: 'settle',
-      producer,
-      reporterThreadId,
-      childId,
-      status,
-      ...(result ? { result } : {}),
-      ...(usage ? { usage } : {}),
-      identity,
-    });
+    const settle = childWorkSettleFromItem(item);
+    if (settle) settlements.push(settle);
   }
   return { settlements, ...(lastReportAt ? { lastReportAt } : {}) };
 }

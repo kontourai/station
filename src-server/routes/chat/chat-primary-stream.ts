@@ -428,31 +428,43 @@ export function streamPrimaryAgentChat({
             }
           : undefined;
 
-      // Model-facing choke point (archive#685): ambient context joins the model
-      // input here only — every persistence seam above/below keeps `input`.
-      const ambientApplication = applyAmbientContextToInput(
-        input,
-        ambientContext,
-      );
-      const skillInput = skillExperienceContext
-        ? typeof ambientApplication.input === 'string'
-          ? `${skillExperienceContext}\n\n${ambientApplication.input}`
-          : [
-              {
-                role: 'user' as const,
-                parts: [
-                  { type: 'text' as const, text: skillExperienceContext },
-                ],
-              },
-              ...ambientApplication.input,
-            ]
-        : ambientApplication.input;
-      const combinedApplication = applyCombinedContextToInput(
-        skillInput,
-        injectContext,
-        effectiveRagContext,
-      );
-      const finalInput = combinedApplication.input;
+      // Model-facing choke point (archive#685): ambient, skill, project and
+      // retrieval context join the model input only. #3112: the agent is
+      // handed the authored `input` — the framework persists and titles from
+      // what it is handed — and applies this composition where the model
+      // reads the turn.
+      const composeModelInput = (authored: string | ChatMessage[]) => {
+        const ambientApplication = applyAmbientContextToInput(
+          authored,
+          ambientContext,
+        );
+        const skillInput = skillExperienceContext
+          ? typeof ambientApplication.input === 'string'
+            ? `${skillExperienceContext}\n\n${ambientApplication.input}`
+            : [
+                {
+                  role: 'user' as const,
+                  parts: [
+                    { type: 'text' as const, text: skillExperienceContext },
+                  ],
+                },
+                ...ambientApplication.input,
+              ]
+          : ambientApplication.input;
+        const combinedApplication = applyCombinedContextToInput(
+          skillInput,
+          injectContext,
+          effectiveRagContext,
+        );
+        return { ambientApplication, combinedApplication };
+      };
+      const { ambientApplication, combinedApplication } =
+        composeModelInput(input);
+      const streamOptions = {
+        ...operationContext,
+        composeModelInput: (authored: string | ChatMessage[]) =>
+          composeModelInput(authored).combinedApplication.input,
+      };
 
       // archive#2649 (review fix): the composers are the AUTHORITY for this
       // receipt, not the composition above. Both drop their whole block when
@@ -500,9 +512,9 @@ export function streamPrimaryAgentChat({
                 runtimeConfigurationLeaseIsCurrent(ctx, configurationLease) &&
                 ctx.activeAgents.get(slug) === nativeRuntimeAgent,
             },
-            () => agent.streamText(finalInput, operationContext),
+            () => agent.streamText(input as string, streamOptions),
           )
-        : await agent.streamText(finalInput, operationContext);
+        : await agent.streamText(input as string, streamOptions);
       requireCurrentRuntimeConfiguration(ctx, configurationLease);
       ctx.agentStatus.set(slug, 'running');
 

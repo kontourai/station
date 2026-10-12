@@ -1,0 +1,7 @@
+{
+  "revision": "ee3119c1df218b6f97008e26c5b4e21c1ee87b07",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Added the input_binding_model_change refusal; checked against continueDelegatedTask and the continue route mapping (400).","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/orchestration.ts","src-ui/src/components/attention/AttentionCard.tsx"]}
+  ]
+}

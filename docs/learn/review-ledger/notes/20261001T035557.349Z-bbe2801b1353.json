@@ -1,0 +1,7 @@
+{
+  "revision": "47499155aa2312d22441161d527cd4bbe3579128",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed advanced broker setup disclosure; saved route controls and trust/custody authority unchanged.","inputs":["docs/guides/connections.md"]}
+  ]
+}

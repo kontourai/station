@@ -1,0 +1,7 @@
+{
+  "revision": "be2ce137c752a3108459c55bcb88cc7228a96908",
+
+  "notes": [
+    {"path":"packages/contracts/README.md","note":"#3308: child-work.ts gained an optional usageProvisional item field set only by the reducer; README's claim that the package holds pure reducers (child-work) still holds. No prose change.","inputs":["packages/contracts/README.md","packages/contracts/src/child-work.ts"]}
+  ]
+}

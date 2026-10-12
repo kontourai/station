@@ -1,0 +1,7 @@
+{
+  "revision": "6dd2e6ccf902b6bf23b7408e76ab55ae4e6ef3fd",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Reviewed the merged documentation map after upstream integration: retained profile/usage and monitoring routing coexists with the upstream visual-skill and CI delivery reading routes. Resolved the competing document hashes by reviewing the combined bytes, not retaining either historical digest. Navigation labels and source ownership remain accurate; linked runtime and hosted journeys are not certified.","inputs":["docs/README.md"]}
+  ]
+}

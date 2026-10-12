@@ -26,6 +26,14 @@ Keep one published `@kontourai/station-sdk` package with distinct entry points:
 - `/client` remains the broader React-free Station API surface for compatibility
   and operations outside the Agent journey.
 
+Plugin UI command effects use the explicit
+[`/client/plugin-command-effects`](../../packages/sdk/src/client/plugin-command-effects.ts)
+subpath. The palette uses it to admit and settle its local effect with Station;
+that is host integration, not Agent work execution or a plug-in-owned grant.
+Station validates the installed declaration and caller scope, then owns
+withdrawal status until the browser document proves settlement. See the
+[HTTP contract](../reference/api.md#plugin-command-effects).
+
 The [Agent entry](../../packages/sdk/src/agent/index.ts) explicitly re-exports
 canonical clients and contract types. Each operation retains its explicit
 `apiBase` and per-call `ClientRequestOptions`. It must not capture a global

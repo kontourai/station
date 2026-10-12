@@ -1,0 +1,7 @@
+{
+  "revision": "913da0b4838c0c929420ce1a4de4f37e8efa14fb",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"workspace-surfaces/CONTEXT.md changed one claim (the Coding host's selection mode past the wide fold); the map's entry for that context, its name and scope, is unchanged. No prose change.","inputs":["docs/architecture/module-map.md","docs/contexts/workspace-surfaces/CONTEXT.md"]}
+  ]
+}

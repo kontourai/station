@@ -37,6 +37,7 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import {
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+  MODEL_NOT_ADVERTISED_CODE,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
   modelSelectionReceipt,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
@@ -85,6 +86,7 @@ import {
   ProviderTurnEndedError,
   type ProviderTurnStartResult,
   SendTurnRefusedError,
+  SessionStartRefusedError,
 } from '../adapter-shape.js';
 import { buildCliRuntimePrerequisites } from '../auth/cli-auth.js';
 import {
@@ -110,7 +112,7 @@ import {
   mapAcpDecisionToOutcome,
   mapAcpExtensionNotification,
   mapAcpSessionUpdate,
-  mapAcpStopReasonToFinishReason,
+  mapAcpStopReasonToTurnCompletion,
 } from './acp-adapter-events.js';
 import {
   type AcpToolServerSkip,
@@ -138,7 +140,10 @@ import {
   engineToolKind,
 } from './acp-tool-update-supervisor.js';
 import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
-import { mergeCapabilityDeliveryMetadata } from './capability-delivery-metadata.js';
+import {
+  assertExecutionOverrideDelivery,
+  mergeCapabilityDeliveryMetadata,
+} from './capability-delivery-metadata.js';
 import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
 
 /** Matches the `any`-typed logger threaded through the existing ACP substrate (acp-manager.ts, acp-connection.ts, ACPProcessOptions.logger). */
@@ -278,6 +283,19 @@ export function acpConnectionFingerprint(
     .slice(0, 16);
 }
 
+/**
+ * The directory a connection starts a session in when the session has none
+ * of its own: its configured `cwd`, tilde-expanded and resolved, else none
+ * (the adapter then prepares a Station-managed workspace). The one
+ * derivation, shared by the spawn below and by the dispatch scope check
+ * that must decide on the same directory before it (#2873).
+ */
+export function acpConnectionDefaultCwd(config: {
+  cwd?: string;
+}): string | undefined {
+  return config.cwd ? resolve(expandTilde(config.cwd)) : undefined;
+}
+
 export interface AcpAdapterOptions {
   getConnections: () => Promise<ACPConnectionConfig[]>;
   logger?: AcpLogger;
@@ -335,10 +353,17 @@ export interface AcpAdapterOptions {
     threadId: string,
     tenantExecutionContext?: TenantExecutionContext,
   ) => { url: string; token: string } | undefined;
+  mintStationKnowledgeMcpAuth?: (
+    threadId: string,
+    tenantExecutionContext?: TenantExecutionContext,
+  ) => { url: string; token: string } | undefined;
   /** Best-effort cleanup counterpart to `mintStationControlMcpAuth` — called
    * on ordinary session stop and on a failed start. Never required; a
    * missing closure just means the token lives out its bounded TTL. */
-  revokeStationControlMcpAuth?: (threadId: string) => void;
+  revokeStationControlMcpAuth?: (
+    threadId: string,
+    serverId?: 'station-control' | 'station-knowledge',
+  ) => void;
 }
 
 /** Last-known slash command surfaced by a live ACP session (aggregated across sessions in `getCommands()` — see Risks: no per-connection threadId param on the shared shape). */
@@ -730,9 +755,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     // `config.cwd` otherwise resolves against Station's own directory at spawn
     // time and is handed to `session/new` as a string the agent reads
     // differently.
-    const connectionCwd = config.cwd
-      ? resolve(expandTilde(config.cwd))
-      : undefined;
+    const connectionCwd = acpConnectionDefaultCwd(config);
     const cwd =
       input.cwd ||
       connectionCwd ||
@@ -999,11 +1022,33 @@ export class AcpAdapter implements ProviderAdapterShape {
       let passthroughMcpServers: Awaited<
         ReturnType<typeof resolveAcpPassthroughMcpServers>
       >['servers'] = [];
+      let stationKnowledgeAuth =
+        requestedToolServerIds?.includes('station-knowledge') &&
+        mcpHttp === true
+          ? this.options.mintStationKnowledgeMcpAuth?.(
+              input.threadId,
+              input.tenantExecutionContext,
+            )
+          : undefined;
+      const stationKnowledgeUnavailable = {
+        reason:
+          acpProcess.initResult == null || mcpHttp !== true
+            ? ('engine-capability-absent' as const)
+            : ('delivery-failed' as const),
+        detail:
+          acpProcess.initResult == null
+            ? 'no runtime MCP capability observation is available'
+            : mcpHttp !== true
+              ? 'the engine did not advertise HTTP MCP support'
+              : 'Knowledge session auth could not be minted',
+      };
       const capabilityUndelivered: CapabilityUndelivered[] = [];
       try {
         const resolved = await resolveAcpPassthroughMcpServers({
           toolServerIds: requestedToolServerIds,
           ...(stationControlAuth ? { stationControlAuth } : {}),
+          ...(stationKnowledgeAuth ? { stationKnowledgeAuth } : {}),
+          stationKnowledgeUnavailable,
           ...(stationControlUnavailable ? { stationControlUnavailable } : {}),
           resolveToolServer:
             agentToolServers !== undefined
@@ -1041,7 +1086,10 @@ export class AcpAdapter implements ProviderAdapterShape {
         // live until `stopSession` or the 12-hour TTL, and record WHY in
         // wording that cannot be mistaken for the secret-boundary refusal.
         if (stationControlAuth && !resolved.stationControlDelivered) {
-          this.options.revokeStationControlMcpAuth?.(input.threadId);
+          this.options.revokeStationControlMcpAuth?.(
+            input.threadId,
+            'station-control',
+          );
           stationControlAuth = undefined;
           // Delta-review finding (LOW-1): `not-found` short-circuits BEFORE
           // the identity branch, so "did not match the built-in identity"
@@ -1065,6 +1113,13 @@ export class AcpAdapter implements ProviderAdapterShape {
             `ACP connection '${config.id}': a station-control MCP credential was minted but not delivered (identity check failed); it has been revoked.`,
           );
         }
+        if (stationKnowledgeAuth && !resolved.stationKnowledgeDelivered) {
+          this.options.revokeStationControlMcpAuth?.(
+            input.threadId,
+            'station-knowledge',
+          );
+          stationKnowledgeAuth = undefined;
+        }
       } catch (error) {
         // A throw here means nothing was delivered, so a credential minted
         // above is now unpresentable exactly as in the reconciliation branch —
@@ -1076,6 +1131,11 @@ export class AcpAdapter implements ProviderAdapterShape {
           this.options.revokeStationControlMcpAuth?.(input.threadId);
           stationControlAuth = undefined;
         }
+        if (stationKnowledgeAuth)
+          this.options.revokeStationControlMcpAuth?.(
+            input.threadId,
+            'station-knowledge',
+          );
         logger.warn?.(
           `ACP connection '${config.id}': MCP passthrough resolution failed unexpectedly; continuing without passthrough tool servers.`,
           error,
@@ -1086,6 +1146,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           detail: errorMessage(error),
         });
       }
+      assertExecutionOverrideDelivery(input.metadata, capabilityUndelivered);
       for (const entry of capabilityUndelivered) {
         agentCapabilityUndelivered.add(1, {
           provider: this.provider,
@@ -1313,8 +1374,9 @@ export class AcpAdapter implements ProviderAdapterShape {
             sessionResult.configOptions,
           );
           if (!modelOption) {
-            throw new Error(
+            throw new SessionStartRefusedError(
               `ACP model option unavailable: connection '${config.id}' did not advertise a model configuration option for this session.`,
+              MODEL_NOT_ADVERTISED_CODE,
             );
           }
           if (
@@ -1322,8 +1384,9 @@ export class AcpAdapter implements ProviderAdapterShape {
               (option) => option.value === requestedModel,
             )
           ) {
-            throw new Error(
+            throw new SessionStartRefusedError(
               `ACP model value unsupported: connection '${config.id}' did not advertise '${requestedModel}' for this session.`,
+              MODEL_NOT_ADVERTISED_CODE,
             );
           }
           const response = await acpProcess.setConfigOption(
@@ -1425,7 +1488,14 @@ export class AcpAdapter implements ProviderAdapterShape {
 
       return session;
     } catch (error) {
-      const cancelled = error instanceof AcpSessionStartCancelledError;
+      // A Stop that landed while `session/new` was in flight ends the start
+      // as a stop whatever the engine then said: the user asked for it, so a
+      // refusal arriving afterwards is not reported as the model's.
+      const superseded =
+        error instanceof SessionStartRefusedError &&
+        !this.isCurrentGeneration(input.threadId, record.generation);
+      const cancelled =
+        error instanceof AcpSessionStartCancelledError || superseded;
       session.status = 'error';
       session.updatedAt = new Date().toISOString();
       // archive#1684: the session never started — a station-control MCP token
@@ -1447,6 +1517,38 @@ export class AcpAdapter implements ProviderAdapterShape {
             method: 'session.exited',
             sessionId: input.threadId,
             reason: 'stopped',
+          });
+        }
+        // `session.started` went out before `session/new` answered, so the
+        // service has bound this thread to this adapter. A refused start ends
+        // that session: say why, then end it, or the thread stays bound and
+        // the very retry the refusal invites fails with "Session already
+        // exists". `exitCode` is deliberately absent (no process observation):
+        // the cause is the `runtime.error`, which is what folds the lifecycle
+        // to `failed` with the engine's own words.
+        if (
+          error instanceof SessionStartRefusedError &&
+          !superseded &&
+          record.startedPublished
+        ) {
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId: input.threadId,
+            createdAt: new Date().toISOString(),
+            method: 'runtime.error',
+            severity: 'error',
+            code: error.code,
+            message: error.message,
+          });
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId: input.threadId,
+            createdAt: new Date().toISOString(),
+            method: 'session.exited',
+            sessionId: input.threadId,
+            reason: 'start-refused',
           });
         }
       } catch (cleanupError) {
@@ -2556,7 +2658,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           createdAt: new Date().toISOString(),
           turnId,
           method: 'turn.completed',
-          finishReason: mapAcpStopReasonToFinishReason(response.stopReason),
+          ...mapAcpStopReasonToTurnCompletion(response.stopReason),
         });
         record.session.status = 'ready';
         record.session.updatedAt = new Date().toISOString();

@@ -1,0 +1,7 @@
+{
+  "revision": "cc6234bec499c018d3aba9e91fc14958105836f0",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"The shipped documentation bundle was regenerated with npm run docs:mcp:generate; the only prose change in it is the new module-map paragraph on conditional predecessor retirement. The document's claims about how the bundle is generated and checked are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

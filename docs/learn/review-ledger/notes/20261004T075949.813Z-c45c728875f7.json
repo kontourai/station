@@ -1,0 +1,7 @@
+{
+  "revision": "b95428d4fbb50b593eed0b6dd8abc821c915f22f",
+
+  "notes": [
+    {"path":"docs/design/session-tape-replay.md","note":"Re-checked against #3157: active-chats-state.ts gains only the session-scoped, non-persisted usageLimitStopped field (the serialized active-chat shape is unchanged, and hydration never reads it); tape limits, replay registration, persistence exclusion and fold fences are unaffected.","inputs":["docs/design/session-tape-replay.md","src-ui/src/contexts/active-chats-state.ts"]}
+  ]
+}

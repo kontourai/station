@@ -1,0 +1,7 @@
+{
+  "revision": "8202d56be09874cfb95fe36855eb3b837c537723",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"No change to what this document claims: src-server/services/orchestration/orchestration-service.ts changed only to make the module-private title bound helper non-exported (code-health gate); behaviour is identical.","inputs":["docs/user/getting-started.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

@@ -2,7 +2,13 @@
  * @vitest-environment jsdom
  */
 
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   clipboardAbsent,
@@ -59,6 +65,7 @@ vi.mock('../../../providers/context/CodingFilesContextProvider', () => ({
   }),
 }));
 
+import { PaneHeadSlotsContext } from '../../../workspace-panes/PaneHeadSlots';
 import { activeTerminalWriter } from '../activeTerminal';
 import { FileTreePanel } from '../FileTreePanel';
 
@@ -324,5 +331,89 @@ describe('FileTreePanel', () => {
     fireEvent.contextMenu(screen.getByText('app.ts'));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Send to terminal' }));
     expect(screen.getByText('No active terminal')).toBeTruthy();
+  });
+});
+
+describe('FileTreePanel in a host that draws its head (#3046 round)', () => {
+  test('renders no title row of its own and puts its one control into the head', async () => {
+    const trailing = document.createElement('div');
+    document.body.append(trailing);
+    try {
+      const { container } = render(
+        <PaneHeadSlotsContext.Provider value={{ leading: null, trailing }}>
+          <FileTreePanel
+            projectSlug="demo"
+            workingDir="/workspace"
+            onFileSelect={vi.fn()}
+          />
+        </PaneHeadSlotsContext.Provider>,
+      );
+      expect(container.querySelector('.file-tree-panel__header')).toBeNull();
+      expect(container.textContent).not.toContain('Files');
+      expect(
+        within(trailing).getByRole('button', { name: 'New file or folder' }),
+      ).toBeTruthy();
+    } finally {
+      trailing.remove();
+    }
+  });
+
+  test('a row’s name carries the full name as its title, for the ellipsis', () => {
+    filesState.data = [
+      {
+        name: 'src',
+        path: 'src',
+        type: 'directory',
+        children: [
+          {
+            name: 'a-very-long-component-file-name-that-will-not-fit.tsx',
+            path: 'src/a-very-long-component-file-name-that-will-not-fit.tsx',
+            type: 'file',
+          },
+        ],
+      },
+    ];
+    render(
+      <FileTreePanel
+        projectSlug="demo"
+        workingDir="/workspace"
+        onFileSelect={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByTitle(
+        'a-very-long-component-file-name-that-will-not-fit.tsx',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByTitle('src')).toBeTruthy();
+  });
+
+  test('the filter field is named, not placeholder-only', () => {
+    render(
+      <FileTreePanel
+        projectSlug="demo"
+        workingDir="/workspace"
+        onFileSelect={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole('searchbox', { name: 'Filter files' }),
+    ).toBeTruthy();
+  });
+
+  test('on its own it keeps its title row', () => {
+    const { container } = render(
+      <FileTreePanel
+        projectSlug="demo"
+        workingDir="/workspace"
+        onFileSelect={vi.fn()}
+      />,
+    );
+    expect(container.querySelector('.file-tree-panel__header')).not.toBeNull();
+    expect(
+      within(container as HTMLElement).getByRole('button', {
+        name: 'New file or folder',
+      }),
+    ).toBeTruthy();
   });
 });

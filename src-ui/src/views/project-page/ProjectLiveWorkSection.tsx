@@ -9,8 +9,7 @@ import {
   useShowSurface,
   useShowSurfacePage,
 } from '../../contexts/useShowSurface';
-import { relativeTimeAgo } from '../../utils/relativeTime';
-import { sessionStatusWord } from '../../utils/session-state';
+import { relativeTime } from '../../utils/relativeTime';
 import {
   type SessionIconAgent,
   sessionIconAgent,
@@ -24,11 +23,13 @@ import {
 } from '../../workspace-panes/ProjectTaskRoomContext';
 import {
   focusChatEventDetailForAction,
+  isPeerDelegationRecord,
   resolveConversationOpenAction,
 } from '../home/work-item-open-policy';
-import type {
-  SessionLane,
-  SessionLaneId,
+import {
+  type SessionLane,
+  type SessionLaneId,
+  sessionWorkStatus,
 } from '../sessions/sessions-lane-model';
 import { projectLiveLanes } from './project-live-work-model';
 
@@ -49,7 +50,7 @@ function liveWorkMeta(
   const parts: string[] = [ownerName];
   if (session.delegation) parts.push(sessionKindLabel(session));
   const recency = sessionRecency(session);
-  if (recency > 0) parts.push(relativeTimeAgo(recency, now));
+  if (recency > 0) parts.push(relativeTime(recency, now));
   return parts.join(' · ');
 }
 
@@ -63,6 +64,18 @@ const LANE_CALL_TO_ACTION: Record<string, string> = {
   running: 'Open',
   idle: 'Open',
 };
+
+/**
+ * A paired Station's record is answered on that Station, never here, so its
+ * Needs-you row invites opening (Activity), not replying.
+ */
+function liveWorkCallToAction(
+  session: OrchestrationSessionSummary,
+  laneId: string,
+): string {
+  if (isPeerDelegationRecord(session)) return 'Open';
+  return LANE_CALL_TO_ACTION[laneId] ?? 'Open';
+}
 
 /**
  * What is live in this project right now, at the top of its own page
@@ -145,6 +158,7 @@ export function ProjectLiveWorkSection({ slug }: { slug: string }) {
         controlMode: session.controlMode,
         projectSlug: session.projectSlug,
         model: session.model,
+        delegationEnvironmentKind: session.delegation?.environmentKind,
       }),
     );
     if (detail) openChatsStore.focus(detail);
@@ -250,6 +264,7 @@ function SessionLiveWorkRow({
   laneId,
   open,
 }: ProjectLiveWorkRowProps) {
+  const status = sessionWorkStatus(session, useAgents(), now);
   return (
     <button
       type="button"
@@ -270,11 +285,9 @@ function SessionLiveWorkRow({
         </span>
       </span>
       <span className="project-page__live-work-trailing">
-        <span className="project-page__live-work-state">
-          {sessionStatusWord(session)}
-        </span>
+        <span className="project-page__live-work-state">{status.word}</span>
         <span className="project-page__live-work-cta" aria-hidden="true">
-          {LANE_CALL_TO_ACTION[laneId] ?? 'Open'}
+          {liveWorkCallToAction(session, laneId)}
         </span>
       </span>
     </button>
@@ -289,6 +302,7 @@ function TaskRoomLiveWorkRow({
   open,
   taskId,
 }: ProjectLiveWorkRowProps & { taskId: string }) {
+  const status = sessionWorkStatus(session, useAgents(), now);
   const room = useProjectTaskRoomContext(taskId);
   const command = useCommandProjectTaskRoomLiveMutation(taskId);
   const target = room?.live?.participants.find(
@@ -340,11 +354,9 @@ function TaskRoomLiveWorkRow({
         <span className="project-page__live-work-working-on">{presence}</span>
       </span>
       <span className="project-page__live-work-trailing">
-        <span className="project-page__live-work-state">
-          {sessionStatusWord(session)}
-        </span>
+        <span className="project-page__live-work-state">{status.word}</span>
         <span className="project-page__live-work-cta" aria-hidden="true">
-          {LANE_CALL_TO_ACTION[laneId] ?? 'Open'}
+          {liveWorkCallToAction(session, laneId)}
         </span>
       </span>
       <span className="project-page__live-work-controls project-page__live-work-row-actions">
@@ -367,9 +379,13 @@ function TaskRoomLiveWorkRow({
         <button type="button" onClick={() => open(session)}>
           Jump in
         </button>
-        <button type="button" onClick={() => open(session)}>
-          Chat
-        </button>
+        {/* A paired Station's record has no chat here: its conversation is
+            the peer's. "Jump in" opens its Activity detail instead. */}
+        {!isPeerDelegationRecord(session) && (
+          <button type="button" onClick={() => open(session)}>
+            Chat
+          </button>
+        )}
       </span>
     </article>
   );

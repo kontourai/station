@@ -1,0 +1,7 @@
+{
+  "revision": "ee3119c1df218b6f97008e26c5b4e21c1ee87b07",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"No prose change: it makes no claim about bound delegated answers or the paired-Station answer box; session-api.md only adds the model-change refusal sentence; the orchestration routes only map that refusal to 400.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md","src-server/routes/orchestration/orchestration.ts"]}
+  ]
+}

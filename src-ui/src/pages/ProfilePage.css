@@ -3,109 +3,56 @@
 .profile-container {
   display: flex;
   flex-direction: column;
-  gap: 1.75rem;
+  gap: var(--k-space-4);
 }
 
 /* ── Card base ── */
 
 .profile-card {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 12px;
-  padding: 2rem;
+  background: var(--k-panel);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  padding: var(--k-space-5);
   position: relative;
   overflow: hidden;
   transition: border-color var(--motion-slow) var(--ease-standard);
 }
 
-.profile-card:hover {
-  border-color: var(--accent-primary);
-}
-
-/* Top hero card gets the accent treatment */
-.profile-container > .profile-card:first-child {
-  padding: 2.5rem;
-  background: linear-gradient(
-    135deg,
-    var(--bg-secondary) 0%,
-    var(--bg-tertiary) 100%
-  );
-  border: 1px solid var(--border-primary);
-  border-radius: 12px;
-  box-shadow: 0 16px 48px -12px rgba(0, 0, 0, 0.25);
-}
-
-.profile-container > .profile-card:first-child::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--accent-primary);
-  opacity: 0.8;
+.profile-hero-content {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--k-space-5);
 }
 
 .profile-card__edit-btn {
   position: absolute;
-  top: 16px;
-  right: 16px;
-  z-index: 2;
-}
-
-/* ── Hero section ── */
-
-.profile-hero-content {
-  display: flex;
-  align-items: flex-start;
-  gap: 2rem;
-  position: relative;
-  z-index: 1;
+  top: var(--k-space-4);
+  right: var(--k-space-4);
 }
 
 .profile-card__avatar {
-  font-size: 3rem;
-  border-radius: 50%;
   flex-shrink: 0;
-  position: relative;
-  box-shadow:
-    0 0 0 3px var(--bg-secondary),
-    0 0 0 5px color-mix(in srgb, var(--accent-primary) 25%, transparent),
-    0 8px 24px rgba(0, 0, 0, 0.2);
-  transition:
-    transform var(--motion-slow) var(--ease-emphasized),
-    box-shadow var(--motion-slow) var(--ease-standard);
-}
-
-.profile-card:hover .profile-card__avatar {
-  transform: scale(1.06);
-  box-shadow:
-    0 0 0 3px var(--bg-secondary),
-    0 0 0 5px color-mix(in srgb, var(--accent-primary) 35%, transparent),
-    0 12px 32px rgba(0, 0, 0, 0.25);
 }
 
 .profile-hero-info {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--k-space-3);
   min-width: 0;
   flex: 1;
 }
 
 .profile-hero-title {
-  font-size: 1.75rem;
-  font-weight: 700;
+  font-size: var(--k-text-xl);
+  font-weight: 600;
   margin: 0;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
+  line-height: var(--k-leading-tight);
 }
 
 .profile-hero-subtitle {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
   margin: 0;
-  line-height: 1.5;
 }
 
 /* ── Card details ── */
@@ -251,14 +198,8 @@
 .profile-usage-graph__bar {
   width: 100%;
   min-height: 2px;
-  border-radius: 999px;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--accent-primary) 100%, white 8%) 0%,
-    color-mix(in srgb, var(--accent-primary) 70%, var(--bg-tertiary)) 100%
-  );
-  box-shadow: 0 10px 24px -14px
-    color-mix(in srgb, var(--accent-primary) 70%, transparent);
+  border-radius: var(--k-radius-control);
+  background: var(--k-brand);
 }
 
 .profile-usage-graph__label {
@@ -330,61 +271,87 @@
   border: 1px solid var(--border-primary);
 }
 
-/* ── Stats grid ── */
-
-.profile-stats-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
-}
-
-.profile-stats-grid > .profile-card {
-  padding: 0;
-  background: var(--bg-secondary);
-  transition:
-    transform var(--motion-slow) var(--ease-emphasized),
-    border-color var(--motion-slow) var(--ease-standard),
-    box-shadow var(--motion-slow) var(--ease-standard);
-}
-
-.profile-stats-grid > .profile-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.2);
-}
-
-/* ── Timeline ── */
-
-.profile-timeline {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 12px;
-  padding: 2rem;
-  position: relative;
-  transition: border-color var(--motion-slow) var(--ease-standard);
-}
-
-.profile-timeline:hover {
-  border-color: var(--accent-primary);
-}
-
-.profile-timeline-title {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin: 0 0 1.25rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
 /* ── Responsive ── */
 
 .profile-usage-status {
   display: flex;
-  align-items: start;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--k-space-4);
+  gap: var(--k-space-3);
   flex-wrap: wrap;
   color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.profile-usage-status > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-3);
+}
+
+.profile-usage-status button {
+  min-height: 44px;
+}
+
+.profile-disclosure {
+  border-block-start: 1px solid var(--k-line);
+  color: var(--k-text-muted);
+}
+
+.profile-disclosure > summary {
+  min-height: 44px;
+  align-content: center;
+  cursor: pointer;
+  color: var(--k-text);
+  font-size: var(--k-text-md);
+}
+
+.profile-disclosure > summary span {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  margin-inline-start: var(--k-space-3);
+}
+
+.profile-disclosure > summary:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.profile-disclosure[open] > summary {
+  margin-bottom: var(--k-space-3);
+}
+
+.profile-disclosure--inline {
+  border: 0;
+  font-size: var(--k-text-sm);
+}
+
+.profile-disclosure--inline > summary {
+  font-size: var(--k-text-sm);
+}
+
+.profile-usage-summary {
+  padding: 0;
+}
+
+.profile-usage-summary .usage-stats-cards {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.profile-page .usage-stat-card {
+  background: none;
+  border: 0;
+  border-inline-start: 1px solid var(--k-line);
+  border-radius: 0;
+  padding: var(--k-space-3);
+}
+
+.profile-page .usage-stat-card:hover {
+  transform: none;
+}
+
+.profile-page .usage-stat-icon {
+  display: none;
 }
 
 .profile-people-list {
@@ -414,6 +381,10 @@
 }
 
 @media (max-width: 700px) {
+  .profile-usage-summary .usage-stats-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .profile-hero-content {
     flex-direction: column;
     align-items: center;

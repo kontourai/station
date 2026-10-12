@@ -1,0 +1,11 @@
+{
+  "revision": "044f5967056ad2f1791c2d51290bb7e8149d63df",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"After 9b43a6e65e (one in-tab store for chip choices): checked useStartSelection (agent = this tab's choice, else remembered, else default; Model choice with provider/runtime options per context+binding+agent shared by both surfaces; Reset clears the shared choice and the remembered Model) and NewChatModal's model-gone picker now using the same store. Added that a choice holds on both surfaces for the tab, over a Model another chat later runs on, until changed or Reset. The remembered-for-next-session sentences remain accurate (memory still written on each choice). Also checked Home's start for a project now waits for the dock's project list.","inputs":["docs/user/getting-started.md","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/hooks/useStartSelection.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"After 9b43a6e65e: NewChatModal now reads/writes chip choices through the shared in-tab store and waits for its own project list before refusing Home's project. The section's claims (chips; choices remembered: Agent per context, Model per binding, project as binding; Home's exact selection started through the same path) still hold; no prose change.","inputs":["docs/design/chat-composer.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"After 9b43a6e65e: NewChatModal changes are confined to chip-choice storage and the project-list wait; the setup helper and setup-return claims are unaffected. No prose change.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

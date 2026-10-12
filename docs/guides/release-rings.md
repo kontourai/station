@@ -15,8 +15,9 @@ release overlays. Promotion never edits source, moves a tag, or relabels a
 preview artifact.
 
 Nightly is a separate, opt-in signed-public-manifest path:
-`STATION_CHANNEL=nightly` requires `STATION_INSTALL_PUBLIC_MANIFEST_URL`.
-The authenticated GitHub-release path serves Stable and Beta only. See
+`STATION_CHANNEL=nightly` installs from the rolling `portable-nightly`
+manifest unless `STATION_INSTALL_PUBLIC_MANIFEST_URL` names another signed
+manifest. The authenticated GitHub-release path serves Stable and Beta only. See
 [channel identity and coexistence](release-channel-ports.md) for Nightly's
 home/port admission and the distinction between the public manifest signature
 and a signed Git tag. Publication remains separate from installer support.
@@ -31,7 +32,7 @@ The Stable/preview source-archive path uses these three installer inputs:
 
 The tag-triggered release workflow produces those inputs and uploads
 them only after the full native release inventory validates. It creates a draft;
-the protected manual `Publish Station release` workflow revalidates that draft
+the protected manual `Release: Publish` workflow revalidates that draft
 and is the only workflow allowed to publish it. The tag workflow identity and
 the release tag must name the same Git ref.
 
@@ -161,7 +162,9 @@ The locations come from one base,
 manifest is `v<version>/station-portable-<ring>-manifest.json`. The rolling
 pointers are `portable-stable/station-portable-stable-manifest.json` and
 `portable-preview/station-portable-preview-manifest.json`. Nightly's
-`portable-nightly` pointer derives from the same base. Stable and preview
+`portable-nightly` pointer derives from the same base, and
+`scripts/install-script-generated.mjs` projects it into `install.sh` and
+`install.ps1` as the Nightly default. Stable and preview
 versions order numerically on `X.Y.Z` and `X.Y.Z-preview.N`.
 
 Nothing has been published this way yet. These remain owner actions: add the
@@ -185,8 +188,8 @@ git tag -s v0.2.0-preview.1 "$reviewed_sha" -m 'Station v0.2.0-preview.1'
 git push origin v0.2.0-preview.1
 ```
 
-Wait for `Stage Station release`. Inspect its draft and inventory, then approve
-`Publish Station release` for that tag. Confirm that the manual workflow
+Wait for `Release: Stage`. Inspect its draft and inventory, then approve
+`Release: Publish` for that tag. Confirm that the manual workflow
 published a prerelease and verify each downloaded input independently:
 
 ```sh

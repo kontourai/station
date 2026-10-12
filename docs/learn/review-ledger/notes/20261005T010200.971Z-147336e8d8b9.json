@@ -1,0 +1,7 @@
+{
+  "revision": "27938157888908c40337d443c3b0cc6795ae8212",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Re-checked after the #3288 fix round: the doc still makes no claim about transcript history loading or the Earlier messages control. ChatMessageList.tsx now ends scroll-load suppression on a settled layout or reader input and resets per chat; none of the bridge/block claims here depend on it. Other lanes' deltas in that file were not reviewed here.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

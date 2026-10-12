@@ -64,19 +64,22 @@ import { Header } from '../components/header/Header';
  * tab stops for one destination).
  */
 describe('Header chrome accessibility', () => {
-  test('exactly one home control: the wordmark is a labelled link, the logo is not a tab stop', () => {
+  test('exactly one home control: the logo is the labelled link, the wordmark is not a tab stop', () => {
     breadcrumb = null;
     productName = 'Station';
     render(<Header onToggleSettings={vi.fn()} onNavigate={onNavigate} />);
 
+    // The wordmark can wrap out of view on a narrow row (a hidden tab stop
+    // would be invisible focus), so the logo - always visible - is the link.
     const home = screen.getByRole('link', { name: 'Station home' });
-    expect(home.textContent).toBe('Station');
+    expect(home).toBe(document.querySelector('.app-toolbar__logo'));
+    expect(screen.getAllByRole('link', { name: /home$/ })).toHaveLength(1);
 
-    // The decorative img (alt="") is a mouse convenience for the same
-    // destination — a role/tabindex on it would duplicate the tab stop.
-    const logo = document.querySelector('.app-toolbar__logo') as HTMLElement;
-    expect(logo.getAttribute('role')).toBeNull();
-    expect(logo.getAttribute('tabindex')).toBeNull();
+    const brand = document.querySelector('.app-toolbar__brand') as HTMLElement;
+    expect(brand.textContent).toBe('Station');
+    expect(brand.getAttribute('aria-hidden')).toBe('true');
+    expect(brand.getAttribute('role')).toBeNull();
+    expect(brand.getAttribute('tabindex')).toBeNull();
 
     fireEvent.keyDown(home, { key: 'Enter' });
     expect(goHome).toHaveBeenCalledTimes(1);
@@ -99,9 +102,12 @@ describe('Header chrome accessibility', () => {
       productName = name;
       render(<Header onToggleSettings={vi.fn()} onNavigate={onNavigate} />);
 
-      expect(
-        screen.getByRole('link', { name: `${name} home` }).textContent,
-      ).toBe(name);
+      expect(screen.getByRole('link', { name: `${name} home` })).toBe(
+        document.querySelector('.app-toolbar__logo'),
+      );
+      expect(document.querySelector('.app-toolbar__brand')?.textContent).toBe(
+        name,
+      );
     },
   );
 

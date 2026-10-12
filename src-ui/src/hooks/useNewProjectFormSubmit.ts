@@ -1,4 +1,5 @@
 import type { FormEvent } from 'react';
+import { projectIconInputProblem } from '../components/project-icon/ProjectIconPicker';
 import type { useNewProjectModalState } from './useNewProjectModalState';
 
 type NewProjectModalState = ReturnType<typeof useNewProjectModalState>;
@@ -38,11 +39,17 @@ export function useNewProjectFormSubmit(state: NewProjectModalState) {
   // it; vetoing on that would block a legitimate name for minutes without ever
   // attempting the POST, which is the only authority. The cached notice warns;
   // submission re-checks against the server and only then refuses.
+  //
+  // The icon is the one client-side veto, and it is not a guess: it is the
+  // contracts rule the create route applies (`projectIconProblem`), shown
+  // inline under the field, so Create cannot send a value the server will
+  // answer with a bare "Validation failed".
   return {
     canSubmit:
       Boolean(resolvedName) &&
       !submission.directoryError &&
-      !submission.slugError,
+      !submission.slugError &&
+      !projectIconInputProblem(draft.icon.trim()),
     submit,
   };
 }

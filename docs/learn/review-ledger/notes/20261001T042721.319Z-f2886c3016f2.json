@@ -1,0 +1,7 @@
+{
+  "revision": "650eea473959bfef27bbb9a3418e035b3f5f3de1",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"approvalHandlers.ts and its test: an answered request no longer counts as waiting on the user, and a request that opens again under a previously answered id is taken off the answered list; grant labels, grant scope and the answer sent to the engine are unchanged, so the grant and delivery claims here still hold.","inputs":["docs/conformance/tool-policy-delivery.md"]}
+  ]
+}

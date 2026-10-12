@@ -12,10 +12,10 @@ describe('project-page utils', () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-01-02T12:00:00Z'));
 
-    expect(timeAgo('2026-01-02T11:59:40Z')).toBe('just now');
-    expect(timeAgo('2026-01-02T11:30:00Z')).toBe('30m ago');
-    expect(timeAgo('2026-01-02T09:00:00Z')).toBe('3h ago');
-    expect(timeAgo('2025-12-30T12:00:00Z')).toBe('3d ago');
+    expect(timeAgo('2026-01-02T11:59:40Z')).toBe('now');
+    expect(timeAgo('2026-01-02T11:30:00Z')).toBe('30m');
+    expect(timeAgo('2026-01-02T09:00:00Z')).toBe('3h');
+    expect(timeAgo('2025-12-30T12:00:00Z')).toBe('3d');
 
     vi.useRealTimers();
   });

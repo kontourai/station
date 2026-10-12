@@ -1,0 +1,7 @@
+{
+  "revision": "c7dcc1ff793055c5bc1161b9a7db519cfb9d6e96",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"#3071: added that openRequestIds and pendingReview leave out a request whose own turn was aborted while it was open. Checked against the openRequestIds filter in buildOrchestrationSessionSummary and pendingReviewFromLog in projectSessionLifecycle; executed request-turn-settlement.test.ts. The changes to orchestration-session-state.ts and session-lifecycle-service.ts touch no other claim on this page (lifecycle attribution link, input-reply context); those were not re-reviewed.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

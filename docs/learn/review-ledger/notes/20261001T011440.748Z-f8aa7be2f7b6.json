@@ -1,0 +1,7 @@
+{
+  "revision": "582079a481015c8aecbbc266222ed1d3b83b4aa2",
+
+  "notes": [
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed the sole supporting-source delta: grouped account fixtures now expose stopStation: fixture.stop while retaining stop as whole-group cleanup. The native protected Project fixture uses the ungrouped startRelayAccountStation API, so its composition, direct loopback bootstrap, Keychain/IPC boundaries and retained a612b6df4 receipt remain unchanged. No native behavior rerun or expanded platform, onboarding, signed release or remote qualification is claimed.","inputs":["docs/guides/native-shell-verification.md"]}
+  ]
+}

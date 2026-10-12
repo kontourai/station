@@ -1,0 +1,9 @@
+{
+  "revision": "87f459c5c2c141b0cccd82e9e37819d2e854d7a5",
+
+  "notes": [
+    {"path":"docs/design/session-tape-replay.md","note":"Final delta review: Biome reformatted active-chats-state and queue tests without changing their AST behavior. Confirmed pending native input retires by stable ID before unlock, while the list owns no receipt deletion. Existing replay event folding, side-effect fence and queue/native distinction remain unchanged; prior owner tests and their execution limits are retained.","inputs":["docs/design/session-tape-replay.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Final source-byte review after formatting: queue recovery and its owner tests were formatted only; pending native receipt retirement remains atomic by stable ID before unlock. No composer geometry, keyboard, capability routing, activity semantics or persistent state transition changed in this formatting pass. Prior browser/device and executed owner tests retain their original scope.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

@@ -32,6 +32,22 @@ export class SessionTurnStartIndeterminateError extends Error {
 }
 
 /**
+ * A lifecycle transition the boundary refused because a turn owns the Session
+ * (`active-turn`) or another claim does (`busy`). Distinct from a failure of
+ * the transition's own operation, which this never wraps.
+ */
+export class SessionLifecycleClaimRefusedError extends Error {
+  readonly name = 'SessionLifecycleClaimRefusedError';
+
+  constructor(
+    readonly reason: 'active-turn' | 'busy',
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+/**
  * Owns local ordering and composes the durable provider boundary for one
  * orchestration thread. Distinct provider starts are serialized, while a
  * deduplicated caller can still join the winning dispatch outside this seam.
@@ -127,13 +143,17 @@ export class SessionExecutionCoordinator {
         threadId,
         new Date().toISOString(),
       );
-      if (claimed.kind !== 'owner') {
-        throw new Error(
+      if (claimed.kind === 'active-turn' || claimed.kind === 'busy') {
+        throw new SessionLifecycleClaimRefusedError(
+          claimed.kind,
           claimed.kind === 'active-turn'
             ? `Session has an active turn: ${threadId}`
-            : claimed.kind === 'busy'
-              ? `Session lifecycle transition is already in progress: ${threadId}`
-              : 'Session lifecycle coordination is temporarily unavailable.',
+            : `Session lifecycle transition is already in progress: ${threadId}`,
+        );
+      }
+      if (claimed.kind !== 'owner') {
+        throw new Error(
+          'Session lifecycle coordination is temporarily unavailable.',
         );
       }
       owned = claimed;

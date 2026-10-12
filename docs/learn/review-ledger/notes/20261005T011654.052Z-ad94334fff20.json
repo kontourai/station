@@ -1,0 +1,7 @@
+{
+  "revision": "a821f33f3a481a5d8615002f78a21d97bed7df63",
+
+  "notes": [
+    {"path":"docs/guides/store-entry.md","note":"release-workflow.test.ts only adds scripts/lib/bounded-capture.mjs to the pinned build-android.yml push path filter (#3175); this guide states no path list and its trigger and release-topology claims are unchanged.","inputs":["docs/guides/store-entry.md","scripts/__tests__/release-workflow.test.ts"]}
+  ]
+}

@@ -146,8 +146,10 @@ from `POST /api/plugins/preview`, so a caller can preview, echo the digest and
 the permission set into `/install`, and install with no operator in the loop.
 That is not only browser-resident plugin code — a server-side agent with a
 shell tool, a paired device, and an exported CLI credential all qualify, and
-none of them needs a browser. Nothing in an HTTP request can attest that a
-person answered. What the gate is worth is that the product's own path is now
+none of them needs a browser. (A paired device additionally needs the
+operator's `coding:exec` grant since the install, update and recover routes took
+the command-authority check; the operator's own credential and a shell are
+unchanged.) Nothing in an HTTP request can attest that a person answered. What the gate is worth is that the product's own path is now
 honest, and that an install which skipped the question is distinguishable from
 one that did not.
 

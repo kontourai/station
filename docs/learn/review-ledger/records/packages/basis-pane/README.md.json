@@ -9,30 +9,28 @@
 
   "limits": "No full protected-reader/server lifecycle audit, live MCP host, provider execution, physical native display, accessibility/visual proof or public package release. Protected authority belongs to the host; package source and tests are not grants.",
 
-  "document": {"digest":"83177b816737b1d535d7517bedde776aa9f593694ce80ac9c534193620f12134","revision":"3d607908cd1b34cbb6f3ac4331150c9e1080477f"},
-
   "sources": [
-    {"path":"packages/basis-pane/package.json","digest":"0c26a61c2ff974ff5566187e5e692bd1d0242c03dd59c9e6efd4421587372cee","revision":"1e5f63186142dd36fcb720deb7660808dbf2f56b"},
+    "packages/basis-pane/package.json",
 
-    {"path":"packages/basis-pane/src/StationBasisPane.tsx","digest":"92d84a832150d68a8a98ed2cb4ea6d2f190be5da9d017b8df34c6add4b302a7f","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
+    "packages/basis-pane/src/StationBasisPane.tsx",
 
-    {"path":"packages/basis-pane/src/index.ts","digest":"90133677d78de04140686d22f413c5b417d7bc150cd57c6f7278623644d21196","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
+    "packages/basis-pane/src/index.ts",
 
-    {"path":"packages/basis-pane/src/session-inventory-mcp-app.browser.ts","digest":"3dd0e18c9a433d94a9c209303890c8f0574a1980d33dedbd9a2bec4c98308ca3","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
+    "packages/basis-pane/src/session-inventory-mcp-app.browser.ts",
 
-    {"path":"packages/basis-pane/src/session-inventory-mcp-app.ts","digest":"694d3ff3b4bcd4f88a310c185edcfaabb42b14ac3fe170e4c14204ab07c31966","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
+    "packages/basis-pane/src/session-inventory-mcp-app.ts",
 
-    {"path":"packages/basis-pane/src/session-inventory-view.ts","digest":"1d4ec312f4812cfc38aa5671b4af632cc3d75d6e156055b1b51b1f092b091af2","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
+    "packages/basis-pane/src/session-inventory-view.ts",
 
-    {"path":"packages/basis-pane/src/task-basis-mcp-app.ts","digest":"9b629eef823a456c9128c2d356049dbd2cafeb324fa098c3188bc00337282018","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
+    "packages/basis-pane/src/task-basis-mcp-app.ts",
 
-    {"path":"packages/basis-pane/src/workspace-basis-pane.ts","digest":"1800f79cced4103eec380529e471f868c4d3a007d278daae2a07c482166b0288","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
+    "packages/basis-pane/src/workspace-basis-pane.ts",
 
-    {"path":"packages/contracts/src/task-basis-mcp.ts","digest":"e441fa4b24dc096a453b6641b061477a87c0ec9750478f5edecc1b77245c63e9","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
+    "packages/contracts/src/task-basis-mcp.ts",
 
-    {"path":"src-server/tools/station-control-session-inventory-tools.ts","digest":"206be67fbdc13c6142a7d813a0e7c9ff44ca742ac887a8df2b41486687146e4e","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"},
+    "src-server/tools/station-control-session-inventory-tools.ts",
 
-    {"path":"src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx","digest":"f3b6189f6366ce62062c91c9fe5f5730b33ae21dde0386c036d4f6cb02739018","revision":"57980be1afd64ff365472c005a13fce3d5c76ced"}
+    "src-ui/src/workspace-panes/ConnectedStationBasisPane.tsx"
   ],
 
   "checks": [

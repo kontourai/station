@@ -30,6 +30,26 @@ Do not apply that override to make a disposable recipe work on a real home.
 
 ## Docker Production
 
+`station service run` claims the home atomically before starting Station, even
+on a fresh home without `service install`. It records the supervisor's PID and
+birth fingerprint as a service owner. If Desktop or another live service holds
+the home, the supervisor stays alive without starting Station and polls with
+backoff capped at 30 seconds; it starts after the owner is gone. Lost ownership
+at readiness or on an existing five-second health tick stops and reaps Station
+before returning to that wait. Each tick checks the service id, type, PID and
+birth without renewing the claim. Only a successful read showing a missing or
+different owner triggers recovery; an unreadable tick read keeps Station
+running and retries next tick. Startup claim read errors still exit nonzero.
+Recovery waits for a live replacement service even at the same registry id.
+Retraction clears only the supervisor's own PID and birth. Existing Dockerfile
+and Compose commands need no policy-registration step.
+
+Direct `command-station.js` launches remain unfenced and can serve the same
+writable home as a registry claimant. When bound to `0.0.0.0`, they are reachable
+through container networking and any published or proxied ports. The recipes
+and historical qualifications below are not current image or cloud proof.
+
+
 The default Compose mapping exposes port 3000. The lifecycle UI proxy serves
 the UI, HTTP API, event streams, identity and Device pairing through that origin.
 Dedicated terminal and voice listeners are separate; this proxy has no WebSocket
@@ -251,6 +271,13 @@ origin, scope and instance checks when designing that route.
 Station's browser-facing SSE routes send `X-Accel-Buffering: no` so nginx-family
 proxies deliver chat tokens and operational events immediately. Preserve that
 response header.
+
+Station also sends `x-station-envelope: 1` on every JSON response it writes
+itself. Clients use it to tell Station's own refusal from an error a proxy
+answered: a queued chat message is dropped only on Station's refusal. Pass the
+header through unchanged, and do not add it to responses the proxy generates.
+A proxy that removes it leaves clients deciding by the body's shape, as they
+did before the header existed.
 
 `proxy_buffering off` is not merely defense in depth: the station-control MCP
 endpoint streams through a handler-built response whose headers Station does not
@@ -557,6 +584,37 @@ curl --silent --show-error https://<device-fqdn>:<public-port>/api/system/status
 # authentication_required confirms a refusal, not workload health or readiness
 ```
 
+#### Reaching the consent origin over HTTPS
+
+Consent decisions are served by a separate listener (`API + 3`, or
+`STATION_CONSENT_PORT`) so a decision page is a different browser origin from
+the app. By default its review URLs are plain `http://<host>:<consent port>`,
+which a remote browser on the tailnet cannot use as a secure context. To issue
+an HTTPS review URL, add a second Tailscale Serve mapping from an HTTPS name to
+the **consent** port (not the UI port), and tell Station the exact origin:
+
+```bash
+tailscale serve --bg --https=8443 http://127.0.0.1:<consent-port>
+STATION_TRUSTED_CONSENT_ORIGIN=https://<device-fqdn>:8443
+```
+
+The value must be an exact `https` origin on a DNS name: no path, trailing
+slash, trailing-dot host, port 0, userinfo, wildcard or IP address (WebAuthn relying-party IDs must be
+domains, so an IP-only Station gets no HTTPS consent origin). Station checks it
+at startup and refuses to start on a malformed value instead of falling back to
+`http`. When set, review URLs use that origin, and the consent listener accepts
+a decision from it when the request `Host` is that name and the browser's
+`Origin` header equals that origin exactly; any other origin is still refused.
+This is in addition to the existing port-pinned
+`http://<host>:<consent port>` path, which keeps working. The HTTPS consent
+name must be the same hostname as the app's (with Tailscale, both are the device
+FQDN): the consent session cookie is host-scoped and is not sent across
+hostnames, so a different name fails closed with `unauthenticated`. Unset, the
+behavior is unchanged. The origin is never added to `ALLOWED_ORIGINS`.
+
+With this origin set, a paired browser can also enroll an operator passkey; see
+[Enroll an operator passkey](operator-passkeys.md).
+
 #### Troubleshooting the pairing path
 
 | Symptom | Likely cause | Check |
@@ -570,7 +628,7 @@ curl --silent --show-error https://<device-fqdn>:<public-port>/api/system/status
 
 
 The repository-owned dogfood supervisor keeps one named Station instance on
-the exact `origin/main` commit whose GitHub Actions `CI` **push** run completed
+the exact `origin/main` commit whose GitHub Actions `PR: CI` **push** run completed
 successfully. Its staging code creates a detached release and currently calls
 legacy `npm ci` plus `./station build` before stopping the active release.
 That dependency command is not the repository's managed pinned-pnpm setup path;
@@ -807,7 +865,7 @@ tailscale serve status --json | jq .
 ```
 
 The `active.sha` must equal the provenance SHA returned by both identity
-endpoints. `active.ci.url` is the accepted exact-SHA `CI` push-run receipt. A
+endpoints. `active.ci.url` is the accepted exact-SHA `PR: CI` push-run receipt. A
 pending, failed, absent, PR-only, different-workflow, or wrong-SHA run blocks
 promotion.
 

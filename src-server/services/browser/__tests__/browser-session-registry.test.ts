@@ -20,6 +20,7 @@ import {
   BrowserSessionRegistry,
   browserProfileDir,
   browserProfileFor,
+  browserViewportProblem,
   redactBrowserUrl,
 } from '../browser-session-registry.js';
 
@@ -209,6 +210,65 @@ describe('BrowserSessionRegistry', () => {
     ).rejects.toMatchObject({ code: 'invalid-viewport' });
     expect(hosts).toEqual([]);
     expect(registry.listSessions()).toEqual([]);
+  });
+
+  test('viewport bounds are inclusive: 100..4096 and 0.5..4 (#3304)', async () => {
+    const { registry } = harness();
+    const open = (viewport: {
+      width: number;
+      height: number;
+      deviceScaleFactor: number;
+    }) =>
+      registry.createSession({
+        projectId: 'alpha',
+        projectSlug: 'alpha',
+        url: 'about:blank',
+        viewport,
+        actor: OPERATOR,
+      });
+    const ok = { width: 400, height: 400, deviceScaleFactor: 1 };
+    const accepted = [
+      { ...ok, width: 100 },
+      { ...ok, width: 4096 },
+      { ...ok, height: 100 },
+      { ...ok, height: 4096 },
+      { ...ok, deviceScaleFactor: 0.5 },
+      { ...ok, deviceScaleFactor: 4 },
+    ];
+    const refused = [
+      { ...ok, width: 99 },
+      { ...ok, width: 4097 },
+      { ...ok, height: 99 },
+      { ...ok, height: 4097 },
+      { ...ok, deviceScaleFactor: 0.49 },
+      { ...ok, deviceScaleFactor: 4.01 },
+    ];
+    for (const viewport of accepted) {
+      await expect(
+        open(viewport),
+        JSON.stringify(viewport),
+      ).resolves.toBeDefined();
+    }
+    for (const viewport of refused) {
+      await expect(
+        open(viewport),
+        JSON.stringify(viewport),
+      ).rejects.toMatchObject({
+        code: 'invalid-viewport',
+      });
+    }
+  });
+
+  test('an unknown viewport key is echoed capped (#3304)', () => {
+    const problem = browserViewportProblem({
+      width: 400,
+      height: 400,
+      deviceScaleFactor: 1,
+      ['k'.repeat(500)]: 1,
+    });
+    expect(problem).toBe(
+      `viewport.${'k'.repeat(64)}... is not a viewport field`,
+    );
   });
 
   test('a crash marks sessions needs-reopen; reopening bumps the generation and stale references fail', async () => {

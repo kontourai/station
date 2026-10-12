@@ -1,7 +1,6 @@
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import { describe, expect, test } from 'vitest';
 import {
-  selectDirectNewChatAgent,
   selectFirstChatTarget,
   selectGlobalContextAgents,
 } from '../components/agent-selection-policy';
@@ -107,28 +106,5 @@ describe('selectFirstChatTarget (station#1004 review MED)', () => {
         selectedProjectSlug: 'project-a',
       }),
     ).toEqual(globalAgent);
-  });
-});
-
-/**
- * archive#3309: the header's pinned New chat button
- * decides between opening a chat directly and opening the picker. Nothing
- * covered that decision — no test can render `ChatDock`, so the rule is named
- * here and driven across all three populations.
- */
-describe('selectDirectNewChatAgent (#3309 New chat one-vs-many)', () => {
-  const only = { slug: 'station', name: 'Station' } as AgentData;
-  const other = { slug: 'claude', name: 'Claude Code' } as AgentData;
-
-  test('exactly one chat-ready agent opens that chat directly', () => {
-    expect(selectDirectNewChatAgent([only])).toBe(only);
-  });
-
-  test('several chat-ready agents open the picker instead of guessing', () => {
-    expect(selectDirectNewChatAgent([only, other])).toBeNull();
-  });
-
-  test('none chat-ready still opens the picker — it is what explains why', () => {
-    expect(selectDirectNewChatAgent([])).toBeNull();
   });
 });

@@ -544,6 +544,14 @@ export interface TaskRecord {
   /** Provider-neutral reference to the originating work item (e.g. a GitHub
    * issue URL or id). Absent for tasks created directly in Station. */
   workItemRef?: string;
+  /**
+   * A person's opt-in (#3161): move this Task to `done` once every pull
+   * request kept on it is merged at its provider. Only a person sets it
+   * (`PUT /api/tasks/:taskId/close-on-merge`); no agent tool does, and the
+   * Task's creation does not carry it, so a recreated Task starts without it.
+   * Absent means off.
+   */
+  closeOnMerge?: boolean;
 }
 
 export interface TaskCreateInput {

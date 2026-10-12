@@ -1,7 +1,4 @@
-import {
-  envelopeReasons,
-  StationHttpError,
-} from '@kontourai/station-sdk/client';
+import { envelopeReasons } from '@kontourai/station-sdk/client';
 
 /**
  * Shared "extract a displayable message from an unknown error" helper (K4
@@ -27,7 +24,14 @@ export function errorText(error: unknown): string {
  * no "Validation failed:" prefix. Any other failure reads as `errorText`.
  */
 export function userFacingErrorMessage(error: unknown): string {
-  if (error instanceof StationHttpError) {
+  // Not only StationHttpError: the SDK's family errors that extend `Error`
+  // (DelegationApiError, AnswerSupportRequestError,
+  // ActionOperationProtocolError, ProjectTaskRoomProtocolError) carry the same
+  // `details`. Read structurally, so this shared helper does not import the
+  // lazily loaded entry points those classes live in. `envelopeReasons` reads
+  // only a validation `{ formErrors, fieldErrors }`; any other `details` keeps
+  // the message.
+  if (error instanceof Error && 'details' in error) {
     const reasons = envelopeReasons(error.details);
     if (reasons.length > 0) return reasons.join(' ');
   }

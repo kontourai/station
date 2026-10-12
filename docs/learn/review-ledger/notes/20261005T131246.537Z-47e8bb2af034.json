@@ -1,0 +1,7 @@
+{
+  "revision": "fed7d14336a7270578e7e17e53892b76d8c10cfa",
+
+  "notes": [
+    {"path":"docs/third-party/provider-icons.md","note":"BrandIcon.css changed only the glyph rule (.brand-icon__glyph now 72% of --icon-size instead of 70% of inherited text). This doc covers mark sources, CSS fills for inline marks, integration icon containment and fallbacks; it makes no glyph sizing claim, so it stays accurate.","inputs":["docs/third-party/provider-icons.md","src-ui/src/components/icons/BrandIcon.css"]}
+  ]
+}

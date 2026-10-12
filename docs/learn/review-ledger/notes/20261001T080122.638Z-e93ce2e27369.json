@@ -1,0 +1,7 @@
+{
+  "revision": "4a1fc2197028ded07d0e389e98a30042ab7cadb5",
+
+  "notes": [
+    {"path":"packages/cli/README.md","note":"#3071 final round. Changed input: cli.md gained two clauses saying a question is not bound to its event by approvals respond or operate. This page routes to the CLI reference and states nothing about approvals respond's request binding. No prose change; other claims not re-reviewed.","inputs":["packages/cli/README.md"]}
+  ]
+}

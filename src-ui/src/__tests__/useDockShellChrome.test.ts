@@ -248,6 +248,87 @@ describe('useDockShellChrome', () => {
     });
   });
 
+  // The dock sizes a full/maximized pane as `innerHeight - toolbarHeight`. It
+  // used to read the toolbar once at mount, so a toolbar that was hidden or not
+  // laid out then left a non-maximized full dock sitting on top of it.
+  describe('toolbar height', () => {
+    class FakeResizeObserver {
+      static instances: FakeResizeObserver[] = [];
+      observed: Element[] = [];
+      disconnected = false;
+      constructor(private readonly callback: () => void) {
+        FakeResizeObserver.instances.push(this);
+      }
+      observe(element: Element) {
+        this.observed.push(element);
+      }
+      unobserve() {}
+      disconnect() {
+        this.disconnected = true;
+      }
+      fire() {
+        this.callback();
+      }
+    }
+    let toolbar: HTMLElement;
+    let toolbarRectHeight = 0;
+
+    beforeEach(() => {
+      FakeResizeObserver.instances = [];
+      vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+      toolbar = document.createElement('header');
+      toolbar.className = 'app-toolbar';
+      // jsdom has no layout: the rect is whatever the test says it is.
+      toolbar.getBoundingClientRect = () =>
+        ({ height: toolbarRectHeight }) as DOMRect;
+      document.body.append(toolbar);
+    });
+
+    afterEach(() => {
+      toolbar.remove();
+      vi.unstubAllGlobals();
+      toolbarRectHeight = 0;
+    });
+
+    test('re-measures when the toolbar goes from hidden to laid out', async () => {
+      const useDockShellChrome = await freshUseDockShellChrome();
+      toolbar.style.display = 'none';
+      const { result } = renderHook(() =>
+        useDockShellChrome({
+          publishesDockSlotClearance: true,
+          registersDockShortcuts: true,
+        }),
+      );
+      expect(result.current.toolbarHeight).toBe(0);
+      const [observer] = FakeResizeObserver.instances;
+      expect(observer.observed).toEqual([toolbar]);
+
+      toolbar.style.display = '';
+      toolbarRectHeight = 52;
+      act(() => observer.fire());
+      expect(result.current.toolbarHeight).toBe(52);
+
+      toolbarRectHeight = 98;
+      act(() => observer.fire());
+      expect(result.current.toolbarHeight).toBe(98);
+    });
+
+    test('stops observing the toolbar on unmount', async () => {
+      const useDockShellChrome = await freshUseDockShellChrome();
+      toolbarRectHeight = 52;
+      const { unmount } = renderHook(() =>
+        useDockShellChrome({
+          publishesDockSlotClearance: true,
+          registersDockShortcuts: true,
+        }),
+      );
+      const [observer] = FakeResizeObserver.instances;
+      expect(observer.disconnected).toBe(false);
+      unmount();
+      expect(observer.disconnected).toBe(true);
+    });
+  });
+
   describe('applyDockSnap', () => {
     test('collapsed closes the dock', async () => {
       const useDockShellChrome = await freshUseDockShellChrome();

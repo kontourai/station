@@ -1,0 +1,7 @@
+{
+  "revision": "c940b8d8bd415857e855a1674fc214f5d456b5a8",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Re-read the pull-request review paragraph against the reader after the delta review: gh pages statusCheckRollup itself (162 contexts observed with gh 2.97.0), so partial now means only a rollup beyond the 1000-context payload cap; the merged-results and subject statements are unchanged and still match the code.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

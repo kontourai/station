@@ -1,0 +1,7 @@
+{
+  "revision": "4707a2a6772ec3babece6e26c5c78c8ec0e521cd",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"ProjectSidebar now reads its project accent map from the shared useProjectAccents hook (same projectAccents allocation over the same useProjects list). Project rows' live-work count, layout chips and ownership routing are unchanged; the document's project-row claims remain accurate.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/project-sidebar/ProjectSidebar.tsx"]}
+  ]
+}

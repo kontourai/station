@@ -7,40 +7,42 @@
 
   "summary": "Reviewed navigation, immutable source snapshots, lazy loading, diagram controls, capture admission, review freshness, impact/catch-up and shared MCP inputs against their actual implementation.",
 
-  "limits": "Local contributor reader. No public Pages deployment, remote physical device, or semantic certification follows from a structural check. Media playback has a separate browser check.",
-
-  "document": {"digest":"0ac8f8ac857022280619dd19947686c17b2bda0f1d6a954b1591b0c65fe81404","revision":"e6db304484770666a5dad430b4beae94cdefe69a"},
+  "limits": "Local contributor reader. No public Pages deployment, remote physical device, or semantic certification follows from a structural check. Media playback has a separate browser check.\n\nMerge reconciliation preserves distinct prior anchors as history, not new semantic approval. The active binding matches merged bytes where a prior anchor does; unresolved bytes remain stale until supported recording. Prior anchors: [{\"path\":\"docs/learn/atlas.json\",\"ours\":{\"path\":\"docs/learn/atlas.json\",\"digest\":\"c392d0f008c898438a024054fdcfc98c1a1eeb636c8713b72a6c36eb2907d770\",\"revision\":\"0ed893868b2be12651928150004d23a11f94837f\"},\"theirs\":{\"path\":\"docs/learn/atlas.json\",\"digest\":\"e034e39b2ea44cbe00752aa003f17215502540ce06c7d5bcc5cc29e57f47ef05\",\"revision\":\"efa773acac88792cda31595f9afca4a37d3efebc\"},\"active\":{\"path\":\"docs/learn/atlas.json\",\"digest\":\"c392d0f008c898438a024054fdcfc98c1a1eeb636c8713b72a6c36eb2907d770\",\"revision\":\"0ed893868b2be12651928150004d23a11f94837f\"}}]",
 
   "sources": [
-    {"path":"docs/learn/atlas.css","digest":"40c53ad655686cec61730294088350d83ccf48ff252a18d8ebbaf62441a6bc29","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "docs/learn/atlas.css",
 
-    {"path":"docs/learn/atlas.js","digest":"5736779c6e338b74ab1415003b56e14654e05208887a69b6b2a9d92e8b534483","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    "docs/learn/atlas.js",
 
-    {"path":"docs/learn/atlas.json","digest":"c69356a2f739a0d5c322029134336356a917bc186641bf872a65b3cb3a7fae0a","revision":"e4344fd10ef7a80a6a6f65d7e709fb1be56b64df"},
+    "docs/learn/atlas.json",
 
-    {"path":"docs/learn/diagrams.js","digest":"dd72f02140d05078f0423312e01ea8fd8bd8d1b66c125f94d275f3f323642c24","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "docs/learn/diagrams.js",
 
-    {"path":"docs/learn/index.html","digest":"0cd31011be9559d7355000fa8a51507517f4eb7dd8a30b2fee31c7c3972c878b","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "docs/learn/index.html",
 
-    {"path":"scripts/__tests__/learning-atlas.browser.test.ts","digest":"586cfb7b9101207ebc20d8987e4cf37326011b4314cbf7a91351d9d8d064c057","revision":"bbd3c6c0797cce19e15b36627f182f79baa7e025"},
+    "scripts/__tests__/learning-atlas.browser.test.ts",
 
-    {"path":"scripts/build-learning-guide.mjs","digest":"3a3462887203d43998cd6817e300a59c9856c2710d697274a597d4076ce969dd","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    "scripts/build-learning-guide.mjs",
 
-    {"path":"scripts/documentation-impact.mjs","digest":"a60bf5659ff78f92a2b598211ff3144f5cda714e602e99c14cb4686ebfaf6bde","revision":"e8b72ea25ff33bef8d17412bac9548787e2d200d"},
+    "scripts/documentation-impact.mjs",
 
-    {"path":"scripts/lib/documentation-freshness.mjs","digest":"1015b8a88ace1d10171a04a1b5da6a192b0397174fa51127c66211736c06ab74","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    "scripts/lib/documentation-freshness.mjs",
 
-    {"path":"scripts/lib/documentation-model.mjs","digest":"cbfd7235be50696a0289524232c6d2b1de5de03bff71f8e6edef38f6adcaf6b4","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"},
+    "scripts/lib/documentation-model.mjs",
 
-    {"path":"scripts/lib/learning-markdown.mjs","digest":"fbc83e6e0c25264ba1c6f0ea557144ff805e381ded7b7b4663ebc4fa9ebf5b5e","revision":"ec016e7770c94e2e1037414a7f451bd51052ddaa"},
+    "scripts/lib/learning-markdown.mjs",
 
-    {"path":"scripts/lib/learning-media.mjs","digest":"6d3bfbc02e925e382beb9be69fcb60427fda18987dfc6b61ec7cd4a119a3e40e","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    "scripts/lib/learning-media.mjs",
 
-    {"path":"scripts/lib/review-ledger-store.mjs","digest":"444d83be0ef4e28ed9acc3db60a705ab01e8e094d6da7cbe23f34b6d60990d8a","revision":"870f87665091ffd778281fd578835377526b7bb1"},
+    "scripts/lib/review-ledger-store.mjs",
 
-    {"path":"scripts/record-documentation-review.mjs","digest":"2541d1547706a30bf5cd19927d4b0567b00ae379e4f61ddcd7d36da382f6f54f","revision":"8199fd1541fc2af0053845c9253ed0962dd7fbb8"},
+    "scripts/record-documentation-review.mjs",
 
-    {"path":"src-server/tools/station-docs-server.ts","digest":"c76912b19734775f650634f5b97639c60168fe9995b61f927c0e35a62b3fb1ae","revision":"998b7be07c2298ead61e8cffa39dab7583d8b6f3"}
+    "src-server/tools/station-docs-server.ts",
+
+    "scripts/lib/review-history.mjs",
+
+    "scripts/lib/review-git.mjs"
   ],
 
   "checks": [

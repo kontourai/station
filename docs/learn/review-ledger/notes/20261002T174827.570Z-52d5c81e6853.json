@@ -1,0 +1,115 @@
+{
+  "revision": "cb3ebc3797508b3f46d66b8bc5ece89b32cb79ae",
+
+  "notes": [
+    {"path":"deploy/gcp-dev/README.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["deploy/gcp-dev/README.md"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["deploy/public-ingress/README.md"]},
+
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/adr/0017-browser-preview-host.md"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md"]},
+
+    {"path":"docs/architecture.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/architecture.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/architecture/abstraction-review.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/contexts/evidence-governance/CONTEXT.md"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/contexts/operations/CONTEXT.md"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/design/answer-share-permalinks.md"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/design/browser-preview-host-spike.md"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/design/browser-preview-pane-mvp.md"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/design/channel-home-authority.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/design/local-bootstrap-token.md"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/design/task-room-agent-requests.md"]},
+
+    {"path":"docs/glossary.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/acp.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/acp.md"]},
+
+    {"path":"docs/guides/agents.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/agents.md"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/browser-workspace.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/delegation-attempt-claims.md"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/deployment-authentication.md"]},
+
+    {"path":"docs/guides/deployment.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/home-transfer-controller.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/local-collaboration-lab.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/machine-relationships.md"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/mobile-device-workspace.md"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/private-runner-partition.md"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/product-law-authoring.md"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/repository-layout.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/starter-work.md"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/web-push-notifications.md"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/work-board-security.md"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/guides/workspace-packages.md"]},
+
+    {"path":"docs/README.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/README.md"]},
+
+    {"path":"docs/reference/api.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/reference/config.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/reference/config.md"]},
+
+    {"path":"docs/reference/connect.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/reference/connect.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/reference/env-vars.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/user/concepts.md"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["docs/user/workspace-checkpoints.md"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["examples/mcp-ui-demo/README.md"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["examples/self-configuring-agent/README.md"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["examples/station-sessions-mcp/README.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Re-record after merging main: the orchestration and runtime-routes sources carry this branch own reviewed shared-work-context delivery merged with main recent orchestration, file-preview and reference-document drift; each affected document claims were re-checked against the merged tree.","inputs":["packages/sdk/AGENTS.md"]}
+  ]
+}

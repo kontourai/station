@@ -10,6 +10,7 @@
 import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { STATION_RELEASE_RINGS, type StationReleaseRing } from './ports.js';
+import { windowsSystemUtilityPath } from './windows-system-utility.mjs';
 
 export interface PackagedReleaseManifest {
   schemaVersion: 2;
@@ -278,6 +279,41 @@ export function installerInheritedEnv(
       ([key]) => !BOOTSTRAP_LAUNCH_ENV_KEYS.includes(key),
     ),
   );
+}
+
+/**
+ * How a Station CLI re-runs the installer an installed archive version
+ * carries (#2675): its install.sh through `sh` on Linux and macOS, and on
+ * Windows its install.ps1 (slice W2) through the system's Windows PowerShell,
+ * never one PATH selects, with the execution policy bypassed for that one
+ * script. `file` is the installer the version must carry.
+ */
+export function packagedInstallerCommand(
+  releaseDir: string,
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+): { command: string; args: string[]; file: string } {
+  if (platform === 'win32') {
+    const file = join(releaseDir, 'install.ps1');
+    return {
+      command: windowsSystemUtilityPath('powershell', env),
+      args: [
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        file,
+        'install',
+      ],
+      file,
+    };
+  }
+  return {
+    command: 'sh',
+    args: ['./install.sh', 'install'],
+    file: join(releaseDir, 'install.sh'),
+  };
 }
 
 /**

@@ -3,6 +3,10 @@ import type { AgentDelegationContext } from '@kontourai/station-contracts/agent'
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
+import type {
+  InputRequestContent,
+  InputRequestResponse,
+} from '@kontourai/station-contracts/input-request';
 import { stripReservedOrchestrationMetadata } from '@kontourai/station-contracts/provider';
 import {
   type ApprovalStatus,
@@ -17,6 +21,7 @@ import {
   parseTurnProvenanceContextInjection,
   type TurnProvenanceContextInjection,
 } from '@kontourai/station-contracts/turn-provenance-context';
+import { readInputRequestForm } from '@kontourai/station-shared/input-request';
 import {
   currentAuthorizedTurnCorrelation,
   currentNativeMemoryHistory,
@@ -37,6 +42,13 @@ import {
   takeToolPurpose,
   toolPurposeForCall,
 } from '../../runtime/frameworks/tool-purpose.js';
+import { revokeStationControlMcpToken } from '../../runtime/mcp/station-control-mcp-token.js';
+import {
+  beginNativeKnowledgeTurn,
+  finishNativeKnowledgeTurn,
+  startNativeKnowledgeSession,
+  stopNativeKnowledgeSession,
+} from '../../runtime/mcp/station-knowledge-native-tools.js';
 import { stripOutputDeclarationHandle } from '../../runtime/native-output-declaration.js';
 import { currentNativeOutputRelayCompanion } from '../../runtime/native-output-turn-grant.js';
 import {
@@ -143,7 +155,10 @@ interface StationAgentSessionRecord {
   activeTurnId?: string;
   activeController?: AbortController;
   abortPublished?: boolean;
-  pendingRequests: Map<string, { toolName?: string; turnId?: string }>;
+  pendingRequests: Map<
+    string,
+    { toolName?: string; turnId?: string; elicitation?: true }
+  >;
   approvedTools: Set<string>;
   resolvedBeforeOpen: Map<string, ApprovalStatus>;
   /**
@@ -551,7 +566,12 @@ export function mapStationAgentStreamEvent(options: {
   outputDelta?: string;
   finishReason?: ReturnType<typeof finishReason>;
   failed?: true;
-  approvalOpened?: { requestId: string; toolName?: string };
+  approvalOpened?: {
+    requestId: string;
+    toolName?: string;
+    /** #3284: a tool server's form, answered with content, not a grant. */
+    elicitation?: true;
+  };
   /**
    * station#1569 (item 4): this chunk opened a tool call, or closed one.
    * Reported rather than recorded, because this relay is a pure translator
@@ -732,6 +752,23 @@ export function mapStationAgentStreamEvent(options: {
     });
     return { approvalOpened: { requestId, ...(toolName ? { toolName } : {}) } };
   }
+  if (event.type === 'mcp-elicitation-request') {
+    // #3284: a tool server asked the person for structured input. Same
+    // request channel as a tool approval, answered with the form's content.
+    const requestId = stringField(event.approvalId);
+    const form = readInputRequestForm(event.inputRequest);
+    if (!requestId || !form?.source.startsWith('mcp:')) return {};
+    publish({
+      ...base,
+      method: 'request.opened',
+      requestId,
+      requestType: 'approval',
+      title: `${form.requester} needs your input`,
+      ...(form.message ? { description: form.message } : {}),
+      payload: { inputRequest: form },
+    });
+    return { approvalOpened: { requestId, elicitation: true } };
+  }
   if (event.type === 'context-injection') {
     const contextInjection = parseTurnProvenanceContextInjection(
       event.contextInjection,
@@ -863,6 +900,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       createdAt: now,
       updatedAt: now,
     };
+    startNativeKnowledgeSession(input.threadId);
     this.sessions.set(input.threadId, {
       workspaceRequired:
         input.workspaceIsolation?.mode === 'worktree' ||
@@ -954,6 +992,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     const controller = new AbortController();
     record.activeTurnId = turnId;
     record.activeController = controller;
+    beginNativeKnowledgeTurn(input.threadId, turnId, controller.signal);
     record.abortPublished = false;
     // archive#796: a Station agent's session is started without a model — the UI
     // resolves one only when a turn is sent — so the model settles here.
@@ -1231,12 +1270,33 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     threadId: string,
     requestId: string,
     decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
-    context?: { clientOrigin?: ClientOrigin },
+    context?: {
+      clientOrigin?: ClientOrigin;
+      inputContent?: InputRequestContent;
+    },
   ): Promise<void> {
     const record = this.requireSession(threadId);
     const pending = record.pendingRequests.get(requestId);
     if (!pending) {
       throw new Error(`Unknown Station agent approval request: ${requestId}`);
+    }
+    // #3284: a form's answer is the person's own action, carried whole. The
+    // orchestration command already validated accepted content against the
+    // form; the tool wrapper re-checks it before the server sees it.
+    let answer: InputRequestResponse | undefined;
+    if (pending.elicitation) {
+      if (decision === 'acceptForSession')
+        throw new Error(
+          'A tool server form is answered once, not for a session.',
+        );
+      if (decision === 'accept' && !context?.inputContent)
+        throw new Error('Fill in the form before sending it.');
+      answer =
+        decision === 'accept'
+          ? { action: 'accept', content: context!.inputContent! }
+          : { action: decision };
+    } else if (context?.inputContent !== undefined) {
+      throw new Error('Only a tool server form takes form content.');
     }
     this.resolutionOverrides.set(
       requestId,
@@ -1251,6 +1311,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       requestId,
       decision === 'accept' || decision === 'acceptForSession',
       context?.clientOrigin,
+      answer,
     );
     if (!resolved) {
       record.pendingRequests.delete(requestId);
@@ -1266,11 +1327,17 @@ export class StationAgentAdapter implements ProviderAdapterShape {
   }
 
   async stopSession(threadId: string): Promise<void> {
+    const knowledgeCleanup = stopNativeKnowledgeSession(threadId);
+    revokeStationControlMcpToken(threadId);
     const record = this.sessions.get(threadId);
-    if (!record) return;
+    if (!record) {
+      await knowledgeCleanup;
+      return;
+    }
     this.cancelPendingApprovals(record);
     record.activeController?.abort('session stopped');
     this.sessions.delete(threadId);
+    await knowledgeCleanup;
     // station#1569 (item 4): the abort above tears down the SSE stream
     // without publishing anything for the calls it was mid-way through —
     // `consumeChatStream`'s aborted branch returns silently by design. So
@@ -1447,6 +1514,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         record.activeTurnId === turnId &&
         record.activeController === controller
       ) {
+        finishNativeKnowledgeTurn(record.session.threadId, turnId);
         record.activeTurnId = undefined;
         record.activeController = undefined;
       }
@@ -1491,6 +1559,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       this.updateSession(record, 'error');
       this.publishState(record, 'running', 'errored');
     }
+    finishNativeKnowledgeTurn(record.session.threadId, turnId);
     record.activeTurnId = undefined;
     record.activeController = undefined;
   }
@@ -1522,6 +1591,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     });
     this.updateSession(record, 'error');
     this.publishState(record, 'running', 'errored');
+    finishNativeKnowledgeTurn(record.session.threadId, turnId);
     record.activeTurnId = undefined;
     record.activeController = undefined;
   }
@@ -1588,7 +1658,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
   private trackApproval(
     record: StationAgentSessionRecord,
     turnId: string,
-    approval: { requestId: string; toolName?: string },
+    approval: { requestId: string; toolName?: string; elicitation?: true },
   ): void {
     const resolvedStatus = record.resolvedBeforeOpen.get(approval.requestId);
     if (resolvedStatus) {
@@ -1604,6 +1674,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     record.pendingRequests.set(approval.requestId, {
       turnId,
       ...(approval.toolName ? { toolName: approval.toolName } : {}),
+      ...(approval.elicitation ? { elicitation: true as const } : {}),
     });
     if (
       approval.toolName &&

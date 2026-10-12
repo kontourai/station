@@ -1,0 +1,23 @@
+{
+  "revision": "1e0c6ddd4540311ffcbd038f005f8bf03c8a8e78",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Reviewed the transfer-gate line against the changed gate: STATION_TRANSFER_BASELINE_ROOT is unchanged, and STATION_TRANSFER_CAPTURE_TIMEOUT_MS is still the slow-hardware knob. It now also bounds the capture's internal barriers (each gets half), which the line does not contradict. No prose change; landing, worktree and evidence rules untouched.","inputs":["AGENTS.md","scripts/orchestration-transfer-gate.mjs"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed against the RegionPaneHost.project test edits. The changes are test-only: a shared import warm-up in beforeAll and a stable coding-pane stub identity. They change no host, registry, persistence or admission behavior, so the REGION_SURFACE_PANES, project-binding and Terminal-beside-Chat claims are unchanged. Not re-executed beyond the focused region host tests.","inputs":["docs/design/placement.md","src-ui/src/workspace-panes/__tests__/RegionPaneHost.project.test.tsx"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the unchanged hook order, fail-closed transfer evidence and verification claims against the two new testing-guide paragraphs (barrier bound derivation; activity frames counted apart). Neither changes hook composition, readiness selection or completion evidence; only what the capture's frame count includes and how its internal barriers are bounded.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the transfer-gate section after the change. Added: the gate passes its bound to the capture child and each barrier gets half of it, with barrier timeouts naming STATION_TRANSFER_CAPTURE_TIMEOUT_MS (checked against scripts/lib/transfer-capture-barrier.ts and runTransferCapture); and that frames exclude debounced orchestration:activity frames, counted as activityFrames with per-source limits 0 external and 2 station-native (checked against http-transfer-recorder.ts and orchestration-transfer-scenario.ts). Executed: focused barrier, gate, recorder and integration tests and the gate itself. The rest of the 1600-line guide was not re-read.","inputs":["docs/guides/testing.md","scripts/__tests__/prepush-orchestration-transfer.test.ts","scripts/check-prepush-orchestration-transfer.mjs","scripts/orchestration-transfer-capture.ts","scripts/test-impact-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed unchanged script instructions against the new barrier library and its test: the new child-process test is classified in vitest-resource-manifest, spawn calls pass windowsHide, and no gate allowlist or bound was widened (the barrier bound is derived from the one configured setting and stays finite). The instruction text needs no change.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/fixtures/orchestration-transfer/README.md","note":"Reviewed the fixed-clock and 44-frame statements against the scenario and recorder changes. The 44 live frames for station-native and the budget.json ceilings are unchanged; the recorder now counts trailing orchestration:activity frames apart from frames, so the 44 is stable on a slow host. 'Monotonic real time still bounds capture barriers' remains true, now derived from the configured bound. No policy ceiling changed.","inputs":["scripts/fixtures/orchestration-transfer/README.md","scripts/orchestration-transfer-capture.ts","scripts/orchestration-transfer-gate.mjs","src-server/__test-utils__/orchestration-transfer-scenario.ts"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed unchanged server instructions and the testing-guide reference. The only server-adjacent change is test-utility accounting in the transfer recorder and scenario; route and service behavior, request authority and logging rules are untouched.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed unchanged UI instructions against the testing-guide edit and the region host test changes. Both are test-side: import warm-up and a stable stub identity. No navigation, contract, style or shell-evidence instruction is affected.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed unchanged test instructions against the testing-guide edit. The new tests reach the seams they name (real barrier and real capture as child processes; real SSE recorder) and were fault-injected; fixture, real-action and no-rerun-as-completion requirements stand.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

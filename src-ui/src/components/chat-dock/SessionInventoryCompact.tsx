@@ -93,21 +93,17 @@ export function SessionInventoryCompact({
   }, [key, model]);
   if (!requestScope || !key)
     return (
-      <aside aria-label="Session inventory">
-        Session inventory is unavailable.
-      </aside>
+      <aside aria-label="Chat inventory">Chat inventory is unavailable.</aside>
     );
   if (inventory.isLoading)
     return (
-      <aside aria-label="Session inventory">
-        <SkeletonBlock count={2} label="Loading Session inventory" />
+      <aside aria-label="Chat inventory">
+        <SkeletonBlock count={2} label="Loading Chat inventory" />
       </aside>
     );
   if (inventory.error || !inventory.data)
     return (
-      <aside aria-label="Session inventory">
-        Session inventory is unavailable.
-      </aside>
+      <aside aria-label="Chat inventory">Chat inventory is unavailable.</aside>
     );
   if (!model) return null;
   const reportedGroups = model.groups.filter(
@@ -137,18 +133,18 @@ export function SessionInventoryCompact({
   return (
     <aside
       className={`session-inventory-compact session-inventory-compact--${density}`}
-      aria-label="Session inventory"
+      aria-label="Chat inventory"
     >
       <div className="session-inventory-compact__heading">
         <div>
           <p>Basis</p>
-          <h2>Session inventory</h2>
+          <h2>Chat inventory</h2>
           <bdi>{model.scopeLabel}</bdi>
         </div>
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close Session inventory"
+          aria-label="Close Chat inventory"
         >
           ×
         </button>

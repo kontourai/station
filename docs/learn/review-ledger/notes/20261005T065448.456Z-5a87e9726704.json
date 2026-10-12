@@ -1,0 +1,7 @@
+{
+  "revision": "6d5c66731d7c64ea022fa36d0fbb8d008c2c4514",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Round 3: HomeStartComposer now holds a dismissed Start's dock draft (moved-on field or unmounted Home) or takes the dock's edits into an untouched field; held drafts persist in sessionStorage (reload yes, tab close no); Restore/Discard focus and polite announcement. Softened 'never lost' to what holds. Folderless hint now per engine via resolveNewChatWorkspaceHint/workspaceHintText (ACP: connection cwd else 'a private folder Station makes for the chat', per orchestration-service and managed-acp-workspace); NewChatModal only adopts that helper and the folderless row hint.","inputs":["docs/user/getting-started.md","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

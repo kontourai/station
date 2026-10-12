@@ -1,0 +1,19 @@
+{
+  "revision": "ef978fd23d42528c19fa32218d44feab2915dce7",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"#3036: only the documentation guide's ledger guards paragraph changed again (a version 3 qualifier); this page's claims do not depend on it.","inputs":[".veritas/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/README.md","note":"#3036: only the documentation guide's ledger guards paragraph changed again (a version 3 qualifier); this page's claims do not depend on it.","inputs":["docs/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"#3036: only the documentation guide's ledger guards paragraph changed again (a version 3 qualifier); this page's claims do not depend on it.","inputs":["docs/architecture/abstraction-review.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"#3036: only the documentation guide's ledger guards paragraph changed again (a version 3 qualifier); this page's claims do not depend on it.","inputs":["docs/guides/code-quality.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/development.md","note":"#3036: only the documentation guide's ledger guards paragraph changed again (a version 3 qualifier); this page's claims do not depend on it.","inputs":["docs/guides/development.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#3036: only the documentation guide's ledger guards paragraph changed again (a version 3 qualifier); this page's claims do not depend on it.","inputs":["docs/guides/integrating-station.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/testing.md","note":"#3036: only the documentation guide's ledger guards paragraph changed again (a version 3 qualifier); this page's claims do not depend on it.","inputs":["docs/guides/testing.md","docs/guides/documentation.md"]}
+  ]
+}

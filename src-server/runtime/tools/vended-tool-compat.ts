@@ -10,6 +10,7 @@ import type {
 } from '@kontourai/station-contracts/ui-block';
 import { uiBlockEmitted } from '../../telemetry/metrics.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
+import { guardChildStdin } from '../../utils/child-stdin.js';
 import {
   currentNativeExecutionWorkspace,
   type NativeExecutionWorkspace,
@@ -194,25 +195,37 @@ class BashSession {
       return;
     }
 
-    this.processRef = spawn('bash', [], {
+    const child = spawn('bash', [], {
       cwd: this.cwd,
       env: childProcessEnvironment({ PS1: '', PS2: '' }),
       windowsHide: true,
     });
+    this.processRef = child;
 
-    if (
-      !this.processRef.stdin ||
-      !this.processRef.stdout ||
-      !this.processRef.stderr
-    ) {
+    if (!child.stdin || !child.stdout || !child.stderr) {
       throw new Error('Failed to create bash process streams');
     }
 
     activeBashSessions.add(this);
-    this.processRef.on('close', () => {
+    // #776: these listeners live as long as the child, never per command.
+    // A stdin EPIPE (bash gone before reading) or a ChildProcess 'error'
+    // between commands would otherwise be an uncaught exception that ends
+    // the server. Either retires this child, so the next command spawns a
+    // fresh shell instead of writing to a dead one.
+    const retire = () => {
+      if (this.processRef !== child) return;
       this.processRef = null;
       activeBashSessions.delete(this);
+    };
+    guardChildStdin(child.stdin, () => {
+      if (this.processRef === child) child.kill();
+      retire();
     });
+    child.on('error', retire);
+    // 'close' waits for every stdio stream, which a backgrounded grandchild
+    // can hold open long after bash itself exited; 'exit' does not.
+    child.on('exit', retire);
+    child.on('close', retire);
   }
 
   stop() {
@@ -270,7 +283,9 @@ class BashSession {
 
       const onError = (error: Error) => {
         cleanup();
-        this.stop();
+        // Only this command's shell: a retired child may already have been
+        // replaced by a fresh one that is not ours to stop.
+        if (this.processRef === child) this.stop();
         reject(error);
       };
 
@@ -280,13 +295,20 @@ class BashSession {
         stderr.off('data', onStderr);
         child.off('close', onClose);
         child.off('error', onError);
+        stdin.off('error', onError);
       };
 
       stdout.on('data', onStdout);
       stderr.on('data', onStderr);
       child.on('close', onClose);
       child.on('error', onError);
-      stdin.write(`${command}\necho "${this.sentinel}"\n`);
+      // The session-lifetime guard in start() keeps a stdin error from
+      // escaping; this rejects the command that hit it.
+      stdin.on('error', onError);
+      stdin.write(`${command}\necho "${this.sentinel}"\n`, (error) => {
+        // A write to an already-destroyed stdin reports only here.
+        if (error) onError(error);
+      });
     });
   }
 }

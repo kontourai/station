@@ -1,0 +1,15 @@
+{
+  "revision": "32ababfbffaa8b43bc56f3382fc4e110a8309fd6",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Fixture-only delta: the changed test inputs swap a first-name sample value (user id, login, device or display name) for the neutral placeholder, together with the literals asserted against it. Read the delta for each changed source; no assertion logic, covered behaviour or test name changed, and this page quotes none of the replaced strings, so its claims stand unchanged.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Fixture-only delta: the changed test inputs swap a first-name sample value (user id, login, device or display name) for the neutral placeholder, together with the literals asserted against it. Read the delta for each changed source; no assertion logic, covered behaviour or test name changed, and this page quotes none of the replaced strings, so its claims stand unchanged.","inputs":["docs/guides/e2e-coverage-matrix.md"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Fixture-only delta: the changed test inputs swap a first-name sample value (user id, login, device or display name) for the neutral placeholder, together with the literals asserted against it. Read the delta for each changed source; no assertion logic, covered behaviour or test name changed, and this page quotes none of the replaced strings, so its claims stand unchanged.","inputs":["docs/guides/web-push-notifications.md"]},
+
+    {"path":"docs/reference/connect.md","note":"Fixture-only delta: the changed test inputs swap a first-name sample value (user id, login, device or display name) for the neutral placeholder, together with the literals asserted against it. Read the delta for each changed source; no assertion logic, covered behaviour or test name changed, and this page quotes none of the replaced strings, so its claims stand unchanged.","inputs":["docs/reference/connect.md"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Example-only delta in this page: the illustrative fork remote owner in the remote-resolution prose and the manifest sample now uses the neutral placeholder already used by the matching tests. Read both changed passages in context; the upstream/origin resolution rule and the manifest shape they illustrate are unchanged.","inputs":["docs/design/portable-project-identity.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "4de275495bfff9019a8dcb8ebe474e2b080b0e65",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"actionlint-gate.mjs change is limited to the exact merge-queue full-regression call exemption and the pinned aggregate; base-controlled workflow, cache and dependency-review rules this guide describes are unchanged (full-regression.yml uses package-manager-cache: false and is now reachable from merge_group, which the untrusted-cache rule now follows).","inputs":["docs/guides/dependency-security.md","scripts/actionlint-gate.mjs"]}
+  ]
+}

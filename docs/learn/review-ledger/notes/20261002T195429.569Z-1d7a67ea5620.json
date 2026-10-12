@@ -1,0 +1,7 @@
+{
+  "revision": "14ed8256e37a8984bedd979efc30e58fe6a04a18",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed native enrollment UI caller and its mounted route test after the error-copy change. Device setup failures remain generic in the page; peer stage and fixed diagnostic code stay under a collapsed disclosure. The verification test passed; this does not qualify installed iOS or Nightly behavior.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

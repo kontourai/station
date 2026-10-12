@@ -9,38 +9,36 @@
 
   "limits": "No browser collaboration acceptance, physical Windows reference run, native build, live provider, deployment, IAM or device proof. No runtime fixes; recommendations retained for parent backlog triage.",
 
-  "document": {"digest":"9ce4537d26cb972547dfb7655194483ebf97506cecdbdaa8ec5ed6062d824f75","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
-
   "sources": [
-    {"path":"deploy/push-gateway/package.json","digest":"6614c5cf1f93de4c202f7f37c152685b3470c78250a37f6e732f3a9d5d248c56","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "deploy/push-gateway/package.json",
 
-    {"path":"deploy/push-gateway/src/apns-channel-auth.ts","digest":"4131779476bbe7a63cc6f2eb72d34c7ae72033d031959c3868266dc6cacf8905","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "deploy/push-gateway/src/apns-channel-auth.ts",
 
-    {"path":"deploy/push-gateway/src/apns-request.ts","digest":"cf0bf80c19d2116b19f29ff32579829b22cf157a21ac829c635afeff82548ecd","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "deploy/push-gateway/src/apns-request.ts",
 
-    {"path":"deploy/push-gateway/src/apns-sweep.ts","digest":"ef3a72752b884638dd41f44da9bd5ef3079c1f78d82e264d7d80bdeabaeab41c","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "deploy/push-gateway/src/apns-sweep.ts",
 
-    {"path":"deploy/push-gateway/src/apns-token.ts","digest":"097dc1bc5251eef19bd05455c9b3f828a8604cbbc1783e2f607902b4d6024c45","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "deploy/push-gateway/src/apns-token.ts",
 
-    {"path":"deploy/push-gateway/src/apns.ts","digest":"a8ef38bbbfbeb9542acb9c7ee42bef19683dbd56b7dd43b1c806d920eb35f806","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "deploy/push-gateway/src/apns.ts",
 
-    {"path":"deploy/push-gateway/src/channel-ledger.ts","digest":"17bad5dbf102a1946b1b5a1659deec76d96a0083fcc1662c3e5f4a3d9821d991","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "deploy/push-gateway/src/channel-ledger.ts",
 
-    {"path":"deploy/push-gateway/src/fcm.ts","digest":"5f64631d1e9795907e98e7ab93a675906e70dc73f3055c48484a4165174bf317","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "deploy/push-gateway/src/fcm.ts",
 
-    {"path":"deploy/push-gateway/src/gateway.ts","digest":"ab5ff9c9a035bd9113bdab194134541283c5522b372308ee348815c2440a2f48","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "deploy/push-gateway/src/gateway.ts",
 
-    {"path":"deploy/push-gateway/src/send-request.ts","digest":"d0371956802c7db44bb320730442396497190d4dcb099c835755b37b1a0a8318","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "deploy/push-gateway/src/send-request.ts",
 
-    {"path":"deploy/push-gateway/src/station-auth.ts","digest":"31cd6e0ab126d3bf7695c7e787090f284b7cbd1e002407834013a29b3399abf2","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "deploy/push-gateway/src/station-auth.ts",
 
-    {"path":"deploy/push-gateway/src/worker.ts","digest":"9b2bba718963bc4878aa36b0fe2432fce97af94bc9abccca836693b5bcbae560","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "deploy/push-gateway/src/worker.ts",
 
-    {"path":"deploy/push-gateway/wrangler.jsonc","digest":"ab82c8ee06f91017354f062821f2c9d0ca989ace85e09cb07659734a2db47a9e","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "deploy/push-gateway/wrangler.jsonc",
 
-    {"path":"src-desktop/ios/StationNotificationService/NotificationService.swift","digest":"5789171c146635064aecf59cc854e742a8726e8fbf9d158c8cf78a38d2ff468a","revision":"c8bae67dac38dce6107177638464f9f9944fef92"},
+    "src-desktop/ios/StationNotificationService/NotificationService.swift",
 
-    {"path":"src-desktop/plugins/agent-activity/ios/Sources/StationNotificationServiceCore/SealedAlertDelivery.swift","digest":"fac89631a85638abd83cf3f9a19ae2b9e1e4475b31f0d010e70d7102ceb17896","revision":"c8bae67dac38dce6107177638464f9f9944fef92"}
+    "src-desktop/plugins/agent-activity/ios/Sources/StationNotificationServiceCore/SealedAlertDelivery.swift"
   ],
 
   "checks": [

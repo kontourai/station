@@ -1,0 +1,7 @@
+{
+  "revision": "6c2cd5fa91bdd90c87d03e9f55df59b7e6a7f247",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Reviewed the #2941 delta in contracts.md: optional PR push/source owners add no user-facing entity or vocabulary changes. Existing Session and developer-contract terminology remains accurate; no prose change needed.","inputs":["docs/glossary.md"]}
+  ]
+}

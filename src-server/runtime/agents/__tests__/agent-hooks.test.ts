@@ -1303,6 +1303,23 @@ describe('createAgentHooks — attended autoApprove vs unattended opt-in (#2613)
     ).resolves.toMatchObject({ allowed: false, reason: SCHEDULED_JOB_REASON });
   });
 
+  test('an automation-rule denial names the narrower per-rule grant', async () => {
+    const { hooks } = hooksFor(
+      { autoApprove: ['station-control_*'] },
+      { resolveUnattendedGrant: vi.fn().mockResolvedValue(false) },
+    );
+
+    await expect(
+      hooks.beforeToolCall!(deleteAgentCall, {
+        agentSlug: 'planner',
+        unattendedPrincipal: { kind: 'automation-rule', ruleId: 'rule-1' },
+      }),
+    ).resolves.toMatchObject({
+      allowed: false,
+      reason: `${UNATTENDED_GRANT_REASON} To allow it for this automation rule alone, an operator can instead record an unattended tool grant for the rule through /api/agents/unattended-grants, keyed by the exact tool name above.`,
+    });
+  });
+
   test('only a scheduled job is offered the per-job grant: voice and delegated-child principals are not', async () => {
     const { hooks } = hooksFor(
       { autoApprove: ['station-control_*'] },

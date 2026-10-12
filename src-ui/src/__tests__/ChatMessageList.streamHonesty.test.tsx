@@ -341,6 +341,50 @@ describe('station#3300 — settled turn stays settled on resume', () => {
     expect(label).not.toContain('approval');
   });
 
+  test('awaiting-approval whose every request the user already answered is not "waiting for approval"', () => {
+    // Answered from the approval queue, still open on the server until
+    // `request.resolved`: the engine is deciding, not the user. The status
+    // pill already says so; this line must agree with it.
+    renderList(
+      managedSession({
+        orchestrationStatus: 'awaiting-approval',
+        orchestrationTurnOpen: true,
+        openTurnId: 'turn-2',
+        status: 'idle',
+        pendingApprovals: ['req-1'],
+        answeredApprovals: ['req-1'],
+      }),
+    );
+
+    expect(
+      screen.getByTestId('streaming-message').getAttribute('data-status-label'),
+    ).toBe('');
+  });
+
+  test('an answered request no longer holds the typing dots back, an unanswered one does', () => {
+    const settledTail = {
+      isThinking: true,
+      pendingApprovals: ['req-1'],
+      status: 'idle' as const,
+    };
+    const answered = renderList(
+      managedSession({ ...settledTail, answeredApprovals: ['req-1'] }),
+    );
+    expect(
+      answered.container.querySelector('.message__thinking'),
+    ).not.toBeNull();
+    expect(
+      answered.container.querySelector('.message__pending-approval'),
+    ).toBeNull();
+    answered.unmount();
+
+    const waiting = renderList(managedSession({ ...settledTail }));
+    expect(waiting.container.querySelector('.message__thinking')).toBeNull();
+    expect(
+      waiting.container.querySelector('.message__pending-approval'),
+    ).not.toBeNull();
+  });
+
   test('a non-managed session keeps the session-level derivation', () => {
     // Direct-path chats never see turn events; their only liveness signal is
     // the session-level flags, unchanged by archive#3300.

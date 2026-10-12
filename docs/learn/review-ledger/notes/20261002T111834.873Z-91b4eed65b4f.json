@@ -1,0 +1,7 @@
+{
+  "revision": "4a601627fc21d3c91219265a738c2d4ea454a439",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"Re-record after main #3111: vitest-resource-manifest.mjs unioned main's ci-health.test.ts entry with this branch's file-preview test entries (both present in the merged manifest); scripts/AGENTS.md manifest guidance claims unchanged.","inputs":["scripts/AGENTS.md"]}
+  ]
+}

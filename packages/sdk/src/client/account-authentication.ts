@@ -13,13 +13,8 @@ import {
   type ProjectInvitationPreview,
 } from '@kontourai/station-contracts/project-membership';
 import { z } from 'zod/v3';
-import { apiErrorMessage } from './api-error-message';
-import {
-  type ClientRequestOptions,
-  getJson,
-  mutateJson,
-  StationHttpError,
-} from './http';
+import { envelopeError } from './api-error-message';
+import { type ClientRequestOptions, getJson, mutateJson } from './http';
 import { unlessDeadline } from './request-deadline';
 
 const path = z
@@ -43,12 +38,10 @@ async function read(response: Response): Promise<unknown> {
     | { data?: unknown; error?: unknown }
     | undefined;
   if (!response.ok)
-    throw new StationHttpError(
-      response.status,
-      apiErrorMessage(
-        value ?? {},
-        'The account request could not be completed.',
-      ),
+    throw envelopeError(
+      response,
+      value,
+      'The account request could not be completed.',
     );
   return value?.data ?? value;
 }

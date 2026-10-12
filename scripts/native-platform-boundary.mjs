@@ -3,8 +3,8 @@
 // Tauri SDK inside the dedicated native platform adapter. This keeps host
 // detection, commands, and events out of feature code and makes the web
 // fallback deterministic.
-import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const TAURI_CAPABILITY_MANIFEST =
@@ -40,14 +40,17 @@ export const EXPECTED_DESKTOP_RESOURCES = {
   '../dist-server': 'dist-server',
   '../dist-desktop-runtime/node_modules': 'node_modules',
   '../schemas': 'schemas',
+  '../dist-desktop-runtime/examples': 'examples',
 };
 export const EXPECTED_APPIMAGE_RUNTIME_FILES = {
   'usr/share/Station/dist-server': '../dist-server',
   'usr/share/Station/node_modules': '../dist-desktop-runtime/node_modules',
+  'usr/share/Station/examples': '../dist-desktop-runtime/examples',
 };
 export const EXPECTED_APPIMAGE_REMOVED_RESOURCES = {
   '../dist-server': null,
   '../dist-desktop-runtime/node_modules': null,
+  '../dist-desktop-runtime/examples': null,
 };
 export const EXPECTED_TAURI_PERMISSIONS = [
   // Read the configured local package name for Stable/Beta/Nightly/Dev shell
@@ -322,7 +325,7 @@ export function findTauriResourceBoundaryViolations(
     JSON.stringify(EXPECTED_APPIMAGE_REMOVED_RESOURCES)
   ) {
     violations.push(
-      `${appImageFile} must delete only the inherited server and raw node_modules resources`,
+      `${appImageFile} must delete only the inherited server, raw node_modules and examples resources`,
     );
   }
   if (
@@ -338,7 +341,7 @@ export function findTauriResourceBoundaryViolations(
 
 function listTrackedUiSources() {
   return (
-    execFileSync('git', ['ls-files', 'src-ui/src'], {
+    execFileSyncBounded('git', ['ls-files', 'src-ui/src'], {
       encoding: 'utf8',
       windowsHide: true,
     })

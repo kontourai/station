@@ -1,0 +1,7 @@
+{
+  "revision": "dc90fcf4305dd4c08c959127e5eac5525a8a0917",
+
+  "notes": [
+    {"path":"scripts/AGENTS.md","note":"#3386 Phase B: vitest-resource-manifest.mjs admits opencode-session-source.locks.test.ts to the process-heavy group (it spawns a python3 F_GETLK probe). This file's rule that a direct child_process importer needs an explicit resource classification is exactly what was followed; no prose change.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

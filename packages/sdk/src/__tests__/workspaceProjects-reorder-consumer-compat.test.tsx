@@ -232,8 +232,8 @@ describe('useReorderProjectsMutation consumer compatibility (#481)', () => {
     });
     // Never invoked: without the pin this expression must not compile.
     const rejected = () => {
-      // @ts-expect-error - per-call callbacks must match their call's variables
       result.current.mutate(['a'], {
+        // @ts-expect-error - per-call callbacks must match their call's variables
         onSuccess: (_data: unknown, input: ReorderProjectsInput) => {
           void input;
         },

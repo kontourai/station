@@ -281,6 +281,15 @@ export async function createNativeAccountSessionBridge(input: {
       await assertCurrent();
       return accountHeaders.parse(result);
     },
+    async managementHeaders(args) {
+      await assertCurrent();
+      const result = await invoke.invoke(
+        'station_native_account_management_headers',
+        { accountContextHandle: prepared.accountContextHandle, ...args },
+      );
+      await assertCurrent();
+      return accountHeaders.parse(result);
+    },
     async prepareRevocation(args) {
       await assertCurrent();
       const result = await invoke.invoke(
@@ -393,6 +402,19 @@ export async function createNativeAccountSessionBridge(input: {
       if (!continuation) throw new Error('native_account_login_required');
       const retained = continuation;
       const result = await client.headers(retained, request);
+      await assertCurrent();
+      if (continuation !== retained)
+        throw new Error('native_account_scope_retired');
+      return result;
+    },
+    async managementHeaders(request: {
+      method: 'GET' | 'HEAD' | 'POST';
+      path: string;
+    }) {
+      await assertCurrent();
+      if (!continuation) throw new Error('native_account_login_required');
+      const retained = continuation;
+      const result = await client.managementHeaders(retained, request);
       await assertCurrent();
       if (continuation !== retained)
         throw new Error('native_account_scope_retired');

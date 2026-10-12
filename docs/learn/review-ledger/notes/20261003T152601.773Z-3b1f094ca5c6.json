@@ -1,0 +1,7 @@
+{
+  "revision": "7685ef951b69eb1abc033e851f46b86bacc92418",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Read the combined visual experience section and main #3180 guardian paragraph, and checked adapters. Guardian allow cannot answer questions, escalations or plan exits addressed to a person. Canonical foreground/lineage and pinned-frame grant conditions remain accurate. Both review histories retained; frozen browser/native artifacts and existing unqualified cases remain separate.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "e4e9354c4cbb9ad742c0cb2c7990bb51350c012c",
+
+  "notes": [
+    {"path":"docs/guides/home-transfer-controller.md","note":"Flagged only because scripts/lib/product-laws.mjs and scripts/product-law-gate.mjs changed. Confirmed no claim here depends on the product-law runtime ceilings or per-observation timeout; grep for timeout, 150 and 30-second terms shows only unrelated Git subprocess or domain timeouts. No prose change.","inputs":["docs/guides/home-transfer-controller.md","scripts/lib/product-laws.mjs","scripts/product-law-gate.mjs"]}
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "revision": "4d7e5b55cab7851decd0146f54fff94b9d759432",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Re-reviewed after a behaviour-neutral refactor in tasks.ts that moved the dispatch folder check from the handler into a local helper (same refusal, same code, same route tests). Nothing this document states about task dispatch, routes or folder choice changed; the earlier note for this document still describes the folder rule accurately.","inputs":["docs/reference/sdk.md","src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/task-basis-mcp-app.md","note":"Re-reviewed after a behaviour-neutral refactor in tasks.ts that moved the dispatch folder check from the handler into a local helper (same refusal, same code, same route tests). Nothing this document states about task dispatch, routes or folder choice changed; the earlier note for this document still describes the folder rule accurately.","inputs":["docs/reference/task-basis-mcp-app.md","src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Re-reviewed after a behaviour-neutral refactor in tasks.ts that moved the dispatch folder check from the handler into a local helper (same refusal, same code, same route tests). Nothing this document states about task dispatch, routes or folder choice changed; the earlier note for this document still describes the folder rule accurately.","inputs":["packages/sdk/README.md","src-server/routes/orchestration/tasks.ts"]}
+  ]
+}

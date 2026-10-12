@@ -1,0 +1,7 @@
+{
+  "revision": "2910576181ea3b322b6d9bb756736eb4c7a88f27",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"#3308 review round: child-work row now also names childWorkSettleFromItem and says settles (plural) replace provisional usage; checked against settledUsage/applySettle/childWorkSettleFromItem and the history, reconnect and global-store replay callers. Other rows unchanged.","inputs":["docs/reference/contracts.md","packages/contracts/src/child-work.ts"]}
+  ]
+}

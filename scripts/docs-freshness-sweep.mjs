@@ -13,6 +13,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { documentationCatchUp } from './documentation-impact.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { checkDocumentationFreshness } from './lib/documentation-freshness.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
@@ -80,7 +81,7 @@ export function reportStaleCount(report) {
 }
 
 function runGh(args) {
-  return execFileSync('gh', args, {
+  return execFileSyncBounded('gh', args, {
     encoding: 'utf8',
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],

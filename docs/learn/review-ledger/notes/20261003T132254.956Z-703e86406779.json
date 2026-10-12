@@ -1,0 +1,7 @@
+{
+  "revision": "167bf32502413ff18cd2f5aff350382b76cf7625",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"AttachedSessionDetail.tsx now maps projected transcript parts with chat's shared conversationPartToContentParts instead of its own subset (a coded runtime error renders translated; file references, cancelled and approval-bound calls keep their fields). The guide's claims about the attached session's continue-here starter, adoption and composer are unchanged; it makes no claim about how transcript parts render.","inputs":["packages/contracts/src/device-settings.ts","src-server/providers/adapters/claude-adapter.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/orchestration-service.ts","src-ui/src/components/session-detail/AttachedSessionDetail.tsx","src-ui/src/views/ProjectPage.tsx"]}
+  ]
+}

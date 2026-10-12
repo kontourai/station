@@ -42,6 +42,7 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 | `execution.modelId` | Explicit model preference on that execution binding |
 | `tools` | MCP server IDs, allow-list, auto-approve list |
 | `guardrails` | `maxSteps`, `maxTokens`, `temperature` |
+| `audience` | Who besides the operator may list, read and use the Agent; absent means operator only ([reference](../reference/config.md#audience)) |
 
 ### MCP Tool Configuration
 
@@ -75,6 +76,9 @@ its native `enabled_tools` / `disabled_tools` configuration. Station Control als
 filters its served catalog and calls to the session's selection. Engines reached
 through the generic connected-engine protocol cannot deliver individual-tool
 selection: a restricted integration is reported undelivered rather than widened.
+An explicit conversation engine override refuses required profile capabilities
+that cannot actually be delivered; it does not start with a reduced profile.
+See [execution overrides](../reference/session-api.md#preserve-an-agent-profile-with-an-execution-override).
 External policy delivery follows the [engine policy contract](../conformance/tool-policy-delivery.md):
 
 ```json
@@ -122,7 +126,7 @@ Station guardrail declaration does not establish external enforcement:
 
 - `maxSteps` — maximum agentic steps per turn before the runtime halts the loop
 - `maxTokens` — maximum output tokens per model call (overrides `defaultMaxOutputTokens` from app.json)
-- `temperature` / `topP` — standard inference parameters
+- `temperature` / `topP` — standard inference parameters. On VoltAgent, `topP` is ignored when `temperature` is also set (see the [config reference](../reference/config.md)).
 - `stopSequences` — accepted and typed, but not currently applied by any engine. Do not rely on it to constrain model output.
 
 ---
@@ -175,24 +179,30 @@ every possible tool outcome:
 4. The client renders a confirmation UI and `POST /tool-approval/:approvalId` with `{ approved: true/false }`
 5. `ApprovalRegistry.resolve()` unblocks the hook; the tool executes or is skipped
 
-The `InjectableStream` wrapper ensures approval events are emitted in the correct position in the SSE stream, even when the model is mid-reasoning.
+The `InjectableStream` wrapper ensures approval events are emitted in the correct position in the SSE stream, even when the model is mid-reasoning. An injected event is emitted as soon as it is injected rather than waiting for the model's next chunk, so a request raised while a tool call blocks (an MCP server's form elicitation, #3284) still reaches the person; see the [MCP host design](../design/mcp-ui-host.md#elicitation-path).
 
 ### Questions from agent harnesses
 
-Claude Code's `AskUserQuestion` and Codex's `requestUserInput` appear as inline
-question cards in the Session. Select an option, choose several where the
-harness supports it, or choose Other to enter a custom answer. Question tabs
-let you jump between prompts. Use Tab and the native choice
-keys; Ctrl/Cmd+Enter advances to the next question or the review. Review and
-edit every answer before sending the batch. Answering a question never grants
-permission to later tool calls, including under wildcard auto-approval.
+Claude Code's `AskUserQuestion` and Codex's `requestUserInput` appear as one
+form in the Session, rendered by the same card as a tool server's form
+(#3390): inline on desktop, and in the request sheet on a phone. Each
+question keeps the engine's short header above it, when it has one. Select an
+option, choose several where the harness supports it, or choose Other to
+enter a custom answer. Send checks every question first; an unanswered one is
+marked on its own field with its reason, and focus moves to the first.
+Ctrl/Cmd+Enter sends. Decline and Cancel return that action to the engine
+instead of an answer. Answering a question never grants permission to later
+tool calls, including under wildcard auto-approval.
 
 Non-private drafts are saved on this device for the exact request and verified
 Station authority. Without that verification or available storage, the draft
-stays in the tab. Private answers are masked during review and aren't saved as
+stays in the tab. Private answers are masked as you type and aren't saved as
 drafts; this does not promise secrecy in the engine's own history. A failed
 send keeps the entered answers. Optional Codex questions remain answerable
-without pausing the running Session.
+without pausing the running Session. Every question, form and approval with no
+tool row of its own leaves a transcript record that shows what became of it
+(answered, declined, cancelled, allowed, denied), including when it was
+answered on another device.
 
 ### What autoApprove never covers
 
@@ -406,7 +416,8 @@ const selectedAccountId = params.get('selectedAccount');
 
 Start Station through `./station`, never through `npm run dev:server` /
 `dev:ui` directly — the CLI orchestrates the server and UI builds in the right
-order. Use a named instance on ports that cannot collide with the defaults
+order. To run with hot reload, use `./station start --watch` (see
+[development](development.md#running-a-second-station-in-development-mode)). Use a named instance on ports that cannot collide with the defaults
 (3141/3000 are reserved for the user's own testing) and `--temp-home` so the
 runtime data is isolated from the normal Station home. Shared client/instance
 metadata can still use `STATION_ROOT`; select a separate root consistently for
@@ -517,6 +528,15 @@ connection ID is `execution.agentConnectionId`, not the Agent ID or a legacy
 `source` discriminator. Execution requests name the Agent and let the server
 resolve that binding. User-facing copy names the engine.
 
+A bound Agent's `engineId` comes from its connection's static identity (the
+Adapter's engine, or `'acp'`), not from the live connection inspection, so a
+failing or slow inspection does not remove it; `engineDisplayName` and
+readiness still need the live read (#3355). When a row's Agent resolves, is
+bound to an engine connection, and still reports no `engineId`,
+`inboxRowIconAgent` draws the engine the row's own execution recorded
+(`HomeWorkItem.provider`), only when that engine has a bundled mark and never
+for an ACP-bound or unresolved Agent.
+
 ### Plugin Workflow
 
 Use the [plugin development workflow](plugins.md#development-workflow) for
@@ -531,7 +551,9 @@ ordinary notification history. An approval or `review_pending` item with an
 exact request reference opens the request's decision controls. An approval
 without that reference uses its persisted notification's Allow/Deny actions;
 `review_pending` without one opens the session. `needs_input` sends a normal
-orchestration turn to the owning session. The header
+orchestration turn to the owning session. An item for a delegated task that
+runs on a paired Station offers no reply. It says to answer on that Station
+and opens the Activity detail. The header
 badge is the same deduplicated active-attention count shown in the Inbox.
 Concrete approval requests suppress a duplicate lifecycle item for the same
 session. Gate exceptions also suppress that session's lifecycle duplicate;

@@ -73,8 +73,10 @@ import {
 import { appHomeCleared, appHomeImport } from '../../telemetry/metrics.js';
 import {
   appHomeImportRequestSchema,
+  CREDENTIAL_PROFILE_ENV_REQUEST_MAX_BYTES,
   credentialProfileApplyRequestSchema,
   credentialProfileEnrollmentRequestSchema,
+  credentialProfileEnvRequestSchema,
   credentialProfileImportRequestSchema,
   credentialProfileRefSchema,
   credentialProfileUpsertRequestSchema,
@@ -131,6 +133,17 @@ const APP_HOME_ENGINES: Record<string, AppHomeEngine> = {
   },
 };
 
+function sameEnv(
+  left: Record<string, string>,
+  right: Record<string, string>,
+): boolean {
+  const keys = Object.keys(left);
+  return (
+    keys.length === Object.keys(right).length &&
+    keys.every((key) => Object.hasOwn(right, key) && right[key] === left[key])
+  );
+}
+
 function unsupportedConnectionResponse(id: string) {
   return {
     success: false as const,
@@ -182,6 +195,7 @@ type CredentialRecoveryConnectionService = Pick<
   | 'upsertCredentialProfile'
   | 'deleteCredentialProfile'
   | 'setCredentialProfileEnrollment'
+  | 'setCredentialProfileEnv'
   | 'setCredentialRecoveryAutomaticPolicy'
   | 'applyCredentialProfile'
 >;
@@ -716,6 +730,44 @@ export function createAppHomeRoutes(deps?: {
           body.enrolled,
         );
         if (data.group.enrolledProfileRefs.includes(ref) !== body.enrolled) {
+          return c.json(credentialRecoveryConflict(), 409);
+        }
+        return c.json({ success: true, data });
+      } catch {
+        return c.json(credentialRecoveryConflict(), 409);
+      }
+    },
+  );
+
+  // #2966: replaces the profile's non-secret env overlay wholesale; `{}`
+  // clears it. The schema refuses credential-shaped literals with a 400.
+  app.put(
+    '/agent/:id/credential-recovery/profiles/:ref/env',
+    validate(credentialProfileEnvRequestSchema, {
+      maxBodyBytes: CREDENTIAL_PROFILE_ENV_REQUEST_MAX_BYTES,
+    }),
+    async (c) => {
+      const ref = profileRefFromParam(param(c, 'ref'));
+      if (!ref)
+        return c.json({ success: false, error: 'Validation failed' }, 400);
+      try {
+        const context = await credentialRecoveryContext(param(c, 'id'));
+        if (!context) return c.json(credentialRecoveryUnavailable(), 404);
+        if (!context.recovery.profiles.some((profile) => profile.ref === ref)) {
+          return c.json(
+            { success: false, error: 'Credential profile not found.' },
+            404,
+          );
+        }
+        const body = getBody(c) as { env: Record<string, string> };
+        const data = await context.service.setCredentialProfileEnv(
+          param(c, 'id'),
+          ref,
+          body.env,
+        );
+        const saved =
+          data.profiles.find((profile) => profile.ref === ref)?.env ?? {};
+        if (!sameEnv(saved, body.env)) {
           return c.json(credentialRecoveryConflict(), 409);
         }
         return c.json({ success: true, data });

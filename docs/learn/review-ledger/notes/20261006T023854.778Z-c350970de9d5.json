@@ -1,0 +1,9 @@
+{
+  "revision": "442229088d71d6cdf4cbeae29ac364e6af27f8f0",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"#3337 review round: applySettle now canonicalizes a settle's usageRunningFields with normalizeRunningFields, so an empty or unknown-only list means every field running. The child-work row's claims (reported fields sticky, usageRunningFields names running fields, childWorkSettleFromItem keeps both) still hold. No prose change.","inputs":["docs/reference/contracts.md","packages/contracts/src/child-work.ts"]},
+
+    {"path":"packages/contracts/README.md","note":"#3337 review round: child-work.ts canonicalizes a settle's usageRunningFields inside the pure reducer; README's pure-reducers claim holds. No prose change.","inputs":["packages/contracts/README.md","packages/contracts/src/child-work.ts"]}
+  ]
+}

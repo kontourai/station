@@ -1,0 +1,7 @@
+{
+  "revision": "c432cfdacbef6762b883773a11bf15637db6b8bb",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"chat.css change lowers the phone project-control container query from 88px to 48px of content, measured in the real UI: long chat title leaves 40px (glyph), the short 'Chat' title leaves 56/87/98px at 320/390/412 (caption and name shown, as before this PR). No region, dock, dialog or 44px-target claim here changes; the button keeps its 44px min-width.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

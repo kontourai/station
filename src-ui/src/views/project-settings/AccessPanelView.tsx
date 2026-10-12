@@ -1,3 +1,8 @@
+import { Popover } from '@kontourai/ui/react';
+import { InfoGlyph } from '../../components/icons/Glyph';
+import { copyToClipboard } from '../../lib/clipboard';
+import '../page-layout.css';
+import './project-access.css';
 import {
   PROJECT_MEMBER_ROLES,
   type ProjectAccessAdministrationView,
@@ -111,9 +116,7 @@ export function AccessPanelView({
           }).toString();
           setLink(invite.href);
         }
-        setNotice(
-          'Invitation created. No email has been sent — copy the link now, it is shown once.',
-        );
+        setNotice('Invitation created. Copy the link to share it.');
       } else setNotice('Access updated.');
       setConfirmation(undefined);
     } catch (cause) {
@@ -253,11 +256,28 @@ export function AccessPanelView({
             );
         }}
       >
-        <h3>Invite a person</h3>
-        <p>
-          A link can be accepted once by anyone you share it with. It expires
-          after seven days and can be cancelled here.
-        </p>
+        <div className="project-access__heading">
+          <h3>Invite a person</h3>
+          <Popover
+            ariaLabel="About Project invitations"
+            placement="bottom-end"
+            trigger={
+              <Button
+                variant="ghost"
+                className="project-access__help"
+                aria-label="About Project invitations"
+              >
+                <InfoGlyph />
+              </Button>
+            }
+          >
+            <p>
+              This invitation can be accepted once. It expires after seven days
+              and can be cancelled here. On mobile, the recipient can paste the
+              link into Station.
+            </p>
+          </Popover>
+        </div>
         {!view.invitationOrigin && (
           <p>
             Account sign-in must be configured before creating an invitation
@@ -357,14 +377,32 @@ export function AccessPanelView({
       )}
       {notice && <p role="status">{notice}</p>}
       {link && (
-        <label>
-          Invitation link
-          <input
-            readOnly
-            value={link}
-            onFocus={(event) => event.target.select()}
-          />
-        </label>
+        <div>
+          <Button
+            onClick={() =>
+              void copyToClipboard(link).then((copied) =>
+                setNotice(
+                  copied
+                    ? 'Invitation copied.'
+                    : 'Couldn’t copy the invitation.',
+                ),
+              )
+            }
+          >
+            Copy invitation
+          </Button>
+          <details>
+            <summary>Invitation link</summary>
+            <label>
+              Invitation link
+              <input
+                readOnly
+                value={link}
+                onFocus={(event) => event.target.select()}
+              />
+            </label>
+          </details>
+        </div>
       )}
       {error && <p role="alert">{error}</p>}
       <ConfirmModal

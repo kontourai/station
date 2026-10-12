@@ -12,6 +12,10 @@ import {
   mayRunCommandsOnHost,
 } from '../../security/coding-authority.js';
 import {
+  operatorHostCli,
+  requestingDeviceShortId,
+} from '../../security/full-access-refusal.js';
+import {
   grantedPairingScope,
   type PairingScopeContextStore,
 } from '../../security/pairing-route-scopes.js';
@@ -66,13 +70,23 @@ function codingExecAllowed(c: Context): boolean {
   );
 }
 
-/** The stable refusal a device without the exec grant receives. */
-const CODING_EXEC_NOT_GRANTED = {
-  success: false as const,
-  code: 'coding-exec-not-granted' as const,
-  error:
-    "This device is not allowed to run commands on this Station's computer. The Station's operator can allow it: on the Station's host, run: station environment access devices, then station environment access scope <this device> --add coding:exec; or in the Station desktop app on its host, select the Station name (top right) → Paired devices → this device → Change access → Run commands → Apply.",
-};
+/**
+ * The stable refusal a device without the exec grant receives. The host
+ * command names this Station's own CLI and, when a paired device asked, that
+ * device, so the operator can run it as written.
+ */
+function codingExecNotGranted(request: Request) {
+  const cli = operatorHostCli(request);
+  const device = requestingDeviceShortId(request);
+  const command = device
+    ? `${cli} environment access scope ${device} --add coding:exec`
+    : `${cli} environment access devices, then ${cli} environment access scope <this device> --add coding:exec`;
+  return {
+    success: false as const,
+    code: 'coding-exec-not-granted' as const,
+    error: `This device is not allowed to run commands on this Station's computer. The Station's operator can allow it: on the Station's host, run: ${command}; or in the Station desktop app on its host, select the Station name (top right) → Paired devices → this device → Change access → Run commands → Apply.`,
+  };
+}
 
 /**
  * Bounds on every git call these routes make (#2363 review round 2). A
@@ -1113,8 +1127,8 @@ export function createCodingRoutes(
           [
             ...repository.repoArgs,
             ...(create
-              ? ['checkout', '-b', branch, '--end-of-options']
-              : ['checkout', '--end-of-options', branch, '--']),
+              ? ['checkout', '-b', branch, 'HEAD', '--']
+              : ['checkout', branch, '--']),
           ],
           opts,
         );
@@ -1206,7 +1220,7 @@ export function createCodingRoutes(
   app.post('/exec', async (c, next) => {
     if (codingExecAllowed(c)) return next();
     codingOps.add(1, { operation: 'exec-refused' });
-    return c.json(CODING_EXEC_NOT_GRANTED, 403);
+    return c.json(codingExecNotGranted(c.req.raw), 403);
   });
   app.post('/exec', validate(execCommandSchema), async (c) => {
     codingOps.add(1, { operation: 'exec' });

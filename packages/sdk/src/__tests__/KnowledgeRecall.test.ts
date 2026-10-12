@@ -3,12 +3,19 @@
  */
 
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { createElement, useLayoutEffect, useRef } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import {
   isRelevantKnowledgeRoot,
   KnowledgeRecallBrowser,
+  KnowledgeRecordDetail,
   knowledgeFreshnessLabel,
   knowledgeRecordFreshness,
   knowledgeRootIncarnationKey,
@@ -333,6 +340,71 @@ describe('Knowledge recall contract', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.getByTestId('record-title').textContent).toBe(
       'Record decision',
+    );
+  });
+
+  test('a narrow record heading wraps an identifier title at its word boundaries', async () => {
+    const titled = (title: string) => {
+      const query = stubRecordQuery();
+      return (rootId: string | undefined, recordId: string | undefined) => {
+        const result = query(rootId, recordId);
+        return { ...result, data: { ...result.data, title } };
+      };
+    };
+    const { unmount } = render(
+      createElement(KnowledgeRecordDetail, {
+        rootId: personalRoot.id,
+        recordId: 'decision',
+        authorityKey: knowledgeRootIncarnationKey(personalRoot),
+        graph: graphA,
+        onSelect: () => undefined,
+        useRecordQuery: titled('KnowledgeStoreProvider'),
+        testIds: { recordTitle: 'record-title' },
+      }),
+    );
+    const heading = await screen.findByTestId('record-title');
+    // The reader's text is unchanged; only break opportunities are added.
+    expect(heading.textContent).toBe('KnowledgeStoreProvider');
+    expect(
+      Array.from(heading.childNodes, (node) =>
+        node.nodeName === 'WBR' ? '|' : node.textContent,
+      ).join(''),
+    ).toBe('Knowledge|Store|Provider');
+    unmount();
+
+    render(
+      createElement(KnowledgeRecordDetail, {
+        rootId: personalRoot.id,
+        recordId: 'decision',
+        authorityKey: knowledgeRootIncarnationKey(personalRoot),
+        graph: graphA,
+        onSelect: () => undefined,
+        useRecordQuery: titled('repository.module_map/v2-API'),
+        testIds: { recordTitle: 'record-title' },
+      }),
+    );
+    expect(
+      Array.from(
+        (await screen.findByTestId('record-title')).childNodes,
+        (node) => (node.nodeName === 'WBR' ? '|' : node.textContent),
+      ).join(''),
+    ).toBe('repository.|module_|map/|v2-|API');
+    cleanup();
+
+    // Break opportunities never cost a character, even an unusual one.
+    render(
+      createElement(KnowledgeRecordDetail, {
+        rootId: personalRoot.id,
+        recordId: 'decision',
+        authorityKey: knowledgeRootIncarnationKey(personalRoot),
+        graph: graphA,
+        onSelect: () => undefined,
+        useRecordQuery: titled('nul\u0000BytePath'),
+        testIds: { recordTitle: 'record-title' },
+      }),
+    );
+    expect((await screen.findByTestId('record-title')).textContent).toBe(
+      'nul\u0000BytePath',
     );
   });
 

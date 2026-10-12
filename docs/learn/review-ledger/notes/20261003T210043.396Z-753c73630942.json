@@ -1,0 +1,7 @@
+{
+  "revision": "ed4b7b2c4440e328d5367f3d8f4a319a81dfba7e",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"Independent source-delta review: updated ProjectConfig excerpt with optional defaultAgent and documented remembered Station-access/project preference precedence and null-on-write/omitted-on-read clearing. Real file-backed service reload, unrelated update, replacement and clear tests plus route ID validation/clear tests passed. Remaining compatibility, storage and package boundary claims are unchanged.","inputs":["docs/reference/shared.md"]}
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "revision": "85e1ea484362701e74e39ce9b7076647952e6c50",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Wording fix for #176: the changeset and this guide now put the bound-operator exemption on rename_session only (a bound operator's search still sees only the operator's transcripts, like any caller's), and the title rule says refused rather than truncated with leading and trailing spaces trimmed, matching agent-conversation-title.ts (the transform trims after the character check). Checked the new bound-operator rename test in runtime-routes-station-control-session-search-rename.test.ts.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/reference/api.md","note":"Wording fix for #176: the Agent Conversation Title section says refused rather than truncated and that leading and trailing spaces are trimmed, matching the route's schema (character check, then trim, then length). Nothing else in the document changed.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Supersedes the earlier #176 note that named module-map.md as the changed input: the input that changed is docs/reference/api.md (the Agent Conversation Title section, now saying refused rather than truncated with surrounding spaces trimmed). This guide links the API reference for other routes and makes no claim about conversation titles or rename, so no claim changes.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Supersedes the earlier #176 note, which named docs/architecture/module-map.md although this record lists only the document and scripts/agent-identity-supported-surface-inventory.mjs as sources. Re-read the document against those: it inventories Agent identity surfaces and makes no claim about Station Control scope, conversation titles or rename, so the #176 changes touch nothing it claims.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md"]}
+  ]
+}

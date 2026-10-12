@@ -13,25 +13,30 @@ import { DeveloperView } from '../views/DeveloperView';
 const TAB_LABELS_TO_PATH: ReadonlyArray<[string, string]> = [
   ['Logs', '/developer/logs'],
   ['System', '/developer/system'],
-  ['Telemetry', '/developer/telemetry'],
+  ['Monitoring', '/developer/telemetry'],
   ['Memory', '/developer/memory'],
   ['Archive', '/developer/archive'],
 ];
 
 describe('DeveloperView', () => {
-  test('renders five accessible read-only route-backed tabs', () => {
+  test('offers accessible section links with bookmarkable destinations', () => {
     render(<DeveloperView apiBase="http://test" />);
-    expect(screen.getByLabelText('Developer')).toBeTruthy();
-    const tabs = screen.getAllByRole('tab');
-    expect(tabs).toHaveLength(TAB_LABELS_TO_PATH.length);
-    for (const tab of tabs) expect(tab.getAttribute('type')).toBe('button');
+    expect(
+      screen.getByRole('navigation', { name: 'Developer sections' }),
+    ).toBeTruthy();
+    for (const [label, path] of TAB_LABELS_TO_PATH) {
+      expect(
+        screen.getByRole('link', { name: label }).getAttribute('href'),
+      ).toBe(path);
+    }
+    expect(screen.queryByRole('tablist')).toBeNull();
   });
 
-  test('every tab click round-trips to its /developer/<tab> route', () => {
+  test('every section click round-trips to its /developer/<tab> route', () => {
     render(<DeveloperView apiBase="http://test" />);
     for (const [label, path] of TAB_LABELS_TO_PATH) {
       navigate.mockClear();
-      fireEvent.click(screen.getByRole('tab', { name: label }));
+      fireEvent.click(screen.getByRole('link', { name: label }));
       expect(navigate).toHaveBeenCalledWith(path);
     }
   });

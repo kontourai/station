@@ -1,0 +1,7 @@
+{
+  "revision": "1e43da0eae8f411069205abc6a792f43b227333d",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the linked API reference's filesystem-backed Skill directory acquisition delta and explicit Mac versus Windows evidence. It does not change the guide's client/version matching, authenticated API caller, refused-request evidence, or workspace Project registration requirements.","inputs":["docs/guides/integrating-station.md"]}
+  ]
+}

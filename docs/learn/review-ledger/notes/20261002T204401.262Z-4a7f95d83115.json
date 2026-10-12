@@ -1,0 +1,7 @@
+{
+  "revision": "b38fa3bf89210ebfba30a32ced0c7f5027261bcd",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed the Station route-card consumer delta against the public SDK surface. No SDK API, account protocol, permission or Project membership behavior changed; this is a local UI status clarification.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

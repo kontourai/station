@@ -1,0 +1,7 @@
+{
+  "revision": "ff8d4704b92d64b50d39bdc28cd02c49f779de49",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Normal-operation paragraph names both Nightly entry points (qualification-started for the qualified commit, at most about once a day; scheduled 06:43 UTC) and the refusal to stage a source the published markers already contain (nightly-cohort-decision.mjs markerAhead). Cohort, attestation identity and ledger claims unchanged.","inputs":["docs/guides/native-releases.md",".github/workflows/nightly.yml"]}
+  ]
+}

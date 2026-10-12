@@ -48,6 +48,16 @@ if [[ "$has_updates" -eq 0 ]]; then
   exit 0
 fi
 
+# #3302: fixed liveness bounds (vitest timeouts, fallow watchdog, product-law
+# and transfer-capture bounds) fail honest runs on a CPU-saturated host. Resolve
+# one bounded scale factor from measured host pressure here, once, and export it
+# so every step below reads it instead of sampling again. CI never runs this
+# hook and pins the factor to 1. An invalid STATION_LIVENESS_SCALE fails the
+# push before any check runs; a scaled run prints one line saying so.
+liveness_scale="$(node scripts/lib/liveness-scale-resolve.mjs)"
+export STATION_LIVENESS_SCALE="$liveness_scale"
+export STATION_LIVENESS_SCALE_RESOLVED=1
+
 # Only seconds-scale checks belong here. `ci:fast` stays the bounded feedback
 # lane and `full:regression` stays the sole completion receipt; what runs here
 # is the subset that is cheap enough to run on every push and whose failure
@@ -71,6 +81,24 @@ npm run --silent lint:check
 echo "[station pre-push] repository governance proof"
 npm run --silent proof:repo-governance
 
+# #3101 slice F: a push that only merges origin/main, cleanly, onto the tip
+# the remote already holds adds no content of the author's. The remote tip is
+# the record of the last push this hook accepted (git moves the ref only after
+# this hook exits 0), main's commits were gated by the merge queue, and the
+# required CI checks gate the combined head after the push. "Main" is the
+# remote's own refs/heads/main (ls-remote on $1), never a local ref. So the scoped,
+# expensive lanes below are skipped for such a push. A conflict resolution, an
+# edit amended into the merge, a new non-merge commit, or any git failure is
+# not pure, and every lane runs. scripts/prepush-pure-merge.mjs owns the rule.
+pure_merge_of_main=0
+echo "[station pre-push] pure merge of main?"
+if printf '%s\n' "${push_ref_lines[@]}" | node scripts/prepush-pure-merge.mjs "${1:-}"; then
+  pure_merge_of_main=1
+fi
+
+if [[ "$pure_merge_of_main" -eq 1 ]]; then
+  echo "[station pre-push] skipped for a pure merge of main: transfer budgets, static gates, SDK barrel, Veritas readiness, typecheck"
+else
 echo "[station pre-push] orchestration transfer budgets"
 node scripts/check-prepush-orchestration-transfer.mjs
 
@@ -137,6 +165,7 @@ npm run --silent veritas:readiness
 # inherits the red.
 echo "[station pre-push] typecheck (scoped to TypeScript inputs)"
 node scripts/check-prepush-typecheck.mjs
+fi
 
 # Instant. The ref lines were collected during the deletion-skipping loop
 # above (stdin reads once), re-emitted verbatim in git's own four-field form

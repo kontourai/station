@@ -1,0 +1,7 @@
+{
+  "revision": "0f606ae5436cf587240ba3ff0908e3d245f0bb80",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Scoped review of the Windows resource-staging workflow change: base-controlled floor adds examples directory staging and a maintained dedicated keeper before Cargo. Required evidence/readiness and protected standards/authority are unchanged. Actual Windows keeper evidence is 31e78 fixed PASS, injected missing-examples FAIL, exact restore PASS; this is directory/consumer-boundary evidence, not Rust, packaged content, full Windows CI, Nightly or publication.","inputs":[".veritas/README.md",".github/workflows/windows-pr-verification.yml"]}
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "revision": "6a99df951adb1f51fde5c39f0e3f1aefcbdb79ff",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"#2959 merge of origin/main (b07e53ea8 lineage, #2979 and #3013 included). Added station-host-stream to the admission paragraph and the note that an unexpected flat file is refused by the inventory, not by admission; checked against release-admit-producer-assets.mjs, its test and release.yml.","inputs":["docs/guides/native-releases.md"]},
+
+    {"path":"docs/guides/release-rings.md","note":"#2959 merge of origin/main (b07e53ea8 lineage, #2979 and #3013 included). Added the five-minute staleness-only re-verify (ported from #3013 into scripts/lib/portable-publication.mjs); assemble-draft now admits through the allowlist script. Other host-stream claims re-read against release.yml and publish-release.yml.","inputs":["docs/guides/release-rings.md"]},
+
+    {"path":"docs/guides/nightly.md","note":"#2959 merge of origin/main (b07e53ea8 lineage, #2979 and #3013 included). portable-nightly-publication.mjs keeps #3013's staleness-only re-verify, now implemented in scripts/lib/portable-publication.mjs and re-exported; main's nightly tests pass unchanged. No claim changes.","inputs":["docs/guides/nightly.md"]},
+
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"#2959 merge of origin/main (b07e53ea8 lineage, #2979 and #3013 included). The Nightly publisher's copy of the launcher protocol range and its re-verify now live in scripts/lib/portable-publication.mjs; the Context's claims are unchanged.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"#2959 merge of origin/main (b07e53ea8 lineage, #2979 and #3013 included). vitest-resource-manifest.mjs carries both main's entries and the #2959 child-process test classification; the rule this file states is followed.","inputs":["scripts/AGENTS.md"]},
+
+    {"path":"deploy/gcp-dev/README.md","note":"#2959: container-release.test.ts now pins the container and assemble-draft needs per parsed job instead of by substring; container build, provenance and smoke claims unchanged.","inputs":["deploy/gcp-dev/README.md"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"#2959: container-release.test.ts now pins the container and assemble-draft needs per parsed job instead of by substring; container build, provenance and smoke claims unchanged.","inputs":["deploy/public-ingress/README.md"]},
+
+    {"path":"docs/guides/deployment.md","note":"#2959: container-release.test.ts now pins the container and assemble-draft needs per parsed job instead of by substring; container build, provenance and smoke claims unchanged.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"docs/guides/android-build.md","note":"#2959 merge of origin/main (b07e53ea8 lineage, #2979 and #3013 included). release.yml now combines main's allowlist admission step with #2959's host-archives/host-manifest jobs; re-read this document's claims citing it and none changes.","inputs":["docs/guides/android-build.md"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"#2959 merge of origin/main (b07e53ea8 lineage, #2979 and #3013 included). release.yml now combines main's allowlist admission step with #2959's host-archives/host-manifest jobs; re-read this document's claims citing it and none changes.","inputs":["docs/guides/desktop-build.md"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"#2959 merge of origin/main (b07e53ea8 lineage, #2979 and #3013 included). release.yml now combines main's allowlist admission step with #2959's host-archives/host-manifest jobs; re-read this document's claims citing it and none changes.","inputs":["docs/guides/desktop-tray.md"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"#2959 merge of origin/main (b07e53ea8 lineage, #2979 and #3013 included). release.yml now combines main's allowlist admission step with #2959's host-archives/host-manifest jobs; re-read this document's claims citing it and none changes.","inputs":["docs/guides/mobile-release.md"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"#2959 merge of origin/main (b07e53ea8 lineage, #2979 and #3013 included). release.yml now combines main's allowlist admission step with #2959's host-archives/host-manifest jobs; re-read this document's claims citing it and none changes.","inputs":["docs/guides/release-channel-ports.md"]},
+
+    {"path":"docs/guides/store-entry.md","note":"#2959 merge of origin/main (b07e53ea8 lineage, #2979 and #3013 included). release.yml now combines main's allowlist admission step with #2959's host-archives/host-manifest jobs; re-read this document's claims citing it and none changes.","inputs":["docs/guides/store-entry.md"]},
+
+    {"path":"docs/guides/store-listing.md","note":"#2959 merge of origin/main (b07e53ea8 lineage, #2979 and #3013 included). release.yml now combines main's allowlist admission step with #2959's host-archives/host-manifest jobs; re-read this document's claims citing it and none changes.","inputs":["docs/guides/store-listing.md"]},
+
+    {"path":"docs/reference/cli.md","note":"#2959 merge of origin/main (b07e53ea8 lineage, #2979 and #3013 included). release.yml now combines main's allowlist admission step with #2959's host-archives/host-manifest jobs; re-read this document's claims citing it and none changes.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"src-desktop/icons/README.md","note":"#2959 merge of origin/main (b07e53ea8 lineage, #2979 and #3013 included). release.yml now combines main's allowlist admission step with #2959's host-archives/host-manifest jobs; re-read this document's claims citing it and none changes.","inputs":["src-desktop/icons/README.md"]}
+  ]
+}

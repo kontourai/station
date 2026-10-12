@@ -147,7 +147,7 @@ export function exportRepositoryKnowledge({ root = process.cwd() } = {}) {
   if (
     atlas.version !== 1 ||
     !Array.isArray(atlas.groups) ||
-    JSON.parse(ledgerText).version !== REVIEW_LEDGER_VERSION
+    ![REVIEW_LEDGER_VERSION, 3].includes(JSON.parse(ledgerText).version)
   )
     throw new Error('Unsupported atlas or review ledger.');
   // One record file per document (scripts/lib/review-ledger-store.mjs); each
@@ -313,12 +313,15 @@ export function exportRepositoryKnowledge({ root = process.cwd() } = {}) {
     const record = review(path);
     if (!record) continue;
     const node = nodes.get(`file:${path}`);
-    node.reviewDigest = record.document.digest;
-    node.reviewComparison =
-      node.observation.digest === record.document.digest
+    node.reviewDigest = record.document?.digest;
+    node.reviewComparison = !record.document
+      ? 'history-derived-not-judged-by-export'
+      : node.observation.digest === record.document.digest
         ? 'matches-recorded-digest'
         : 'changed-since-recorded-review';
-    for (const source of record.sources) {
+    for (const dependency of record.sources) {
+      const source =
+        typeof dependency === 'string' ? { path: dependency } : dependency;
       if (typeof source.path !== 'string')
         throw new Error('Malformed review source.');
       // A value binding (package.json#/scripts/x) depends on its file.
@@ -332,8 +335,9 @@ export function exportRepositoryKnowledge({ root = process.cwd() } = {}) {
           : observed?.availability === 'present'
             ? bindingDigest(source.path, reader.read(file))
             : undefined;
-      const comparison =
-        current === source.digest
+      const comparison = !record.document
+        ? 'recorded-dependency'
+        : current === source.digest
           ? 'matches-recorded-digest'
           : 'changed-or-missing';
       edge(

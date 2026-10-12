@@ -1,0 +1,9 @@
+{
+  "revision": "bad4fe17d04898e4fb373ee188151a2559eb5bbf",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-reviewed after merging origin/main into #3160: this branch registers the SessionMessageDelivery, session-control request-key and session-turn-wait modules and the session-agent-control route; the fix round only un-exports internals of those modules and removes the unused deliveryBranchTaken helper. The module map's claims, as merged from main, are unchanged.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Re-reviewed after merging origin/main into #3160: the guide documents send_to_session, interrupt_session and wait_session; this fix round changes no tool name, argument, result or refusal (the descriptions and limits are now module-private constants, and the iserror test now supplies the MCP request context a host provides). The guide's claims, as merged from main, are unchanged.","inputs":["docs/guides/self-configuring-agent.md"]}
+  ]
+}

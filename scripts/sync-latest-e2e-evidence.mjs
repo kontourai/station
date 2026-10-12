@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { execFileSync, spawn } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import {
   createWriteStream,
   existsSync,
@@ -11,6 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import yauzl from 'yauzl';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import {
   E2E_LATEST_SCHEMA_VERSION,
   inspectE2EEvidenceDirectory,
@@ -22,7 +23,7 @@ import {
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const REPOSITORY = 'kontourai/station';
-const WORKFLOW = 'CI Extended';
+const WORKFLOW = 'Tool: CI extended';
 const WORKFLOW_PATH = '.github/workflows/ci-extended.yml';
 const ARTIFACT_PREFIX = 'playwright-full-verification-';
 export const MAX_ARCHIVE_BYTES = 120 * 1024 * 1024;
@@ -54,7 +55,7 @@ export function parseSyncArgs(args) {
 }
 
 function gh(args) {
-  return execFileSync('gh', args, {
+  return execFileSyncBounded('gh', args, {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -133,7 +134,7 @@ function workflowIdFor(invoke) {
     (entry) => entry.name === WORKFLOW && entry.path === WORKFLOW_PATH,
   );
   if (!Number.isSafeInteger(workflow?.id))
-    throw new Error('Unable to resolve CI Extended workflow identity');
+    throw new Error('Unable to resolve Tool: CI extended workflow identity');
   return workflow.id;
 }
 
@@ -166,9 +167,9 @@ function runsFor(options, invoke, workflowId) {
       (!options.status || run.conclusion === options.status),
   );
   if (!candidates.length)
-    throw new Error('No compatible completed CI Extended run was found');
+    throw new Error('No compatible completed Tool: CI extended run was found');
   if (options.runId && candidates.length !== 1)
-    throw new Error('Exact run is not a completed CI Extended run');
+    throw new Error('Exact run is not a completed Tool: CI extended run');
   return candidates;
 }
 
@@ -520,7 +521,7 @@ export async function syncLatestE2EEvidence(
         if (options.runId) throw error;
       }
     throw new Error(
-      `No completed CI Extended run had compatible bounded E2E evidence: ${lastError?.message ?? 'unknown'}`,
+      `No completed Tool: CI extended run had compatible bounded E2E evidence: ${lastError?.message ?? 'unknown'}`,
     );
   } finally {
     rmSync(temporary, { recursive: true, force: true });
@@ -528,7 +529,7 @@ export async function syncLatestE2EEvidence(
 }
 
 export function formatSyncResult(result) {
-  return `Installed CI Extended run ${result.run.databaseId} (${result.manifest.verdict}) at .kontourai/e2e-latest/`;
+  return `Installed Tool: CI extended run ${result.run.databaseId} (${result.manifest.verdict}) at .kontourai/e2e-latest/`;
 }
 
 export async function main(args = process.argv.slice(2)) {

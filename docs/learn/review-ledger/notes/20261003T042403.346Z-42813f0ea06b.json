@@ -1,0 +1,7 @@
+{
+  "revision": "adc6b57e6e35d695fb82cf3e4ce76fa889ab8e40",
+
+  "notes": [
+    {"path":"docs/reference/skill-experiences.md","note":"Reviewed inventory route fixture cleanup delta: tracked temporary homes are registered before EventStore close hooks, so failed fixture setup also cleans up while SQLite closes first. Installed source, admission and inventory assertions are unchanged. Executed inventory route and repository temp-ratchet owner suites: 14 assertions passed. This is local test lifecycle evidence, not hosted Windows runtime proof.","inputs":["docs/reference/skill-experiences.md"]}
+  ]
+}

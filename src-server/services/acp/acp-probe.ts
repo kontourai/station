@@ -16,6 +16,10 @@ import {
   createAcpInboundExtensionRequestHandler,
 } from './acp-inbound-extension-policy.js';
 import {
+  acquireProbeSession,
+  PROBE_SESSION_REFRESH_MS,
+} from './acp-probe-session.js';
+import {
   ACPProcess,
   assertACPProviderRouteSupported,
   type InitializeResult,
@@ -440,7 +444,40 @@ function createProbeClient(onExtMethod: AcpInboundExtensionHandler): Client {
   };
 }
 
+/**
+ * #3411: a probe session kept for reattaching, with what decides when it is
+ * too old to trust. `agent` is the `initialize` agentInfo name and version
+ * seen when it was minted; `mintedAt` is when it was created, not when it was
+ * last reattached.
+ */
+interface RetainedProbeSession {
+  sessionId: string;
+  cwd: string;
+  agent: string;
+  mintedAt: number;
+}
+
+function probeSessionAgentKey(initResult: InitializeResult): string {
+  return `${initResult.agentInfo?.name ?? ''}@${initResult.agentInfo?.version ?? ''}`;
+}
+
+/**
+ * The least time a probe gives `session/delete`, even when the handshake
+ * budget is spent. Capabilities are already recorded by then, so this is the
+ * most a delete can add to a probe; skipping it instead would turn a slow
+ * handshake into a stored session the agent could have removed.
+ */
+const PROBE_SESSION_DELETE_FLOOR_MS = 2_000;
+
 export class ACPProbe {
+  /**
+   * #3411: the session this probe created or reattached to, kept so the next
+   * probe can reattach to it instead of creating another. Keyed by `cwd`
+   * because a session belongs to the directory it was created in.
+   */
+  private retainedProbeSession: RetainedProbeSession | null = null;
+  private probeSessionReattachSuspended = false;
+  private warnedUnmanagedProbeSession = false;
   cachedModes: Array<{ id: string; name: string; description?: string }> = [];
   cachedConfigOptions: any[] = [];
   cachedCapabilities: any = null;
@@ -600,6 +637,14 @@ export class ACPProbe {
       typeof acpProbeCleanupRetention,
       'add'
     > = acpProbeCleanupRetention,
+    /**
+     * Called after a handshake is recorded. The manager wires the OpenCode
+     * per-model capability listing here; it must not throw into the probe and
+     * is absent for a bare probe so tests never launch an engine CLI.
+     */
+    private readonly onHandshakeObserved?: (
+      config: ACPConnectionConfig,
+    ) => void,
   ) {
     this.inboundExtensionPolicy = createAcpInboundExtensionRequestHandler({
       logger: this.logger,
@@ -651,6 +696,32 @@ export class ACPProbe {
         this.managedWorkspaceHomeDir,
       ))
     );
+  }
+
+  /**
+   * #3411: the retained probe session this run may reattach to, or `null` to
+   * mint a fresh one. A reattach can answer from the session's own stored
+   * state rather than the agent's current defaults (see acp-probe-session.ts),
+   * so a fresh session is minted:
+   * - on every user-initiated probe (Reconnect, a connection edit, a provider
+   *   mutation's refresh), where the user expects current answers;
+   * - when `initialize` reports a different agent name or version;
+   * - once the retained session is {@link PROBE_SESSION_REFRESH_MS} old;
+   * - for one run after a probe whose session step failed, so a reattach that
+   *   hangs cannot time out every later probe.
+   */
+  private reattachableProbeSession(
+    initiator: ACPProbeInitiator,
+    initResult: InitializeResult,
+    cwd: string,
+  ): string | null {
+    const retained = this.retainedProbeSession;
+    if (!retained || initiator !== 'background') return null;
+    if (this.probeSessionReattachSuspended) return null;
+    if (retained.cwd !== cwd) return null;
+    if (retained.agent !== probeSessionAgentKey(initResult)) return null;
+    if (Date.now() - retained.mintedAt >= PROBE_SESSION_REFRESH_MS) return null;
+    return retained.sessionId;
   }
 
   /**
@@ -807,12 +878,50 @@ export class ACPProbe {
       );
       if (this.disposed) return false;
       probePhase = 'session creation';
+      // #3411: reattach to (or delete) the probe's session instead of leaving
+      // a new stored session behind on every run. See acp-probe-session.ts.
       const sessionResult = await this.runWithinProbeDeadline(
-        process.newSession(cwd),
+        acquireProbeSession({
+          process,
+          agentCapabilities: initResult.agentCapabilities,
+          cwd,
+          retainedSessionId: this.reattachableProbeSession(
+            initiator,
+            initResult,
+            cwd,
+          ),
+          onReattachFailed: (error, step) =>
+            this.logger.warn(
+              'ACPProbe could not reattach its probe session; creating a new one',
+              { err: error, id: this.config.id, step },
+            ),
+        }),
         'session creation',
         remainingHandshakeMs(),
         probeBudgetMs,
       );
+      this.probeSessionReattachSuspended = false;
+      this.retainedProbeSession =
+        sessionResult.disposition !== 'retain'
+          ? null
+          : sessionResult.origin === 'created' || !this.retainedProbeSession
+            ? {
+                sessionId: sessionResult.sessionId,
+                cwd,
+                agent: probeSessionAgentKey(initResult),
+                mintedAt: Date.now(),
+              }
+            : this.retainedProbeSession;
+      if (
+        sessionResult.disposition === 'unmanaged' &&
+        !this.warnedUnmanagedProbeSession
+      ) {
+        this.warnedUnmanagedProbeSession = true;
+        this.logger.warn(
+          'ACP agent advertises no session resume, load, or delete; each capability probe leaves a new session in its store',
+          { id: this.config.id },
+        );
+      }
       if (this.disposed) return false;
 
       this.cachedModes = sessionResult.modes?.availableModes ?? [];
@@ -825,7 +934,34 @@ export class ACPProbe {
       this.lastHandshakeObservedAt = Date.now();
       this.lastSuccess = true;
       this.lastError = null;
+      try {
+        this.onHandshakeObserved?.(this.config);
+      } catch {
+        // Best-effort enrichment never fails a successful handshake.
+      }
+      if (sessionResult.disposition === 'delete') {
+        // The capabilities are already recorded; a failed delete costs one
+        // stored session, never the probe's result.
+        try {
+          await this.runWithinProbeDeadline(
+            process.deleteSession(sessionResult.sessionId),
+            'session deletion',
+            Math.max(remainingHandshakeMs(), PROBE_SESSION_DELETE_FLOOR_MS),
+            probeBudgetMs,
+          );
+        } catch (error) {
+          this.logger.warn('ACPProbe could not delete its probe session', {
+            err: error,
+            id: this.config.id,
+          });
+        }
+      }
     } catch (err) {
+      if (probePhase === 'session creation') {
+        // A reattach that hangs past the deadline would otherwise be retried,
+        // and time out, on every later probe. One probe skips reattaching.
+        this.probeSessionReattachSuspended = true;
+      }
       if (this.disposed) {
         this.lastSuccess = false;
         return false;

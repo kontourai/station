@@ -77,6 +77,7 @@ import {
 } from '../../services/projects/task-tool-result-reference-read-adapter.js';
 import { taskTurnReferenceResolutionTotal } from '../../telemetry/metrics.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
+import { refuseUngrantedRuntimeCwd } from '../working-directory-authority.js';
 import {
   fullAccessGrantForRequest,
   fullAccessRefusal,
@@ -216,6 +217,8 @@ function sameTaskWorkspaceBinding(
     left?.capturedAt === right?.capturedAt
   );
 }
+
+const taskCloseOnMergeSchema = z.object({ enabled: z.boolean() }).strict();
 
 const taskStatusSchema = z.object({
   status: z.preprocess((value) => {
@@ -525,6 +528,28 @@ export function createTaskRoutes(
     hostedRequest(request)
       ? options.taskGraphServiceForRequest?.(request)
       : taskGraphService;
+  // A folder other than the Task Project's own takes the authority to choose
+  // a working folder, decided before any side effect.
+  const refuseDispatchCwd = (
+    c: Context,
+    taskId: string,
+    cwd: string | undefined,
+  ): Response | undefined => {
+    if (cwd === undefined) return undefined;
+    let projectFolder: string | undefined;
+    try {
+      const projectId = serviceForRequest(c.req.raw)?.readTask(
+        taskId,
+      )?.projectId;
+      projectFolder =
+        projectId === undefined
+          ? undefined
+          : options.resolveProjectWorkspace?.(projectId);
+    } catch {
+      projectFolder = undefined;
+    }
+    return refuseUngrantedRuntimeCwd(c, cwd, projectFolder);
+  };
   const dispatcherForRequest = (request: Request) =>
     hostedRequest(request)
       ? options.taskDispatcherForRequest?.(request)
@@ -1922,6 +1947,28 @@ export function createTaskRoutes(
     }
   });
 
+  // #3161: a person's opt-in to close the Task when every pull request kept
+  // on it is merged. No station-control tool names this route, so the central
+  // authority guard refuses an agent's request to it.
+  app.put(
+    '/:taskId/close-on-merge',
+    validate(taskCloseOnMergeSchema),
+    async (c) => {
+      try {
+        const service = serviceForRequest(c.req.raw);
+        if (!service) return hostedNotFound(c);
+        const data = await service.setCloseOnMerge(
+          param(c, 'taskId'),
+          getBody(c).enabled,
+          resolveClientOriginForRequest(c.req.raw),
+        );
+        return c.json({ success: true, data });
+      } catch (error) {
+        return c.json({ success: false, error: errorMessage(error) }, 400);
+      }
+    },
+  );
+
   app.post('/:taskId/dispatch', validate(taskDispatchSchema), async (c) => {
     // #2436: a dispatch that asks for full access needs the operator in
     // person or a device holding `approval:full-access`.
@@ -1932,6 +1979,12 @@ export function createTaskRoutes(
       ),
     ]);
     if (fullAccessRefused) return fullAccessRefused;
+    const cwdRefused = refuseDispatchCwd(
+      c,
+      param(c, 'taskId'),
+      (getBody(c) as z.infer<typeof taskDispatchSchema>).runtimeConfig?.cwd,
+    );
+    if (cwdRefused) return cwdRefused;
     try {
       const dispatcher = dispatcherForRequest(c.req.raw);
       if (!dispatcher) return hostedNotFound(c);

@@ -1,0 +1,7 @@
+{
+  "revision": "193327c284d78c69b927d62c6c633b3c10e6e32d",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the Gallery exact-pixel/baseline refresh contract and dock-mismatch illustration dependency. Completed canonical Linux PR run 37970781881 attempt 1 captured exact head 571b44936347c0e67056775198294e9a9279beb7: 53 compared, six changed, one intentionally volatile, zero capture failures/missing screens. Visually inspected all six before/reference/diff pairs: four Station mark colors and dock engine caption are intended; Monitoring preserves controls/states with a small spacing shift and no observed clipping (root cause not isolated). Refreshed only those six images/hashes using the prescribed writer, preserved volatile reference, and compared the artifact 53/53 exactly. This is artifact pixel review, not fresh provider/native or new-head hosted capture qualification.","inputs":["docs/guides/testing.md","tests/screenshots.baseline.json","tests/screenshots.baseline/overlay-dock-project-mismatch.png"]}
+  ]
+}

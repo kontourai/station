@@ -44,6 +44,45 @@ describe('connection recovery decision table', () => {
     ).toEqual({ decision: 'retry-now', dueAt: '2026-07-29T11:59:00.000Z' });
   });
 
+  test('#3157: an adapter usage-limit report is a rate limit whose reset decides the wait', () => {
+    // Provider wording that matches none of the text patterns: only the
+    // explicit flag classifies it.
+    const message = "You've hit your limit · resets 1pm";
+    expect(classifyConnectionFailure({ message }).kind).toBe('unknown');
+    const failure = classifyConnectionFailure({
+      message,
+      code: 'engine-turn-failed',
+      details: {
+        usageLimit: true,
+        scope: 'account',
+        resetAt: '2026-07-29T13:00:00.000Z',
+      },
+    });
+    expect(failure).toEqual({
+      kind: 'rate-limit',
+      scope: 'account',
+      timing: { resetAt: '2026-07-29T13:00:00.000Z' },
+      usageLimit: true,
+    });
+    expect(
+      decideConnectionRecovery({ capability: capable, failure, now }),
+    ).toEqual({
+      decision: 'wait-until-reset',
+      dueAt: '2026-07-29T13:00:00.000Z',
+    });
+    // The same stop without a provider reset stays manual.
+    expect(
+      decideConnectionRecovery({
+        capability: capable,
+        failure: classifyConnectionFailure({
+          message,
+          details: { usageLimit: true, scope: 'account' },
+        }),
+        now,
+      }),
+    ).toEqual({ decision: 'manual' });
+  });
+
   test('account, provider, and server capacity stay scoped and never switch accounts', () => {
     for (const scope of ['account', 'provider', 'server'] as const) {
       const failure = classifyConnectionFailure({
@@ -134,6 +173,41 @@ describe('credential recovery selection', () => {
       outcome: 'selected',
       candidateProfileRef: 'profile-recovery',
     });
+  });
+
+  test('#2966: refuses a candidate whose env overlay routes differently from the active profile', () => {
+    const routedPrimary = {
+      ref: 'profile-primary',
+      env: { ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318' },
+    };
+    expect(
+      selectCredentialRecoveryCandidate({
+        ...selectable,
+        profiles: [routedPrimary, { ref: 'profile-recovery' }],
+      }),
+    ).toEqual({ outcome: 'refused', reason: 'environment_mismatch' });
+    expect(
+      selectCredentialRecoveryCandidate({
+        ...selectable,
+        profiles: [
+          routedPrimary,
+          {
+            ref: 'profile-recovery',
+            env: { ANTHROPIC_BASE_URL: 'http://127.0.0.1:8318' },
+          },
+        ],
+      }),
+    ).toEqual({ outcome: 'selected', candidateProfileRef: 'profile-recovery' });
+    const invalid = { ANTHROPIC_AUTH_TOKEN: 'x' };
+    expect(
+      selectCredentialRecoveryCandidate({
+        ...selectable,
+        profiles: [
+          { ref: 'profile-primary', env: invalid },
+          { ref: 'profile-recovery', env: invalid },
+        ],
+      }),
+    ).toEqual({ outcome: 'refused', reason: 'environment_mismatch' });
   });
 
   test('defaults automatic switching off', () => {

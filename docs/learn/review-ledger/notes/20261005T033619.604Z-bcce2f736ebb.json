@@ -1,0 +1,11 @@
+{
+  "revision": "0db30214a2261a7dc133e550ea30b9dbc07f5f28",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Re-checked after the review fixes (f7b1c9a06b and the effect-deps fix). New behavior vs the recorded prose: with verified access the remembered Agent and Model are the chip on every surface (useStartSelection reads useContextAgent; a per-surface Model choice yields to a different remembered Model), which the existing 'Home and the dock always open on the same choices' sentence now holds without exception; Home's project pick yields to a later dock rebind; a start whose chosen project is gone is refused with the message kept (covered by 'If the Agent Home chose cannot start ... shows the composer with your message' in spirit; the project case is not separately named); Enter on a non-startable Agent offers Enable; the project chip shows the accent swatch only (no icon claim in the prose). No prose change needed.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/hooks/useStartSelection.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Re-checked after the review fixes in NewChatModal (project refusal, context-chip keying, skills refetch gate, model-gone picker remembering). The section's claims (chips, remembered choices, Home's exact selection started through the same path) still hold; no prose change.","inputs":["docs/design/chat-composer.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Re-checked after the NewChatModal review fixes: the setup helper and setup-return retention claims are unchanged in behavior; no prose change.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

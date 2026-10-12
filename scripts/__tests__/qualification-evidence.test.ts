@@ -50,6 +50,7 @@ const run = {
   status: 'completed',
   conclusion: 'success',
   updated_at: new Date().toISOString(),
+  created_at: new Date().toISOString(),
 };
 
 describe('source qualification evidence', () => {
@@ -150,7 +151,21 @@ describe('source qualification evidence', () => {
             jobs: [
               {
                 name: 'qualification / Full source qualification',
-                conclusion: 'success',
+                completed_at:
+                  mode === 'live-expired'
+                    ? new Date(Date.now() - 25 * 3600000).toISOString()
+                    : new Date(
+                        Date.now() -
+                          (mode === 'retry-after-green' &&
+                          req.url?.includes('/42/')
+                            ? 10_000
+                            : 0),
+                      ).toISOString(),
+                conclusion:
+                  mode === 'red-gate' ||
+                  (mode === 'retry-after-green' && req.url?.includes('/41/'))
+                    ? 'failure'
+                    : 'success',
               },
               ...Array.from({ length: mode === 'missing' ? 3 : 4 }, (_, i) => ({
                 name: `qualification / Ordinary corpus ${i}`,
@@ -171,7 +186,37 @@ describe('source qualification evidence', () => {
           }),
         );
       else
-        res.end(JSON.stringify({ workflow_runs: [{ ...run, head_sha: sha }] }));
+        res.end(
+          JSON.stringify({
+            workflow_runs: [
+              ...(mode === 'retry-after-green'
+                ? [
+                    {
+                      ...run,
+                      id: 41,
+                      head_sha: sha,
+                      created_at: new Date(Date.now() - 100_000).toISOString(),
+                      run_attempt: 2,
+                      conclusion: 'failure',
+                    },
+                  ]
+                : []),
+              {
+                ...run,
+                head_sha: sha,
+                // A red run whose gate passed: only Main qualification, which
+                // also publishes the Nightly, may be judged by its gate.
+                ...(mode.startsWith('live-')
+                  ? { status: 'in_progress', conclusion: null }
+                  : {}),
+                ...(mode.startsWith('red-') ? { conclusion: 'failure' } : {}),
+                ...(mode === 'red-other-workflow'
+                  ? { path: '.github/workflows/nightly.yml' }
+                  : {}),
+              },
+            ],
+          }),
+        );
     });
     await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
     const address = server.address();
@@ -187,7 +232,18 @@ describe('source qualification evidence', () => {
       GITHUB_API_URL: `http://127.0.0.1:${address.port}`,
     };
     try {
-      for (mode of ['valid', 'missing', 'expired', 'unavailable']) {
+      for (mode of [
+        'valid',
+        'live-valid',
+        'live-expired',
+        'retry-after-green',
+        'missing',
+        'expired',
+        'unavailable',
+        'red-publication',
+        'red-gate',
+        'red-other-workflow',
+      ]) {
         writeFileSync(output, '');
         await exec(process.execPath, [script, 'resolve'], {
           cwd: root,
@@ -195,7 +251,7 @@ describe('source qualification evidence', () => {
           windowsHide: true,
         });
         expect(readFileSync(output, 'utf8')).toBe(
-          `reuse_run=${mode === 'valid' ? '42' : ''}\n`,
+          `reuse_run=${['valid', 'live-valid', 'red-publication', 'red-other-workflow'].includes(mode) ? '42' : ''}\n`,
         );
       }
       expect(observed.some((url) => url.includes(`head_sha=${sha}`))).toBe(

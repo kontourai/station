@@ -122,6 +122,15 @@
       "configKey": "surfaceTrustFromVeritasEvidence"
     },
     {
+      "id": "attached-sessions-outside-projects",
+      "label": "Conversations outside projects",
+      "help": "Activity lists Claude Code and Codex conversations on this machine whose folder is in no project, under No project.",
+      "scope": "station",
+      "section": "host-runtime",
+      "route": "/settings?view=host-runtime&highlight=attached-sessions-outside-projects",
+      "configKey": "attachedSessionsOutsideProjects"
+    },
+    {
       "id": "device-helper-url",
       "label": "Device helper URL",
       "help": "After a restart, Station lists this machine’s simulators and emulators through the device helper at this address.",
@@ -278,6 +287,15 @@
       "section": "agent-runs",
       "route": "/settings?view=agent-runs&highlight=workspace-checkpoints",
       "configKey": "workspaceCheckpoints"
+    },
+    {
+      "id": "usage-limit-auto-resume",
+      "label": "Resume after usage limits",
+      "help": "When Claude Code or Codex stops on a usage limit with a known reset time, Station sends the stopped turn again after the limit resets.",
+      "scope": "station",
+      "section": "agent-runs",
+      "route": "/settings?view=agent-runs&highlight=usage-limit-auto-resume",
+      "configKey": "usageLimitAutoResume"
     },
     {
       "id": "chat-font-size",

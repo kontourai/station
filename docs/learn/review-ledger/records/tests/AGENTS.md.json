@@ -9,22 +9,20 @@
 
   "limits": "Normative contributor policy. Routing and named owners were checked; this is not proof that every implementation or contributor complies, nor completion evidence for CI, performance, native devices, or hosted delivery. No live browser install/pairing, device interaction, journey profiling, or production mutation run was performed.",
 
-  "document": {"digest":"accdb8953eed58866c69d7476eacde02621d4933fae8c1e56116ca38c1e981d7","revision":"ae89c0396a4e0b05b0848dcbfeee9eed29d188c4"},
-
   "sources": [
-    {"path":"docs/guides/testing.md","digest":"53af26e5853101d07b3c331f1ce1bca2ca6e5c19555f7d0045cca9a9483b052b","revision":"26c576127006fc775278e3da2eea0ab23bc9e90c"},
+    "docs/guides/testing.md",
 
-    {"path":"scripts/station-cli.ts","digest":"f7c3079b713e6bda690bf4b73419ffad0ff3fd8856c9c9be1f85eeb1271b3b36","revision":"ae89c0396a4e0b05b0848dcbfeee9eed29d188c4"},
+    "scripts/station-cli.ts",
 
-    {"path":"tests/helpers/connection-fixtures.ts","digest":"39c95ec807503b7523044a5b9cf30cb794fea091e7c2087f64ecd915afd5376d","revision":"ae89c0396a4e0b05b0848dcbfeee9eed29d188c4"},
+    "tests/helpers/connection-fixtures.ts",
 
-    {"path":"tests/helpers/fixture-audit.ts","digest":"ef308de2593937ae6aadbb3aecd875fb5d9313c3b691cc6e61646eb9fe6ed98d","revision":"ae89c0396a4e0b05b0848dcbfeee9eed29d188c4"},
+    "tests/helpers/fixture-audit.ts",
 
-    {"path":"tests/helpers/install-plugin.ts","digest":"dc3683c74ba62c0c1f136e69279b91b3c465d01affdcdc98c34d7e2754c09a3c","revision":"ae89c0396a4e0b05b0848dcbfeee9eed29d188c4"},
+    "tests/helpers/install-plugin.ts",
 
-    {"path":"tests/helpers/runtime-conversation-fixture.ts","digest":"b07a4d76654d8e688113b0a8d9f65c29f6f1a429e5cb313e644a57bc50a2337c","revision":"ae89c0396a4e0b05b0848dcbfeee9eed29d188c4"},
+    "tests/helpers/runtime-conversation-fixture.ts",
 
-    {"path":"tests/live/helpers/station-instance.mjs","digest":"1d37729e4616b4d6624df520d6d640377da16d3ee896a03884e31cef63bf3fa7","revision":"ae89c0396a4e0b05b0848dcbfeee9eed29d188c4"}
+    "tests/live/helpers/station-instance.mjs"
   ],
 
   "checks": [

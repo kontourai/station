@@ -1,0 +1,7 @@
+{
+  "revision": "2a8eff6e776caee7cee82ede9a18541ccc120e84",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Checked useProjects/useProjectsQuery/listProjectViews against packages/sdk/src/client/projects.ts and ProjectsContext.tsx: the operator view passes runsAt through unvalidated as an optional field; member views still exclude local paths and the server omits runsAt there. No SDK claim changes.","inputs":["docs/reference/sdk.md","src-ui/src/contexts/ProjectsContext.tsx"]}
+  ]
+}

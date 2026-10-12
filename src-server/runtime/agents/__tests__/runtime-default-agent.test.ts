@@ -145,18 +145,22 @@ describe('createRuntimeDocsIntegration', () => {
 });
 
 describe('materializeBuiltinIntegrations (station#3063)', () => {
-  test('boot mode writes both built-ins unconditionally (the byte-identical save skip owns idempotence)', async () => {
+  test('boot mode writes the built-ins unconditionally (the byte-identical save skip owns idempotence)', async () => {
     const saveIntegration = vi.fn(async () => {});
     const hasIntegration = vi.fn(async () => true);
 
     await materializeBuiltinIntegrations({ saveIntegration, hasIntegration });
 
     expect(hasIntegration).not.toHaveBeenCalled();
-    expect(saveIntegration).toHaveBeenCalledTimes(2);
+    expect(saveIntegration).toHaveBeenCalledTimes(3);
     for (const [id, def] of saveIntegration.mock.calls as unknown as Array<
       [string, ToolDef]
     >) {
-      expect(['station-control', 'station-docs']).toContain(id);
+      expect([
+        'station-control',
+        'station-knowledge',
+        'station-docs',
+      ]).toContain(id);
       // The written payloads are the instance-independent persisted shape.
       expect(def).not.toHaveProperty('command');
       expect(def).not.toHaveProperty('args');
@@ -263,7 +267,7 @@ describe('bootstrapRuntimeDefaultAgent', () => {
         tools: expect.objectContaining({
           // archive#1547: authored on the built-in agent's spec — an id that is
           // not authored here is never delivered to any engine.
-          mcpServers: ['station-control', 'station-docs'],
+          mcpServers: ['station-control', 'station-knowledge', 'station-docs'],
         }),
       }),
       provenanceGeneration,
@@ -509,7 +513,7 @@ describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding'
       expect.objectContaining({
         slug: 'default',
         tools: {
-          mcpServers: ['station-control', 'station-docs'],
+          mcpServers: ['station-control', 'station-knowledge', 'station-docs'],
           autoApprove: [],
         },
         execution: { agentConnectionId: 'claude' },

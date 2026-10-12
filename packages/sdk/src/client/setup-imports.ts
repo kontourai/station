@@ -5,8 +5,13 @@
  * hooks, the CLI, and any future non-React caller receive stable projections
  * instead of re-creating paths or request bodies at their call sites.
  */
-import { apiErrorMessage } from './api-error-message';
-import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import { envelopeError } from './api-error-message';
+import {
+  type ClientRequestOptions,
+  getJson,
+  mutateJson,
+  readJsonBody,
+} from './http';
 
 interface Envelope<T> {
   success: boolean;
@@ -90,9 +95,15 @@ export interface ExistingSetupImportReceipt {
   rolledBackAt?: string;
 }
 
-function resultData<T>(result: Envelope<T>, fallback: string): T {
-  if (!result.success || result.data === undefined) {
-    throw new Error(apiErrorMessage(result, fallback));
+/**
+ * The envelope's data, or the refusal as a `StationHttpError` with the
+ * observed status, `code` and `details`. A refusal whose body is not JSON
+ * keeps its status.
+ */
+async function resultData<T>(response: Response, fallback: string): Promise<T> {
+  const result = (await readJsonBody(response)) as Envelope<T> | undefined;
+  if (!response.ok || !result?.success || result.data === undefined) {
+    throw envelopeError(response, result, fallback);
   }
   return result.data;
 }
@@ -103,8 +114,8 @@ export async function fetchExistingSetupImportSources(
   opts?: ClientRequestOptions,
 ): Promise<ExistingSetupImportSource[]> {
   const response = await getJson(`${apiBase}/api/setup-imports/sources`, opts);
-  return resultData(
-    (await response.json()) as Envelope<ExistingSetupImportSource[]>,
+  return resultData<ExistingSetupImportSource[]>(
+    response,
     'Failed to load setup import sources',
   );
 }
@@ -124,8 +135,8 @@ export async function createExistingSetupImportPreview(
     opts,
     { sourceId },
   );
-  return resultData(
-    (await response.json()) as Envelope<ExistingSetupImportPreview>,
+  return resultData<ExistingSetupImportPreview>(
+    response,
     'Failed to create setup import preview',
   );
 }
@@ -142,8 +153,8 @@ export async function reviewExistingSetupImportTargets(
     opts,
     { items: input.items },
   );
-  return resultData(
-    (await response.json()) as Envelope<ExistingSetupImportTargetReview>,
+  return resultData<ExistingSetupImportTargetReview>(
+    response,
     'Failed to review setup import targets',
   );
 }
@@ -160,8 +171,8 @@ export async function applyExistingSetupImport(
     opts,
     { witnessId: input.witnessId },
   );
-  return resultData(
-    (await response.json()) as Envelope<ExistingSetupImportReceipt>,
+  return resultData<ExistingSetupImportReceipt>(
+    response,
     'Failed to apply setup import',
   );
 }
@@ -176,8 +187,8 @@ export async function fetchExistingSetupImportReceipt(
     `${apiBase}/api/setup-imports/receipts/${encodeURIComponent(receiptId)}`,
     opts,
   );
-  return resultData(
-    (await response.json()) as Envelope<ExistingSetupImportReceipt>,
+  return resultData<ExistingSetupImportReceipt>(
+    response,
     'Setup import receipt not found',
   );
 }
@@ -193,8 +204,8 @@ export async function rollbackExistingSetupImport(
     'POST',
     opts,
   );
-  return resultData(
-    (await response.json()) as Envelope<ExistingSetupImportReceipt>,
+  return resultData<ExistingSetupImportReceipt>(
+    response,
     'Failed to roll back setup import',
   );
 }

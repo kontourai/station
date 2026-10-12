@@ -40,8 +40,8 @@ export function ConversationOpenRecoveryNotice({
     state === 'missing-session'
       ? 'Its execution session is no longer available.'
       : verdict
-        ? 'Station could not prove a writable continuation for its current session.'
-        : 'Checking its current session failed, so sending is paused. Retry to check again.';
+        ? 'Station could not prove this chat can continue.'
+        : 'Checking this chat failed, so sending is paused. Retry to check again.';
 
   return (
     <div className="session-history-error" role="alert">

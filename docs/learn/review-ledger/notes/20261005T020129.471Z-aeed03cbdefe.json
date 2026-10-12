@@ -1,0 +1,7 @@
+{
+  "revision": "4707a2a6772ec3babece6e26c5c78c8ec0e521cd",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Inbox rows gain an inline 6px decorative project swatch in the one-line meta text (and in the phone picker's project line); Chromium geometry test shows row heights unchanged in the dock panel and phone sheet, and no target, dialog surface or mobile/dock predicate changed. Switcher sheet only changes where its accent map comes from. Guide claims remain accurate.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx","src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx"]}
+  ]
+}

@@ -40,6 +40,7 @@ mod native_relay_redemption;
 mod native_secure_entry;
 mod native_station_key_custody;
 mod pairing_deep_link_channels_generated;
+mod panic_log;
 mod relay_grant_vault;
 mod service_state;
 #[cfg(not(mobile))]
@@ -3035,6 +3036,11 @@ fn native_header_allowlisted(name: &str) -> bool {
             // native still owns the bearer and refuses every authority-bearing
             // renderer header below.
             | "x-station-client-origin"
+            // `CLIENT_PROTOCOL_HEADER` in
+            // `packages/contracts/src/environment-security.ts` (#2962): the
+            // client API protocol this build speaks. A compatibility signal
+            // the host may refuse on; it carries no authority.
+            | "x-station-client-protocol"
             | "x-station-client-session"
             | "x-station-plugin"
             | "x-abort-reason"
@@ -3056,6 +3062,11 @@ fn native_response_headers(
                     | "last-modified"
                     | "retry-after"
                     | "x-request-id"
+                    // `STATION_ENVELOPE_HEADER` in `packages/contracts/src/http.ts`:
+                    // Station's own-answer marker, read by the SDK's
+                    // `isStationAnswer` to tell its refusals from an
+                    // intermediary's (#2842, #3166). Carries no authority.
+                    | "x-station-envelope"
             )
             .then(|| value.to_str().ok().map(|value| (name, value.to_string())))
             .flatten()
@@ -9188,69 +9199,86 @@ fn profile_lock_birth_bridge(
         .ok_or(RegistryBridgeFailure::Protocol)
 }
 
+/// A live host owner that refused this desktop's claim, as the bridge reports
+/// it: registry id, host type, and registered port. Path-free by design.
+#[cfg(not(mobile))]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct HostClaimOwner {
+    id: String,
+    #[serde(rename = "type")]
+    owner_type: String,
+    port: u16,
+}
+
+/// The outcome of the one atomic host-owner claim (ADR 0020 D4). The shared
+/// module decides it under the registry lock, so `owners` is the same
+/// observation that refused the claim — there is no separate ownership read.
+#[cfg(not(mobile))]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+struct HostClaim {
+    ok: bool,
+    claimed: bool,
+    owners: Vec<HostClaimOwner>,
+}
+
+#[cfg(not(mobile))]
+fn parse_host_claim_output(output: &[u8]) -> Result<HostClaim, RegistryBridgeFailure> {
+    let claim: HostClaim =
+        serde_json::from_slice(output).map_err(|_| RegistryBridgeFailure::Protocol)?;
+    if claim.ok && (claim.owners.is_empty() || !claim.claimed) {
+        Ok(claim)
+    } else {
+        Err(RegistryBridgeFailure::Protocol)
+    }
+}
+
+/// Reserves this desktop's sidecar slot through the shared host-owner claim.
+/// The bridge records this desktop (its parent) as the claimant.
 #[cfg(not(mobile))]
 fn claim_sidecar_registry_bridge(
     resource_dir: &Path,
     home: &Path,
     id: &str,
     instance: serde_json::Value,
-) -> Result<bool, RegistryBridgeFailure> {
+) -> Result<HostClaim, RegistryBridgeFailure> {
     let output = invoke_registry_bridge(
         resource_dir,
         "claimSidecar",
         serde_json::json!({"home":home,"id":id,"instance":instance}),
     )?;
-    let value: serde_json::Value =
-        serde_json::from_slice(&output).map_err(|_| RegistryBridgeFailure::Protocol)?;
-    value
-        .get("claimed")
-        .and_then(serde_json::Value::as_bool)
-        .ok_or(RegistryBridgeFailure::Protocol)
+    parse_host_claim_output(&output)
 }
 
-// Write counterparts are kept at the same narrow bridge seam for Phase 3's
-// handshake/restart/teardown lifecycle wiring. They intentionally have no
-// startup caller in Phase 2.
+/// Publishes the listening child through the same claim. It refuses, rather
+/// than re-creating the record, while another live host owns the home.
 #[cfg(not(mobile))]
-fn upsert_registry_bridge(
+fn publish_sidecar_registry_bridge(
     resource_dir: &Path,
     home: &Path,
     id: &str,
     instance: serde_json::Value,
-) -> Result<(), RegistryBridgeFailure> {
-    invoke_registry_bridge(
+) -> Result<HostClaim, RegistryBridgeFailure> {
+    let output = invoke_registry_bridge(
         resource_dir,
-        "upsert",
+        "publishSidecar",
         serde_json::json!({ "home": home, "id": id, "instance": instance }),
-    )
-    .map(|_| ())
+    )?;
+    parse_host_claim_output(&output)
 }
 
+/// Releases this desktop's sidecar record. The bridge removes it only when
+/// this desktop recorded it or its recorded child is provably gone.
 #[cfg(not(mobile))]
-fn update_registry_status_bridge(
-    resource_dir: &Path,
-    home: &Path,
-    id: &str,
-    status: &str,
-    pid: Option<u32>,
-) -> Result<(), RegistryBridgeFailure> {
-    invoke_registry_bridge(
-        resource_dir,
-        "updateStatus",
-        serde_json::json!({ "home": home, "id": id, "status": status, "pid": pid }),
-    )
-    .map(|_| ())
-}
-
-#[cfg(not(mobile))]
-fn remove_registry_bridge(
+fn release_sidecar_registry_bridge(
     resource_dir: &Path,
     home: &Path,
     id: &str,
 ) -> Result<(), RegistryBridgeFailure> {
     invoke_registry_bridge(
         resource_dir,
-        "remove",
+        "releaseSidecar",
         serde_json::json!({ "home": home, "id": id }),
     )
     .map(|_| ())
@@ -9535,32 +9563,87 @@ fn owner_owns_reapable_child(owner: DesktopOwner) -> bool {
     owner == DesktopOwner::Sidecar
 }
 
-/// Window destruction is not application exit: preview and workspace pop-out
-/// windows are ordinary Station windows. Sidecar teardown is intentionally
-/// wired only from `RunEvent::Exit` below.
+/// Maps the atomic host claim straight to this desktop's owner. A won claim
+/// is the only way to `Sidecar`. A claim refused by exactly one live service
+/// reports that service (never attaching to it); any other refusal — another
+/// desktop's sidecar, several owners, an id held by a foreign process — or a
+/// bridge failure selects no owner and spawns nothing.
 #[cfg(not(mobile))]
-fn owner_after_preparation(
+fn owner_for_host_claim(claim: Result<HostClaim, RegistryBridgeFailure>) -> DesktopOwner {
+    let Ok(claim) = claim else {
+        return DesktopOwner::None;
+    };
+    if claim.claimed {
+        return DesktopOwner::Sidecar;
+    }
+    match claim.owners.as_slice() {
+        [owner] if owner.owner_type == "service" => DesktopOwner::Service {
+            id: owner.id.clone(),
+            port: owner.port,
+        },
+        _ => DesktopOwner::None,
+    }
+}
+
+/// The claim is the launch decision, including when preparation skipped a
+/// service-owned home. If that service exited, release the reservation: the
+/// home still needs preparation before any sidecar can run.
+#[cfg(not(mobile))]
+fn owner_after_launch_claim(
     preparation: PrepareRuntimeKind,
-    decision: HomeOwnershipDecision,
+    claim: impl FnOnce() -> Result<HostClaim, RegistryBridgeFailure>,
+    release: impl FnOnce(),
 ) -> DesktopOwner {
-    let owner = owner_for_decision(decision);
-    if preparation == PrepareRuntimeKind::ServiceOwned {
-        // A service observed before preparation may exit before this second
-        // ownership read. Never turn that race into an unprepared sidecar.
-        adoptable_refreshed_owner(owner)
+    let owner = owner_for_host_claim(claim());
+    if preparation == PrepareRuntimeKind::ServiceOwned && owner == DesktopOwner::Sidecar {
+        release();
+        DesktopOwner::Unowned
     } else {
         owner
     }
 }
 
 #[cfg(not(mobile))]
+fn launch_owner(
+    preparation: PrepareRuntimeKind,
+    resource_dir: &Path,
+    station_home: &Path,
+    registry_id: &str,
+) -> DesktopOwner {
+    owner_after_launch_claim(
+        preparation,
+        || {
+            claim_sidecar_registry_bridge(
+                resource_dir,
+                station_home,
+                registry_id,
+                serde_json::json!({"type":"sidecar","status":"starting","port":0}),
+            )
+        },
+        || {
+            let _ = release_sidecar_registry_bridge(resource_dir, station_home, registry_id);
+        },
+    )
+}
+
+/// Setup starts a supervisor thread only for the desktop that won the claim.
+#[cfg(not(mobile))]
+fn start_owned_sidecar<T>(owner: DesktopOwner, start: impl FnOnce() -> T) -> Option<T> {
+    owner_owns_reapable_child(owner).then(start)
+}
+
+/// Window destruction is not application exit: preview and workspace pop-out
+/// windows are ordinary Station windows. Sidecar teardown is intentionally
+/// wired only from `RunEvent::Exit` below.
+#[cfg(not(mobile))]
 fn window_destruction_requests_sidecar_teardown() -> bool {
     false
 }
 
+/// A sidecar becomes Running only when its publish won the host claim.
 #[cfg(not(mobile))]
-fn registry_claim_allows_running(result: Result<(), RegistryBridgeFailure>) -> bool {
-    result.is_ok()
+fn registry_claim_allows_running(result: Result<HostClaim, RegistryBridgeFailure>) -> bool {
+    matches!(result, Ok(HostClaim { claimed: true, .. }))
 }
 
 #[cfg(not(mobile))]
@@ -9923,11 +10006,12 @@ impl PendingMainWindowActivation {
 #[cfg(target_os = "macos")]
 const NATIVE_STARTUP_COVER_IDENTIFIER: &str = "io.kontourai.station.startup-cover";
 
+/// The latest requested native cover. `None` removes the cover (reveal).
 #[cfg(target_os = "macos")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct NativeCoverDesired {
     generation: u64,
-    covered: bool,
+    cover: Option<startup_readiness::StartupCoverContent>,
 }
 
 #[cfg(target_os = "macos")]
@@ -9940,13 +10024,13 @@ struct NativeCoverDispatcher {
 fn update_native_cover_desired(
     desired: &Mutex<NativeCoverDesired>,
     wake: &SyncSender<()>,
-    covered: bool,
+    cover: Option<startup_readiness::StartupCoverContent>,
 ) {
     let mut target = desired
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     target.generation = target.generation.wrapping_add(1);
-    target.covered = covered;
+    target.cover = cover;
     drop(target);
 
     match wake.try_send(()) {
@@ -9984,15 +10068,18 @@ fn apply_native_cover_until_current(
 fn native_cover_dispatcher(app: AppHandle) -> Option<NativeCoverDispatcher> {
     let desired = Arc::new(Mutex::new(NativeCoverDesired {
         generation: 0,
-        covered: false,
+        cover: None,
     }));
     let (wake, receiver) = sync_channel(1);
     let worker_desired = Arc::clone(&desired);
     let worker = thread::Builder::new()
         .name("station-native-cover-dispatcher".into())
         .spawn(move || {
+            let mut dialog_offered_for_epoch = None;
             while receiver.recv().is_ok() {
+                let mut failed_target = None;
                 let completed = apply_native_cover_until_current(&worker_desired, |target| {
+                    failed_target = Some(target);
                     let (ack_tx, ack_rx) = sync_channel(0);
                     let main_app = app.clone();
                     let scheduled = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -10005,7 +10092,11 @@ fn native_cover_dispatcher(app: AppHandle) -> Option<NativeCoverDispatcher> {
                                         );
                                         return false;
                                     };
-                                    match with_native_startup_cover(&window, target.covered) {
+                                    match with_native_startup_cover(
+                                        &window,
+                                        &main_app,
+                                        target.cover,
+                                    ) {
                                         Ok(()) => true,
                                         Err(error) => {
                                             log::error!("native cover task failed: {error}");
@@ -10044,7 +10135,15 @@ fn native_cover_dispatcher(app: AppHandle) -> Option<NativeCoverDispatcher> {
                 });
                 if !completed {
                     // A later activation may retry a fail-closed task. The
-                    // worker itself remains bounded and available.
+                    // worker itself remains bounded and available. Overdue
+                    // content carries the only recovery choice, so its
+                    // failure falls back to the native dialog once per epoch.
+                    if let Some(epoch) = failed_target.and_then(|target| {
+                        native_cover_failure_dialog_epoch(target, dialog_offered_for_epoch)
+                    }) {
+                        dialog_offered_for_epoch = Some(epoch);
+                        offer_slow_start_dialog_after_cover_failure(&app, epoch);
+                    }
                     continue;
                 }
             }
@@ -10056,57 +10155,373 @@ fn native_cover_dispatcher(app: AppHandle) -> Option<NativeCoverDispatcher> {
     Some(NativeCoverDispatcher { desired, wake })
 }
 
+/// The overdue epoch whose failed cover task should fall back to the native
+/// dialog, unless that epoch already got one. Waiting content and reveal
+/// carry no choice, so their failure needs no dialog.
 #[cfg(target_os = "macos")]
-fn request_native_cover(app: &AppHandle, covered: bool) {
+fn native_cover_failure_dialog_epoch(
+    failed: NativeCoverDesired,
+    already_offered: Option<u64>,
+) -> Option<u64> {
+    match failed.cover {
+        Some(startup_readiness::StartupCoverContent::Overdue { epoch })
+            if already_offered != Some(epoch) =>
+        {
+            Some(epoch)
+        }
+        _ => None,
+    }
+}
+
+/// Returns whether the request reached the cover dispatcher.
+#[cfg(target_os = "macos")]
+fn request_native_cover(
+    app: &AppHandle,
+    cover: Option<startup_readiness::StartupCoverContent>,
+) -> bool {
     let Some(dispatcher) = app.try_state::<NativeCoverDispatcher>() else {
         log::error!("native cover dispatcher state is unavailable");
-        return;
+        return false;
     };
-    update_native_cover_desired(&dispatcher.desired, &dispatcher.wake, covered);
+    update_native_cover_desired(&dispatcher.desired, &dispatcher.wake, cover);
+    true
+}
+
+/// Waiting copy, matching the short labels of the renderer startup screen.
+#[cfg(target_os = "macos")]
+const NATIVE_STARTUP_COVER_WAITING_TEXT: &str = "Starting Station";
+#[cfg(target_os = "macos")]
+const NATIVE_STARTUP_COVER_OVERDUE_TEXT: &str = "Station is taking longer than usual to start.";
+
+#[cfg(target_os = "macos")]
+mod startup_cover_actions {
+    use super::{resolve_slow_startup, AppHandle, SlowStartupChoice};
+    use objc2::rc::Retained;
+    use objc2::runtime::AnyObject;
+    use objc2::{define_class, msg_send, DefinedClass, MainThreadMarker, MainThreadOnly};
+    use objc2_foundation::NSObject;
+
+    pub(super) struct Ivars {
+        app: AppHandle,
+        epoch: u64,
+    }
+
+    define_class!(
+        // SAFETY: NSObject has no subclassing requirements, and this class
+        // does not implement Drop.
+        #[unsafe(super(NSObject))]
+        #[thread_kind = MainThreadOnly]
+        #[name = "StationStartupCoverActions"]
+        #[ivars = Ivars]
+        pub(super) struct StartupCoverActions;
+
+        impl StartupCoverActions {
+            #[unsafe(method(restart:))]
+            fn restart(&self, _sender: Option<&AnyObject>) {
+                self.choose(SlowStartupChoice::Restart);
+            }
+
+            #[unsafe(method(quit:))]
+            fn quit(&self, _sender: Option<&AnyObject>) {
+                self.choose(SlowStartupChoice::Quit);
+            }
+        }
+    );
+
+    impl StartupCoverActions {
+        pub(super) fn new(app: AppHandle, epoch: u64, marker: MainThreadMarker) -> Retained<Self> {
+            let this = Self::alloc(marker).set_ivars(Ivars { app, epoch });
+            unsafe { msg_send![super(this), init] }
+        }
+
+        fn choose(&self, choice: SlowStartupChoice) {
+            let ivars = self.ivars();
+            // Never unwind across the Objective-C action boundary.
+            if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                resolve_slow_startup(&ivars.app, ivars.epoch, choice)
+            }))
+            .is_err()
+            {
+                log::error!("native startup cover {choice:?} action panicked");
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+thread_local! {
+    /// NSButton targets are weak. The overdue cover's action target lives on
+    /// the main thread for exactly as long as that cover's buttons do.
+    static NATIVE_STARTUP_COVER_ACTIONS: std::cell::RefCell<
+        Option<objc2::rc::Retained<startup_cover_actions::StartupCoverActions>>,
+    > = const { std::cell::RefCell::new(None) };
+
+    /// While the cover is up, WebKit can still make the hidden WebView first
+    /// responder (for example after a page load), and it would then receive
+    /// and swallow keystrokes, including the default button's Return. This
+    /// window-scoped monitor keeps keys away from the hidden content.
+    static NATIVE_STARTUP_COVER_KEY_MONITOR: std::cell::RefCell<
+        Option<objc2::rc::Retained<objc2::runtime::AnyObject>>,
+    > = const { std::cell::RefCell::new(None) };
+}
+
+/// How the cover's key monitor treats one key event for the covered window.
+#[cfg(target_os = "macos")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CoverKeyRoute {
+    Pass,
+    Swallow,
+    Restart,
+    FocusNext,
+    FocusPrevious,
+    PressFocused,
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Clone, Copy, Debug)]
+struct CoverKeyEvent<'a> {
+    key_down: bool,
+    key_code: u16,
+    command: bool,
+    shift: bool,
+    /// `charactersIgnoringModifiers`, used only for Command shortcuts.
+    characters: &'a str,
+    /// One of the cover's own controls is first responder (keyboard
+    /// navigation is on); never the hidden WebView, which the monitor evicts.
+    focus_on_cover_control: bool,
+    overdue: bool,
+}
+
+/// Pure key routing while the cover is up. No key-down or key-up event
+/// reaches the hidden, unadmitted WebView (modifier-only `flagsChanged`
+/// events still do; they carry no characters). Command shortcuts are
+/// matched as `command_shortcut_key` describes and limited to app and window
+/// management (Quit, Close, Hide, Hide Others, Minimize, cycle windows);
+/// editing shortcuts such as copy, paste, select all and undo would target the
+/// page and are swallowed. Return and keypad Enter choose the overdue cover's
+/// default Restart. Tab, Shift-Tab and Space operate the cover's own buttons
+/// only when one of them has focus; the monitor performs them itself because
+/// the window's content view (tao) consumes key events before the window's
+/// key-view loop sees them. Escape never quits.
+#[cfg(target_os = "macos")]
+fn cover_key_route(event: CoverKeyEvent<'_>) -> CoverKeyRoute {
+    const RETURN_KEY: u16 = 36;
+    const TAB_KEY: u16 = 48;
+    const SPACE_KEY: u16 = 49;
+    const KEYPAD_ENTER_KEY: u16 = 76;
+    if event.command {
+        return if matches!(
+            command_shortcut_key(event.characters, event.key_code),
+            Some('q' | 'w' | 'h' | 'm' | '`')
+        ) {
+            CoverKeyRoute::Pass
+        } else {
+            CoverKeyRoute::Swallow
+        };
+    }
+    match event.key_code {
+        RETURN_KEY | KEYPAD_ENTER_KEY if event.overdue && event.key_down => CoverKeyRoute::Restart,
+        TAB_KEY if event.focus_on_cover_control && event.key_down => {
+            if event.shift {
+                CoverKeyRoute::FocusPrevious
+            } else {
+                CoverKeyRoute::FocusNext
+            }
+        }
+        SPACE_KEY if event.focus_on_cover_control && event.key_down => CoverKeyRoute::PressFocused,
+        _ => CoverKeyRoute::Swallow,
+    }
+}
+
+/// The ASCII key a Command shortcut names. Like AppKit's menu matching, use
+/// the typed character when the layout produces ASCII (so AZERTY's Cmd-A
+/// stays Select All) and otherwise fall back to the ANSI key at that
+/// position (so Cmd-Q still quits on a Cyrillic or Greek layout).
+#[cfg(target_os = "macos")]
+fn command_shortcut_key(characters: &str, key_code: u16) -> Option<char> {
+    let mut chars = characters.chars();
+    if let (Some(character), None) = (chars.next(), chars.next()) {
+        if character.is_ascii_graphic() {
+            return Some(character.to_ascii_lowercase());
+        }
+    }
+    // kVK_ANSI_* virtual key codes for the shortcuts the cover allows.
+    match key_code {
+        0x0C => Some('q'),
+        0x0D => Some('w'),
+        0x04 => Some('h'),
+        0x2E => Some('m'),
+        0x32 => Some('`'),
+        _ => None,
+    }
+}
+
+/// Installs the cover's key monitor for `window_number`, replacing any
+/// previous one. Before routing each key it evicts the hidden WebView from
+/// first responder, which WebKit can retake on its own (for example after a
+/// page load).
+#[cfg(target_os = "macos")]
+fn install_native_startup_cover_key_monitor(
+    window_number: isize,
+    cover: objc2::rc::Retained<objc2_app_kit::NSBox>,
+    overdue: Option<(AppHandle, u64)>,
+    marker: objc2::MainThreadMarker,
+) {
+    use objc2_app_kit::{
+        NSButton, NSEvent, NSEventMask, NSEventModifierFlags, NSEventType, NSView,
+    };
+
+    clear_native_startup_cover_key_monitor();
+    let handler = block2::RcBlock::new(move |event: std::ptr::NonNull<NSEvent>| -> *mut NSEvent {
+        let key = unsafe { event.as_ref() };
+        if key.windowNumber() != window_number {
+            return event.as_ptr();
+        }
+        let window = key.window(marker);
+        let focus_on_cover_control = window.as_ref().is_some_and(|window| {
+            let on_cover = window
+                .firstResponder()
+                .and_then(|responder| responder.downcast::<NSView>().ok())
+                .is_some_and(|view| view.isDescendantOf(&cover));
+            if !on_cover {
+                window.makeFirstResponder(None);
+            }
+            on_cover
+        });
+        let characters = key
+            .charactersIgnoringModifiers()
+            .map(|characters| characters.to_string())
+            .unwrap_or_default();
+        let route = cover_key_route(CoverKeyEvent {
+            key_down: key.r#type() == NSEventType::KeyDown,
+            key_code: key.keyCode(),
+            command: key.modifierFlags().contains(NSEventModifierFlags::Command),
+            shift: key.modifierFlags().contains(NSEventModifierFlags::Shift),
+            characters: &characters,
+            focus_on_cover_control,
+            overdue: overdue.is_some(),
+        });
+        match route {
+            CoverKeyRoute::Pass => event.as_ptr(),
+            CoverKeyRoute::Swallow => std::ptr::null_mut(),
+            CoverKeyRoute::FocusNext
+            | CoverKeyRoute::FocusPrevious
+            | CoverKeyRoute::PressFocused => {
+                if let Some(window) = &window {
+                    match route {
+                        CoverKeyRoute::FocusNext => window.selectNextKeyView(None),
+                        CoverKeyRoute::FocusPrevious => window.selectPreviousKeyView(None),
+                        _ => {
+                            if let Some(button) = window
+                                .firstResponder()
+                                .and_then(|responder| responder.downcast::<NSButton>().ok())
+                            {
+                                // SAFETY: a nil sender is valid for an NSControl action.
+                                unsafe { button.performClick(None) };
+                            }
+                        }
+                    }
+                }
+                std::ptr::null_mut()
+            }
+            CoverKeyRoute::Restart => {
+                if let Some((app, epoch)) = &overdue {
+                    // Never unwind across the Objective-C block boundary.
+                    if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        resolve_slow_startup(app, *epoch, SlowStartupChoice::Restart)
+                    }))
+                    .is_err()
+                    {
+                        log::error!("native startup cover Return action panicked");
+                    }
+                }
+                std::ptr::null_mut()
+            }
+        }
+    });
+    let monitor = unsafe {
+        NSEvent::addLocalMonitorForEventsMatchingMask_handler(
+            NSEventMask::KeyDown | NSEventMask::KeyUp,
+            &handler,
+        )
+    };
+    NATIVE_STARTUP_COVER_KEY_MONITOR.with(|slot| *slot.borrow_mut() = monitor);
+}
+
+#[cfg(target_os = "macos")]
+fn clear_native_startup_cover_key_monitor() {
+    NATIVE_STARTUP_COVER_KEY_MONITOR.with(|slot| {
+        if let Some(previous) = slot.borrow_mut().take() {
+            unsafe { objc2_app_kit::NSEvent::removeMonitor(&previous) };
+        }
+    });
+}
+
+/// Drops the cover's key monitor and retained button target. Called on
+/// reveal and when the main window is destroyed. Main thread only.
+#[cfg(target_os = "macos")]
+fn clear_native_startup_cover_state() {
+    clear_native_startup_cover_key_monitor();
+    NATIVE_STARTUP_COVER_ACTIONS.with(|actions| actions.borrow_mut().take());
 }
 
 #[cfg(target_os = "macos")]
 fn with_native_startup_cover(
     window: &tauri::WebviewWindow,
-    covered: bool,
-) -> Result<(), tauri::Error> {
+    app: &AppHandle,
+    cover_content_request: Option<startup_readiness::StartupCoverContent>,
+) -> Result<(), String> {
     use objc2::{ClassType, MainThreadMarker};
     use objc2_app_kit::{
         NSAccessibilityLayoutChangedNotification, NSAccessibilityPostNotification,
-        NSAutoresizingMaskOptions, NSBox, NSBoxType, NSColor, NSFont, NSTextAlignment, NSTextField,
-        NSUserInterfaceItemIdentification, NSView,
+        NSAutoresizingMaskOptions, NSBox, NSBoxType, NSColor, NSUserInterfaceItemIdentification,
+        NSView,
     };
-    use objc2_foundation::{ns_string, NSObjectProtocol, NSPoint, NSRect, NSSize};
+    use objc2_foundation::{ns_string, NSObjectProtocol};
 
-    window.with_webview(move |webview| {
-        let marker = MainThreadMarker::new()
-            .expect("Tauri executes native webview access on the macOS main thread");
-        // Tauri's documented PlatformWebview macOS handles are valid only in
-        // this callback; nothing escapes or is retained across a window close.
-        let webview_view = unsafe { &*webview.inner().cast::<NSView>() };
-        let ns_window = unsafe { &*webview.ns_window().cast::<objc2_app_kit::NSWindow>() };
-        let Some(content) = ns_window.contentView() else {
-            return;
-        };
-        let cover_identifier = ns_string!("io.kontourai.station.startup-cover");
-        debug_assert_eq!(
-            cover_identifier.to_string(),
-            NATIVE_STARTUP_COVER_IDENTIFIER
-        );
-        let subviews = content.subviews();
-        let existing = subviews.iter().find(|view| {
-            view.identifier()
-                .as_deref()
-                .is_some_and(|identifier| identifier.isEqualToString(cover_identifier))
-        });
+    let app = app.clone();
+    // On the main thread Tauri runs this closure synchronously, so an early
+    // return below is observed here and reported as a failed task (which lets
+    // an overdue cover fall back to the dialog) instead of as success.
+    let applied = Arc::new(AtomicBool::new(false));
+    let applied_in_task = Arc::clone(&applied);
+    window
+        .with_webview(move |webview| {
+            let marker = MainThreadMarker::new()
+                .expect("Tauri executes native webview access on the macOS main thread");
+            // Tauri's documented PlatformWebview macOS handles are valid only in
+            // this callback; nothing escapes or is retained across a window close.
+            let webview_view = unsafe { &*webview.inner().cast::<NSView>() };
+            let ns_window = unsafe { &*webview.ns_window().cast::<objc2_app_kit::NSWindow>() };
+            // Read on the main thread when the change applies, so a cover or
+            // reveal queued just before the user closed (hid) the window does
+            // not bring it back.
+            let front = native_cover_should_front(main_window_hidden_by_user());
+            let Some(content) = ns_window.contentView() else {
+                return;
+            };
+            let cover_identifier = ns_string!("io.kontourai.station.startup-cover");
+            debug_assert_eq!(
+                cover_identifier.to_string(),
+                NATIVE_STARTUP_COVER_IDENTIFIER
+            );
+            let subviews = content.subviews();
+            let existing = subviews.iter().find(|view| {
+                view.identifier()
+                    .as_deref()
+                    .is_some_and(|identifier| identifier.isEqualToString(cover_identifier))
+            });
 
-        if covered {
-            if let Some(existing) = existing {
-                if !existing.isKindOfClass(NSBox::class()) {
-                    log::error!("refusing to replace an unexpected native startup cover view");
-                    return;
+            if let Some(cover_kind) = cover_content_request {
+                if let Some(existing) = existing {
+                    if !existing.isKindOfClass(NSBox::class()) {
+                        log::error!("refusing to replace an unexpected native startup cover view");
+                        return;
+                    }
+                    // Waiting and overdue content are rebuilt in place within one
+                    // main-thread turn, so AppKit never draws the uncovered WebView.
+                    existing.removeFromSuperview();
                 }
-            } else {
                 let cover = NSBox::new(marker);
                 cover.setFrame(content.bounds());
                 cover.setAutoresizingMask(
@@ -10117,79 +10532,301 @@ fn with_native_startup_cover(
                 cover.setFillColor(&NSColor::windowBackgroundColor());
                 cover.setTitle(ns_string!(""));
                 cover.setIdentifier(Some(cover_identifier));
-                if let Some(cover_content) = cover.contentView() {
-                    let label_text = ns_string!("Station is preparing its protected workspace…");
-                    let label = NSTextField::labelWithString(label_text, marker);
-                    let bounds = cover_content.bounds();
-                    label.setFrame(NSRect::new(
-                        NSPoint::new(24.0, ((bounds.size.height - 30.0) / 2.0).max(0.0)),
-                        NSSize::new((bounds.size.width - 48.0).max(0.0), 30.0),
-                    ));
-                    label.setAutoresizingMask(
-                        NSAutoresizingMaskOptions::ViewWidthSizable
-                            | NSAutoresizingMaskOptions::ViewMinYMargin
-                            | NSAutoresizingMaskOptions::ViewMaxYMargin,
-                    );
-                    label.setAlignment(NSTextAlignment(2));
-                    label.setFont(Some(&NSFont::boldSystemFontOfSize(17.0)));
-                    label.setTextColor(Some(&NSColor::labelColor()));
-                    unsafe {
-                        let _: () = objc2::msg_send![&*label, setAccessibilityElement: true];
-                        let _: () = objc2::msg_send![&*label, setAccessibilityLabel: label_text];
-                    }
-                    cover_content.addSubview(&label);
-                }
+                let focus = cover.contentView().and_then(|cover_content| {
+                    populate_native_startup_cover(&cover_content, cover_kind, &app, marker)
+                });
                 content.addSubview(&cover);
-            }
-            unsafe {
-                let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: true];
-                // Keep WebKit executing the readiness proof. Accessibility is
-                // isolated by hiding the WebView while the labelled cover
-                // remains visible; alpha is only the visual half of the
-                // protected surface. Do not override the content view's child
-                // list: AppKit cannot resume automatic derivation after a
-                // setter-authored list is later assigned nil (#869).
-                let _: () = objc2::msg_send![webview_view, setAlphaValue: 0.0f64];
-            }
-            ns_window.makeFirstResponder(None);
-            ns_window.deminiaturize(None);
-            ns_window.makeKeyAndOrderFront(None);
-        } else {
-            if let Some(cover) = existing {
-                if !cover.isKindOfClass(NSBox::class()) {
-                    log::error!("refusing to remove an unexpected startup cover view");
-                    return;
+                unsafe {
+                    let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: true];
+                    // Keep WebKit executing the readiness proof. Accessibility is
+                    // isolated by hiding the WebView while the labelled cover
+                    // remains visible; alpha is only the visual half of the
+                    // protected surface. Do not override the content view's child
+                    // list: AppKit cannot resume automatic derivation after a
+                    // setter-authored list is later assigned nil (#869).
+                    let _: () = objc2::msg_send![webview_view, setAlphaValue: 0.0f64];
                 }
-                cover.removeFromSuperview();
+                install_native_startup_cover_key_monitor(
+                    ns_window.windowNumber(),
+                    cover.clone(),
+                    match cover_kind {
+                        startup_readiness::StartupCoverContent::Overdue { epoch } => {
+                            Some((app.clone(), epoch))
+                        }
+                        startup_readiness::StartupCoverContent::Waiting => None,
+                    },
+                    marker,
+                );
+                // Always take keyboard focus off the hidden WebView first. The
+                // default Restart button can take it only when keyboard
+                // navigation is on; otherwise AppKit refuses and focus stays on
+                // the window, while Return still reaches Restart via the monitor.
+                ns_window.makeFirstResponder(None);
+                if let Some(restart) = focus {
+                    if !ns_window.makeFirstResponder(Some(&restart)) {
+                        log::debug!("native startup cover Restart did not take keyboard focus");
+                    }
+                }
+                if front {
+                    ns_window.deminiaturize(None);
+                    ns_window.makeKeyAndOrderFront(None);
+                }
+                unsafe {
+                    // Waiting and overdue content replace each other in place.
+                    NSAccessibilityPostNotification(
+                        &content,
+                        NSAccessibilityLayoutChangedNotification,
+                    );
+                }
+                applied_in_task.store(true, Ordering::Release);
+            } else {
+                if let Some(cover) = existing {
+                    if !cover.isKindOfClass(NSBox::class()) {
+                        log::error!("refusing to remove an unexpected startup cover view");
+                        return;
+                    }
+                    cover.removeFromSuperview();
+                }
+                clear_native_startup_cover_state();
+                unsafe {
+                    let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: false];
+                }
+                unsafe {
+                    let _: () = objc2::msg_send![webview_view, setAlphaValue: 1.0f64];
+                    // Unhiding the WebView changes the automatically derived
+                    // content hierarchy. Tell live assistive clients to query it
+                    // again after both accessibility and visual state are restored.
+                    NSAccessibilityPostNotification(
+                        &content,
+                        NSAccessibilityLayoutChangedNotification,
+                    );
+                }
+                ns_window.makeFirstResponder(Some(webview_view));
+                // A window the user closed (hidden) stays hidden until they
+                // activate the app again; the content is admitted either way.
+                if front {
+                    ns_window.deminiaturize(None);
+                    ns_window.makeKeyAndOrderFront(None);
+                }
+                applied_in_task.store(true, Ordering::Release);
             }
-            unsafe {
-                let _: () = objc2::msg_send![webview_view, setAccessibilityHidden: false];
-            }
-            unsafe {
-                let _: () = objc2::msg_send![webview_view, setAlphaValue: 1.0f64];
-                // Unhiding the WebView changes the automatically derived
-                // content hierarchy. Tell live assistive clients to query it
-                // again after both accessibility and visual state are restored.
-                NSAccessibilityPostNotification(&content, NSAccessibilityLayoutChangedNotification);
-            }
-            ns_window.deminiaturize(None);
-            ns_window.makeFirstResponder(Some(webview_view));
-            ns_window.makeKeyAndOrderFront(None);
+        })
+        .map_err(|error| format!("could not reach the main WebView: {error}"))?;
+    if applied.load(Ordering::Acquire) {
+        Ok(())
+    } else {
+        Err("the native startup cover task did not apply".to_string())
+    }
+}
+
+/// Lays out the cover like the renderer's startup screen: a centered 96 pt
+/// application mark and a centered status line 128 pt below center. Overdue
+/// content adds Restart (default) and Quit below the status line. Returns the
+/// control that should receive keyboard focus.
+#[cfg(target_os = "macos")]
+fn populate_native_startup_cover(
+    cover_content: &objc2_app_kit::NSView,
+    content: startup_readiness::StartupCoverContent,
+    app: &AppHandle,
+    marker: objc2::MainThreadMarker,
+) -> Option<objc2::rc::Retained<objc2_app_kit::NSButton>> {
+    use objc2_app_kit::{
+        NSApplication, NSAutoresizingMaskOptions, NSButton, NSColor, NSFont, NSImageScaling,
+        NSImageView, NSTextAlignment, NSTextField,
+    };
+    use objc2_foundation::{ns_string, NSPoint, NSRect, NSSize, NSString};
+
+    const MARK_SIZE: f64 = 96.0;
+    const STATUS_TOP_BELOW_CENTER: f64 = 128.0;
+    const STATUS_HEIGHT: f64 = 20.0;
+    const BUTTON_GAP: f64 = 12.0;
+    const BUTTON_TOP_BELOW_STATUS: f64 = 16.0;
+    const BUTTON_MIN_WIDTH: f64 = 96.0;
+
+    let centered = NSAutoresizingMaskOptions::ViewMinXMargin
+        | NSAutoresizingMaskOptions::ViewMaxXMargin
+        | NSAutoresizingMaskOptions::ViewMinYMargin
+        | NSAutoresizingMaskOptions::ViewMaxYMargin;
+    let bounds = cover_content.bounds();
+    let mid_x = bounds.size.width / 2.0;
+    let mid_y = bounds.size.height / 2.0;
+
+    // The application icon carries the channel art (Nightly/Beta/Stable).
+    if let Some(image) = NSApplication::sharedApplication(marker).applicationIconImage() {
+        let mark = NSImageView::imageViewWithImage(&image, marker);
+        mark.setFrame(NSRect::new(
+            NSPoint::new(mid_x - MARK_SIZE / 2.0, mid_y - MARK_SIZE / 2.0),
+            NSSize::new(MARK_SIZE, MARK_SIZE),
+        ));
+        mark.setImageScaling(NSImageScaling::ScaleProportionallyUpOrDown);
+        mark.setAutoresizingMask(centered);
+        unsafe {
+            let _: () = objc2::msg_send![&*mark, setAccessibilityLabel: ns_string!("Station")];
         }
-    })
+        cover_content.addSubview(&mark);
+    }
+
+    let label_text = NSString::from_str(match content {
+        startup_readiness::StartupCoverContent::Waiting => NATIVE_STARTUP_COVER_WAITING_TEXT,
+        startup_readiness::StartupCoverContent::Overdue { .. } => NATIVE_STARTUP_COVER_OVERDUE_TEXT,
+    });
+    let label = NSTextField::labelWithString(&label_text, marker);
+    let status_y = (mid_y - STATUS_TOP_BELOW_CENTER - STATUS_HEIGHT).max(0.0);
+    label.setFrame(NSRect::new(
+        NSPoint::new(24.0, status_y),
+        NSSize::new((bounds.size.width - 48.0).max(0.0), STATUS_HEIGHT),
+    ));
+    label.setAutoresizingMask(
+        NSAutoresizingMaskOptions::ViewWidthSizable
+            | NSAutoresizingMaskOptions::ViewMinYMargin
+            | NSAutoresizingMaskOptions::ViewMaxYMargin,
+    );
+    // NSTextAlignment's raw values differ by ABI (arm64 macOS uses the iOS
+    // values, where 2 is Right). Only the named constant is portable.
+    label.setAlignment(NSTextAlignment::Center);
+    label.setFont(Some(&NSFont::systemFontOfSize(14.0)));
+    label.setTextColor(Some(&NSColor::secondaryLabelColor()));
+    unsafe {
+        let _: () = objc2::msg_send![&*label, setAccessibilityElement: true];
+        // A forced accessibility element otherwise reports AXUnknown.
+        let _: () = objc2::msg_send![&*label, setAccessibilityRole: objc2_app_kit::NSAccessibilityStaticTextRole];
+        let _: () = objc2::msg_send![&*label, setAccessibilityLabel: &*label_text];
+    }
+    cover_content.addSubview(&label);
+
+    let startup_readiness::StartupCoverContent::Overdue { epoch } = content else {
+        NATIVE_STARTUP_COVER_ACTIONS.with(|actions| actions.borrow_mut().take());
+        return None;
+    };
+    let actions = startup_cover_actions::StartupCoverActions::new(app.clone(), epoch, marker);
+    let target: &objc2::runtime::AnyObject = &actions;
+    let (quit, restart) = unsafe {
+        (
+            NSButton::buttonWithTitle_target_action(
+                ns_string!("Quit"),
+                Some(target),
+                Some(objc2::sel!(quit:)),
+                marker,
+            ),
+            NSButton::buttonWithTitle_target_action(
+                ns_string!("Restart"),
+                Some(target),
+                Some(objc2::sel!(restart:)),
+                marker,
+            ),
+        )
+    };
+    // Restart is the default button. The cover's key monitor delivers Return
+    // to it even when WebKit has made the hidden WebView first responder.
+    restart.setKeyEquivalent(ns_string!("\r"));
+    unsafe {
+        let _: () =
+            objc2::msg_send![&*restart, setAccessibilityLabel: ns_string!("Restart Station")];
+        let _: () = objc2::msg_send![&*quit, setAccessibilityLabel: ns_string!("Quit Station")];
+    }
+    quit.sizeToFit();
+    restart.sizeToFit();
+    let quit_size = NSSize::new(
+        quit.frame().size.width.max(BUTTON_MIN_WIDTH),
+        quit.frame().size.height,
+    );
+    let restart_size = NSSize::new(
+        restart.frame().size.width.max(BUTTON_MIN_WIDTH),
+        restart.frame().size.height,
+    );
+    let row_width = quit_size.width + BUTTON_GAP + restart_size.width;
+    let row_height = quit_size.height.max(restart_size.height);
+    let row_y = (status_y - BUTTON_TOP_BELOW_STATUS - row_height).max(0.0);
+    let row_x = mid_x - row_width / 2.0;
+    // macOS places the default button last (rightmost).
+    quit.setFrame(NSRect::new(NSPoint::new(row_x, row_y), quit_size));
+    restart.setFrame(NSRect::new(
+        NSPoint::new(row_x + quit_size.width + BUTTON_GAP, row_y),
+        restart_size,
+    ));
+    quit.setAutoresizingMask(centered);
+    restart.setAutoresizingMask(centered);
+    // With keyboard navigation on, Tab and Shift-Tab cycle between the two.
+    // SAFETY: AppKit keeps nextKeyView unretained; both buttons are retained
+    // by the same cover view tree, which removes them together.
+    unsafe {
+        quit.setNextKeyView(Some(&restart));
+        restart.setNextKeyView(Some(&quit));
+    }
+    cover_content.addSubview(&quit);
+    cover_content.addSubview(&restart);
+    NATIVE_STARTUP_COVER_ACTIONS.with(|slot| *slot.borrow_mut() = Some(actions));
+    Some(restart)
+}
+
+/// How a request to show startup recovery was handled.
+#[cfg(not(mobile))]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum StartupRecoveryPresentation {
+    /// The native cover will show this content.
+    Presented,
+    /// A background (tray-only) launch keeps its window hidden; a later
+    /// activation presents the then-current content.
+    Deferred,
+    /// No cover exists on this host; use the native dialog.
+    Unavailable,
 }
 
 #[cfg(target_os = "macos")]
-fn present_startup_recovery_surface(app: &AppHandle) {
-    if desktop_companion::background(app) {
-        return;
+fn present_startup_recovery_surface(
+    app: &AppHandle,
+    content: startup_readiness::StartupCoverContent,
+) -> StartupRecoveryPresentation {
+    if startup_recovery_surface_deferred(
+        desktop_companion::background(app),
+        main_window_hidden_by_user(),
+    ) {
+        return StartupRecoveryPresentation::Deferred;
     }
-    request_native_cover(app, true);
+    if request_native_cover(app, Some(content)) {
+        StartupRecoveryPresentation::Presented
+    } else {
+        StartupRecoveryPresentation::Unavailable
+    }
 }
 
 #[cfg(all(not(mobile), not(target_os = "macos")))]
-fn present_startup_recovery_surface(_app: &AppHandle) {
-    // Other desktop hosts retain the established hidden-until-ticket behavior.
+fn present_startup_recovery_surface(
+    _app: &AppHandle,
+    _content: startup_readiness::StartupCoverContent,
+) -> StartupRecoveryPresentation {
+    // Other desktop hosts retain the established hidden-until-ticket window;
+    // slow-start recovery uses the native dialog there.
+    StartupRecoveryPresentation::Unavailable
+}
+
+/// Set when the user closes (which only hides) the main window; cleared by
+/// any explicit activation. A hidden window is not brought back by startup
+/// recovery or a late reveal on its own.
+#[cfg(not(mobile))]
+static MAIN_WINDOW_HIDDEN_BY_USER: AtomicBool = AtomicBool::new(false);
+
+#[cfg(not(mobile))]
+fn main_window_hidden_by_user() -> bool {
+    MAIN_WINDOW_HIDDEN_BY_USER.load(Ordering::Acquire)
+}
+
+/// Whether a cover change orders the main window front: not while the user
+/// has hidden (closed) it since the last activation.
+#[cfg(not(mobile))]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn native_cover_should_front(hidden_by_user: bool) -> bool {
+    !hidden_by_user
+}
+
+/// Whether startup recovery waits for the next activation instead of
+/// presenting now: a background (tray-only) launch, or a window the user
+/// hid while it was covered.
+#[cfg(not(mobile))]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn startup_recovery_surface_deferred(background: bool, hidden_by_user: bool) -> bool {
+    background || hidden_by_user
 }
 
 #[cfg(not(mobile))]
@@ -10199,7 +10836,12 @@ fn reveal_main_window(app: &AppHandle) {
     }
     #[cfg(target_os = "macos")]
     {
-        request_native_cover(app, false);
+        // The cover task decides on the main thread whether to front it.
+        request_native_cover(app, None);
+        return;
+    }
+    #[cfg(not(target_os = "macos"))]
+    if main_window_hidden_by_user() {
         return;
     }
     #[cfg(not(target_os = "macos"))]
@@ -10222,6 +10864,55 @@ fn transition_startup_readiness(
     let (next, effects) = startup_readiness::transition(&readiness, input);
     *readiness = next;
     effects
+}
+
+/// Whether a transition asks for the recovery surface: the state machine
+/// requested it, or the caller presents after an accepted explicit retry.
+#[cfg(not(mobile))]
+fn startup_presentation_requested(
+    effects: &[startup_readiness::ReadinessEffect],
+    present: bool,
+) -> bool {
+    (present && !effects.is_empty())
+        || effects.iter().any(|effect| {
+            matches!(
+                effect,
+                startup_readiness::ReadinessEffect::PresentStartupRecoverySurface
+                    | startup_readiness::ReadinessEffect::ShowSlowStartRecovery { .. }
+            )
+        })
+}
+
+/// Applies a readiness input and, while still holding the readiness lock,
+/// hands the matching cover content to the native cover when the transition
+/// asks for the recovery surface (or `present` is set for an accepted retry).
+/// Holding the lock orders this cover request before any later Ready
+/// transition, whose reveal request then wins: a cover is never re-applied
+/// over a window that readiness already admitted.
+#[cfg(not(mobile))]
+fn transition_startup_readiness_presenting(
+    app: &AppHandle,
+    state: &DesktopServerState,
+    input: startup_readiness::ReadinessInput,
+    present: bool,
+) -> (
+    Vec<startup_readiness::ReadinessEffect>,
+    Option<StartupRecoveryPresentation>,
+) {
+    let mut readiness = state
+        .readiness
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let (next, effects) = startup_readiness::transition(&readiness, input);
+    *readiness = next;
+    let presentation = if startup_presentation_requested(&effects, present) {
+        startup_readiness::startup_cover_content(&readiness)
+            .map(|content| present_startup_recovery_surface(app, content))
+    } else {
+        None
+    };
+    drop(readiness);
+    (effects, presentation)
 }
 
 #[cfg(not(mobile))]
@@ -10289,21 +10980,23 @@ pub(crate) fn main_window_activation_available(app: &AppHandle) -> bool {
 #[cfg(not(mobile))]
 pub(crate) fn request_main_window_activation(app: &AppHandle) -> bool {
     desktop_companion::activate(app);
+    MAIN_WINDOW_HIDDEN_BY_USER.store(false, Ordering::Release);
     let Some(state) = app.try_state::<DesktopServerState>() else {
         return false;
     };
-    let effects = transition_startup_readiness(
+    // Activation asks to see the app; it never restarts or reprobes. While
+    // waiting (including overdue) it presents the cover with its current
+    // content, and only readiness proof reveals application content.
+    let (effects, _) = transition_startup_readiness_presenting(
+        app,
         state.inner(),
         startup_readiness::ReadinessInput::ActivationRequested,
+        false,
     );
-    if effects.contains(&startup_readiness::ReadinessEffect::PresentStartupRecoverySurface) {
-        present_startup_recovery_surface(app);
-    }
     let revealed = effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow);
     if revealed {
         reveal_main_window(app);
     }
-    continue_startup_readiness(app, state.inner(), &effects);
     revealed
 }
 
@@ -10359,37 +11052,6 @@ pub(crate) fn ensure_main_window(app: &AppHandle) -> Result<(), String> {
 }
 
 #[cfg(not(mobile))]
-fn continue_startup_readiness(
-    app: &AppHandle,
-    state: &DesktopServerState,
-    effects: &[startup_readiness::ReadinessEffect],
-) {
-    let resumed = effects.iter().any(|effect| {
-        matches!(
-            effect,
-            startup_readiness::ReadinessEffect::ReprobeCurrentTicket
-                | startup_readiness::ReadinessEffect::RestartOwnedSidecar
-                | startup_readiness::ReadinessEffect::RecommitRecoverySurface
-        )
-    });
-    if !resumed {
-        return;
-    }
-    tray::invalidate_pending_navigation(app, "startup-readiness restart");
-    if effects.contains(&startup_readiness::ReadinessEffect::RestartOwnedSidecar) {
-        let _ = state.supervisor.tx.send(SupervisorMessage::Restart);
-    } else {
-        notify_startup_readiness_if_waiting(app);
-    }
-    let epoch = state
-        .readiness
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .epoch;
-    arm_startup_deadline(app.clone(), epoch);
-}
-
-#[cfg(not(mobile))]
 fn request_or_defer_main_window_activation(
     app: &AppHandle,
     pending_activation: &PendingMainWindowActivation,
@@ -10442,40 +11104,395 @@ fn observe_startup_loss(app: &AppHandle, generation: u64) {
     );
 }
 
+/// The user's answer to the slow-start recovery offered for one epoch.
+#[cfg(not(mobile))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SlowStartupChoice {
+    Restart,
+    Quit,
+}
+
+#[cfg(not(mobile))]
+const SLOW_START_DIALOG_RESTART: &str = "Restart";
+#[cfg(not(mobile))]
+const SLOW_START_DIALOG_QUIT: &str = "Quit";
+#[cfg(not(mobile))]
+const SLOW_START_DIALOG_WAIT: &str = "Keep Waiting";
+
+/// Maps the native dialog's answer. Only an explicit Restart or Quit acts:
+/// dismissing the dialog (Esc, the close box) or choosing Keep Waiting must
+/// never quit, because Station opens on its own once the start completes.
+#[cfg(not(mobile))]
+fn slow_start_dialog_choice(
+    result: &tauri_plugin_dialog::MessageDialogResult,
+) -> Option<SlowStartupChoice> {
+    use tauri_plugin_dialog::MessageDialogResult;
+    match result {
+        MessageDialogResult::Yes => Some(SlowStartupChoice::Restart),
+        MessageDialogResult::No => Some(SlowStartupChoice::Quit),
+        MessageDialogResult::Custom(label) if label == SLOW_START_DIALOG_RESTART => {
+            Some(SlowStartupChoice::Restart)
+        }
+        MessageDialogResult::Custom(label) if label == SLOW_START_DIALOG_QUIT => {
+            Some(SlowStartupChoice::Quit)
+        }
+        _ => None,
+    }
+}
+
+/// Side effects used by startup recovery routing. Production drives Tauri,
+/// the supervisor and dialogs; tests record the calls while the real
+/// readiness transition runs, so a routing regression fails an executable
+/// test rather than only a source scan.
+#[cfg(not(mobile))]
+trait StartupRecoveryHost {
+    /// Applies `input` and requests the matching recovery surface (see
+    /// `transition_startup_readiness_presenting`).
+    fn transition(
+        &self,
+        input: startup_readiness::ReadinessInput,
+        present: bool,
+    ) -> (
+        Vec<startup_readiness::ReadinessEffect>,
+        Option<StartupRecoveryPresentation>,
+    );
+    fn overdue_for_epoch(&self, epoch: u64) -> bool;
+    fn current_epoch(&self) -> u64;
+    fn invalidate_pending_navigation(&self);
+    fn restart_owned_sidecar(&self);
+    fn reprobe_current_ticket(&self);
+    /// Re-runs the native recovery commit for a service-owned or unowned
+    /// home. Restart cleared the epoch's identity proof; only this re-earns it.
+    fn recommit_native_recovery(&self);
+    fn arm_deadline(&self, epoch: u64);
+    /// Shows the native dialog without blocking any thread; the answer
+    /// arrives through `answer_slow_start_dialog_with`. `attempt` counts
+    /// re-offers for this epoch (0 for the first offer).
+    fn ask_slow_start_choice(&self, epoch: u64, attempt: u32);
+    /// Schedules `run_slow_start_reoffer` for `epoch`. Production only builds
+    /// the host on a timer thread; the decision lives in that function.
+    fn arm_slow_start_reoffer(&self, epoch: u64, attempt: u32);
+    fn exit(&self);
+}
+
+#[cfg(not(mobile))]
+struct AppStartupRecoveryHost<'a> {
+    app: &'a AppHandle,
+    state: &'a DesktopServerState,
+}
+
+#[cfg(not(mobile))]
+impl StartupRecoveryHost for AppStartupRecoveryHost<'_> {
+    fn transition(
+        &self,
+        input: startup_readiness::ReadinessInput,
+        present: bool,
+    ) -> (
+        Vec<startup_readiness::ReadinessEffect>,
+        Option<StartupRecoveryPresentation>,
+    ) {
+        transition_startup_readiness_presenting(self.app, self.state, input, present)
+    }
+
+    fn overdue_for_epoch(&self, epoch: u64) -> bool {
+        startup_readiness::overdue_for_epoch(
+            &self
+                .state
+                .readiness
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()),
+            epoch,
+        )
+    }
+
+    fn current_epoch(&self) -> u64 {
+        self.state
+            .readiness
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .epoch
+    }
+
+    fn invalidate_pending_navigation(&self) {
+        tray::invalidate_pending_navigation(self.app, "startup-readiness restart");
+    }
+
+    fn restart_owned_sidecar(&self) {
+        let _ = self.state.supervisor.tx.send(SupervisorMessage::Restart);
+    }
+
+    fn reprobe_current_ticket(&self) {
+        notify_startup_readiness_if_waiting(self.app);
+    }
+
+    fn recommit_native_recovery(&self) {
+        // Routes by owner: a non-sidecar owner re-commits native recovery
+        // (revealing once the renderer has mounted); it never signals a
+        // durable service.
+        advance_native_startup_after_page(self.app);
+    }
+
+    fn arm_deadline(&self, epoch: u64) {
+        arm_startup_deadline(self.app.clone(), epoch);
+    }
+
+    fn ask_slow_start_choice(&self, epoch: u64, attempt: u32) {
+        use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+        // Non-blocking: a blocking alert scheduled on the main thread would
+        // queue later cover tasks, including a late reveal, behind it.
+        let app = self.app.clone();
+        self.app
+            .dialog()
+            .message("Station will open automatically when it is ready. Restart tries the start again; Quit closes Station.")
+            .title("Station is taking longer than usual to start")
+            .kind(MessageDialogKind::Warning)
+            .buttons(MessageDialogButtons::YesNoCancelCustom(
+                SLOW_START_DIALOG_RESTART.into(),
+                SLOW_START_DIALOG_QUIT.into(),
+                SLOW_START_DIALOG_WAIT.into(),
+            ))
+            .show_with_result(move |result| {
+                let Some(state) = app.try_state::<DesktopServerState>() else {
+                    return;
+                };
+                answer_slow_start_dialog_with(
+                    &AppStartupRecoveryHost {
+                        app: &app,
+                        state: state.inner(),
+                    },
+                    epoch,
+                    attempt,
+                    slow_start_dialog_choice(&result),
+                );
+            });
+    }
+
+    fn arm_slow_start_reoffer(&self, epoch: u64, attempt: u32) {
+        let app = self.app.clone();
+        let _ = thread::Builder::new()
+            .name(format!("station-startup-recovery-reoffer-{epoch}"))
+            .spawn(move || {
+                let Some(state) = app.try_state::<DesktopServerState>() else {
+                    return;
+                };
+                run_slow_start_reoffer(
+                    &AppStartupRecoveryHost {
+                        app: &app,
+                        state: state.inner(),
+                    },
+                    epoch,
+                    attempt,
+                    thread::sleep,
+                );
+            });
+    }
+
+    fn exit(&self) {
+        self.app.exit(1);
+    }
+}
+
+/// Routes the process effects of a readiness transition. Only an explicit
+/// retry produces them; a deadline never does.
+#[cfg(not(mobile))]
+fn continue_startup_readiness_with(
+    host: &impl StartupRecoveryHost,
+    effects: &[startup_readiness::ReadinessEffect],
+) {
+    use startup_readiness::ReadinessEffect;
+    let restart = effects.contains(&ReadinessEffect::RestartOwnedSidecar);
+    let recommit = effects.contains(&ReadinessEffect::RecommitRecoverySurface);
+    let reprobe = effects.contains(&ReadinessEffect::ReprobeCurrentTicket);
+    if !(restart || recommit || reprobe) {
+        return;
+    }
+    host.invalidate_pending_navigation();
+    if restart {
+        host.restart_owned_sidecar();
+    } else if recommit {
+        host.recommit_native_recovery();
+    } else {
+        host.reprobe_current_ticket();
+    }
+    host.arm_deadline(host.current_epoch());
+}
+
+/// Applies a Restart/Quit chosen on the slow-start recovery surface (the
+/// macOS cover buttons or the native dialog) for `epoch`. Both choices are
+/// inert once readiness moved on: a late reveal or a newer epoch wins.
+#[cfg(not(mobile))]
+fn resolve_slow_startup_with(
+    host: &impl StartupRecoveryHost,
+    epoch: u64,
+    choice: SlowStartupChoice,
+) {
+    match choice {
+        SlowStartupChoice::Quit => {
+            if host.overdue_for_epoch(epoch) {
+                log::info!("desktop startup recovery chose Quit for epoch {epoch}");
+                host.exit();
+            } else {
+                log::info!("desktop startup recovery ignored a stale Quit for epoch {epoch}");
+            }
+        }
+        SlowStartupChoice::Restart => {
+            // An explicit user choice: reprobe a current ticket first, else
+            // restart only the owned sidecar, or re-commit the recovery
+            // surface for a non-owned home. The cover returns to waiting.
+            let (effects, _) = host.transition(
+                startup_readiness::ReadinessInput::Retry {
+                    epoch,
+                    now_ms: 0,
+                    timeout_ms: 30_000,
+                },
+                true,
+            );
+            if effects.is_empty() {
+                log::info!("desktop startup recovery ignored a stale Restart for epoch {epoch}");
+            } else {
+                log::info!("desktop startup recovery chose Restart for epoch {epoch}: {effects:?}");
+            }
+            continue_startup_readiness_with(host, &effects);
+        }
+    }
+}
+
+#[cfg(not(mobile))]
+fn resolve_slow_startup(app: &AppHandle, epoch: u64, choice: SlowStartupChoice) {
+    let Some(state) = app.try_state::<DesktopServerState>() else {
+        return;
+    };
+    resolve_slow_startup_with(
+        &AppStartupRecoveryHost {
+            app,
+            state: state.inner(),
+        },
+        epoch,
+        choice,
+    );
+}
+
+/// Offers the native dialog for `epoch` while it is still overdue. Used
+/// where no cover can carry the recovery choice.
+#[cfg(not(mobile))]
+fn offer_slow_start_dialog_with(host: &impl StartupRecoveryHost, epoch: u64, attempt: u32) {
+    if host.overdue_for_epoch(epoch) {
+        host.ask_slow_start_choice(epoch, attempt);
+    }
+}
+
+/// Re-offer backoff: 30 s, 60 s, then at most 120 s between offers.
+#[cfg(not(mobile))]
+fn slow_start_reoffer_delay(attempt: u32) -> Duration {
+    let doublings = attempt.saturating_sub(1).min(2);
+    Duration::from_secs(30 << doublings)
+}
+
+/// The re-offer timer: wait the backoff, then offer the same choice again,
+/// only while that epoch is still overdue. It never chooses for the user.
+#[cfg(not(mobile))]
+fn run_slow_start_reoffer(
+    host: &impl StartupRecoveryHost,
+    epoch: u64,
+    attempt: u32,
+    wait: impl FnOnce(Duration),
+) {
+    wait(slow_start_reoffer_delay(attempt));
+    offer_slow_start_dialog_with(host, epoch, attempt);
+}
+
+/// Applies the dialog's answer. Keep Waiting (or dismissal) never quits; it
+/// re-offers the choice after another deadline period while the same epoch
+/// is still overdue, so the user is not left without Restart or Quit.
+#[cfg(not(mobile))]
+fn answer_slow_start_dialog_with(
+    host: &impl StartupRecoveryHost,
+    epoch: u64,
+    attempt: u32,
+    choice: Option<SlowStartupChoice>,
+) {
+    match choice {
+        Some(choice) => resolve_slow_startup_with(host, epoch, choice),
+        None if host.overdue_for_epoch(epoch) => {
+            log::info!("desktop startup recovery kept waiting for epoch {epoch}");
+            host.arm_slow_start_reoffer(epoch, attempt.saturating_add(1));
+        }
+        None => {}
+    }
+}
+
+/// What happens when one readiness deadline elapses. It only marks the epoch
+/// overdue and offers recovery; it never restarts or signals the sidecar,
+/// which may still be booting and can reveal the window late on its own.
+#[cfg(not(mobile))]
+fn startup_deadline_elapsed_with(host: &impl StartupRecoveryHost, epoch: u64) {
+    let (effects, presentation) = host.transition(
+        startup_readiness::ReadinessInput::DeadlineElapsed {
+            epoch,
+            now_ms: 30_000,
+        },
+        false,
+    );
+    if !effects.contains(&startup_readiness::ReadinessEffect::ShowSlowStartRecovery { epoch }) {
+        return;
+    }
+    log::warn!(
+        "desktop startup readiness is overdue for epoch {epoch}; the sidecar keeps booting and recovery is offered"
+    );
+    match presentation {
+        Some(StartupRecoveryPresentation::Presented) => {}
+        Some(StartupRecoveryPresentation::Deferred) => log::info!(
+            "desktop startup recovery for epoch {epoch} is deferred until the main window is activated"
+        ),
+        // Hosts without a native cover (Windows, Linux, or a macOS cover
+        // dispatcher that failed to start) keep the native dialog.
+        Some(StartupRecoveryPresentation::Unavailable) | None => {
+            offer_slow_start_dialog_with(host, epoch, 0)
+        }
+    }
+}
+
 #[cfg(not(mobile))]
 fn arm_startup_deadline(app: AppHandle, epoch: u64) {
     let _ = thread::Builder::new()
         .name(format!("station-startup-readiness-{epoch}"))
         .spawn(move || {
             thread::sleep(Duration::from_secs(30));
-            let Some(state) = app.try_state::<DesktopServerState>() else { return };
-            let effects = transition_startup_readiness(state.inner(), startup_readiness::ReadinessInput::DeadlineElapsed { epoch, now_ms: 30_000 });
-            if effects.iter().any(|effect| matches!(effect,
-                startup_readiness::ReadinessEffect::ReprobeCurrentTicket
-                    | startup_readiness::ReadinessEffect::RestartOwnedSidecar
-                    | startup_readiness::ReadinessEffect::RecommitRecoverySurface
-            )) {
-                continue_startup_readiness(&app, state.inner(), &effects);
+            let Some(state) = app.try_state::<DesktopServerState>() else {
                 return;
-            }
-            if !effects.contains(&startup_readiness::ReadinessEffect::ShowDiagnostic { epoch }) { return; }
-            use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
-            log::warn!("desktop startup readiness timed out for epoch {epoch}");
-            let retry = app.dialog().message("Station is still preparing its protected workspace. Retry safely resumes the selected local recovery surface.").title("Station is not ready").kind(MessageDialogKind::Warning).buttons(MessageDialogButtons::OkCancelCustom("Retry".into(), "Exit".into())).blocking_show();
-            if !retry {
-                let still_failed_for_dialog_epoch = {
-                    let readiness = state
-                    .readiness
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    readiness.phase == startup_readiness::ReadinessPhase::Failed
-                        && readiness.epoch == epoch
-                };
-                if still_failed_for_dialog_epoch { let _ = app.exit(1); }
+            };
+            startup_deadline_elapsed_with(
+                &AppStartupRecoveryHost {
+                    app: &app,
+                    state: state.inner(),
+                },
+                epoch,
+            );
+        });
+}
+
+/// A failed main-thread cover task for overdue content would leave the user
+/// without a recovery choice; the dispatcher then offers the native dialog.
+#[cfg(target_os = "macos")]
+fn offer_slow_start_dialog_after_cover_failure(app: &AppHandle, epoch: u64) {
+    let app = app.clone();
+    let _ = thread::Builder::new()
+        .name(format!("station-startup-recovery-dialog-{epoch}"))
+        .spawn(move || {
+            let Some(state) = app.try_state::<DesktopServerState>() else {
                 return;
-            }
-            let retry_effects = transition_startup_readiness(state.inner(), startup_readiness::ReadinessInput::Retry { now_ms: 0, timeout_ms: 30_000 });
-            continue_startup_readiness(&app, state.inner(), &retry_effects);
+            };
+            log::warn!(
+                "native startup cover failed for overdue epoch {epoch}; offering the dialog"
+            );
+            offer_slow_start_dialog_with(
+                &AppStartupRecoveryHost {
+                    app: &app,
+                    state: state.inner(),
+                },
+                epoch,
+                0,
+            );
         });
 }
 
@@ -10867,6 +11884,21 @@ async fn commit_startup_readiness(
 
 fn renderer_mount_label_admitted(label: &str) -> bool {
     label == "main"
+}
+
+/// Whether the calling WebView is already shown to the user. A window other
+/// than the main one (a workspace pop-out) always is; the main window is once
+/// startup readiness admitted it (Ready, or the dev bypass). Before that the
+/// native cover owns recovery, so the renderer bootstrap keeps waiting.
+#[cfg(not(mobile))]
+fn startup_window_admitted_for(label: &str, main_window_admitted: bool) -> bool {
+    !renderer_mount_label_admitted(label) || main_window_admitted
+}
+
+#[cfg(not(mobile))]
+#[tauri::command]
+fn startup_window_admitted(window: tauri::WebviewWindow, app: AppHandle) -> bool {
+    startup_window_admitted_for(window.label(), main_window_activation_available(&app))
 }
 
 #[cfg(not(mobile))]
@@ -11441,10 +12473,22 @@ fn spawn_sidecar_child(context: &SidecarRuntimeContext) -> Result<(Child, String
     // The ambient read lives at the edge so the builder stays a pure function
     // of its inputs -- otherwise its tests would pass or fail depending on the
     // developer's own STATION_ROOT.
-    build_sidecar_command(&context.launch, &boot_id, std::env::var_os("STATION_ROOT"))
-        .spawn()
-        .map(|child| (child, boot_id))
-        .map_err(|error| format!("launch Station sidecar: {error}"))
+    let mut child =
+        build_sidecar_command(&context.launch, &boot_id, std::env::var_os("STATION_ROOT"))
+            .spawn()
+            .map_err(|error| format!("launch Station sidecar: {error}"))?;
+    // Record the child before waiting for Listening: after desktop death its
+    // watchdog may still be shutting down, so the child must retain the fence.
+    if !registry_claim_allows_running(publish_sidecar_registry_bridge(
+        &context.launch.resource_dir,
+        &context.launch.station_home,
+        &context.registry_id,
+        serde_json::json!({"type":"sidecar","status":"starting","port":context.launch.pinned_port.unwrap_or(0),"pid":child.id()}),
+    )) {
+        terminate_desktop_child(&mut child);
+        return Err("Station could not fence its spawned sidecar; the child was stopped.".into());
+    }
+    Ok((child, boot_id))
 }
 
 #[cfg(not(mobile))]
@@ -11595,6 +12639,26 @@ fn run_sidecar_supervisor(
             return;
         }
         generation += 1;
+        // Setup claimed the home for the first generation. Every later one
+        // re-claims before it spawns: an exited child released the record,
+        // and a manual restart's record names a reaped child, so another
+        // desktop or a service may own the home now. A lost claim never
+        // spawns.
+        if generation > 1 && !reclaim_sidecar_host(&supervisor) {
+            let mut status = supervisor
+                .status
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            status.phase = bundled_server_state::ServerPhase::Failed;
+            status.fail_closed = true;
+            status.api_base = None;
+            status.port = None;
+            status.message = "Another Station server now owns this home.".into();
+            status.detail = Some("The home-scoped registry refused this desktop's restart claim; Station did not start a second server.".into());
+            drop(status);
+            crate::tray::kick(&app);
+            return;
+        }
         let child = match spawn_sidecar_child(&supervisor.context) {
             Ok((mut child, boot_id)) => {
                 if let Some(stdout) = child.stdout.take() {
@@ -11635,7 +12699,7 @@ fn run_sidecar_supervisor(
             }
         };
         if !child {
-            let _ = remove_registry_bridge(
+            let _ = release_sidecar_registry_bridge(
                 &supervisor.context.launch.resource_dir,
                 &supervisor.context.launch.station_home,
                 &supervisor.context.registry_id,
@@ -11662,7 +12726,7 @@ fn run_sidecar_supervisor(
             match rx.recv_timeout(Duration::from_millis(150)) {
                 Ok(SupervisorMessage::Shutdown) => {
                     reap_sidecar(&supervisor);
-                    let _ = remove_registry_bridge(
+                    let _ = release_sidecar_registry_bridge(
                         &supervisor.context.launch.resource_dir,
                         &supervisor.context.launch.station_home,
                         &supervisor.context.registry_id,
@@ -11692,14 +12756,14 @@ fn run_sidecar_supervisor(
                         .unwrap_or_else(|poisoned| poisoned.into_inner())
                         .as_ref()
                         .map(Child::id);
-                    if !registry_claim_allows_running(upsert_registry_bridge(
+                    if !registry_claim_allows_running(publish_sidecar_registry_bridge(
                         &supervisor.context.launch.resource_dir,
                         &supervisor.context.launch.station_home,
                         &supervisor.context.registry_id,
                         serde_json::json!({"type":"sidecar","status":"running","port":port,"pid":pid,"startedAt":format!("{}", SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs())}),
                     )) {
                         reap_sidecar(&supervisor);
-                        let _ = remove_registry_bridge(
+                        let _ = release_sidecar_registry_bridge(
                             &supervisor.context.launch.resource_dir,
                             &supervisor.context.launch.station_home,
                             &supervisor.context.registry_id,
@@ -11763,7 +12827,7 @@ fn run_sidecar_supervisor(
                         // fail-closed marker written immediately before exit
                         // must win over retry classification.
                         drain_sidecar_stderr(&supervisor);
-                        let _ = remove_registry_bridge(
+                        let _ = release_sidecar_registry_bridge(
                             &supervisor.context.launch.resource_dir,
                             &supervisor.context.launch.station_home,
                             &supervisor.context.registry_id,
@@ -11788,7 +12852,7 @@ fn run_sidecar_supervisor(
                 }
                 Err(RecvTimeoutError::Disconnected) => {
                     reap_sidecar(&supervisor);
-                    let _ = remove_registry_bridge(
+                    let _ = release_sidecar_registry_bridge(
                         &supervisor.context.launch.resource_dir,
                         &supervisor.context.launch.station_home,
                         &supervisor.context.registry_id,
@@ -11798,6 +12862,19 @@ fn run_sidecar_supervisor(
             }
         }
     }
+}
+
+/// Re-claims this desktop's sidecar slot before a respawn, through the same
+/// atomic host claim setup used.
+#[cfg(not(mobile))]
+fn reclaim_sidecar_host(supervisor: &Arc<ServerSupervisor>) -> bool {
+    let claim = claim_sidecar_registry_bridge(
+        &supervisor.context.launch.resource_dir,
+        &supervisor.context.launch.station_home,
+        &supervisor.context.registry_id,
+        serde_json::json!({"type":"sidecar","status":"starting","port":0}),
+    );
+    owner_owns_reapable_child(owner_for_host_claim(claim))
 }
 
 #[cfg(not(mobile))]
@@ -11856,6 +12933,17 @@ pub(crate) fn teardown_sidecar(app: &AppHandle) {
     let Some(state) = app.try_state::<DesktopServerState>() else {
         return;
     };
+    if shut_down_owned_sidecar(&state) {
+        crate::tray::kick(app);
+    }
+}
+
+/// The ownership-gated half of teardown, separated from the `AppHandle` so it
+/// is directly testable. Only a desktop that won the sidecar claim asks its
+/// supervisor to reap a child; a service-owned (or unowned) desktop signals
+/// nothing. Returns whether a shutdown was requested.
+#[cfg(not(mobile))]
+fn shut_down_owned_sidecar(state: &DesktopServerState) -> bool {
     if !owner_owns_reapable_child(
         state
             .owner
@@ -11863,10 +12951,10 @@ pub(crate) fn teardown_sidecar(app: &AppHandle) {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .clone(),
     ) {
-        return;
+        return false;
     }
     if state.supervisor.shutting_down.swap(true, Ordering::SeqCst) {
-        return;
+        return false;
     }
     apply_supervisor_input(&state.supervisor, SupervisorInput::ShutdownRequested);
     let _ = state.supervisor.tx.send(SupervisorMessage::Shutdown);
@@ -11882,7 +12970,7 @@ pub(crate) fn teardown_sidecar(app: &AppHandle) {
     {
         let _ = handle.join();
     }
-    crate::tray::kick(app);
+    true
 }
 
 /// `STATION_DESKTOP_LOG_LEVEL` selects the desktop shell's log verbosity
@@ -12062,6 +13150,16 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(mobile)]
     let log_dir_writable = true;
 
+    // #759/#370: a panic in an AppKit callback aborts with no message, and a
+    // bundled app's stderr is discarded. Record it to `crash.log` beside the
+    // desktop log, installed as soon as the log directory is known. The hook
+    // never re-enters the logger when it has a directory; mobile, or a
+    // desktop whose log directory is unwritable, records through the logger.
+    #[cfg(not(mobile))]
+    panic_log::install(app_log_dir_for(&context.config().identifier).filter(|_| log_dir_writable));
+    #[cfg(mobile)]
+    panic_log::install(None);
+
     // Keep file logs for GUI launches without an attached terminal (archive#1899).
     // LogDir uses app_log_dir(); stdout remains for terminal/dev launches.
     // KeepSome(5) retains five archives plus the active file. The 5 MiB
@@ -12215,6 +13313,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         native_account_operations::station_native_account_challenge_prepare,
         native_account_operations::station_native_account_exchange_prepare,
         native_account_operations::station_native_account_request_headers,
+        native_account_operations::station_native_account_management_headers,
         native_account_operations::station_native_account_accept_invitation_prepare,
         native_account_operations::station_native_account_revoke_prepare,
         native_relay_link_intake::station_native_link_delivery_mode,
@@ -12298,6 +13397,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         commit_renderer_mount,
         commit_startup_readiness,
         commit_startup_recovery_ui,
+        startup_window_admitted,
         ssh_env_probe,
         ssh_launch_start,
         ssh_launch_status,
@@ -12317,6 +13417,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         native_account_operations::station_native_account_challenge_prepare,
         native_account_operations::station_native_account_exchange_prepare,
         native_account_operations::station_native_account_request_headers,
+        native_account_operations::station_native_account_management_headers,
         native_account_operations::station_native_account_accept_invitation_prepare,
         native_account_operations::station_native_account_revoke_prepare,
         native_relay_link_intake::station_native_link_delivery_mode,
@@ -12530,27 +13631,15 @@ If a stable instance is running, this launch will focus its window and exit.",
                         registry_id: format!("desktop-sidecar-{}", std::process::id()),
                     },
                 });
-                let ownership = decide_home_ownership_from_runtime(&resource_dir, &station_home);
-                let mut owner = owner_after_preparation(preparation_kind, ownership);
-                // Reserve before the child is launched.  The shared module
-                // performs this compare-and-set under its mutation lock, so
-                // two desktops cannot both win a home-scoped sidecar slot.
-                if owner == DesktopOwner::Sidecar {
-                    let context = &supervisor.context;
-                    let claimed = claim_sidecar_registry_bridge(
-                        &resource_dir,
-                        &station_home,
-                        &context.registry_id,
-                        serde_json::json!({"type":"sidecar","status":"starting","port":0}),
-                    )
-                    .map_err(|error| {
-                        log::error!("desktop registry bridge could not claim the sidecar slot: {error:?}");
-                        error
-                    })
-                    .unwrap_or(false);
-                    log::info!("desktop sidecar registry claim: claimed={claimed}");
-                    if !claimed { owner = DesktopOwner::None; }
-                }
+                // Reserve before the child is launched. The shared module
+                // decides the home's single host owner under its mutation
+                // lock — refusing any other live sidecar or service — and
+                // returns the winner, so there is no separate ownership read
+                // for a service to slip past (#2961).
+                let owner = launch_owner(
+                    preparation_kind, &resource_dir, &station_home, &supervisor.context.registry_id,
+                );
+                log::info!("desktop atomic host claim selected {owner:?}");
                 let (readiness, effects) = startup_readiness::transition(
                     &startup_readiness::StartupReadiness::default(),
                     startup_readiness::ReadinessInput::Begin {
@@ -12577,10 +13666,12 @@ If a stable instance is running, this launch will focus its window and exit.",
                 notification_feed::start(app.handle())?;
                 if effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) { reveal_main_window(app.handle()); }
                 if !cfg!(debug_assertions) { arm_startup_deadline(app.handle().clone(), 1); }
-                if owner == DesktopOwner::Sidecar {
+                if let Some(handle) = start_owned_sidecar(owner.clone(), || {
                     let app_handle = app.handle().clone();
                     let handle = thread::Builder::new().name("station-sidecar-supervisor".into()).spawn(move || run_sidecar_supervisor(supervisor, app_handle, rx))
                         .expect("failed to start Station sidecar supervisor thread");
+                    handle
+                }) {
                     *app.state::<DesktopServerState>().supervisor.thread.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(handle);
                 }
             }
@@ -12636,6 +13727,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                         if let Some(state) = app.try_state::<DesktopServerState>() {
                             if !state.supervisor.shutting_down.load(Ordering::SeqCst) {
                                 api.prevent_close();
+                                MAIN_WINDOW_HIDDEN_BY_USER.store(true, Ordering::Release);
                                 if let Some(window) = app.get_webview_window("main") { let _ = window.hide(); }
                                 tray::kick(app);
                             }
@@ -12643,6 +13735,10 @@ If a stable instance is running, this launch will focus its window and exit.",
                     }
                 }
                 if label == "main" && matches!(event, WindowEvent::Destroyed) {
+                    // The destroyed window's cover monitor and button target
+                    // must not outlive it (RunEvent runs on the main thread).
+                    #[cfg(target_os = "macos")]
+                    clear_native_startup_cover_state();
                     tray::invalidate_pending_navigation(app, "main-window destruction");
                     let kick_app = app.clone();
                     if let Err(error) = app.run_on_main_thread(move || tray::kick(&kick_app)) {
@@ -13879,21 +14975,27 @@ mod tests {
 
     #[test]
     #[cfg(not(mobile))]
-    fn service_attachment_never_claims_an_unprepared_home_after_service_exit() {
+    fn service_exit_during_preparation_releases_claim_without_spawning() {
+        let released = std::cell::Cell::new(false);
         assert_eq!(
-            owner_after_preparation(
+            owner_after_launch_claim(
                 PrepareRuntimeKind::ServiceOwned,
-                HomeOwnershipDecision::SpawnSidecar
+                || parse_host_claim_output(br#"{"ok":true,"claimed":true,"owners":[]}"#),
+                || released.set(true),
             ),
             DesktopOwner::Unowned
         );
+        assert!(
+            released.get(),
+            "an unprepared home must release its won reservation"
+        );
         assert_eq!(
-            owner_after_preparation(
+            owner_after_launch_claim(
                 PrepareRuntimeKind::ServiceOwned,
-                HomeOwnershipDecision::ServiceOwnsHome {
-                    id: "owned-service".into(),
-                    port: 4123
-                }
+                || {
+                    parse_host_claim_output(br#"{"ok":true,"claimed":false,"owners":[{"id":"owned-service","type":"service","port":4123}]}"#)
+                },
+                || panic!("a losing claim has no reservation to release"),
             ),
             DesktopOwner::Service {
                 id: "owned-service".into(),
@@ -13901,9 +15003,10 @@ mod tests {
             }
         );
         assert_eq!(
-            owner_after_preparation(
+            owner_after_launch_claim(
                 PrepareRuntimeKind::Absent,
-                HomeOwnershipDecision::SpawnSidecar
+                || parse_host_claim_output(br#"{"ok":true,"claimed":true,"owners":[]}"#),
+                || panic!("a prepared winner keeps its reservation"),
             ),
             DesktopOwner::Sidecar
         );
@@ -14084,13 +15187,21 @@ mod tests {
     fn native_cover_requests_are_bounded_and_latest_state_wins_before_dispatch() {
         let desired = Mutex::new(NativeCoverDesired {
             generation: 0,
-            covered: false,
+            cover: None,
         });
         let (wake, receiver) = sync_channel(1);
 
-        update_native_cover_desired(&desired, &wake, true);
-        update_native_cover_desired(&desired, &wake, true);
-        update_native_cover_desired(&desired, &wake, false);
+        update_native_cover_desired(
+            &desired,
+            &wake,
+            Some(startup_readiness::StartupCoverContent::Waiting),
+        );
+        update_native_cover_desired(
+            &desired,
+            &wake,
+            Some(startup_readiness::StartupCoverContent::Overdue { epoch: 1 }),
+        );
+        update_native_cover_desired(&desired, &wake, None);
 
         assert_eq!(receiver.try_iter().count(), 1, "repeated requests coalesce");
         let mut applied = Vec::new();
@@ -14102,7 +15213,7 @@ mod tests {
             applied,
             vec![NativeCoverDesired {
                 generation: 3,
-                covered: false,
+                cover: None,
             }],
             "an unread cover must be superseded by the newer exact reveal"
         );
@@ -14121,8 +15232,115 @@ mod tests {
             .expect("native startup cover ends before recovery composition");
         let cover = &source[start..end];
 
-        assert!(cover.contains("NSTextField::labelWithString(label_text, marker)"));
-        assert!(cover.contains("setAccessibilityLabel: label_text"));
+        assert!(cover.contains("NSTextField::labelWithString(&label_text, marker)"));
+        assert!(cover.contains("setAccessibilityLabel: &*label_text"));
+        // arm64 macOS uses the iOS NSTextAlignment values (2 is Right); the
+        // status line must use the named constant to stay centered.
+        assert!(cover.contains("label.setAlignment(NSTextAlignment::Center)"));
+        assert!(!cover.contains("NSTextAlignment("));
+        // Overdue recovery: labelled native buttons, Return activates Restart,
+        // and keyboard focus lands on it instead of the hidden WebView.
+        assert!(cover.contains("setAccessibilityLabel: ns_string!(\"Restart Station\")"));
+        assert!(cover.contains("setAccessibilityLabel: ns_string!(\"Quit Station\")"));
+        assert!(cover.contains("restart.setKeyEquivalent(ns_string!(\"\\r\"))"));
+        // Focus always leaves the hidden WebView before Restart may take it.
+        let clear_focus = cover
+            .match_indices("ns_window.makeFirstResponder(None);")
+            .find(|(at, needle)| {
+                cover[at + needle.len()..]
+                    .trim_start()
+                    .starts_with("if let Some(restart) = focus")
+            })
+            .map(|(at, _)| at)
+            .expect("covering clears first responder before focusing Restart");
+        let focus_restart = cover
+            .find("ns_window.makeFirstResponder(Some(&restart))")
+            .expect("covering tries to focus Restart");
+        assert!(clear_focus < focus_restart);
+        assert!(cover.contains("quit.setNextKeyView(Some(&restart))"));
+        // Fronting is decided on the main thread when the change applies, and
+        // every order-front in the cover and reveal branches is gated by it.
+        assert!(
+            cover.contains("let front = native_cover_should_front(main_window_hidden_by_user());")
+        );
+        // The decision is consulted, never amended: the bare identifier
+        // `front` appears only in its one binding and the two gates.
+        let is_ident = |c: char| c.is_ascii_alphanumeric() || c == '_';
+        let front_tokens = cover
+            .match_indices("front")
+            .filter(|(at, token)| {
+                !cover[..*at].chars().next_back().is_some_and(is_ident)
+                    && !cover[at + token.len()..]
+                        .chars()
+                        .next()
+                        .is_some_and(is_ident)
+            })
+            .count();
+        assert_eq!(
+            front_tokens, 3,
+            "one `let front` binding and two `if front` gates"
+        );
+        // Each occurrence of the window-raising spellings listed below must
+        // sit directly inside `if front {`, and only deminiaturize plus the
+        // order-front for the cover and for the reveal may occur. This scans
+        // these spellings only; other ways to raise a window are not detected.
+        const WINDOW_RAISING_CALLS: [&str; 15] = [
+            "makeKeyAndOrderFront(",
+            "makeKeyAndOrderFront:",
+            "orderFront(",
+            "orderFront:",
+            "orderFrontRegardless(",
+            "orderFrontWithKey",
+            "orderWindow(",
+            "activateIgnoringOtherApps",
+            "activateWithOptions(",
+            ".activate(",
+            "unhide(",
+            "setIsVisible(",
+            "deminiaturize(",
+            ".show()",
+            "set_focus(",
+        ];
+        let mut raising = Vec::new();
+        for call in WINDOW_RAISING_CALLS {
+            for (at, _) in cover.match_indices(call) {
+                raising.push((at, call));
+            }
+        }
+        raising.sort();
+        raising.dedup_by_key(|(at, _)| *at);
+        assert_eq!(
+            raising.iter().map(|(_, call)| *call).collect::<Vec<_>>(),
+            vec![
+                "deminiaturize(",
+                "makeKeyAndOrderFront(",
+                "deminiaturize(",
+                "makeKeyAndOrderFront(",
+            ],
+            "the cover and the reveal each raise the window exactly once"
+        );
+        for (at, call) in raising {
+            let gate = cover[..at]
+                .rfind("if front {")
+                .unwrap_or_else(|| panic!("{call} is not gated by the hidden-window decision"));
+            assert!(
+                !cover[gate..at].contains('}'),
+                "{call} must sit directly inside `if front {{`"
+            );
+        }
+        assert!(cover.contains("applicationIconImage()"));
+        assert!(
+            cover.contains("setAccessibilityRole: objc2_app_kit::NSAccessibilityStaticTextRole")
+        );
+        // WebKit can retake first responder while covered; the window-scoped
+        // key monitor is installed with the cover and removed on reveal.
+        let monitor_installed = cover
+            .find("install_native_startup_cover_key_monitor(")
+            .expect("covering installs the key monitor for this window");
+        let monitor_removed = cover
+            .find("clear_native_startup_cover_state()")
+            .expect("reveal removes the key monitor and button target");
+        assert!(monitor_installed < monitor_removed);
         assert!(!cover.contains("setAccessibilityChildren:"));
         assert!(!cover.contains("NSArray::arrayWithObject"));
         assert!(cover.contains("NSAccessibilityLayoutChangedNotification"));
@@ -14153,8 +15371,9 @@ mod tests {
         let visible = cover
             .find("setAlphaValue: 1.0f64")
             .expect("reveal restores the WebView visual state");
-        let notify = cover
+        let notify = cover[visible..]
             .find("NSAccessibilityPostNotification(")
+            .map(|offset| visible + offset)
             .expect("reveal notifies assistive clients after clearing the override");
         assert!(
             remove < unhide && unhide < visible && visible < notify,
@@ -14171,15 +15390,15 @@ mod tests {
     fn native_cover_dispatch_serializes_cover_before_a_fast_reveal() {
         let desired = Mutex::new(NativeCoverDesired {
             generation: 1,
-            covered: true,
+            cover: Some(startup_readiness::StartupCoverContent::Waiting),
         });
         let (wake, _receiver) = sync_channel(1);
         let mut applied = Vec::new();
 
         assert!(apply_native_cover_until_current(&desired, |target| {
-            applied.push(target.covered);
-            if target.covered {
-                update_native_cover_desired(&desired, &wake, false);
+            applied.push(target.cover.is_some());
+            if target.cover.is_some() {
+                update_native_cover_desired(&desired, &wake, None);
             }
             true
         }));
@@ -14195,7 +15414,7 @@ mod tests {
     fn native_cover_dispatch_stops_on_a_failed_main_thread_task() {
         let desired = Mutex::new(NativeCoverDesired {
             generation: 1,
-            covered: true,
+            cover: Some(startup_readiness::StartupCoverContent::Waiting),
         });
         let mut attempts = 0;
         assert!(!apply_native_cover_until_current(&desired, |_| {
@@ -14257,13 +15476,9 @@ mod tests {
             .map(|offset| recovery + offset)
             .expect("recovery exits setup successfully instead of returning a Tauri setup error");
         let ownership = source[preparation..]
-            .find("let ownership = decide_home_ownership_from_runtime")
+            .find("let owner = launch_owner(")
             .map(|offset| preparation + offset)
             .expect("setup selects ownership only on the prepared path");
-        let claim = source[preparation..]
-            .find("let claimed = claim_sidecar_registry_bridge")
-            .map(|offset| preparation + offset)
-            .expect("setup claims a sidecar only after ownership selection");
         let supervisor = source[preparation..]
             .find("let supervisor = Arc::new(ServerSupervisor")
             .map(|offset| preparation + offset)
@@ -14278,7 +15493,6 @@ mod tests {
                 && recovery < recovery_return
                 && recovery_return < supervisor
                 && supervisor < ownership
-                && ownership < claim
                 && supervisor < tray,
             "a runtime refusal must exit through native recovery before ownership, claim, supervisor, or tray start"
         );
@@ -14579,6 +15793,621 @@ mod tests {
         assert_eq!(readiness.phase, startup_readiness::ReadinessPhase::Ready);
     }
 
+    #[cfg(not(mobile))]
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    enum HostCall {
+        InvalidateNavigation,
+        RestartOwnedSidecar,
+        ReprobeCurrentTicket,
+        RecommitNativeRecovery,
+        ArmDeadline(u64),
+        AskSlowStartChoice,
+        ArmReoffer(u64, u32),
+        Exit,
+        Reveal,
+    }
+
+    /// Records every routed side effect while the real readiness transition
+    /// runs. `recommit_native_recovery` mirrors production, which re-runs the
+    /// owner-routed native recovery commit (`NativeRecoveryCommitted`).
+    #[cfg(not(mobile))]
+    struct FakeStartupHost {
+        readiness: Mutex<startup_readiness::StartupReadiness>,
+        presentation: StartupRecoveryPresentation,
+        answer: Option<SlowStartupChoice>,
+        calls: Mutex<Vec<HostCall>>,
+    }
+
+    #[cfg(not(mobile))]
+    impl FakeStartupHost {
+        fn new(
+            owned_sidecar: bool,
+            presentation: StartupRecoveryPresentation,
+            answer: Option<SlowStartupChoice>,
+        ) -> Self {
+            let (readiness, _) = startup_readiness::transition(
+                &startup_readiness::StartupReadiness::default(),
+                startup_readiness::ReadinessInput::Begin {
+                    now_ms: 0,
+                    timeout_ms: 30_000,
+                    dev_bypass: false,
+                    owned_sidecar,
+                },
+            );
+            Self {
+                readiness: Mutex::new(readiness),
+                presentation,
+                answer,
+                calls: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn apply(&self, input: startup_readiness::ReadinessInput) {
+            let mut readiness = self.readiness.lock().unwrap();
+            let (next, effects) = startup_readiness::transition(&readiness, input);
+            *readiness = next;
+            drop(readiness);
+            if effects.contains(&startup_readiness::ReadinessEffect::RevealMainWindow) {
+                self.record(HostCall::Reveal);
+            }
+        }
+
+        fn record(&self, call: HostCall) {
+            self.calls.lock().unwrap().push(call);
+        }
+
+        fn take_calls(&self) -> Vec<HostCall> {
+            std::mem::take(&mut *self.calls.lock().unwrap())
+        }
+
+        fn ticket() -> startup_readiness::StartupTicket {
+            startup_readiness::StartupTicket {
+                generation: 1,
+                instance_id: "desktop-sidecar-stable".into(),
+                boot_id: "boot-1".into(),
+                api_base: "http://127.0.0.1:4123".into(),
+            }
+        }
+    }
+
+    #[cfg(not(mobile))]
+    impl StartupRecoveryHost for FakeStartupHost {
+        fn transition(
+            &self,
+            input: startup_readiness::ReadinessInput,
+            present: bool,
+        ) -> (
+            Vec<startup_readiness::ReadinessEffect>,
+            Option<StartupRecoveryPresentation>,
+        ) {
+            let mut readiness = self.readiness.lock().unwrap();
+            let (next, effects) = startup_readiness::transition(&readiness, input);
+            *readiness = next;
+            let presentation = if startup_presentation_requested(&effects, present) {
+                startup_readiness::startup_cover_content(&readiness).map(|_| self.presentation)
+            } else {
+                None
+            };
+            (effects, presentation)
+        }
+
+        fn overdue_for_epoch(&self, epoch: u64) -> bool {
+            startup_readiness::overdue_for_epoch(&self.readiness.lock().unwrap(), epoch)
+        }
+
+        fn current_epoch(&self) -> u64 {
+            self.readiness.lock().unwrap().epoch
+        }
+
+        fn invalidate_pending_navigation(&self) {
+            self.record(HostCall::InvalidateNavigation);
+        }
+
+        fn restart_owned_sidecar(&self) {
+            self.record(HostCall::RestartOwnedSidecar);
+        }
+
+        fn reprobe_current_ticket(&self) {
+            self.record(HostCall::ReprobeCurrentTicket);
+        }
+
+        fn recommit_native_recovery(&self) {
+            self.record(HostCall::RecommitNativeRecovery);
+            self.apply(startup_readiness::ReadinessInput::NativeRecoveryCommitted);
+        }
+
+        fn arm_deadline(&self, epoch: u64) {
+            self.record(HostCall::ArmDeadline(epoch));
+        }
+
+        fn ask_slow_start_choice(&self, epoch: u64, attempt: u32) {
+            // The production dialog answers asynchronously through the same
+            // function; the fake answers at once.
+            self.record(HostCall::AskSlowStartChoice);
+            answer_slow_start_dialog_with(self, epoch, attempt, self.answer);
+        }
+
+        fn arm_slow_start_reoffer(&self, epoch: u64, attempt: u32) {
+            self.record(HostCall::ArmReoffer(epoch, attempt));
+        }
+
+        fn exit(&self) {
+            self.record(HostCall::Exit);
+        }
+    }
+
+    /// A1 at the routing layer: the original defect was the deadline thread
+    /// restarting a still-booting sidecar. With or without a pending
+    /// activation, and whether recovery is shown in the cover or the dialog
+    /// is dismissed, an elapsed deadline produces no process effect.
+    #[test]
+    #[cfg(not(mobile))]
+    fn deadline_routing_offers_recovery_without_any_process_effect() {
+        for activation in [false, true] {
+            let host = FakeStartupHost::new(true, StartupRecoveryPresentation::Presented, None);
+            if activation {
+                let _ = host.transition(
+                    startup_readiness::ReadinessInput::ActivationRequested,
+                    false,
+                );
+            }
+            startup_deadline_elapsed_with(&host, 1);
+            assert_eq!(
+                host.take_calls(),
+                Vec::<HostCall>::new(),
+                "activation={activation}: the in-cover offer is the only effect"
+            );
+            assert!(host.overdue_for_epoch(1));
+
+            let host = FakeStartupHost::new(true, StartupRecoveryPresentation::Unavailable, None);
+            if activation {
+                let _ = host.transition(
+                    startup_readiness::ReadinessInput::ActivationRequested,
+                    false,
+                );
+            }
+            startup_deadline_elapsed_with(&host, 1);
+            assert_eq!(
+                host.take_calls(),
+                vec![HostCall::AskSlowStartChoice, HostCall::ArmReoffer(1, 1)],
+                "activation={activation}: dismissing the dialog keeps waiting and re-offers later"
+            );
+            startup_deadline_elapsed_with(&host, 1);
+            assert_eq!(
+                host.take_calls(),
+                Vec::<HostCall>::new(),
+                "one offer per epoch"
+            );
+        }
+
+        let deferred = FakeStartupHost::new(true, StartupRecoveryPresentation::Deferred, None);
+        startup_deadline_elapsed_with(&deferred, 1);
+        assert_eq!(deferred.take_calls(), Vec::<HostCall>::new());
+    }
+
+    /// D5: recovery waits for activation when the launch is background-only
+    /// or the user hid (closed) the window while it was covered.
+    #[test]
+    #[cfg(not(mobile))]
+    fn startup_recovery_defers_for_background_or_user_hidden_windows() {
+        assert!(!startup_recovery_surface_deferred(false, false));
+        assert!(startup_recovery_surface_deferred(true, false));
+        assert!(startup_recovery_surface_deferred(false, true));
+        assert!(startup_recovery_surface_deferred(true, true));
+        let source = include_str!("lib.rs");
+        let close = source
+            .find("api.prevent_close();\n                                MAIN_WINDOW_HIDDEN_BY_USER.store(true")
+            .expect("closing the main window records that the user hid it");
+        assert!(source[close..].find("window.hide()").is_some());
+        let activation = source
+            .find("pub(crate) fn request_main_window_activation(app: &AppHandle) -> bool {")
+            .expect("activation entry point");
+        let cleared = source[activation..]
+            .find("MAIN_WINDOW_HIDDEN_BY_USER.store(false")
+            .expect("activation clears the user-hidden state");
+        let transitioned = source[activation..]
+            .find("ReadinessInput::ActivationRequested")
+            .expect("activation transitions readiness");
+        assert!(cleared < transitioned);
+    }
+
+    /// D3: Keep Waiting is not a dead end. While the same epoch stays
+    /// overdue, the offer comes back after another deadline period; once
+    /// the window reveals or a newer epoch starts, the re-offer is inert.
+    #[test]
+    #[cfg(not(mobile))]
+    fn keep_waiting_re_offers_restart_and_quit_while_still_overdue() {
+        let host = FakeStartupHost::new(true, StartupRecoveryPresentation::Unavailable, None);
+        startup_deadline_elapsed_with(&host, 1);
+        assert_eq!(
+            host.take_calls(),
+            vec![HostCall::AskSlowStartChoice, HostCall::ArmReoffer(1, 1)]
+        );
+        // The production re-offer timer, run with a recording clock: it waits
+        // the backoff and offers the same choice again. It never restarts,
+        // quits or answers on the user's behalf.
+        let mut waited = Vec::new();
+        for attempt in 1..=4 {
+            run_slow_start_reoffer(&host, 1, attempt, |delay| waited.push(delay));
+            assert_eq!(
+                host.take_calls(),
+                vec![
+                    HostCall::AskSlowStartChoice,
+                    HostCall::ArmReoffer(1, attempt + 1)
+                ],
+                "re-offer {attempt}"
+            );
+        }
+        assert_eq!(
+            waited,
+            [30, 60, 120, 120].map(Duration::from_secs).to_vec(),
+            "re-offers back off to a two-minute cap"
+        );
+        // A re-offered Quit exits for that epoch.
+        answer_slow_start_dialog_with(&host, 1, 2, Some(SlowStartupChoice::Quit));
+        assert_eq!(host.take_calls(), vec![HostCall::Exit]);
+
+        // After a late reveal, a pending re-offer shows nothing.
+        host.apply(startup_readiness::ReadinessInput::ServerTicket(
+            FakeStartupHost::ticket(),
+        ));
+        host.apply(startup_readiness::ReadinessInput::NativeIdentityCommitted(
+            FakeStartupHost::ticket(),
+        ));
+        host.apply(startup_readiness::ReadinessInput::RendererMounted);
+        assert_eq!(host.take_calls(), vec![HostCall::Reveal]);
+        run_slow_start_reoffer(&host, 1, 3, |_| {});
+        answer_slow_start_dialog_with(&host, 1, 3, None);
+        assert_eq!(host.take_calls(), Vec::<HostCall>::new());
+    }
+
+    #[test]
+    #[cfg(not(mobile))]
+    fn a_cover_change_fronts_the_window_only_while_the_user_has_not_hidden_it() {
+        assert!(
+            native_cover_should_front(false),
+            "a window the user has not hidden is brought forward"
+        );
+        assert!(
+            !native_cover_should_front(true),
+            "a window the user closed (hid) stays hidden until activation"
+        );
+    }
+
+    #[test]
+    #[cfg(not(mobile))]
+    fn only_a_shown_window_counts_as_admitted_for_the_renderer_bootstrap() {
+        assert!(
+            !startup_window_admitted_for("main", false),
+            "covered main window"
+        );
+        assert!(
+            startup_window_admitted_for("main", true),
+            "revealed or bypassed main window"
+        );
+        for pop_out in ["workspace-pop-out-1", "preview", ""] {
+            assert!(startup_window_admitted_for(pop_out, false), "{pop_out:?}");
+        }
+    }
+
+    /// A late ticket after the routed deadline still reveals with no restart.
+    #[test]
+    #[cfg(not(mobile))]
+    fn routed_deadline_keeps_admitting_the_late_ticket() {
+        let host = FakeStartupHost::new(true, StartupRecoveryPresentation::Presented, None);
+        host.apply(startup_readiness::ReadinessInput::RendererMounted);
+        startup_deadline_elapsed_with(&host, 1);
+        host.apply(startup_readiness::ReadinessInput::ServerTicket(
+            FakeStartupHost::ticket(),
+        ));
+        host.apply(startup_readiness::ReadinessInput::NativeIdentityCommitted(
+            FakeStartupHost::ticket(),
+        ));
+        assert_eq!(host.take_calls(), vec![HostCall::Reveal]);
+    }
+
+    /// A3 at the routing layer: an explicit Restart reprobes a current ticket
+    /// and restarts the owned sidecar only when there is none.
+    #[test]
+    #[cfg(not(mobile))]
+    fn explicit_restart_reprobes_a_ticket_before_restarting_the_owned_sidecar() {
+        let with_ticket = FakeStartupHost::new(
+            true,
+            StartupRecoveryPresentation::Unavailable,
+            Some(SlowStartupChoice::Restart),
+        );
+        with_ticket.apply(startup_readiness::ReadinessInput::ServerTicket(
+            FakeStartupHost::ticket(),
+        ));
+        startup_deadline_elapsed_with(&with_ticket, 1);
+        assert_eq!(
+            with_ticket.take_calls(),
+            vec![
+                HostCall::AskSlowStartChoice,
+                HostCall::InvalidateNavigation,
+                HostCall::ReprobeCurrentTicket,
+                HostCall::ArmDeadline(2),
+            ]
+        );
+
+        let without_ticket =
+            FakeStartupHost::new(true, StartupRecoveryPresentation::Presented, None);
+        startup_deadline_elapsed_with(&without_ticket, 1);
+        resolve_slow_startup_with(&without_ticket, 1, SlowStartupChoice::Restart);
+        assert_eq!(
+            without_ticket.take_calls(),
+            vec![
+                HostCall::InvalidateNavigation,
+                HostCall::RestartOwnedSidecar,
+                HostCall::ArmDeadline(2),
+            ]
+        );
+        resolve_slow_startup_with(&without_ticket, 1, SlowStartupChoice::Restart);
+        assert_eq!(
+            without_ticket.take_calls(),
+            Vec::<HostCall>::new(),
+            "a second Restart for the superseded epoch is inert"
+        );
+    }
+
+    /// Quit exits only while that same epoch is still overdue.
+    #[test]
+    #[cfg(not(mobile))]
+    fn quit_exits_only_while_the_same_epoch_is_overdue() {
+        let host = FakeStartupHost::new(true, StartupRecoveryPresentation::Presented, None);
+        resolve_slow_startup_with(&host, 1, SlowStartupChoice::Quit);
+        assert_eq!(host.take_calls(), Vec::<HostCall>::new(), "not overdue yet");
+        startup_deadline_elapsed_with(&host, 1);
+        resolve_slow_startup_with(&host, 0, SlowStartupChoice::Quit);
+        assert_eq!(host.take_calls(), Vec::<HostCall>::new(), "another epoch");
+        resolve_slow_startup_with(&host, 1, SlowStartupChoice::Quit);
+        assert_eq!(host.take_calls(), vec![HostCall::Exit]);
+
+        let revealed = FakeStartupHost::new(true, StartupRecoveryPresentation::Presented, None);
+        startup_deadline_elapsed_with(&revealed, 1);
+        revealed.apply(startup_readiness::ReadinessInput::ServerTicket(
+            FakeStartupHost::ticket(),
+        ));
+        revealed.apply(startup_readiness::ReadinessInput::NativeIdentityCommitted(
+            FakeStartupHost::ticket(),
+        ));
+        revealed.apply(startup_readiness::ReadinessInput::RendererMounted);
+        assert_eq!(revealed.take_calls(), vec![HostCall::Reveal]);
+        resolve_slow_startup_with(&revealed, 1, SlowStartupChoice::Quit);
+        assert_eq!(
+            revealed.take_calls(),
+            Vec::<HostCall>::new(),
+            "a stale Quit must not exit a revealed app"
+        );
+
+        let dialog_quit = FakeStartupHost::new(
+            true,
+            StartupRecoveryPresentation::Unavailable,
+            Some(SlowStartupChoice::Quit),
+        );
+        startup_deadline_elapsed_with(&dialog_quit, 1);
+        assert_eq!(
+            dialog_quit.take_calls(),
+            vec![HostCall::AskSlowStartChoice, HostCall::Exit]
+        );
+    }
+
+    /// R1: on a service-owned or unowned home, Restart withdraws the epoch's
+    /// recovery proof; it must re-run the native recovery commit so a late
+    /// renderer mount still reveals the window.
+    #[test]
+    #[cfg(not(mobile))]
+    fn non_owned_restart_recommits_native_recovery_so_a_late_mount_reveals() {
+        let host = FakeStartupHost::new(false, StartupRecoveryPresentation::Presented, None);
+        host.apply(startup_readiness::ReadinessInput::NativeRecoveryCommitted);
+        startup_deadline_elapsed_with(&host, 1);
+        resolve_slow_startup_with(&host, 1, SlowStartupChoice::Restart);
+        assert_eq!(
+            host.take_calls(),
+            vec![
+                HostCall::InvalidateNavigation,
+                HostCall::RecommitNativeRecovery,
+                HostCall::ArmDeadline(2),
+            ],
+            "a non-owned home is never restarted or reprobed against a sidecar ticket"
+        );
+        assert!(host.readiness.lock().unwrap().identity_committed);
+        host.apply(startup_readiness::ReadinessInput::RendererMounted);
+        assert_eq!(host.take_calls(), vec![HostCall::Reveal]);
+    }
+
+    #[test]
+    #[cfg(not(mobile))]
+    fn dialog_dismissal_never_quits() {
+        use tauri_plugin_dialog::MessageDialogResult;
+        assert_eq!(
+            slow_start_dialog_choice(&MessageDialogResult::Custom("Restart".into())),
+            Some(SlowStartupChoice::Restart)
+        );
+        assert_eq!(
+            slow_start_dialog_choice(&MessageDialogResult::Custom("Quit".into())),
+            Some(SlowStartupChoice::Quit)
+        );
+        assert_eq!(
+            slow_start_dialog_choice(&MessageDialogResult::Yes),
+            Some(SlowStartupChoice::Restart)
+        );
+        for kept_waiting in [
+            MessageDialogResult::Cancel,
+            MessageDialogResult::Ok,
+            MessageDialogResult::Custom("Keep Waiting".into()),
+            MessageDialogResult::Custom(String::new()),
+        ] {
+            assert_eq!(
+                slow_start_dialog_choice(&kept_waiting),
+                None,
+                "{kept_waiting:?}"
+            );
+        }
+        assert_eq!(SLOW_START_DIALOG_RESTART, "Restart");
+        assert_eq!(SLOW_START_DIALOG_QUIT, "Quit");
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn cover_keys_never_reach_the_hidden_webview() {
+        let key = |key_code: u16, command: bool, characters: &'static str| CoverKeyEvent {
+            key_down: true,
+            key_code,
+            command,
+            shift: false,
+            characters,
+            focus_on_cover_control: false,
+            overdue: true,
+        };
+        // Return / keypad Enter choose the default Restart on overdue content.
+        assert_eq!(
+            cover_key_route(key(36, false, "\r")),
+            CoverKeyRoute::Restart
+        );
+        assert_eq!(
+            cover_key_route(key(76, false, "\u{3}")),
+            CoverKeyRoute::Restart
+        );
+        assert_eq!(
+            cover_key_route(CoverKeyEvent {
+                overdue: false,
+                ..key(36, false, "\r")
+            }),
+            CoverKeyRoute::Swallow,
+            "waiting content has no default action"
+        );
+        assert_eq!(
+            cover_key_route(CoverKeyEvent {
+                key_down: false,
+                ..key(36, false, "\r")
+            }),
+            CoverKeyRoute::Swallow
+        );
+        // Escape never quits; typing never reaches the page.
+        assert_eq!(
+            cover_key_route(key(53, false, "\u{1b}")),
+            CoverKeyRoute::Swallow
+        );
+        assert_eq!(cover_key_route(key(0, false, "a")), CoverKeyRoute::Swallow);
+        // Tab / Shift-Tab / Space operate the cover's own buttons only when
+        // one has focus; otherwise they are swallowed.
+        for code in [48, 49] {
+            assert_eq!(
+                cover_key_route(key(code, false, " ")),
+                CoverKeyRoute::Swallow
+            );
+        }
+        let focused = |code: u16| CoverKeyEvent {
+            focus_on_cover_control: true,
+            ..key(code, false, " ")
+        };
+        assert_eq!(cover_key_route(focused(48)), CoverKeyRoute::FocusNext);
+        assert_eq!(
+            cover_key_route(CoverKeyEvent {
+                shift: true,
+                ..focused(48)
+            }),
+            CoverKeyRoute::FocusPrevious
+        );
+        assert_eq!(cover_key_route(focused(49)), CoverKeyRoute::PressFocused);
+        assert_eq!(
+            cover_key_route(CoverKeyEvent {
+                key_down: false,
+                ..focused(49)
+            }),
+            CoverKeyRoute::Swallow,
+            "key-up never presses twice"
+        );
+        // App and window management pass; editing shortcuts would edit the page.
+        // Non-Latin layouts: the shortcut is matched at its ANSI position,
+        // the way AppKit menu matching falls back to an ASCII-capable layout.
+        let command_at = |key_code: u16, characters: &'static str| CoverKeyEvent {
+            key_code,
+            ..key(key_code, true, characters)
+        };
+        assert_eq!(
+            cover_key_route(command_at(0x0C, "й")),
+            CoverKeyRoute::Pass,
+            "Cyrillic Cmd-Q"
+        );
+        assert_eq!(
+            cover_key_route(command_at(0x0D, "ц")),
+            CoverKeyRoute::Pass,
+            "Cyrillic Cmd-W"
+        );
+        assert_eq!(
+            cover_key_route(command_at(0x04, "ρ")),
+            CoverKeyRoute::Pass,
+            "Greek Cmd-H"
+        );
+        assert_eq!(
+            cover_key_route(command_at(0x2E, "ь")),
+            CoverKeyRoute::Pass,
+            "Cyrillic Cmd-M"
+        );
+        assert_eq!(
+            cover_key_route(command_at(0x09, "м")),
+            CoverKeyRoute::Swallow,
+            "Cyrillic Cmd-V"
+        );
+        assert_eq!(
+            cover_key_route(command_at(0x00, "ф")),
+            CoverKeyRoute::Swallow,
+            "Cyrillic Cmd-A"
+        );
+        // ASCII layouts use the typed character: AZERTY's Cmd-A sits at the
+        // ANSI Q position and must stay Select All (swallowed).
+        assert_eq!(
+            cover_key_route(command_at(0x0C, "a")),
+            CoverKeyRoute::Swallow,
+            "AZERTY Cmd-A"
+        );
+        assert_eq!(
+            cover_key_route(command_at(0x00, "q")),
+            CoverKeyRoute::Pass,
+            "AZERTY Cmd-Q"
+        );
+        for allowed in ["q", "w", "h", "m", "`", "Q"] {
+            assert_eq!(
+                cover_key_route(key(0, true, allowed)),
+                CoverKeyRoute::Pass,
+                "{allowed}"
+            );
+        }
+        for edit in ["v", "c", "x", "a", "z", "f", "r", "l"] {
+            assert_eq!(
+                cover_key_route(key(0, true, edit)),
+                CoverKeyRoute::Swallow,
+                "{edit}"
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn a_failed_overdue_cover_falls_back_to_the_dialog_once_per_epoch() {
+        let overdue = NativeCoverDesired {
+            generation: 4,
+            cover: Some(startup_readiness::StartupCoverContent::Overdue { epoch: 2 }),
+        };
+        assert_eq!(native_cover_failure_dialog_epoch(overdue, None), Some(2));
+        assert_eq!(native_cover_failure_dialog_epoch(overdue, Some(1)), Some(2));
+        assert_eq!(native_cover_failure_dialog_epoch(overdue, Some(2)), None);
+        for no_choice in [Some(startup_readiness::StartupCoverContent::Waiting), None] {
+            assert_eq!(
+                native_cover_failure_dialog_epoch(
+                    NativeCoverDesired {
+                        generation: 4,
+                        cover: no_choice,
+                    },
+                    None
+                ),
+                None
+            );
+        }
+    }
+
     #[test]
     #[cfg(not(mobile))]
     fn profile_changes_wake_only_a_waiting_startup_proof() {
@@ -14587,7 +16416,6 @@ mod tests {
         ));
         for terminal in [
             startup_readiness::ReadinessPhase::Ready,
-            startup_readiness::ReadinessPhase::Failed,
             startup_readiness::ReadinessPhase::Bypassed,
         ] {
             assert!(!startup_readiness_accepts_retry(terminal));
@@ -15161,16 +16989,127 @@ mod tests {
         }
     }
 
+    #[cfg(all(not(mobile), unix))]
+    #[test]
+    fn losing_launch_claim_starts_no_supervisor_or_child() {
+        use std::os::unix::fs::PermissionsExt;
+        let resources = tempfile::tempdir().expect("resources");
+        let home = tempfile::tempdir().expect("home");
+        std::fs::set_permissions(home.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+        std::fs::create_dir(resources.path().join("dist-server")).unwrap();
+        let loader = checkout.join("node_modules/tsx/dist/esm/api/index.cjs");
+        let source = checkout.join("src-server/tools/instance-registry-bridge.ts");
+        std::fs::write(registry_bridge_script_path(resources.path()), format!(
+            "require({}).register(); import({}).then(m => m.runInstanceRegistryBridge()).catch(e => {{ console.error(e); process.exit(1); }});",
+            serde_json::to_string(&loader).unwrap(),
+            serde_json::to_string(&format!("file://{}", source.display())).unwrap(),
+        )).unwrap();
+        for owner_type in ["service", "sidecar"] {
+            let registry = home.path().join("instances.json");
+            std::fs::write(&registry, serde_json::json!({
+                "version": 1, "instances": { "winner": {
+                    "type": owner_type, "port": 38141, "pid": std::process::id(), "status": "running"
+                }}
+            }).to_string()).unwrap();
+            std::fs::set_permissions(&registry, std::fs::Permissions::from_mode(0o600)).unwrap();
+            let before = std::fs::read(&registry).unwrap();
+            let owner = launch_owner(
+                PrepareRuntimeKind::Absent,
+                resources.path(),
+                home.path(),
+                "loser",
+            );
+            assert_eq!(
+                owner,
+                if owner_type == "service" {
+                    DesktopOwner::Service {
+                        id: "winner".into(),
+                        port: 38141,
+                    }
+                } else {
+                    DesktopOwner::None
+                },
+                "the atomic claim must decide launch ownership"
+            );
+            let started = start_owned_sidecar(owner, || {
+                thread::spawn(|| {
+                    let mut child = Command::new("node")
+                        .args(["-e", "process.exit(0)"])
+                        .spawn()
+                        .unwrap();
+                    child.wait().unwrap()
+                })
+            });
+            assert!(
+                started.is_none(),
+                "a losing desktop must start no supervisor and spawn no child"
+            );
+            assert_eq!(
+                std::fs::read(&registry).unwrap(),
+                before,
+                "the loser must preserve the winning record"
+            );
+        }
+    }
+
     #[cfg(not(mobile))]
     #[test]
     fn sidecar_claim_admits_only_one_launcher() {
-        assert!(
-            registry_claim_allows_running(Ok(())),
-            "first launcher owns the sidecar slot"
+        // Exact bridge outputs (`sidecarClaimOutput` in
+        // instance-registry-bridge.ts) for the winner and the two kinds of
+        // loser. Only the winner may start a supervisor or reap a child.
+        let won = parse_host_claim_output(br#"{"ok":true,"claimed":true,"owners":[]}"#);
+        let lost_to_desktop = parse_host_claim_output(
+            br#"{"ok":true,"claimed":false,"owners":[{"id":"desktop-sidecar-41","type":"sidecar","port":38141}]}"#,
         );
-        assert!(
-            !registry_claim_allows_running(Err(RegistryBridgeFailure::Invocation)),
-            "second launcher must not launch after a rejected atomic claim"
+        let lost_to_service = parse_host_claim_output(
+            br#"{"ok":true,"claimed":false,"owners":[{"id":"default","type":"service","port":3141}]}"#,
+        );
+        let lost_to_two = parse_host_claim_output(
+            br#"{"ok":true,"claimed":false,"owners":[{"id":"a","type":"service","port":1},{"id":"b","type":"service","port":2}]}"#,
+        );
+        assert!(registry_claim_allows_running(won.clone()));
+        assert_eq!(owner_for_host_claim(won), DesktopOwner::Sidecar);
+        for (loser, expected) in [
+            (lost_to_desktop, DesktopOwner::None),
+            (
+                lost_to_service,
+                DesktopOwner::Service {
+                    id: "default".into(),
+                    port: 3141,
+                },
+            ),
+            (lost_to_two, DesktopOwner::None),
+            (Err(RegistryBridgeFailure::Invocation), DesktopOwner::None),
+        ] {
+            assert!(!registry_claim_allows_running(loser.clone()));
+            let owner = owner_after_launch_claim(
+                PrepareRuntimeKind::Absent,
+                || loser,
+                || panic!("a losing desktop has no claim to release"),
+            );
+            assert_eq!(owner, expected);
+            let started = start_owned_sidecar(owner, || {
+                thread::spawn(|| {
+                    let mut child = Command::new("node")
+                        .args(["-e", "process.exit(0)"])
+                        .spawn()
+                        .expect("spawn child");
+                    child.wait().expect("reap child")
+                })
+            });
+            assert!(
+                started.is_none(),
+                "a losing desktop must start no supervisor and spawn no child"
+            );
+        }
+        assert_eq!(
+            parse_host_claim_output(
+                br#"{"ok":true,"claimed":true,"owners":[{"id":"x","type":"service","port":1}]}"#
+            ),
+            Err(RegistryBridgeFailure::Protocol),
+            "a won claim that also names an owner is contradictory"
         );
     }
 
@@ -15207,7 +17146,12 @@ mod tests {
     #[cfg(not(mobile))]
     #[test]
     fn registry_publication_failure_prevents_running_sidecar_status() {
-        assert!(registry_claim_allows_running(Ok(())));
+        assert!(registry_claim_allows_running(parse_host_claim_output(
+            br#"{"ok":true,"claimed":true,"owners":[]}"#
+        )));
+        assert!(!registry_claim_allows_running(parse_host_claim_output(
+            br#"{"ok":true,"claimed":false,"owners":[]}"#
+        )));
         assert!(
             !registry_claim_allows_running(Err(RegistryBridgeFailure::Invocation)),
             "a rejected registry claim must prevent the sidecar from becoming Running"
@@ -15300,33 +17244,120 @@ mod tests {
         );
     }
 
+    /// A managed desktop state whose supervisor tracks a REAL child process,
+    /// with a stand-in supervisor thread that answers `Shutdown` exactly as
+    /// `run_sidecar_supervisor` does: by reaping through `reap_sidecar`.
+    #[cfg(all(not(mobile), unix))]
+    fn teardown_fixture(owner: DesktopOwner) -> (DesktopServerState, u32, tempfile::TempDir) {
+        let temp = tempfile::tempdir().expect("test home");
+        let (tx, rx) = channel();
+        let child = Command::new("/bin/sh")
+            .args(["-c", "sleep 30"])
+            .spawn()
+            .unwrap();
+        let pid = child.id();
+        let supervisor = Arc::new(ServerSupervisor {
+            child: Mutex::new(Some(child)),
+            status: Arc::new(Mutex::new(BundledServerStatus::initial(
+                "out".into(),
+                "err".into(),
+            ))),
+            stderr_reader: Mutex::new(None),
+            shutting_down: AtomicBool::new(false),
+            tx,
+            thread: Mutex::new(None),
+            context: SidecarRuntimeContext {
+                launch: SidecarLaunchContext {
+                    resource_dir: temp.path().into(),
+                    station_root: temp.path().into(),
+                    station_home: temp.path().into(),
+                    home: temp.path().display().to_string(),
+                    shell_path: String::new(),
+                    channel: None,
+                    pinned_port: None,
+                    supervisor_birth: "test-birth".into(),
+                    instance_id: "desktop-sidecar-test".into(),
+                },
+                registry_id: "desktop-sidecar-test".into(),
+            },
+        });
+        let worker = supervisor.clone();
+        let handle = thread::spawn(move || {
+            if let Ok(SupervisorMessage::Shutdown) = rx.recv() {
+                reap_sidecar(&worker);
+            }
+        });
+        *supervisor.thread.lock().unwrap() = Some(handle);
+        let state = DesktopServerState {
+            owner: Mutex::new(owner),
+            supervisor,
+            readiness: Mutex::new(startup_readiness::StartupReadiness::default()),
+            startup_commit_claim: Mutex::new(StartupCommitClaim::default()),
+            ownership_checked_at: Mutex::new(Some(Instant::now())),
+        };
+        (state, pid, temp)
+    }
+
+    #[cfg(all(not(mobile), unix))]
+    fn process_exists(pid: u32) -> bool {
+        Command::new("/bin/kill")
+            .args(["-0", &pid.to_string()])
+            .stderr(Stdio::null())
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
+
     #[cfg(all(not(mobile), unix))]
     #[test]
     fn teardown_reaps_the_owned_sidecar_without_signalling_an_attached_service() {
-        let mut sidecar = Command::new("/bin/sh")
-            .args(["-c", "sleep 30"])
-            .spawn()
-            .unwrap();
-        let mut attached_service = Command::new("/bin/sh")
-            .args(["-c", "sleep 30"])
-            .spawn()
-            .unwrap();
-        assert!(owner_owns_reapable_child(DesktopOwner::Sidecar));
-        terminate_desktop_child(&mut sidecar);
+        let (sidecar, sidecar_pid, _sidecar_home) = teardown_fixture(DesktopOwner::Sidecar);
+        assert!(shut_down_owned_sidecar(&sidecar));
         assert!(
-            sidecar.try_wait().unwrap().is_some(),
-            "desktop-owned sidecar must be reaped"
+            sidecar.supervisor.child.lock().unwrap().is_none() && !process_exists(sidecar_pid),
+            "desktop-owned sidecar must be reaped on quit"
         );
-        assert!(!owner_owns_reapable_child(DesktopOwner::Service {
-            id: "service-a".into(),
-            port: 38141
-        }));
-        assert!(
-            attached_service.try_wait().unwrap().is_none(),
-            "attached service must not be signalled"
-        );
-        let _ = attached_service.kill();
-        let _ = attached_service.wait();
+
+        for owner in [
+            DesktopOwner::Service {
+                id: "service-a".into(),
+                port: 38141,
+            },
+            DesktopOwner::Unowned,
+            DesktopOwner::None,
+        ] {
+            let (state, pid, _home) = teardown_fixture(owner.clone());
+            assert!(
+                !shut_down_owned_sidecar(&state),
+                "{owner:?} must not request a shutdown"
+            );
+            assert!(
+                !state.supervisor.shutting_down.load(Ordering::SeqCst),
+                "{owner:?} must not start supervisor shutdown"
+            );
+            let alive = state
+                .supervisor
+                .child
+                .lock()
+                .unwrap()
+                .as_mut()
+                .map(|child| child.try_wait().unwrap().is_none())
+                .unwrap_or(false);
+            assert!(
+                alive && process_exists(pid),
+                "quitting a desktop whose owner is {owner:?} must not signal the host process"
+            );
+            // Release the stand-in supervisor and the fixture process.
+            let _ = state.supervisor.tx.send(SupervisorMessage::Restart);
+            if let Some(handle) = state.supervisor.thread.lock().unwrap().take() {
+                let _ = handle.join();
+            }
+            let leftover = state.supervisor.child.lock().unwrap().take();
+            if let Some(mut child) = leftover {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
     }
 
     #[cfg(not(mobile))]
@@ -15636,6 +17667,45 @@ mod tests {
         );
         assert!(command_station_script_path(&context.resource_dir)
             .ends_with("dist-server/command-station.js"));
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn sidecar_spawn_publishes_child_before_listening() {
+        let temp = tempfile::tempdir().unwrap();
+        let resources = temp.path().join("resources");
+        std::fs::create_dir_all(resources.join("dist-server")).unwrap();
+        std::fs::write(
+            resources.join("dist-server/command-station.js"),
+            "setInterval(() => {}, 1000);",
+        )
+        .unwrap();
+        // Transport fixture captures the real Rust spawn caller's publication.
+        // The TS bridge suite owns actual locked claim and PID-birth semantics.
+        std::fs::write(resources.join("dist-server/instance-registry-bridge.js"), r#"
+          const fs = require('node:fs');
+          const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+          fs.writeFileSync(require('node:path').join(input.home, 'publication.json'), JSON.stringify(input));
+          console.log(JSON.stringify({ok:true,claimed:true,owners:[]}));
+        "#).unwrap();
+        let mut launch = sample_sidecar_context(None);
+        launch.resource_dir = resources;
+        launch.station_home = temp.path().into();
+        launch.station_root = temp.path().into();
+        let context = SidecarRuntimeContext {
+            launch,
+            registry_id: "reserved-desktop".into(),
+        };
+        let (mut child, _) = spawn_sidecar_child(&context).unwrap();
+        let publication = std::fs::read_to_string(temp.path().join("publication.json"));
+        terminate_desktop_child(&mut child);
+        let publication: serde_json::Value = serde_json::from_str(
+            &publication.expect("spawn must publish child ownership before Listening"),
+        )
+        .unwrap();
+        assert_eq!(publication["instance"]["pid"], child.id());
+        assert_eq!(publication["instance"]["status"], "starting");
+        assert_eq!(publication["id"], "reserved-desktop");
     }
 
     #[cfg(not(mobile))]
@@ -20283,10 +22353,38 @@ mod tests {
         assert!(native_header_allowlisted("x-station-plugin"));
         assert!(native_header_allowlisted("x-abort-reason"));
         assert!(native_header_allowlisted("X-Station-Client-Origin"));
+        assert!(native_header_allowlisted("X-Station-Client-Protocol"));
         assert!(!native_header_allowlisted("authorization"));
         assert!(!native_header_allowlisted("cookie"));
         assert!(!native_header_allowlisted("x-station-device-id"));
         assert!(NATIVE_HTTP_PER_ORIGIN_REQUEST_LIMIT < NATIVE_HTTP_GLOBAL_REQUEST_LIMIT);
+    }
+
+    #[test]
+    fn native_response_headers_forward_the_station_envelope_marker_only_from_the_allowlist() {
+        // Pinned beside `STATION_ENVELOPE_HEADER` in packages/contracts/src/http.ts.
+        let mut headers = ureq::http::HeaderMap::new();
+        headers.insert("content-type", "application/json".parse().unwrap());
+        headers.insert("X-Station-Envelope", "1".parse().unwrap());
+        headers.insert("set-cookie", "session=secret".parse().unwrap());
+        headers.insert("www-authenticate", "Bearer".parse().unwrap());
+        headers.insert("x-station-device-id", "device".parse().unwrap());
+
+        let forwarded = native_response_headers(&headers);
+
+        assert_eq!(
+            forwarded.get("x-station-envelope").map(String::as_str),
+            Some("1")
+        );
+        assert_eq!(
+            forwarded.get("content-type").map(String::as_str),
+            Some("application/json")
+        );
+        assert_eq!(
+            forwarded.len(),
+            2,
+            "unexpected forwarded headers: {forwarded:?}"
+        );
     }
 
     #[test]

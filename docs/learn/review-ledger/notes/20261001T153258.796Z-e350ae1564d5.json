@@ -1,0 +1,7 @@
+{
+  "revision": "f2e30ed48615613429d641bd1e0fe3d304999a15",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Integration source review through f2e30ed48: the only ChatDock change since the last record memoizes the context meter's open-chat rows (openChatRows via useMemo) in place of the same filter written inline in JSX. Nothing this document claims about the dock (its header toolbar and placement; its chat stream, approval and elicitation handling; its attachment re-send refusal) moves. Prose accurate. Source review is separate from executed test evidence.","inputs":["docs/design/placement.md"]}
+  ]
+}

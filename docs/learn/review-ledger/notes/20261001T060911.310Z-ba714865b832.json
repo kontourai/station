@@ -1,0 +1,7 @@
+{
+  "revision": "1a588585de1f0495239eed5f4f9c563c66f3224b",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"#3071 input delta: contracts.md gained two sentences on openRequestIds/pendingReview. This guide only routes integrators to the contracts reference (routing table) and states nothing about request state. No prose change.","inputs":["docs/guides/integrating-station.md"]}
+  ]
+}

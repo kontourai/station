@@ -1,0 +1,7 @@
+{
+  "revision": "8f269bba9cc30d11caa10d1c077d5049338781ee",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"NewChatModal now calls the shared modelPickerProviders (moved to new-chat-modal-utils); the Model picker behaviour this page describes is unchanged. No prose change.","inputs":["docs/design/chat-composer.md","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

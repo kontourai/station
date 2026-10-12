@@ -1,0 +1,7 @@
+{
+  "revision": "ff8d4704b92d64b50d39bdc28cd02c49f779de49",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"testing.md/development.md gained a sentence about qualification starting a Nightly; vitest-resource-manifest.mjs gained a classified child-process test. This file's routing and rules are unaffected. No prose change.","inputs":["src-server/AGENTS.md","docs/guides/development.md","docs/guides/testing.md"]}
+  ]
+}

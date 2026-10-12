@@ -1,0 +1,9 @@
+{
+  "revision": "7b1854301ac873652132f8f0932951ec7fea33e4",
+
+  "notes": [
+    {"path":".veritas/init-plans/documentation-maintenance.md","note":"Reviewed7b1854301a policy attestation HEAD delta under explicit security-scope delegation: active agent-named attestation changes no protected standards hash or documentation policy. It records only eight exact noncredential SSH/delegation prose findings in one immutable note, with generic-api-key AND exactliteral AND exactpath; actual8.30.1 range clean and same-file generated-credential control still detected. Tool generated human-authority metadata is not independent human review, disclosed onPR3249. No historical f9 orc1/544 disposition adopted; those remain3238/3236. This owner describes documentation/attestation governance, unchanged by this bounded secret-scan policy disposition. No prose change needed.","inputs":[".veritas/init-plans/documentation-maintenance.md",".veritas/attestations/HEAD"]},
+
+    {"path":"docs/guides/documentation.md","note":"Reviewed7b1854301a policy attestation HEAD delta under explicit security-scope delegation: active agent-named attestation changes no protected standards hash or documentation policy. It records only eight exact noncredential SSH/delegation prose findings in one immutable note, with generic-api-key AND exactliteral AND exactpath; actual8.30.1 range clean and same-file generated-credential control still detected. Tool generated human-authority metadata is not independent human review, disclosed onPR3249. No historical f9 orc1/544 disposition adopted; those remain3238/3236. This owner describes documentation/attestation governance, unchanged by this bounded secret-scan policy disposition. No prose change needed.","inputs":["docs/guides/documentation.md",".veritas/attestations/HEAD"]}
+  ]
+}

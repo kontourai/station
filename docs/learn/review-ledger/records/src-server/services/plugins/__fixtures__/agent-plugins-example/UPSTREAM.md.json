@@ -9,14 +9,12 @@
 
   "limits": "The adapted skill intentionally is not byte-identical. Provenance and loader tests do not qualify executing the migration workflow on real client plugins.",
 
-  "document": {"digest":"bfb392ce68b59605e995af956ae2973445df97261e209a983ad366a06666cfb8","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
-
   "sources": [
-    {"path":"src-server/services/plugins/__fixtures__/agent-plugins-example/plugin.json","digest":"febc5269ac2154f2ca38257e15e126dfb481a5f4558a35bdf126d1ce10aff885","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+    "src-server/services/plugins/__fixtures__/agent-plugins-example/plugin.json",
 
-    {"path":"src-server/services/plugins/__fixtures__/agent-plugins-example/skills/migrate-agent-plugin/SKILL.md","digest":"17ba97883cd14c7f96eca65f0f9e431a9b89ee6c072cb2314747c50689b884c4","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"},
+    "src-server/services/plugins/__fixtures__/agent-plugins-example/skills/migrate-agent-plugin/SKILL.md",
 
-    {"path":"src-server/services/plugins/__tests__/agent-plugin-loader.test.ts","digest":"8fa82879e7405b2a4f7dad2415af06ca8a0195c0b682ee5aea90d6a777db1a05","revision":"e1e8339750ff5b7210254866bd2d853454efaf04"}
+    "src-server/services/plugins/__tests__/agent-plugin-loader.test.ts"
   ],
 
   "checks": [

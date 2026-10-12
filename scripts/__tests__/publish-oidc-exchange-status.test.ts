@@ -47,6 +47,15 @@ describe('npm OIDC exchange preflight (station#1744)', () => {
       ).toMatch(/2\[0-9\]\[0-9\]\)/);
   });
 
+  it('fails a rejected Nightly exchange instead of silently skipping automatic CLI delivery', () => {
+    expect(workflows[1].block).toMatch(
+      /\*\) echo .*exchange.*failed.*; exit 1 ;;/,
+    );
+    expect(workflows[1].block).not.toContain(
+      'skip "No confirmed npm trusted publisher',
+    );
+  });
+
   it('does not gate the exchange on equality with 200', () => {
     for (const workflow of workflows)
       expect(

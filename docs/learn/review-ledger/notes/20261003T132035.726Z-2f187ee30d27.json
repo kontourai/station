@@ -1,0 +1,7 @@
+{
+  "revision": "75ba9fe511e2b52500a44d0c3050a4fa66e05148",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Merged bytes. chat.css's shared (max-width: 768px), (pointer: coarse) touch-target block gained one rule on this branch: .list-filter-input is at least 44px tall (the split pane's search header and the provider picker modal's search, #3102). Searched this document for search-field, list-filter and touch-target claims; it makes none about this field, and its claims about the block's query and the other controls in it are unchanged by this branch.","inputs":["packages/contracts/src/device-settings.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/chat.css","src-ui/src/contexts/navigation-store.ts","src-ui/src/workspace-panes/__tests__/RegionPaneHost.project.test.tsx"]}
+  ]
+}

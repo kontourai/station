@@ -361,6 +361,9 @@ describe('station#1194: engineControlPlaneCapability (can the engine host statio
     expect(engineDisplayLabel(ENGINE_CAPABILITY_MATRICES.codex.engineId)).toBe(
       'Codex',
     );
+    // Attached OpenCode sessions carry the provider id 'opencode' with no
+    // capability matrix; they are still named for the engine.
+    expect(engineDisplayLabel('opencode')).toBe('OpenCode');
   });
 
   test('a session channel WITHOUT a delivery mechanism is chat-only regardless of channel name — proves this keys on the delivery field, not a channel or engine list', () => {

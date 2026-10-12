@@ -19,9 +19,8 @@
  * `ResolvedAgentDefinition.systemPrompt`'s doc comment).
  *
  * Pure(ish), mirroring `acp-mcp-passthrough.ts`'s style: the only I/O is the
- * three injected callbacks. The resolver itself never throws — resolution is
- * defensive enrichment, matching the same defensive-isolation contract as
- * `acp-adapter.ts`'s passthrough resolution. Its OUTPUT is load-bearing,
+ * three injected callbacks. Ordinary resolution is defensive enrichment; an
+ * explicit execution override refuses unresolved or undeliverable capabilities. Its OUTPUT is load-bearing,
  * though (archive#3027): whether a definition was attached feeds
  * `sessionAgentStartUnavailableReason` below, which
  * `resolveSessionAgentForStart` (orchestration-service.ts) enforces as a
@@ -58,12 +57,18 @@ import {
   selectedMcpTools,
 } from '@kontourai/station-shared/mcp-tool-selection';
 import { STATION_CAPABILITY_DISCOVERY_GUIDANCE } from '../../runtime/agents/station-capability-discovery.js';
-import { isBuiltinStationControl } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import { SC_AUTO_APPROVED_TOOLS } from '../../runtime/tools/runtime-control-tools.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { stationControlToolCatalog } from '../../tools/station-control-mcp-server.js';
+import { stationKnowledgeToolCatalog } from '../../tools/station-knowledge-mcp-server.js';
+import { agentDefinitionFingerprint } from '../agents/agent-definition-fingerprint.js';
+import { withProjectToolDefaults } from '../projects/project-tools.js';
 
 interface SessionAgentResolverOptions {
+  resolveProjectToolServers?: (
+    input: ProviderSessionStartInput,
+  ) => Promise<readonly string[]>;
   /** Load an agent's spec by slug; `null` for an unknown/not-on-disk agent. */
   loadAgentSpec: (slug: string) => Promise<AgentSpec | null>;
   /** Resolve a Station tool-server id (`ToolDef.id`, kind 'mcp'); `null` when unknown. */
@@ -282,18 +287,51 @@ export function createSessionAgentResolver(
       return input;
     }
     const channels = sessionDeliveryChannels(input.provider);
-    if (!channels) {
-      return input;
-    }
+    if (!channels && !input.metadata?.executionAgentId) return input;
 
     try {
-      const spec = captured
+      const authored = captured
         ? captured.agentId === slug
           ? structuredClone(captured.spec)
           : null
-        : withBuiltinStationAgentCapabilities(slug, await loadAgentSpec(slug));
+        : await loadAgentSpec(slug);
+      const expectedFingerprint = input.metadata?.expectedDefinitionFingerprint;
+      if (
+        expectedFingerprint !== undefined &&
+        (!authored ||
+          agentDefinitionFingerprint(authored) !== expectedFingerprint)
+      ) {
+        throw new Error(
+          'The selected Agent definition changed before execution; select it again',
+        );
+      }
+      let spec = captured
+        ? authored
+        : withBuiltinStationAgentCapabilities(slug, authored);
       if (!spec) {
+        if (input.metadata?.executionAgentId)
+          throw new Error(
+            'Execution override could not resolve the selected Agent profile',
+          );
         return input;
+      }
+
+      if (!channels) {
+        if (
+          input.provider === 'station-agent' &&
+          !spec.execution?.agentConnectionId
+        )
+          return input;
+        throw new Error(
+          'Execution override cannot deliver the selected Agent capabilities',
+        );
+      }
+
+      if (options.resolveProjectToolServers) {
+        spec = withProjectToolDefaults(
+          spec,
+          await options.resolveProjectToolServers(input),
+        );
       }
 
       const definition: ResolvedAgentDefinition = { slug };
@@ -389,9 +427,11 @@ export function createSessionAgentResolver(
               const names =
                 id === 'station-control'
                   ? stationControlToolCatalog().map((tool) => tool.name)
-                  : (toolDef.probe?.toolNames ?? []).map((name) =>
-                      originalMcpToolName(id, name),
-                    );
+                  : id === 'station-knowledge'
+                    ? stationKnowledgeToolCatalog().map((tool) => tool.name)
+                    : (toolDef.probe?.toolNames ?? []).map((name) =>
+                        originalMcpToolName(id, name),
+                      );
               const selected =
                 spec.tools?.available === undefined
                   ? undefined
@@ -417,7 +457,7 @@ export function createSessionAgentResolver(
               if (toolDef.env && Object.keys(toolDef.env).length > 0) {
                 const exemptBuiltinStationControl =
                   builtinStationControlDelivery !== undefined &&
-                  isBuiltinStationControl(id, toolDef);
+                  builtinStationApiServerId(id, toolDef) !== undefined;
                 if (!exemptBuiltinStationControl) {
                   return { ok: false, reason: 'secret-boundary-env' };
                 }
@@ -594,6 +634,18 @@ export function createSessionAgentResolver(
         logger?.warn?.(report.modelFieldWarning);
       }
 
+      if (input.metadata?.executionAgentId) {
+        const undelivered = [
+          report.systemPrompt,
+          report.skills,
+          report.toolServers,
+        ].flatMap((capability) => capability?.undelivered ?? []);
+        if (undelivered.length) {
+          throw new Error(
+            `Execution override cannot deliver the selected Agent capabilities: ${undelivered.map((entry) => `${entry.capability}:${entry.id} (${entry.reason})`).join(', ')}`,
+          );
+        }
+      }
       return {
         ...input,
         agent: definition,
@@ -603,6 +655,7 @@ export function createSessionAgentResolver(
         },
       };
     } catch (error) {
+      if (input.metadata?.executionAgentId) throw error;
       logger?.warn?.(
         `Session agent resolution failed for agent '${slug}'; continuing without a resolved agent definition.`,
         error,

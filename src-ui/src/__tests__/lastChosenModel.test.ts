@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 class MemoryStorage {
@@ -94,5 +96,58 @@ describe('lastChosenModel', () => {
     expect(getLastChosenModelMap()).toEqual({
       claudedefault: 'claude-sonnet-4-6',
     });
+  });
+
+  // #3312 review LOW: Home stays mounted while a docked chat records a new
+  // choice; the map it resolves its start identity from must follow.
+  test('the live map re-renders when a choice is recorded or forgotten', async () => {
+    const { act, renderHook } = await import('@testing-library/react');
+    const {
+      clearLastChosenModel,
+      trackLastChosenModel,
+      useLastChosenModelMap,
+    } = await import('../hooks/lastChosenModel');
+    const { result } = renderHook(() => useLastChosenModelMap());
+    expect(result.current).toEqual({});
+
+    act(() => trackLastChosenModel('codexdefault', 'gpt-5.4'));
+    expect(result.current).toEqual({ codexdefault: 'gpt-5.4' });
+
+    act(() => clearLastChosenModel('codexdefault'));
+    expect(result.current).toEqual({});
+  });
+
+  // #3350 item 2: another tab's write never passes through this tab's
+  // track/clear; it reaches Home only as a `storage` event.
+  test('the live map follows a choice recorded in another tab', async () => {
+    const { act, renderHook } = await import('@testing-library/react');
+    const {
+      buildLastChosenModelBindingKeyFromIdentity,
+      useLastChosenModelMap,
+    } = await import('../hooks/lastChosenModel');
+    const { result } = renderHook(() => useLastChosenModelMap());
+    expect(result.current).toEqual({});
+
+    // The shape trackLastChosenModel writes, landing here the way another
+    // tab's write does: in shared storage, with no in-tab notify.
+    const bindingKey = buildLastChosenModelBindingKeyFromIdentity(
+      'codex',
+      'codexdefault',
+    );
+    const oldValue = localStorage.getItem('station.newChat.lastModelByBinding');
+    const newValue = JSON.stringify({ [bindingKey]: 'gpt-5.4' });
+    localStorage.setItem('station.newChat.lastModelByBinding', newValue);
+    expect(result.current).toEqual({});
+
+    act(() => {
+      window.dispatchEvent(
+        new StorageEvent('storage', {
+          key: 'station.newChat.lastModelByBinding',
+          oldValue,
+          newValue,
+        }),
+      );
+    });
+    expect(result.current).toEqual({ [bindingKey]: 'gpt-5.4' });
   });
 });

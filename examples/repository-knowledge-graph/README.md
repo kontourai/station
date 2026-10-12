@@ -40,8 +40,10 @@ Import validates the input digest against the recorded revision and observations
 checks module/record/edge counts against the payload, and derives verified counts
 from the records it reads back. Omitted-reference counts are export observations;
 they do not prove complete coverage of the repository.
-Matching review hashes mean only that the recorded bytes match. Changed or
-missing source dependencies remain labelled; test references never become PASS.
+Path-only ledger records provide human dependency decisions; the exporter does
+not judge Git review history. Run `npm run docs:freshness:check` for that report.
+Legacy matching hashes mean only that recorded bytes match. Test references
+never become PASS.
 
 ## Ingest into an isolated root
 

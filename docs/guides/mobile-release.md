@@ -321,6 +321,16 @@ exported IPA with `security cms -D -i`. It rejects profiles with
 check deliberately derives the effective distribution method from the IPA;
 the Tauri export flag is not treated as evidence.
 
+### iOS minimum version
+
+The iOS app requires iOS 16.4 (`src-desktop/tauri.ios.conf.json`, and
+`IPHONEOS_DEPLOYMENT_TARGET` in `src-desktop/gen/apple`). WebKit gained regex
+lookbehind in 16.4, and the UI and its bundled dependencies use it; on an
+earlier version each one throws when its module loads, so whole screens, not
+just chat Markdown and diffs, fail (#3399). Lower the floor only
+after removing every lookbehind from the built UI bundle, dependencies
+included.
+
 ### iOS device distribution policy
 
 Internal ad-hoc IPA distribution is intentionally retired from this release
@@ -426,6 +436,11 @@ still be established by the operator.
    `https://token.actions.githubusercontent.com`. Restrict its attribute
    condition to repository `kontourai/station` and only the trusted
    `nightly.yml@refs/heads/main` and `release.yml@refs/tags/v*` workflow refs.
+   A Nightly started by Main qualification runs as a called workflow, so its
+   top-level `workflow_ref` claim is `main-qualification.yml@refs/heads/main`.
+   A condition on `workflow_ref` must admit that ref too, or that entry
+   point's Play and Secret Manager steps fail authentication. The live
+   condition is `NOT_VERIFIED` by this source review.
 3. Grant that provider's repository principal only
    `roles/iam.workloadIdentityUser` on the service account. Do not create a
    user-managed service-account key.
@@ -492,7 +507,7 @@ anti-abuse intent or claim that this review provisioned them.
 Follow [release-rings.md](./release-rings.md#publish-a-preview) to tag and
 push (`git tag -s vX.Y.Z -m '...' && git push origin vX.Y.Z`), then:
 
-1. Watch the `Stage Station release` run. The `android` and `ios-device` jobs
+1. Watch the `Release: Stage` run. The `android` and `ios-device` jobs
    use their declared environments: Android uses `native-release`; iOS uses
    the selected channel environment. Approval requirements depend on current
    GitHub environment protection; one approval is not a universal guarantee.

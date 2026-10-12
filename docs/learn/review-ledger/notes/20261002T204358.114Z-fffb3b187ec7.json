@@ -1,0 +1,7 @@
+{
+  "revision": "b38fa3bf89210ebfba30a32ced0c7f5027261bcd",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed the changed Connections guide passage against this guide's Station, Device, account and Project boundaries. It describes local invitation/credential metadata and makes no change to the separate approval, sign-in or membership requirements.","inputs":["docs/guides/machine-relationships.md"]}
+  ]
+}

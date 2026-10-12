@@ -1,0 +1,7 @@
+{
+  "revision": "d3eb1da665d22aa5f894d13e93b23346bf15819e",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed capture metadata delta: historical screenshot and tour are explicitly older than the credential/charge disclosure before Create. Current prose already explains the actual save-and-check callback and refused checks; capture identity remains historical.","inputs":["docs/guides/connections.md"]}
+  ]
+}

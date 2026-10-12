@@ -21,6 +21,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { StartupScreen } from '../components/StartupScreen';
 import { nativePlatformPromise } from './native';
 import { primeNativeNotifications } from './native/notify';
 import type { NativeStationProfileStorage } from './native/stationProfileStorage';
@@ -459,7 +460,7 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
       />
     );
   }
-  if (!profile) return <FullScreenLoader label="Station" />;
+  if (!profile) return <StartupScreen message="Preparing this device" />;
 
   return (
     <PlatformProfileContext.Provider value={profile}>

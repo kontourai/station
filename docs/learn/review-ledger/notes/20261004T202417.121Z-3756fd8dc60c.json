@@ -1,0 +1,7 @@
+{
+  "revision": "e4e9354c4cbb9ad742c0cb2c7990bb51350c012c",
+
+  "notes": [
+    {"path":"docs/guides/product-law-authoring.md","note":"Checked the authoring and timeout guidance against product-laws.mjs and product-law-gate.mjs. Law identity, observation shape and result classification are unchanged; only the applied liveness ceilings are multiplied by the host-pressure factor, 1 by default and in CI.","inputs":["docs/guides/product-law-authoring.md","package.json","scripts/lib/product-laws.mjs","scripts/product-law-gate.mjs"]}
+  ]
+}

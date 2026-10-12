@@ -1,8 +1,12 @@
-import type { AgentId } from '@kontourai/station-contracts/agent-identity';
+import {
+  type AgentId,
+  agentId,
+} from '@kontourai/station-contracts/agent-identity';
 import { useAgentsQuery } from '@kontourai/station-sdk';
 import type { Dispatch, SetStateAction } from 'react';
 import { Checkbox } from '../../components/Checkbox';
 import { AgentIcon } from '../../components/icons/AgentIcon';
+import { PageRow } from '../../components/PageRow';
 import { PageSection } from '../../components/PageSection';
 import type { ProjectForm } from './types';
 import { globalAgentsOnly } from './utils';
@@ -10,8 +14,10 @@ import { globalAgentsOnly } from './utils';
 export function AgentsSection({
   form,
   setForm,
+  projectSlug,
 }: {
   form: ProjectForm;
+  projectSlug?: string;
   setForm: Dispatch<SetStateAction<ProjectForm | null>>;
 }) {
   const { data: fetchedAgents = [] } = useAgentsQuery() as {
@@ -28,6 +34,12 @@ export function AgentsSection({
   const allAgents = globalAgentsOnly(fetchedAgents);
   const selected = new Set(form.agents ?? []);
   const allSelected = form.agents === undefined;
+  const defaultAgents = fetchedAgents.filter(
+    (agent) =>
+      agent.project === projectSlug ||
+      (agent.project === undefined &&
+        (allSelected || selected.has(agent.slug))),
+  );
 
   function toggle(slug: AgentId) {
     setForm((currentForm) => {
@@ -55,6 +67,43 @@ export function AgentsSection({
       title="Agents"
       description="Choose which agents are offered when a conversation starts in this project."
     >
+      <PageRow
+        title="Default agent"
+        description="Used when you haven’t started a chat in this project yet. Your last choice takes precedence."
+      >
+        <select
+          className="editor-select"
+          aria-label="Default agent"
+          value={form.defaultAgent ?? ''}
+          onChange={(event) =>
+            setForm((current) =>
+              current
+                ? {
+                    ...current,
+                    defaultAgent: event.target.value
+                      ? agentId(event.target.value)
+                      : undefined,
+                  }
+                : current,
+            )
+          }
+        >
+          <option value="">Use the Station suggestion</option>
+          {defaultAgents.map((agent) => (
+            <option key={agent.slug} value={agent.slug}>
+              {agent.name}
+            </option>
+          ))}
+          {form.defaultAgent &&
+            !defaultAgents.some(
+              (agent) => agent.slug === form.defaultAgent,
+            ) && (
+              <option value={form.defaultAgent}>
+                {form.defaultAgent} (unavailable)
+              </option>
+            )}
+        </select>
+      </PageRow>
       <span className="editor-hint">
         {allSelected
           ? 'All agents are available (no filter set).'

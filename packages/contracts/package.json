@@ -25,6 +25,10 @@
     "LICENSE"
   ],
   "exports": {
+    "./product-telemetry": "./src/product-telemetry.ts",
+    "./relay-management": "./src/relay-management.ts",
+    "./usage-stats": "./src/usage-stats.ts",
+    "./insights": "./src/insights.ts",
     "./native-relay-link": "./src/native-relay-link.ts",
     "./relay-ice": "./src/relay-ice.ts",
     "./self-hosted-broker": "./src/self-hosted-broker.ts",
@@ -53,6 +57,7 @@
     "./action-operation": "./src/action-operation.ts",
     "./auth": "./src/auth.ts",
     "./authority-observation": "./src/authority-observation.ts",
+    "./automation": "./src/automation.ts",
     "./deployment-authentication": "./src/deployment-authentication.ts",
     "./board": "./src/board.ts",
     "./catalog": "./src/catalog.ts",
@@ -80,6 +85,7 @@
     "./enriched-agent": "./src/enriched-agent.ts",
     "./environment-security": "./src/environment-security.ts",
     "./external-monitor": "./src/external-monitor.ts",
+    "./execution-preparation": "./src/execution-preparation.ts",
     "./execution-target": "./src/execution-target.ts",
     "./fleet-contribution": "./src/fleet-contribution.ts",
     "./fleet-inference": "./src/fleet-inference.ts",
@@ -108,6 +114,7 @@
     "./principal": "./src/principal.ts",
     "./proposed-change": "./src/proposed-change.ts",
     "./plugin": "./src/plugin.ts",
+    "./plugin-command-effect": "./src/plugin-command-effect.ts",
     "./plugin-draft": "./src/plugin-draft.ts",
     "./plugin-foreground-work": "./src/plugin-foreground-work.ts",
     "./project": "./src/project.ts",
@@ -160,6 +167,7 @@
     "./tool": "./src/tool.ts",
     "./user-profile": "./src/user-profile.ts",
     "./usage-rollup": "./src/usage-rollup.ts",
+    "./thread-usage-tree": "./src/thread-usage-tree.ts",
     "./unified-search": "./src/unified-search.ts",
     "./turn-provenance": "./src/turn-provenance.ts",
     "./turn-provenance-context": "./src/turn-provenance-context.ts",
@@ -200,11 +208,14 @@
     "./application-session": "./src/application-session.ts",
     "./relay-enrollment": "./src/relay-enrollment.ts",
     "./registry-trust": "./src/registry-trust.ts",
-    "./harness-questions": "./src/harness-questions.ts"
+    "./harness-questions": "./src/harness-questions.ts",
+    "./input-request": "./src/input-request.ts",
+    "./mcp-elicitation": "./src/mcp-elicitation.ts",
+    "./mcp-prompts": "./src/mcp-prompts.ts"
   },
   "dependencies": {
     "@kontourai/datum": "0.8.0",
-    "@kontourai/flow": "5.1.1",
+    "@kontourai/flow": "5.1.3",
     "@kontourai/flow-agents": "6.5.1",
     "@kontourai/surface": "^3.2.0",
     "@kontourai/thread": "0.5.0"

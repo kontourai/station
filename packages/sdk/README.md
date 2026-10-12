@@ -41,6 +41,14 @@ npm install @kontourai/station-sdk
 
 ## Exact tool results
 
+`@kontourai/station-sdk/client` also exports
+`readConversation(apiBase, conversationId, { cursor, aroundMessageId, limit })`.
+It returns the canonical compact history page with message Session/model
+attribution and optional versioned continuity provenance. Provider switches
+remain linked Sessions in one Conversation; explicit fork ancestry is separate.
+Missing or unavailable provenance means unknown, and parent references grant no
+additional read access. Use a published version containing this export.
+
 The React-free `@kontourai/station-sdk/client` entry exports
 `getSessionToolResult(apiBase, sessionId, eventId)`,
 `attachTaskToolResultReference(apiBase, taskId, { sessionId, eventId })`, and
@@ -79,8 +87,9 @@ provenance/version/lifecycle, and `npm run workspace-pane:conformance`.
 
 The React-free `/client` entry reads installed experience inventory and immutable
 Session history, and carries an explicit source-bound start through canonical
-foreground chat. Successful feature responses load the canonical inventory and
-Session reader before exposing data. The SDK root supplies the corresponding
+foreground chat. The canonical inventory and Session reader is a static import
+of that entry and validates each successful feature response before exposing
+data. The SDK root supplies the corresponding
 React Query hooks.
 Inventory without `executionContract: '1.0'` remains a preview; source identity
 and invocation preconditions are revalidated before execution.

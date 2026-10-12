@@ -1,0 +1,9 @@
+{
+  "revision": "19aa9bdb06557d00f5a73aa279eb4aef1b5821c5",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the merged API reference delta: Skill acquisition documents request-shaped GitHub/ClawHub ownership, inert staging and strict dual-manifest consistency, local transactional promotion, mounted-route evidence and explicit source-selection/network-budget limits. This upstream feature preserves the existing integration contract; it does not alter relay authority or onboarding. The working bytes preserve both earlier record source sets, with canonical current main anchors selected where they match.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the merged API reference delta: Skill acquisition documents request-shaped GitHub/ClawHub ownership, inert staging and strict dual-manifest consistency, local transactional promotion, mounted-route evidence and explicit source-selection/network-budget limits. This upstream feature preserves the existing integration contract; it does not alter relay authority or onboarding. The working bytes preserve both earlier record source sets, with canonical current main anchors selected where they match.","inputs":["docs/reference/api.md"]}
+  ]
+}

@@ -230,7 +230,7 @@ describe('production reconcile backend-only recovery', () => {
               status: 'completed',
               conclusion: 'success',
               event: 'push',
-              workflowName: 'CI',
+              workflowName: 'PR: CI',
               url: 'https://example/run/42',
             },
           ]),

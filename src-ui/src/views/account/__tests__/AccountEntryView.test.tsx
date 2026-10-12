@@ -58,6 +58,7 @@ const clients: QueryClient[] = [];
 const calls: { path: string; headers: Headers; body: unknown }[] = [];
 let signedIn: boolean;
 let signInFails: boolean;
+let signInInvalid: boolean;
 let joinFails: boolean;
 let previewFails: boolean;
 let provider: unknown;
@@ -69,6 +70,7 @@ beforeEach(() => {
   calls.length = 0;
   signedIn = false;
   signInFails = false;
+  signInInvalid = false;
   joinFails = false;
   previewFails = false;
   provider = descriptor;
@@ -111,6 +113,18 @@ beforeEach(() => {
         path.endsWith('/sign-in/email') ||
         path.endsWith('/sign-in/username')
       ) {
+        if (signInInvalid)
+          return Response.json(
+            {
+              success: false,
+              error: 'Validation failed',
+              details: {
+                formErrors: [],
+                fieldErrors: { email: ['Enter a valid email address.'] },
+              },
+            },
+            { status: 400 },
+          );
         if (signInFails)
           return Response.json(
             { error: { message: 'Sign-in failed.' } },
@@ -622,6 +636,19 @@ describe('invitation entry through real account SDK requests', () => {
       false,
     );
     expect(screen.queryByText('You joined the Project')).toBeNull();
+  });
+
+  // #2708 A-3b: the account fetcher's validation refusal names each field in
+  // its message; the page shows the server's reason, not the schema key.
+  test('a sign-in refused by validation reads as its reason, not its field key', async () => {
+    signInInvalid = true;
+    mount();
+    await enterCredentials();
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Enter a valid email address.');
+    expect(alert.textContent).not.toContain('Validation failed');
+    expect(alert.textContent).not.toMatch(/\bemail Enter\b/);
   });
 
   test('registration sends invitation eligibility separately and waits for email verification', async () => {

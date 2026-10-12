@@ -275,7 +275,7 @@ describe('a chat open in this tab reads the same status in the sidebar and the d
     renderWithProviders(<MobileSwitcher />);
     const row = await screen.findByRole('button', { name: ROW_NAME });
     const sheet = row.closest('[data-testid="inbox-row"]') as HTMLElement;
-    expect(within(sheet).getByText('Approval')).toBeTruthy();
+    expect(within(sheet).getByText('Needs approval')).toBeTruthy();
     expect(sheet.dataset.lane).toBe('needsYou');
   });
 

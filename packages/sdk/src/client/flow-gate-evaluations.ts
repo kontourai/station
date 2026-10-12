@@ -7,13 +7,42 @@ import {
   isStationBasisId,
   MAX_TASK_REFERENCES_PER_TASK,
 } from '@kontourai/station-contracts';
-import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import { envelopeError, type StationHttpError } from './api-error-message';
+import {
+  type ClientRequestOptions,
+  getJson,
+  mutateJson,
+  readJsonBody,
+} from './http';
 
 export class FlowGateEvaluationRequestError extends Error {
-  constructor(readonly status: number) {
+  readonly status: number;
+  /**
+   * The refusal's machine `code` and `Retry-After`, when Station answered
+   * (#2708). The message stays generic on purpose: nothing the route sent
+   * about protected content crosses this seam.
+   */
+  readonly code?: string;
+  readonly retryAfterMs?: number;
+
+  /** `0` when no response was observed; else the envelope helper's error. */
+  constructor(answer: number | StationHttpError) {
     super('Gate evaluation unavailable');
     this.name = 'FlowGateEvaluationRequestError';
+    this.status = typeof answer === 'number' ? answer : answer.status;
+    if (typeof answer !== 'number') {
+      if (answer.code !== undefined) this.code = answer.code;
+      if (answer.retryAfterMs !== undefined)
+        this.retryAfterMs = answer.retryAfterMs;
+    }
   }
+}
+
+/** The observed answer, withholding everything the route said but its code. */
+function answered(response: Response, body?: unknown): StationHttpError {
+  return envelopeError(response, body, 'Gate evaluation unavailable', {
+    message: 'Gate evaluation unavailable',
+  });
 }
 export type FlowGateEvaluationProjection =
   | {
@@ -38,13 +67,14 @@ async function protectedRead<T>(
 ) {
   try {
     const response = await request();
-    const body = (await response.json()) as Envelope;
+    // A refusal whose body is not JSON keeps its status (#2708).
+    const body = (await readJsonBody(response)) as Envelope | undefined;
     const data =
       body?.success === true && body.data !== undefined
         ? parse(body.data)
         : null;
     if (!response.ok || !data)
-      throw new FlowGateEvaluationRequestError(response.status);
+      throw new FlowGateEvaluationRequestError(answered(response, body));
     return data;
   } catch (error) {
     throw error instanceof FlowGateEvaluationRequestError

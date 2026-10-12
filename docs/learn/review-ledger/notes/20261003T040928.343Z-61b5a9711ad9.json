@@ -1,0 +1,7 @@
+{
+  "revision": "f11593d8b899747099472a8ed69f009c7eec9a6e",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed merged guide with both mobile-picker project-default instructions and upstream Skills discovery/launch guidance. Preserved all source dependencies from both reviews; canonical launch intent and project-scoped configuration keep their original ownership. Mobile sheet controls, independent default and existing-chat project preservation remain accurate; native/provider/release limitations are unchanged.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "57376eb767fb18f41c7a390a0c2150f5ff270cf5",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"ChatInputArea.test.tsx reset-label cases now query by exact string name without an unsupported option; behavior covered (named default, 'default model' fallback for unknown) is unchanged and §3.1 remains accurate. No prose change.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx"]}
+  ]
+}

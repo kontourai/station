@@ -355,7 +355,7 @@ export function useMutableSessionDetailState({
   //   `failed -> queued | running` and `canceled -> queued` — both retryable.
   //   Hiding the composer on a failed session contradicted the chat dock,
   //   which keeps its composer enabled beside the same session's failure
-  //   banner ("You can send a message to try to continue this session").
+  //   banner ("You can send a message to try to continue this chat").
   // - `isStopped` = `{completed, failed, canceled}` — the session records a
   //   run outcome and is not doing work. It gates the surfaces archive#1170
   //   deliberately removed from finished sessions (the header's live

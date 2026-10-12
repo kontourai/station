@@ -1,0 +1,7 @@
+{
+  "revision": "b757814ffe7f8a5a4dda940860aa24a016a8def1",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"tests/task-first-home.spec.ts changed only by dropping its own skill-experience route stub, which the shared chat fixture (tests/helpers/station-shell-fixtures.ts, #3296) now declares. The matrix lists task-first-home under Home / continuity rail; its coverage and journeys are unchanged, so no claim changes.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/task-first-home.spec.ts"]}
+  ]
+}

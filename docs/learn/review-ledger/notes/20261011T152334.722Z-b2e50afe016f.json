@@ -1,0 +1,7 @@
+{
+  "revision": "efd61a3096c6303690f1e41127d69ff4bd19a258",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"ResponsiveDialogSurface change only adds a data-sheet attribute on the overlay derived from the existing useIsMobile decision; no behaviour, theming, focus or geometry claim in this document changes. Still accurate: the surface supplies behaviour and geometry, consumers own their visual styles.","inputs":["docs/patterns/frontend.md","src-ui/src/components/ResponsiveDialogSurface.tsx","src-ui/src/index.css"]}
+  ]
+}

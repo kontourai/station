@@ -1,0 +1,7 @@
+{
+  "revision": "f114b42162757399cb32b714f860c67c95011988",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Design round: CodingDiffPane now renders CodingDiffPaneBody (git rows, then one view at full width: the working tree's changes or the pull requests, with the review taking the whole pane). Checked the Coding pane entry: files, diff, terminal, plan, readiness, trust remain separately registered Pane renderers; the Diff renderer's inner composition is not a claim this context makes. No prose change.","inputs":["src-ui/src/contexts/navigation-store.ts","src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]}
+  ]
+}

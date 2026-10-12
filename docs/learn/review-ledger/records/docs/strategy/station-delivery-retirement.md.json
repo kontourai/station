@@ -9,14 +9,12 @@
 
   "limits": "Does not claim every possible consumer uses the shared helper or erase historical stored IDs.",
 
-  "document": {"digest":"53f30d2a666229446784140f550041938a5912616e10718884ab2bf56f5f912c","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"},
-
   "sources": [
-    {"path":"docs/contexts/evidence-governance/CONTEXT.md","digest":"976207569e04724170b807f2585f4b93359a37107399fd0f81072217384b153c","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"},
+    "docs/contexts/evidence-governance/CONTEXT.md",
 
-    {"path":"packages/contracts/src/flow-presentation.ts","digest":"43f54b261d9bc0abdd626d3a56e47364e6e84ec780a3837ce7f4d659b82d6b6d","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"},
+    "packages/contracts/src/flow-presentation.ts",
 
-    {"path":"src-server/routes/projects/projects.ts","digest":"d87cdfa66a657cd27955762d9142eb32d477ce37d30e64e2b592a65a2f083847","revision":"2dd99129dc84d2589b416ca56f5e0060fc30c1ab"}
+    "src-server/routes/projects/projects.ts"
   ],
 
   "checks": [

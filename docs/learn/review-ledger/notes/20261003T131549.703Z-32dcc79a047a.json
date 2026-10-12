@@ -1,0 +1,7 @@
+{
+  "revision": "6b192b274917a32f36ef47a142936a368e44247e",
+
+  "notes": [
+    {"path":"CLAUDE.md","note":"Still imports AGENTS.md via @AGENTS.md; only AGENTS.md issue-reference prose changed, no claim here affected.","inputs":["CLAUDE.md"]}
+  ]
+}

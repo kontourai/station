@@ -24,6 +24,11 @@ interface QueuedMessagesProps {
   failure?: { message: string; code?: string; at: number };
   /** Retry the head of the queue now, rather than waiting for the next turn. */
   onRetry?: () => void;
+  /**
+   * #3157: the conversation stopped on a provider usage limit, so the queue
+   * does not send on its own; Send now still does.
+   */
+  heldByUsageLimit?: boolean;
 }
 
 interface QueueRow {
@@ -43,6 +48,7 @@ export function QueuedMessages({
   onPendingSettled,
   failure,
   onRetry,
+  heldByUsageLimit,
 }: QueuedMessagesProps) {
   const {
     editingIndex,
@@ -114,6 +120,13 @@ export function QueuedMessages({
         )}
         <ArrowDownGlyph />
       </button>
+      {heldByUsageLimit && (
+        <div className="queued-messages__hold" role="status">
+          <span className="queued-messages__failure-text">
+            Held because of the usage limit. Send now to send anyway.
+          </span>
+        </div>
+      )}
       <div id={queueId} className="queued-messages__content" hidden={!expanded}>
         {failure && (
           <div className="queued-messages__failure" role="status">

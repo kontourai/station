@@ -1,0 +1,7 @@
+{
+  "revision": "6b192b274917a32f36ef47a142936a368e44247e",
+
+  "notes": [
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"ADR 0019 change only edits its issue-numbering note; 0018's references to ADR 0019 frame streams are unaffected. No prose change.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md"]}
+  ]
+}

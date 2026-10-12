@@ -1,0 +1,11 @@
+{
+  "revision": "5967eb19929149309190133bf492c99e7ab29c93",
+
+  "notes": [
+    {"path":"examples/README.md","note":"#2787 after merging main again: the only delta in scripts/examples-conformance.mjs is that the example `npm run build` capture goes through scripts/lib/bounded-capture.mjs (64 MiB bound, named overflow error). Build selection, statuses and the failure output it reports are unchanged; no prose change needed.","inputs":["scripts/examples-conformance.mjs"]},
+
+    {"path":"examples/docs-snippets/README.md","note":"#2787 after merging main again: the only delta in scripts/examples-conformance.mjs is that the example `npm run build` capture goes through scripts/lib/bounded-capture.mjs (64 MiB bound, named overflow error). The snippet conformance this README describes is unchanged; no prose change needed.","inputs":["scripts/examples-conformance.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"#2787 after merging main again: the delta is this branch's one added sentence pointing synchronous captures at scripts/lib/bounded-capture.mjs, which matches the helper, plus scripts/vitest-resource-manifest.mjs classifying bounded-capture.test.ts as process-heavy and capturing Vitest discovery through the helper at its 64 MiB default. The resource-classification rule stated here is unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/lib/owned-process.mjs","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

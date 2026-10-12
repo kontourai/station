@@ -1,0 +1,11 @@
+{
+  "revision": "5359d20896fe11afde2492221f849a058df86953",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-recorded after NewChatModal routes every model-picker opening through one helper that records where focus returns (src-ui/src/components/modals/NewChatModal.tsx): the clicked control, or whatever holds focus for the setup-return reopen. I searched this document for model-picker, focus and close behaviour; it states no claim about where focus goes when the picker closes, so nothing it says changes.","inputs":["docs/design/chat-composer.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Re-recorded after NewChatModal routes every model-picker opening through one helper that records where focus returns (src-ui/src/components/modals/NewChatModal.tsx): the clicked control, or whatever holds focus for the setup-return reopen. I searched this document for model-picker, focus and close behaviour; it states no claim about where focus goes when the picker closes, so nothing it says changes.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Re-recorded after NewChatModal routes every model-picker opening through one helper that records where focus returns (src-ui/src/components/modals/NewChatModal.tsx): the clicked control, or whatever holds focus for the setup-return reopen. I searched this document for model-picker, focus and close behaviour; it states no claim about where focus goes when the picker closes, so nothing it says changes.","inputs":["docs/user/getting-started.md","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

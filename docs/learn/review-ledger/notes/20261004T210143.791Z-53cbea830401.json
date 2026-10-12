@@ -1,0 +1,7 @@
+{
+  "revision": "07018494bb59d7fcd07c22771ff742194f7ef46e",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Re-reviewed after the #3303 fix round (auth probe gated at CLI 2.1.41, cache and kill hardening). No claim here covers that path; prose unchanged.","inputs":["docs/guides/starter-work.md","src-server/providers/adapters/claude-adapter.ts"]}
+  ]
+}

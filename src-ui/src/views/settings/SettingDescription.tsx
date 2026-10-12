@@ -12,6 +12,16 @@ const SUMMARIES: Readonly<Record<string, string>> = {
     'Start chats in the shared checkout or a separate Git worktree. Worktrees require a Git repository.',
   workspaceCheckpoints:
     'Keep Git snapshots of each turn for 90 days. Uses disk space; changes apply after restarting Station.',
+  usageLimitAutoResume:
+    'Resend a Claude Code or Codex turn stopped by a usage limit once the limit resets. Spends quota while you are away.',
+  defaultModel:
+    'Fallback model for managed turns after the agent, Project, and model connection defaults.',
+  distributionProfile:
+    'Choose the layout sources offered to Projects. Changes apply after restarting Station.',
+  registryUrl: 'Choose where Station looks for installable resources.',
+  terminalShell: 'Choose the shell used by Station terminals on the host.',
+  mcpUiHost:
+    'Display interactive MCP tool interfaces in sandboxed chat frames.',
 };
 
 /** Keep operational details available without turning each row into a paragraph. */

@@ -50,6 +50,7 @@ interface ApprovalInboxDependencies {
     OrchestrationService,
     | 'dispatch'
     | 'isEphemeralSession'
+    | 'isReadOnlyAttachedSession'
     | 'readRequestOutcome'
     | 'resolveSessionProjectSlug'
   >;
@@ -133,6 +134,17 @@ export class ApprovalInboxNotificationProvider
     } catch {
       return { state: 'unavailable' };
     }
+  }
+
+  /**
+   * #3276: whether actioning or dismissing this row would settle an approval
+   * that is still waiting. The one answer every caller asks: an `unavailable`
+   * outcome counts, because a request whose state cannot be read may still
+   * be open. Rows from any other source are never live approvals.
+   */
+  isLiveApproval(notification: Notification): boolean {
+    const { state } = this.observe(notification);
+    return state === 'open' || state === 'unavailable';
   }
 
   completeRequest(requestKey: string): string | null {
@@ -235,6 +247,10 @@ export class ApprovalInboxNotificationProvider
     }
     this.targetsByNotificationId.delete(notificationId);
     this.notificationIdByRequestKey.delete(target.requestKey);
+  }
+
+  isReadOnlyAttachedSession(threadId: string): boolean {
+    return this.deps.orchestrationService.isReadOnlyAttachedSession(threadId);
   }
 
   /**
@@ -411,6 +427,7 @@ export function wireApprovalInboxNotifications(
 
       const event = message.data.event as CanonicalRuntimeEvent;
       if (event.method === 'request.opened') {
+        if (provider.isReadOnlyAttachedSession(event.threadId)) return;
         // archive#1284 (AC4): resolved synchronously (no adapter I/O — see
         // OrchestrationService.resolveSessionProjectSlug's doc comment) so the
         // approval card can deep-link into the project chat dock like a

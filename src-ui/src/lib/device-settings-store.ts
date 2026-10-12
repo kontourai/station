@@ -39,6 +39,7 @@ import {
   parseRegionArrangementRecord,
   toRegionArrangementRecord,
 } from '../regions/region-arrangement-record';
+import { parseCodingSessionPanelsRecord } from './coding-panels-record';
 
 const ENVELOPE_STORAGE_KEY = 'station-device-settings-v1';
 
@@ -365,6 +366,19 @@ type ImportValidationOutcome<K extends keyof DeviceSettings> =
   | { valid: false };
 
 /** Validates (and, for composites, default-fills) one imported value against its registry descriptor. */
+/**
+ * Composite records whose own parser is their import validation, as
+ * `regionArrangement`'s is above: the generic composite path would accept
+ * any plain object. Keyed by setting so the parsed value is typed as that
+ * setting's without a cast. The parser also drops entries past the record's
+ * bound (#3051).
+ */
+const COMPOSITE_RECORD_PARSERS: {
+  [K in keyof DeviceSettings]?: (
+    candidate: unknown,
+  ) => DeviceSettings[K] | null;
+} = { codingPanels: parseCodingSessionPanelsRecord };
+
 function validateImportedValue<K extends keyof DeviceSettings>(
   definition: DeviceSettingDefinition<K>,
   candidate: unknown,
@@ -482,6 +496,13 @@ function validateImportedValue<K extends keyof DeviceSettings>(
               ) as unknown as DeviceSettings[K],
             }
           : { valid: false };
+      }
+      const recordParser = COMPOSITE_RECORD_PARSERS[definition.key];
+      if (recordParser) {
+        const parsed = recordParser(candidate);
+        return parsed === null
+          ? { valid: false }
+          : { valid: true, value: parsed };
       }
 
       const fields = COMPOSITE_BOOLEAN_FIELDS[definition.key as string];

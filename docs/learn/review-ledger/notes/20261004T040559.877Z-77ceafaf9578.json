@@ -1,0 +1,7 @@
+{
+  "revision": "a7c4261add7c6a1ec7f976b77f0954f40e2b1af7",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Re-reviewed after merge of origin/main. Changed sources are the new x-station-envelope response-header paragraphs in deployment.md and api.md, and SDK refusal/envelope text in sdk.md. This guide is a routing table to those references and makes no claim about the header, refusal classes, or proxy behavior; its links, and the 'refused unauthorized request' evidence expectations, still hold.","inputs":["docs/guides/deployment.md","docs/reference/api.md","docs/reference/sdk.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "ca82efb07216fbe7c6fc963308ded70d7dcefb21",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"No impact: lifecycle needs_input/review_pending projections are still not delivery events; the new fields do not change push categories.","inputs":["docs/guides/web-push-notifications.md","src-server/services/projects/attention-projection.ts"]}
+  ]
+}

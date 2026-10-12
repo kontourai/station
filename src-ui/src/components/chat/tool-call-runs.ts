@@ -48,9 +48,15 @@ export interface ToolCallRun<P extends ToolCallLike = ToolCallLike> {
   /** Stable React key: the first call's id when present, else a position key. */
   key: string;
   calls: { part: P; index: number }[];
+  /**
+   * Prose folded between this run's calls by {@link foldTurnWork}, in
+   * original order. Present only on a folded settled turn; the batch sheet
+   * interleaves it with the calls by `index` so nothing becomes unreachable.
+   */
+  interludes?: { part: P; index: number }[];
 }
 
-type RunBlock<P extends ToolCallLike = ToolCallLike> =
+export type RunBlock<P extends ToolCallLike = ToolCallLike> =
   | ContentPartBlock<P>
   | ToolCallRun<P>;
 
@@ -107,4 +113,80 @@ export function splitToolCallRuns<P extends ToolCallLike>(
   flushRun();
 
   return blocks;
+}
+
+/** Prose a folded turn may move into its work sheet: plain narration only.
+ * A runtime-error part is a failure the reader must see, so it stays out. */
+function isFoldableProse(part: ToolCallLike): boolean {
+  return (
+    part.type === 'text' &&
+    typeof part.content === 'string' &&
+    part.content.trim().length > 0 &&
+    part.runtimeError !== true
+  );
+}
+
+/**
+ * The phone transcript's shape for a SETTLED assistant turn: every tool call
+ * from the first to the last — and the narration between them — becomes ONE
+ * run, placed where the first call was. Text after the last call (the
+ * outcome) and text before the first (the intent) stay as they were.
+ *
+ * Only narration folds. Anything else inside that span — a file the agent
+ * produced, a UI block, a runtime error, a reasoning part — is kept, in
+ * order, directly after the folded run, so the fold never hides an artifact
+ * or a failure. When no visible text follows the last call, the last
+ * narration is kept there too: it is the turn's last word. With one tool-call run or fewer this returns exactly
+ * {@link splitToolCallRuns}'s blocks: nothing to merge.
+ */
+export function foldTurnWork<P extends ToolCallLike>(
+  parts: P[] | undefined | null,
+): RunBlock<P>[] {
+  const blocks = splitToolCallRuns(parts);
+  if (!parts) return blocks;
+  const runCount = blocks.filter((b) => b.type === 'tool-call-run').length;
+  if (runCount < 2) return blocks;
+
+  const firstRun = blocks.findIndex((b) => b.type === 'tool-call-run');
+  let lastRun = blocks.length - 1;
+  while (blocks[lastRun]?.type !== 'tool-call-run') lastRun -= 1;
+
+  const calls: { part: P; index: number }[] = [];
+  const interludes: { part: P; index: number }[] = [];
+  const kept: RunBlock<P>[] = [];
+  for (const block of blocks.slice(firstRun, lastRun + 1)) {
+    if (block.type === 'tool-call-run') {
+      calls.push(...block.calls);
+    } else if (isFoldableProse(block.part)) {
+      interludes.push({ part: block.part, index: block.index });
+    } else {
+      kept.push(block);
+    }
+  }
+  const after = blocks.slice(lastRun + 1);
+  // A turn that ends on a call has no outcome below the row: its last words
+  // (often a question for the user) would only be reachable by opening the
+  // sheet, so they stay in the transcript.
+  const hasOutcome = after.some(
+    (block) =>
+      block.type === 'content-part' &&
+      block.part.type === 'text' &&
+      typeof block.part.content === 'string' &&
+      block.part.content.trim().length > 0,
+  );
+  const lastWords = hasOutcome ? undefined : interludes.pop();
+  if (lastWords) {
+    kept.push({ type: 'content-part', ...lastWords });
+    kept.sort((a, b) =>
+      a.type === 'content-part' && b.type === 'content-part'
+        ? a.index - b.index
+        : 0,
+    );
+  }
+  return [
+    ...blocks.slice(0, firstRun),
+    { ...buildRun(calls), interludes },
+    ...kept,
+    ...after,
+  ];
 }

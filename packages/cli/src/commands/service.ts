@@ -4,14 +4,16 @@ import * as nodeFs from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import type { ServiceUpdateProgress } from '@kontourai/station-contracts/system-status';
 import {
-  claimInstanceEntry,
+  claimHostOwner,
   entryOwnedByLiveProcess,
+  liveHostOwners,
   readInstanceRegistry,
   removeInstance,
   replaceInstance,
 } from '@kontourai/station-shared/instance-registry';
 import { acquireFileMutationLock } from '@kontourai/station-shared/lifecycle-events';
 import { assertSupportedNodeVersion } from '@kontourai/station-shared/node-runtime';
+import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process-identity';
 import { spawnedStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { readServiceUpdateProgress } from '@kontourai/station-shared/service-launcher-protocol';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
@@ -36,6 +38,7 @@ import {
 } from './lifecycle.js';
 import type { LifecycleCodeRoot } from './lifecycle-code-root.js';
 import {
+  LAUNCHER_STOP_BUDGET_MS,
   resolveServiceCodeLocation,
   type ServiceCodeKind,
   type ServiceCodeLocation,
@@ -51,6 +54,7 @@ import {
   uninstallLaunchd,
 } from './service-launchd.js';
 import { installServiceLauncher } from './service-launcher-link.js';
+import { describeServiceHostRefusal } from './service-liveness.js';
 import {
   collectServicePathCandidates,
   inspectServicePathDrift,
@@ -302,6 +306,12 @@ const RESERVED_LAUNCHD_LABELS = [
 const INSTALL_READINESS_POLL_INTERVAL_MS = 1_000;
 const INSTALL_READINESS_POLL_ATTEMPTS = 120;
 const WINDOWS_STOP_POLL_ATTEMPTS = 7;
+/**
+ * How long `service stop` waits for a Windows launcher service's launcher to
+ * stop its Station and exit: its whole stop budget, plus the second its
+ * wrapper watch takes to notice `/End`, and a margin.
+ */
+const WINDOWS_LAUNCHER_STOP_WAIT_MS = LAUNCHER_STOP_BUDGET_MS + 15_000;
 
 function sleep(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -434,18 +444,104 @@ async function waitForWindowsSupervisorExit(
   );
 }
 
+/**
+ * Whether a lock's recorded holder is a live process, birth and all.
+ * `proven`: its start time was read and matches the lock's, so the pid is
+ * the launcher's; an unreadable start time keeps the lock held, unproven.
+ */
+function launcherLockHeld(
+  fs: ServiceFs,
+  lock: string,
+  birthOf: (pid: number) => string | null,
+): { held: boolean; pid?: number; proven?: boolean } {
+  let holder: { pid?: unknown; birth?: unknown };
+  try {
+    holder = JSON.parse(String(fs.readFileSync(lock, 'utf8')));
+  } catch {
+    // Absent: the launcher released it. Unreadable: it is mid-write, so a
+    // launcher is starting; the next poll reads it.
+    return { held: fs.existsSync(lock) };
+  }
+  const pid = holder.pid;
+  if (!Number.isInteger(pid) || (pid as number) < 1) return { held: false };
+  try {
+    process.kill(pid as number, 0);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ESRCH')
+      return { held: false };
+  }
+  const birth = birthOf(pid as number);
+  if (birth !== null && birth !== holder.birth) return { held: false };
+  return { held: true, pid: pid as number, proven: birth !== null };
+}
+
+/**
+ * Waits for a Windows launcher service's launcher (#2675 W3) to finish
+ * stopping: `/End` ends only its cmd.exe wrapper, and the launcher, seeing
+ * that, stops its Station in order and exits, releasing its lock. A launcher
+ * still there after its whole stop budget is ended by pid only when its
+ * start time proves the pid is still the launcher's; otherwise the stop is
+ * refused with the pid named, and nothing is signalled.
+ */
+export async function waitForServiceLauncherExit(
+  installRoot: string,
+  dependencies: Pick<ServiceDependencies, 'sleep'>,
+  fs: ServiceFs,
+  options: {
+    deadlineMs?: number;
+    birthOf?: (pid: number) => string | null;
+    kill?: (pid: number) => void;
+  } = {},
+): Promise<void> {
+  const lock = join(installRoot, 'runtime', 'service-state.lock');
+  const waitMs = options.deadlineMs ?? WINDOWS_LAUNCHER_STOP_WAIT_MS;
+  const birthOf = options.birthOf ?? lookupProcessBirthFingerprint;
+  const deadline = Date.now() + waitMs;
+  for (;;) {
+    const holder = launcherLockHeld(fs, lock, birthOf);
+    if (!holder.held) return;
+    if (Date.now() >= deadline) {
+      if (holder.pid === undefined || !holder.proven)
+        throw new Error(
+          `The Station service launcher (pid ${holder.pid ?? 'unknown'}, lock ${lock}) did not stop within ${waitMs / 1_000}s, and its start time could not be read to prove that pid is still the launcher, so it was not signalled. Check that process, end it if it is the launcher, then retry.`,
+        );
+      console.error(
+        `The Station service launcher (pid ${holder.pid}) did not stop within ${waitMs / 1_000}s; ending it.`,
+      );
+      try {
+        (options.kill ?? ((pid: number) => process.kill(pid)))(holder.pid);
+      } catch {
+        // Gone meanwhile.
+      }
+      return;
+    }
+    await (dependencies.sleep ?? sleep)(INSTALL_READINESS_POLL_INTERVAL_MS);
+  }
+}
+
 async function stopAndWaitForWindowsSupervisorExit(
   instanceId: string,
   stateHome: string,
-  registration: ServiceRegistration,
+  registration: ServiceRegistration &
+    Pick<Partial<ServiceManifest>, 'installRoot' | 'kind'>,
   dependencies: ServiceDependencies,
   fs: ServiceFs,
   run: CommandRunner,
 ): Promise<void> {
+  const launcherRoot =
+    registration.kind === 'archive' ? registration.installRoot : undefined;
+  if (launcherRoot !== undefined) {
+    // A launcher service (#2675 W3) stops from the wrapper down: stopping
+    // its Station first would read to the launcher as a crash, which it
+    // answers by starting Station again.
+    stopWindowsService(registration, { fs, run });
+    await waitForServiceLauncherExit(launcherRoot, dependencies, fs);
+  }
   // Stop only the resolved Station lifecycle instance; an unqualified process
-  // sweep could terminate a different user service sharing this host.
+  // sweep could terminate a different user service sharing this host. Under
+  // a launcher this is the backstop for what a launcher ended by pid ran.
   stop({ instanceName: instanceId, stateHome });
-  stopWindowsService(registration, { fs, run });
+  if (launcherRoot === undefined) stopWindowsService(registration, { fs, run });
   await waitForWindowsSupervisorExit(
     instanceId,
     stateHome,
@@ -1318,6 +1414,23 @@ export async function runServiceCommand(
         `Station home ${lifecycle.baseDir} is in use by instance '${lifecycleInstanceId}' (pid ${lifecycleEntry.pid}, type '${lifecycleEntry.type}'${lifecycleEntry.checkout ? `, from ${lifecycleEntry.checkout}` : ''}), which service '${instanceId}' would share. Stop it first (\`station stop --instance=${lifecycleInstanceId}\` from its checkout).`,
       );
     }
+    // ONE HOST OWNER (#2961, ADR 0020 D4): a home has at most one live host
+    // — this service or a Station Desktop sidecar. Refuse while another
+    // live one holds it, before any backend mutation. The claim below
+    // re-checks under the registry lock; this early copy only spares the
+    // common case a backend install and rollback.
+    const hostOwners = liveHostOwners(
+      readInstanceRegistry(lifecycle.baseDir),
+      instanceId,
+    );
+    if (hostOwners.length > 0) {
+      throw new Error(
+        describeServiceHostRefusal(
+          { instanceName: instanceId, home: lifecycle.baseDir },
+          hostOwners,
+        ),
+      );
+    }
     // service run builds stale artifacts before it can publish an identity.
     // Do that before replacing the old supervisor so the bounded readiness
     // poll observes only the new generation's boot, not its cold UI build.
@@ -1332,14 +1445,20 @@ export async function runServiceCommand(
       platform,
     });
     // An installer-owned archive's unit runs the fixed launcher (#2675 D),
-    // which must be in place before the backend loads the unit.
-    if (
-      location.kind === 'archive' &&
-      location.installRoot !== undefined &&
-      platform !== 'win32'
-    ) {
-      installServiceLauncher(fs, location.installRoot, location.repoPath);
-    }
+    // which must be in place before the backend loads the unit. On Windows
+    // it is placed once a service that runs it has stopped (installBackend):
+    // its frozen node.exe cannot be replaced while it runs.
+    const placeLauncher = () => {
+      if (location.kind === 'archive' && location.installRoot !== undefined)
+        installServiceLauncher(
+          fs,
+          location.installRoot,
+          // This host's spelling of the unit's `current`.
+          join(location.installRoot, 'current'),
+          platform,
+        );
+    };
+    if (platform !== 'win32') placeLauncher();
     // A backend reinstall has an owned prior supervisor. Retain its verified
     // boot identity and require readiness to observe a different one after
     // the backend has stopped and replaced it.
@@ -1360,27 +1479,59 @@ export async function runServiceCommand(
         `Cannot reinstall Station Task Scheduler service while backend status is unknown: ${priorWindowsTask.error}`,
       );
     }
-    if (existing?.platform === 'win32') {
-      // Task Scheduler's /End can leave the Node child alive after its cmd
-      // wrapper exits. Converge both the exact lifecycle instance and task
-      // before the backend can replace its wrapper.
-      await stopAndWaitForWindowsSupervisorExit(
-        instanceId,
-        lifecycle.baseDir,
-        existing,
-        dependencies,
-        fs,
-        run,
+    // Reserve with the installer's live identity before the backend can spawn
+    // a supervisor. Policy without a live pid would leave Desktop unfenced.
+    const serviceEntry = {
+      port: lifecycle.serverPort,
+      uiPort: lifecycle.uiPort,
+      type: 'service' as const,
+      status: 'installing',
+      pid: process.pid,
+      birth: lookupProcessBirthFingerprint(process.pid) ?? undefined,
+      env: {
+        ...priorServiceEntry?.env,
+        ALLOWED_ORIGINS: effectiveAllowedOrigins.join(','),
+      },
+    };
+    const claimInstallHost = () =>
+      claimHostOwner(instanceId, {
+        home: lifecycle.baseDir,
+        type: 'service',
+        publish: () => serviceEntry,
+      });
+    const claim = claimInstallHost();
+    if (!claim.won) {
+      throw new Error(
+        claim.reason === 'host-owned'
+          ? describeServiceHostRefusal(
+              { instanceName: instanceId, home: lifecycle.baseDir },
+              claim.owners,
+            )
+          : `Instance id '${instanceId}' was claimed by a live process during installation. Stop that process or install under a distinct --instance name.`,
       );
     }
-    const common = {
-      ...location,
-      fs,
-      lifecycle,
-      run,
+    const restoreRegistry = (): void => {
+      if (priorRegistryEntry === null)
+        removeInstance(instanceId, lifecycle.baseDir);
+      else replaceInstance(instanceId, priorRegistryEntry, lifecycle.baseDir);
     };
-    const manifest =
-      platform === 'darwin'
+    const common = { ...location, fs, lifecycle, run };
+    const installBackend = async () => {
+      if (existing?.platform === 'win32') {
+        // Task Scheduler's /End can leave the Node child alive after its cmd
+        // wrapper exits. Converge both the exact lifecycle instance and task
+        // before the backend can replace its wrapper.
+        await stopAndWaitForWindowsSupervisorExit(
+          instanceId,
+          lifecycle.baseDir,
+          existing,
+          dependencies,
+          fs,
+          run,
+        );
+      }
+      if (platform === 'win32') placeLauncher();
+      return platform === 'darwin'
         ? installLaunchd(instanceId, {
             ...common,
             servicePath: captureServicePath(run, fs, location),
@@ -1400,6 +1551,20 @@ export async function runServiceCommand(
               servicePath: captureServicePath(run, fs, location),
             })
           : installWindowsService(instanceId, common);
+    };
+    let manifest: Awaited<ReturnType<typeof installBackend>>;
+    try {
+      manifest = await installBackend();
+    } catch (error) {
+      try {
+        restoreRegistry();
+      } catch (restoreError) {
+        throw new Error(
+          `Service backend start failed (${(error as Error).message}); registry reservation restore also failed (${(restoreError as Error).message})`,
+        );
+      }
+      throw error;
+    }
     manifest.installedAt = (
       dependencies.now ?? (() => new Date())
     )().toISOString();
@@ -1456,65 +1621,6 @@ export async function runServiceCommand(
         );
       }
     };
-    // Persist the registry (the durable origin-policy authority) only AFTER
-    // the fallible backend operations above have succeeded. Writing it
-    // earlier let a failed install durably change ALLOWED_ORIGINS that a
-    // later flagless reinstall would activate (station#1983). compensate()
-    // restores the prior entry if manifest publication or readiness fails
-    // after this point.
-    //
-    // claimInstanceEntry REPLACES rather than merges (station#3047): the old
-    // upsert kept every field its partial omitted, so installing over a CLI
-    // entry produced a `type: 'service'` record still carrying the CLI
-    // process's pid/birth — which Desktop's home-ownership decision then
-    // read as a live service. The claim also refuses (under the mutation
-    // lock) if a live foreign owner appeared since the pre-check above; in
-    // that race the registry was NOT written, so roll back the backend but
-    // leave the registry alone — restoring `priorRegistryEntry` would
-    // clobber the entry the live owner just wrote.
-    let claim: ReturnType<typeof claimInstanceEntry>;
-    try {
-      claim = claimInstanceEntry(
-        instanceId,
-        {
-          port: lifecycle.serverPort,
-          uiPort: lifecycle.uiPort,
-          type: 'service',
-          env: {
-            ...priorServiceEntry?.env,
-            ALLOWED_ORIGINS: effectiveAllowedOrigins.join(','),
-          },
-        },
-        { home: lifecycle.baseDir, adoptTypes: ['service'] },
-      );
-    } catch (error) {
-      // A registry read/publish I/O failure here would otherwise strand a
-      // fully installed backend with no manifest and no compensation
-      // (#3047 review LOW-2). In the common failure modes the registry was
-      // not durably written (publish can throw after its rename only in a
-      // narrow post-rename verify race), so roll back the backend without
-      // touching the registry — and never let a failed rollback mask the
-      // original error (the file's combined-message pattern).
-      try {
-        await compensate({ restoreRegistry: false });
-      } catch (rollbackError) {
-        throw new Error(
-          `Service registry claim failed (${(error as Error).message}); backend rollback also failed (${(rollbackError as Error).message})`,
-        );
-      }
-      throw error;
-    }
-    if (!claim.written) {
-      const refusal = `Instance id '${instanceId}' was claimed by a live process (pid ${claim.existing.pid}, type '${claim.existing.type}') during installation. Stop that process or install under a distinct --instance name.`;
-      try {
-        await compensate({ restoreRegistry: false });
-      } catch (rollbackError) {
-        throw new Error(
-          `${refusal} The backend install could not be rolled back (${(rollbackError as Error).message}).`,
-        );
-      }
-      throw new Error(`${refusal} The backend install was rolled back.`);
-    }
     let rollbackPromise: Promise<void> | undefined;
     const receipt: ServiceInstallReceipt = {
       instanceId,
@@ -1563,6 +1669,17 @@ export async function runServiceCommand(
           // Reinstall without the replacement stop hook: its prior drain is
           // the failed operation, while this bounded attempt must leave one
           // startable generation on the machine if the backend still can.
+          const recoveryClaim = claimInstallHost();
+          if (!recoveryClaim.won) {
+            throw new Error(
+              recoveryClaim.reason === 'host-owned'
+                ? describeServiceHostRefusal(
+                    { instanceName: instanceId, home: lifecycle.baseDir },
+                    recoveryClaim.owners,
+                  )
+                : `Station service '${instanceId}' lost its registry id during emergency recovery.`,
+            );
+          }
           const recovered =
             manifest.platform === 'darwin'
               ? installLaunchd(instanceId, {
@@ -1580,26 +1697,6 @@ export async function runServiceCommand(
           )().toISOString();
           recovered.allowedOrigins = effectiveAllowedOrigins;
           writeManifest(fs, manifestPath, recovered, run, hardenPaths);
-          // Same replace-not-merge claim as the primary path (station#3047).
-          // Emergency recovery is best-effort: a live-owner refusal here is
-          // recorded in the recovery detail rather than unwinding the one
-          // startable generation this path exists to leave behind.
-          const recoveryClaim = claimInstanceEntry(
-            instanceId,
-            {
-              port: lifecycle.serverPort,
-              uiPort: lifecycle.uiPort,
-              type: 'service',
-              env: {
-                ...priorServiceEntry?.env,
-                ALLOWED_ORIGINS: effectiveAllowedOrigins.join(','),
-              },
-            },
-            { home: lifecycle.baseDir, adoptTypes: ['service'] },
-          );
-          const recoveryRegistryNote = recoveryClaim.written
-            ? ''
-            : ` Its registry entry could not be recorded: instance id '${instanceId}' is held by a live process (pid ${recoveryClaim.existing.pid}).`;
           await waitForInstalledServiceIdentity(
             instanceId,
             lifecycle.baseDir,
@@ -1608,7 +1705,7 @@ export async function runServiceCommand(
           const status = await collectInstanceStatus(instanceId, {
             projectHome: lifecycle.baseDir,
           });
-          recoveryDetail = `A replacement Station generation is running${status.bootId ? ` (boot ID ${status.bootId})` : ''}.${recoveryRegistryNote}`;
+          recoveryDetail = `A replacement Station generation is running${status.bootId ? ` (boot ID ${status.bootId})` : ''}.`;
         } catch (recoveryError) {
           try {
             const status = await collectInstanceStatus(instanceId, {

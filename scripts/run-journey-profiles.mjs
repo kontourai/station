@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const JOURNEYS = [
@@ -93,7 +94,7 @@ export function main(argv = process.argv.slice(2)) {
       'Usage: test:journeys:profile [--samples=1..10] [--allow-dirty]',
     );
   const git = (args) =>
-    execFileSync('git', args, {
+    execFileSyncBounded('git', args, {
       cwd: root,
       encoding: 'utf8',
       windowsHide: true,

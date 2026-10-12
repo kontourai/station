@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { DAILY_DRIVER_PROFILES } from '../daily-driver-profiles.mjs';
 import { runDailyDriverUiQualification } from '../daily-driver-ui-qualification.mjs';
@@ -42,7 +43,10 @@ describe('daily-driver UI qualification wrapper', () => {
     let cleanlinessChecks = 0;
     const report = await runDailyDriverUiQualification({
       makeTemp: () => {
-        temporaryDirectory = '/tmp/station-daily-driver-ui-wrapper-test';
+        temporaryDirectory = join(
+          tmpdir(),
+          'station-daily-driver-ui-wrapper-test',
+        );
         return temporaryDirectory;
       },
       removeTemp: () => {
@@ -59,7 +63,11 @@ describe('daily-driver UI qualification wrapper', () => {
       readFile: () => JSON.stringify(observation()),
       execute: ({ observationPath, revision, timeoutMs }) => {
         expect(observationPath).toBe(
-          '/tmp/station-daily-driver-ui-wrapper-test/observation.json',
+          join(
+            tmpdir(),
+            'station-daily-driver-ui-wrapper-test',
+            'observation.json',
+          ),
         );
         expect(revision).toBe(SOURCE_REVISION);
         expect(timeoutMs).toBe(180_000);
@@ -80,7 +88,7 @@ describe('daily-driver UI qualification wrapper', () => {
   it('fails closed when the owned Playwright producer writes no observation', async () => {
     await expect(
       runDailyDriverUiQualification({
-        makeTemp: () => '/tmp/station-daily-driver-ui-missing-test',
+        makeTemp: () => join(tmpdir(), 'station-daily-driver-ui-missing-test'),
         removeTemp() {},
         assertCheckoutClean: cleanCheckout,
         resolveRevision: () => SOURCE_REVISION,
@@ -91,13 +99,13 @@ describe('daily-driver UI qualification wrapper', () => {
   });
 
   it('launches the focused product run against the owned observation path', async () => {
-    const root = '/checkout';
+    const root = resolve('qualification-checkout');
     vi.stubEnv('PW_BASE_URL', 'http://inherited.example');
     spawnSync.mockReturnValue({ status: 0, signal: null });
     try {
       await runDailyDriverUiQualification({
         root,
-        makeTemp: () => '/tmp/station-daily-driver-ui-spawn-test',
+        makeTemp: () => join(tmpdir(), 'station-daily-driver-ui-spawn-test'),
         removeTemp() {},
         assertCheckoutClean: cleanCheckout,
         resolveRevision: () => SOURCE_REVISION,
@@ -126,8 +134,11 @@ describe('daily-driver UI qualification wrapper', () => {
     });
     expect(options.env).not.toHaveProperty('PW_BASE_URL');
     expect(options.env).toMatchObject({
-      STATION_DAILY_DRIVER_UI_OBSERVATION_PATH:
-        '/tmp/station-daily-driver-ui-spawn-test/observation.json',
+      STATION_DAILY_DRIVER_UI_OBSERVATION_PATH: join(
+        tmpdir(),
+        'station-daily-driver-ui-spawn-test',
+        'observation.json',
+      ),
       STATION_DAILY_DRIVER_UI_SOURCE_REVISION: SOURCE_REVISION,
     });
   });
@@ -144,7 +155,7 @@ describe('daily-driver UI qualification wrapper', () => {
     let revisionChecks = 0;
     await expect(
       runDailyDriverUiQualification({
-        makeTemp: () => '/tmp/station-daily-driver-ui-revision-test',
+        makeTemp: () => join(tmpdir(), 'station-daily-driver-ui-revision-test'),
         removeTemp() {},
         assertCheckoutClean: cleanCheckout,
         resolveRevision: () => {
@@ -167,7 +178,8 @@ describe('daily-driver UI qualification wrapper', () => {
     });
     await expect(
       runDailyDriverUiQualification({
-        makeTemp: () => '/tmp/station-daily-driver-ui-provenance-test',
+        makeTemp: () =>
+          join(tmpdir(), 'station-daily-driver-ui-provenance-test'),
         removeTemp() {},
         assertCheckoutClean: cleanCheckout,
         resolveRevision: () => SOURCE_REVISION,
@@ -182,7 +194,8 @@ describe('daily-driver UI qualification wrapper', () => {
     let executed = false;
     await expect(
       runDailyDriverUiQualification({
-        makeTemp: () => '/tmp/station-daily-driver-ui-dirty-before-test',
+        makeTemp: () =>
+          join(tmpdir(), 'station-daily-driver-ui-dirty-before-test'),
         removeTemp() {},
         assertCheckoutClean: () => {
           throw new Error('checkout contains uncommitted changes');
@@ -201,7 +214,8 @@ describe('daily-driver UI qualification wrapper', () => {
     let executed = false;
     await expect(
       runDailyDriverUiQualification({
-        makeTemp: () => '/tmp/station-daily-driver-ui-dirty-after-test',
+        makeTemp: () =>
+          join(tmpdir(), 'station-daily-driver-ui-dirty-after-test'),
         removeTemp() {},
         assertCheckoutClean: () => {
           cleanlinessChecks += 1;
@@ -223,7 +237,7 @@ describe('daily-driver UI qualification wrapper', () => {
     let requestedTimeoutMs = 0;
     await expect(
       runDailyDriverUiQualification({
-        makeTemp: () => '/tmp/station-daily-driver-ui-timeout-test',
+        makeTemp: () => join(tmpdir(), 'station-daily-driver-ui-timeout-test'),
         removeTemp() {},
         assertCheckoutClean: cleanCheckout,
         resolveRevision: () => SOURCE_REVISION,

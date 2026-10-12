@@ -1,0 +1,7 @@
+{
+  "revision": "c504d5902ffdb4fcb222f7f46939f48feb6fe4bc",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Re-read the orchestration-chat-flow journey row and the viewport caveat against the spec after adding mount-settle waits at its 1280px and 360px viewport flips (the Coding layout moves Chat between centre and dock there). The journey it documents (transcript, tool activity, approval UI from canonical events) is unchanged; the waits make the existing geometry reads honest. No prose change.","inputs":["docs/testing/browser-smoke.md"]}
+  ]
+}

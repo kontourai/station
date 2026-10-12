@@ -60,6 +60,47 @@ export interface CredentialProfile {
   ref: string;
   /** Optional display label. Never use as account identity. */
   label?: string;
+  /**
+   * Optional non-secret environment overlay applied to engine sessions that
+   * run under this profile (for example a proxy base URL). An empty-string
+   * value masks an inherited variable. Credential-shaped names and values
+   * are refused by a heuristic (names such as `*_KEY`, `*_TOKEN`, `*_AUTH`,
+   * `*_HEADERS`; values carrying URL userinfo or an authorization header),
+   * as are the profile-home keys and Station-internal names. It is visible
+   * to anyone who can read connection settings and to the engine's tools.
+   */
+  env?: Record<string, string>;
+}
+
+/**
+ * Value-free marker for a saved env overlay that breaks the env rules (for
+ * example after a hand edit that pasted a key). Lists the offending
+ * variable NAMES only, never values; malformed names are not echoed.
+ */
+export interface CredentialProfileEnvInvalid {
+  names: string[];
+}
+
+/**
+ * A profile as persisted in `CredentialProfileRegistryState`. `env`, when
+ * present, is a valid overlay. When a saved overlay breaks the env rules,
+ * normalization drops its values and persists `envInvalid` instead (and no
+ * `env`), so the pasted text is not retained while unrelated writes keep
+ * the profile refused rather than silently un-routed. Sessions under a
+ * profile carrying `envInvalid` fail closed until its overlay is replaced.
+ */
+export interface CredentialProfileRecord extends CredentialProfile {
+  envInvalid?: CredentialProfileEnvInvalid;
+}
+
+/** Management projection of a profile. */
+export interface CredentialProfileProjection extends CredentialProfile {
+  /**
+   * Present when the saved overlay breaks the env rules (see
+   * `CredentialProfileRecord`). Sessions under this profile fail closed
+   * until the overlay is replaced; `env` is then omitted.
+   */
+  envInvalid?: CredentialProfileEnvInvalid;
 }
 
 /** Minimal profile metadata for an explicitly delegated engine sign-in. */
@@ -103,11 +144,13 @@ export type CredentialProfileApplicationOutcome =
   | 'unsupported';
 
 /**
- * Persisted, non-secret credential-profile state. Credential values belong
- * exclusively to the selected app-home directory, never to this record.
+ * Persisted, non-secret credential-profile state. Credential values belong to
+ * the selected app-home directory, never to this record: a profile's `env`
+ * overlay is refused (heuristically) when a name or value looks like a
+ * credential, except an empty masking value.
  */
 export interface CredentialProfileRegistryState {
-  profiles?: CredentialProfile[];
+  profiles?: CredentialProfileRecord[];
   group?: CredentialRecoveryGroup;
   policy?: CredentialRecoveryPolicy;
   activeProfileRef?: string;
@@ -124,7 +167,7 @@ export interface CredentialProfileApplicationProjection {
 
 /** Non-secret connection projection for profile management and recovery state. */
 export interface CredentialRecoveryGroupProjection {
-  profiles: CredentialProfile[];
+  profiles: CredentialProfileProjection[];
   group: CredentialRecoveryGroup;
   policy: Required<CredentialRecoveryPolicy>;
   application: CredentialProfileApplicationProjection;
@@ -170,6 +213,14 @@ export interface ConnectionRecoveryIntent {
   /** Whether the prepared dispatch had staged a credential profile. */
   dispatchKind?: 'due' | 'profile';
   resumedTurnId?: string;
+  /** Why Station left this intent to the user or retired it unsent. */
+  outcomeReason?: ConnectionRecoveryOutcomeReason;
+  /**
+   * #3157: armed from a provider usage-limit stop (`UsageLimitFailureDetails`).
+   * Only these intents are gated by `usageLimitAutoResume` and re-checked
+   * against the conversation before an unattended resume.
+   */
+  usageLimit?: true;
   createdAt: string;
   updatedAt: string;
 }
@@ -183,5 +234,47 @@ export interface ConnectionRecoveryProjection {
   dueAt?: string;
   attempts: number;
   maxAttempts: number;
+  outcomeReason?: ConnectionRecoveryOutcomeReason;
+  /** #3157: the intent came from a provider usage-limit stop. */
+  usageLimit?: true;
+  /**
+   * #3157: on a usage-limit intent still waiting (`armed`), whether the
+   * `usageLimitAutoResume` setting currently lets it run unattended at
+   * `dueAt`. The setting is applied only when the resume is due, so this can
+   * change while it waits. Absent when the reader did not consult it.
+   */
+  autoResume?: boolean;
   updatedAt: string;
+}
+
+/**
+ * #3157: why a usage-limit intent did not resume on its own. A `manual`
+ * intent carries `auto-resume-off`. A `canceled` intent carries
+ * `superseded`, `request-pending`, `session-ended` or `user-canceled` when one
+ * of those retired it; other cancellations (a Stop, shutdown) carry no reason.
+ */
+export type ConnectionRecoveryOutcomeReason =
+  /** The user has not turned on automatic resume after usage limits. */
+  | 'auto-resume-off'
+  /** A newer turn started in the conversation before the resume ran. */
+  | 'superseded'
+  /** The Session was waiting on an open request when the resume was due. */
+  | 'request-pending'
+  /** The Session closed or no longer exists. */
+  | 'session-ended'
+  /** The user chose Cancel auto-resume on the banner while it waited. */
+  | 'user-canceled';
+
+/**
+ * #3157: `runtime.error` details an engine adapter attaches when the provider
+ * itself reported a usage limit. The classifier reads `usageLimit` as a
+ * `rate-limit` failure; `resetAt` is the provider's own reset time and is
+ * absent when the provider gave none, which keeps the stop manual. Adapters
+ * never derive it from message text (#2265).
+ */
+export interface UsageLimitFailureDetails {
+  usageLimit: true;
+  scope: 'account';
+  /** ISO 8601 instant the limited window resets, as the provider reported it. */
+  resetAt?: string;
 }

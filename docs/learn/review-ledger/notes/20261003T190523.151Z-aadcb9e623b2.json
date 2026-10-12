@@ -1,0 +1,17 @@
+{
+  "revision": "534e4a52bc7cea488e6b98cffaf40ccff8c486b8",
+
+  "notes": [
+    {"path":"docs/guides/deployment-authentication.md","note":"#3193: checked the collaborator-profile passage against ProjectSharedTaskService.publication and the shared Task routes. A member now gets the list's summary for a Task currently shared into that Project incarnation; unshared, stale, unknown and other-scope Tasks share the routes' uniform not-found; only the operator sees `unshared`; share and unshare still require operator(). Added that sentence. The later list/history/document/publication and guarded-delivery passages and the account-bound gate allowlist remain accurate.","inputs":["docs/guides/deployment-authentication.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#3193: the cited deployment-authentication guide gained a sentence on member publication reads. This guide only routes to it for deployment and authentication and makes no shared-Task publication claim, so no prose change.","inputs":["docs/guides/integrating-station.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"#3193: the shared Task service now lets a member read a currently shared Task's publication summary. This guide's account scenario claims (unpublished work stays hidden, unsharing/republication/revocation checked) still hold: unpublished Tasks remain the uniform not-found for members. No prose change.","inputs":["docs/guides/local-collaboration-lab.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"#3193: the shared Task service now lets a member read a currently shared Task's publication summary. The guide's read-only list/history/document and publication-recheck claims remain accurate; it makes no operator-only publication claim. No prose change.","inputs":["docs/guides/machine-relationships.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"#3193: checked getProjectSharedTaskPublication against the service and routes. Documented that a member receives `{ kind: 'shared', publication }` equal to the list summary, that unshared/stale/unknown/other-scope Tasks refuse with one not-found, that member pages gate history and document on that match (ProjectsContext sameSharedProjectTask), and that only operators see `unshared` and may share or unshare.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"#3193: the shared Task service now lets a member read a currently shared Task's publication summary. The threat model's claims that shared-work reads require current account and Project authority, and that current authority is checked before private work and publication, still hold: the member path re-checks principal, membership and admission. No prose change.","inputs":["docs/security/remote-access-threat-model.md"]}
+  ]
+}

@@ -3,6 +3,7 @@
  */
 
 import {
+  DEFAULT_CODING_PANELS_RECORD,
   DEFAULT_NOTIFICATION_SOUND_PREFERENCES,
   DEFAULT_REGION_ARRANGEMENT_RECORD,
 } from '@kontourai/station-contracts/device-settings';
@@ -734,6 +735,48 @@ describe('device-settings-store', () => {
       const { deviceSettingsStore: rebooted } = await freshStore();
       expect(rebooted.get('theme')).toBe('light');
       expect(rebooted.get('regionArrangement')).toBe('not a record');
+    });
+
+    // #3051: the per-session panels record is validated by its own parser
+    // on import, the way `regionArrangement` is.
+    test('drops an unrecognisable codingPanels record and keeps a readable one with its malformed entries dropped', async () => {
+      const { deviceSettingsStore } = await freshStore();
+
+      const dropped = deviceSettingsStore.importEnvelope({
+        version: 1,
+        values: { codingPanels: { version: 7, sessions: {} } },
+      });
+      expect(dropped.droppedKeys).toEqual(['codingPanels']);
+      expect(deviceSettingsStore.get('codingPanels')).toEqual(
+        DEFAULT_CODING_PANELS_RECORD,
+      );
+
+      const readable = deviceSettingsStore.importEnvelope({
+        version: 1,
+        values: {
+          codingPanels: {
+            version: 1,
+            sessions: {
+              'conv-a': { side: 'diff', sideWidth: 500, at: 3 },
+              'conv-b': { side: 12 },
+            },
+          },
+        },
+      });
+      expect(readable.droppedKeys).toEqual([]);
+      expect(deviceSettingsStore.get('codingPanels')).toEqual({
+        version: 1,
+        sessions: {
+          'conv-a': {
+            side: 'diff',
+            sideWidth: 500,
+            terminalOpen: false,
+            terminalHeight: null,
+            inbox: null,
+            at: 3,
+          },
+        },
+      });
     });
 
     describe('shortcutOverrides / modelPickerPreferences shape validation (slice 3 review finding 2)', () => {

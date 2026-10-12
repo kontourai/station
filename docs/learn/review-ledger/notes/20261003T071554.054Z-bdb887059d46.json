@@ -1,0 +1,7 @@
+{
+  "revision": "78cae83646c51c21b8d21e3eca6704912fc594a6",
+
+  "notes": [
+    {"path":"docs/learn/media/connections-models.png","note":"The capture is a fine-pointer desktop render of Connections. The split-pane search field's touch floor moved from SplitPaneLayout.css to chat.css's (max-width: 768px), (pointer: coarse) block; neither condition matches the capture, whose search field height is unchanged (the fine-pointer height is asserted in SplitPaneLayout.touch-target.test.tsx).","inputs":["src-ui/src/components/SplitPaneLayout.css","src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]}
+  ]
+}

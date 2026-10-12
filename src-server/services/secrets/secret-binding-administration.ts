@@ -8,7 +8,9 @@ import {
   parseAuthRef,
   type SecretRunner,
 } from '@kontourai/station-contracts/datum-secret-reference';
+import { principalIdMatchesKind } from '@kontourai/station-contracts/principal';
 import {
+  type CredentialOwner,
   type SecretBinding,
   type SecretBindingDocument,
   type SecretBindingGrant,
@@ -55,6 +57,53 @@ export class SecretBindingConflictError extends Error {
   }
 }
 
+/** Stable not-found copy shared by the operator route. */
+export const SECRET_BINDING_NOT_FOUND_MESSAGE = 'Secret binding not found.';
+
+/**
+ * #3279: one refusal for a binding that does not exist and one owned by
+ * another person, so the two cannot be told apart by any route response.
+ */
+export class SecretBindingNotFoundError extends Error {
+  constructor() {
+    super(SECRET_BINDING_NOT_FOUND_MESSAGE);
+    this.name = 'SecretBindingNotFoundError';
+  }
+}
+
+/** Stable refusal copy for granting a person's binding to a shared consumer. */
+export const SECRET_BINDING_PERSON_GRANT_MESSAGE =
+  'A person-owned secret binding cannot be granted to a shared integration or provider.';
+
+/**
+ * #3279: stdio MCP children and ACP providers are shared and name no
+ * principal, so resolution would refuse a person's binding for every caller.
+ * Granting it would let one person lock a shared integration; refuse instead
+ * until a child can serve exactly one principal.
+ */
+export class SecretBindingPersonGrantError extends Error {
+  constructor() {
+    super(SECRET_BINDING_PERSON_GRANT_MESSAGE);
+    this.name = 'SecretBindingPersonGrantError';
+  }
+}
+
+/** Stable refusal copy for creating a person-owned binding. */
+export const SECRET_BINDING_PERSON_CREATE_MESSAGE =
+  'Person-owned secret bindings are not available yet.';
+
+/**
+ * #3279: no consumer can use a person-owned binding yet (`grant` refuses
+ * every shared child), so creating one would store a state nothing
+ * computes. Reads, visibility and resolution still handle existing records.
+ */
+export class SecretBindingPersonCreateError extends Error {
+  constructor() {
+    super(SECRET_BINDING_PERSON_CREATE_MESSAGE);
+    this.name = 'SecretBindingPersonCreateError';
+  }
+}
+
 /** Stable, non-Datum diagnostic that is safe to show outside the secret seam. */
 export class SecretBindingResolutionError extends Error {
   constructor(
@@ -64,7 +113,8 @@ export class SecretBindingResolutionError extends Error {
       | 'grant_missing'
       | 'backend_unavailable'
       | 'secret_unavailable'
-      | 'invalid_binding',
+      | 'invalid_binding'
+      | 'owner_mismatch',
   ) {
     super('The integration secret binding cannot be established.');
     this.name = 'SecretBindingResolutionError';
@@ -83,34 +133,88 @@ function secretBindingHasGrant(
   return grants.some((grant) => grantKey(grant) === grantKey(expected));
 }
 
+/**
+ * #3279: who is looking at or changing bindings. The principal id is the
+ * request's own resolved principal, never request input. Without a viewer
+ * (internal callers) only instance-owned bindings are visible, so a person's
+ * binding is never listed, changed, or granted by a path that cannot say who
+ * is asking.
+ */
+export interface SecretBindingViewer {
+  principalId: string;
+}
+
 export interface SecretBindingAdministration {
-  list(): Promise<SecretBindingView[]>;
-  get(id: SecretBindingId): Promise<SecretBindingView | null>;
+  list(viewer?: SecretBindingViewer): Promise<SecretBindingView[]>;
+  get(
+    id: SecretBindingId,
+    viewer?: SecretBindingViewer,
+  ): Promise<SecretBindingView | null>;
   create(input: {
     id: string;
     name: string;
     authRef: unknown;
+    /** Absent means `instance`; any other owner is refused for now (#3279). */
+    owner?: CredentialOwner;
+    viewer?: SecretBindingViewer;
   }): Promise<SecretBindingView>;
   replace(input: {
     id: SecretBindingId;
     name: string;
     authRef: unknown;
     expectedRevision: number;
+    viewer?: SecretBindingViewer;
   }): Promise<SecretBindingView>;
   grant(input: {
     id: SecretBindingId;
     grant: SecretBindingGrant;
     expectedRevision: number;
+    viewer?: SecretBindingViewer;
   }): Promise<SecretBindingView>;
   ungrant(input: {
     id: SecretBindingId;
     grant: SecretBindingGrant;
     expectedRevision: number;
+    viewer?: SecretBindingViewer;
   }): Promise<SecretBindingView>;
   revoke(input: {
     id: SecretBindingId;
     expectedRevision: number;
+    viewer?: SecretBindingViewer;
   }): Promise<SecretBindingView>;
+}
+
+/** The single visibility predicate for a binding's owner. */
+function secretBindingVisibleTo(
+  binding: Pick<SecretBinding, 'owner'>,
+  viewer: SecretBindingViewer | undefined,
+): boolean {
+  const owner = binding.owner;
+  if (!owner || owner.kind === 'instance') return true;
+  return viewer?.principalId === owner.principalId;
+}
+
+function secretBindingPersonOwned(
+  binding: Pick<SecretBinding, 'owner'>,
+): boolean {
+  return Boolean(binding.owner && binding.owner.kind !== 'instance');
+}
+
+/**
+ * Materialization authority for an owner: an instance binding may serve any
+ * consumer; a person's binding serves only that person's invocation (and,
+ * when narrowed, only in that Project). Shared children pass no principal.
+ */
+function secretBindingUsableBy(
+  binding: Pick<SecretBinding, 'owner'>,
+  invocation: { principalId?: string; projectSlug?: string },
+): boolean {
+  const owner = binding.owner;
+  if (!owner || owner.kind === 'instance') return true;
+  if (invocation.principalId !== owner.principalId) return false;
+  return (
+    owner.kind === 'principal' || invocation.projectSlug === owner.projectSlug
+  );
 }
 
 /** Narrow mutation authority for a legacy credential migration. */
@@ -130,18 +234,21 @@ export interface SecretBindingIntegrationAdministration {
     integrationId: string;
     secretEnvBindingIds: Record<string, string>;
   }>;
-  bind(input: {
-    id: SecretBindingId;
-    integrationId: string;
-    envName: string;
-    expectedRevision: number;
-  }): Promise<SecretBindingIntegrationOutcome>;
-  unbind(input: {
-    id: SecretBindingId;
-    integrationId: string;
-    envName: string;
-    expectedRevision: number;
-  }): Promise<SecretBindingIntegrationOutcome>;
+  bind(
+    input: SecretBindingConsumerInput,
+  ): Promise<SecretBindingIntegrationOutcome>;
+  unbind(
+    input: SecretBindingConsumerInput,
+  ): Promise<SecretBindingIntegrationOutcome>;
+}
+
+export interface SecretBindingConsumerInput {
+  id: SecretBindingId;
+  integrationId: string;
+  envName: string;
+  expectedRevision: number;
+  /** The request's resolved principal; every binding read and grant uses it. */
+  viewer?: SecretBindingViewer;
 }
 
 export type SecretBindingIntegrationOutcome = {
@@ -188,6 +295,8 @@ export class SecretBindingIntegrationService
     integrationId: string;
     secretEnvBindingIds: Record<string, string>;
   }> {
+    // Every reference, unfiltered: `grant` admits only instance bindings to
+    // a shared consumer, so a reference never names a person's binding.
     const def = await this.configLoader.loadIntegration(input.integrationId);
     return {
       integrationId: input.integrationId,
@@ -195,12 +304,9 @@ export class SecretBindingIntegrationService
     };
   }
 
-  async bind(input: {
-    id: SecretBindingId;
-    integrationId: string;
-    envName: string;
-    expectedRevision: number;
-  }): Promise<SecretBindingIntegrationOutcome> {
+  async bind(
+    input: SecretBindingConsumerInput,
+  ): Promise<SecretBindingIntegrationOutcome> {
     try {
       return await this.bindInternal(input);
     } catch (error) {
@@ -209,12 +315,9 @@ export class SecretBindingIntegrationService
     }
   }
 
-  private async bindInternal(input: {
-    id: SecretBindingId;
-    integrationId: string;
-    envName: string;
-    expectedRevision: number;
-  }): Promise<SecretBindingIntegrationOutcome> {
+  private async bindInternal(
+    input: SecretBindingConsumerInput,
+  ): Promise<SecretBindingIntegrationOutcome> {
     const def = await this.assertConsumer(input.integrationId, input.envName);
     const configured = def.secretEnvRefs?.[input.envName];
     if (configured && configured !== input.id) {
@@ -225,14 +328,19 @@ export class SecretBindingIntegrationService
     const current = await this.requiredBindingAtRevision(
       input.id,
       input.expectedRevision,
+      input.viewer,
     );
     // Grant FIRST: a config reference never becomes live unless the binding
     // authority has recorded permission for exactly this consumer/env pair.
-    const alreadyGranted = secretBindingHasGrant(current, {
-      kind: 'mcp-integration-env',
-      integrationId: input.integrationId,
-      envName: input.envName,
-    });
+    // A person's binding always goes through `grant`, which refuses it, even
+    // if a grant was recorded before that refusal existed.
+    const alreadyGranted =
+      !secretBindingPersonOwned(current) &&
+      secretBindingHasGrant(current, {
+        kind: 'mcp-integration-env',
+        integrationId: input.integrationId,
+        envName: input.envName,
+      });
     const binding = alreadyGranted
       ? current
       : await this.bindings.grant({
@@ -243,6 +351,7 @@ export class SecretBindingIntegrationService
             integrationId: input.integrationId,
             envName: input.envName,
           },
+          ...(input.viewer ? { viewer: input.viewer } : {}),
         });
     try {
       await this.updateIntegration(input.integrationId, (current) => ({
@@ -266,12 +375,9 @@ export class SecretBindingIntegrationService
     }
   }
 
-  async unbind(input: {
-    id: SecretBindingId;
-    integrationId: string;
-    envName: string;
-    expectedRevision: number;
-  }): Promise<SecretBindingIntegrationOutcome> {
+  async unbind(
+    input: SecretBindingConsumerInput,
+  ): Promise<SecretBindingIntegrationOutcome> {
     try {
       return await this.unbindInternal(input);
     } catch (error) {
@@ -280,12 +386,9 @@ export class SecretBindingIntegrationService
     }
   }
 
-  private async unbindInternal(input: {
-    id: SecretBindingId;
-    integrationId: string;
-    envName: string;
-    expectedRevision: number;
-  }): Promise<SecretBindingIntegrationOutcome> {
+  private async unbindInternal(
+    input: SecretBindingConsumerInput,
+  ): Promise<SecretBindingIntegrationOutcome> {
     const def = await this.assertConsumer(input.integrationId, input.envName);
     const configured = def.secretEnvRefs?.[input.envName];
     if (configured && configured !== input.id) {
@@ -296,6 +399,7 @@ export class SecretBindingIntegrationService
     const current = await this.requiredBindingAtRevision(
       input.id,
       input.expectedRevision,
+      input.viewer,
       { allowRevoked: true },
     );
     // Config FIRST: after this point the child cannot consume the binding,
@@ -339,13 +443,14 @@ export class SecretBindingIntegrationService
               integrationId: input.integrationId,
               envName: input.envName,
             },
+            ...(input.viewer ? { viewer: input.viewer } : {}),
           })
         : current;
       const result = this.outcome(input, binding, 'complete');
       this.auditConsumer('unbind', result, 'success');
       return result;
     } catch {
-      const binding = await this.bindings.get(input.id);
+      const binding = await this.bindings.get(input.id, input.viewer);
       if (!binding)
         throw new Error('Secret binding not found after config update.');
       const result = {
@@ -390,13 +495,22 @@ export class SecretBindingIntegrationService
     return def;
   }
 
+  private async requiredVisibleBinding(
+    id: SecretBindingId,
+    viewer: SecretBindingViewer | undefined,
+  ): Promise<SecretBindingView> {
+    const binding = await this.bindings.get(id, viewer);
+    if (!binding) throw new SecretBindingNotFoundError();
+    return binding;
+  }
+
   private async requiredBindingAtRevision(
     id: SecretBindingId,
     expectedRevision: number,
+    viewer: SecretBindingViewer | undefined,
     options: { allowRevoked?: boolean } = {},
   ): Promise<SecretBindingView> {
-    const binding = await this.bindings.get(id);
-    if (!binding) throw new Error('Secret binding not found.');
+    const binding = await this.requiredVisibleBinding(id, viewer);
     if (binding.revokedAt && !options.allowRevoked)
       throw new Error('Secret binding is revoked.');
     if (binding.revision !== expectedRevision)
@@ -461,6 +575,13 @@ export interface IntegrationSecretResolver {
   resolveForIntegration(input: {
     integrationId: string;
     secretEnvRefs: Record<string, SecretBindingId>;
+    /**
+     * #3279: the invoking principal, when the child serves exactly one
+     * person. Shared integration children pass none, so a person-owned
+     * binding is refused for them (`owner_mismatch`).
+     */
+    principalId?: string;
+    projectSlug?: string;
   }): Promise<IntegrationSecretResolution>;
 }
 
@@ -523,28 +644,38 @@ export class FileSecretBindingAdministration
     this.#logger = options.logger;
   }
 
-  async list(): Promise<SecretBindingView[]> {
+  async list(viewer?: SecretBindingViewer): Promise<SecretBindingView[]> {
     const document = this.#store.read();
     return Object.values(document.bindings)
+      .filter((binding) => secretBindingVisibleTo(binding, viewer))
       .map((binding) => this.#view(binding))
       .sort((a, b) => a.id.localeCompare(b.id));
   }
 
-  async get(id: SecretBindingId): Promise<SecretBindingView | null> {
+  async get(
+    id: SecretBindingId,
+    viewer?: SecretBindingViewer,
+  ): Promise<SecretBindingView | null> {
     assertBindingId(id);
     const binding = this.#store.read().bindings[id];
-    return binding ? this.#view(binding) : null;
+    return binding && secretBindingVisibleTo(binding, viewer)
+      ? this.#view(binding)
+      : null;
   }
 
   async create(input: {
     id: string;
     name: string;
     authRef: unknown;
+    owner?: CredentialOwner;
+    viewer?: SecretBindingViewer;
   }): Promise<SecretBindingView> {
     return this.#adminOperation('create', { bindingId: input.id }, async () => {
       assertBindingId(input.id);
       const name = validName(input.name);
       const authRef = parseAuthRef(input.authRef);
+      // Only `instance` (or no owner) is accepted; see the error's comment.
+      if (parseOwner(input.owner)) throw new SecretBindingPersonCreateError();
       const created = await this.#store.mutate((document) => {
         if (document.bindings[input.id]) {
           throw new Error('A secret binding with this id already exists.');
@@ -579,6 +710,7 @@ export class FileSecretBindingAdministration
     name: string;
     authRef: unknown;
     expectedRevision: number;
+    viewer?: SecretBindingViewer;
   }): Promise<SecretBindingView> {
     return this.#adminOperation(
       'replace',
@@ -593,6 +725,7 @@ export class FileSecretBindingAdministration
             document,
             input.id,
             input.expectedRevision,
+            input.viewer,
           );
           const next = {
             ...current,
@@ -618,6 +751,7 @@ export class FileSecretBindingAdministration
     id: SecretBindingId;
     grant: SecretBindingGrant;
     expectedRevision: number;
+    viewer?: SecretBindingViewer;
   }): Promise<SecretBindingView> {
     return this.#adminOperation(
       'bind',
@@ -634,7 +768,12 @@ export class FileSecretBindingAdministration
             document,
             input.id,
             input.expectedRevision,
+            input.viewer,
           );
+          // After the visibility lookup, so another person's binding still
+          // refuses as not found rather than revealing itself here.
+          if (secretBindingPersonOwned(current))
+            throw new SecretBindingPersonGrantError();
           const alreadyGranted = secretBindingHasGrant(current, input.grant);
           if (alreadyGranted)
             throw new Error('The integration environment is already granted.');
@@ -680,6 +819,7 @@ export class FileSecretBindingAdministration
     id: SecretBindingId;
     grant: SecretBindingGrant;
     expectedRevision: number;
+    viewer?: SecretBindingViewer;
   }): Promise<SecretBindingView> {
     return this.#adminOperation(
       'unbind',
@@ -696,6 +836,7 @@ export class FileSecretBindingAdministration
             document,
             input.id,
             input.expectedRevision,
+            input.viewer,
           );
           if (!secretBindingHasGrant(current, input.grant))
             throw new Error('The secret binding grant does not exist.');
@@ -737,6 +878,7 @@ export class FileSecretBindingAdministration
   async revoke(input: {
     id: SecretBindingId;
     expectedRevision: number;
+    viewer?: SecretBindingViewer;
   }): Promise<SecretBindingView> {
     return this.#adminOperation('revoke', { bindingId: input.id }, async () => {
       assertBindingId(input.id);
@@ -746,6 +888,7 @@ export class FileSecretBindingAdministration
           document,
           input.id,
           input.expectedRevision,
+          input.viewer,
         );
         const timestamp = this.#now().toISOString();
         const next = {
@@ -769,6 +912,8 @@ export class FileSecretBindingAdministration
   async resolveForIntegration(input: {
     integrationId: string;
     secretEnvRefs: Record<string, SecretBindingId>;
+    principalId?: string;
+    projectSlug?: string;
   }): Promise<IntegrationSecretResolution> {
     try {
       assertIntegrationId(input.integrationId);
@@ -797,6 +942,8 @@ export class FileSecretBindingAdministration
         if (!binding) throw new SecretBindingResolutionError('binding_missing');
         if (binding.revokedAt)
           throw new SecretBindingResolutionError('binding_revoked');
+        if (!secretBindingUsableBy(binding, input))
+          throw new SecretBindingResolutionError('owner_mismatch');
         if (
           !secretBindingHasGrant(binding, {
             kind: 'mcp-integration-env',
@@ -913,6 +1060,9 @@ export class FileSecretBindingAdministration
         if (!binding) throw new SecretBindingResolutionError('binding_missing');
         if (binding.revokedAt)
           throw new SecretBindingResolutionError('binding_revoked');
+        // ACP provider headers are spent by a shared connection.
+        if (!secretBindingUsableBy(binding, {}))
+          throw new SecretBindingResolutionError('owner_mismatch');
         if (
           !secretBindingHasGrant(binding, {
             kind: 'acp-provider-header',
@@ -1048,6 +1198,7 @@ export class FileSecretBindingAdministration
     );
     return {
       ...binding,
+      owner: binding.owner ?? { kind: 'instance' },
       grants: binding.grants.map((grant) => ({ ...grant })),
       availability: {
         backend: availability.kind,
@@ -1167,6 +1318,7 @@ function validateDocument(value: unknown): SecretBindingDocument {
       'id',
       'name',
       'authRef',
+      'owner',
       'revision',
       'grants',
       'acpProviderHeaderGrants',
@@ -1211,10 +1363,12 @@ function validateDocument(value: unknown): SecretBindingDocument {
         grants.length + acpProviderHeaderGrants.length
     )
       throw new Error();
+    const owner = parseOwner(binding.owner);
     bindings[id] = {
       id,
       name: binding.name,
       authRef: parseAuthRef(binding.authRef),
+      ...(owner ? { owner } : {}),
       revision: binding.revision!,
       grants: grants.sort(compareGrant),
       ...(acpProviderHeaderGrants.length > 0
@@ -1230,6 +1384,51 @@ function validateDocument(value: unknown): SecretBindingDocument {
   return { schemaVersion: 1, bindings };
 }
 
+const OWNER_PRINCIPAL_MAX = 512;
+const OWNER_PROJECT_SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+/**
+ * Parses a persisted or requested owner. `instance` (and absence) normalize
+ * to `undefined` so legacy records stay byte-identical; anything malformed is
+ * refused rather than read as shared.
+ */
+function parseOwner(
+  value: unknown,
+): Exclude<CredentialOwner, { kind: 'instance' }> | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Invalid secret binding owner.');
+  const owner = value as Record<string, unknown>;
+  if (owner.kind === 'instance') {
+    assertOnlyKeys(owner, ['kind']);
+    return undefined;
+  }
+  const principalId = owner.principalId;
+  if (
+    typeof principalId !== 'string' ||
+    principalId.length > OWNER_PRINCIPAL_MAX ||
+    !principalIdMatchesKind(principalId, 'human')
+  )
+    throw new Error('Invalid secret binding owner.');
+  if (owner.kind === 'principal') {
+    assertOnlyKeys(owner, ['kind', 'principalId']);
+    return { kind: 'principal', principalId };
+  }
+  if (
+    owner.kind === 'principal-project' &&
+    typeof owner.projectSlug === 'string' &&
+    OWNER_PROJECT_SLUG.test(owner.projectSlug)
+  ) {
+    assertOnlyKeys(owner, ['kind', 'principalId', 'projectSlug']);
+    return {
+      kind: 'principal-project',
+      principalId,
+      projectSlug: owner.projectSlug,
+    };
+  }
+  throw new Error('Invalid secret binding owner.');
+}
+
 function assertOnlyKeys(value: object, allowed: readonly string[]): void {
   if (Object.keys(value).some((key) => !allowed.includes(key))) {
     throw new Error();
@@ -1240,9 +1439,12 @@ function requiredActiveBinding(
   document: SecretBindingDocument,
   id: string,
   expectedRevision: number,
+  viewer: SecretBindingViewer | undefined,
 ): SecretBinding {
   const binding = document.bindings[id];
-  if (!binding) throw new Error('Secret binding not found.');
+  // Another person's binding is indistinguishable from a missing one.
+  if (!binding || !secretBindingVisibleTo(binding, viewer))
+    throw new SecretBindingNotFoundError();
   if (binding.revokedAt) throw new Error('Secret binding is revoked.');
   if (binding.revision !== expectedRevision)
     throw new SecretBindingConflictError();

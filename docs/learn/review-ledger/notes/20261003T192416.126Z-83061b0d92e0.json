@@ -1,0 +1,7 @@
+{
+  "revision": "397b4cb16ee64b1693eddff490ac75947d250436",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Upstream record taken on merge; ChatDock.tsx remains the orchestration-based chat consumer, the Needs-you publication is host-facing, not an API. No prose change.","inputs":["docs/reference/api.md","packages/contracts/src/provider.ts","scripts/plugin-identity-enumeration-scan.mjs","src-desktop/src/lib.rs","src-desktop/src/native_relay_redemption.rs","src-server/routes/plugins/__tests__/registry-marketplaces.routes.test.ts","src-server/routes/plugins/plugin-host-approval-routes.ts","src-server/routes/plugins/plugin-identity-enumeration.ts","src-server/routes/plugins/plugin-install-routes.ts","src-server/routes/plugins/plugin-lifecycle-routes.ts","src-server/routes/plugins/plugin-public-routes.ts","src-server/routes/plugins/plugins.ts","src-server/routes/plugins/registry.ts","src-server/routes/schemas/schema-definitions/content.ts","src-server/runtime/bootstrap/station-runtime.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/services/agents/skill-service.ts","src-server/services/plugins/plugin-install-transaction.ts","src-server/services/plugins/plugin-runtime-artifact.ts","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

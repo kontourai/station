@@ -1,0 +1,7 @@
+{
+  "revision": "b03622e2007e22ff75c7280a41396526c75a7b6e",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"#3071 review-fix round. Changed inputs: CLI operate derive.ts (applies the shared settle fold; rows carry requestEventId); operate shell.ts (sends expectedRequestEventId); operate state.ts (the respond intent carries the listed event id for an approval or permission). Added the approvals pending definition/requestEventId/respond binding paragraph and the operate approvals-pane paragraph. Checked against packages/cli/src/commands/approvals.ts (derivePendingApprovals, expectedRequestEvent: approval/permission only, no client-side veto) and operate derive.ts/state.ts/shell.ts; executed core-http.test.ts and operate-keys.test.ts #3071 cases. Operate's existing authentication limitation is unchanged and was not re-tested. Rest of the page not re-reviewed.","inputs":["docs/reference/cli.md"]}
+  ]
+}

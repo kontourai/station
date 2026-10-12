@@ -1,0 +1,7 @@
+{
+  "revision": "daf6eb79685a718b7f0b4ed84ba24aabc0ad6681",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Reviewed integration with actual workflow-name landing ccb40: qualification-health now watches Main: Qualification, its own name and main-health consumer match Main: Qualification health, and Nightly remains dispatch/call only. Focused125tests and actionlint passed; namespace/qualification/publishing identities remain exact source. Preserve original reviews and owned no-independent-schedule behavior.","inputs":["docs/guides/releasing.md",".github/workflows/qualification-health.yml"]}
+  ]
+}

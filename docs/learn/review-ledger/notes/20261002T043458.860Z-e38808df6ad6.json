@@ -1,0 +1,7 @@
+{
+  "revision": "5a36fc2200f30e8d1adc2bb1db88448b4b68312a",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed 5a36fc220 against 21537a9ef: chat.css changes one comment from tapping opens Manage Stations to tapping opens the Station chooser, matching the existing HeaderActions and StationSwitcherMenu caller. No CSS selector, declaration, gesture handler, placement, navigation or authority behavior changes. Placement explanation remains accurate. Source review only; no new native, runtime, geometry or screenshot evidence claimed; prior histories and limits retained.","inputs":["docs/design/placement.md"]}
+  ]
+}

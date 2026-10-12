@@ -6,6 +6,8 @@ import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display'
 import type {
   ApprovalAttentionItem,
   AttentionItem,
+  NeedsInputAttentionItem,
+  ReviewPendingAttentionItem,
   SessionFailedAttentionItem,
 } from '@kontourai/station-sdk';
 import { notificationCategoryLabel } from './notificationLabels';
@@ -188,4 +190,91 @@ export function sessionFailedIdentity(
     item.agent ?? null,
   ].filter((part): part is string => Boolean(part));
   return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+/**
+ * A waiting item whose task runs on a PAIRED Station. The server derives
+ * `environmentKind` from the session's own delegation record — the same
+ * field `isPeerDelegationRecord` reads in the Activity detail — so the inbox
+ * and the detail apply one rule. Its thread id names this Station's lifecycle
+ * record only, so no surface may offer a local reply for it.
+ */
+export function isPeerHostedAttentionItem(item: AttentionItem): item is (
+  | NeedsInputAttentionItem
+  | ReviewPendingAttentionItem
+) & {
+  environmentKind: 'peer';
+} {
+  return (
+    (item.kind === 'needs_input' || item.kind === 'review_pending') &&
+    item.environmentKind === 'peer'
+  );
+}
+
+/** Where a peer-hosted item is answered. Shared by the inbox, bell and detail. */
+export function peerAttentionElsewhereText(environmentName?: string): string {
+  return environmentName
+    ? `Answer this on ${environmentName}, the paired Station that runs the task.`
+    : 'Answer this on the paired Station that runs the task.';
+}
+
+type PeerRequestReference = NonNullable<
+  (NeedsInputAttentionItem | ReviewPendingAttentionItem)['peerRequestReference']
+>;
+
+/**
+ * What the inbox may offer for a paired-Station item:
+ * - `decide` (Allow/Deny) for an approval or permission request;
+ * - `answer` (a reply bound to the request) for an input question the
+ *   paired Station reported with its event identity, which only a Station
+ *   that enforces bound answers reports;
+ * - otherwise the note.
+ * Either needs this Station's own gates to pass for the reader
+ * (`viewerCanRespond`, absent = unknown = no) and the paired Station not to
+ * have said it would refuse (`callerCanRespond: false`; absent means it did
+ * not say, and its refusal is shown if it comes).
+ */
+export function peerRequestDecision(
+  item: NeedsInputAttentionItem | ReviewPendingAttentionItem,
+):
+  | { kind: 'decide'; reference: PeerRequestReference }
+  | {
+      kind: 'answer';
+      reference: PeerRequestReference & {
+        threadId: string;
+        requestEventId: string;
+      };
+    }
+  | { kind: 'note'; reason?: string } {
+  const reference = item.peerRequestReference;
+  if (!reference) return { kind: 'note' };
+  const decidable =
+    reference.requestType === 'approval' ||
+    reference.requestType === 'permission';
+  const answerable =
+    reference.requestType === 'input' &&
+    reference.threadId !== undefined &&
+    reference.requestEventId !== undefined;
+  if (!decidable && !answerable) return { kind: 'note' };
+  if (item.viewerCanRespond !== true)
+    return {
+      kind: 'note',
+      reason:
+        "Your access to this Station doesn't allow answering paired-Station requests from here.",
+    };
+  if (reference.callerCanRespond === false)
+    return {
+      kind: 'note',
+      reason:
+        "The paired Station doesn't allow this Station to answer its requests.",
+    };
+  if (decidable) return { kind: 'decide', reference };
+  return {
+    kind: 'answer',
+    reference: {
+      ...reference,
+      threadId: reference.threadId as string,
+      requestEventId: reference.requestEventId as string,
+    },
+  };
 }

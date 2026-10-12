@@ -1,0 +1,7 @@
+{
+  "revision": "86486f271cec9182993f3302eb9010f90ef0c78a",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"#3364: ToolCallDisplay gains a delete kind (trash glyph, Deleted/Deleting/Delete verbs) and unknown tools with only a path are labelled by tool name and target instead of as a read. The doc's claims cover approval previews (toolRequestPreview), standing and session grants (toolRequestSessionGrant) and their card labels; none describe the activity-row verb taxonomy, so no prose change.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/chat/ToolCallDisplay.tsx"]}
+  ]
+}

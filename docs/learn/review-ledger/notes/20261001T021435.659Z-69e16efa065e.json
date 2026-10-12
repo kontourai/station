@@ -1,0 +1,7 @@
+{
+  "revision": "d0fc32d43db81ce8de48c5bd293dfbdea6801b97",
+
+  "notes": [
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed compact Home setup reminder against FirstRunHomeChapter. Only invitation text changed; durable activation, mandatory telemetry acknowledgement, chapter steps, async save cancellation and setup ownership remain unchanged. No fixed completion-time promise remains; focused Home and first-run tests pass.","inputs":["docs/design/connections-onboarding.md"]}
+  ]
+}

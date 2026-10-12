@@ -1,0 +1,7 @@
+{
+  "revision": "e4e9354c4cbb9ad742c0cb2c7990bb51350c012c",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Flagged because docs/guides/testing.md changed. Verified these routing files only link to testing.md and do not restate the liveness bounds; the new section adds no instruction they need to carry.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

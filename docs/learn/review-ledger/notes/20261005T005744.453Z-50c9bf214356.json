@@ -1,0 +1,11 @@
+{
+  "revision": "0cbbb05959430556031d97a9a6a3ba5b35062d6d",
+
+  "notes": [
+    {"path":"docs/guides/release-channel-ports.md","note":"Windows section updated against installer/full-install.ts: launcherText writes paths beneath the profile through %USERPROFILE% and refuses other non-ASCII paths, the hand-over line has no CALL, install and uninstall check an existing install root first and require current inside versions, and rollback restarts on the restored state's ports.","inputs":["docs/guides/release-channel-ports.md"]},
+
+    {"path":"README.md","note":"release-channel-ports.md changed only in its Windows section; the README's macOS/Linux install claims are unchanged.","inputs":["README.md","docs/guides/release-channel-ports.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"release-channel-ports.md changed only in its Windows section; this guide's install and uninstall claims are unchanged.","inputs":["docs/user/getting-started.md","docs/guides/release-channel-ports.md"]}
+  ]
+}

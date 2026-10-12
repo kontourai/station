@@ -1,0 +1,7 @@
+{
+  "revision": "b1fbfae1c6049b764aa73b7d10450f117255d69f",
+
+  "notes": [
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Historical file:line table; the needs-input reply rows are unchanged in meaning; no posture claim affected.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

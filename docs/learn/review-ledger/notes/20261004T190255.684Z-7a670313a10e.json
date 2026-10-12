@@ -1,0 +1,7 @@
+{
+  "revision": "ff8d4704b92d64b50d39bdc28cd02c49f779de49",
+
+  "notes": [
+    {"path":"README.md","note":"Nightly cadence prose changed in docs/guides/nightly.md (qualification entry point added). README links to the Nightly guide but makes no cadence or entry-point claim. No prose change.","inputs":["README.md","docs/guides/nightly.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "f114b42162757399cb32b714f860c67c95011988",
+
+  "notes": [
+    {"path":"docs/guides/theming.md","note":"Design round: re-read for the inventory edit that made it stale. The guide makes no claim about the pull request or Diff surfaces; new sheets use --radius-pill, --space-*, --text-* and the accent wash tokens as it asks. No prose change.","inputs":["docs/ui/responsive-action-surfaces.txt","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","pnpm-lock.yaml","src-server/runtime/bootstrap/runtime-http.ts","src-server/security/pairing-route-scopes.ts","src-ui/AGENTS.md","src-ui/src/main.tsx","src-ui/src/platform/PlatformProfileContext.tsx"]}
+  ]
+}

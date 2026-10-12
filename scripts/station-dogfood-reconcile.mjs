@@ -633,7 +633,7 @@ function requireCi(run, config, sha, { now, waiverExpiry }) {
       '--repo',
       config.githubRepo,
       '--workflow',
-      'CI',
+      'PR: CI',
       '--branch',
       'main',
       '--event',
@@ -655,7 +655,7 @@ function requireCi(run, config, sha, { now, waiverExpiry }) {
   const exactRuns = runs.filter(
     (runRecord) =>
       String(runRecord.headSha).toLowerCase() === sha &&
-      runRecord.workflowName === 'CI' &&
+      runRecord.workflowName === 'PR: CI' &&
       runRecord.event === 'push',
   );
   if (exactRuns.length === 0) {

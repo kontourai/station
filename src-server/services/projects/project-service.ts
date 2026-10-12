@@ -2,9 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { BUILTIN_KNOWLEDGE_NAMESPACES } from '@kontourai/station-contracts/knowledge';
-import type {
-  ProjectConfig,
-  ProjectMetadata,
+import {
+  PROJECT_ICON_PROBLEM_MESSAGES,
+  type ProjectConfig,
+  type ProjectMetadata,
+  projectIconProblem,
 } from '@kontourai/station-contracts/project';
 import type { ProjectPortableIdentity } from '@kontourai/station-contracts/project-identity';
 import {
@@ -118,10 +120,64 @@ export async function raceWorktreeDirectoryCheck<T>(
  * absent key from one the caller explicitly left out.
  */
 export type ProjectUpdate = Partial<
-  Omit<ProjectConfig, 'id' | 'slug' | 'createdAt' | ProjectOverrideRecordField>
+  Omit<
+    ProjectConfig,
+    | 'id'
+    | 'slug'
+    | 'createdAt'
+    | ProjectOverrideRecordField
+    | 'defaultAgent'
+    | 'icon'
+  >
 > & {
   [K in ProjectOverrideRecordField]?: ProjectConfig[K] | null;
+} & {
+  defaultAgent?: ProjectConfig['defaultAgent'] | null;
+  /** `''` and `null` clear the icon; see {@link withoutClearedIcon}. */
+  icon?: string | null;
 };
+
+/**
+ * `''` and `null` both mean "no icon" on a write: the settings form's None
+ * sends `''` (its text field's empty value) and an API caller may send
+ * `null`. Neither is stored — a stored `''` is an icon field that says
+ * nothing, and `projectSchema` admits no null — so the field is dropped.
+ */
+function withoutClearedIcon<T extends { icon?: string | null }>(
+  record: T,
+): Omit<T, 'icon'> & { icon?: string } {
+  if (record.icon !== '' && record.icon !== null) {
+    return record as Omit<T, 'icon'> & { icon?: string };
+  }
+  const { icon: _cleared, ...rest } = record;
+  return rest;
+}
+
+/**
+ * A project icon the contracts rule refuses, from a caller that did not go
+ * through the routes' schema (which refuses it first, with the same text).
+ */
+export class ProjectIconRefusedError extends Error {}
+
+/**
+ * Applies the contracts icon rule (`projectIconProblem`) to an icon being
+ * written. Only a NEW value is checked: `''`/`null` clear the icon, and a
+ * value equal to the stored one is not a change, so an unrelated update to a
+ * project whose icon predates the rule is not refused for it. The renderer
+ * already shows such an icon as none.
+ */
+function assertWritableProjectIcon(
+  icon: string | null | undefined,
+  stored?: string,
+): void {
+  if (icon === undefined || icon === null || icon === '' || icon === stored) {
+    return;
+  }
+  const problem = projectIconProblem(icon);
+  if (problem) {
+    throw new ProjectIconRefusedError(PROJECT_ICON_PROBLEM_MESSAGES[problem]);
+  }
+}
 
 /**
  * A `POST /projects` body, as `createProject` accepts it.
@@ -134,9 +190,17 @@ export type ProjectUpdate = Partial<
  */
 export type ProjectCreate = Omit<
   ProjectConfig,
-  'id' | 'createdAt' | 'updatedAt' | ProjectOverrideRecordField
+  | 'id'
+  | 'createdAt'
+  | 'updatedAt'
+  | ProjectOverrideRecordField
+  | 'defaultAgent'
+  | 'icon'
 > & {
   [K in ProjectOverrideRecordField]?: ProjectConfig[K] | null;
+} & {
+  defaultAgent?: ProjectConfig['defaultAgent'] | null;
+  icon?: string | null;
 };
 
 export async function assertProjectWorktreeDirectory(
@@ -329,6 +393,7 @@ export class ProjectService {
   }
 
   async createProject(config: ProjectCreate): Promise<ProjectConfig> {
+    assertWritableProjectIcon(config.icon);
     const project = await this.prepareProjectConfig(config);
     await this.storageAdapter.createProject(project);
     // The manifest is derived from the project record that was just written,
@@ -401,7 +466,7 @@ export class ProjectService {
     // below asks what mode this project will resolve to, and `null` is not a
     // mode — passing it through would make "no override" look like a choice
     // to whatever read it next.
-    const normalized = { ...config } as Omit<
+    const normalized = withoutClearedIcon({ ...config }) as Omit<
       ProjectConfig,
       'id' | 'createdAt' | 'updatedAt'
     >;
@@ -412,6 +477,7 @@ export class ProjectService {
     }
     // Rebound, not reassigned: a reassigned parameter keeps its declared
     // (nullable) type, and every read below must see the narrowed one.
+    if (config.defaultAgent === null) delete normalized.defaultAgent;
     const input = normalized;
 
     // Derive name from working directory basename if not provided
@@ -479,11 +545,13 @@ export class ProjectService {
   ): Promise<ProjectConfig> {
     const revision = this.storageAdapter.projectRevision(slug);
     const existing = revision.value;
-    const updated: ProjectConfig = {
+    assertWritableProjectIcon(updates.icon, existing.icon);
+    // Cleared AFTER the spread, so `''`/`null` also removes a stored icon.
+    const updated: ProjectConfig = withoutClearedIcon({
       ...existing,
       ...updates,
       updatedAt: new Date().toISOString(),
-    } as ProjectConfig;
+    }) as ProjectConfig;
     // #2144 slice 2: `null` on a settings-override field DROPS the override
     // rather than storing it. Storing it is not an option that merely reads
     // oddly — `projectSchema` (file-storage-schemas.ts) has no null for any
@@ -495,6 +563,7 @@ export class ProjectService {
         delete updated[field];
       }
     }
+    if (updates.defaultAgent === null) delete updated.defaultAgent;
     if (updated.defaultEnvironment?.kind === 'current') {
       delete updated.defaultEnvironment;
     }

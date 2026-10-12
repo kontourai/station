@@ -1,5 +1,13 @@
 # @kontourai/station-shared
 
+The explicit `@kontourai/station-shared/native-relay-link` subpath owns the
+canonical native relay link scheme/encode/parse helpers.
+Connect's existing entry re-exports that same implementation, while published
+SDK and server consumers use Shared directly. Parsing a link supplies no
+trust or application authority, and receiving invitation secrets remains with
+the native host. See the [codec reference](../../docs/reference/shared.md#native-relay-link-codec)
+for its scope and source-distribution requirements.
+
 Runtime helpers shared by Station and its extensions: manifest parsing, plugin
 builds, filesystem/process owners, redaction and event projections. Stable domain
 contracts belong to [`station-contracts`](../contracts/README.md).
@@ -74,8 +82,9 @@ successful validation does not activate or render an experience.
 The browser-safe `/skill-experience-values` leaf validates inert start inputs,
 compares complete installed identities, and derives defaults, role positions and
 input errors. `/skill-experience-reader` adds canonical definition validation for
-inventory/session wire projections. The SDK loads that reader after a successful
-feature response; synchronous UI hydration retains only bounded display previews.
+inventory/session wire projections. The SDK client imports that reader
+statically and runs it only on a successful feature response; synchronous UI
+hydration retains only bounded display previews.
 Neither helper discovers files, executes Skills, acquires grants or makes cached
 inventory authoritative.
 

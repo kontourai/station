@@ -1,0 +1,7 @@
+{
+  "revision": "075b1407fe6ed27182b382afae177c5e8b5823f6",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"chatStatus.ts: the pill's expanded silence detail now reads 'No progress · 4m' (text 'No progress' plus the pill's ' · <duration>'), the row form, instead of 'No progress for · 4m'. Re-read the pill claims (compact labels Working/Thinking/Reconnecting, details on expand, motion) and the silence paragraph ('No progress from OpenCode for …', the transcript sentence from TurnActivityProgress/ProgressSilenceObservation, unchanged): all still accurate; the page quotes no pill detail text.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/components/NewChatAction.tsx","src-ui/src/components/PickerCreateAction.css","src-ui/src/components/PickerCreateAction.tsx","src-ui/src/components/chat-dock/ChatDockProjectContext.tsx","src-ui/src/components/chat-dock/ChatDockProjectSwitcherSheet.tsx","src-ui/src/components/chat-start/RecentChatList.tsx","src-ui/src/components/chat/ChatSettingsPanel.tsx","src-ui/src/components/chat/ComposerIconAction.tsx","src-ui/src/components/chat/ComposerStopButton.tsx","src-ui/src/components/chat/PortableDraftsMenu.tsx","src-ui/src/components/chat/QueuedMessages.css","src-ui/src/components/chat/QueuedMessages.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/components/status/chatStatus.ts","src-ui/src/hooks/useLongPress.ts","src-ui/src/views/home/work-facts.ts","tests/helpers/long-press.ts"]}
+  ]
+}

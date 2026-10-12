@@ -1,0 +1,23 @@
+{
+  "revision": "2337f4ef04d49a2387cd8df46f50f9998190671e",
+
+  "notes": [
+    {"path":"docs/README.md","note":"#3036: only the documentation guide's ledger guards section changed (skipped-check, budget scope and orphaned-note wording); this page's claims do not depend on it.","inputs":["docs/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"#3036: only the documentation guide's ledger guards section changed (skipped-check, budget scope and orphaned-note wording); this page's claims do not depend on it.","inputs":["docs/architecture/abstraction-review.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/development.md","note":"#3036: only the documentation guide's ledger guards section changed (skipped-check, budget scope and orphaned-note wording); this page's claims do not depend on it.","inputs":["docs/guides/development.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#3036: only the documentation guide's ledger guards section changed (skipped-check, budget scope and orphaned-note wording); this page's claims do not depend on it.","inputs":["docs/guides/integrating-station.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/testing.md","note":"#3036: only the documentation guide's ledger guards section changed (skipped-check, budget scope and orphaned-note wording); this page's claims do not depend on it.","inputs":["docs/guides/testing.md","docs/guides/documentation.md"]},
+
+    {"path":".veritas/README.md","note":"#3036: freshness stays scoped on PRs and advisory in the queue, main and Nightly; the guard additions (note-removed, append-only-unverified, a printed not-checked line in PR context) leave that split unchanged.","inputs":[".veritas/README.md","docs/guides/documentation.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"#3036: scoped blocking and advisory-in-queue claims still match documentation-freshness.mjs; the added guards and the exported isPullRequestContext do not change them.","inputs":["docs/guides/code-quality.md","docs/guides/documentation.md","scripts/lib/documentation-freshness.mjs"]},
+
+    {"path":"docs/guides/documentation.md","note":"#3036: guards section re-checked against final code: path budget enforced only by the working-tree parse (readReviewStateAt passes enforcePathBudget false), writeReviewFiles pushes after mkdir, the CLI prints 'Append-only notes: not checked (<mode>)' in PR context, and orphaned notes stay by design.","inputs":["docs/guides/documentation.md","scripts/check-documentation-freshness.mjs","scripts/lib/documentation-freshness.mjs","scripts/lib/review-ledger-store.mjs"]},
+
+    {"path":"docs/learn/README.md","note":"#3036: notes-files claims unchanged; the record command still writes one notes file per run through writeReviewFiles, and history reads skip only the path budget.","inputs":["docs/learn/README.md","scripts/lib/documentation-freshness.mjs","scripts/lib/review-ledger-store.mjs"]}
+  ]
+}

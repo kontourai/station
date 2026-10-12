@@ -1,0 +1,7 @@
+{
+  "revision": "793b5bcb008fd880a0b2ea2f5f0d375662965be2",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Re-reviewed merged plugin guide against the #3202 source delta and main plugin palette changes. The curated collection has five experiences; rich Prepare another round is explicitly example-added and uses the existing identity/permission-bound continuation and ordinary Send. Palette declarations and person review retain their separate command-effect owner. Public/release/native claims remain bounded. Both historical source lists were identical and retained; every binding is recorded against these merged bytes.","inputs":["docs/guides/plugins.md"]}
+  ]
+}

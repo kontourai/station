@@ -19,6 +19,11 @@ const identity = {
 function fixture(
   declared: () => Promise<ConversationPullRequestLink[]> = async () => [],
   lineageSessionIds?: (conversationId: string) => readonly string[],
+  observed?: (
+    request: Request,
+    conversationId: string,
+    observations: readonly unknown[],
+  ) => void,
 ) {
   const root = mkdtempSync(join(tmpdir(), 'station-pr-link-routes-'));
   roots.push(root);
@@ -52,6 +57,7 @@ function fixture(
         operator: () => authority.actor,
         declared,
         ...(lineageSessionIds ? { lineageSessionIds } : {}),
+        ...(observed ? { observed } : {}),
       },
     ),
     root,
@@ -273,4 +279,45 @@ test('the same link stored under the conversation and a successor is read once',
     data: { links: unknown[] };
   };
   expect(body.data.links).toHaveLength(1);
+});
+
+// #3161: the close-out observer rides this read and must never break it.
+test('tells the observer what a refresh saw, with the request', async () => {
+  const observed = vi.fn();
+  const x = fixture(async () => [], undefined, observed);
+  await x.app.request('/conversation-1', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(identity),
+  });
+  const read = await x.app.request('/conversation-1');
+  expect(read.status).toBe(200);
+  expect(observed).toHaveBeenCalledOnce();
+  const [request, conversationId, observations] = observed.mock.calls[0]!;
+  expect(request).toBeInstanceOf(Request);
+  expect(conversationId).toBe('conversation-1');
+  expect(observations).toMatchObject([
+    { ...identity, status: { state: 'current', pullRequestState: 'OPEN' } },
+  ]);
+});
+
+test('a throwing observer does not fail the refresh: it still answers 200 with its links', async () => {
+  const x = fixture(
+    async () => [],
+    undefined,
+    () => {
+      throw new Error('close-out store unreadable');
+    },
+  );
+  await x.app.request('/conversation-1', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(identity),
+  });
+  const read = await x.app.request('/conversation-1');
+  expect(read.status).toBe(200);
+  await expect(read.json()).resolves.toMatchObject({
+    success: true,
+    data: { links: [{ ...identity, status: { state: 'current' } }] },
+  });
 });
