@@ -390,6 +390,8 @@ describe('install-script:check as a process', () => {
       'packages/shared/src/windows-system-utility.mjs',
       'packages/shared/src/fs-windows-compat.ts',
       'packages/shared/src/service-launcher-protocol.ts',
+      'packages/shared/src/prebuilt-archive.ts',
+      'packages/shared/src/ports.ts',
       'packages/shared/src/installer',
       'install.sh',
     ])
