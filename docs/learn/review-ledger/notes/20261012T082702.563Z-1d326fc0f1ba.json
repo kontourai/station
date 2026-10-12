@@ -1,0 +1,7 @@
+{
+  "revision": "db9c9020e96f233c15af1dc2ad1fe8f8462f242c",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"SessionModelPicker gained an optional resetDisabledReason for the reset button; this guide's allowance and connection claims do not concern it. Unaffected.","inputs":["docs/guides/connections.md","src-ui/src/components/session/SessionModelPicker.tsx"]}
+  ]
+}

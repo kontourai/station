@@ -1,0 +1,7 @@
+{
+  "revision": "db9c9020e96f233c15af1dc2ad1fe8f8462f242c",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Updated: Use Agent defaults is also unavailable while a reply runs (ChatDockBody engineResetBlockedReason). Other picker claims re-read and unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}
