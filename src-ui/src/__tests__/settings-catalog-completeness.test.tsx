@@ -252,6 +252,12 @@ let telemetryEndpointConfigured: boolean | undefined;
 /** The read's own state, which the row must not speak ahead of. */
 let telemetryDisclosureSettled = true;
 let telemetryDisclosureIsError = false;
+/**
+ * Whether the disclosure read says THIS caller may `PUT /config/app`, and the
+ * effective setting it reports. `undefined` is a host too old to say.
+ */
+let telemetryCanChangeSetting: boolean | undefined;
+let telemetryEffectiveEnabled: boolean | undefined;
 vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
   const actual =
     await importOriginal<
@@ -261,9 +267,14 @@ vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
     ...actual,
     useUsageTelemetryDisclosureState: () => ({
       data:
-        telemetryEndpointConfigured === undefined
+        telemetryEndpointConfigured === undefined &&
+        telemetryCanChangeSetting === undefined
           ? undefined
-          : { endpointConfigured: telemetryEndpointConfigured },
+          : {
+              endpointConfigured: telemetryEndpointConfigured,
+              canChangeSetting: telemetryCanChangeSetting,
+              telemetryEnabled: telemetryEffectiveEnabled,
+            },
       isError: telemetryDisclosureIsError,
       settled: telemetryDisclosureSettled,
       outstanding: false,
@@ -435,6 +446,8 @@ describe('settings catalog completeness', () => {
     telemetryEndpointConfigured = undefined;
     telemetryDisclosureSettled = true;
     telemetryDisclosureIsError = false;
+    telemetryCanChangeSetting = undefined;
+    telemetryEffectiveEnabled = undefined;
     setDeviceSetting.mockClear();
     resetDeviceSetting.mockClear();
     resetDeviceSettings.mockClear();
@@ -2087,6 +2100,44 @@ describe('settings catalog completeness', () => {
    * WOULD send; this row says whether there is anywhere to send to. Both
    * answers are the host's, and the host itself is never named.
    */
+  /**
+   * The Usage telemetry toggle writes `PUT /config/app`. A read-only paired
+   * device is refused that write, and the disclosure read says so
+   * (`canChangeSetting: false`); Settings must not offer it a toggle.
+   */
+  describe('Usage telemetry toggle', () => {
+    const toggleRow = (container: HTMLElement) =>
+      container.querySelector<HTMLElement>(
+        '[data-catalog-id="usage-telemetry"]',
+      );
+
+    test('a caller that may change settings gets the toggle', async () => {
+      telemetryEndpointConfigured = false;
+      telemetryCanChangeSetting = true;
+      const { container } = await renderSettings();
+      await waitFor(() => expect(toggleRow(container)).toBeTruthy());
+      expect(
+        toggleRow(container)?.querySelector('[role="switch"]'),
+        'the toggle is missing for a caller allowed to write it',
+      ).toBeTruthy();
+    });
+
+    test('a caller the server says cannot change settings sees the state, not a toggle', async () => {
+      telemetryEndpointConfigured = false;
+      telemetryCanChangeSetting = false;
+      telemetryEffectiveEnabled = true;
+      const { container } = await renderSettings();
+      await waitFor(() => expect(toggleRow(container)).toBeTruthy());
+      expect(
+        toggleRow(container)?.querySelector('[role="switch"]'),
+        'offered a telemetry toggle the server would refuse',
+      ).toBeNull();
+      expect(
+        screen.getByTestId('usage-telemetry-setting-read-only').textContent,
+      ).toBe('On');
+    });
+  });
+
   describe('Telemetry destination', () => {
     test('reports a configured destination without naming it', async () => {
       telemetryEndpointConfigured = true;

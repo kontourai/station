@@ -1015,7 +1015,7 @@ export function UsageTelemetryDisclosure({
         <p>You acknowledged this inventory.</p>
       ) : data.canAcknowledge === false ? (
         <p data-testid="usage-telemetry-disclosure-host-decision">
-          Usage telemetry is decided on the host computer, not from this device.
+          Acknowledging this inventory is done on the host computer.
         </p>
       ) : (
         <ResponsiveSurfaceActions className="usage-telemetry-disclosure__actions">

@@ -970,9 +970,7 @@ test('Settings shows a caller that cannot acknowledge the inventory read-only, w
   expect(
     (await screen.findByTestId('usage-telemetry-disclosure-host-decision'))
       .textContent,
-  ).toBe(
-    'Usage telemetry is decided on the host computer, not from this device.',
-  );
+  ).toBe('Acknowledging this inventory is done on the host computer.');
   expect(
     screen.getByText(
       'Station can send anonymous usage events, only when a telemetry endpoint is configured; none is configured here, so nothing is sent.',

@@ -1091,15 +1091,41 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
               Sources; ◉ and ◆ were already carried. */}
                 {sectionVisible('telemetry') && (
                   <Section icon="◉" title="Telemetry" id="section-telemetry">
-                    <StationConfigSection
-                      section="telemetry"
-                      embedded
-                      config={config}
-                      provenance={provenance}
-                      onChange={setConfig}
-                      containerScope="station"
-                      projectOverride={projectOverride}
-                    />
+                    {/* The disclosure read reports whether THIS caller may
+                    `PUT /config/app` (a read-only paired device may not). A
+                    toggle that write would refuse is replaced by the
+                    effective state, keeping the row's catalog identity so
+                    deep links still land. Absent (older host) keeps the
+                    toggle. */}
+                    {telemetryDisclosure.data?.canChangeSetting === false ? (
+                      <PageRow
+                        {...settingsRow('usage-telemetry')}
+                        description="This device cannot change Station settings; the setting is changed on the host computer."
+                        control={
+                          <span
+                            className="settings__field-hint"
+                            data-testid="usage-telemetry-setting-read-only"
+                          >
+                            {telemetryDisclosure.data.telemetryEnabled === true
+                              ? 'On'
+                              : telemetryDisclosure.data.telemetryEnabled ===
+                                  false
+                                ? 'Off'
+                                : 'Not reported'}
+                          </span>
+                        }
+                      />
+                    ) : (
+                      <StationConfigSection
+                        section="telemetry"
+                        embedded
+                        config={config}
+                        provenance={provenance}
+                        onChange={setConfig}
+                        containerScope="station"
+                        projectOverride={projectOverride}
+                      />
+                    )}
                     {/* #2144 slice 6 item D: whether anything CAN be sent, beside
                   the toggle that decides whether it is. Derived from the
                   boolean the disclosure query already holds — React Query
