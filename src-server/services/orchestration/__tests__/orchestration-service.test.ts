@@ -21302,6 +21302,161 @@ describe('OrchestrationService', () => {
       await isolated.shutdown();
     });
 
+    test('text retained when the consumer stops mid-retry is still flushed by its window timer', async () => {
+      const threadId = 'retained-stopped-thread';
+      const turnId = 'turn-retained-stopped';
+      const { events, isolated, warn } = await startObservedTurn(
+        threadId,
+        turnId,
+      );
+      const delta = (eventId: string, text: string) =>
+        ({
+          eventId,
+          provider: 'claude',
+          threadId,
+          turnId,
+          itemId: 'retained-stopped-item',
+          createdAt: new Date().toISOString(),
+          method: 'content.text-delta',
+          delta: text,
+        }) as CanonicalRuntimeEvent;
+      const appendEvent = eventStore.appendEvent.bind(eventStore);
+      let heldAttempts = 0;
+      const appendSpy = vi
+        .spyOn(eventStore, 'appendEvent')
+        .mockImplementation((event, declaredOutputs) => {
+          if (event.eventId === 'retained-stopped-1') {
+            heldAttempts += 1;
+            if (heldAttempts === 1) {
+              // The consumer is stopped while the retry is about to sleep:
+              // the loop returns without surfacing anything for the thread.
+              (isolated as any).adapterEventControllers.get(claude)?.abort();
+              throw busy();
+            }
+          }
+          return appendEvent(event, declaredOutputs);
+        });
+      events.push(delta('retained-stopped-0', 'Hello'));
+      events.push(delta('retained-stopped-1', ', world'));
+      events.push({
+        eventId: 'retained-stopped-terminal',
+        provider: 'claude',
+        threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+        method: 'turn.completed',
+        finishReason: 'stop',
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(
+        () =>
+          expect(
+            payloads(threadId).some(
+              (event) => event.eventId === 'retained-stopped-1',
+            ),
+          ).toBe(true),
+        { timeout: 2_000 },
+      );
+      expect(heldAttempts).toBe(2);
+      expect(warn).not.toHaveBeenCalledWith(
+        'Content delta could not be published',
+        expect.anything(),
+      );
+      appendSpy.mockRestore();
+      await isolated.shutdown();
+    });
+
+    test('another publish on the thread while a retry sleeps leaves the retained text untimed for that retry', async () => {
+      const threadId = 'retained-during-sleep-thread';
+      const turnId = 'turn-retained-sleep';
+      const { events, isolated } = await startObservedTurn(threadId, turnId);
+      const delta = (eventId: string, text: string) =>
+        ({
+          eventId,
+          provider: 'claude',
+          threadId,
+          turnId,
+          itemId: 'retained-sleep-item',
+          createdAt: new Date().toISOString(),
+          method: 'content.text-delta',
+          delta: text,
+        }) as CanonicalRuntimeEvent;
+      const appendEvent = eventStore.appendEvent.bind(eventStore);
+      let heldAttempts = 0;
+      let timedDuringSleep: boolean | undefined;
+      const coalescer = (isolated as any).deltaCoalescer;
+      const appendSpy = vi
+        .spyOn(eventStore, 'appendEvent')
+        .mockImplementation((event, declaredOutputs) => {
+          if (event.eventId === 'retained-sleep-1') {
+            heldAttempts += 1;
+            if (heldAttempts === 1) {
+              // While the loop's retry sleeps, another publisher reaches the
+              // same thread, and its own flush of the retained text fails too.
+              setTimeout(() => {
+                try {
+                  (isolated as any).projectAndPublishEvent({
+                    eventId: 'retained-sleep-other',
+                    provider: 'claude',
+                    threadId,
+                    createdAt: new Date().toISOString(),
+                    method: 'runtime.warning',
+                    severity: 'warning',
+                    code: 'test-other-publisher',
+                    message: 'another publisher',
+                  });
+                } catch {
+                  // Expected: its flush ahead of this event fails.
+                }
+                timedDuringSleep =
+                  coalescer.pending.get(threadId)?.timer !== undefined;
+              }, 0);
+            }
+            if (heldAttempts <= 2) throw busy();
+          }
+          return appendEvent(event, declaredOutputs);
+        });
+      events.push(delta('retained-sleep-0', 'Hello'));
+      events.push(delta('retained-sleep-1', ', world'));
+      events.push({
+        eventId: 'retained-sleep-terminal',
+        provider: 'claude',
+        threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+        method: 'turn.completed',
+        finishReason: 'stop',
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(
+          payloads(threadId).some(
+            (event) =>
+              event.eventId === 'retained-sleep-terminal' ||
+              isInterruptionWarning(event),
+          ),
+        ).toBe(true),
+      );
+
+      expect(heldAttempts).toBe(3);
+      // A timer armed here could fire inside the retry's sleep and drop the
+      // text on the warn path; it must wait for the retry to finish.
+      expect(timedDuringSleep).toBe(false);
+      expect(
+        payloads(threadId)
+          .filter(
+            (event) =>
+              event.method === 'content.text-delta' ||
+              event.method === 'turn.completed',
+          )
+          .map((event) => event.eventId),
+      ).toEqual([
+        'retained-sleep-0',
+        'retained-sleep-1',
+        'retained-sleep-terminal',
+      ]);
+      appendSpy.mockRestore();
+      await isolated.shutdown();
+    });
+
     test('a failed size-cap flush keeps the text buffered before the offered delta', async () => {
       const threadId = 'cap-flush-thread';
       const turnId = 'turn-cap';
