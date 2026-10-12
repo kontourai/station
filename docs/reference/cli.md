@@ -1971,7 +1971,11 @@ A client connected to such a server can start the same update: Settings →
 Connected Station server → **Check for server updates** fetches the signed
 public manifest the install records (`manifestUrl` in
 `.station-release-state.json`) and verifies it against the pinned signing
-keys for the install's ring before it offers a newer version. Applying it
+keys for the install's ring before it offers a newer version. A manifest older
+than the newest release the install root already accepted
+(`.station-release-accepted.json`, kept across rollbacks) is reported as
+unverified and not offered; see
+[release rings](../guides/release-rings.md#upgrade-and-rollback-behavior). Applying it
 writes the update request (owner-only, published atomically, refused while
 another update is queued or under way); progress and the outcome, including a
 rollback and its reason, are read back from `runtime/service-state.json` and
