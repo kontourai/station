@@ -19,5 +19,5 @@
    order the bundler injects this lazy chunk's stylesheet. */
 .session-history-error__actions > .button {
   padding: 6px 12px;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }

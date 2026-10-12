@@ -3375,7 +3375,9 @@ button:hover {
   border-radius: 8px;
   background: var(--bg-secondary);
   color: var(--status-error, var(--text-primary));
-  font-size: var(--text-sm);
+  /* The type step `.session-failure` uses: the two alerts stack above the
+     composer, and a different size made one failure read as two styles. */
+  font-size: var(--k-text-sm);
 }
 
 /* Wrap/clamp policy, archive#3427 — adopted from

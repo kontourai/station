@@ -129,6 +129,16 @@ describe.skipIf(!chromiumAvailable || wslQuarantinedHost)(
           // ...and it is the notice's gutter, on both sides.
           expect(banner.x).toBe(notice.x);
           expect(banner.width).toBe(notice.width);
+          // One type step for both alerts, so the stack reads as one style.
+          const fontSizes = await page.evaluate(() =>
+            ['.session-failure__cause', '.session-history-error__detail'].map(
+              (selector) =>
+                getComputedStyle(
+                  document.querySelector(selector) as HTMLElement,
+                ).fontSize,
+            ),
+          );
+          expect(fontSizes[0]).toBe(fontSizes[1]);
         } finally {
           await page.close();
         }
