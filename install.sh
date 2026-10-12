@@ -1071,8 +1071,10 @@ if [ -n "$public_manifest_url" ]; then
   # does NOT prove that this is the release you should get now: a host can
   # withhold updates or replay any older manifest that was ever signed. The
   # checks below bind the requested channel and refuse to move an existing
-  # install backwards, but nothing bounds how stale a manifest may be, so a
-  # fresh install (no current release) can still be served an old one.
+  # install backwards, past its active release or the newest release its
+  # install root ever accepted, but nothing bounds how stale a manifest may
+  # be, so a fresh install (no install root yet) can still be served an old
+  # one.
   # Because origins add nothing to that, this path neither requires the
   # manifest, key, and archive to live on distinct origins nor downloads its
   # verification key.
@@ -1565,6 +1567,90 @@ if [ -e "$state_file" ] || [ -L "$state_file" ]; then
   fi
 fi
 
+# Replay protection beyond `current` (#187). `current` alone is not enough:
+# after the service launcher rolls a failed trial back, or an operator rolls
+# back on purpose, it names an older release, and a replayed manifest between
+# the two would look newer. So the install root also records the newest
+# release it ever accepted from a verified manifest
+# (.station-release-accepted.json, raised after each one, never lowered), and
+# an older manifest is refused unless the caller names it exactly with
+# STATION_INSTALL_ALLOW_ROLLBACK=1. It lives in the install root, not the
+# Station home, which a launcher rollback restores from its backup. The same
+# rule is packages/shared/src/prebuilt-archive.ts readAcceptedRelease (the
+# Windows installer core and the server's release check use it).
+accepted_release_file() {
+  printf '%s/.station-release-accepted.json' "$install_root"
+}
+check_accepted_release() {
+  accepted_order="$(node -e '
+    const fs = require("node:fs");
+    const [markPath, ring, candidate] = process.argv.slice(1);
+    let text;
+    try { text = fs.readFileSync(markPath, "utf8"); } catch (error) { process.exit(error.code === "ENOENT" ? 0 : 1); }
+    const shape = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([a-z]+)\.([1-9][0-9]*))?$/;
+    const parse = (version) => {
+      const match = shape.exec(version);
+      return match ? { core: match.slice(1, 4).map(BigInt), label: match[4] ?? null, build: match[5] === undefined ? null : BigInt(match[5]) } : null;
+    };
+    let mark;
+    try { mark = JSON.parse(text); } catch { process.exit(1); }
+    if (!mark || typeof mark !== "object" || Array.isArray(mark) ||
+      JSON.stringify(Object.keys(mark).sort()) !== JSON.stringify(["releaseChannel", "schemaVersion", "version"]) ||
+      mark.schemaVersion !== 1 || mark.releaseChannel !== ring || typeof mark.version !== "string") process.exit(1);
+    const accepted = parse(mark.version);
+    const offered = parse(candidate);
+    if (!accepted || !offered) process.exit(1);
+    let order = 0;
+    for (let index = 0; index < 3 && order === 0; index += 1)
+      order = offered.core[index] === accepted.core[index] ? 0 : offered.core[index] < accepted.core[index] ? -1 : 1;
+    if (order === 0) {
+      if (accepted.label === offered.label) order = accepted.label === null ? 0 : offered.build === accepted.build ? 0 : offered.build < accepted.build ? -1 : 1;
+      else if (accepted.label === null) order = -1;
+      else if (offered.label === null) order = 1;
+      else process.exit(1);
+    }
+    if (order < 0) process.stdout.write(`v${mark.version}`);
+  ' "$(accepted_release_file)" "$release_channel" "$release_version")" || {
+    if explicit_replacement_requested; then
+      printf 'Warning: cannot read the newest release this install accepted; installing %s as explicitly requested (STATION_INSTALL_ALLOW_ROLLBACK=1).\n' "$release_tag" >&2
+      return 0
+    fi
+    fail "cannot read the newest release this install accepted ($(accepted_release_file)); set STATION_VERSION=$release_tag and STATION_INSTALL_ALLOW_ROLLBACK=1 to install $release_tag explicitly"
+  }
+  [ -n "$accepted_order" ] || return 0
+  if explicit_replacement_requested; then
+    printf 'Installing Station %s, older than %s which this install already accepted (STATION_INSTALL_ALLOW_ROLLBACK=1).\n' "$release_tag" "$accepted_order"
+    return 0
+  fi
+  fail "refusing Station $release_tag: this install already accepted the newer signed release $accepted_order, so this manifest is stale or replayed; to install $release_tag deliberately, set STATION_VERSION=$release_tag and STATION_INSTALL_ALLOW_ROLLBACK=1"
+}
+# Raised once the install root is claimed, before anything is extracted: the
+# manifest is validly signed whatever becomes of this release, so an older
+# one is stale even if this install then fails.
+record_accepted_release() {
+  node -e '
+    const fs = require("node:fs");
+    const [markPath, ring, version] = process.argv.slice(1);
+    const shape = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([a-z]+)\.([1-9][0-9]*))?$/;
+    const parse = (value) => {
+      const match = typeof value === "string" ? shape.exec(value) : null;
+      return match ? [...match.slice(1, 4).map(BigInt), match[4] ?? null, match[5] === undefined ? null : BigInt(match[5])] : null;
+    };
+    let mark = null;
+    try { mark = JSON.parse(fs.readFileSync(markPath, "utf8")); } catch {}
+    const accepted = mark?.schemaVersion === 1 && mark.releaseChannel === ring ? parse(mark.version) : null;
+    const offered = parse(version);
+    if (accepted && offered && accepted[3] === offered[3]) {
+      let order = 0;
+      for (const index of [0, 1, 2, 4]) if (order === 0 && accepted[index] !== offered[index]) order = offered[index] < accepted[index] ? -1 : 1;
+      if (order <= 0) process.exit(0);
+    }
+    const stage = `${markPath}.${process.pid}.tmp`;
+    fs.writeFileSync(stage, `${JSON.stringify({ schemaVersion: 1, releaseChannel: ring, version })}\n`, { mode: 0o600 });
+    fs.renameSync(stage, markPath);
+  ' "$(accepted_release_file)" "$release_channel" "$release_version"
+}
+
 # Downgrade protection for the public-manifest path (archive#187). A signed
 # manifest proves who published a release, not that it is newer than what is
 # running: replaying an older, still-valid manifest must not roll an install
@@ -1680,6 +1766,7 @@ if [ "$stage_only" = true ] && [ "$release_kind" != archive ]; then
 fi
 if [ -n "$public_manifest_url" ]; then
   check_public_manifest_version
+  check_accepted_release
 fi
 prepare_owned_root "$install_root" "$INSTALL_ROOT_MARKER" "$INSTALL_ROOT_SIGNATURE" reject >/dev/null || \
   fail "STATION_INSTALL_ROOT is not an empty or installer-owned directory: $install_root"
@@ -1689,6 +1776,9 @@ if [ "$data_root_state" = preserved ]; then
   printf 'Using existing Station data without claiming purge ownership: %s\n' "$station_home"
 fi
 prepare_safe_directory "$releases_dir"
+if [ -n "$public_manifest_url" ]; then
+  record_accepted_release || fail 'could not record the newest release this install accepted'
+fi
 prepare_safe_directory "$bin_dir"
 assert_launcher_safe
 previous_release=""

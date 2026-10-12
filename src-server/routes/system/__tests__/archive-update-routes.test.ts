@@ -365,6 +365,75 @@ describe('GET /core-update on a launcher-run archive', () => {
   });
 });
 
+describe('a manifest older than a release this install already accepted (#187)', () => {
+  /** The mark exactly as install.sh and the Windows installer core write it. */
+  function acceptRelease(install: Install, text: string) {
+    writeFileSync(
+      join(install.installRoot, '.station-release-accepted.json'),
+      text,
+    );
+  }
+  const mark = (version: string) =>
+    `${JSON.stringify({ schemaVersion: 1, releaseChannel: 'preview', version })}\n`;
+
+  test('is not offered, and an apply is refused, even though it is newer than the running release', async () => {
+    // The service rolled back from preview.5 to preview.1; a replayed,
+    // validly signed preview.3 manifest is newer than what runs.
+    const install = makeInstall();
+    acceptRelease(install, mark('0.8.0-preview.5'));
+    serveManifest(signedManifest(releasePayload('0.8.0-preview.3')));
+    const body = await json(await createApp(install).request('/core-update'));
+    expect(body).toMatchObject({
+      releaseCheck: 'unverified',
+      updateAvailable: false,
+    });
+    expect(body.latestVersion).toBeUndefined();
+    expect(body.technicalDetail).toBe(
+      'the manifest offers 0.8.0-preview.3, older than 0.8.0-preview.5 which this install already accepted; it is stale or replayed',
+    );
+    const post = await createApp(install).request('/core-update', {
+      method: 'POST',
+    });
+    expect(post.status).toBe(409);
+    expect(existsSync(serviceUpdatePaths(install.installRoot).request)).toBe(
+      false,
+    );
+  });
+
+  test('the accepted release itself, or a newer one, is still offered', async () => {
+    const install = makeInstall();
+    acceptRelease(install, mark(NEWER));
+    for (const version of [NEWER, '0.8.0-preview.9']) {
+      serveManifest(signedManifest(releasePayload(version)));
+      expect(
+        await json(await createApp(install).request('/core-update')),
+      ).toMatchObject({
+        releaseCheck: 'verified',
+        latestVersion: version,
+        updateAvailable: true,
+        selfUpdateUnavailableReason: null,
+      });
+    }
+  });
+
+  test('an unreadable mark or one for another ring offers nothing', async () => {
+    for (const text of [
+      'not json',
+      `${JSON.stringify({ schemaVersion: 1, releaseChannel: 'nightly', version: '0.8.0-nightly.1' })}\n`,
+    ]) {
+      const install = makeInstall();
+      acceptRelease(install, text);
+      const body = await json(await createApp(install).request('/core-update'));
+      expect(body).toMatchObject({
+        releaseCheck: 'unverified',
+        updateAvailable: false,
+        technicalDetail:
+          'the record of the newest release this install accepted is unreadable',
+      });
+    }
+  });
+});
+
 describe('who may apply', () => {
   test('an archive no launcher runs, or another install’s or version’s launcher, is not the service', async () => {
     const install = makeInstall();

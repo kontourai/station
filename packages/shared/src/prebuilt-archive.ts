@@ -7,7 +7,15 @@
  * this tree a prebuilt archive" and one for "is it an installer-owned version
  * directory".
  */
-import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { STATION_RELEASE_RINGS, type StationReleaseRing } from './ports.js';
 import { windowsSystemUtilityPath } from './windows-system-utility.mjs';
@@ -314,6 +322,97 @@ export function packagedInstallerCommand(
     args: ['./install.sh', 'install'],
     file: join(releaseDir, 'install.sh'),
   };
+}
+
+/**
+ * The newest signed release an install root has accepted from its public
+ * manifest (#187): the downgrade high-water mark. install.sh and the Windows
+ * installer core refuse a manifest older than it (unless the caller names the
+ * exact version with STATION_INSTALL_ALLOW_ROLLBACK=1) and raise it after
+ * each verified release they stage or install; the server's release check
+ * reports such a manifest as unverified instead of offering it.
+ *
+ * Comparing with `current` alone is not enough: after the launcher rolls a
+ * failed trial back, or an operator rolls back on purpose, `current` names an
+ * older release, and a replayed manifest between the two would look newer.
+ * The mark lives in the install root, beside the install state, and not in
+ * the Station home: a launcher rollback restores the home from its backup,
+ * which would lower a mark kept there. Like `current`, it is writable by the
+ * installing user and defends against a hostile manifest host, not a local
+ * actor running as that user.
+ */
+export const ACCEPTED_RELEASE_FILENAME = '.station-release-accepted.json';
+
+export type AcceptedReleaseMark =
+  | { state: 'absent' }
+  /** Present but not a mark for this ring: callers refuse, never guess. */
+  | { state: 'invalid' }
+  | { state: 'recorded'; version: string };
+
+export function readAcceptedRelease(
+  installRoot: string,
+  releaseChannel: string,
+): AcceptedReleaseMark {
+  const path = join(installRoot, ACCEPTED_RELEASE_FILENAME);
+  let text: string;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ENOENT'
+      ? { state: 'absent' }
+      : { state: 'invalid' };
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return { state: 'invalid' };
+  }
+  const mark = value as Record<string, unknown> | null;
+  if (
+    !mark ||
+    typeof mark !== 'object' ||
+    Array.isArray(mark) ||
+    JSON.stringify(Object.keys(mark).sort()) !==
+      JSON.stringify(['releaseChannel', 'schemaVersion', 'version']) ||
+    mark.schemaVersion !== 1 ||
+    mark.releaseChannel !== releaseChannel ||
+    typeof mark.version !== 'string' ||
+    // Not a Station version at all (it orders against nothing, not even itself).
+    compareStationReleaseVersions(mark.version, mark.version) !== 0
+  )
+    return { state: 'invalid' };
+  return { state: 'recorded', version: mark.version };
+}
+
+/**
+ * Raises the mark to `version` (never lowers it), atomically. An unreadable
+ * mark is replaced: a caller reaches this only after its own check of the
+ * mark passed or was explicitly overridden.
+ */
+export function recordAcceptedRelease(
+  installRoot: string,
+  releaseChannel: string,
+  version: string,
+): void {
+  const existing = readAcceptedRelease(installRoot, releaseChannel);
+  if (existing.state === 'recorded') {
+    const order = compareStationReleaseVersions(version, existing.version);
+    if (order !== null && order <= 0) return;
+  }
+  const path = join(installRoot, ACCEPTED_RELEASE_FILENAME);
+  const stage = `${path}.${process.pid}.tmp`;
+  try {
+    writeFileSync(
+      stage,
+      `${JSON.stringify({ schemaVersion: 1, releaseChannel, version })}\n`,
+      { mode: 0o600 },
+    );
+    renameSync(stage, path);
+  } catch (error) {
+    rmSync(stage, { force: true });
+    throw error;
+  }
 }
 
 /**

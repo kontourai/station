@@ -39,6 +39,12 @@ import { join, parse, resolve, sep } from 'node:path';
 import { STATION_RELEASE_RINGS_DATA } from '../channel-ports.generated.js';
 import { renamePathSyncRetrying } from '../fs-windows-compat.js';
 import { findPortableServerTarget } from '../portable-server-targets.mjs';
+import {
+  ACCEPTED_RELEASE_FILENAME,
+  compareStationReleaseVersions,
+  readAcceptedRelease,
+  recordAcceptedRelease,
+} from '../prebuilt-archive.js';
 import type { ReleaseManifestPayload } from '../release-manifest.mjs';
 import { STATION_RELEASE_MANIFEST_KEYS as PINNED_MANIFEST_SIGNING_KEYS } from '../release-manifest-keys.generated.js';
 import {
@@ -1051,8 +1057,19 @@ export async function prepareRelease(
       if (outcome === 'nothing-to-do')
         return { ...result, outcome: 'nothing-to-do' };
     }
+    checkAgainstAccepted(env, io, paths, payload);
     prepare();
 
+    // The install root is claimed from here on, so the verified release
+    // becomes the newest this install has accepted. It is raised even if a
+    // later step fails: the manifest is validly signed either way, and an
+    // older one is stale whatever became of this release.
+    try {
+      recordAcceptedRelease(paths.installRoot, paths.ring, payload.version);
+    } catch (error) {
+      io.err(`${(error as Error).message}`);
+      fail('could not record the newest release this install accepted');
+    }
     if (isCompleteVersion(releaseDir, actualChecksum)) {
       io.out('Station release already installed; reusing verified files.');
       return { ...result, outcome: 'ready' };
@@ -1169,6 +1186,49 @@ function withZipOrRefuse<T>(
       );
     throw error;
   }
+}
+
+/**
+ * Replay protection beyond `current` (install.sh check_accepted_release): a
+ * manifest older than the newest release this install root ever accepted is
+ * refused, even when it is newer than `current` (after a launcher rollback or
+ * a deliberate one). Only the caller naming the exact version with
+ * STATION_INSTALL_ALLOW_ROLLBACK=1 installs it anyway.
+ */
+function checkAgainstAccepted(
+  env: InstallerEnv,
+  io: InstallerIo,
+  paths: Paths,
+  payload: ReleaseManifestPayload,
+): void {
+  const tag = payload.releaseTag;
+  const explicit =
+    env.STATION_INSTALL_ALLOW_ROLLBACK === '1' &&
+    (env.STATION_VERSION || 'latest') === tag;
+  const mark = readAcceptedRelease(paths.installRoot, paths.ring);
+  if (mark.state === 'absent') return;
+  if (mark.state === 'invalid') {
+    if (explicit) {
+      io.err(
+        `Warning: cannot read the newest release this install accepted; installing ${tag} as explicitly requested (STATION_INSTALL_ALLOW_ROLLBACK=1).`,
+      );
+      return;
+    }
+    fail(
+      `cannot read the newest release this install accepted (${join(paths.installRoot, ACCEPTED_RELEASE_FILENAME)}); set STATION_VERSION=${tag} and STATION_INSTALL_ALLOW_ROLLBACK=1 to install ${tag} explicitly`,
+    );
+  }
+  const order = compareStationReleaseVersions(payload.version, mark.version);
+  if (order !== null && order >= 0) return;
+  if (explicit) {
+    io.out(
+      `Installing Station ${tag}, older than v${mark.version} which this install already accepted (STATION_INSTALL_ALLOW_ROLLBACK=1).`,
+    );
+    return;
+  }
+  fail(
+    `refusing Station ${tag}: this install already accepted the newer signed release v${mark.version}, so this manifest is stale or replayed; to install ${tag} deliberately, set STATION_VERSION=${tag} and STATION_INSTALL_ALLOW_ROLLBACK=1`,
+  );
 }
 
 /**

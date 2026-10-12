@@ -3,6 +3,7 @@ import type { ServiceUpdateProgress } from '@kontourai/station-contracts/system-
 import {
   type ArchiveInstallState,
   compareStationReleaseVersions,
+  readAcceptedRelease,
   readArchiveInstallState,
 } from '@kontourai/station-shared/prebuilt-archive';
 import {
@@ -245,6 +246,24 @@ async function fetchVerifiedReleaseManifest(
   }
 }
 
+/**
+ * Why a verified manifest offering `version` is stale for this install root
+ * (the installer's own rule, `readAcceptedRelease`), or null when it is not.
+ */
+function acceptedReleaseRefusal(
+  installRoot: string,
+  ring: string,
+  version: string,
+): string | null {
+  const mark = readAcceptedRelease(installRoot, ring);
+  if (mark.state === 'absent') return null;
+  if (mark.state === 'invalid')
+    return 'the record of the newest release this install accepted is unreadable';
+  const order = compareStationReleaseVersions(version, mark.version);
+  if (order !== null && order >= 0) return null;
+  return `the manifest offers ${version}, older than ${mark.version} which this install already accepted; it is stale or replayed`;
+}
+
 export interface ArchiveUpdateStatus {
   installKind: 'archive' | 'archive-service';
   applyMethod: ArchiveApplyMethod;
@@ -318,6 +337,23 @@ export async function archiveUpdateStatus(
           ? `Could not reach the ${ring} release manifest.`
           : `The ${ring} release manifest did not verify against Station's pinned signing keys.`,
       technicalDetail: errorMessage(error),
+      selfUpdateUnavailableReason: refusal,
+    };
+  }
+
+  // The installer refuses a manifest older than the newest release this
+  // install root accepted (a replay after a rollback), so it is not offered
+  // here either, and the operator sees why.
+  const replayRefusal = provenance.installRoot
+    ? acceptedReleaseRefusal(provenance.installRoot, ring, payload.version)
+    : null;
+  if (replayRefusal) {
+    return {
+      ...base,
+      releaseCheck: 'unverified',
+      updateAvailable: false,
+      message: `The ${ring} release manifest is older than a release this install already accepted, so it is not offered.`,
+      technicalDetail: replayRefusal,
       selfUpdateUnavailableReason: refusal,
     };
   }

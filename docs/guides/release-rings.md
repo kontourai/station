@@ -59,8 +59,10 @@ The optional `STATION_INSTALL_PUBLIC_MANIFEST_URL` path instead verifies an
 Ed25519 envelope against pinned channel-authorized keys, then verifies the
 archive digest. It needs no `gh` token. This is a separate opt-in trust path,
 not the default ring resolver: signature validity proves origin/integrity,
-not freshness. Existing-install downgrade guards do not prevent an old signed
-manifest from being offered to a fresh installation. Read the exact owner in
+not freshness. Existing-install downgrade guards compare with the active
+release and with the newest release the install root ever accepted (so a
+replayed manifest is refused after a rollback too), but they do not prevent an
+old signed manifest from being offered to a fresh installation. Read the exact owner in
 [`install.sh`](../../install.sh) before changing that policy.
 
 This public path also accepts the platform-array v2 manifest for prebuilt
