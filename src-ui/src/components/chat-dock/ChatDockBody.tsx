@@ -956,18 +956,39 @@ export function ChatDockBody({
           model.available !== false,
       ),
   );
-  const pickerModels = executionModels?.map((model) =>
-    model.executionAgentId === activeSession.executionAgentId &&
-    !chatInput.canModelSelect
-      ? {
-          ...model,
-          available: false,
-          unavailableReason:
-            chatInput.modelSelectionReason ??
-            'This engine cannot change its model in this conversation.',
-        }
-      : model,
-  );
+  // Another engine is offered only when this caller can switch to it: the
+  // dock passes no `onExecutionModelSelect` when the server's open resolution
+  // denies changes to this conversation, and an engine this client cannot
+  // start (not ready, incompatible) is left out rather than listed. While a
+  // turn or queued message blocks the switch, the engines stay listed but
+  // disabled with that reason, so the dialog never opens on a form whose
+  // submit it would refuse.
+  const engineChangeBlockedReason = secondaryActions?.handoffDisabledReason;
+  const pickerModels = executionModels
+    ?.filter(
+      (model) =>
+        model.executionAgentId === activeSession.executionAgentId ||
+        (onExecutionModelSelect && model.available !== false),
+    )
+    .map((model) =>
+      model.executionAgentId === activeSession.executionAgentId
+        ? chatInput.canModelSelect
+          ? model
+          : {
+              ...model,
+              available: false,
+              unavailableReason:
+                chatInput.modelSelectionReason ??
+                'This engine cannot change its model in this conversation.',
+            }
+        : engineChangeBlockedReason
+          ? {
+              ...model,
+              available: false,
+              unavailableReason: engineChangeBlockedReason,
+            }
+          : model,
+    );
   const executionBinding = activeSession.executionAgentId
     ? agents.find(
         (candidate) => candidate.slug === activeSession.executionAgentId,

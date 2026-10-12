@@ -12,7 +12,7 @@ import {
   getConversationHandoffStatus,
   handoffExecutionMessage,
 } from '@kontourai/station-sdk/client';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
@@ -21,6 +21,7 @@ import { agentEngineDescriptor } from '../../utils/engine';
 import { selectChatReadyAgents } from '../agent-selection-policy';
 import { engineChipLabel } from '../badges/EngineChip';
 import { normalizedDisplayLabel } from '../chat/message-bubble/MessageAttribution';
+import { Button } from '../Button';
 import { AgentIcon } from '../icons/AgentIcon';
 import { GLOBAL_CONTEXT } from '../modals/new-chat-modal-utils';
 import {
@@ -197,8 +198,12 @@ export function ConversationHandoffDialog({
     : target;
   const retainedIntent = useRef<PendingHandoffIntent | null>(restoredIntent);
   const targetName = target?.name ?? `deleted Agent “${targetId}”`;
+  // Only models this client can start are offered; a catalog entry marked
+  // unavailable is not a choice here.
   const targetModels = executionTarget
-    ? selection.modelsForAgent(executionTarget)
+    ? selection
+        .modelsForAgent(executionTarget)
+        .filter((model) => model.available !== false)
     : [];
   const defaultModel = executionTarget
     ? selection.defaultEffectiveModelForAgent(executionTarget).id
@@ -230,6 +235,25 @@ export function ConversationHandoffDialog({
           restoredIntent.connectionId) &&
       (!modelId || targetModels.some((model) => model.id === modelId)),
   );
+
+  const changeLabel = executionPreset
+    ? 'switching engines'
+    : 'continuing with another Agent';
+  // A precondition the caller must resolve outside this dialog. The submit is
+  // disabled while one holds and the reason is shown beside it, so the form
+  // never offers an action it would refuse.
+  const preconditionReason =
+    blockedReason ??
+    (attachments.length > 0
+      ? `Send or remove attachments before ${changeLabel}.`
+      : undefined);
+  const engineLabel =
+    executionTarget?.engineDisplayName ??
+    (executionAgentId ? executionTarget?.name : undefined);
+  const fieldId = useId();
+  const modelFieldId = `${fieldId}-model`;
+  const messageFieldId = `${fieldId}-message`;
+  const preconditionId = `${fieldId}-precondition`;
 
   const inheritsAgentDefaults = Boolean(
     executionPreset &&
@@ -267,7 +291,7 @@ export function ConversationHandoffDialog({
     }
     if (attachments.length > 0) {
       setState('error');
-      setFeedback('Send or remove attachments before changing Agent.');
+      setFeedback(`Send or remove attachments before ${changeLabel}.`);
       return;
     }
     const intent: PendingHandoffIntent = retainedIntent.current ?? {
@@ -351,7 +375,7 @@ export function ConversationHandoffDialog({
         clearPendingIntent(apiBase, conversationId);
         setState('error');
         setFeedback(
-          'Resolve this conversation’s queued or offline messages before changing Agent.',
+          `Resolve this conversation’s queued or offline messages before ${changeLabel}.`,
         );
       }
     } catch (error) {
@@ -467,24 +491,21 @@ export function ConversationHandoffDialog({
               ? 'Change engine for this conversation'
               : 'Continue with…'}
           </h3>
-          <p>
-            Keep this conversation and workspace; replace its execution Session.
-          </p>
+          <p>Keep this conversation and workspace; continue in a new Session.</p>
         </div>
         <ResponsiveDialogCloseButton
-          label="Cancel Agent handoff"
+          label={
+            executionPreset ? 'Cancel engine change' : 'Cancel Agent handoff'
+          }
           onClick={onClose}
           disabled={closeLocked}
         />
       </div>
 
       {executionPreset ? (
-        <p>
-          Keep {targetName}; use{' '}
-          {executionTarget?.engineDisplayName ??
-            executionTarget?.name ??
-            'the selected engine'}{' '}
-          for this conversation.
+        <p className="conversation-handoff-dialog__summary">
+          Keep the {targetName} Agent and run this conversation on{' '}
+          {engineLabel ?? 'its default engine'}.
         </p>
       ) : candidates.length === 0 ? (
         <Empty
@@ -530,9 +551,13 @@ export function ConversationHandoffDialog({
       {targetId && (
         <div className="conversation-handoff-dialog__confirmation">
           {targetModels.length > 0 && (
-            <label>
-              Model
+            <div className="editor-field">
+              <label className="editor-label" htmlFor={modelFieldId}>
+                Model
+              </label>
               <select
+                id={modelFieldId}
+                className="editor-select"
                 value={modelId ?? ''}
                 disabled={mutationLocked}
                 onChange={(event) =>
@@ -548,18 +573,22 @@ export function ConversationHandoffDialog({
                   </option>
                 ))}
               </select>
-            </label>
+            </div>
           )}
-          <label>
-            First message to {targetName}
+          <div className="editor-field">
+            <label className="editor-label" htmlFor={messageFieldId}>
+              First message to {targetName}
+            </label>
             <textarea
+              id={messageFieldId}
+              className="editor-textarea"
               value={message}
               disabled={mutationLocked}
               onChange={(event) => setMessage(event.target.value)}
               rows={4}
               required
             />
-          </label>
+          </div>
           <div className="conversation-handoff-dialog__disclosure">
             <div>
               <strong>Carried</strong>
@@ -582,43 +611,48 @@ export function ConversationHandoffDialog({
               </ul>
             </div>
           </div>
+          {preconditionReason && (
+            <p
+              id={preconditionId}
+              role="status"
+              className="conversation-handoff-dialog__precondition"
+            >
+              {preconditionReason}
+            </p>
+          )}
           {feedback && (
             <div role="alert" className="conversation-handoff-dialog__feedback">
               {feedback}
             </div>
           )}
           <div className="conversation-handoff-dialog__actions">
-            <button
-              type="button"
-              className="button"
-              onClick={onClose}
-              disabled={closeLocked}
-            >
+            <Button onClick={onClose} disabled={closeLocked}>
               Cancel
-            </button>
+            </Button>
             {state === 'indeterminate' && (
-              <button
-                type="button"
-                className="button"
-                onClick={() => void observe()}
-              >
-                Check status
-              </button>
+              <Button onClick={() => void observe()}>Check status</Button>
             )}
-            <button
-              type="button"
-              className="button button--primary"
+            <Button
+              variant="primary"
               disabled={
-                !message.trim() || state === 'pending' || !retryEligible
+                !message.trim() ||
+                state === 'pending' ||
+                !retryEligible ||
+                Boolean(preconditionReason)
               }
+              aria-describedby={preconditionReason ? preconditionId : undefined}
               onClick={() => void runHandoff()}
             >
               {state === 'pending'
-                ? 'Continuing…'
+                ? executionPreset
+                  ? 'Switching…'
+                  : 'Continuing…'
                 : state === 'indeterminate'
                   ? 'Retry safely'
-                  : `Continue with ${targetName}`}
-            </button>
+                  : executionPreset
+                    ? `Switch to ${engineLabel ?? 'default engine'}`
+                    : `Continue with ${targetName}`}
+            </Button>
           </div>
         </div>
       )}

@@ -318,9 +318,8 @@ describe('ConversationHandoffDialog', () => {
         ) as HTMLTextAreaElement
       ).value,
     ).toBe('Review the actual draft');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue with Security reviewer' }),
-    );
+    // The primary action names the change, not the Agent being kept.
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to Codex' }));
     await waitFor(() => screen.getByRole('button', { name: 'Retry safely' }));
     const firstRequest = handoffExecutionMessage.mock.calls[0][2];
     expect(firstRequest).toMatchObject({
@@ -398,7 +397,7 @@ describe('ConversationHandoffDialog', () => {
       ).value,
     ).toBe('Review the actual draft');
     fireEvent.click(
-      screen.getByRole('button', { name: 'Continue with Security reviewer' }),
+      screen.getByRole('button', { name: 'Switch to default engine' }),
     );
     await waitFor(() => expect(accepted).toHaveBeenCalledTimes(2));
     expect(handoffExecutionMessage.mock.calls[2][2].target.agent).toBe(
@@ -427,6 +426,163 @@ describe('ConversationHandoffDialog', () => {
     expect(
       screen.getByRole('radio', { name: /Codex reviewer.*Codex/ }),
     ).toBeTruthy();
+  });
+
+  test('a turn in flight disables the engine switch and names the reason', () => {
+    const profile: AgentData = {
+      slug: agentId('station'),
+      name: 'Station',
+      available: true,
+      execution: { agentConnectionId: engineConnectionId('claude') },
+    };
+    const binding: AgentData = {
+      slug: agentId('codex-proxy'),
+      name: 'Codex proxy',
+      engineDisplayName: 'Codex (proxy)',
+      executionDefault: true,
+      execution: { agentConnectionId: engineConnectionId('codex') },
+    };
+    const session: ChatSession = {
+      id: 'chat-busy',
+      agentSlug: profile.slug,
+      agentName: profile.name,
+      conversationId: 'conversation-busy',
+      currentSessionId: 'session-a',
+      // The composer's own unacknowledged send: a turn is in flight.
+      status: 'sending',
+      messages: [],
+      input: '',
+      inputHistory: [],
+      attachments: [],
+      queuedMessages: [],
+      title: 'Busy',
+      source: 'manual',
+      createdAt: 1,
+      updatedAt: 1,
+      hasUnread: false,
+    };
+    // Mirrors `ConversationBoundaryDialogs`: the hook's reason is the
+    // dialog's `blockedReason` for the active conversation.
+    function Composer() {
+      const dialogs = useConversationBoundaryDialogs({
+        agents: [profile, binding],
+        apiBase: 'http://station.test',
+        activeSession: session,
+        allSessions: [session],
+      });
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              dialogs.openExecutionHandoff({
+                id: 'gpt-5',
+                name: 'GPT-5',
+                executionAgentId: binding.slug,
+              })
+            }
+          >
+            Choose Codex engine
+          </button>
+          {dialogs.handoffSource && (
+            <ConversationHandoffDialog
+              apiBase="http://station.test"
+              conversationId={session.conversationId!}
+              sessionId={session.id}
+              currentAgentId={profile.slug}
+              executionPreset={dialogs.handoffSource.executionPreset}
+              agents={[profile, binding]}
+              projects={[]}
+              initialMessage="What can you do?"
+              attachments={[]}
+              blockedReason={dialogs.handoffDisabledReason}
+              onAccepted={() => {}}
+              onDispatchStarted={() => {}}
+              onDefiniteFailure={() => {}}
+              onClose={() => {}}
+            />
+          )}
+        </>
+      );
+    }
+    render(<Composer />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Choose Codex engine' }),
+    );
+    const submit = screen.getByRole('button', {
+      name: 'Switch to Codex (proxy)',
+    }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    const reason = screen.getByRole('status');
+    expect(reason.textContent).toBe('Wait for the current turn to finish.');
+    expect(submit.getAttribute('aria-describedby')).toBe(reason.id);
+    fireEvent.click(submit);
+    expect(fenceConversationHandoff).not.toHaveBeenCalled();
+    expect(handoffExecutionMessage).not.toHaveBeenCalled();
+    expect(sessionStorage.length).toBe(0);
+  });
+
+  test('pending attachments disable the engine switch before dispatch', () => {
+    render(
+      <ConversationHandoffDialog
+        apiBase="http://station.test"
+        conversationId="conversation-a"
+        sessionId="session-a"
+        currentAgentId="claude"
+        executionPreset={{ executionAgentId: 'codex', modelId: 'gpt-5' }}
+        agents={[claude, codex] as never}
+        projects={[]}
+        initialMessage="follow up"
+        attachments={[{ name: 'a.png' }] as never}
+        onAccepted={() => {}}
+        onDispatchStarted={() => {}}
+        onDefiniteFailure={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const submit = screen.getByRole('button', {
+      name: 'Switch to Codex',
+    }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    expect(screen.getByRole('status').textContent).toBe(
+      'Send or remove attachments before switching engines.',
+    );
+    expect(
+      screen.getByText(
+        'Keep the Claude Agent and run this conversation on Codex.',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('the engine Model list offers only models this client can start', () => {
+    useNewChatSelectionModel.mockReturnValue({
+      ...useNewChatSelectionModel(),
+      modelsForAgent: () => [
+        { id: 'gpt-5', name: 'GPT-5' },
+        { id: 'gpt-locked', name: 'GPT locked', available: false },
+      ],
+    });
+    render(
+      <ConversationHandoffDialog
+        apiBase="http://station.test"
+        conversationId="conversation-a"
+        sessionId="session-a"
+        currentAgentId="claude"
+        executionPreset={{ executionAgentId: 'codex', modelId: 'gpt-5' }}
+        agents={[claude, codex] as never}
+        projects={[]}
+        initialMessage="follow up"
+        attachments={[]}
+        onAccepted={() => {}}
+        onDispatchStarted={() => {}}
+        onDefiniteFailure={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const options = Array.from(
+      (screen.getByLabelText('Model') as HTMLSelectElement).options,
+    ).map((option) => option.value);
+    expect(options).toEqual(['gpt-5']);
   });
 
   test('cancel is read-only and unavailable Agents are absent', () => {
