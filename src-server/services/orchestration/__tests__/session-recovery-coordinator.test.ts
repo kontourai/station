@@ -2053,6 +2053,9 @@ describe('SessionRecoveryCoordinator', () => {
         sendTurn,
         now: () => now,
         logger: { warn: vi.fn() },
+        // Production always wires the setting, which puts an intent read in
+        // the timer callback itself, ahead of the fence (review M1).
+        autoResume: async () => true,
       });
       try {
         coordinator.reconcile();
