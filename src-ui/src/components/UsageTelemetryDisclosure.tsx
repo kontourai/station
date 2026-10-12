@@ -63,6 +63,22 @@ type Disclosure = {
    * down or the choice evaporates when the variable does.
    */
   enabledSource?: 'config' | 'env' | 'default';
+  /**
+   * Whether THIS caller may record the acknowledgement. The server computes it
+   * with the same gate ingress applies to the acknowledgement route, which
+   * needs `access:manage`: a device paired through the QR/manual-code flow
+   * reads the inventory but cannot consent to egress on the operator's
+   * behalf. `false` means no surface may prompt this caller for a decision.
+   * Optional because an older peer does not report it; absence keeps the
+   * behaviour that peer always had.
+   */
+  canAcknowledge?: boolean;
+  /**
+   * Whether THIS caller may write `telemetryEnabled` (`PUT /config/app`).
+   * `false` withdraws the changing action, and a "keep" that would have had
+   * to record an environment-held value acknowledges without the write.
+   */
+  canChangeSetting?: boolean;
 };
 
 /**
@@ -308,10 +324,16 @@ export function useUsageTelemetryDisclosureState(): UsageTelemetryDisclosureStat
     // `events` is read with Object.entries below: a host that answers with an
     // unexpected shape (older build, error envelope) must degrade to showing
     // nothing, not throw through the app shell and blank the window.
+    //
+    // A caller that cannot acknowledge has nothing outstanding: there is no
+    // decision it can make, so neither the standalone modal nor the first-run
+    // step may prompt it (both are gated on this flag). Settings still shows
+    // the inventory, read-only.
     outstanding:
       !query.isLoading &&
       !!query.data?.events &&
       !query.data.acknowledged &&
+      query.data.canAcknowledge !== false &&
       !dismissed,
   };
 }
@@ -546,6 +568,8 @@ interface UsageTelemetryDecision {
   keep: () => void;
   /** Make the other one true. */
   change: () => void;
+  /** The caller may write the setting, so the changing action is offered. */
+  canChange: boolean;
   /** The failure to disclose beside the actions, when there is one. */
   notice: ReactNode;
   /** The receipt failed, so the keeping action is a retry. */
@@ -693,8 +717,13 @@ function useUsageTelemetryDecision(
   // disappears the day that variable does. Read from the config query's own
   // answer first, so a value recorded since the disclosure was fetched is
   // never re-written.
+  //
+  // A caller the server says cannot write the setting acknowledges without
+  // recording it: the write would be refused, and the receipt is the part
+  // this caller is entitled to.
+  const canChange = data?.canChangeSetting !== false;
   const keepMustRecord =
-    configEnabled === undefined && data?.enabledSource === 'env';
+    canChange && configEnabled === undefined && data?.enabledSource === 'env';
 
   const decide = (next: boolean) => {
     if (busy || !data) return;
@@ -784,7 +813,10 @@ function useUsageTelemetryDecision(
     labels: usageTelemetryDecisionLabels(enabled),
     busy,
     keep: () => decide(enabled),
-    change: () => decide(!enabled),
+    change: () => {
+      if (canChange) decide(!enabled);
+    },
+    canChange,
     notice: settingError ? (
       <p className="usage-telemetry-disclosure__error" role="alert">
         The usage telemetry setting could not be saved.
@@ -812,13 +844,15 @@ function DisclosureDecisionActions({
 }) {
   return (
     <>
-      <Button
-        variant="secondary"
-        aria-busy={decision.busy}
-        onClick={decision.change}
-      >
-        {decision.labels.change}
-      </Button>
+      {decision.canChange && (
+        <Button
+          variant="secondary"
+          aria-busy={decision.busy}
+          onClick={decision.change}
+        >
+          {decision.labels.change}
+        </Button>
+      )}
       <Button
         ref={keepRef}
         variant="primary"
@@ -979,6 +1013,10 @@ export function UsageTelemetryDisclosure({
       <DisclosureSummary data={data} chrome={STANDALONE_CHROME} />
       {data.acknowledged ? (
         <p>You acknowledged this inventory.</p>
+      ) : data.canAcknowledge === false ? (
+        <p data-testid="usage-telemetry-disclosure-host-decision">
+          Usage telemetry is decided on the host computer, not from this device.
+        </p>
       ) : (
         <ResponsiveSurfaceActions className="usage-telemetry-disclosure__actions">
           {decision.notice}

@@ -190,7 +190,10 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
     expect(afterReady.status).toBe(200);
     await expect(afterReady.json()).resolves.toEqual({
       success: true,
-      data: disclosure,
+      // Ingress is mocked out above, so no principal was published and both
+      // per-caller capabilities fail closed. Their computation per credential
+      // is pinned in pairing-scope-enforcement.test.ts.
+      data: { ...disclosure, canAcknowledge: false, canChangeSetting: false },
     });
 
     for (const [body, status] of [
@@ -249,7 +252,10 @@ describe('configureRuntimeRoutes — late-bound usage telemetry disclosure', () 
     );
     await expect(acknowledged.json()).resolves.toEqual({
       success: true,
-      data: disclosure,
+      // Ingress is mocked out above, so no principal was published and both
+      // per-caller capabilities fail closed. Their computation per credential
+      // is pinned in pairing-scope-enforcement.test.ts.
+      data: { ...disclosure, canAcknowledge: false, canChangeSetting: false },
     });
   });
 });

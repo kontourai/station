@@ -5831,9 +5831,32 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   line-height: 1.5;
 }
 
+/* The failure notice is the first child of every disclosure action row (the
+   dialog footer, the Settings row, the first-run step). It takes a full row of
+   its own ABOVE the actions instead of competing with "Not now" for width,
+   which on a phone squeezed it into a narrow column beside one button and
+   pushed the other two onto a second, ragged row. */
+.usage-telemetry-disclosure .station-dialog__footer,
+.usage-telemetry-disclosure__actions,
+.first-run-disclosure .first-run-chapter__actions {
+  flex-wrap: wrap;
+}
+
 .usage-telemetry-disclosure__error {
+  flex: 1 0 100%;
+  margin: 0;
   color: var(--error-text);
-  margin-right: auto;
+}
+
+@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  /* Three named actions do not fit one row at phone width. Letting each grow
+     fills every row it wraps onto, so the row reads as a set of equal-width
+     targets rather than a left-over button stranded on a line of its own. */
+  .usage-telemetry-disclosure .station-dialog__footer > button,
+  .usage-telemetry-disclosure__actions > button,
+  .first-run-disclosure .first-run-chapter__actions > button {
+    flex: 1 1 auto;
+  }
 }
 
 /* Agent Editor */
