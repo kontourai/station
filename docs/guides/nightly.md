@@ -81,7 +81,7 @@ provider outcomes retain their own status; a failed overall run can already have
 published a subset. See the [cohort and recovery contract](native-releases.md#native-nightly-cohort)
 before retrying or changing a marker.
 
-## Portable server nightly (dry run until the owner enables it)
+## Portable server nightly
 
 `.github/workflows/portable-nightly-publish.yml`, called by `nightly.yml` as
 `portable-nightly` after full regression, builds the five
@@ -90,19 +90,36 @@ before retrying or changing a marker.
 `<code>` is the native Nightly's reserved version code (re-checked against the
 `nightly-version-code/<code>` tag). It assembles the schema v2 manifest from
 the archive descriptors, signs it with a throwaway key, verifies it, and
-confirms the pinned key table refuses that envelope. That is the whole run
-unless the owner gate is on; nothing is uploaded except short-lived run
-artifacts.
+confirms the pinned key table refuses that envelope. Publication is enabled:
+the owner set `STATION_PORTABLE_NIGHTLY_PUBLISH=enabled`, and Nightlies
+publish versioned `vX.Y.Z-nightly.<code>` releases and replace the rolling
+`portable-nightly` manifest (as read on 2026-10-12, the newest was
+`v0.1.11-nightly.247504`). Without the gate, or on a direct dispatch, the run
+stops after the dry run and uploads only short-lived run artifacts.
 
 This is the platform-array schema v2 manifest. On macOS and Linux, `install.sh`
 selects the host's archive, verifies its signed size and digest, and installs
 it under `versions/<version>` with its bundled Node.js and a forwarding
 launcher. On Windows, `install.ps1` installs it the same way under a
 `current` junction with a `station-nightly.cmd` launcher (see
-[Windows archive installs](release-channel-ports.md#windows-archive-installs)). Set `STATION_CHANNEL=nightly` and
-`STATION_INSTALL_PUBLIC_MANIFEST_URL` to an available signed Nightly manifest.
-Installer support does not establish that publication is enabled or that a
-release has been installed successfully; see the
+[Windows archive installs](release-channel-ports.md#windows-archive-installs)).
+`STATION_CHANNEL=nightly` alone installs from the rolling
+`portable-nightly/station-portable-nightly-manifest.json`, which both
+installers carry as a generated default; an explicit
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` overrides it, with the same pinned-key
+verification:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kontourai/station/main/install.sh | STATION_CHANNEL=nightly sh
+```
+
+```powershell
+$env:STATION_CHANNEL = 'nightly'; irm https://raw.githubusercontent.com/kontourai/station/main/install.ps1 | iex
+```
+
+The installer is not otherwise part of the signed release. Each versioned
+release also carries the `install.sh` and `install.ps1` of its source SHA,
+which the publish job reads back byte for byte. See the
 [archive install contract](release-channel-ports.md#prebuilt-archives-and-source-releases).
 
 The `publish` job is the only one with `contents: write` and the only one that
@@ -124,9 +141,10 @@ gh workflow run portable-nightly-publish.yml --repo kontourai/station --ref <bra
 
 When enabled, it signs in the `portable-nightly-signing` environment with the
 pinned `station-portable-nightly-2026-09` key, refuses a version that is not
-newer than the rolling manifest, uploads the archives and the manifest to the
-immutable prerelease `v<version>` (never marked latest), re-downloads them and
-compares digests, replaces `station-portable-nightly-manifest.json` on the
+newer than the rolling manifest, uploads the archives, the manifest,
+`install.sh` and `install.ps1` to the immutable prerelease `v<version>`
+(never marked latest), re-downloads them and compares digests (the archives
+against the signed manifest, the installers against the checkout), replaces `station-portable-nightly-manifest.json` on the
 rolling `portable-nightly` release last, and re-fetches and re-verifies it.
 Unlike the stable and preview host pointers, Nightly checks "newer than the
 rolling manifest" against the cacheable download URL only and does not plan
@@ -394,17 +412,36 @@ credentials are configured. Without those credentials, the installer records
 signature. Missing or invalid updater signatures always block publication;
 configured publisher-signing failures also block instead of falling back.
 This uses our own updater keys and GitHub Releases without a paid Windows
-certificate subscription. Downloads without Authenticode can show an Unknown
-publisher or SmartScreen warning. Existing macOS signing remains required.
+certificate subscription. Hosted Nightly configures no publisher credentials
+today, so the published Windows installer has no Authenticode signature
+(`station-0.1.11-nightly.2475.3-windows-x86_64-setup.exe` had an empty PE
+certificate table on 2026-10-12). Running the downloaded installer,
+Microsoft Defender SmartScreen shows "Windows protected your PC" with an
+unknown publisher, and the user must choose **More info**, then **Run
+anyway**; with Windows 11 Smart App Control on, Windows can block it with no
+override. Updates through the
+Tauri updater are verified with the updater key. Publisher signing is
+[#3591](https://github.com/kontourai/station/issues/3591). Existing macOS
+signing remains required.
 
 One publisher owns `nightly-desktop/latest.json`. It waits for both desktop
 builds, verifies their updater signatures, and creates a manifest containing
-only that cohort. It uploads the five version-specific desktop downloads,
-checks their GitHub sizes and digests, and replaces `latest.json` last. It
-refuses version regression. Previous downloads are not overwritten, so an
-upload failure before the manifest write leaves the previous feed usable.
-GitHub's manifest replacement is not transactional; interrupted provider
-writes remain unresolved until readback verifies them.
+only that cohort. It uploads the five version-specific desktop downloads and
+checks their GitHub sizes and digests. Then it replaces three more assets:
+the two installers again under fixed names,
+`station-nightly-macos-aarch64.dmg` and
+`station-nightly-windows-x86_64-setup.exe` (so
+`releases/download/nightly-desktop/<name>` is always the newest build), and
+`SHA256SUMS`, which lists this build's seven downloads under both names. It
+replaces `latest.json` last and reads every asset back. It refuses version
+regression. Previous versioned downloads are not overwritten, so an upload
+failure before the manifest write leaves the previous feed usable, although
+the fixed names may already serve the new build. GitHub's asset replacement
+is a delete then an upload, not a transaction: a download in between can
+miss a fixed name, or pair it with the other build's `SHA256SUMS`, which then
+fails the check. Interrupted provider writes remain unresolved until readback
+verifies them. The older `station-nightly-desktop-*` assets on the release
+come from builds before versioned names, and are not updated.
 
 The final receipt records separate macOS and Windows claims for this shared
 publication. Android retains its separate provider outcome. A build or release

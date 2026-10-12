@@ -1,0 +1,11 @@
+{
+  "revision": "fb40504dfb442e34d11b7057e6c2d6383980f7c0",
+
+  "notes": [
+    {"path":"docs/adr/0005-require-a-second-consumer-before-extraction.md","note":"Fix round on #3577: removed the unsourced copy-extraction claim and Ephemeris origin framing; kept only that Station imports @kontourai/ephemeris through its published package (src-server/services/scheduling) and cited the public repository. Defined the Tier 1 forbidden import set (Station source, @kontourai/station-*; public building blocks such as @kontourai/thread allowed, checked in package.json), CI enforcement, Station ownership, the title scope, and the #3574 probe as a case-specific maintainer rule. No implementation exists yet.","inputs":["docs/adr/0005-require-a-second-consumer-before-extraction.md"]},
+
+    {"path":"CONTEXT.md","note":"Fix round on #3577: the extraction paragraph now states the Tier 1 forbidden import set and CI enforcement, and treats ADR 0005's exists-or-concretely-asking consumer as the Tier 2 minimum with the additional criteria retained. Other sections not re-reviewed.","inputs":["CONTEXT.md"]},
+
+    {"path":"docs/strategy/constitution.md","note":"Reviewed Beliefs 2 and 6 and Non-Negotiable 1 against the ADR 0005 two-tier amendment (#3558). They describe standalone products and Kontour primitives, which is Tier 2; ADR 0005 states Tier 1 packages are Station-owned and not Kontour primitives. No prose change needed.","inputs":["docs/strategy/constitution.md"]}
+  ]
+}
