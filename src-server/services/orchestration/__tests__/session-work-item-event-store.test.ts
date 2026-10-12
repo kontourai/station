@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { DatabaseSync, StatementSync } from 'node:sqlite';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   EventStore,
   SessionWorkItemObservationCorruptionError,
@@ -28,6 +29,8 @@ function loaderProvenance() {
 }
 
 const directories: string[] = [];
+/** #2421: new temp directories go through the tracker; `open` predates it. */
+const makeTempDir = trackTempDirs();
 
 afterEach(() => {
   for (const directory of directories.splice(0))
@@ -450,9 +453,9 @@ describe('EventStore Session work-item associations', () => {
   // upsert is what establishes a root Session's lineage. Admission reads that
   // lineage, so the participant must run before the work item is taken.
   test('a co-committed session row establishes the lineage its terminal admission reads', () => {
-    const directory = mkdtempSync(join(tmpdir(), 'station-work-item-store-'));
-    directories.push(directory);
-    const store = new EventStore(join(directory, 'orchestration.sqlite'));
+    const store = new EventStore(
+      join(makeTempDir('station-work-item-store-'), 'orchestration.sqlite'),
+    );
     try {
       expect(
         store.stageSessionWorkItemCandidate({

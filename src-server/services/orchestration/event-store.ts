@@ -321,7 +321,7 @@ const logger = createLogger({ name: 'event-store' });
  * participant ran, so nothing of the append may be written. Thrown instead of
  * letting the remaining statements autocommit.
  */
-export class EventAppendTransactionLostError extends Error {
+class EventAppendTransactionLostError extends Error {
   constructor(options?: { cause?: unknown }) {
     super(
       'The event append transaction was rolled back by SQLite during a co-commit participant',
