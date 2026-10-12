@@ -942,13 +942,20 @@ describe('SchedulerLedger', () => {
    */
   describe('a foreign claim with no recorded birth', () => {
     const FOREIGN_PID = 2_147_483_001;
-    const foreignIdentity = (state: 'dead' | 'unavailable') => ({
+    const foreignIdentity = (state: 'dead' | 'unavailable' | 'exact') => ({
       exact: (pid: number) => {
         const probed = probeExactProcessIdentity(pid);
         return probed.state === 'exact' ? probed.identity : null;
       },
-      probe: (pid: number) =>
-        pid === FOREIGN_PID ? { state } : probeExactProcessIdentity(pid),
+      probe: (pid: number) => {
+        if (pid !== FOREIGN_PID) return probeExactProcessIdentity(pid);
+        return state === 'exact'
+          ? {
+              state,
+              identity: { pid: FOREIGN_PID, start: 'some-live-birth' },
+            }
+          : { state };
+      },
     });
 
     function strandForeignClaim(invoked: boolean) {
@@ -1017,19 +1024,22 @@ describe('SchedulerLedger', () => {
       }
     });
 
-    test('control: a live foreign owner with no birth keeps its fence', () => {
-      const { dueAt } = strandForeignClaim(false);
-      const restarted = createSchedulerLedger({
-        directory: tempDir,
-        processIdentity: foreignIdentity('unavailable'),
-      });
-      try {
-        expect(read(restarted.claimDue(dueAt))).toEqual([]);
-        expect(read(restarted.allLogs())).toEqual([]);
-      } finally {
-        restarted.close();
-      }
-    });
+    test.each(['exact', 'unavailable'] as const)(
+      'control: a live (%s) foreign owner with no birth keeps its fence',
+      (state) => {
+        const { dueAt } = strandForeignClaim(false);
+        const restarted = createSchedulerLedger({
+          directory: tempDir,
+          processIdentity: foreignIdentity(state),
+        });
+        try {
+          expect(read(restarted.claimDue(dueAt))).toEqual([]);
+          expect(read(restarted.allLogs())).toEqual([]);
+        } finally {
+          restarted.close();
+        }
+      },
+    );
   });
 
   // #3563: one unreadable job record used to throw out of claimDue's
