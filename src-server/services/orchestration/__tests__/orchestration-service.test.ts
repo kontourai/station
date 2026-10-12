@@ -21579,6 +21579,8 @@ describe('OrchestrationService', () => {
           event,
           claude,
           controller,
+          // These warnings carry no lifecycle stamp to recompute.
+          (admitted: CanonicalRuntimeEvent) => admitted,
         ) as Promise<boolean>;
       let timedAfterFirst: boolean | undefined;
       const firstDone = publish(warning('overlap-first'), first).catch(() => {

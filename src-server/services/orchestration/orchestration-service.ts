@@ -347,9 +347,10 @@ import { OrchestrationMonitoringBridge } from './orchestration-monitoring-bridge
 import {
   buildAgentRunSummary,
   buildOrchestrationSessionSummary,
+  deriveReadModelSession,
   extractPeerPendingRequestObservation,
   PEER_PENDING_REQUEST_METADATA_KEY,
-  projectOrchestrationEventToReadModel,
+  persistReadModelSession,
   type RecoveredSessionStartOptions,
   recoverOrchestrationSessions,
   resolveOrchestrationAdapterForThread,
@@ -426,6 +427,7 @@ import {
   createInMemorySessionTurnBoundaryAuthority,
   runSessionStartWithBoundary,
   type SessionTurnBoundaryAuthority,
+  type SessionTurnBoundaryTransition,
 } from './session-turn-boundary.js';
 import {
   SkillExperienceRuntime,
@@ -703,6 +705,32 @@ const DISCARDED_DRAFT_GATE_MAX = 256;
  * the interruption warning names it.
  */
 const OBSERVED_EVENT_RETRY_DELAYS_MS = [25, 100] as const;
+
+/** The lifecycle fields `normalizeCanonicalRuntimeEventLifecycle` stamps. */
+const LIFECYCLE_STAMP_FIELDS = [
+  'sessionState',
+  'previousState',
+  'transitionReason',
+  'transitionSource',
+] as const;
+
+/**
+ * #3561: `candidate` with its lifecycle fields put back to what the adapter
+ * authored on `source`, so normalizing it again stamps from current state
+ * instead of keeping an earlier stamp (which normalization never overwrites).
+ */
+function withAdapterLifecycleStamp(
+  candidate: CanonicalRuntimeEvent,
+  source: CanonicalRuntimeEvent,
+): CanonicalRuntimeEvent {
+  const next: Record<string, unknown> = { ...candidate };
+  const authored = source as unknown as Record<string, unknown>;
+  for (const field of LIFECYCLE_STAMP_FIELDS) {
+    if (field in authored) next[field] = authored[field];
+    else delete next[field];
+  }
+  return next as unknown as CanonicalRuntimeEvent;
+}
 
 /**
  * #2312 verifier M3: a Session in the Draft's conversation is one the caller
@@ -2001,12 +2029,6 @@ export class OrchestrationService {
         this.isRetryablePublishFailure(event, error),
     },
   );
-  /**
-   * #3560: `turn.started` event ids whose provider-turn boundary is recorded
-   * while their publish is still in progress, so a retry does not record it
-   * again. Cleared when the publish returns or gives up.
-   */
-  private readonly providerTurnBoundariesInFlight = new Set<string>();
   /**
    * #3560: how many observed-event retries are asleep or running per thread
    * (overlapping retries happen when an adapter is replaced while the old
@@ -9706,31 +9728,43 @@ export class OrchestrationService {
         }
         event = await this.captureUsagePricingSnapshot(event);
         lastThreadId = event.threadId;
-        const previousState = this.readCurrentLifecycleState(event.threadId);
-        // archive#3581 review BLOCK 1: `turnIdentityAnchorForEvents`, NOT
-        // `activeTurnIdForEvents` — this value is stamped onto the
-        // persisted event's `sessionState` (below), which
-        // `deriveLifecycleTransition`'s stamp early-return then honors
-        // ahead of its own `acceptsTurnTerminalEvent` guard. The clearing
-        // fold (`activeTurnIdForEvents`) answers "is a turn currently
-        // open", which is `undefined` after a `runtime.error`/
-        // `session.exited` — the exact permissive default that let a stale
-        // terminal for an EARLIER turn get stamped `sessionState:
-        // 'completed'` on disk after a LATER turn's own failure. The
-        // identity-anchor fold retains the last-started turn's id across
-        // that clear, matching what the read-time folds
-        // (`deriveLifecycleTransition`/`deriveAgentRunStatus`) compute over
-        // the identical bounded projection.
-        const turnIdentityAnchor = turnIdentityAnchorForEvents(
-          this.options.eventStore
-            ?.listSessionProjectionEvents(event.threadId)
-            .map((stored) => stored.payload) ?? [],
-        );
-        const normalized = normalizeCanonicalRuntimeEventLifecycle(
-          event,
-          previousState,
-          turnIdentityAnchor,
-        );
+        const adapterEvent = event;
+        // Stamps lifecycle from the state as it stands now. #3561: a retried
+        // publish stamps again, from the adapter's own fields, so an event
+        // other publishers overtook during the retry sleep carries the state
+        // current at its append rather than at its first attempt.
+        const normalizeLifecycle = (
+          candidate: CanonicalRuntimeEvent,
+        ): CanonicalRuntimeEvent => {
+          const previousState = this.readCurrentLifecycleState(
+            adapterEvent.threadId,
+          );
+          // archive#3581 review BLOCK 1: `turnIdentityAnchorForEvents`, NOT
+          // `activeTurnIdForEvents` — this value is stamped onto the
+          // persisted event's `sessionState` (below), which
+          // `deriveLifecycleTransition`'s stamp early-return then honors
+          // ahead of its own `acceptsTurnTerminalEvent` guard. The clearing
+          // fold (`activeTurnIdForEvents`) answers "is a turn currently
+          // open", which is `undefined` after a `runtime.error`/
+          // `session.exited` — the exact permissive default that let a stale
+          // terminal for an EARLIER turn get stamped `sessionState:
+          // 'completed'` on disk after a LATER turn's own failure. The
+          // identity-anchor fold retains the last-started turn's id across
+          // that clear, matching what the read-time folds
+          // (`deriveLifecycleTransition`/`deriveAgentRunStatus`) compute over
+          // the identical bounded projection.
+          const turnIdentityAnchor = turnIdentityAnchorForEvents(
+            this.options.eventStore
+              ?.listSessionProjectionEvents(adapterEvent.threadId)
+              .map((stored) => stored.payload) ?? [],
+          );
+          return normalizeCanonicalRuntimeEventLifecycle(
+            withAdapterLifecycleStamp(candidate, adapterEvent),
+            previousState,
+            turnIdentityAnchor,
+          );
+        };
+        let normalized = normalizeLifecycle(event);
         // #2540: the exit of an engine this service parked is absorbed — see
         // `parkingThreads`. The session stays dormant and restarts in place.
         // A parked engine's exit is absorbed while the park waits for it, and
@@ -9753,7 +9787,17 @@ export class OrchestrationService {
         // `projectAndPublishEvent` with a bounded retry of its publish half,
         // holding this event until it is appended before the next one is
         // consumed (#3560).
-        if (!(await this.publishObservedEvent(normalized, adapter, controller)))
+        if (
+          !(await this.publishObservedEvent(
+            normalized,
+            adapter,
+            controller,
+            (admitted) => {
+              normalized = normalizeLifecycle(normalized);
+              return normalizeLifecycle(admitted);
+            },
+          ))
+        )
           continue;
         this.cooperativeStop.applyPendingTurnInterrupt(adapter, normalized);
         if (normalized.method === 'session.exited') {
@@ -9880,26 +9924,25 @@ export class OrchestrationService {
    * surfaces `adapter-event-stream-interrupted` and restarts, and it never
    * permits retrying the turn.
    *
-   * A retry repeats the publish body's pre-append steps. They are idempotent
-   * for a replay of the same event, except that an activity notification is
-   * counted twice in `sessionActivityEvents`; a provider-started turn's
-   * boundary is recorded once per event (`providerTurnBoundariesInFlight`).
-   * Lifecycle normalization is NOT redone, so a retried event keeps the
-   * `previousState`/`sessionState` computed before the first attempt.
-   * Pre-append state that outlives an append which never succeeds is #3561.
+   * The publish half changes nothing a client or recovery can observe
+   * before its append commits (#3561), so a failed attempt leaves nothing
+   * for a retry to repeat. Each retry restamps the event's lifecycle through
+   * `renormalize`, from the state current after the sleep.
    */
   private async publishObservedEvent(
     event: CanonicalRuntimeEvent,
     adapter: ProviderAdapterShape,
     controller: AbortController,
+    renormalize: (admitted: CanonicalRuntimeEvent) => CanonicalRuntimeEvent,
   ): Promise<boolean> {
     const admitted = this.admitEventForPublication(event);
     if (!admitted) return true;
+    let attempt = admitted;
     let retrying = false;
     try {
       for (const delayMs of [...OBSERVED_EVENT_RETRY_DELAYS_MS, undefined]) {
         try {
-          return this.offerOrPublishEvent(admitted);
+          return this.offerOrPublishEvent(attempt);
         } catch (error) {
           if (
             delayMs === undefined ||
@@ -9927,11 +9970,11 @@ export class OrchestrationService {
           await new Promise((resolve) => setTimeout(resolve, delayMs));
           if (controller.signal.aborted || !this.isAdapterCurrent(adapter))
             throw error;
+          attempt = renormalize(admitted);
         }
       }
       throw new Error('unreachable: the final attempt returns or throws');
     } finally {
-      this.providerTurnBoundariesInFlight.delete(admitted.eventId);
       // Whatever the outcome, this event's retry is over. Text still retained
       // for the thread gets its window timer back once no other retry on the
       // thread is in flight.
@@ -11156,7 +11199,6 @@ export class OrchestrationService {
     try {
       return this.offerOrPublishEvent(admitted);
     } finally {
-      this.providerTurnBoundariesInFlight.delete(admitted.eventId);
       if (!this.observedRetryThreads.has(admitted.threadId))
         this.deltaCoalescer.resumeRetained(admitted.threadId);
     }
@@ -11222,44 +11264,54 @@ export class OrchestrationService {
 
   /**
    * #2324: a turn the engine opened on its own passed through no send, so no
-   * claim recorded its boundary row. Record it BEFORE its `turn.started` is
-   * persisted: a crash after the start then leaves the same durable fact a
-   * crashed user turn leaves, and boot closes it with the interrupted-turn
-   * banner (`InterruptedTurnRecovery`); a crash before the start leaves a
-   * row boot resolves silently. Retired by the turn's own terminal like any
-   * accepted row. A failed record is logged and counted, and the turn is
-   * still published — losing the crash banner is better than losing the
-   * turn.
+   * claim recorded its boundary row. The row is written inside the append of
+   * the turn's `turn.started`, as a co-commit participant (#3561): it exists
+   * exactly when that event does. A crash after the start then leaves the
+   * same durable fact a crashed user turn leaves, and boot closes it with the
+   * interrupted-turn banner (`InterruptedTurnRecovery`). An append that fails
+   * leaves no row, so a retry of the same event records its own, and no other
+   * path can retire it in between. Retired by the turn's own terminal like
+   * any accepted row. A row that cannot be written is logged and counted,
+   * and the turn is still published: losing the crash banner is better than
+   * losing the turn.
+   *
+   * Preparation runs here, before the append, because it may retry pending
+   * boundary transitions, each in a transaction of its own.
    */
-  private recordProviderTurnBoundary(event: CanonicalRuntimeEvent): void {
+  private prepareProviderTurnBoundary(
+    event: CanonicalRuntimeEvent,
+  ): { record(): SessionTurnBoundaryTransition } | undefined {
     if (
       event.method !== 'turn.started' ||
       !event.turnId ||
-      !isProviderTriggeredTurn(event) ||
-      // #3560: a retried publish of the same event must not record a second
-      // row, which boot recovery would banner a second time after a crash.
-      this.providerTurnBoundariesInFlight.has(event.eventId)
+      !isProviderTriggeredTurn(event)
     ) {
-      return;
+      return undefined;
     }
-    const recorded = this.sessionStartBoundaries.recordProviderTurn(
+    return this.sessionStartBoundaries.prepareProviderTurn(
       event.threadId,
       event.turnId,
       event.createdAt,
     );
-    if (recorded.kind === 'applied')
-      this.providerTurnBoundariesInFlight.add(event.eventId);
+  }
+
+  /** Counts, and warns about, a provider turn's committed boundary write. */
+  private reportProviderTurnBoundary(
+    event: CanonicalRuntimeEvent,
+    recorded: SessionTurnBoundaryTransition | undefined,
+  ): void {
+    const outcome = recorded?.kind ?? 'unavailable';
     providerTurnBoundaryRecords.add(1, {
       provider: event.provider,
-      outcome: recorded.kind,
+      outcome,
     });
-    if (recorded.kind !== 'applied') {
+    if (outcome !== 'applied') {
       this.options.logger.warn(
         'Provider-triggered turn boundary was not recorded; a crash during this turn will not be bannered at boot',
         {
           threadId: event.threadId,
           turnId: event.turnId,
-          outcome: recorded.kind,
+          outcome,
         },
       );
     }
@@ -11285,111 +11337,33 @@ export class OrchestrationService {
     event = safeSanitizeUIBlockEventProvenance(event, (message, meta) =>
       this.options.logger.warn(message, meta),
     );
+    let declined = false;
+    if (this.discardedDraftThreads.has(event.threadId)) {
+      if (event.method === 'session.exited')
+        this.discardedEngineExitWaiters.get(event.threadId)?.();
+      declined = true;
+    }
+    const quarantined = this.quarantinedThreads.has(event.threadId);
+    if (quarantined && event.method !== 'session.exited') declined = true;
+    // #3561: store before show. Nothing a client or recovery can observe
+    // changes before the append commits, so a throw from it propagates from
+    // here with everything below unapplied, and a retry applies it once.
+    const projectedEvent = declined
+      ? undefined
+      : this.appendCanonicalEvent(event, quarantined);
     // T5 ordering, pinned by the source invariant in this file's test
     // suite: a stop must settle even for an event the quarantine gate
     // declines, or a stop on a quarantined thread never settles and rides
-    // its full budget into a forced teardown of a completed turn.
+    // its full budget into a forced teardown of a completed turn. For an
+    // event that is published, it settles only once that event's append has
+    // committed (#3561): a failed append leaves the stop pending, as the log
+    // still shows the turn running.
     this.cooperativeStop.settleCompletedTurn(
       event.threadId,
       event.turnId,
       event.method,
     );
-    if (this.discardedDraftThreads.has(event.threadId)) {
-      if (event.method === 'session.exited')
-        this.discardedEngineExitWaiters.get(event.threadId)?.();
-      return false;
-    }
-    const quarantined = this.quarantinedThreads.has(event.threadId);
-    if (quarantined && event.method !== 'session.exited') return false;
-    if (quarantined) this.quarantinedThreads.delete(event.threadId);
-    // archive#2959: every canonical event this service actually persists and
-    // publishes passes through here — adapter-streamed content/tool/state
-    // events AND this service's own internally-derived terminal events
-    // (`session.stop-settled`, the forced-path `turn.aborted`), which never
-    // reach `consumeAdapterEvents`' loop at all. Feeding the watchdog here,
-    // not there, is what lets it treat a Stop settling as the same kind of
-    // turn-end as an ordinary completion.
-    // A coalescable delta was already observed raw at the coalescing seam, so
-    // the watchdog sees progress at the engine's rate rather than the publish
-    // rate. Observing the merged event again would reset the window twice for
-    // one stretch of text.
-    // A posture decision is not engine progress: counting it would reset a
-    // stalled turn's window (#2436).
-    if (
-      !isCoalescableDelta(event) &&
-      event.method !== 'session.approval-mode-set'
-    )
-      this.turnProgress.observe(event);
-    this.threadProviders.set(event.threadId, event.provider);
-    if (event.method === 'session.exited') {
-      this.clientOriginTurns.clearThread(event.threadId);
-      // #2409: a respawned engine starts at whatever its start resolves, so
-      // nothing Station set on the exited one is still in effect.
-      this.approvalPosture.forgetThread(event.threadId);
-      this.acceptedTurnConfinement.delete(event.threadId);
-    }
-    if (
-      event.method === 'turn.completed' ||
-      event.method === 'turn.aborted' ||
-      event.method === 'runtime.error'
-    ) {
-      this.clientOriginTurns.retire(event.threadId, event.turnId);
-    }
-    // Adapter-agnostic activity telemetry: adapters stay metric-free (the
-    // sessionStateDuration precedent), so provider activity notifications
-    // are counted here at the projection boundary.
-    if (event.method === 'extension.notification') {
-      sessionActivityEvents.add(1, {
-        provider: event.provider,
-        namespace: event.namespace,
-        kind: event.type,
-      });
-    }
-    // #2456: child work (engine subagents) folds here, beside turnProgress,
-    // so session summaries — and the reconnect snapshot built from them —
-    // carry the live set.
-    this.childWork.observe(event);
-    const projectedEvent = this.options.eventStore
-      ? this.options.eventStore.projectLiveEvent(event)
-      : event;
-    projectOrchestrationEventToReadModel({
-      event: projectedEvent,
-      threadProviders: this.threadProviders,
-      sessionReadModel: this.sessionReadModel,
-      eventStore: this.options.eventStore,
-    });
-    const declaredOutputs =
-      projectedEvent.method === 'turn.completed' && projectedEvent.turnId
-        ? [
-            ...this.nativeOutputDeclarations.takeTerminalAdmissions(
-              projectedEvent.threadId,
-              projectedEvent.turnId,
-              projectedEvent.eventId,
-            ),
-            ...(this.stationControlPullRequests?.takeTerminalAdmissions(
-              projectedEvent.threadId,
-              projectedEvent.turnId,
-              projectedEvent.eventId,
-            ) ?? []),
-          ]
-        : [];
-    this.recordProviderTurnBoundary(projectedEvent);
-    try {
-      this.options.eventStore?.appendEvent(projectedEvent, declaredOutputs);
-      if (declaredOutputs.length > 0) {
-        const handles = declaredOutputs.map((admission) => admission.handle);
-        // A handle belongs to exactly one operation; the other ignores it.
-        this.nativeOutputDeclarations.commit(handles);
-        this.stationControlPullRequests?.commit(handles);
-      }
-    } catch (error) {
-      // Same-call retry is possible only when SQLite rolled back.  Do not
-      // consume a memory handle before its unique durable use index commits.
-      const handles = declaredOutputs.map((admission) => admission.handle);
-      this.nativeOutputDeclarations.rollback(handles);
-      this.stationControlPullRequests?.rollback(handles);
-      throw error;
-    }
+    if (!projectedEvent) return false;
     // The event-store append is the retirement boundary. Do not use an
     // adapter's cleared activeTurnId or a queue-drain edge: a bound native
     // scope remains valid until its ordered durable terminal is committed.
@@ -11514,6 +11488,128 @@ export class OrchestrationService {
       });
     }
     return true;
+  }
+
+  /**
+   * #3561: the append half of {@link publishCanonicalEvent}, in store-before-
+   * show order. Before the append runs only what is a pure precondition or
+   * has an undo: the live projection (server-only blob writes, unreferenced
+   * if the append fails and bounded by retention), the pure read-model
+   * derivation, declared-output admissions (rolled back on failure) and the
+   * provider turn boundary's preparation. The session row and a provider
+   * turn's boundary row are co-commit participants of the append. In-memory
+   * observers run only after it has committed. Returns the persisted shape.
+   */
+  private appendCanonicalEvent(
+    event: CanonicalRuntimeEvent,
+    quarantined: boolean,
+  ): CanonicalRuntimeEvent {
+    const eventStore = this.options.eventStore;
+    const projectedEvent = eventStore
+      ? eventStore.projectLiveEvent(event)
+      : event;
+    const session = deriveReadModelSession({
+      event: projectedEvent,
+      sessionReadModel: this.sessionReadModel,
+    });
+    const declaredOutputs =
+      projectedEvent.method === 'turn.completed' && projectedEvent.turnId
+        ? [
+            ...this.nativeOutputDeclarations.takeTerminalAdmissions(
+              projectedEvent.threadId,
+              projectedEvent.turnId,
+              projectedEvent.eventId,
+            ),
+            ...(this.stationControlPullRequests?.takeTerminalAdmissions(
+              projectedEvent.threadId,
+              projectedEvent.turnId,
+              projectedEvent.eventId,
+            ) ?? []),
+          ]
+        : [];
+    const providerTurn = this.prepareProviderTurnBoundary(projectedEvent);
+    let providerTurnRecorded: SessionTurnBoundaryTransition | undefined;
+    // The durable projections of this event commit with it or not at all.
+    const coCommit = () => {
+      if (session) persistReadModelSession(eventStore, session);
+      providerTurnRecorded = providerTurn?.record();
+    };
+    try {
+      if (eventStore)
+        eventStore.appendEvent(projectedEvent, declaredOutputs, coCommit);
+      else coCommit();
+      if (declaredOutputs.length > 0) {
+        const handles = declaredOutputs.map((admission) => admission.handle);
+        // A handle belongs to exactly one operation; the other ignores it.
+        this.nativeOutputDeclarations.commit(handles);
+        this.stationControlPullRequests?.commit(handles);
+      }
+    } catch (error) {
+      // Same-call retry is possible only when SQLite rolled back.  Do not
+      // consume a memory handle before its unique durable use index commits.
+      const handles = declaredOutputs.map((admission) => admission.handle);
+      this.nativeOutputDeclarations.rollback(handles);
+      this.stationControlPullRequests?.rollback(handles);
+      throw error;
+    }
+    if (providerTurn)
+      this.reportProviderTurnBoundary(projectedEvent, providerTurnRecorded);
+    // A quarantined thread's exit is what lifts its quarantine, once stored.
+    if (quarantined) this.quarantinedThreads.delete(event.threadId);
+    // archive#2959: every canonical event this service actually persists and
+    // publishes passes through here — adapter-streamed content/tool/state
+    // events AND this service's own internally-derived terminal events
+    // (`session.stop-settled`, the forced-path `turn.aborted`), which never
+    // reach `consumeAdapterEvents`' loop at all. Feeding the watchdog here,
+    // not there, is what lets it treat a Stop settling as the same kind of
+    // turn-end as an ordinary completion.
+    // A coalescable delta was already observed raw at the coalescing seam, so
+    // the watchdog sees progress at the engine's rate rather than the publish
+    // rate. Observing the merged event again would reset the window twice for
+    // one stretch of text.
+    // A posture decision is not engine progress: counting it would reset a
+    // stalled turn's window (#2436).
+    if (
+      !isCoalescableDelta(event) &&
+      event.method !== 'session.approval-mode-set'
+    )
+      this.turnProgress.observe(event);
+    this.threadProviders.set(event.threadId, event.provider);
+    if (event.method === 'session.exited') {
+      this.clientOriginTurns.clearThread(event.threadId);
+      // #2409: a respawned engine starts at whatever its start resolves, so
+      // nothing Station set on the exited one is still in effect.
+      this.approvalPosture.forgetThread(event.threadId);
+      this.acceptedTurnConfinement.delete(event.threadId);
+    }
+    if (
+      event.method === 'turn.completed' ||
+      event.method === 'turn.aborted' ||
+      event.method === 'runtime.error'
+    ) {
+      this.clientOriginTurns.retire(event.threadId, event.turnId);
+    }
+    // Adapter-agnostic activity telemetry: adapters stay metric-free (the
+    // sessionStateDuration precedent), so provider activity notifications
+    // are counted here at the projection boundary.
+    if (event.method === 'extension.notification') {
+      sessionActivityEvents.add(1, {
+        provider: event.provider,
+        namespace: event.namespace,
+        kind: event.type,
+      });
+    }
+    // #2456: child work (engine subagents) folds here, beside turnProgress,
+    // so session summaries — and the reconnect snapshot built from them —
+    // carry the live set.
+    this.childWork.observe(event);
+    if (session)
+      trackOrchestrationSession({
+        threadProviders: this.threadProviders,
+        sessionReadModel: this.sessionReadModel,
+        session,
+      });
+    return projectedEvent;
   }
 
   // archive#3557/#3558 fix-round review BLOCK 4: this is a THIRD WRITE path

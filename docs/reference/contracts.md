@@ -451,6 +451,12 @@ dropped with a warning, as before. An event that already committed is never
 replayed, and no flushed text contains the delta being offered, so a retried
 delta is never stored twice. Any other failure, and exhausted retries, are the
 observation loss described above.
+A failed append leaves nothing a client or boot recovery can observe. The
+session row and a provider-started turn's boundary row are written inside the
+event's own append transaction. The read model, turn progress, child work,
+client-origin attribution, a pending cooperative stop and the live bus frame
+change only after the append commits. A retry recomputes the event's lifecycle
+stamp from the state at that attempt.
 Muse tool results use the shared bounded output projection before persistence;
 an `outputReceipt` records truncation and whether full output is available.
 EventStore's 64 KiB ingress ceiling remains a last-resort rejection boundary.
