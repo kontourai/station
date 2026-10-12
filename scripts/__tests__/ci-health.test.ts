@@ -652,7 +652,7 @@ describe('CI health collection bounds and command interface', () => {
     });
     it('credits only the PR whose head is the branch, not stacked PRs that contain the commit', async () => {
       const sha = '51bc37b501b4b89417de61230c976aa8de4a8fd0';
-      const pairing = 't3code/32af3a2a-pairing-permissions';
+      const pairing = 'feature/32af3a2a-pairing-permissions';
       const { data } = await collect(
         [
           pullRun(1, sha, {
