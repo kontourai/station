@@ -665,6 +665,7 @@ import {
   type RequestDelegationSources,
 } from '../agents/request-delegation.js';
 import { installAccountBoundDeviceGate } from '../bootstrap/account-bound-device-gate.js';
+import { accountMemberCaller } from '../bootstrap/account-member-caller.js';
 import {
   type AgentAudienceGateDeps,
   agentCatalogForCaller,
@@ -1763,6 +1764,17 @@ export function configureRuntimeRoutes(
       ? (agent.caller.principal?.id ?? null)
       : null;
   };
+  // #3586: whether a request is held to Project membership (see the module).
+  const memberCallerForRequest = (request: Request) =>
+    accountMemberCaller(request, {
+      ...(context.deploymentAuthentication
+        ? {
+            authenticate: (candidate: Request) =>
+              context.deploymentAuthentication!.service.authenticate(candidate),
+          }
+        : {}),
+      agentOwnerId: agentOwnerIdForRequest,
+    });
   // station#4075 stage 3 slice 1: `ProjectTaskRoomRequestAuthority.resolve`
   // (below, at the Task-room `requestAuthority` deps literal) receives only a
   // bare `Request` — never the Hono `Context` — because every one of its
@@ -1963,9 +1975,10 @@ export function configureRuntimeRoutes(
   // sees and uses only the Agents whose audience admits it. Installed after
   // the station-control guard, which records whom a tool call acts for, and
   // ahead of every Agent and orchestration mount (Hono runs middleware in
-  // registration order). The caller rule is `authenticatedProjectMember`'s:
-  // an authenticated account, or a station-control call whose session an
-  // account owns, is a member; every other request keeps its own rules.
+  // registration order). The caller rule is `accountMemberCaller`'s, shared
+  // with the Project guards: an authenticated account, or a station-control
+  // call whose session an account owns, is a member; every other request
+  // keeps its own rules.
   const agentAudienceAdmissions = (principalId: string) => () =>
     context.projectMembership
       ? context.projectMembership
@@ -1980,10 +1993,10 @@ export function configureRuntimeRoutes(
   const agentAudience: AgentAudienceGateDeps = {
     caller: async (c) => {
       const request = c.req.raw;
+      let member: Awaited<ReturnType<typeof memberCallerForRequest>>;
       try {
-        const account =
-          await context.deploymentAuthentication?.service.authenticate(request);
-        if (account?.kind === 'authenticated') {
+        member = await memberCallerForRequest(request);
+        if (member?.kind === 'member' && member.via === 'account-session') {
           roomRequestPrincipals.set(
             request,
             resolveOrchestrationRequestPrincipal(c),
@@ -1994,20 +2007,20 @@ export function configureRuntimeRoutes(
             admissions: agentAudienceAdmissions(actor.principal.id),
           };
         }
-        if (account && account.kind !== 'absent') return { kind: 'none' };
       } catch {
         return { kind: 'none', unresolved: true };
       }
-      const ownerId = agentOwnerIdForRequest(request);
       // A station-control call that acts for no resolved principal (caller-
       // less, or a session with no recorded owner) fails closed: it is
       // admitted to no Agent, as Task-room authority refuses an unresolved
       // principal. The audience is always composed with the membership of
       // the resolved `PrincipalRef.id`, never granted by the id alone.
-      if (ownerId === null) return { kind: 'none' };
-      if (ownerId !== undefined && isDeploymentAccountPrincipalId(ownerId))
-        return { kind: 'member', admissions: agentAudienceAdmissions(ownerId) };
-      return { kind: 'operator' };
+      if (!member) return { kind: 'operator' };
+      if (member.kind === 'none') return { kind: 'none' };
+      return {
+        kind: 'member',
+        admissions: agentAudienceAdmissions(member.principalId),
+      };
     },
     listAgents: () => context.agentService.listAgents(),
   };
@@ -5081,35 +5094,15 @@ export function configureRuntimeRoutes(
       }),
     );
   }
+  // #3586: a member caller reads Projects through its membership; a request
+  // that is no caller at all is refused; anyone else keeps operator rules
+  // (`undefined`). The rule is `accountMemberCaller`'s.
   const authenticatedProjectMember = async (request: Request) => {
-    const account =
-      await context.deploymentAuthentication?.service.authenticate(request);
-    if (account?.kind === 'authenticated') {
-      if (!context.projectMembership)
-        throw new ProjectMembershipRefusal('forbidden');
-      return projectMembershipAuthority(request);
-    }
-    if (account && account.kind !== 'absent')
+    const member = await memberCallerForRequest(request);
+    if (!member) return undefined;
+    if (member.kind === 'none' || !context.projectMembership)
       throw new ProjectMembershipRefusal('forbidden');
-    // #2377 slice B (decision 2): a station-control tool call sees the
-    // Projects its session's owner would see. An account principal's own
-    // requests are admitted by membership (above), so work acting for one is
-    // too, through the same authority: `current()` reads the principal the
-    // Project guards record from the orchestration resolver, which answers
-    // with the session's recorded owner. The operator and a device principal
-    // are unrestricted in their own requests and stay so. A caller-less or
-    // owner-less agent request never reaches a Project read (the guard
-    // refuses it); if one did, it fails closed here.
-    const ownerId = agentOwnerIdForRequest(request);
-    if (ownerId !== undefined) {
-      if (ownerId === null) throw new ProjectMembershipRefusal('forbidden');
-      if (isDeploymentAccountPrincipalId(ownerId)) {
-        if (!context.projectMembership)
-          throw new ProjectMembershipRefusal('forbidden');
-        return projectMembershipAuthority(request);
-      }
-    }
-    return undefined;
+    return projectMembershipAuthority(request);
   };
   /**
    * #2377 slice B: whether a station-control agent request may take
