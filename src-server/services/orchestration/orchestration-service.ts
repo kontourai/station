@@ -2008,11 +2008,13 @@ export class OrchestrationService {
    */
   private readonly providerTurnBoundariesInFlight = new Set<string>();
   /**
-   * #3560: threads with an observed-event retry asleep or running. Text the
-   * coalescer retained for such a thread stays untimed until the retry
-   * finishes, so a window timer cannot drop it on the warn path meanwhile.
+   * #3560: how many observed-event retries are asleep or running per thread
+   * (overlapping retries happen when an adapter is replaced while the old
+   * loop sleeps). Text the coalescer retained for such a thread stays untimed
+   * until the LAST retry finishes, so a window timer cannot drop it on the
+   * warn path while any retry still sleeps.
    */
-  private readonly observedRetryThreads = new Set<string>();
+  private readonly observedRetryThreads = new Map<string, number>();
   /** Threads whose missing configuration has already been logged for monitoring. */
   private readonly monitoringUnconfiguredThreads = new Set<string>();
   private readonly turnAdmissions = new Set<OrchestrationTurnAdmission>();
@@ -9877,6 +9879,7 @@ export class OrchestrationService {
   ): Promise<boolean> {
     const admitted = this.admitEventForPublication(event);
     if (!admitted) return true;
+    let retrying = false;
     try {
       for (const delayMs of [...OBSERVED_EVENT_RETRY_DELAYS_MS, undefined]) {
         try {
@@ -9896,7 +9899,13 @@ export class OrchestrationService {
               error: errorMessage(error),
             },
           );
-          this.observedRetryThreads.add(admitted.threadId);
+          if (!retrying) {
+            retrying = true;
+            this.observedRetryThreads.set(
+              admitted.threadId,
+              (this.observedRetryThreads.get(admitted.threadId) ?? 0) + 1,
+            );
+          }
           // node:sqlite is synchronous: each failed attempt may already have
           // blocked the whole process for busy_timeout. Only this sleep yields.
           await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -9907,10 +9916,18 @@ export class OrchestrationService {
       throw new Error('unreachable: the final attempt returns or throws');
     } finally {
       this.providerTurnBoundariesInFlight.delete(admitted.eventId);
-      // Whatever the outcome, no retry of this event is in flight now: text
-      // still retained for the thread gets its window timer back.
-      this.observedRetryThreads.delete(admitted.threadId);
-      this.deltaCoalescer.resumeRetained(admitted.threadId);
+      // Whatever the outcome, this event's retry is over. Text still retained
+      // for the thread gets its window timer back once no other retry on the
+      // thread is in flight.
+      const remaining =
+        (this.observedRetryThreads.get(admitted.threadId) ?? 0) -
+        (retrying ? 1 : 0);
+      if (remaining > 0) {
+        this.observedRetryThreads.set(admitted.threadId, remaining);
+      } else {
+        this.observedRetryThreads.delete(admitted.threadId);
+        this.deltaCoalescer.resumeRetained(admitted.threadId);
+      }
     }
   }
 

@@ -62,8 +62,10 @@ interface DeltaCoalescerOptions {
    */
   windowMs?: number;
   /**
-   * Flush once the buffered text reaches this size regardless of the window,
-   * so a burst cannot build an unbounded event. It bounds event SIZE and
+   * The largest a merged delta may grow. A buffer is flushed BEFORE a delta
+   * that would take it to this size joins it (#3560), and that delta then
+   * starts a new buffer that waits for the window. Only a single delta at or
+   * over the cap is flushed at once on its own. It bounds event SIZE and
    * nothing else: at the default window a stream would have to sustain
    * >130k chars/sec to reach the cap first, and time-to-first-token is
    * governed by the first-delta pass-through below, not by this.
@@ -229,8 +231,17 @@ export class DeltaCoalescer {
     // retained and the retry delivers it first. A merged event now stays
     // under the cap; only a single delta at or over it is emitted that large.
     const buffered = this.pending.get(event.threadId);
-    if (buffered && buffered.text.length + text.length >= this.maxChars)
+    if (buffered && buffered.text.length + text.length >= this.maxChars) {
       this.flushPending(event.threadId, 'propagate', true);
+      // That flush fans out synchronously, so a listener may have buffered a
+      // LATER delta for this thread. Appending the offered delta to it would
+      // put it after text produced after it; deliver it on its own instead,
+      // under its own eventId, ahead of what the listener buffered.
+      if (this.pending.has(event.threadId)) {
+        this.deliver(event, 'propagate');
+        return true;
+      }
+    }
 
     const existing = this.pending.get(event.threadId);
     if (!existing) {
