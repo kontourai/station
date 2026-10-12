@@ -2164,6 +2164,93 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
       });
     });
 
+    test('D1: an accepted row’s held start and its Stop abort landing after a later claim do not silence the later dispatch', async () => {
+      // Claude: Stop while R0's turn is queued publishes the held start and
+      // its abort together, after R1 claimed; observing the abort deletes
+      // R0's row, so nothing at boot names T0. R1 died before starting
+      // anything. T0 ended without completing, so R1 cannot be shown to
+      // have finished: it banners, and aborts nothing (T0 is already closed).
+      const path = databasePath();
+      const threadId = 'thread-held-start-stopped';
+      const dying = new EventStore(path);
+      dying.appendEvent(sessionStartedEvent({ threadId, provider: 'acp' }));
+      const authority = dying.sessionTurnBoundaryAuthority();
+      const r0 = authority.claim(threadId, '2026-08-16T00:00:01.000Z');
+      if (r0.kind !== 'owner') throw new Error('expected R0 owner');
+      r0.claim.beginInvocation('2026-08-16T00:00:01.050Z');
+      expect(r0.claim.accepted('T0', '2026-08-16T00:00:01.150Z')).toEqual({
+        kind: 'applied',
+      });
+      const r1 = authority.claim(threadId, '2026-08-16T00:00:02.000Z');
+      if (r1.kind !== 'owner') throw new Error('expected R1 owner');
+      r1.claim.beginInvocation('2026-08-16T00:00:02.050Z');
+      dying.appendEvent(startOf(threadId, 'T0', '2026-08-16T00:00:02.100Z'));
+      const stopAbort = {
+        eventId: `stop-abort:${threadId}`,
+        provider: 'acp',
+        threadId,
+        turnId: 'T0',
+        createdAt: '2026-08-16T00:00:02.110Z',
+        method: 'turn.aborted',
+        reason: 'interrupted',
+      } as CanonicalRuntimeEvent;
+      dying.appendEvent(stopAbort);
+      expect(authority.observe(stopAbort)).toEqual({ kind: 'applied' });
+      dying.close();
+      const eventStore = reboot(path, threadId);
+
+      await (serviceOn(eventStore) as any).interruptedTurns.consume();
+
+      // The only abort is the Stop's own; recovery adds a banner, no abort.
+      expect(summarize(eventStore, threadId)).toEqual({
+        aborts: ['T0'],
+        banners: 1,
+      });
+    });
+
+    test('D2: another thread’s boundary naming the same turn id does not strip this thread’s dispatch of its turn', async () => {
+      const path = databasePath();
+      const dying = new EventStore(path);
+      for (const threadId of ['thread-collide-a', 'thread-collide-b']) {
+        dying.appendEvent(sessionStartedEvent({ threadId, provider: 'acp' }));
+      }
+      const authority = dying.sessionTurnBoundaryAuthority();
+      const rb = authority.claim(
+        'thread-collide-b',
+        '2026-08-16T00:00:00.500Z',
+      );
+      if (rb.kind !== 'owner') throw new Error('expected RB owner');
+      rb.claim.beginInvocation('2026-08-16T00:00:00.550Z');
+      dying.appendEvent(
+        startOf('thread-collide-b', 'turn-1', '2026-08-16T00:00:00.600Z'),
+      );
+      rb.claim.accepted('turn-1', '2026-08-16T00:00:00.650Z');
+      const ra = authority.claim(
+        'thread-collide-a',
+        '2026-08-16T00:00:01.000Z',
+      );
+      if (ra.kind !== 'owner') throw new Error('expected RA owner');
+      ra.claim.beginInvocation('2026-08-16T00:00:01.050Z');
+      dying.appendEvent(
+        startOf('thread-collide-a', 'turn-1', '2026-08-16T00:00:01.100Z'),
+      );
+      dying.close();
+      const eventStore = reboot(path, 'thread-collide-a');
+
+      await (serviceOn(eventStore) as any).interruptedTurns.consume();
+
+      for (const threadId of ['thread-collide-a', 'thread-collide-b']) {
+        const { events } = recoveryEvents(eventStore, threadId);
+        expect(summarize(eventStore, threadId)).toEqual({
+          aborts: ['turn-1'],
+          banners: 1,
+        });
+        expect(
+          activeTurnIdForEvents(events.map((row) => row.payload)),
+        ).toBeUndefined();
+      }
+    });
+
     test('two fresh non-provider starts after the claim: the LATEST is the dispatch’s own (closed), never read as moved on', async () => {
       const path = databasePath();
       const threadId = 'thread-two-fresh-starts';
