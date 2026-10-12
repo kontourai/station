@@ -205,11 +205,18 @@ export class SessionRecoveryCoordinator {
    * fence re-arms the timer and asks again later.
    */
   private passesSourceTerminalFence(fingerprint: string): boolean {
-    const intent = this.ledger.find(fingerprint);
-    const fenced = this.ledger.cancelIfSourceTerminated(
-      fingerprint,
-      this.now().toISOString(),
-    );
+    // `undefined` means the read itself failed; `null` means the intent is gone.
+    let intent: ReturnType<RecoveryLedger['find']> | undefined;
+    let fenced: RecoveryTransition;
+    try {
+      intent = this.ledger.find(fingerprint);
+      fenced = this.ledger.cancelIfSourceTerminated(
+        fingerprint,
+        this.now().toISOString(),
+      );
+    } catch {
+      fenced = { kind: 'unavailable' };
+    }
     if (fenced.kind === 'stale') return true;
     if (fenced.kind === 'applied') {
       if (intent) this.recordIntentOutcome(intent, 'canceled');
@@ -219,7 +226,9 @@ export class SessionRecoveryCoordinator {
       'Recovery fire-time source-terminal check is unavailable; the dispatch waits and retries',
       { retryInMs: SOURCE_TERMINAL_FENCE_RETRY_MS },
     );
-    if (intent?.outcome === 'armed') {
+    // An unread intent is re-armed too: the claim is a compare-and-set, so a
+    // timer for an intent that is no longer armed can never dispatch.
+    if (intent === undefined || intent?.outcome === 'armed') {
       this.schedule(
         fingerprint,
         new Date(
