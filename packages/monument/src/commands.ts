@@ -1,4 +1,4 @@
-import type { OwnerIdentity } from './owner.js';
+import type { OwnerIdentity, OwnerLivenessVerdict } from './owner.js';
 import type {
   RequestKeyId,
   TurnBoundaryPurpose,
@@ -170,9 +170,23 @@ export type TurnBoundaryListResult = {
   readonly records: readonly TurnBoundaryRecord[];
 };
 
+/**
+ * One liveness verdict, taken outside the transaction for the row as it was
+ * listed. Inside, the verdict applies only if the row still has this owner
+ * and `updatedAt`; a row that moved on since is left alone.
+ */
+export interface TurnBoundaryReconcileObservation {
+  readonly boundaryId: string;
+  readonly ownerId: string;
+  readonly updatedAt: string;
+  readonly verdict: OwnerLivenessVerdict;
+}
+
+/** Build it with `planTurnBoundaryReconcile`. */
 export interface TurnBoundaryReconcileCommand {
   readonly type: 'turnBoundary.reconcile';
   readonly now: string;
+  readonly observed: readonly TurnBoundaryReconcileObservation[];
 }
 export type TurnBoundaryReconcileResult = {
   readonly kind: 'reconciled';

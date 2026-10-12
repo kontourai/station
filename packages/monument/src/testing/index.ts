@@ -1,7 +1,8 @@
 /**
  * Test support for adapters and hosts: the conformance suite, the
- * crash-point store, a fake process table, and the in-memory harness. No
- * test-runner dependency; see `registerKernelConformance`.
+ * crash-point store, a fake process table, and the in-memory and node:sqlite
+ * harnesses (so this entry loads `node:sqlite`). No test-runner dependency;
+ * see `registerKernelConformance`.
  */
 export {
   type KernelConformanceCase,
@@ -24,3 +25,8 @@ export {
   createFakeProcessTable,
   type FakeProcessTable,
 } from './process-table.js';
+export {
+  createSqliteKernelHarness,
+  createSqliteKernelLocation,
+  type SqliteKernelLocation,
+} from './sqlite-harness.js';

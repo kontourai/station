@@ -12,6 +12,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./sqlite": "./src/sqlite.ts",
+    "./adapter": "./src/adapter.ts",
     "./testing": "./src/testing/index.ts"
   },
   "files": [

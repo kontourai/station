@@ -5,8 +5,9 @@
  * atomic command. The decisions are pure functions over the records a
  * command reads; adapters run them inside their own transaction. This entry
  * has no Node dependencies. `@kontourai/monument/sqlite` holds the
- * `node:sqlite` adapter and `@kontourai/monument/testing` the conformance
- * suite and crash-point store.
+ * `node:sqlite` adapter, `@kontourai/monument/adapter` the interface a new
+ * adapter implements, and `@kontourai/monument/testing` the conformance suite
+ * and crash-point store.
  */
 export type * from './commands.js';
 export {
@@ -21,6 +22,7 @@ export {
   decideTurnBoundaryRecordAccepted,
   decideTurnBoundaryRemove,
   decideTurnBoundaryTransition,
+  planTurnBoundaryReconcile,
   turnBoundaryAcceptCollides,
 } from './decisions/turn-boundary.js';
 export {
@@ -51,7 +53,5 @@ export {
   type KernelLimits,
   type KernelStorage,
   KernelStorageClosedError,
-  type KernelTransaction,
 } from './port.js';
 export type * from './records.js';
-export { runKernelTransactionStep } from './step.js';

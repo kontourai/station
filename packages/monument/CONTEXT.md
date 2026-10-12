@@ -23,7 +23,7 @@ takes no model dependency.
 | Turn dedup | one claim per key, with its owner and invocation state | A dead owner's claim is reclaimed only when that owner provably never began its effect (`pending` or `untracked`). `begun` and unknown answer `indeterminate`, and the turn is never sent again. |
 | Turn boundary | one row per provider invocation | `prepared` → `invoking` → `accepted` or `indeterminate`. After a crash, a dead owner's `prepared` row is removed, an `invoking` row becomes `indeterminate`, and both `accepted` and `indeterminate` rows are reported until their owner retires them. |
 | Request keys | one row per caller, tool and key, with a digest | A reused key with a different digest is a conflict. A stored attempt without a result is never treated as new. |
-| Owner liveness | none | There is one three-state rule: `dead`, `live` or `unknown`. A pid whose birth differs from the recorded one is `dead`, and `unknown` never frees a claim. |
+| Owner liveness | none | There is one three-state rule: `dead`, `live` or `unknown`. A pid whose birth differs from the recorded one is `dead`, and `unknown` never frees a claim. Reconcile takes its verdicts before the transaction, one probe per process, and applies each only to a row that has not changed since. |
 
 Each operation is one command, executed as one atomic transaction by an
 adapter. The decision for a command is a pure function of the records it
@@ -53,11 +53,15 @@ shared included. Loaders the import graph cannot see (`node:module`, `node:vm`,
 `createRequire`, `eval`, `Function`, a referenced or member `require`,
 `import.meta.resolve`), CommonJS source, nested manifests or repositories,
 relative paths through `node_modules`, and symlinks under the package are
-refused too. The gate reads source text; a name assembled at run time is out
-of its reach and is left to review. `scripts/monument-import-boundary-gate.mjs`
+refused too, as are percent-encoded or backslash relative specifiers and any
+dependency entry (the package has none, and an aliased specifier such as
+`workspace:` or `npm:` is never allowed). The gate reads source text; a name
+assembled at run time is out of its reach and is left to review. The same gate
+refuses Station code that imports the package other than through its exported
+entry points. `scripts/monument-import-boundary-gate.mjs`
 enforces this in
 `ci:fast` and in `verify:static`. Station consumes the package only through
-its public entry points: `.`, `./sqlite` and `./testing`.
+its public entry points: `.`, `./sqlite`, `./adapter` and `./testing`.
 
 ## Retention
 

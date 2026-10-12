@@ -1,6 +1,3 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { KernelCommand, KernelResult } from './commands.js';
 import { ownerFields, parseOwnerIdentity } from './owner.js';
@@ -19,11 +16,7 @@ import type {
   TurnClaimInvocation,
   TurnDedupRecord,
 } from './records.js';
-import { runKernelTransactionStep } from './step.js';
-import type {
-  KernelStorageHarness,
-  KernelStorageLocation,
-} from './testing/crash-point-store.js';
+import { isReadOnlyKernelCommand, runKernelTransactionStep } from './step.js';
 
 /**
  * The structural slice of a `node:sqlite` `DatabaseSync` this adapter uses,
@@ -116,6 +109,9 @@ CREATE TABLE IF NOT EXISTS monument_turn_boundaries (
 );
 CREATE INDEX IF NOT EXISTS monument_turn_boundaries_thread
   ON monument_turn_boundaries (thread_id);
+CREATE UNIQUE INDEX IF NOT EXISTS monument_turn_boundaries_one_invocation
+  ON monument_turn_boundaries (thread_id)
+  WHERE state IN ('lifecycle', 'prepared', 'invoking', 'indeterminate');
 CREATE TABLE IF NOT EXISTS monument_turn_terminals (
   thread_id TEXT NOT NULL,
   provider_turn_id TEXT NOT NULL,
@@ -189,29 +185,17 @@ function configureConnection(
   return { journalMode, synchronous: 'FULL', busyTimeoutMs };
 }
 
-/**
- * Commands that only read run in a deferred transaction, so under WAL they are
- * served from a snapshot while another connection holds the write lock. Not
- * when a participant has a `commit` hook: a host write inside a deferred read
- * fails at once (SQLITE_BUSY_SNAPSHOT) if another connection committed after
- * the snapshot, so those commands take the write lock like any other.
- */
-const READ_ONLY_COMMANDS: ReadonlySet<KernelCommand['type']> = new Set([
-  'turnDedup.read',
-  'turnBoundary.list',
-  'turnBoundary.hasPossibleEffect',
-]);
-
 function inTransaction<T>(
   db: SqliteKernelDatabase,
   body: () => T,
   mode: 'IMMEDIATE' | 'DEFERRED' = 'IMMEDIATE',
+  keep: (result: T) => boolean = () => true,
 ): T {
   db.exec(`BEGIN ${mode}`);
   let result: T;
   try {
     result = body();
-    db.exec('COMMIT');
+    db.exec(keep(result) ? 'COMMIT' : 'ROLLBACK');
   } catch (error) {
     try {
       db.exec('ROLLBACK');
@@ -313,7 +297,9 @@ function decodeBoundary(row: Record<string, unknown>): TurnBoundaryRecord {
     ...(typeof row.provider_turn_id === 'string'
       ? { providerTurnId: row.provider_turn_id }
       : {}),
-    owner: parseOwnerIdentity(JSON.parse(String(row.owner_json))),
+    owner: parseOwnerIdentity(JSON.parse(String(row.owner_json)), {
+      birthlessExact: 'unverified',
+    }),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
@@ -545,8 +531,13 @@ export function openSqliteKernelStorage(
     throw error;
   }
   const tx = sqliteTransaction(db);
-  const participantsWrite = participants.some(
-    (participant) => participant.commit !== undefined,
+  // Read-only commands run in a deferred transaction, so under WAL they are
+  // served from a snapshot while another connection holds the write lock.
+  // Not when a participant observes reads: a host write inside a deferred
+  // read fails at once (SQLITE_BUSY_SNAPSHOT) if another connection committed
+  // after the snapshot, so those take the write lock like any other command.
+  const readsTakeWriteLock = participants.some(
+    (participant) => participant.observeReads === true,
   );
   let closed = false;
 
@@ -562,9 +553,11 @@ export function openSqliteKernelStorage(
     return inTransaction(
       db,
       () => runKernelTransactionStep(command, context, tx, participants, db),
-      READ_ONLY_COMMANDS.has(command.type) && !participantsWrite
+      isReadOnlyKernelCommand(command) && !readsTakeWriteLock
         ? 'DEFERRED'
         : 'IMMEDIATE',
+      // A refusal keeps nothing, not even an earlier participant's admission.
+      (result) => result.kind !== 'refused',
     );
   };
 
@@ -578,56 +571,6 @@ export function openSqliteKernelStorage(
       if (closed) return;
       closed = true;
       if (owned) db.close?.();
-    },
-  };
-}
-
-/** A temporary database file for tests, removed with its directory. */
-export interface SqliteKernelLocation extends KernelStorageLocation {
-  readonly path: string;
-}
-
-export function createSqliteKernelLocation(
-  options: { readonly via?: 'execute' | 'executeSync' } = {},
-): SqliteKernelLocation {
-  const directory = mkdtempSync(join(tmpdir(), 'monument-sqlite-'));
-  const path = join(directory, 'kernel.sqlite');
-  return {
-    path,
-    async open(openOptions = {}) {
-      const storage = openSqliteKernelStorage({
-        path,
-        ...(openOptions.participants
-          ? { participants: openOptions.participants }
-          : {}),
-      });
-      if (options.via !== 'executeSync') return storage;
-      return {
-        async execute(command, context) {
-          return storage.executeSync(command, context);
-        },
-        close: () => storage.close(),
-      };
-    },
-    async dispose() {
-      rmSync(directory, { recursive: true, force: true });
-    },
-  };
-}
-
-/**
- * Conformance harness for this adapter: one temporary database file per
- * location. `via: 'executeSync'` routes every command through
- * {@link SqliteKernelStorage.executeSync}, so the same suite proves the
- * synchronous extension agrees with the async port.
- */
-export function createSqliteKernelHarness(
-  options: { readonly via?: 'execute' | 'executeSync' } = {},
-): KernelStorageHarness {
-  return {
-    name: `node:sqlite (${options.via ?? 'execute'})`,
-    async createLocation() {
-      return createSqliteKernelLocation(options);
     },
   };
 }

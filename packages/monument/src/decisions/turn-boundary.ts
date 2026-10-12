@@ -2,13 +2,22 @@ import type {
   TurnBoundaryCreateCommand,
   TurnBoundaryCreateResult,
   TurnBoundaryObserveTerminalCommand,
+  TurnBoundaryReconcileCommand,
+  TurnBoundaryReconcileObservation,
   TurnBoundaryRecordAcceptedCommand,
   TurnBoundaryRemoveCommand,
   TurnBoundaryRemoveResult,
   TurnBoundaryTransitionCommand,
   TurnBoundaryTransitionResult,
 } from '../commands.js';
-import { type OwnerLiveness, ownerFields } from '../owner.js';
+import {
+  type OwnerLiveness,
+  type OwnerLivenessOptions,
+  ownerFields,
+  ownerLivenessFromProbe,
+  type ProcessIdentityObservation,
+  type ProcessIdentityProbe,
+} from '../owner.js';
 import type { TurnBoundaryRecord } from '../records.js';
 import { compareCodePoints } from './order.js';
 
@@ -230,22 +239,34 @@ export function decideTurnBoundaryObserveTerminal(
  * - `accepted` and `indeterminate`: reported unchanged; the caller retires
  *   them once it has told the user.
  *
- * Rows whose owner is live or unknown are untouched.
+ * The verdicts were taken outside the transaction. A row is acted on only if
+ * it was observed `dead` and still has the observed owner and `updatedAt`.
+ * Rows whose owner is live or unknown, rows that moved on, and rows created
+ * after the listing are untouched.
  */
 export function decideTurnBoundaryReconcile(
   rows: readonly TurnBoundaryRecord[],
-  liveness: OwnerLiveness,
+  observed: readonly TurnBoundaryReconcileObservation[],
   now: string,
 ): {
   readonly remove: readonly string[];
   readonly put: readonly TurnBoundaryRecord[];
   readonly interrupted: readonly TurnBoundaryRecord[];
 } {
+  const verdicts = new Map(
+    observed.map((observation) => [observation.boundaryId, observation]),
+  );
   const remove: string[] = [];
   const put: TurnBoundaryRecord[] = [];
   const interrupted: TurnBoundaryRecord[] = [];
   for (const row of rows) {
-    if (liveness(row.owner) !== 'dead') continue;
+    const observation = verdicts.get(row.boundaryId);
+    if (
+      observation?.verdict !== 'dead' ||
+      observation.ownerId !== row.owner.id ||
+      observation.updatedAt !== row.updatedAt
+    )
+      continue;
     switch (row.state) {
       case 'prepared':
       case 'lifecycle':
@@ -268,4 +289,36 @@ export function decideTurnBoundaryReconcile(
     }
   }
   return { remove, put, interrupted };
+}
+
+/**
+ * The reconcile command for rows a host just listed. Liveness is decided
+ * here, outside any transaction (a process probe can take seconds), and each
+ * distinct process is probed once.
+ */
+export function planTurnBoundaryReconcile(
+  rows: readonly TurnBoundaryRecord[],
+  liveness: { readonly probe: ProcessIdentityProbe } & OwnerLivenessOptions,
+  now: string,
+): TurnBoundaryReconcileCommand {
+  const probed = new Map<number, ProcessIdentityObservation>();
+  const probe: ProcessIdentityProbe = (pid) => {
+    let observation = probed.get(pid);
+    if (!observation) {
+      observation = liveness.probe(pid);
+      probed.set(pid, observation);
+    }
+    return observation;
+  };
+  const verdictOf = ownerLivenessFromProbe(probe, liveness);
+  return {
+    type: 'turnBoundary.reconcile',
+    now,
+    observed: rows.map((row) => ({
+      boundaryId: row.boundaryId,
+      ownerId: row.owner.id,
+      updatedAt: row.updatedAt,
+      verdict: verdictOf(row.owner),
+    })),
+  };
 }

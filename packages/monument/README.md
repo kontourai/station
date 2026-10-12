@@ -20,9 +20,10 @@ TypeScript-aware loader.
 
 | Import | Contents | Runtime needs |
 | --- | --- | --- |
-| `@kontourai/monument` | The port (`KernelStorage`, `KernelTransaction`, `CommitParticipant`), commands and results, the pure decision functions, owner liveness, and the in-memory adapter | none |
-| `@kontourai/monument/sqlite` | The `node:sqlite` adapter, plus its test location and conformance harness | Node 24 |
-| `@kontourai/monument/testing` | The conformance suite, the crash-point store, a fake process table and the in-memory harness | `node:assert` |
+| `@kontourai/monument` | The port (`KernelStorage`, `CommitParticipant`), commands and results, the pure decision functions (including `planTurnBoundaryReconcile`), owner liveness, and the in-memory adapter | none |
+| `@kontourai/monument/adapter` | For adapter authors: `KernelTransaction`, `runKernelTransactionStep`, `isReadOnlyKernelCommand` | none |
+| `@kontourai/monument/sqlite` | The `node:sqlite` adapter | Node 24 |
+| `@kontourai/monument/testing` | The conformance suite, the crash-point store, a fake process table, and the in-memory and `node:sqlite` harnesses | Node 24 (`node:assert`, `node:sqlite`) |
 
 ## The port
 
@@ -48,6 +49,29 @@ command, and every command when a participant has a `commit` hook, takes
 `BEGIN IMMEDIATE`. The adapter also offers `executeSync`, which runs the same transaction
 synchronously, for hosts whose call sites are synchronous. `executeSync` is
 specific to node:sqlite and is not part of the portable contract.
+
+## Reconcile after a restart
+
+Probing whether a process is alive can take seconds, so it never happens under
+the write lock. A host lists the rows, plans the command, and commits it:
+
+```ts
+const listed = await storage.execute({ type: 'turnBoundary.list' }, context);
+const command = planTurnBoundaryReconcile(listed.records, { probe }, now);
+const { interrupted } = await storage.execute(command, context);
+```
+
+`planTurnBoundaryReconcile` probes each process once. Inside the transaction
+a verdict applies only to a row that still has the owner and `updatedAt` it
+was planned for.
+
+## Participants
+
+A `CommitParticipant` joins every writing command. For read-only commands
+(`turnDedup.read`, `turnBoundary.list`, `turnBoundary.hasPossibleEffect`) it
+is called only if it sets `observeReads`. On node:sqlite, a read with such a
+participant takes the write lock. A refusal from `admit` rolls the whole
+transaction back, including any earlier participant's writes.
 
 ## Conformance
 

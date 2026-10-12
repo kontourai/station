@@ -1,6 +1,8 @@
 import { describe, it } from 'vitest';
-import { createSqliteKernelHarness } from '../sqlite.js';
-import { registerKernelConformance } from '../testing/index.js';
+import {
+  createSqliteKernelHarness,
+  registerKernelConformance,
+} from '../testing/index.js';
 
 // The same cases through the portable async port and through the
 // node:sqlite-only synchronous extension: identical expectations prove the

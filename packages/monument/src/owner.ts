@@ -88,7 +88,17 @@ export function ownerLivenessFromProbe(
  * refused rather than guessed at: a guessed owner could turn into a
  * reclaimable one.
  */
-export function parseOwnerIdentity(value: unknown): OwnerIdentity {
+export function parseOwnerIdentity(
+  value: unknown,
+  options: {
+    /**
+     * Station's boundary rows allow an `exact` owner with no birth and treat
+     * it as live while its pid answers, which is what `unverified` means.
+     * Refusing such a row would stop every command that lists boundaries.
+     */
+    readonly birthlessExact?: 'refuse' | 'unverified';
+  } = {},
+): OwnerIdentity {
   if (!value || typeof value !== 'object')
     throw new Error('Invalid monument owner: not an object.');
   const raw = value as Record<string, unknown>;
@@ -97,6 +107,11 @@ export function parseOwnerIdentity(value: unknown): OwnerIdentity {
   if (typeof raw.pid !== 'number' || !Number.isInteger(raw.pid) || raw.pid < 1)
     throw new Error('Invalid monument owner: invalid pid.');
   if (raw.identityKind === 'exact') {
+    if (
+      options.birthlessExact === 'unverified' &&
+      (raw.birth === undefined || raw.birth === null || raw.birth === '')
+    )
+      return { id: raw.id, pid: raw.pid, identityKind: 'unverified' };
     if (typeof raw.birth !== 'string' || !raw.birth)
       throw new Error('Invalid monument owner: exact owner without birth.');
     return {

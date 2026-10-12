@@ -21,6 +21,7 @@ import {
   decideTurnDedupResolve,
   type TurnDedupDecision,
 } from './decisions/turn-dedup.js';
+import type { OwnerLivenessVerdict } from './owner.js';
 import {
   type CommitParticipant,
   DEFAULT_KERNEL_LIMITS,
@@ -77,6 +78,21 @@ function dispatch(
   tx: KernelTransaction,
 ): KernelResults[KernelCommand['type']] {
   const limits = resolveKernelLimits(context.limits);
+  // One probe per process within a command, however many rows it reads.
+  const verdicts = new Map<string, OwnerLivenessVerdict>();
+  const probeLiveness = context.liveness;
+  context = {
+    ...context,
+    liveness: (owner) => {
+      const key = `${owner.id}\u0000${owner.pid}\u0000${owner.identityKind === 'exact' ? owner.birth : ''}`;
+      let verdict = verdicts.get(key);
+      if (!verdict) {
+        verdict = probeLiveness(owner);
+        verdicts.set(key, verdict);
+      }
+      return verdict;
+    },
+  };
   switch (command.type) {
     case 'turnDedup.claim':
       return applyTurnDedup(
@@ -206,7 +222,7 @@ function dispatch(
     case 'turnBoundary.reconcile': {
       const decision = decideTurnBoundaryReconcile(
         tx.turnBoundary.listAll(),
-        context.liveness,
+        command.observed,
         command.now,
       );
       for (const boundaryId of decision.remove)
@@ -276,10 +292,25 @@ function dispatch(
   }
 }
 
+const READ_ONLY_COMMANDS: ReadonlySet<KernelCommand['type']> = new Set([
+  'turnDedup.read',
+  'turnBoundary.list',
+  'turnBoundary.hasPossibleEffect',
+]);
+
+/** Commands that write nothing, whatever their result. */
+export function isReadOnlyKernelCommand(command: KernelCommand): boolean {
+  return READ_ONLY_COMMANDS.has(command.type);
+}
+
 /**
  * What every adapter runs inside its transaction: participant admission, the
- * command, then participant commits. A throw from any of them must make the
- * adapter roll the whole transaction back.
+ * command, then participant commits. A read-only command involves only the
+ * participants that set `observeReads`.
+ *
+ * The adapter must roll the whole transaction back when this throws, and
+ * also when it returns a `refused` result: an earlier participant's `admit`
+ * may already have written through the host handle.
  */
 export function runKernelTransactionStep<C extends KernelCommand, Host>(
   command: C,
@@ -288,7 +319,11 @@ export function runKernelTransactionStep<C extends KernelCommand, Host>(
   participants: readonly CommitParticipant<Host>[],
   host: Host,
 ): KernelResult<C> {
-  for (const participant of participants) {
+  const readOnly = isReadOnlyKernelCommand(command);
+  const joined = readOnly
+    ? participants.filter((participant) => participant.observeReads)
+    : participants;
+  for (const participant of joined) {
     const verdict = participant.admit?.(command, host);
     if (verdict)
       return {
@@ -298,7 +333,7 @@ export function runKernelTransactionStep<C extends KernelCommand, Host>(
       } satisfies ParticipantRefusal;
   }
   const result = runKernelCommand(command, context, tx);
-  for (const participant of participants)
+  for (const participant of joined)
     participant.commit?.({ command, result }, host);
   return result;
 }

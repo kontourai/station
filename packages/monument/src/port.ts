@@ -59,16 +59,23 @@ export interface KernelStorage {
  * transaction handle (`node:sqlite`: the open `DatabaseSync`).
  *
  * - `admit` runs before the decision. Returning a reason refuses the command:
- *   nothing is written and the command answers `refused`.
- * - `commit` runs after the decision's writes, for read-only commands too.
- *   Throwing aborts the whole transaction, kernel writes included, and the
- *   command rejects.
+ *   the adapter rolls the transaction back, so nothing is written (including
+ *   any earlier participant's `admit` writes) and the command answers
+ *   `refused`.
+ * - `commit` runs after the decision's writes. Throwing aborts the whole
+ *   transaction, kernel writes included, and the command rejects. It is not
+ *   called for read-only commands (`turnDedup.read`, `turnBoundary.list`,
+ *   `turnBoundary.hasPossibleEffect`) unless the participant sets
+ *   `observeReads`, and neither is `admit`; on node:sqlite an observed read
+ *   takes the write lock.
  *
  * A participant must not issue a kernel command itself: adapters refuse a
  * command started inside another.
  */
 export interface CommitParticipant<HostTransaction = unknown> {
   readonly name: string;
+  /** Also call `commit` for read-only commands. */
+  readonly observeReads?: boolean;
   admit?(
     command: KernelCommand,
     host: HostTransaction,

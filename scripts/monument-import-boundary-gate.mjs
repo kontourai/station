@@ -45,12 +45,12 @@
  *   node scripts/monument-import-boundary-gate.mjs
  */
 import { lstatSync, readFileSync } from 'node:fs';
-import { posix } from 'node:path';
 import ts from 'typescript-api';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 export const MONUMENT_ROOT = 'packages/monument';
+const MONUMENT_PACKAGE = '@kontourai/monument';
 const SOURCE_EXTENSION = /\.(?:[cm]?[jt]s|tsx|jsx)$/;
 const COMMONJS_EXTENSION = /\.c[jt]s$/;
 const TEST_FILE = /(^|\/)__tests__\/|\.(?:test|spec)\.[cm]?[jt]sx?$/;
@@ -87,26 +87,52 @@ export function packageNameOf(specifier) {
 }
 
 /**
- * The package's declared dependencies, and a finding for every Station
- * package it declares.
+ * Dependencies the package may declare. Empty today: the package has none,
+ * and adding one is a reviewed change to this list, not to package.json alone.
+ */
+export const APPROVED_DEPENDENCIES = new Set();
+
+/**
+ * A specifier that installs something other than the registry package of the
+ * declared name. `"innocent": "workspace:@kontourai/station-shared@*"` would
+ * pass a check that reads names only.
+ */
+const ALIASED_SPECIFIER =
+  /^(?:workspace|npm|file|link|portal|git|git\+[a-z]+|github|https?):|^[./~]|\//;
+
+/**
+ * The dependencies the package may import, and a finding for every entry it
+ * may not declare: a Station package, an aliased specifier, or anything not
+ * in {@link APPROVED_DEPENDENCIES}.
  */
 export function readManifest(manifestText, manifestPath) {
   const manifest = JSON.parse(manifestText);
   const runtime = new Set();
   const findings = [];
+  const refuse = (kind, field, name) =>
+    findings.push({
+      kind,
+      file: manifestPath,
+      line: 1,
+      specifier: `${field}.${name}`,
+    });
   for (const field of DEPENDENCY_FIELDS) {
-    for (const name of Object.keys(manifest[field] ?? {})) {
-      if (STATION_PACKAGE.test(name))
-        findings.push({
-          kind: 'station-dependency',
-          file: manifestPath,
-          line: 1,
-          specifier: `${field}.${name}`,
-        });
-      if (RUNTIME_DEPENDENCY_FIELDS.has(field)) runtime.add(name);
+    for (const [name, version] of Object.entries(manifest[field] ?? {})) {
+      const aliased =
+        typeof version !== 'string' || ALIASED_SPECIFIER.test(version);
+      if (STATION_PACKAGE.test(name)) refuse('station-dependency', field, name);
+      if (aliased) refuse('aliased-dependency', field, name);
+      else if (!APPROVED_DEPENDENCIES.has(name))
+        refuse('unapproved-dependency', field, name);
+      if (
+        RUNTIME_DEPENDENCY_FIELDS.has(field) &&
+        !aliased &&
+        APPROVED_DEPENDENCIES.has(name)
+      )
+        runtime.add(name);
     }
   }
-  return { declared: runtime, findings };
+  return { declared: runtime, findings, exports: manifest.exports ?? {} };
 }
 
 function constantString(node) {
@@ -290,6 +316,13 @@ export function moduleReferences(file, content) {
   return references;
 }
 
+/** A repository-relative path, resolved as Node resolves a file URL. */
+export function resolveRelative(file, specifier) {
+  return decodeURIComponent(
+    new URL(specifier, `file:///${file}`).pathname,
+  ).replace(/^\//, '');
+}
+
 /** Why a reference from `file` is refused, or null when it is allowed. */
 export function classifyReference(file, reference, declared) {
   const { specifier } = reference;
@@ -301,9 +334,11 @@ export function classifyReference(file, reference, declared) {
       : 'module-loader';
   if (specifier.startsWith('node:')) return null;
   if (specifier.startsWith('.')) {
-    const resolved = posix.normalize(
-      posix.join(posix.dirname(file), specifier),
-    );
+    // Node resolves a relative specifier as a URL, so `%2e%2e` is `..`. The
+    // gate refuses any escape, query or fragment outright, then resolves the
+    // rest the way Node does.
+    if (/[%\\?#]/.test(specifier)) return 'encoded-specifier';
+    const resolved = resolveRelative(file, specifier);
     // Through node_modules, a relative path reaches whatever is linked there.
     return (resolved === MONUMENT_ROOT ||
       resolved.startsWith(`${MONUMENT_ROOT}/`)) &&
@@ -367,6 +402,60 @@ function listPackageFiles() {
     .filter(Boolean);
 }
 
+/**
+ * Station's side of the boundary: code outside the package reaches it only
+ * through `@kontourai/monument` and the subpaths its manifest exports.
+ */
+export function scanMonumentConsumers({ files, readText, exports }) {
+  const allowed = new Set(
+    typeof exports === 'string' ? ['.'] : Object.keys(exports),
+  );
+  const findings = [];
+  for (const file of files) {
+    if (!SOURCE_EXTENSION.test(file)) continue;
+    const content = readText(file);
+    if (!content.includes('monument')) continue;
+    for (const { specifier, line } of moduleReferences(file, content)) {
+      if (typeof specifier !== 'string') continue;
+      let internal = false;
+      if (specifier.startsWith('.')) {
+        const resolved = resolveRelative(file, specifier);
+        internal =
+          resolved === MONUMENT_ROOT ||
+          resolved.startsWith(`${MONUMENT_ROOT}/`);
+      } else if (packageNameOf(specifier) === MONUMENT_PACKAGE) {
+        internal = !allowed.has(`.${specifier.slice(MONUMENT_PACKAGE.length)}`);
+      }
+      if (internal)
+        findings.push({
+          kind: 'monument-internal-import',
+          file,
+          line,
+          specifier,
+        });
+    }
+  }
+  return findings;
+}
+
+function listConsumerFiles() {
+  return execFileSyncBounded(
+    'git',
+    [
+      'ls-files',
+      '--cached',
+      '--others',
+      '--exclude-standard',
+      '--',
+      '.',
+      `:(exclude)${MONUMENT_ROOT}`,
+    ],
+    { encoding: 'utf8', windowsHide: true },
+  )
+    .split('\n')
+    .filter(Boolean);
+}
+
 function main() {
   const listed = listPackageFiles();
   const symlinks = listed
@@ -393,9 +482,20 @@ function main() {
     );
     process.exit(1);
   }
+  const manifest = JSON.parse(
+    readFileSync(`${MONUMENT_ROOT}/package.json`, 'utf8'),
+  );
   const findings = [
     ...symlinks,
     ...structural,
+    ...scanMonumentConsumers({
+      files: listConsumerFiles(),
+      readText: (path) =>
+        lstatSync(path, { throwIfNoEntry: false })?.isFile()
+          ? readFileSync(path, 'utf8')
+          : '',
+      exports: manifest.exports ?? {},
+    }),
     ...scanMonument({
       files,
       readText: (path) => readFileSync(path, 'utf8'),
