@@ -233,8 +233,9 @@ A personal access token tied to an account is the one credential that acts
 without an account session (#3586), and only with Station's own local
 accounts. The account-bound Device mints it from `/api/access/tokens` while
 its session is current, or the operator mints it on People. The token is then checked against the account's
-standing instead: it stops when the account is disabled or signed out
-everywhere after the token was made. It must be presented alone (an account
+standing instead: it stops when the account is disabled, deleted or signed
+out everywhere after the token was made, and re-enabling the account does
+not revive it. It must be presented alone (an account
 cookie, session continuation or ingress identity beside it is `401
 account_identity_conflict`), and it reaches only the collaborator profile
 below, without the account controls, token management or any Project access

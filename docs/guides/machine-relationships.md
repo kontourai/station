@@ -188,7 +188,9 @@ panel does not appear on other devices). The secret is shown once, when the
 token is made. A person tied by a Station local account can hold tokens too
 (#3586): the token acts as the account without a browser session, sees only
 the Projects the account is a member of, and stops working when the account
-is disabled or signed out everywhere. With any other sign-in provider,
+is disabled, signed out everywhere or deleted; re-enabling the account does
+not bring back tokens made before it was disabled. No token opens a terminal
+or voice session. With any other sign-in provider,
 account-tied people cannot hold tokens. See the [API reference](../reference/api.md#people-and-station-groups).
 
 ## Relationship table

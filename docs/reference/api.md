@@ -3573,12 +3573,14 @@ A person tied by a Station local account can hold a token too (#3586). It
 acts as that account without an account session, is held to the account's
 Project membership, and works only while the account exists, is enabled and
 has not been signed out everywhere since the token was made; otherwise it is
-`401`. It must be presented alone: beside an account cookie or session
+`401`. Deleting the account ends it too, and re-enabling a disabled account
+does not revive tokens made before it was disabled. It must be presented alone: beside an account cookie or session
 continuation, or an ingress identity, it is `401 { "error": { "code":
 "account_identity_conflict" } }`. It reaches only the account-bound device
 routes, minus the account routes, `/api/access/tokens` and every Project
 access route (`403 account_bound_device_route_forbidden` or `403
-insufficient_scope`). Minting for an account-tied person is `400
+insufficient_scope`). No personal access token, and no account-bound device,
+opens the terminal or voice WebSocket, whatever its scope. Minting for an account-tied person is `400
 account_bound_person` when the Station has no local accounts (any other
 deployment provider), the account belongs to another issuer, or it is not
 current. An account-bound device manages its own tokens through `GET`/`POST
