@@ -724,23 +724,32 @@ export function scanMonumentConsumers({
     }
     const bundlerConfig = BUNDLER_CONFIG.test(name);
     for (const { text, line, template, inPathCall, propertyName } of literals) {
-      // Template text, property keys and globs name nothing loadable.
-      if (template || propertyName || text.includes('*')) continue;
+      // Template text and property keys (`{ '@kontourai/monument/*': … }`)
+      // are not paths a file loads.
+      if (template || propertyName) continue;
       if (seen.has(`${line}\0${text}`)) continue;
+      // A glob (`import.meta.glob('../packages/monument/src/*.ts')`) loads
+      // what its fixed prefix names, so that prefix is what is checked. A
+      // glob that names no monument path segment is left alone.
+      let path = text;
+      if (text.includes('*')) {
+        if (!NAMES_PACKAGE.test(decodePercent(text).toLowerCase())) continue;
+        path = text.slice(0, text.indexOf('*'));
+      }
       // An undecodable string here is ordinary text ('/coverage/100%'), not
       // a path: only module specifiers report `encoded-specifier`.
-      let verdict = reachesInternals(file, text, { allow: 'public' });
+      let verdict = reachesInternals(file, path, { allow: 'public' });
       if (verdict === 'encoded') continue;
       // A repo-relative string ('packages/monument/src') is a path only where
       // it is used as one: in resolve/join, or in a vite or vitest config.
       if (
         !verdict &&
         (inPathCall || bundlerConfig) &&
-        text.includes('/') &&
-        !/^[./]|^[a-z]+:/i.test(text)
+        path.includes('/') &&
+        !/^[./]|^[a-z]+:/i.test(path)
       )
         verdict = [resolve(root, dirname(file)), root].some((base) =>
-          internalPath(resolve(base, text), { allow: 'public' }),
+          internalPath(resolve(base, path), { allow: 'public' }),
         );
       if (verdict) report('monument-internal-reference', file, line, text);
     }
@@ -748,10 +757,10 @@ export function scanMonumentConsumers({
   return findings;
 }
 
-/** `imports` in a package.json, `compilerOptions.paths` in a tsconfig. */
 /** `tsconfig.json`, `x.tsconfig.json`, `tsconfig.test.json`, `jsconfig.json`. */
 const ALIAS_CONFIG = /(^|[.-])tsconfig.*\.json$|^jsconfig.*\.json$/;
 
+/** `imports` in a package.json, `compilerOptions.paths` in a tsconfig. */
 function scanAlias(file, content, root, internalPath, report) {
   const directory = resolve(root, dirname(file));
   const check = (base, field, key, targets, bareIsPath) => {
