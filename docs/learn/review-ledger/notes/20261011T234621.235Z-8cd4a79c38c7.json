@@ -1,0 +1,9 @@
+{
+  "revision": "0132a0245fd65c6212256df18c3e3bf1a6143afb",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#3559 delta review: the sqlite-turn-dedup-persistence.ts change is comment-only, scoping the unknown-invocation rule to thread keys (a chat: key falls back to untracked, as the TurnDeduplicator section already says). No prose change.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/sqlite-turn-dedup-persistence.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"#3559 delta review: the sqlite-turn-dedup-persistence.ts change is comment-only, scoping the unknown-invocation rule to thread keys. This design's TurnDeduplicator and /chat dedup rows are unaffected; no prose change.","inputs":["docs/design/event-store-ledger-migration.md","src-server/services/orchestration/sqlite-turn-dedup-persistence.ts"]}
+  ]
+}

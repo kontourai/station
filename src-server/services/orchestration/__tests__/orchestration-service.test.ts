@@ -147,6 +147,7 @@ import {
   wireInternalStopRedispatchFailureNotifications,
   wireTurnCompletionNotifications,
 } from '../turn-completion-notifications.js';
+import type { TurnDeduplicator } from '../turn-deduplicator.js';
 import { resolveWorkspaceIdentity } from '../workspace-identity.js';
 
 vi.mock('../../../telemetry/metrics.js', async (importOriginal) => ({
@@ -15870,6 +15871,70 @@ describe('OrchestrationService', () => {
         kind: 'contended',
         turnId: (first as { turnId: string }).turnId,
       });
+    });
+
+    test('#3559: records invocation before the provider call, and sends nothing when that record fails', async () => {
+      const ledger = eventStore.createTurnDeduplicator();
+      let failBegin = true;
+      const events: string[] = [];
+      const recording: TurnDeduplicator = {
+        ...ledger,
+        claim: (input) => {
+          const claim = ledger.claim(input);
+          if (claim.kind !== 'owner') return claim;
+          return {
+            kind: 'owner',
+            claim: {
+              ...claim.claim,
+              beginInvocation: () => {
+                events.push('beginInvocation');
+                if (failBegin) throw new Error('injected durable failure');
+                claim.claim.beginInvocation();
+              },
+            },
+          };
+        },
+      };
+      const recordingService = new OrchestrationService({
+        adapterRegistry: createRegistry([claude]),
+        eventBus: new EventBus(),
+        eventStore,
+        turnDeduplicator: recording,
+        listProjects: () => [],
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      await recordingService.dispatch({
+        type: 'startSession',
+        input: { threadId: 'thread-3559-begin', provider: 'claude' },
+      });
+      claude.sendTurn.mockClear();
+      claude.sendTurn.mockImplementation(async (input) => {
+        events.push('sendTurn');
+        return { threadId: input.threadId, turnId: 'turn-3559-begin' };
+      });
+      const send = () =>
+        recordingService.dispatch({
+          type: 'sendTurn',
+          input: {
+            threadId: 'thread-3559-begin',
+            input: 'hello',
+            clientTurnId: 'client-3559-begin',
+          },
+        });
+
+      await expect(send()).rejects.toThrow('injected durable failure');
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+      // Nothing was invoked, so the claim is released rather than retained.
+      failBegin = false;
+      await expect(send()).resolves.toMatchObject({
+        turnId: 'turn-3559-begin',
+      });
+      expect(events).toEqual([
+        'beginInvocation',
+        'beginInvocation',
+        'sendTurn',
+      ]);
+      await recordingService.shutdown();
     });
 
     test('a DIFFERENT clientTurnId on the same thread executes independently', async () => {
