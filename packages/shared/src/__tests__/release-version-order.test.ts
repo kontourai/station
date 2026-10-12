@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import {
   clientVersionInHostOrder,
   compareStationReleaseVersions,
+  hostNightlyAllocation,
 } from '../release-version-order.js';
 
 // The two writers whose shapes this module bridges. Plain ESM scripts with no
@@ -77,4 +78,36 @@ describe('clientVersionInHostOrder', () => {
   ])('refuses %j', (version) => {
     expect(clientVersionInHostOrder(version)).toBeNull();
   });
+});
+
+describe('hostNightlyAllocation', () => {
+  test.each([
+    [0, '2026-09-29T00:00:00Z'],
+    [3, '2026-09-29T00:00:00Z'],
+    [99, '2027-03-15T00:00:00Z'],
+  ])(
+    'reads back the day and build the allocator encoded (build %s, %s)',
+    (build, iso) => {
+      const date = new Date(iso);
+      const version = portableNightlyVersion(
+        '0.1.11',
+        nightlyVersionCode(date, build),
+      );
+      expect(hostNightlyAllocation(version)).toEqual({ date, build });
+    },
+  );
+
+  test('reads the dated shape #2962 introduces', () => {
+    expect(hostNightlyAllocation('0.1.11-nightly.20261011.2')).toEqual({
+      date: new Date('2026-10-11T00:00:00Z'),
+      build: 2,
+    });
+  });
+
+  test.each(['0.1.11', '0.1.11-preview.3', '0.1.11-nightly.20260230.1', 'x'])(
+    'is null for %j',
+    (version) => {
+      expect(hostNightlyAllocation(version)).toBeNull();
+    },
+  );
 });

@@ -3,6 +3,8 @@ import type { CoreUpdateStatus } from '@kontourai/station-sdk';
 import { describe, expect, test } from 'vitest';
 import {
   deriveServerOlderOffer,
+  progressPollInterval,
+  readableVersions,
   type ServerOlderFacts,
   type ServerUpdateFlow,
   serverOlderBannerContent,
@@ -35,6 +37,8 @@ function facts(overrides: Partial<ServerOlderFacts> = {}): ServerOlderFacts {
     clientVersion: '0.1.11-nightly.2465',
     status: serviceArchive(),
     checkFailed: false,
+    current: true,
+    serverKey: 'inst',
     identityMatches: true,
     ...overrides,
   };
@@ -46,13 +50,47 @@ describe('deriveServerOlderOffer: when the server is older', () => {
       kind: 'update',
       client: '0.1.11-nightly.2465',
       server: '0.1.11-nightly.246303',
+      // Day 2463 is 2026-09-29, day 2465 is 2026-10-01.
+      clientLabel: 'Nightly Oct 1',
+      serverLabel: 'Nightly Sep 29 (build 3)',
+      serverKey: 'inst',
       target: '0.1.11-nightly.246500',
+      targetLabel: 'Nightly Oct 1',
     });
   });
 
-  test('a stable client is newer than any prerelease of its release', () => {
+  // iOS Nightly and Beta builds were stamped with Apple's bare marketing
+  // version (nightly-native-stage.yml ios_identity, release.yml
+  // ios_marketing_version); such a client must never read as newer than a
+  // prerelease of its own release.
+  test.each([
+    [
+      'an iOS Nightly stamped 0.1.11 meets a Nightly server',
+      '0.1.11-nightly.246303',
+    ],
+    ['an iOS Beta stamped 0.1.11 meets a preview server', '0.1.11-preview.3'],
+  ])('says nothing when %s', (_label, currentVersion) => {
     expect(
-      deriveServerOlderOffer(facts({ clientVersion: '0.1.11' })).kind,
+      deriveServerOlderOffer(
+        facts({
+          clientVersion: '0.1.11',
+          status: serviceArchive({ currentVersion }),
+        }),
+      ),
+    ).toEqual({ kind: 'none' });
+  });
+
+  test('an iOS Nightly with its full stamp compares like any Nightly', () => {
+    // nightly-native-stage.yml now passes the cohort's desktop version.
+    expect(
+      deriveServerOlderOffer(facts({ clientVersion: '0.1.11-nightly.2465' }))
+        .kind,
+    ).toBe('update');
+  });
+
+  test('a bare client of a newer release still sees an older prerelease server', () => {
+    expect(
+      deriveServerOlderOffer(facts({ clientVersion: '0.1.12' })).kind,
     ).toBe('update');
   });
 
@@ -92,6 +130,7 @@ describe('deriveServerOlderOffer: when the server is older', () => {
   test.each([
     ['no answer yet', { status: undefined }],
     ['a failed check', { checkFailed: true }],
+    ['a superseded or unreachable server', { current: false }],
     [
       'a server that states no version',
       {
@@ -278,6 +317,44 @@ describe('serverUpdateFlowReducer', () => {
     );
   });
 
+  test('dismissing a running update keeps following it; dismissing an outcome closes it', () => {
+    const requesting = serverUpdateFlowReducer(
+      { phase: 'idle' },
+      { type: 'apply', scope: SCOPE },
+    );
+    expect(serverUpdateFlowReducer(requesting, { type: 'dismiss' })).toBe(
+      requesting,
+    );
+    const following = follow();
+    expect(serverUpdateFlowReducer(following, { type: 'dismiss' })).toBe(
+      following,
+    );
+    const finished = serverUpdateFlowReducer(following, {
+      type: 'progress',
+      progress: committed,
+    });
+    expect(serverUpdateFlowReducer(finished, { type: 'dismiss' })).toEqual({
+      phase: 'idle',
+    });
+  });
+
+  test('backs off reading progress while the server does not answer', () => {
+    let flow = follow();
+    expect(progressPollInterval(flow)).toBe(2_000);
+    const intervals: Array<number | false> = [];
+    for (let miss = 0; miss < 6; miss += 1) {
+      flow = serverUpdateFlowReducer(flow, { type: 'progress-unreachable' });
+      intervals.push(progressPollInterval(flow));
+    }
+    expect(intervals).toEqual([4_000, 8_000, 16_000, 30_000, 30_000, 30_000]);
+    flow = serverUpdateFlowReducer(flow, {
+      type: 'progress',
+      progress: { state: 'staging', requestId: 'r1' },
+    });
+    expect(progressPollInterval(flow)).toBe(2_000);
+    expect(progressPollInterval({ phase: 'idle' })).toBe(false);
+  });
+
   test('following stops when time runs out', () => {
     const flow = serverUpdateFlowReducer(follow(), { type: 'expired' });
     expect(flow.phase).toBe('expired');
@@ -288,24 +365,65 @@ describe('serverUpdateFlowReducer', () => {
 });
 
 describe('serverOlderBannerContent: the offer', () => {
-  test('one sentence, a one-click update, and a dismissal keyed to the versions', () => {
+  test('one readable sentence, the raw versions in the details, a one-click update', () => {
     const content = serverOlderBannerContent(deriveServerOlderOffer(facts()), {
       phase: 'idle',
     });
     expect(content).toMatchObject({
       tone: 'info',
       message:
-        'This Station server runs 0.1.11-nightly.246303, older than this app (0.1.11-nightly.2465).',
-      occurrence: '0.1.11-nightly.246303<0.1.11-nightly.2465',
-      actions: [
-        { kind: 'apply', label: 'Update server to 0.1.11-nightly.246500' },
-      ],
+        'The Station server (Nightly Sep 29 (build 3)) is older than this app (Nightly Oct 1).',
+      actions: [{ kind: 'apply', label: 'Update server to Nightly Oct 1' }],
     });
+    expect(content?.detail).toMatch(
+      /^Server 0\.1\.11-nightly\.246303, app 0\.1\.11-nightly\.2465\./,
+    );
+  });
+
+  test('a dismissal names the server, not only the versions', () => {
+    const occurrence = (serverKey: string) =>
+      serverOlderBannerContent(deriveServerOlderOffer(facts({ serverKey })), {
+        phase: 'idle',
+      })?.occurrence;
+    expect(occurrence('server-a')).not.toBe(occurrence('server-b'));
+    expect(occurrence('server-a')).toBe(occurrence('server-a'));
   });
 
   test('no offer, no banner', () => {
     expect(
       serverOlderBannerContent({ kind: 'none' }, { phase: 'idle' }),
     ).toBeNull();
+  });
+});
+
+describe('readableVersions', () => {
+  test.each<[string, string, [string, string]]>([
+    [
+      '0.1.11-nightly.246500',
+      '0.1.11-nightly.246303',
+      ['Nightly Oct 1', 'Nightly Sep 29 (build 3)'],
+    ],
+    // The release is named only when the two differ in it.
+    [
+      '0.1.12-nightly.246500',
+      '0.1.11-nightly.246303',
+      ['0.1.12 Nightly Oct 1', '0.1.11 Nightly Sep 29 (build 3)'],
+    ],
+    // The year only when the two dates differ in it.
+    [
+      '0.1.11-nightly.256500',
+      '0.1.11-nightly.246303',
+      ['Nightly Jan 9, 2027', 'Nightly Sep 29, 2026 (build 3)'],
+    ],
+    // The dated shape #2962 introduces reads the same way.
+    [
+      '0.1.11-nightly.20261011.2',
+      '0.1.11-nightly.246303',
+      ['Nightly Oct 11 (build 2)', 'Nightly Sep 29 (build 3)'],
+    ],
+    // Releases and previews keep their version.
+    ['0.2.0', '0.1.11-preview.3', ['0.2.0', '0.1.11-preview.3']],
+  ])('%s and %s', (left, right, expected) => {
+    expect(readableVersions(left, right)).toEqual(expected);
   });
 });

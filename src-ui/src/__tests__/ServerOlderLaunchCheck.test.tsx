@@ -1,7 +1,13 @@
 /** @vitest-environment jsdom */
 import type { ServiceUpdateProgress } from '@kontourai/station-contracts/system-status';
 import type { CoreUpdateStatus } from '@kontourai/station-sdk';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const sdk = vi.hoisted(() => ({
@@ -121,23 +127,34 @@ afterEach(() => {
 });
 
 describe('ServerOlderLaunchCheck', () => {
-  test('offers a one-click update and follows it through the restart to its outcome', () => {
+  test('offers a one-click update and follows it through the restart to its outcome', async () => {
     const view = renderWithChrome(NEWER_CLIENT);
     expect(
       screen.getByText(
-        'This Station server runs 0.1.11-nightly.246303, older than this app (0.1.11-nightly.2465).',
+        'The Station server (Nightly Sep 29 (build 3)) is older than this app (Nightly Oct 1).',
       ),
     ).toBeTruthy();
 
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Update server to 0.1.11-nightly.246500',
-      }),
-    );
+    const button = screen.getByRole('button', {
+      name: 'Update server to Nightly Oct 1',
+    });
+    button.focus();
+    fireEvent.click(button);
     expect(mutate).toHaveBeenCalledTimes(1);
     expect(screen.getByText('Requesting the server update…')).toBeTruthy();
+    // The button left with the offer; focus stays on the banner's text.
+    await waitFor(() =>
+      expect(document.activeElement?.textContent).toBe(
+        'Requesting the server update…',
+      ),
+    );
 
-    act(() => applyOptions.onSuccess?.({ serviceUpdate: { requestId: 'r1' } }));
+    act(() =>
+      applyOptions.onSuccess?.({
+        success: true,
+        serviceUpdate: { requestId: 'r1' },
+      }),
+    );
     expect(
       screen.getByText(
         'Update requested. Waiting for the Station service to start it…',
@@ -184,6 +201,81 @@ describe('ServerOlderLaunchCheck', () => {
     ).toBeTruthy();
   });
 
+  test('dismissing a running update does not bring the stale offer back', () => {
+    renderWithChrome(NEWER_CLIENT);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Update server to Nightly Oct 1' }),
+    );
+    act(() =>
+      applyOptions.onSuccess?.({
+        success: true,
+        serviceUpdate: { requestId: 'r1' },
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
+    expect(screen.queryByRole('button', { name: /Update server/ })).toBeNull();
+    // Still following the update it started.
+    expect(sdk.useServiceUpdateProgressQuery).toHaveBeenLastCalledWith(
+      'http://station.test:38141',
+      expect.objectContaining({ enabled: true }),
+    );
+  });
+
+  test('an answer that is not a queued update is a refusal, not a follow', () => {
+    renderWithChrome(NEWER_CLIENT);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Update server to Nightly Oct 1' }),
+    );
+    act(() =>
+      applyOptions.onSuccess?.({
+        success: false,
+        serviceUpdate: { requestId: 'r1' },
+      }),
+    );
+    expect(
+      screen.getByText(/The server update could not be started/),
+    ).toBeTruthy();
+  });
+
+  test.each([
+    ['unreachable', { reachability: 'unavailable' }],
+    ['superseded', { isCurrent: () => false }],
+  ])(
+    'offers nothing from cached facts once the server is %s',
+    (_label, change) => {
+      // The query is off, but the cache still holds the last answer.
+      sdk.useCoreUpdateStatusQuery.mockImplementation(() => ({
+        data: status,
+        error: null,
+        refetch: vi.fn(),
+      }));
+      connected.current = { ...connected.current, ...change };
+      renderWithChrome(NEWER_CLIENT);
+      expect(
+        screen.queryByRole('button', { name: /Update server/ }),
+      ).toBeNull();
+      expect(bannerStore.getSnapshot()).toHaveLength(0);
+    },
+  );
+
+  test('dismissing it for one server does not hide it for another', () => {
+    const first = renderWithChrome(NEWER_CLIENT);
+    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
+    first.unmount();
+    status = serviceArchive({
+      serverIdentity: { instanceId: 'other', bootId: 'boot', sha: 'abc' },
+    });
+    connected.current = {
+      ...connected.current,
+      apiBase: 'http://other.test:38141',
+      identity: { instanceId: 'other', bootId: 'boot', sha: 'abc' },
+    };
+    renderWithChrome(NEWER_CLIENT);
+    expect(
+      screen.getByRole('button', { name: 'Update server to Nightly Oct 1' }),
+    ).toBeTruthy();
+  });
+
   test('says how to update when the server cannot do it from here, with no update button', () => {
     status = serviceArchive({
       installKind: 'archive',
@@ -191,7 +283,7 @@ describe('ServerOlderLaunchCheck', () => {
     });
     renderWithChrome(NEWER_CLIENT);
     expect(
-      screen.getByText(/older than this app \(0\.1\.11-nightly\.2465\)/),
+      screen.getByText(/is older than this app \(Nightly Oct 1\)/),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Update server/ })).toBeNull();
     const details = screen.getByRole('link', {

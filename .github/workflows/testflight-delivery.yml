@@ -24,6 +24,14 @@ on:
       release_label:
         required: true
         type: string
+      web_build_version:
+        description: >-
+          The web bundle's build identity (STATION_BUILD_VERSION) when it is
+          more than Apple's bare marketing version: a Nightly's or Beta's full
+          version, which a client compares with its server (#2675). Defaults
+          to marketing_version.
+        required: false
+        type: string
       mobile_endpoint:
         required: true
         type: string
@@ -83,7 +91,7 @@ jobs:
       APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64 }}
       TESTFLIGHT_INTERNAL_GROUP_ID: ${{ vars.TESTFLIGHT_INTERNAL_GROUP_ID }}
       STATION_MOBILE_DEFAULT_ENDPOINT: ${{ inputs.mobile_endpoint }}
-      STATION_BUILD_VERSION: ${{ inputs.marketing_version }}
+      STATION_BUILD_VERSION: ${{ inputs.web_build_version || inputs.marketing_version }}
       STATION_BUILD_CHANNEL: ${{ inputs.channel }}
       STATION_RELEASE_LABEL: ${{ inputs.release_label }}
       VITE_NATIVE_APP_UPDATE_FEED_URL: ${{ inputs.update_feed_url }}
@@ -612,7 +620,7 @@ jobs:
       APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
       TESTFLIGHT_INTERNAL_GROUP_ID: ${{ vars.TESTFLIGHT_INTERNAL_GROUP_ID }}
       STATION_MOBILE_DEFAULT_ENDPOINT: ${{ inputs.mobile_endpoint }}
-      STATION_BUILD_VERSION: ${{ inputs.marketing_version }}
+      STATION_BUILD_VERSION: ${{ inputs.web_build_version || inputs.marketing_version }}
       STATION_BUILD_CHANNEL: ${{ inputs.channel }}
       STATION_RELEASE_LABEL: ${{ inputs.release_label }}
       VITE_NATIVE_APP_UPDATE_FEED_URL: ${{ inputs.update_feed_url }}

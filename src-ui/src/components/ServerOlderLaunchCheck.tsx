@@ -3,7 +3,7 @@ import {
   useCoreUpdateStatusQuery,
   useServiceUpdateProgressQuery,
 } from '@kontourai/station-sdk';
-import { useEffect, useReducer } from 'react';
+import { useEffect, useReducer, useRef, useState } from 'react';
 import { readClientReleaseVersion } from '../build-info';
 import {
   BANNER_IDS,
@@ -17,13 +17,13 @@ import {
 } from '../hooks/useConnectedServerUpdateContext';
 import {
   deriveServerOlderOffer,
+  progressPollInterval,
   serverOlderBannerContent,
   serverUpdateFlowReducer,
 } from '../lib/serverOlderThanClient';
 import { serverIdentityMatchesView } from '../views/settings/coreUpdatePresentation';
 import { settingsDeepLinkUrl } from '../views/settings/settings-deep-link';
 
-const PROGRESS_POLL_MS = 2_000;
 /** Matches the Settings card: staging, a backup and two trials fit inside. */
 const FOLLOW_MS = 45 * 60 * 1000;
 
@@ -67,6 +67,7 @@ export function ServerOlderLaunchCheck({
     data: status,
     error: checkError,
     refetch,
+    dataUpdatedAt: statusUpdatedAt,
   } = useCoreUpdateStatusQuery(
     apiBase,
     {
@@ -99,7 +100,7 @@ export function ServerOlderLaunchCheck({
 
   const apply = useApplyCoreUpdateMutation(apiBase, {
     onSuccess: (data) => {
-      if (data?.serviceUpdate?.requestId) {
+      if (data?.success && data.serviceUpdate?.requestId) {
         dispatch({
           type: 'accepted',
           requestId: data.serviceUpdate.requestId,
@@ -120,7 +121,7 @@ export function ServerOlderLaunchCheck({
   const progressQuery = useServiceUpdateProgressQuery(apiBase, {
     enabled: following,
     scopeKey: connectionScope,
-    refetchInterval: () => (following ? PROGRESS_POLL_MS : false),
+    refetchInterval: () => progressPollInterval(flow),
   });
   const { data: progress, dataUpdatedAt, errorUpdatedAt } = progressQuery;
   useEffect(() => {
@@ -139,15 +140,27 @@ export function ServerOlderLaunchCheck({
   }, [following]);
 
   // The outcome is in: re-read the server so the offer reflects what it runs.
+  // Until a check made after it answers, the old comparison is history: it
+  // must not offer the update that just ran.
   const finished = flow.phase === 'finished';
+  const [outcomeAt, setOutcomeAt] = useState<number | null>(null);
   useEffect(() => {
-    if (finished) void refetch();
+    if (!finished) return;
+    setOutcomeAt(Date.now());
+    void refetch();
   }, [finished, refetch]);
+  const awaitingRecheck =
+    outcomeAt !== null && (statusUpdatedAt ?? 0) <= outcomeAt;
 
   const offer = deriveServerOlderOffer({
     clientVersion: sameOrigin ? null : clientVersion,
-    status,
+    status: awaitingRecheck ? undefined : status,
     checkFailed: !!checkError,
+    current: context.isCurrent() && context.reachability === 'connected',
+    serverKey:
+      status?.serverIdentity?.instanceId ??
+      context.identity?.instanceId ??
+      apiBase,
     identityMatches: status
       ? serverIdentityMatchesView(status, context.identity)
       : false,
@@ -160,6 +173,9 @@ export function ServerOlderLaunchCheck({
   );
 
   const mutate = apply.mutate;
+  // The update button leaves with the offer; focus moves to the banner's
+  // progress text so the keyboard is not dropped onto the page.
+  const focusProgressRef = useRef(false);
   useEffect(() => {
     const content = JSON.parse(contentJson) as ReturnType<
       typeof serverOlderBannerContent
@@ -174,6 +190,7 @@ export function ServerOlderLaunchCheck({
             label: action.label,
             variant: 'primary' as const,
             onClick: () => {
+              focusProgressRef.current = true;
               dispatch({ type: 'apply', scope: connectionScope });
               mutate();
             },
@@ -195,10 +212,22 @@ export function ServerOlderLaunchCheck({
       ...(content.detail ? { detail: content.detail } : {}),
       occurrence: content.occurrence,
       dismissible: true,
-      // Dismissing an outcome closes it; the offer may speak again.
-      onDismiss: () => dispatch({ type: 'reset' }),
+      // Dismissing an outcome closes it; a running update keeps running.
+      onDismiss: () => dispatch({ type: 'dismiss' }),
       actions,
     });
+    if (focusProgressRef.current && content.actions.length === 0) {
+      focusProgressRef.current = false;
+      // After the host renders the new message.
+      setTimeout(() => {
+        const text = document.querySelector<HTMLElement>(
+          `[data-banner-id="${BANNER_IDS.serverOlder}"] .banner-host__live`,
+        );
+        if (!text) return;
+        text.tabIndex = -1;
+        text.focus();
+      }, 0);
+    }
     return () => {
       bannerStore.dismiss(BANNER_IDS.serverOlder);
     };
