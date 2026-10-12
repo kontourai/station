@@ -71,7 +71,8 @@ only. A wide touch tablet does not match that query; a control that needs the
 floor there declares it itself under `(hover: none)`. Use the existing block in
 `index.css` for a control styled by the entry sheet (today the send-blocked
 line's Remove attachments, the queued-retry Discard the composer repeats in a
-short dock, and the transcript notice actions such as Retry and Discard). Use
+short dock, the transcript notice actions such as Retry and Discard, and the
+conversation recovery notice's Retry and Start new chat). Use
 the feature's own sheet for a control styled by a lazily loaded chunk, which
 lands later in the cascade (today the Diff tools in the Coding side panel's
 head). Nested controls and overflowing content still need their own caller
