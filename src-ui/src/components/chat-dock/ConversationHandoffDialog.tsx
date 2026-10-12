@@ -19,9 +19,9 @@ import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import type { FileAttachment } from '../../types';
 import { agentEngineDescriptor } from '../../utils/engine';
 import { selectChatReadyAgents } from '../agent-selection-policy';
+import { Button } from '../Button';
 import { engineChipLabel } from '../badges/EngineChip';
 import { normalizedDisplayLabel } from '../chat/message-bubble/MessageAttribution';
-import { Button } from '../Button';
 import { AgentIcon } from '../icons/AgentIcon';
 import { GLOBAL_CONTEXT } from '../modals/new-chat-modal-utils';
 import {
@@ -491,7 +491,9 @@ export function ConversationHandoffDialog({
               ? 'Change engine for this conversation'
               : 'Continue with…'}
           </h3>
-          <p>Keep this conversation and workspace; continue in a new Session.</p>
+          <p>
+            Keep this conversation and workspace; continue in a new Session.
+          </p>
         </div>
         <ResponsiveDialogCloseButton
           label={
