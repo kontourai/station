@@ -381,6 +381,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2012: a real child runtime races the home maintenance ownership fence.
   'packages/shared/src/__tests__/station-home-lifecycle.test.ts',
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
+  // #3565: a real child claims a turn through the node:sqlite adapter and is
+  // SIGKILLed; the parent reopens the file. Single-shot, no wall-clock bound.
+  'packages/monument/src/__tests__/sqlite-crash.process.test.ts',
+  // #3565: runs the monument import boundary gate as a child process against
+  // throwaway git repositories. Single-shot spawns, no wall-clock assertion.
+  'scripts/__tests__/monument-import-boundary-gate.test.ts',
   // Drives the changed-verification CLI through spawnSync against a real
   // fixture worktree to prove its dependency and selection behavior.
   'scripts/__tests__/changed-verification.test.ts',
@@ -663,6 +669,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2675: runs the manifest signer CLI (sign, verify, assemble) as bounded
   // single-shot children for each golden vector.
   'scripts/__tests__/release-manifest-vectors.test.ts',
+  // #187: runs install.sh's accepted-release functions (cut from the shipped
+  // script) as bounded single-shot `sh -c` children, two per parity case.
+  'scripts/__tests__/accepted-release-parity.test.ts',
   // #2675 slice E: drives the manifest signer and the Nightly publication
   // helper CLIs as bounded single-shot children (dry-run sign and verify).
   'scripts/__tests__/portable-nightly-publish-workflow.test.ts',
@@ -991,6 +1000,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // and asserts the startup sweep reaps the orphaned group. Same process-tree
   // shape as process-utils.test.ts; must not run under the ordinary pool.
   'src-server/services/infra/__tests__/owned-process-reaping.test.ts',
+  // #561: spawns the real Codex app-server path against a stub executable
+  // that starts a grandchild in its group, then sweeps and terminates it.
+  // Same process-tree shape as owned-process-reaping.test.ts.
+  'src-server/providers/__tests__/codex-app-server-owned-process.test.ts',
   // station#1895: spawns a real node child process (through `tsx`) to prove
   // the durable log sink survives an actual uncaught exception, the same
   // resource shape as `agent-registry.test.ts`'s schema-gate child probe.
@@ -1113,6 +1126,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/ssh/__tests__/openssh-reachability.process.test.ts',
   'src-server/services/orchestration/__tests__/planned-home-transfer-store.process.test.ts',
   'src-server/services/ssh/__tests__/openssh-launch-bootstrap.test.ts',
+  // #2675: runs the Windows identity probe (System32 PowerShell) against a
+  // real child node.exe; it runs only on win32, in the Windows PR job.
+  'packages/cli/src/__tests__/windows-process-identity.process.test.ts',
   'src-server/services/ssh/__tests__/openssh-worker-probe.test.ts',
   'src-server/services/terminal/__tests__/terminal-subprocess-state.test.ts',
   // Timing-sensitive responsive-UI suites: no child_process import, kept out

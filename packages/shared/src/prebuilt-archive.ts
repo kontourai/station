@@ -7,8 +7,25 @@
  * this tree a prebuilt archive" and one for "is it an installer-owned version
  * directory".
  */
-import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import {
+  closeSync,
+  existsSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { basename, dirname, join } from 'node:path';
+import {
+  type AcceptedReleaseDecision,
+  type AcceptedReleaseMark,
+  type AcceptedReleaseRelation,
+  acceptedReleaseRules,
+} from './accepted-release.mjs';
+import { renamePathSyncRetrying } from './fs-windows-compat.js';
 import { STATION_RELEASE_RINGS, type StationReleaseRing } from './ports.js';
 import { windowsSystemUtilityPath } from './windows-system-utility.mjs';
 
@@ -316,5 +333,81 @@ export function packagedInstallerCommand(
   };
 }
 
-/** Station's release order; browser-safe, so it lives in its own module. */
-export { compareStationReleaseVersions } from './release-version-order.js';
+/**
+ * The accepted-release record of an install root (#187), through the one
+ * implementation install.sh also carries (accepted-release.mjs).
+ */
+const ACCEPTED_RELEASE = acceptedReleaseRules(
+  STATION_RELEASE_RINGS,
+  { closeSync, lstatSync, openSync, readFileSync, rmSync, writeFileSync },
+  renamePathSyncRetrying,
+  randomBytes,
+);
+export const ACCEPTED_RELEASE_FILENAME = ACCEPTED_RELEASE.FILENAME;
+export type { AcceptedReleaseMark, AcceptedReleaseRelation };
+
+export function acceptedReleasePath(installRoot: string): string {
+  return join(installRoot, ACCEPTED_RELEASE_FILENAME);
+}
+
+export function readAcceptedRelease(
+  installRoot: string,
+  releaseChannel: string,
+): AcceptedReleaseMark {
+  return ACCEPTED_RELEASE.read(
+    acceptedReleasePath(installRoot),
+    releaseChannel,
+  );
+}
+
+export function compareWithAcceptedRelease(
+  releaseChannel: string,
+  version: string,
+  accepted: string,
+): AcceptedReleaseRelation {
+  return ACCEPTED_RELEASE.relation(releaseChannel, version, accepted);
+}
+
+/** What an installer does with `version` against the record (see decide). */
+export function decideAgainstAcceptedRelease(
+  installRoot: string,
+  releaseChannel: string,
+  version: string,
+  explicit: boolean,
+): AcceptedReleaseDecision {
+  return ACCEPTED_RELEASE.decide(
+    acceptedReleasePath(installRoot),
+    releaseChannel,
+    version,
+    explicit,
+  );
+}
+
+/** Raises the record, never lowers it; `onlyIfAbsent` seeds a missing one. */
+export function recordAcceptedRelease(
+  installRoot: string,
+  releaseChannel: string,
+  version: string,
+  onlyIfAbsent = false,
+): void {
+  ACCEPTED_RELEASE.record(
+    acceptedReleasePath(installRoot),
+    releaseChannel,
+    version,
+    onlyIfAbsent,
+  );
+}
+
+/**
+ * Station's release order, the one install.sh's downgrade check and the
+ * service launcher (packaging/portable-server/bin/station-launcher.mjs
+ * `compareVersions`) apply: X.Y.Z, or X.Y.Z-<ring>.N within one ring, and a
+ * release outranks every prerelease of its X.Y.Z. Null when the two cannot be
+ * ordered (another ring's prerelease, or not a Station version at all).
+ */
+export function compareStationReleaseVersions(
+  left: string,
+  right: string,
+): -1 | 0 | 1 | null {
+  return ACCEPTED_RELEASE.compareVersions(left, right);
+}

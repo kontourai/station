@@ -3,7 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { probeExactProcessIdentity } from '@kontourai/station-shared/process-identity';
 import { afterEach, describe, expect, test } from 'vitest';
+import { SessionStartRefusedError } from '../../../providers/adapter-shape.js';
 import { EventStore } from '../event-store.js';
 import {
   createInMemorySessionTurnBoundaryAuthority,
@@ -42,6 +44,121 @@ describe('SessionTurnBoundaryAuthority', () => {
     expect(
       new SessionStartIndeterminateError(new Error('Spawn failed.')).message,
     ).toMatch(/^Spawn failed\. Provider/);
+  });
+
+  describe('a definitive start refusal', () => {
+    const refusal = () =>
+      new SessionStartRefusedError('engine refused', 'model_not_advertised');
+
+    test('releases the boundary: the thread is not fenced and the next start may claim it', async () => {
+      const authority = createInMemorySessionTurnBoundaryAuthority();
+
+      await expect(
+        runSessionStartWithBoundary(authority, 'refused-thread', async () => {
+          throw refusal();
+        }),
+      ).rejects.toBeInstanceOf(SessionStartRefusedError);
+
+      expect(authority.hasPossibleEffect('refused-thread')).toEqual({
+        kind: 'available',
+        active: false,
+      });
+      await expect(
+        runSessionStartWithBoundary(
+          authority,
+          'refused-thread',
+          async () => 'started',
+        ),
+      ).resolves.toBe('started');
+    });
+
+    test('any other adapter failure stays an indeterminate start and fences the thread', async () => {
+      const authority = createInMemorySessionTurnBoundaryAuthority();
+
+      await expect(
+        runSessionStartWithBoundary(authority, 'crashed-thread', async () => {
+          throw new Error('engine crashed');
+        }),
+      ).rejects.toMatchObject({ code: SESSION_START_INDETERMINATE_CODE });
+
+      expect(authority.hasPossibleEffect('crashed-thread')).toEqual({
+        kind: 'available',
+        active: true,
+      });
+    });
+
+    test('a release the store cannot confirm falls back to the indeterminate start', async () => {
+      let record: SessionTurnBoundaryRecord | undefined;
+      const coordinator: SessionTurnBoundaryCoordinator = {
+        create(input) {
+          if (record) return { kind: 'busy' };
+          record = { ...input };
+          return { kind: 'applied' };
+        },
+        transition(input) {
+          if (!record || record.boundaryId !== input.boundaryId)
+            return { kind: 'stale' };
+          if (!input.from.includes(record.state)) return { kind: 'stale' };
+          record = { ...record, state: input.to, updatedAt: input.now };
+          return { kind: 'applied' };
+        },
+        // The release itself cannot be confirmed.
+        remove: () => ({ kind: 'unavailable' }),
+        removeTerminal: () => ({ kind: 'applied' }),
+        hasPossibleEffect: () => Boolean(record),
+        active: () => (record ? [{ ...record }] : []),
+        recordAccepted: () => ({ kind: 'unavailable' }),
+      };
+      const authority = createSessionTurnBoundaryAuthority({
+        coordinator,
+        owner: { id: 'owner', pid: process.pid, identityKind: 'unverified' },
+        processIdentity: {
+          exact: () => null,
+          probe: () => ({ state: 'unavailable' }),
+        },
+      });
+
+      await expect(
+        runSessionStartWithBoundary(
+          authority,
+          'unconfirmed-release',
+          async () => {
+            throw refusal();
+          },
+        ),
+      ).rejects.toMatchObject({ code: SESSION_START_INDETERMINATE_CODE });
+
+      expect(record?.state).toBe('indeterminate');
+      expect(authority.hasPossibleEffect('unconfirmed-release')).toEqual({
+        kind: 'available',
+        active: true,
+      });
+    });
+
+    test('a task dispatch child claim cannot release, so it keeps the indeterminate start', async () => {
+      const authority = createInMemorySessionTurnBoundaryAuthority();
+      const owned = authority.claimTaskDispatch(
+        'dispatch-refused',
+        new Date().toISOString(),
+      );
+      if (owned.kind !== 'owner')
+        throw new Error('Expected dispatch ownership');
+
+      await expect(
+        runSessionStartWithBoundary(
+          authority,
+          'dispatch-refused',
+          async () => {
+            throw refusal();
+          },
+          owned.claim.sessionStart,
+        ),
+      ).rejects.toMatchObject({ code: SESSION_START_INDETERMINATE_CODE });
+      expect(authority.hasPossibleEffect('dispatch-refused')).toEqual({
+        kind: 'available',
+        active: true,
+      });
+    });
   });
 
   const roots: string[] = [];
@@ -843,6 +960,72 @@ describe('SessionTurnBoundaryAuthority', () => {
     expect(
       authority.claim('thread-transition-fault', '2026-08-16T00:00:03.000Z'),
     ).toEqual({ kind: 'busy' });
+  });
+
+  // #3563: the owner pid answers signal 0 with EPERM because a process of
+  // another user now holds it, and that process was born after the owner.
+  // The real shared probe composes both halves; only the kernel calls are
+  // stubbed. A boundary owner proven gone must not fence the thread.
+  test('a dead owner whose pid was reused by a foreign process does not fence the thread', () => {
+    const foreignPid = 2_147_483_000;
+    let record: SessionTurnBoundaryRecord | undefined = {
+      boundaryId: 'stale-boundary',
+      threadId: 'thread-reused-pid',
+      state: 'prepared',
+      ownerId: 'dead-owner',
+      ownerPid: foreignPid,
+      ownerBirth: 'owner-birth',
+      ownerIdentityKind: 'exact',
+      createdAt: '2026-08-16T00:00:00.000Z',
+      updatedAt: '2026-08-16T00:00:00.000Z',
+    };
+    const coordinator: SessionTurnBoundaryCoordinator = {
+      create(input) {
+        if (record) return { kind: 'busy' };
+        record = { ...input };
+        return { kind: 'applied' };
+      },
+      transition: () => ({ kind: 'stale' }),
+      remove(input) {
+        if (record?.boundaryId !== input.boundaryId) return { kind: 'stale' };
+        record = undefined;
+        return { kind: 'applied' };
+      },
+      removeTerminal: () => ({ kind: 'applied' }),
+      hasPossibleEffect: () => Boolean(record),
+      active: () => (record ? [{ ...record }] : []),
+      recordAccepted: () => ({ kind: 'unavailable' }),
+    };
+    const lookups: number[] = [];
+    const authority = createSessionTurnBoundaryAuthority({
+      coordinator,
+      owner: { id: 'live-owner', pid: process.pid, identityKind: 'unverified' },
+      processIdentity: {
+        exact: () => null,
+        probe: (pid) =>
+          probeExactProcessIdentity(pid, {
+            // POSIX semantics: Windows keeps EPERM unavailable (#3563).
+            platform: 'linux',
+            kill: () => {
+              const error = new Error('EPERM') as NodeJS.ErrnoException;
+              error.code = 'EPERM';
+              throw error;
+            },
+            lookup: (candidate: number) => {
+              lookups.push(candidate);
+              return 'foreign-process-birth';
+            },
+          }),
+      },
+    });
+
+    const claimed = authority.claim(
+      'thread-reused-pid',
+      '2026-08-16T00:00:05.000Z',
+    );
+    expect(lookups).toContain(foreignPid);
+    expect(claimed.kind).toBe('owner');
+    expect(record?.ownerId).toBe('live-owner');
   });
 
   test('totalizes a failed busy-path possible-effect probe', () => {

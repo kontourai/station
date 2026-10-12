@@ -65,6 +65,7 @@ import {
   ProviderTurnEndedError,
   ProviderTurnInProgressError,
   SendTurnRefusedError,
+  SessionStartRefusedError,
 } from '../../../providers/adapter-shape.js';
 import { MuseTurnSlotReleasingError } from '../../../providers/adapters/muse-adapter.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
@@ -12267,6 +12268,210 @@ describe('OrchestrationService', () => {
         reason: 'override-unsupported',
       }),
     );
+  });
+
+  describe('an adapter that definitively refuses a session start', () => {
+    // The real ACP adapter applies a model at start and refuses, after its
+    // fresh `session/new`, one the engine did not offer. Orchestration only
+    // sees the typed refusal the adapter throws.
+    function acpService() {
+      const acp = new FakeAdapter('acp');
+      acp.metadata.modelLaunch = {
+        defaultAtStart: 'engine-selected',
+        omissionAtResume: 'engine-selected',
+        omissionPerTurn: 'engine-selected',
+        overrideAtStart: true,
+        overrideAtResume: false,
+        overridePerTurn: false,
+      };
+      const service = new OrchestrationService({
+        adapterRegistry: createRegistry([acp]),
+        eventBus,
+        eventStore,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      return { acp, service };
+    }
+    const start = (threadId: string, modelId?: string) => ({
+      type: 'startSession' as const,
+      input: {
+        threadId,
+        provider: 'acp' as const,
+        ...(modelId ? { modelId } : {}),
+        metadata: { connectionId: 'opencode' },
+      },
+    });
+    const refusal = () =>
+      new SessionStartRefusedError(
+        "ACP model value unsupported: connection 'opencode' did not advertise 'gpt-6.1-sol' for this session.",
+        'model_not_advertised',
+      );
+
+    test('is a rejection with its code, not an uncertain start', async () => {
+      const { acp, service } = acpService();
+      acp.startSession.mockRejectedValueOnce(refusal());
+
+      const failure = await service
+        .dispatchWithReceipt(start('acp-refused', 'gpt-6.1-sol'))
+        .catch((error: unknown) => error);
+
+      expect(failure).toMatchObject({
+        code: 'model_not_advertised',
+        message: expect.stringContaining("'gpt-6.1-sol'"),
+        receipt: expect.objectContaining({ status: 'rejected' }),
+      });
+      expect(String((failure as Error).message)).not.toContain(
+        'Provider session creation may have completed',
+      );
+    });
+
+    test('does not fence the thread: the next start on it is not blocked', async () => {
+      const { acp, service } = acpService();
+      acp.startSession.mockRejectedValueOnce(refusal());
+
+      await expect(
+        service.dispatchWithReceipt(start('acp-refused-retry', 'gpt-6.1-sol')),
+      ).rejects.toMatchObject({ code: 'model_not_advertised' });
+      await service.dispatchWithReceipt(
+        start('acp-refused-retry', 'anthropic/claude-sonnet-4-6'),
+      );
+
+      expect(acp.startSession).toHaveBeenCalledTimes(2);
+    });
+
+    // What the real ACP adapter publishes for a refused start (pinned in
+    // acp-adapter.test.ts): `session.started` goes out before `session/new`
+    // answers, and on a confirmed teardown it then states the cause and ends
+    // that session. The thread is bound to the adapter by the first event and
+    // only the exit unbinds it.
+    function refusingAfterAnnouncing(
+      acp: FakeAdapter,
+      threadId: string,
+      metadata: Record<string, unknown>,
+    ) {
+      const base = () => ({
+        provider: 'acp' as const,
+        threadId,
+        sessionId: threadId,
+        createdAt: new Date().toISOString(),
+        eventId: `evt-${Math.random()}`,
+      });
+      acp.startSession.mockImplementationOnce(async () => {
+        acp.events.push({
+          ...base(),
+          method: 'session.started',
+          metadata,
+        } as never);
+        acp.events.push({
+          ...base(),
+          method: 'runtime.error',
+          severity: 'error',
+          code: 'model_not_advertised',
+          message: refusal().message,
+        } as never);
+        acp.events.push({
+          ...base(),
+          method: 'session.exited',
+          reason: 'start-refused',
+        } as never);
+        throw refusal();
+      });
+    }
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 25));
+    const refusedConversation = async (conversationId: string) => {
+      const { acp, service } = acpService();
+      const metadata = {
+        connectionId: 'opencode',
+        userId: 'owner-user',
+        conversationId,
+      };
+      refusingAfterAnnouncing(acp, conversationId, metadata);
+      await expect(
+        service.dispatchWithReceipt({
+          type: 'startSession',
+          input: {
+            threadId: conversationId,
+            provider: 'acp',
+            modelId: 'gpt-6.1-sol',
+            metadata,
+          },
+        }),
+      ).rejects.toMatchObject({ code: 'model_not_advertised' });
+      await settle();
+      return { acp, service };
+    };
+
+    // What the user's resend goes through is the conversation's continuation
+    // seam, not a raw start on the refused session id. The refused session has
+    // ended, so whatever the resend names (another model, the same one, or no
+    // override at all because the model came from the Agent) it continues in a
+    // SUCCESSOR session; it must never be told the refused one is still open.
+    // Only the no-override row depends on the session having ended (without
+    // the adapter's exit it is `current_open`); the two named-model rows take
+    // the model-restart branch of the seam and are kept as resend shapes.
+    test.each([
+      ['another model', 'anthropic/claude-sonnet-4-6'],
+      ['the same model', 'gpt-6.1-sol'],
+      ['no model override', undefined],
+    ] as const)(
+      'a resend naming %s continues in a successor session',
+      async (_label, modelOverride) => {
+        const conversationId = `conversation-refused-${String(modelOverride)}`;
+        const { service } = await refusedConversation(conversationId);
+
+        const continuation = await service.resolveConversationContinuation(
+          conversationId,
+          INTERNAL_SESSION_READ_SCOPE,
+          {
+            provider: 'acp',
+            connectionId: 'opencode',
+            ...(modelOverride ? { modelOverride } : {}),
+          },
+        );
+
+        expect(continuation).toMatchObject({ startRequired: true });
+        expect(continuation.sessionId).not.toBe(conversationId);
+      },
+    );
+
+    // A raw start on the refused session id itself is not accepted as a
+    // reattach to a session that was never created, whatever it names.
+    test.each([
+      ['a different model', 'anthropic/claude-sonnet-4-6'],
+      ['no model', undefined],
+    ] as const)(
+      'a raw start naming %s on the refused session id is refused',
+      async (_label, modelId) => {
+        const conversationId = `conversation-refused-raw-${String(modelId)}`;
+        const { acp, service } = await refusedConversation(conversationId);
+
+        await expect(
+          service.dispatchWithReceipt({
+            type: 'startSession',
+            input: {
+              threadId: conversationId,
+              provider: 'acp',
+              ...(modelId ? { modelId } : {}),
+              metadata: { connectionId: 'opencode', userId: 'owner-user' },
+            },
+          }),
+        ).rejects.toThrow(
+          modelId
+            ? 'session-reattach-conflict: model-change'
+            : 'Session already exists',
+        );
+        expect(acp.startSession).toHaveBeenCalledTimes(1);
+      },
+    );
+
+    test('an engine failure that is not a definitive refusal stays an uncertain start', async () => {
+      const { acp, service } = acpService();
+      acp.startSession.mockRejectedValueOnce(new Error('engine crashed'));
+
+      await expect(
+        service.dispatchWithReceipt(start('acp-crashed', 'gpt-6.1-sol')),
+      ).rejects.toMatchObject({ code: 'SESSION_START_INDETERMINATE' });
+    });
   });
 
   test('rejects a model override on a repeated ACP start instead of accepting the existing session', async () => {

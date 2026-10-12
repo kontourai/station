@@ -1971,7 +1971,11 @@ A client connected to such a server can start the same update: Settings →
 Connected Station server → **Check for server updates** fetches the signed
 public manifest the install records (`manifestUrl` in
 `.station-release-state.json`) and verifies it against the pinned signing
-keys for the install's ring before it offers a newer version. Applying it
+keys for the install's ring before it offers a newer version. A manifest older
+than the newest release the install root already accepted
+(`.station-release-accepted.json`, kept across rollbacks) is reported as
+unverified and not offered; see
+[release rings](../guides/release-rings.md#upgrade-and-rollback-behavior). Applying it
 writes the update request (owner-only, published atomically, refused while
 another update is queued or under way); progress and the outcome, including a
 rollback and its reason, are read back from `runtime/service-state.json` and
@@ -3247,7 +3251,7 @@ Findings are evidence input only and do not approve, reject, satisfy a gate, or 
 
 When `station start` launches the server and UI processes, it writes per-instance state to `.station/instances/<instance-id>.json` in the current working directory. Each record includes the instance id, home directory, ports, and current server/UI PIDs.
 
-`station stop` resolves the matching instance from `--instance`, `--home`/`--base`, `--port`, or `--ui-port`, then terminates only that instance: the PIDs it recorded, checked against the process fingerprint recorded at start. A process that merely listens on one of the instance's ports is never signalled, and a port listener alone does not keep an instance record alive, so a record left by a start that lost its port race is reclaimed without touching the sibling that owns the port. A recorded PID whose process no longer matches its fingerprint is not signalled and the stop refuses. `station start` refuses, before binding, a port band (server port through consent port, plus the UI port) that overlaps another live instance recorded in this checkout or published to the home's instance registry, and names that instance. If multiple instances are live and the selector is ambiguous, the CLI refuses and prints the matching records so you can choose the intended one.
+`station stop` resolves the matching instance from `--instance`, `--home`/`--base`, `--port`, or `--ui-port`, then terminates only that instance: the PIDs it recorded, checked against the process fingerprint recorded at start. A process that merely listens on one of the instance's ports is never signalled, and a port listener alone does not keep an instance record alive, so a record left by a start that lost its port race is reclaimed without touching the sibling that owns the port. A recorded PID whose process no longer matches its fingerprint is not signalled and the stop refuses. On Windows the fingerprint is the process's start time and executable image. A live recorded PID whose identity cannot be read is not signalled either: the stop refuses, keeps the record, and says how to retry or end the process by hand. `station start` refuses, before binding, a port band (server port through consent port, plus the UI port) that overlaps another live instance recorded in this checkout or published to the home's instance registry, and names that instance. If multiple instances are live and the selector is ambiguous, the CLI refuses and prints the matching records so you can choose the intended one.
 
 During rollout, Station still recognizes the prior `<cwd>/.station.pids` file when present and migrates away from it as new-format state is written.
 

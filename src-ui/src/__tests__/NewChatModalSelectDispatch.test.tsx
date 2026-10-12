@@ -1777,6 +1777,44 @@ describe('the start composer in the dock', () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
+  // A Model the composer's chip still holds from earlier in the tab, no longer
+  // in the engine's catalog, is refused at Start rather than sent for the
+  // engine to reject after it has half-created the session.
+  test('Start on a chip Model the catalog no longer lists is refused, not started', async () => {
+    selectionModelState.models = [{ id: 'kept-model' }];
+    const onSelect = start(vi.fn(), {
+      initialPrompt: 'From Home',
+      startSelection: {
+        context: '__global__',
+        agentSlug: 'assistant',
+        model: { modelId: 'gone-model', providerOptions: {} },
+      },
+    });
+    await waitFor(() => expect(startButton().disabled).toBe(false));
+    fireEvent.click(startButton());
+    expect(
+      await screen.findByText(/Model you selected is no longer available/),
+    ).toBeTruthy();
+    expect(message().value).toBe('From Home');
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  test('Start on a chip Model the catalog still lists starts', async () => {
+    selectionModelState.models = [{ id: 'kept-model' }];
+    const onSelect = start(vi.fn(), {
+      initialPrompt: 'From Home',
+      startSelection: {
+        context: '__global__',
+        agentSlug: 'assistant',
+        model: { modelId: 'kept-model', providerOptions: {} },
+      },
+    });
+    await waitFor(() => expect(startButton().disabled).toBe(false));
+    fireEvent.click(startButton());
+    await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/no longer available/)).toBeNull();
+  });
+
   // Review finding: the dock builds a new draft object every render; a chip
   // the user removed must stay removed and stay out of the message.
   test('a removed context chip stays removed when the dock re-renders', () => {

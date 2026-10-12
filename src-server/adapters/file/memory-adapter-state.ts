@@ -12,6 +12,22 @@ import {
 
 const logger = createLogger({ name: 'memory-adapter-state' });
 
+/*
+ * Unreachable in Station today (#3564). These are `StorageAdapter` methods
+ * that VoltAgent calls, and nothing in Station calls them directly:
+ *
+ * - Working memory: VoltAgent's `Memory` reads and writes it only when
+ *   `workingMemory.enabled` is set. Both `new Memory(...)` sites in
+ *   `runtime/frameworks/voltagent-adapter.ts` pass `storage` only.
+ * - Workflow state: VoltAgent writes it only for registered workflows. The
+ *   only `new VoltAgent(...)` call (`runtime/bootstrap/runtime-initialize.ts`)
+ *   registers agents and no workflows.
+ *
+ * The writes below rewrite each file in place, with no serialization and no
+ * fsync, which is unsafe under concurrency. Enabling either feature must
+ * first make these writes serialized and atomic, as the messages file is.
+ */
+
 export async function getWorkingMemoryState({
   paths,
   resolveResourceId,
