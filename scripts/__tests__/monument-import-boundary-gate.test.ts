@@ -602,6 +602,27 @@ describe('monument import boundary gate', () => {
     expect(result.stderr).not.toContain('src-server/paths.ts:4');
   });
 
+  it('refuses a glob into the package, as a string or in an array', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const result = run({
+      ...CLEAN,
+      'src-server/glob.ts': [
+        "export const a = import.meta.glob('../packages/monument/src/*.ts');",
+        "export const b = import.meta.glob(['../packages/monument/src/**/*.ts']);",
+        "export const c = import.meta.glob('../packages/other/*.ts');",
+        '',
+      ].join('\n'),
+    });
+    expect(result.status, result.output).toBe(1);
+    for (const line of [
+      'monument-internal-reference: src-server/glob.ts:1 ../packages/monument/src/*.ts',
+      'monument-internal-reference: src-server/glob.ts:2 ../packages/monument/src/**/*.ts',
+    ])
+      expect(result.stderr).toContain(line);
+    expect(result.stderr).not.toContain('src-server/glob.ts:3');
+  });
+
   it('does not fail ordinary strings in a file that names the package (controls)', {
     timeout: CASE_TIMEOUT,
   }, () => {
