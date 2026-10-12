@@ -522,6 +522,12 @@ interface OwnedProcessSweepResult {
   /** Records that could not be parsed; left for a human rather than guessed. */
   corrupt: number;
   /**
+   * #561: records dropped, never signaled, because the owner is gone and no
+   * engine birth was recorded. Nothing could ever prove the pid is still the
+   * recorded child, so the record could never be acted on.
+   */
+  unverifiable: number;
+  /**
    * #561: retained records whose leader is dead while its process group still
    * has members. Nothing is signaled; `members` is null when unreadable.
    */
@@ -663,7 +669,9 @@ async function settleDeadLeaderGroup(
  * directions of pid reuse (owner and engine) are covered by birth comparison.
  * A dead leader whose process group still has members is retained and
  * reported in `survivingGroups`, never signaled (#561): the group id alone
- * cannot prove those members are the recorded engine's.
+ * cannot prove those members are the recorded engine's. A record with no
+ * engine birth is never signaled either; once its owner is gone it is
+ * dropped and counted in `unverifiable` (#561).
  *
  * Registry trust (archive#1863 BLOCKING 2): the sweep refuses to read a
  * directory that is not owned by us or whose mode is broader than 0700, so a
@@ -704,6 +712,7 @@ export async function sweepOrphanedOwnedProcesses(
     recycled: 0,
     retained: 0,
     corrupt: 0,
+    unverifiable: 0,
     survivingGroups: [],
   };
   // BLOCKING 2: never read a registry we do not own.
@@ -749,6 +758,23 @@ export async function sweepOrphanedOwnedProcesses(
     }
     if (!ownerIsGone(record.owner, probeIdentity)) {
       result.retained += 1;
+      continue;
+    }
+    // #561: the owner is gone, so nothing will ever release this record, and
+    // with no recorded engine birth nothing can prove its pid (or group) is
+    // still the recorded child. Retaining it kept it forever. Drop it without
+    // probing or signaling the engine: a missed reclaim, never a wrong kill.
+    if (!record.engineBirth) {
+      result.unverifiable += 1;
+      logger.warn(
+        'owned-process sweep: owner gone and no engine birth recorded; dropping the record, not signaling',
+        {
+          enginePid: record.enginePid,
+          ownerPid: record.owner.pid,
+          command: record.command,
+        },
+      );
+      rmSync(file, { force: true });
       continue;
     }
     // The owner is gone. Confirm the engine pid is the same process that was
@@ -799,16 +825,8 @@ export async function sweepOrphanedOwnedProcesses(
       continue;
     } else {
       // 'exact': we have a current fingerprint. Compare it against the
-      // recorded birth. No recorded birth ⇒ cannot confirm identity ⇒ retain
-      // (fail closed). Mismatch ⇒ the pid was recycled ⇒ drop the record.
-      if (!record.engineBirth) {
-        result.retained += 1;
-        log(
-          'owned-process sweep: engine pid alive but no recorded birth to confirm; retaining',
-          { enginePid: record.enginePid },
-        );
-        continue;
-      }
+      // recorded birth (non-null: a null birth was dropped above, unsignaled).
+      // Mismatch ⇒ the pid was recycled ⇒ drop the record.
       if (engineProbe.identity.start !== record.engineBirth) {
         result.recycled += 1;
         log('owned-process sweep: engine pid recycled; removing stale record', {
@@ -901,32 +919,66 @@ export function spawnOwnedChild(
   // before this function returns, so no in-process failure can separate the
   // two. A SIGKILL of the owner between `spawn` and the write (which includes
   // a synchronous birth probe) still leaves an unregistered group (#561).
-  if (typeof proc.pid === 'number') {
-    const registryDir = options.registryDir ?? ownedProcessRegistryDir();
-    const warn = (message: string, data?: unknown) =>
-      logger.warn(message, { command, pid: proc.pid, detail: data });
-    try {
-      recordOwnedProcess(proc.pid, owner, command, { registryDir, log: warn });
-    } catch (error) {
-      // A registry write failure must never prevent the spawn from succeeding;
-      // the graceful destroy path still works without it. The child is simply
-      // not sweep-protected if the host disk is unwritable, and says so.
-      warn(
-        'owned-process registry: record write failed; child is not sweep-protected',
-        {
-          registryDir,
-          error: String(error),
-        },
-      );
-    }
-  }
-  const release = () => {
-    if (typeof proc.pid === 'number') {
-      const registryDir = options.registryDir ?? ownedProcessRegistryDir();
-      forgetOwnedProcess(proc.pid, { registryDir });
-    }
-  };
+  const release = registerOwnedChild(proc, command, {
+    owner,
+    registryDir: options.registryDir,
+  });
   return { proc, release };
+}
+
+/**
+ * Write the registry record for a just-spawned child and return its release.
+ * A registry write failure never prevents the spawn from succeeding; it is
+ * logged, and the child is simply not sweep-protected.
+ */
+function registerOwnedChild(
+  proc: Pick<ChildProcess, 'pid'>,
+  command: string,
+  options: { owner?: OwnedProcessOwner; registryDir?: string } = {},
+): () => void {
+  const pid = proc.pid;
+  if (typeof pid !== 'number') return () => {};
+  const registryDir = options.registryDir ?? ownedProcessRegistryDir();
+  const warn = (message: string, data?: unknown) =>
+    logger.warn(message, { command, pid, detail: data });
+  try {
+    recordOwnedProcess(
+      pid,
+      options.owner ?? resolveOwnedProcessOwner(),
+      command,
+      { registryDir, log: warn },
+    );
+  } catch (error) {
+    // The graceful destroy path still works without a record. The child is
+    // simply not sweep-protected if the host disk is unwritable, and says so.
+    warn(
+      'owned-process registry: record write failed; child is not sweep-protected',
+      {
+        registryDir,
+        error: String(error),
+      },
+    );
+  }
+  return () => forgetOwnedProcess(pid, { registryDir });
+}
+
+/**
+ * Register a child its caller already spawned DETACHED, for call sites whose
+ * spawn options `spawnOwnedChild` does not carry (a shell command line, an
+ * IPC channel, an allow-listed environment). The record lets the startup
+ * sweep reap the group if this owner dies without cleanup, and it is
+ * released only once the whole process group has exited (#561).
+ *
+ * The child MUST lead its own process group: the sweep signals `-pid`, so a
+ * child spawned without `detached: true` (these call sites on Windows) must
+ * not be registered. Like `spawnOwnedChild`, registration happens after
+ * `spawn` returns; a SIGKILL of the owner in between leaves no record.
+ */
+export function registerDetachedOwnedChild(
+  proc: Pick<ChildProcess, 'pid' | 'once'>,
+  command: string,
+): void {
+  releaseOwnedChildAfterGroupExit(proc, registerOwnedChild(proc, command));
 }
 
 /**

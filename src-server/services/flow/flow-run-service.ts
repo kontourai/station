@@ -54,6 +54,7 @@ import { childProcessEnvironment } from '../../utils/child-process-environment.j
 import { errorMessage } from '../../utils/error-message.js';
 import { flowRunDir } from '../evidence/local-artifact-paths.js';
 import { buildSyntheticTrustBundle } from '../evidence/trust-bundle.js';
+import { registerDetachedOwnedChild } from '../infra/process-utils.js';
 
 /**
  * Stable Flow error codes Station branches on. Flow 3 attaches a `code` to its
@@ -350,6 +351,7 @@ function runShellCommand(
 ): Promise<ShellCommandResult> {
   return new Promise((resolvePromise, rejectPromise) => {
     const startedAt = Date.now();
+    const detached = process.platform !== 'win32';
     const child = spawn(command, {
       cwd,
       shell: true,
@@ -360,8 +362,12 @@ function runShellCommand(
       // the shell leaves the grandchild alive holding the inherited stdio pipes,
       // so 'close' never fires until it exits on its own — the command appears
       // to hang far past timeoutMs (a flaky multi-second stall under load).
-      detached: process.platform !== 'win32',
+      detached,
     });
+    // #561: the timeout above dies with this process, so register the group
+    // for the startup sweep. The record carries a label, never the command
+    // line, which the sweep would log.
+    if (detached) registerDetachedOwnedChild(child, 'flow shell command');
     let output = '';
     let outputTruncated = false;
     let timedOut = false;
