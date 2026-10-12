@@ -379,6 +379,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2012: a real child runtime races the home maintenance ownership fence.
   'packages/shared/src/__tests__/station-home-lifecycle.test.ts',
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
+  // #3565: a real child claims a turn through the node:sqlite adapter and is
+  // SIGKILLed; the parent reopens the file. Single-shot, no wall-clock bound.
+  'packages/monument/src/__tests__/sqlite-crash.process.test.ts',
   // #3565: runs the monument import boundary gate as a child process against
   // throwaway git repositories. Single-shot spawns, no wall-clock assertion.
   'scripts/__tests__/monument-import-boundary-gate.test.ts',
