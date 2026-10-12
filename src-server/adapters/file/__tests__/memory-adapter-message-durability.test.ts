@@ -31,11 +31,16 @@ interface FsEvent {
   op: string;
   path: string;
   from?: string;
+  /** Which `open` produced the handle this call went through. */
+  handle?: number;
+  /** The flags of that `open`, as passed. */
+  flags?: string;
 }
 
 const events: FsEvent[] = [];
 const messageLoggerWarnings: Array<[string, unknown]> = [];
 let crashAtRename = false;
+let nextHandle = 0;
 
 class SimulatedCrash extends Error {
   constructor() {
@@ -57,15 +62,17 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
   const open: typeof actual.open = async (...args) => {
     const path = String(args[0]);
+    const flags = String(args[1] ?? 'r');
+    const id = ++nextHandle;
     const handle = await actual.open(...args);
-    events.push({ op: 'open', path });
+    events.push({ op: 'open', path, handle: id, flags });
     return new Proxy(handle, {
       get(target, key) {
         const value = Reflect.get(target, key, target);
         if (typeof value !== 'function') return value;
         return (...callArgs: unknown[]) => {
           if (RECORDED_HANDLE_METHODS.has(String(key))) {
-            events.push({ op: String(key), path });
+            events.push({ op: String(key), path, handle: id, flags });
           }
           return value.apply(target, callArgs);
         };
@@ -281,6 +288,62 @@ describe('transcript appends and rewrites survive a crash (#3564)', () => {
     expect(readdirSync(dirname(path))).not.toContain('c1.ndjson.torn');
   });
 
+  test('a fragment is durable in quarantine before the transcript is truncated', async () => {
+    await adapter.addMessage(message('a'), USER, CONVERSATION);
+    const path = await messagesPath();
+    const tornPath = `${path}.torn`;
+    await appendRaw(path, '{"id":"b","rol', 'utf-8');
+    events.length = 0;
+
+    await adapter.addMessage(message('c'), USER, CONVERSATION);
+    expect(await storedIds()).toEqual(['a', 'c']);
+
+    type Match = (event: FsEvent, index: number) => boolean;
+    const indexOf = (predicate: Match) => events.findIndex(predicate);
+    const lastIndexOf = (predicate: Match) => {
+      for (let index = events.length - 1; index >= 0; index -= 1) {
+        if (predicate(events[index], index)) return index;
+      }
+      return -1;
+    };
+
+    const tornWrite = lastIndexOf(
+      (event) => event.path === tornPath && event.op === 'writeFile',
+    );
+    const tornSync = indexOf(
+      (event) => event.path === tornPath && event.op === 'sync',
+    );
+    const directorySync = indexOf(
+      (event, index) =>
+        index > tornSync &&
+        event.op === 'fsyncDirectory' &&
+        event.path === dirname(tornPath),
+    );
+    const truncate = indexOf(
+      (event) => event.path === path && event.op === 'truncate',
+    );
+
+    // "Never in neither": the copy is written, flushed and its directory
+    // entry made durable, and only then is the transcript cut.
+    expect(tornWrite).toBeGreaterThan(-1);
+    expect(tornSync).toBeGreaterThan(tornWrite);
+    expect(directorySync).toBeGreaterThan(tornSync);
+    expect(truncate).toBeGreaterThan(directorySync);
+
+    // The cut goes through a descriptor opened without O_APPEND: Windows
+    // refuses to truncate an append handle. The cut is flushed on it.
+    const cut = events[truncate];
+    expect(cut.flags).not.toMatch(/a/);
+    expect(
+      events.some(
+        (event, index) =>
+          index > truncate &&
+          event.handle === cut.handle &&
+          event.op === 'sync',
+      ),
+    ).toBe(true);
+  });
+
   test('a crash between writing the rewrite and renaming it leaves the original intact', async () => {
     await adapter.addMessages(
       [message('m1'), message('m2'), message('m3')],
@@ -408,6 +471,11 @@ describe('transcript appends and rewrites survive a crash (#3564)', () => {
     expect(events).toContainEqual({
       op: 'fsyncDirectory',
       path: dirname(path),
+    });
+    // So must the new sessions directory's own entry, in its parent.
+    expect(events).toContainEqual({
+      op: 'fsyncDirectory',
+      path: dirname(dirname(path)),
     });
 
     // A later append to the existing file still flushes its data.

@@ -55,6 +55,17 @@ const logger = createLogger({ name: 'memory-adapter-messages' });
  * rename removes across processes is the torn-READ window. It trades one
  * narrow lost-append ordering for another, and neither is addressed here.
  *
+ * Torn-tail repair (#3564) adds a third multi-process loss that did not
+ * exist before it. Plain O_APPEND appends from two processes never removed a
+ * complete line; the repair can. If process B finds an unterminated tail and
+ * process A then appends and fsyncs record X, B's truncate to the stale
+ * offset deletes X. B can also see A's in-flight append (Node writes large
+ * payloads in pieces) as a torn tail and quarantine it. Both need a second
+ * server on the same home, the unsupported shape above. A lock around the
+ * repair alone would not close it, because ordinary appends do not take that
+ * lock. Locking every append is the per-message cross-process lock rejected
+ * below.
+ *
  * A cross-process lock is still the wrong answer: it would hand-roll, over
  * NDJSON, what a database gives for free. When concurrent writers become a
  * supported shape (collaboration), the answer is a different adapter with
@@ -119,7 +130,7 @@ async function writeMessagesFileAtomic(
     await rm(temporaryPath, { force: true }).catch(() => {});
     throw error;
   }
-  flushDirectoryAfterCommit(path, 'rewrite');
+  flushDirectoryAfterCommit(dirname(path), 'rewrite');
 }
 
 /**
@@ -132,14 +143,14 @@ async function writeMessagesFileAtomic(
  * swallows it silently).
  */
 function flushDirectoryAfterCommit(
-  path: string,
-  operation: 'rewrite' | 'append',
+  directory: string,
+  operation: 'rewrite' | 'append' | 'create',
 ): void {
   try {
-    fsyncDirectorySync(dirname(path));
+    fsyncDirectorySync(directory);
   } catch (error) {
     logger.warn('Messages directory fsync failed after a committed write', {
-      path,
+      directory,
       operation,
       error,
     });
@@ -176,6 +187,13 @@ export function tornRecordQuarantinePath(messagesPath: string): string {
 
 const NEWLINE = 0x0a;
 const TAIL_SCAN_CHUNK_BYTES = 64 * 1024;
+/**
+ * The largest unterminated tail parsed to see whether only its newline was
+ * lost. A longer tail is quarantined without being parsed, so repair memory
+ * stays bounded. Nothing is lost either way: a quarantined tail keeps its
+ * bytes in the `.torn` file.
+ */
+const MAX_COMPLETABLE_TAIL_BYTES = 8 * 1024 * 1024;
 
 async function readExactly(
   handle: FileHandle,
@@ -195,38 +213,70 @@ async function readExactly(
   return buffer;
 }
 
-/** The bytes after the last newline, or null when the file ends in one. */
-async function findUnterminatedTail(
+/**
+ * Offset of the first byte after the last newline, or null when the file
+ * ends in one. Scans backwards a chunk at a time and keeps no chunk, so
+ * memory stays bounded however long the unterminated tail is.
+ */
+async function findUnterminatedTailOffset(
   handle: FileHandle,
   size: number,
-): Promise<{ offset: number; bytes: Buffer } | null> {
+): Promise<number | null> {
   if (size === 0) return null;
   const last = await readExactly(handle, 1, size - 1);
   if (last[0] === NEWLINE) return null;
 
-  const chunks: Buffer[] = [];
   let end = size;
   while (end > 0) {
     const start = Math.max(0, end - TAIL_SCAN_CHUNK_BYTES);
     const chunk = await readExactly(handle, end - start, start);
     const newline = chunk.lastIndexOf(NEWLINE);
-    if (newline !== -1) {
-      chunks.unshift(chunk.subarray(newline + 1));
-      return { offset: start + newline + 1, bytes: Buffer.concat(chunks) };
-    }
-    chunks.unshift(chunk);
+    if (newline !== -1) return start + newline + 1;
     end = start;
   }
-  return { offset: 0, bytes: Buffer.concat(chunks) };
+  return 0;
 }
 
-function isCompleteRecord(bytes: Buffer): boolean {
+async function tailIsCompleteRecord(
+  handle: FileHandle,
+  offset: number,
+  size: number,
+): Promise<boolean> {
+  if (size - offset > MAX_COMPLETABLE_TAIL_BYTES) return false;
+  const bytes = await readExactly(handle, size - offset, offset);
   try {
     const value: unknown = JSON.parse(bytes.toString('utf-8'));
     return typeof value === 'object' && value !== null;
   } catch {
     return false;
   }
+}
+
+/**
+ * Append transcript bytes `[offset, size)` to the quarantine file as one
+ * newline-terminated line, copied a chunk at a time, then flush the file and
+ * its directory. The fragment holds no newline by construction, so the
+ * quarantine file stays line-framed across recoveries.
+ */
+async function quarantineTail(
+  source: FileHandle,
+  quarantinePath: string,
+  offset: number,
+  size: number,
+): Promise<void> {
+  const quarantine = await open(quarantinePath, 'a');
+  try {
+    for (let position = offset; position < size; ) {
+      const length = Math.min(TAIL_SCAN_CHUNK_BYTES, size - position);
+      await quarantine.writeFile(await readExactly(source, length, position));
+      position += length;
+    }
+    await quarantine.writeFile('\n');
+    await quarantine.sync();
+  } finally {
+    await quarantine.close();
+  }
+  fsyncDirectorySync(dirname(quarantinePath));
 }
 
 /**
@@ -240,53 +290,48 @@ function isCompleteRecord(bytes: Buffer): boolean {
  * record that was being written.
  */
 async function repairTornTail(
-  handle: FileHandle,
+  appendHandle: FileHandle,
   path: string,
   size: number,
 ): Promise<TornTailRecovery | null> {
-  const tail = await findUnterminatedTail(handle, size);
-  if (!tail) return null;
+  const offset = await findUnterminatedTailOffset(appendHandle, size);
+  if (offset === null) return null;
+  const bytes = size - offset;
 
-  if (isCompleteRecord(tail.bytes)) {
-    // `a+` appends regardless of position, so this lands at the end.
-    await handle.write('\n');
-    return {
-      kind: 'completed',
-      path,
-      offset: tail.offset,
-      bytes: tail.bytes.length,
-    };
+  if (await tailIsCompleteRecord(appendHandle, offset, size)) {
+    // O_APPEND places this at the end. It is flushed with the payload.
+    await appendHandle.write('\n');
+    return { kind: 'completed', path, offset, bytes };
   }
 
-  // Move the fragment aside before truncating it away, and make the copy
-  // durable first: a crash between the two then leaves the fragment in both
-  // places (the next append quarantines it again), never in neither.
+  // Copy the fragment aside, durably, before truncating it away: a crash
+  // between the two leaves it in both places (the next append quarantines it
+  // again), never in neither.
   const quarantinePath = tornRecordQuarantinePath(path);
-  const quarantine = await open(quarantinePath, 'a');
+  await quarantineTail(appendHandle, quarantinePath, offset, size);
+
+  // Truncate through a separate read-write descriptor, never the append one.
+  // On Windows libuv opens O_APPEND without FILE_WRITE_DATA, which truncation
+  // (SetEndOfFile) requires, so truncating the append handle would fail there
+  // after every quarantine and refuse each later append. The truncation is
+  // flushed on the descriptor that made it.
+  const repair = await open(path, 'r+');
   try {
-    // The fragment holds no newline by construction, so one appended line
-    // per recovery keeps the quarantine file line-framed.
-    await quarantine.writeFile(Buffer.concat([tail.bytes, Buffer.from('\n')]));
-    await quarantine.sync();
+    await repair.truncate(offset);
+    await repair.sync();
   } finally {
-    await quarantine.close();
+    await repair.close();
   }
-  fsyncDirectorySync(dirname(quarantinePath));
-  await handle.truncate(tail.offset);
-  return {
-    kind: 'quarantined',
-    path,
-    offset: tail.offset,
-    bytes: tail.bytes.length,
-    quarantinePath,
-  };
+  return { kind: 'quarantined', path, offset, bytes, quarantinePath };
 }
 
 /**
  * Append whole NDJSON records and flush them before returning (#3564).
  *
- * Runs inside the path's queue slot. The handle is opened `a+` so the tail
- * can be read and repaired through the same descriptor that appends.
+ * Runs inside the path's queue slot. The append itself goes through an
+ * O_APPEND descriptor (`a+`, readable for the tail scan), so an ordinary
+ * append never positions a write and cannot overwrite another writer's
+ * line. It is flushed on that same descriptor.
  */
 async function appendMessageRecords(
   path: string,
@@ -311,7 +356,24 @@ async function appendMessageRecords(
   // An empty file is usually one this open just created, and a new file's
   // directory entry is not durable until the directory is flushed. A file
   // emptied by `clearMessages` pays one redundant directory flush.
-  if (wasEmpty) flushDirectoryAfterCommit(path, 'append');
+  if (wasEmpty) flushDirectoryAfterCommit(dirname(path), 'append');
+}
+
+/**
+ * `mkdir -p` the sessions directory and make every directory it created
+ * durable. Each new directory's entry lives in its parent, so the parents are
+ * flushed from the sessions directory's own parent up to the parent of the
+ * first directory created. The sessions directory's entry for the transcript
+ * is flushed by the first append.
+ */
+async function ensureSessionsDirectory(directory: string): Promise<void> {
+  const firstCreated = await mkdir(directory, { recursive: true });
+  if (firstCreated === undefined) return;
+  const stop = dirname(firstCreated);
+  for (let current = dirname(directory); ; current = dirname(current)) {
+    flushDirectoryAfterCommit(current, 'create');
+    if (current === stop || dirname(current) === current) break;
+  }
 }
 
 /** Read a messages file as its raw lines, preserving bytes exactly. */
@@ -351,7 +413,7 @@ export async function addStoredMessage({
   context?: any;
 }): Promise<void> {
   const resourceId = await resolveResourceId(conversationId, userId);
-  await mkdir(paths.getSessionsDir(resourceId), { recursive: true });
+  await ensureSessionsDirectory(paths.getSessionsDir(resourceId));
 
   const parsedMessage = parseReasoningFromMessage(message);
   const metadata = (parsedMessage as UIMessageWithMetadata).metadata;
@@ -426,7 +488,7 @@ export async function addStoredMessages({
   }
 
   const resourceId = await resolveResourceId(conversationId, userId);
-  await mkdir(paths.getSessionsDir(resourceId), { recursive: true });
+  await ensureSessionsDirectory(paths.getSessionsDir(resourceId));
 
   const messagesPath = paths.getMessagesPath(resourceId, conversationId);
   const payload = `${messages.map((message) => JSON.stringify(message)).join('\n')}\n`;
