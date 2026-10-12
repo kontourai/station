@@ -197,8 +197,8 @@ first; the controls show what **Start** will use:
   returns to, such as **Use project default** for a model-only choice or
   **Use Agent defaults** for an engine override. In an existing conversation,
   changing or resetting the engine opens a handoff confirmation that keeps your draft.
-  While a reply is still running, the other engines are shown but unavailable
-  until it finishes.
+  While a reply is still running, the other engines and **Use Agent defaults**
+  are shown but unavailable until it finishes.
 - The **project** control above the message shows the Project's icon (or
   its colour when none is displayable) and name, or **Without a project**.
   Open it to choose a project. The list shows each project's folder and the
