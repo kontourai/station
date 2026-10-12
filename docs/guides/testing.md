@@ -1264,7 +1264,7 @@ the selected project consumes package builds.
 
 This command is diagnostic; pre-push, `ci:fast`, and required hosted checks use
 TypeScript 7. Bun has no persistent incremental cache, and a single project
-check does not replace the twelve-lane aggregate or the scripts coverage gate.
+check does not replace the typecheck aggregate or the scripts coverage gate.
 Do not add `@types/bun` to Station's Node/browser projects to make a check pass.
 Compare diagnostics before treating a disagreement as a Station defect.
 

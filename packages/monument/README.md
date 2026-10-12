@@ -7,6 +7,12 @@ and what it leaves to other packages.
 
 The API may change in any release until a second consumer exists.
 
+It is `private: true` in this checkout. `publish-packages.yml` exchanges an
+OIDC token for every public workspace, and npm can attach a trusted publisher
+only to a name that already exists, so a public manifest would fail every
+release until the first version is published another way. Publishing is an
+owner decision.
+
 The package ships raw TypeScript source. Consumers need a bundler or a
 TypeScript-aware loader.
 

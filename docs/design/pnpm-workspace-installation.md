@@ -30,7 +30,8 @@ lists and owns its pinned PostgreSQL dependencies in the same lock. It remains
 private and builds a separate Node bundle; adding a workspace does not publish
 it with Station or configure a telemetry destination.
 
-`packages/monument` is declared in both workspace lists too. It has no
+`packages/monument` is declared in both workspace lists too. It is private
+until its first owner-gated publish, so `changeset publish` skips it. It has no
 dependencies, so its lock importer is empty; its import boundary is enforced by
 `scripts/monument-import-boundary-gate.mjs`, not by the package manager.
 

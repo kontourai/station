@@ -1,6 +1,7 @@
 {
   "name": "@kontourai/monument",
   "version": "0.1.0",
+  "private": true,
   "description": "Experimental engine-neutral durability kernel: a command-shaped storage port, pure decision functions, in-memory and node:sqlite adapters, and an exported conformance suite",
   "type": "module",
   "engines": {
