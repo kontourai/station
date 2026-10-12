@@ -4158,6 +4158,96 @@ describe('station#1182: runtime-reported model', () => {
     expect(processes[0].setConfigOptionCalls).toEqual([]);
   });
 
+  // `session.started` is published before `session/new` answers, so a refusal
+  // must end that session in the event stream too: the service binds the
+  // thread to the adapter on the first event, and only `session.exited`
+  // unbinds it. Without it the retry the refusal invites hits "Session already
+  // exists".
+  test('a refused model ends the session it had announced, with the cause first', async () => {
+    const { adapter, processes } = createAdapter({
+      newSessionConfigOptions: [
+        {
+          id: 'model',
+          category: 'model',
+          currentValue: 'model-a',
+          options: [{ value: 'model-a' }],
+        },
+      ],
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    await expect(
+      adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-refused-announced',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        modelId: 'model-b',
+      }),
+    ).rejects.toBeInstanceOf(SessionStartRefusedError);
+
+    await nextEvent(iterator, 'session.started');
+    await expect(nextEvent(iterator, 'runtime.error')).resolves.toMatchObject({
+      method: 'runtime.error',
+      severity: 'error',
+      code: 'model_not_advertised',
+      message: expect.stringContaining('ACP model value unsupported'),
+    });
+    const exited = await nextEvent(iterator, 'session.exited');
+    expect(exited).toMatchObject({
+      method: 'session.exited',
+      sessionId: 'thread-refused-announced',
+      reason: 'start-refused',
+    });
+    expect(exited).not.toHaveProperty('exitCode');
+    expect(processes[0].destroyCalls).toBe(1);
+    await expect(adapter.listSessions()).resolves.toEqual([]);
+  });
+
+  // Teardown is part of what makes a refusal definitive. If the engine process
+  // cannot be confirmed gone, the start is NOT settled: the failure must not be
+  // the typed refusal (the boundary would release it) and no session end is
+  // announced for a process that may still be running.
+  test('a refusal whose teardown is not confirmed is not a settled start', async () => {
+    const processes: FakeAcpProcess[] = [];
+    const adapter = new AcpAdapter({
+      getConnections: async () => createConnections(),
+      logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
+      processFactory: (options) => {
+        const process = new FakeAcpProcess(options);
+        process.newSessionConfigOptions = [
+          {
+            id: 'model',
+            category: 'model',
+            currentValue: 'model-a',
+            options: [{ value: 'model-a' }],
+          },
+        ];
+        process.destroyError = new Error('termination not confirmed');
+        processes.push(process);
+        return process as unknown as ACPProcess;
+      },
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    const failure = await adapter
+      .startSession({
+        provider: 'acp',
+        threadId: 'thread-refused-teardown-unconfirmed',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        modelId: 'model-b',
+      })
+      .catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect(failure).not.toBeInstanceOf(SessionStartRefusedError);
+    await nextEvent(iterator, 'session.started');
+    expect(await nextEventOrTimeout(iterator, 100)).toBe('TIMED_OUT');
+    processes[0].destroyError = undefined;
+    await adapter.stopAll();
+  });
+
   test('applies an advertised session mode via setConfigOption (station#1945)', async () => {
     const { adapter, processes } = createAdapter({
       newSessionConfigOptions: [

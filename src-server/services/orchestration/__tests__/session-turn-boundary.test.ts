@@ -47,7 +47,8 @@ describe('SessionTurnBoundaryAuthority', () => {
   });
 
   describe('a definitive start refusal', () => {
-    const refusal = () => new SessionStartRefusedError('engine refused');
+    const refusal = () =>
+      new SessionStartRefusedError('engine refused', 'model_not_advertised');
 
     test('releases the boundary: the thread is not fenced and the next start may claim it', async () => {
       const authority = createInMemorySessionTurnBoundaryAuthority();
@@ -81,6 +82,54 @@ describe('SessionTurnBoundaryAuthority', () => {
       ).rejects.toMatchObject({ code: SESSION_START_INDETERMINATE_CODE });
 
       expect(authority.hasPossibleEffect('crashed-thread')).toEqual({
+        kind: 'available',
+        active: true,
+      });
+    });
+
+    test('a release the store cannot confirm falls back to the indeterminate start', async () => {
+      let record: SessionTurnBoundaryRecord | undefined;
+      const coordinator: SessionTurnBoundaryCoordinator = {
+        create(input) {
+          if (record) return { kind: 'busy' };
+          record = { ...input };
+          return { kind: 'applied' };
+        },
+        transition(input) {
+          if (!record || record.boundaryId !== input.boundaryId)
+            return { kind: 'stale' };
+          if (!input.from.includes(record.state)) return { kind: 'stale' };
+          record = { ...record, state: input.to, updatedAt: input.now };
+          return { kind: 'applied' };
+        },
+        // The release itself cannot be confirmed.
+        remove: () => ({ kind: 'unavailable' }),
+        removeTerminal: () => ({ kind: 'applied' }),
+        hasPossibleEffect: () => Boolean(record),
+        active: () => (record ? [{ ...record }] : []),
+        recordAccepted: () => ({ kind: 'unavailable' }),
+      };
+      const authority = createSessionTurnBoundaryAuthority({
+        coordinator,
+        owner: { id: 'owner', pid: process.pid, identityKind: 'unverified' },
+        processIdentity: {
+          exact: () => null,
+          probe: () => ({ state: 'unavailable' }),
+        },
+      });
+
+      await expect(
+        runSessionStartWithBoundary(
+          authority,
+          'unconfirmed-release',
+          async () => {
+            throw refusal();
+          },
+        ),
+      ).rejects.toMatchObject({ code: SESSION_START_INDETERMINATE_CODE });
+
+      expect(record?.state).toBe('indeterminate');
+      expect(authority.hasPossibleEffect('unconfirmed-release')).toEqual({
         kind: 'available',
         active: true,
       });

@@ -1361,11 +1361,10 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(chat?.input).toBe('look');
   });
 
-  // The server refuses a new session's model the engine connection did not
-  // offer, before spawning it (`model_not_advertised`, thrown by the REAL
-  // fetcher). Retrying sends the same model into the same refusal; the picker's
+  // The engine refuses a new session's model it did not offer
+  // (`model_not_advertised`, thrown by the REAL fetcher). Retrying sends the same model into the same refusal; the picker's
   // snapshot of the Agent, its engine and that list is what let it be chosen.
-  it('a model the engine did not offer is not presented as transient: no Retry, snapshots re-read', async () => {
+  it('a model the engine did not offer is not presented as transient: no Retry, a New chat, snapshots re-read', async () => {
     const actual = await vi.importActual<
       typeof import('@kontourai/station-sdk/client')
     >('@kontourai/station-sdk/client');
@@ -1406,6 +1405,8 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     expect(notice?.content).not.toContain('Retrying may help');
     expect(notice?.content).not.toContain('may already have started');
     expect(notice?.action).toBeUndefined();
+    // Terminal for this chat: the dock turns it into "New chat" with the draft.
+    expect(notice).toMatchObject({ terminalSession: true });
     expect(invalidateMock).toHaveBeenCalledWith(['agents']);
     expect(invalidateMock).toHaveBeenCalledWith(['acp-connections']);
     expect(invalidateMock).toHaveBeenCalledWith(['connections', 'engines']);

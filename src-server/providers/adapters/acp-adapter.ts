@@ -37,6 +37,7 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import {
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+  MODEL_NOT_ADVERTISED_CODE,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
   modelSelectionReceipt,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
@@ -1375,6 +1376,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           if (!modelOption) {
             throw new SessionStartRefusedError(
               `ACP model option unavailable: connection '${config.id}' did not advertise a model configuration option for this session.`,
+              MODEL_NOT_ADVERTISED_CODE,
             );
           }
           if (
@@ -1384,6 +1386,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           ) {
             throw new SessionStartRefusedError(
               `ACP model value unsupported: connection '${config.id}' did not advertise '${requestedModel}' for this session.`,
+              MODEL_NOT_ADVERTISED_CODE,
             );
           }
           const response = await acpProcess.setConfigOption(
@@ -1507,6 +1510,37 @@ export class AcpAdapter implements ProviderAdapterShape {
             method: 'session.exited',
             sessionId: input.threadId,
             reason: 'stopped',
+          });
+        }
+        // `session.started` went out before `session/new` answered, so the
+        // service has bound this thread to this adapter. A refused start ends
+        // that session: say why, then end it, or the thread stays bound and
+        // the very retry the refusal invites fails with "Session already
+        // exists". `exitCode` is deliberately absent (no process observation):
+        // the cause is the `runtime.error`, which is what folds the lifecycle
+        // to `failed` with the engine's own words.
+        if (
+          error instanceof SessionStartRefusedError &&
+          record.startedPublished
+        ) {
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId: input.threadId,
+            createdAt: new Date().toISOString(),
+            method: 'runtime.error',
+            severity: 'error',
+            code: error.code,
+            message: error.message,
+          });
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId: input.threadId,
+            createdAt: new Date().toISOString(),
+            method: 'session.exited',
+            sessionId: input.threadId,
+            reason: 'start-refused',
           });
         }
       } catch (cleanupError) {

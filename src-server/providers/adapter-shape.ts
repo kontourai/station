@@ -22,7 +22,6 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import {
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
-  MODEL_NOT_ADVERTISED_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 
@@ -84,11 +83,12 @@ export class AttachmentInputUnsupportedError extends SendTurnRefusedError {
 
 /**
  * An adapter's `startSession` refused the session DEFINITIVELY: the engine
- * answered, held nothing of this session's, and the adapter has torn down what
- * it spawned, so no session exists to inspect and a start that names something
- * the engine accepts is not blocked by it. The expected source is a requested
- * model the engine's own fresh session options did not offer
- * ({@link MODEL_NOT_ADVERTISED_CODE}).
+ * answered with a refusal and the adapter has torn down what it spawned, so
+ * there is no session Station can address or inspect. The expected source is a
+ * requested model the engine's own fresh session options did not offer
+ * ({@link MODEL_NOT_ADVERTISED_CODE}). Throwing it is also a promise to publish
+ * `session.exited` for a `session.started` already sent (the ACP adapter does):
+ * the service binds the thread to the adapter on the first event.
  *
  * Throw ONLY when that is true. The start boundary otherwise records every
  * adapter failure as an indeterminate start and keeps the thread fenced until
@@ -97,12 +97,12 @@ export class AttachmentInputUnsupportedError extends SendTurnRefusedError {
  * is settled; the dispatch receipt is then `rejected` and `code` is forwarded.
  */
 export class SessionStartRefusedError extends Error {
-  readonly code: string;
-
-  constructor(message: string, code: string = MODEL_NOT_ADVERTISED_CODE) {
+  constructor(
+    message: string,
+    readonly code: string,
+  ) {
     super(message);
     this.name = 'SessionStartRefusedError';
-    this.code = code;
   }
 }
 
