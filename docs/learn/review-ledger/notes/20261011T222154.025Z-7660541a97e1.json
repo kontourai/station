@@ -1,0 +1,27 @@
+{
+  "revision": "e02751e665b1d4f750321d1ea8aa56d6da78dee1",
+
+  "notes": [
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Delta review: scripts/actionlint-gate.mjs only repins the reviewed kontourai/.github docs-gate.yml from 091ffab to 246be34 (#55, npx runs outside the checkout with isolated npm config) and updates its review comment. This document makes no claim about that pin, the base-controlled workflow list or docs-kit, so it remains accurate.","inputs":["docs/guides/delegation-attempt-claims.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Delta review: scripts/actionlint-gate.mjs only repins the reviewed kontourai/.github docs-gate.yml from 091ffab to 246be34 (#55, npx runs outside the checkout with isolated npm config) and updates its review comment. This document makes no claim about that pin, the base-controlled workflow list or docs-kit, so it remains accurate.","inputs":["docs/guides/dependency-security.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Delta review: scripts/actionlint-gate.mjs only repins the reviewed kontourai/.github docs-gate.yml from 091ffab to 246be34 (#55, npx runs outside the checkout with isolated npm config) and updates its review comment. This document makes no claim about that pin, the base-controlled workflow list or docs-kit, so it remains accurate.","inputs":["docs/guides/home-transfer-controller.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Delta review: scripts/actionlint-gate.mjs only repins the reviewed kontourai/.github docs-gate.yml from 091ffab to 246be34 (#55, npx runs outside the checkout with isolated npm config) and updates its review comment. This document makes no claim about that pin, the base-controlled workflow list or docs-kit, so it remains accurate.","inputs":["docs/guides/private-runner-partition.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Delta review: scripts/actionlint-gate.mjs only repins the reviewed kontourai/.github docs-gate.yml from 091ffab to 246be34 (#55, npx runs outside the checkout with isolated npm config) and updates its review comment. This document makes no claim about that pin, the base-controlled workflow list or docs-kit, so it remains accurate.","inputs":["docs/guides/product-law-authoring.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Delta review: scripts/actionlint-gate.mjs only repins the reviewed kontourai/.github docs-gate.yml from 091ffab to 246be34 (#55, npx runs outside the checkout with isolated npm config) and updates its review comment. This document makes no claim about that pin, the base-controlled workflow list or docs-kit, so it remains accurate.","inputs":["docs/guides/releasing.md","scripts/__tests__/actionlint-gate.test.ts","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Delta review: scripts/actionlint-gate.mjs only repins the reviewed kontourai/.github docs-gate.yml from 091ffab to 246be34 (#55, npx runs outside the checkout with isolated npm config) and updates its review comment. This document makes no claim about that pin, the base-controlled workflow list or docs-kit, so it remains accurate.","inputs":["docs/guides/repository-layout.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Delta review: scripts/actionlint-gate.mjs only repins the reviewed kontourai/.github docs-gate.yml from 091ffab to 246be34 (#55, npx runs outside the checkout with isolated npm config) and updates its review comment. This document makes no claim about that pin, the base-controlled workflow list or docs-kit, so it remains accurate.","inputs":["docs/guides/testing.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Delta review: scripts/actionlint-gate.mjs only repins the reviewed kontourai/.github docs-gate.yml from 091ffab to 246be34 (#55, npx runs outside the checkout with isolated npm config) and updates its review comment. This document makes no claim about that pin, the base-controlled workflow list or docs-kit, so it remains accurate.","inputs":["docs/guides/work-board-security.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Delta review: scripts/actionlint-gate.mjs only repins the reviewed kontourai/.github docs-gate.yml from 091ffab to 246be34 (#55, npx runs outside the checkout with isolated npm config) and updates its review comment. This document makes no claim about that pin, the base-controlled workflow list or docs-kit, so it remains accurate.","inputs":["docs/guides/workspace-packages.md","scripts/actionlint-gate.mjs"]},
+
+    {"path":"docs/guides/documentation.md","note":"Delta review: docs-kit.yml now calls docs-gate.yml@246be34 instead of 091ffab; triggers, advisory status and the docs-kit pin are unchanged, so the PR: Docs kit sentence remains accurate.","inputs":["docs/guides/documentation.md",".github/workflows/docs-kit.yml"]}
+  ]
+}
