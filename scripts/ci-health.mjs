@@ -469,12 +469,20 @@ function headsRun(pull, run) {
     ? pull.head?.label === label
     : pull.head?.ref === run.head_branch;
 }
-function livedAt(pull, run) {
+// A pull-request-family run exists only because of an event on a PR that was
+// already open, but events such as `edited` or `labeled` can land seconds after
+// the PR closed. Among PRs created before the run, those whose lifetime contains
+// it own it; with none, the latest-created one does.
+function owningPulls(pulls, run) {
   const at = time(run.created_at);
-  return (
-    time(pull.created_at) <= at &&
-    (pull.closed_at == null || at <= time(pull.closed_at))
+  const before = pulls.filter((p) => time(p.created_at) <= at);
+  const live = before.filter(
+    (p) => p.closed_at == null || at <= time(p.closed_at),
   );
+  if (live.length || !before.length) return live;
+  return [
+    before.reduce((a, b) => (time(b.created_at) > time(a.created_at) ? b : a)),
+  ];
 }
 export async function resolvePushPRs(run, repo, request, caches) {
   const { shaPulls, branchPulls } = caches;
@@ -483,7 +491,10 @@ export async function resolvePushPRs(run, repo, request, caches) {
       run.head_sha,
       await pages(request, `repos/${repo}/commits/${run.head_sha}/pulls`),
     );
-  const direct = shaPulls.get(run.head_sha).filter((p) => headsRun(p, run));
+  const direct = owningPulls(
+    shaPulls.get(run.head_sha).filter((p) => headsRun(p, run)),
+    run,
+  );
   if (direct.length) return direct;
   const owner = run.head_repository?.owner?.login;
   if (!owner || !run.head_branch) return [];
@@ -496,9 +507,10 @@ export async function resolvePushPRs(run, repo, request, caches) {
         `repos/${repo}/pulls?state=all&head=${encodeURIComponent(label)}`,
       ),
     );
-  return branchPulls
-    .get(label)
-    .filter((p) => headsRun(p, run) && livedAt(p, run));
+  return owningPulls(
+    branchPulls.get(label).filter((p) => headsRun(p, run)),
+    run,
+  );
 }
 export async function collectHealth(
   options,
@@ -611,7 +623,7 @@ export async function collectHealth(
       run.pull_requests = resolved.map((p) => ({ number: p.number }));
       if (!run.pull_requests.length)
         reasons.push(
-          `Cannot resolve PR push: run ${run.id} (${run.head_sha?.slice(0, 12)} on ${run.head_repository?.full_name ?? 'unknown repository'}:${run.head_branch}): no pull request lists this commit or has ever used this head branch while the run was live`,
+          `Cannot resolve PR push: run ${run.id} (${run.head_sha?.slice(0, 12)} on ${run.head_repository?.full_name ?? 'unknown repository'}:${run.head_branch}): no pull request lists this commit or had this head branch before the run`,
         );
     }
     for (const group of groupRuns(runs, 'merge_group')) {

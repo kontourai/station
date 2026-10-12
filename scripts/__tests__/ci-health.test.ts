@@ -654,19 +654,34 @@ describe('CI health collection bounds and command interface', () => {
       const sha = '51bc37b501b4b89417de61230c976aa8de4a8fd0';
       const pairing = 't3code/32af3a2a-pairing-permissions';
       const { data } = await collect(
-        [pullRun(1, sha, { head_branch: pairing })],
+        [
+          pullRun(1, sha, {
+            head_branch: pairing,
+            created_at: '2026-10-02T12:00:00Z',
+          }),
+        ],
         {
           sha: {
             [sha]: [
-              { number: 3553, state: 'closed', head: head(pairing) },
+              {
+                number: 3553,
+                state: 'closed',
+                created_at: '2026-10-01T00:00:00Z',
+                closed_at: '2026-10-03T00:00:00Z',
+                head: head(pairing),
+              },
               {
                 number: 3584,
                 state: 'open',
+                created_at: '2026-10-01T00:00:00Z',
+                closed_at: null,
                 head: head('feat/station-groups-3557'),
               },
               {
                 number: 3585,
                 state: 'open',
+                created_at: '2026-10-01T00:00:00Z',
+                closed_at: null,
                 head: head('feat/personal-tokens-3557'),
               },
             ],
@@ -676,16 +691,53 @@ describe('CI health collection bounds and command interface', () => {
       expect(data.reasons).toEqual([]);
       expect(data.runs[0].pull_requests).toEqual([{ number: 3553 }]);
     });
-    it('reports the residual run when no PR used the branch while the run was live', async () => {
-      const afterClose = pullRun(7, 'a'.repeat(40), {
-        created_at: '2026-10-03T00:00:00Z',
+    it('reports the residual run when no PR had the branch before the run', async () => {
+      const beforeAnyPull = pullRun(7, 'a'.repeat(40), {
+        created_at: '2026-10-01T11:00:00Z',
       });
-      const { data } = await collect([afterClose], { head: [closedPull] });
+      const { data } = await collect([beforeAnyPull], { head: [closedPull] });
       expect(data.runs[0].pull_requests).toEqual([]);
       expect(data.reasons).toEqual([
-        `Cannot resolve PR push: run 7 (${'a'.repeat(12)} on kontourai/station:${branch}): no pull request lists this commit or has ever used this head branch while the run was live`,
+        `Cannot resolve PR push: run 7 (${'a'.repeat(12)} on kontourai/station:${branch}): no pull request lists this commit or had this head branch before the run`,
       ]);
       expect(buildSnapshot(data, options).incomplete).toBe(true);
+    });
+    it('credits a run created seconds after its PR closed (real #3085 timestamps)', async () => {
+      // CI run 37045922691 was created 3s after #3085 closed at 18:12:53Z.
+      const late = pullRun(9, '4dad606189e37f6a123c3f0b6509c8886d3ff102', {
+        name: 'CI',
+        event: 'pull_request_target',
+        created_at: '2026-10-02T18:12:56Z',
+      });
+      const viaBranch = await collect([late], { head: [closedPull] });
+      expect(viaBranch.data.reasons).toEqual([]);
+      expect(viaBranch.data.runs[0].pull_requests).toEqual([{ number: 3085 }]);
+      const viaSha = await collect([late], {
+        sha: { '4dad606189e37f6a123c3f0b6509c8886d3ff102': [closedPull] },
+      });
+      expect(viaSha.data.runs[0].pull_requests).toEqual([{ number: 3085 }]);
+    });
+    it('credits only the PR that owned the run when a branch name was reused', async () => {
+      const sha = 'c'.repeat(40);
+      const older = {
+        ...closedPull,
+        number: 100,
+        created_at: '2026-09-01T00:00:00Z',
+        closed_at: '2026-09-02T00:00:00Z',
+        head: head(branch, sha),
+      };
+      const newer = {
+        ...closedPull,
+        number: 200,
+        created_at: '2026-10-01T11:11:45Z',
+        closed_at: null,
+        state: 'open',
+        head: head(branch, sha),
+      };
+      const { data } = await collect([pullRun(10, sha)], {
+        sha: { [sha]: [older, newer] },
+      });
+      expect(data.runs[0].pull_requests).toEqual([{ number: 200 }]);
     });
     it('does not guess when the head repository is gone', async () => {
       const orphan = pullRun(8, 'b'.repeat(40), { head_repository: null });
