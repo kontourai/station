@@ -1,0 +1,7 @@
+{
+  "revision": "94dace91f362277ec3e3467a374da7e6ec5a2702",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"#3552 final: continuation entry is the message box, confirmed once in Chat; disabled reason shown above the message box; Starter launch semantics unchanged. Re-read after the Add a project action landed; no further prose change needed.","inputs":["docs/guides/starter-work.md","src-ui/src/components/session-detail/AttachedSessionDetail.tsx","src-ui/src/index.css"]}
+  ]
+}

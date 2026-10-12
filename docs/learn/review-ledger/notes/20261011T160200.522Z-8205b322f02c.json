@@ -1,0 +1,7 @@
+{
+  "revision": "d8549f0a78737b29ed4a60c5c7f8f7aadc4900a4",
+
+  "notes": [
+    {"path":"docs/learn/media/project-start-before.png","note":"Capture shows a start composer with no setup-read failure; retry-failure handling is not on screen, so the capture is unchanged and accurate.","inputs":["docs/learn/media/project-start-before.png","src-ui/src/components/home/HomeStartComposer.tsx"]}
+  ]
+}

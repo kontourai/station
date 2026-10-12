@@ -1,0 +1,7 @@
+{
+  "revision": "d0ee8c82cb333a9e44007929ec3adfdaa8681965",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"AgentPickerRow change is a comment example host name only (generic 'home-server'); behaviour and the doc's Agent list paragraph unchanged and accurate.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-start/AgentPickerRow.tsx"]}
+  ]
+}

@@ -525,8 +525,8 @@ and `stopSession` (`{ type: 'stopSession', threadId }`).
 
 External transcript observation does not grant control of the original terminal
 process. The engine capability matrix declares independent continuation support;
-known unsupported and unknown engines retain a disabled **Continue in Station**
-control with a reason. The adoption owner enforces the same declaration before
+known unsupported and unknown engines keep the conversation's message box
+disabled with a reason. The adoption owner enforces the same declaration before
 invoking an adapter, then checks current source, Project, ownership, and runtime
 requirements. A native continuation declaration does not guarantee readiness of
 any particular source.
@@ -732,7 +732,7 @@ identity without exposing a filesystem path.
 Codex continuation forks an independent native thread at a completed turn
 observed in Station's durable history. The original terminal session remains
 read-only in Station and can keep running independently. Until a completed
-boundary exists, **Continue in Station** stays disabled with a reason. Claude
+boundary exists, the message box that continues it stays disabled with a reason. Claude
 uses its SDK's independent session snapshot; it does not claim the same native
 turn-cutoff semantics. Both paths retain the source binding in the adoption
 ledger before native child creation and retain unresolved cleanup for recovery

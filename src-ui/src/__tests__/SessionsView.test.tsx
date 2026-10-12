@@ -74,6 +74,8 @@ let historyState = {
   historyRetrying: false,
   elidedHistory: { total: 0, byteLimit: 0, outputLimit: 0 },
 };
+/** Connection flags the attached detail reads from the real hook. */
+let streamFlags: { connectionInterrupted?: boolean } = {};
 let attentionItems: Array<Record<string, unknown>> = [];
 let attentionQueryState: {
   isLoading: boolean;
@@ -146,6 +148,10 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   return {
     isApiRequestScope: real.isApiRequestScope,
     projectIdentityReadFailure: real.projectIdentityReadFailure,
+    // The chat's per-message rating, inert here.
+    useFeedbackRatingsQuery: () => ({ data: [] }),
+    useSaveFeedbackRatingMutation: () => ({ mutate: vi.fn() }),
+    useDeleteFeedbackRatingMutation: () => ({ mutate: vi.fn() }),
     AdoptSessionError: class AdoptSessionError extends Error {
       failureClass: string;
       retryable: boolean;
@@ -314,12 +320,16 @@ vi.mock('../hooks/orchestration/useSessionTranscriptEvents', () => ({
   }),
 }));
 
+// The chat's user avatar reads auth, which this harness does not provide.
+vi.mock('../components/icons/UserIcon', () => ({ UserIcon: () => null }));
+
 vi.mock('../hooks/orchestration/useSessionEventStream', () => ({
   useSessionEventStream: () => ({
     events: feedEvents,
     connected: true,
     loadOlder,
     ...historyState,
+    ...streamFlags,
   }),
 }));
 
@@ -330,12 +340,25 @@ import {
 } from '../components/chat/conversationReferenceDrag';
 import { SessionsView } from '../views/SessionsView';
 
+/**
+ * #3552: an external conversation continues from its composer — type, send,
+ * confirm once — exactly as the chat dock does.
+ */
+function continueFromComposer(message = 'carry on') {
+  fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+    target: { value: message },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Continue and send' }));
+}
+
 function renderView(
   sessionId?: string,
   focusHint?: 'evidence',
   intentToken?: number,
   onFocusConsumed?: () => void,
   apiBase = 'http://test.local',
+  onContinueInChat?: (threadId: string, draft: string) => void,
 ) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -354,6 +377,7 @@ function renderView(
           focusHint={nextFocusHint}
           intentToken={nextIntentToken}
           onFocusConsumed={nextOnFocusConsumed}
+          onContinueInChat={onContinueInChat}
         />
       </NavigationProvider>
     </QueryClientProvider>
@@ -487,6 +511,7 @@ describe('SessionsView', () => {
       historyRetrying: false,
       elidedHistory: { total: 0, byteLimit: 0, outputLimit: 0 },
     };
+    streamFlags = {};
     attentionItems = [];
     attentionQueryState = { isLoading: false, isError: false, error: null };
     attentionRefetch.mockClear();
@@ -2640,6 +2665,32 @@ describe('SessionsView', () => {
     expect(within(detail).queryByTestId('session-request')).toBeNull();
   });
 
+  test('an attached session says Station is unreachable only once the hook reports an interruption, not for a retrying history blip', () => {
+    sessions[0] = {
+      ...sessions[0],
+      threadId: 'external:claude:terminal-1',
+      controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
+      delegation: undefined,
+    };
+    historyState = {
+      ...historyState,
+      error: new Error('Failed to fetch'),
+      historyRetrying: true,
+    };
+    const view = renderView('external:claude:terminal-1');
+    expect(screen.queryByText(/isn't responding/)).toBeNull();
+    view.unmount();
+
+    streamFlags = { connectionInterrupted: true };
+    renderView('external:claude:terminal-1');
+    expect(
+      screen.getByText(
+        "Station isn't responding right now — retrying automatically.",
+      ),
+    ).toBeTruthy();
+  });
+
   test('continues an attached session into the returned Station child and keeps the source read only', async () => {
     sessions[0] = {
       ...sessions[0],
@@ -2659,9 +2710,7 @@ describe('SessionsView', () => {
     });
 
     renderView('external:claude:terminal-1');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
 
     await waitFor(() =>
       expect(adoptSession).toHaveBeenCalledWith(
@@ -2681,10 +2730,50 @@ describe('SessionsView', () => {
     expect(screen.getByTestId('session-detail').textContent).toContain(
       'station-child',
     );
+    // Without Chat to hand over to, the confirmed message waits in the
+    // continued session's message box; nothing is sent from here.
+    expect(sendTurn).not.toHaveBeenCalled();
+    expect(
+      (screen.getByLabelText('Send input to session') as HTMLTextAreaElement)
+        .value,
+    ).toBe('carry on');
     expect(
       window.localStorage.getItem(ATTACHED_SESSION_CONTINUATION_STORAGE_KEY),
     ).toBeNull();
     expect(sessions[0]?.controlMode).toBe('read-only-attached');
+  });
+
+  test('with a chat dock, Send hands the exact draft to it and continues nothing here (#3454)', () => {
+    sessions[0] = {
+      ...sessions[0],
+      threadId: 'external:claude:handoff',
+      controlMode: 'read-only-attached',
+      attachedSource: VERIFIED_ATTACHED_SOURCE,
+      delegation: undefined,
+    };
+    const onContinueInChat = vi.fn();
+    renderView(
+      'external:claude:handoff',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      onContinueInChat,
+    );
+    const composer = screen.getByRole('textbox', {
+      name: 'Message',
+    }) as HTMLTextAreaElement;
+    fireEvent.change(composer, { target: { value: 'My exact\nmessage' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+    expect(onContinueInChat).toHaveBeenCalledWith(
+      'external:claude:handoff',
+      'My exact\nmessage',
+    );
+    expect(onContinueInChat).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(adoptSession).not.toHaveBeenCalled();
+    expect(launchContinueSessionStarter).not.toHaveBeenCalled();
+    expect(composer.value).toBe('');
   });
 
   test('reuses the exact continuation operation after response loss and remount', async () => {
@@ -2707,17 +2796,13 @@ describe('SessionsView', () => {
         return child;
       });
     const first = renderView('external:claude:response-loss');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await screen.findByRole('alert');
     const operationId = adoptSession.mock.calls[0][0].operationId;
     first.unmount();
 
     renderView('external:claude:response-loss');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await waitFor(() => expect(adoptSession).toHaveBeenCalledTimes(2));
     expect(adoptSession.mock.calls[1][0].operationId).toBe(operationId);
   });
@@ -2737,9 +2822,7 @@ describe('SessionsView', () => {
       controlMode: 'station-owned',
     });
     renderView('external:claude:later-continuation');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await waitFor(() => expect(adoptSession).toHaveBeenCalledTimes(1));
     expect(adoptSession).toHaveBeenCalledWith({
       sourceThreadId: 'external:claude:later-continuation',
@@ -2762,9 +2845,7 @@ describe('SessionsView', () => {
     );
 
     renderView('external:claude:corrupt-continuation');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
 
     await screen.findByText(
       "Couldn't safely start the continuation. Browser storage is unavailable or corrupt, so retrying could duplicate it.",
@@ -2791,10 +2872,10 @@ describe('SessionsView', () => {
     });
 
     renderView('external:claude:unsafe-retry');
+    continueFromComposer();
     const continueButton = screen.getByRole('button', {
-      name: 'Continue in Station',
+      name: 'Continue and send',
     });
-    fireEvent.click(continueButton);
 
     await screen.findByText(
       'Station says this continuation cannot be retried safely from this state.',
@@ -2848,16 +2929,18 @@ describe('SessionsView', () => {
       });
 
     renderView(first.threadId);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await screen.findByText(
       'Station says this continuation cannot be retried safely from this state.',
     );
 
     fireEvent.click(screen.getByRole('button', { name: /Attached B/ }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
+      target: { value: 'carry on' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
     const secondButton = screen.getByRole('button', {
-      name: 'Continue in Station',
+      name: 'Continue and send',
     });
     expect(secondButton.getAttribute('disabled')).toBeNull();
     fireEvent.click(secondButton);
@@ -2908,9 +2991,7 @@ describe('SessionsView', () => {
     });
 
     renderView('external:claude:cleanup-failure');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
 
     await waitFor(() =>
       expect(screen.getByLabelText('Send input to session')).toBeTruthy(),
@@ -2940,17 +3021,13 @@ describe('SessionsView', () => {
     getStarterWork.mockRejectedValueOnce(new Error('status response lost'));
     adoptSession.mockResolvedValue(child);
     const first = renderView('external:claude:status-loss');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await screen.findByRole('alert');
     expect(adoptSession).not.toHaveBeenCalled();
     first.unmount();
 
     renderView('external:claude:status-loss');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await waitFor(() => expect(adoptSession).toHaveBeenCalledTimes(1));
     expect(adoptSession.mock.calls[0][0]).toMatchObject({
       starterId: 'continue-session',
@@ -2973,7 +3050,7 @@ describe('SessionsView', () => {
       ),
     ).toBeTruthy();
     expect(
-      within(detail).queryByRole('button', { name: 'Continue in Station' }),
+      within(detail).queryByRole('textbox', { name: 'Message' }),
     ).toBeNull();
     expect(
       within(detail).queryByText('Started in Claude Code · Read only'),
@@ -3006,9 +3083,7 @@ describe('SessionsView', () => {
     });
 
     renderView('external:claude:terminal-mobile');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await waitFor(() => expect(refetchSessions).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole('button', { name: /Back to list/ }));
     expect(screen.queryByTestId('session-detail')).toBeNull();
@@ -3045,9 +3120,7 @@ describe('SessionsView', () => {
     refetchSessions.mockImplementation(() => pendingRefetch.promise);
 
     renderView('external:claude:terminal-pending');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await screen.findByRole('button', { name: 'Continuing…' });
     fireEvent.click(screen.getByRole('button', { name: /Back to list/ }));
     expect(screen.queryByTestId('session-detail')).toBeNull();
@@ -3096,9 +3169,7 @@ describe('SessionsView', () => {
     });
 
     renderView('external:claude:terminal-mobile');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await waitFor(() => expect(refetchSessions).toHaveBeenCalledTimes(1));
 
     fireEvent.click(
@@ -3146,9 +3217,7 @@ describe('SessionsView', () => {
     refetchSessions.mockImplementation(() => pendingRefetch.promise);
 
     renderView('external:claude:terminal-mobile');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Continue in Station' }),
-    );
+    continueFromComposer();
     await screen.findByRole('button', { name: 'Continuing…' });
     fireEvent.click(
       screen.getByRole('button', { name: /Worker task.*sibling/ }),
