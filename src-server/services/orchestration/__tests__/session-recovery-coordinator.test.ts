@@ -1943,8 +1943,7 @@ describe('SessionRecoveryCoordinator', () => {
 
     test('arms no timer until the repair lands, then cancels the ended source and resumes the other', async () => {
       vi.useFakeTimers();
-      const dir = mkdtempSync(join(tmpdir(), 'recovery-coordinator-'));
-      dirs.push(dir);
+      const dir = makeTempDir('recovery-coordinator-');
       const store = new EventStore(join(dir, 'orchestration.sqlite'));
       const now = new Date('2026-07-29T12:00:00.000Z');
       armedPair(store, now);
@@ -1976,8 +1975,7 @@ describe('SessionRecoveryCoordinator', () => {
 
     test('a repair that never lands stops retrying and never replays either intent', async () => {
       vi.useFakeTimers();
-      const dir = mkdtempSync(join(tmpdir(), 'recovery-coordinator-'));
-      dirs.push(dir);
+      const dir = makeTempDir('recovery-coordinator-');
       const store = new EventStore(join(dir, 'orchestration.sqlite'));
       const now = new Date('2026-07-29T12:00:00.000Z');
       armedPair(store, now);
