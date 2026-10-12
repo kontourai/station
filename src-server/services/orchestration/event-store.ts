@@ -3566,7 +3566,9 @@ export class EventStore {
       // back the whole transaction (SQLITE_FULL, IOERR, NOMEM) returns into
       // autocommit mode: every statement below would commit on its own and
       // RELEASE would then report the stored event as failed. Fail it here,
-      // while nothing has been written (#3561 review F1).
+      // while nothing has been written (#3561 review F1). No error reached
+      // this frame, so there is no cause to attach: the participant that
+      // swallowed it is the one to fix.
       if (!this.db.isTransaction) throw new EventAppendTransactionLostError();
       // Persisted event time is the sole replay authority. A new terminal gets
       // exactly one host observation time, shared by its event and association.
@@ -9054,9 +9056,13 @@ export class EventStore {
         );
       this.db.exec('RELEASE SAVEPOINT upsert_session_history');
     } catch (error) {
-      this.db.exec(
-        'ROLLBACK TO SAVEPOINT upsert_session_history; RELEASE SAVEPOINT upsert_session_history',
-      );
+      // SQLite may already have rolled the whole transaction back
+      // (SQLITE_FULL, IOERR, NOMEM); a ROLLBACK TO would then fail with
+      // `no such savepoint` and hide the original error (#3561).
+      if (this.db.isTransaction)
+        this.db.exec(
+          'ROLLBACK TO SAVEPOINT upsert_session_history; RELEASE SAVEPOINT upsert_session_history',
+        );
       throw error;
     }
   }
@@ -9108,9 +9114,13 @@ export class EventStore {
       }
       this.db.exec('RELEASE SAVEPOINT mark_session_closed_lineage');
     } catch (error) {
-      this.db.exec(
-        'ROLLBACK TO SAVEPOINT mark_session_closed_lineage; RELEASE SAVEPOINT mark_session_closed_lineage',
-      );
+      // SQLite may already have rolled the whole transaction back
+      // (SQLITE_FULL, IOERR, NOMEM); a ROLLBACK TO would then fail with
+      // `no such savepoint` and hide the original error (#3561).
+      if (this.db.isTransaction)
+        this.db.exec(
+          'ROLLBACK TO SAVEPOINT mark_session_closed_lineage; RELEASE SAVEPOINT mark_session_closed_lineage',
+        );
       throw error;
     }
   }

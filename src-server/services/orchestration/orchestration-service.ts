@@ -9854,9 +9854,13 @@ export class OrchestrationService {
           site: 'adapter-event-stream',
         });
       }
+      const cause = error instanceof Error ? error.cause : undefined;
       this.options.logger.warn('Provider adapter event stream stopped', {
         provider: adapter.provider,
         error: message,
+        // An EventAppendTransactionLostError wraps the SQLite error that
+        // rolled the append back; name it, not only the wrapper.
+        ...(cause === undefined ? {} : { cause: errorMessage(cause) }),
       });
       // A failed event consumer is observation loss, not a provider terminal.
       // The adapter may still be executing every affected turn. Preserve their

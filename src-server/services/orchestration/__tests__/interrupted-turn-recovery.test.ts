@@ -1444,11 +1444,12 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
       expect(
         dying
           .sessionTurnBoundaryAuthority()
-          .recordProviderTurn(
+          .prepareProviderTurn(
             threadId,
             'provider:turn-1',
             '2026-08-16T00:00:01.000Z',
-          ),
+          )
+          .record(),
       ).toEqual({ kind: 'applied' });
       dying.close();
 

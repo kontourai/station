@@ -241,24 +241,18 @@ export interface SessionTurnBoundaryAuthority {
   ): { kind: 'available'; active: boolean } | { kind: 'unavailable' };
   observe(event: CanonicalRuntimeEvent): SessionTurnBoundaryTransition;
   /**
-   * #2324: the durable row for a turn the engine opened on its own, recorded
-   * before its `turn.started` is persisted. Retired by that turn's terminal
-   * like any accepted turn; left behind by a crash, it is closed at the next
-   * boot with the interrupted-turn banner a user turn gets.
-   */
-  recordProviderTurn(
-    threadId: string,
-    providerTurnId: string,
-    now: string,
-  ): SessionTurnBoundaryTransition;
-  /**
-   * #3561: {@link recordProviderTurn} in two steps, for a caller that writes
-   * the row inside the append of the turn's `turn.started` so the row commits
-   * or rolls back with that event. Preparing retries pending transitions,
-   * which open transactions of their own, so it runs BEFORE that append;
-   * `record` writes only the row and joins the caller's open transaction.
-   * `record` reports a row it could not write as `unavailable`, and throws
-   * only when the caller's transaction itself was rolled back.
+   * #2324: the durable row for a turn the engine opened on its own. Retired
+   * by that turn's terminal like any accepted turn; left behind by a crash,
+   * it is closed at the next boot with the interrupted-turn banner a user
+   * turn gets.
+   *
+   * #3561: two steps, so the caller writes the row inside the append of the
+   * turn's `turn.started` and it commits or rolls back with that event.
+   * Preparing retries pending transitions, which open transactions of their
+   * own, so it runs BEFORE that append; `record` writes only the row and
+   * joins the caller's open transaction. `record` reports a row it could not
+   * write as `unavailable`, and throws only when the caller's transaction
+   * itself was rolled back.
    */
   prepareProviderTurn(
     threadId: string,
@@ -822,13 +816,6 @@ export function createSessionTurnBoundaryAuthority(options: {
           (event.method === 'runtime.error' && typeof turnId !== 'string'),
         terminalCreatedAt: event.createdAt,
       });
-    },
-    recordProviderTurn(threadId, providerTurnId, now) {
-      try {
-        return prepareProviderTurn(threadId, providerTurnId, now).record();
-      } catch {
-        return { kind: 'unavailable' };
-      }
     },
     prepareProviderTurn,
     reconcile(now) {
