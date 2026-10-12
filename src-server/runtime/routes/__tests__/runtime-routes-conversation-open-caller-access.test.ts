@@ -6,9 +6,6 @@
  * (`conversation-open-caller-access.test.ts`) proves the gate; this proves
  * the wiring, with the real gate evaluating the context's security service.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   pairingScopePresetString,
@@ -16,7 +13,8 @@ import {
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
@@ -162,16 +160,10 @@ function runtimeContext(app: Hono, homeDir: string) {
 }
 
 describe('configureRuntimeRoutes — conversation open callerAccess wiring', () => {
-  const directories: string[] = [];
-  afterEach(() => {
-    for (const directory of directories.splice(0)) {
-      rmSync(directory, { recursive: true, force: true });
-    }
-  });
+  const tempDir = trackTempDirs();
 
   test("the open read reports each caller's access from the runtime's own security service", async () => {
-    const homeDir = mkdtempSync(join(tmpdir(), 'station-open-access-'));
-    directories.push(homeDir);
+    const homeDir = tempDir('station-open-access-');
     const app = new Hono();
     app.use('*', async (c, next) => {
       const credential = c.req.header('authorization')?.slice('Bearer '.length);
