@@ -146,6 +146,7 @@ import {
   AttachmentInputUnsupportedError,
   ProviderTurnEndedError,
   SendTurnRefusedError,
+  SessionStartRefusedError,
 } from '../../providers/adapter-shape.js';
 import type { Prerequisite } from '../../providers/provider-contracts.js';
 import type { IProviderAdapterRegistry } from '../../providers/provider-interfaces.js';
@@ -6474,6 +6475,9 @@ export class OrchestrationService {
       publicSession: publicProviderSession,
       isRejectedError: (error) =>
         error instanceof ModelLaunchPlanUnavailableError ||
+        // The adapter settled the start itself: the engine refused it and
+        // nothing of it is left to inspect.
+        error instanceof SessionStartRefusedError ||
         error instanceof SessionReattachConflictError ||
         error instanceof ConcurrentEngineStartCapacityError ||
         // #2873: a refusal to start, with nothing run.

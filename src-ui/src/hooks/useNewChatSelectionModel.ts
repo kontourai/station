@@ -33,6 +33,7 @@ import {
   useScopedProjectsQuery,
 } from '../contexts/ProjectsContext';
 import {
+  acpAdvertisedModels,
   defaultManagedRuntimeConnection,
   guaranteeConcreteModel,
   resolveEffectiveModel,
@@ -100,18 +101,9 @@ export function acpCatalogModelOptions(
   agentConnectionId: string | undefined,
 ): Array<{ id: string; name: string }> {
   if (!agentConnectionId) return [];
-  return (
-    acpConnections.find((acp) => acp.id === agentConnectionId)?.configOptions ??
-    []
-  )
-    .filter((option) => option.category === 'model')
-    .flatMap((option) => option.options ?? [])
-    .map((entry) =>
-      typeof entry === 'string'
-        ? { id: entry, name: entry }
-        : { id: entry.value, name: entry.name ?? entry.value },
-    )
-    .filter((model) => model.id.length > 0);
+  return acpAdvertisedModels(
+    acpConnections.find((acp) => acp.id === agentConnectionId)?.configOptions,
+  );
 }
 
 /**
@@ -538,6 +530,7 @@ export function useNewChatSelectionModel({
           runtimeCurrentMode: acpConnection?.configOptions?.find(
             (option) => option.category === 'mode',
           )?.currentValue,
+          advertisedModels: acpAdvertisedModels(acpConnection?.configOptions),
           projectDefaultModel: newChatProjectDefaultModel(
             agent,
             selectedProjectConfig?.defaultModel,

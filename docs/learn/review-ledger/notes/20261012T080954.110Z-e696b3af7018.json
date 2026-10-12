@@ -1,0 +1,15 @@
+{
+  "revision": "c0f4937411306caf74677c14ec1449fe2f337305",
+
+  "notes": [
+    {"path":".changeset/README.md","note":"#3565 round 4: run-ci-fast.mjs changed only the comment on the existing monument-import-boundary:gate step, to name its real cost (reading Station source files and parsing those that name the package). No step was added, removed or reordered; this document's claims about ci:fast are unaffected. No prose change.","inputs":[".changeset/README.md","scripts/run-ci-fast.mjs"]},
+
+    {"path":".veritas/README.md","note":"#3565 round 4: run-ci-fast.mjs changed only the comment on the existing monument-import-boundary:gate step, to name its real cost (reading Station source files and parsing those that name the package). No step was added, removed or reordered; this document's claims about ci:fast are unaffected. No prose change.","inputs":[".veritas/README.md","scripts/run-ci-fast.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"#3565 round 4: run-ci-fast.mjs changed only the comment on the existing monument-import-boundary:gate step, to name its real cost (reading Station source files and parsing those that name the package). No step was added, removed or reordered; this document's claims about ci:fast are unaffected. No prose change.","inputs":["docs/guides/code-quality.md","scripts/run-ci-fast.mjs"]},
+
+    {"path":"docs/guides/development.md","note":"#3565 round 4: run-ci-fast.mjs changed only the comment on the existing monument-import-boundary:gate step, to name its real cost (reading Station source files and parsing those that name the package). No step was added, removed or reordered; this document's claims about ci:fast are unaffected. No prose change.","inputs":["docs/guides/development.md","scripts/run-ci-fast.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"#3565 round 4: run-ci-fast.mjs changed only the comment on the existing monument-import-boundary:gate step, to name its real cost (reading Station source files and parsing those that name the package). No step was added, removed or reordered; this document's claims about ci:fast are unaffected. No prose change.","inputs":["docs/guides/testing.md","scripts/run-ci-fast.mjs"]}
+  ]
+}

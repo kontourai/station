@@ -37,6 +37,7 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import {
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+  MODEL_NOT_ADVERTISED_CODE,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
   modelSelectionReceipt,
   SESSION_CAPABILITY_DELIVERY_METADATA_KEY,
@@ -85,6 +86,7 @@ import {
   ProviderTurnEndedError,
   type ProviderTurnStartResult,
   SendTurnRefusedError,
+  SessionStartRefusedError,
 } from '../adapter-shape.js';
 import { buildCliRuntimePrerequisites } from '../auth/cli-auth.js';
 import {
@@ -1372,8 +1374,9 @@ export class AcpAdapter implements ProviderAdapterShape {
             sessionResult.configOptions,
           );
           if (!modelOption) {
-            throw new Error(
+            throw new SessionStartRefusedError(
               `ACP model option unavailable: connection '${config.id}' did not advertise a model configuration option for this session.`,
+              MODEL_NOT_ADVERTISED_CODE,
             );
           }
           if (
@@ -1381,8 +1384,9 @@ export class AcpAdapter implements ProviderAdapterShape {
               (option) => option.value === requestedModel,
             )
           ) {
-            throw new Error(
+            throw new SessionStartRefusedError(
               `ACP model value unsupported: connection '${config.id}' did not advertise '${requestedModel}' for this session.`,
+              MODEL_NOT_ADVERTISED_CODE,
             );
           }
           const response = await acpProcess.setConfigOption(
@@ -1484,7 +1488,14 @@ export class AcpAdapter implements ProviderAdapterShape {
 
       return session;
     } catch (error) {
-      const cancelled = error instanceof AcpSessionStartCancelledError;
+      // A Stop that landed while `session/new` was in flight ends the start
+      // as a stop whatever the engine then said: the user asked for it, so a
+      // refusal arriving afterwards is not reported as the model's.
+      const superseded =
+        error instanceof SessionStartRefusedError &&
+        !this.isCurrentGeneration(input.threadId, record.generation);
+      const cancelled =
+        error instanceof AcpSessionStartCancelledError || superseded;
       session.status = 'error';
       session.updatedAt = new Date().toISOString();
       // archive#1684: the session never started — a station-control MCP token
@@ -1506,6 +1517,38 @@ export class AcpAdapter implements ProviderAdapterShape {
             method: 'session.exited',
             sessionId: input.threadId,
             reason: 'stopped',
+          });
+        }
+        // `session.started` went out before `session/new` answered, so the
+        // service has bound this thread to this adapter. A refused start ends
+        // that session: say why, then end it, or the thread stays bound and
+        // the very retry the refusal invites fails with "Session already
+        // exists". `exitCode` is deliberately absent (no process observation):
+        // the cause is the `runtime.error`, which is what folds the lifecycle
+        // to `failed` with the engine's own words.
+        if (
+          error instanceof SessionStartRefusedError &&
+          !superseded &&
+          record.startedPublished
+        ) {
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId: input.threadId,
+            createdAt: new Date().toISOString(),
+            method: 'runtime.error',
+            severity: 'error',
+            code: error.code,
+            message: error.message,
+          });
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId: input.threadId,
+            createdAt: new Date().toISOString(),
+            method: 'session.exited',
+            sessionId: input.threadId,
+            reason: 'start-refused',
           });
         }
       } catch (cleanupError) {

@@ -74,6 +74,7 @@ export const TYPECHECK_LANES = [
   { id: 'typecheck:board-pane', script: 'typecheck:board-pane' },
   { id: 'typecheck:contracts', script: 'typecheck:contracts' },
   { id: 'typecheck:telemetry-broker', script: 'typecheck:telemetry-broker' },
+  { id: 'typecheck:monument', script: 'typecheck:monument' },
   { id: 'typecheck:basis-pane', script: 'typecheck:basis-pane' },
 ];
 
