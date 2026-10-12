@@ -25,7 +25,7 @@ export const TURN_DEDUP_MAX_ENTRIES = 2000;
  * its unresolved request key forever with the same clientTurnId, so its
  * thread tombstone must last as long. Both leave with `deleteThread`.
  */
-export const TURN_DEDUP_TOMBSTONE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const TURN_DEDUP_TOMBSTONE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 /**
  * archive#1224 (offline): folds `(threadId, clientTurnId)` into the
