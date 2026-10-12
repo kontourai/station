@@ -54,8 +54,9 @@ must never project success or cleanup completion without `applied`. A thrown or
 ambiguous SQLite operation is `unavailable`, so the caller retains its opaque
 capability for the exact retry rather than guessing durability.
 
-Bulk `reconcilePrepared` is startup-only: it first rejects a prepared row with
-a live durable owner fence, then atomically changes only an abandoned
+Bulk `reconcilePrepared` runs only in startup reconciliation passes (later
+callers retry the credential pass until it reconciles): it first rejects a
+prepared row with a live durable owner fence, then atomically changes only an abandoned
 owner/attempt/correlation tuple and returns its exact winners. Live profile
 completion is restricted to the original process-local claim capability; a
 reconstructed process has no claim and waits for startup reconciliation to
