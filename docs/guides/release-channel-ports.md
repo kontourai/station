@@ -57,17 +57,24 @@ one standalone file, so `scripts/install-script-generated.mjs` projects that
 table, the pinned signing keys from `config/release-manifest-keys.json`,
 portable targets from `packages/shared/src/portable-server-targets.mjs`, and
 Node.js pins from `config/portable-server-node-runtime.json` into generated
-blocks. It does the same for the Windows `install.ps1`: the channel list,
-the pinned win32-x64 Node.js zip, and the installer core bundled from
+blocks, along with each channel's default signed manifest from
+`scripts/lib/public-release-locations.mjs`. It does the same for the Windows
+`install.ps1`: the channel list, the default manifests, the pinned win32-x64
+Node.js zip, and the installer core bundled from
 `packages/shared/src/installer/` (which carries the signing keys and the
 shared manifest verifier). `npm run install-script:check` fails when either
 installer is stale, and `node scripts/install-script-generated.mjs --sync`
 rewrites them.
 
 `STATION_CHANNEL=nightly` installs only from a signed public manifest
-(`STATION_INSTALL_PUBLIC_MANIFEST_URL`) whose envelope names the pinned
-nightly key; the authenticated GitHub-release path serves stable and beta
-only. This is the installer contract; publication is tracked separately in #2675. Stable and
+whose envelope names the pinned nightly key; the authenticated GitHub-release
+path serves stable and beta only. With no
+`STATION_INSTALL_PUBLIC_MANIFEST_URL` (unset or empty), both installers use
+the rolling
+`https://github.com/kontourai/station/releases/download/portable-nightly/station-portable-nightly-manifest.json`,
+and the install state records that URL for upgrades. An explicit URL
+overrides it; verification is the same either way. Stable and beta have no
+such default yet (#2960). Stable and
 beta also accept a signed public manifest through the same variable. The
 release workflows can publish one per ring (`portable-stable`,
 `portable-preview`) once the owner enables them; see
