@@ -515,9 +515,20 @@ decide a pairing request or consent, open a terminal, receive push
 notifications, or administer a Project's members (invite, change a role,
 transfer: the route table marks those leaves refused to tokens, so the
 boundary answers `403` whatever the token's scope), which the person does
-from a device. Tokens are for people tied by a Tailscale identity: an
-account's devices act only alongside its account session, which a script
-does not hold. Secrets carry an `stp_` prefix, are shown once, and are stored only
+from a device. A token tied to a Station local account (#3586) needs no
+account session: the pairing service accepts it only while that account
+exists, is enabled, and has not been signed out everywhere since the token
+was made, so disabling the account or "sign out everywhere" ends its tokens
+on the next request. Only Station's own local accounts have the account
+directory this check reads; with any other deployment provider an
+account-tied person still cannot hold a token (`account_bound_person`). Such
+a token resolves to the account principal and is held to that account's
+Project membership. It must arrive alone: an account cookie or session
+continuation (even the same account's) or an ingress identity beside it is
+`401 account_identity_conflict`. It is confined to the account-bound device
+allowlist, narrowed further: never the account surface, token management, or
+any Project access leaf, the administration read included (the route table
+marks that read refused to tokens too). Secrets carry an `stp_` prefix, are shown once, and are stored only
 as a sha256 hash in `<home>/security/personal-tokens.json` (owner-only, apart
 from the device registry so an older Station that ignores the file loses only
 the tokens). Writes are made under a cross-process lock from a fresh read,
