@@ -2337,7 +2337,7 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
       });
     });
 
-    test('M5: abort published, banner declined, process dies — the next boot still banners (its own recovery abort is not the turn finishing)', async () => {
+    test('M5: abort published, banner declined, process dies — the next boot still banners (its own recovery abort never resolves the row silently)', async () => {
       const path = databasePath();
       const threadId = 'thread-abort-then-banner-declined';
       const eventStore = crashWhileInvoking(path, threadId);
