@@ -639,6 +639,42 @@ describe('CredentialRecoveryModule', () => {
     restarted.close();
   });
 
+  test('#2823: a failed legacy-row scan alone keeps readiness unknown and suppresses the orphan sweep', async () => {
+    const { eventStore } = fixture();
+    const store = eventStore as unknown as {
+      preparedRecoveryDispatches: (
+        kind?: 'due' | 'profile',
+        unlinkedOnly?: boolean,
+      ) => unknown;
+    };
+    const read = store.preparedRecoveryDispatches.bind(eventStore);
+    let legacyFailures = 1;
+    preparedScan(eventStore).mockImplementation((...args: unknown[]) => {
+      // Only the identity-free legacy read (`unlinkedOnly`) fails, once.
+      if (args[1] === true && legacyFailures-- > 0) busy();
+      return read(...(args as Parameters<typeof read>));
+    });
+    const rollbackPending = vi.fn(async () => undefined);
+    const module = createCredentialRecoveryModuleForTest({
+      eventStore,
+      adapter: { stage: vi.fn(async () => undefined), rollbackPending },
+      restartResume: vi.fn(async () => ({ turnId: 'unexpected' })),
+      restoreSession: vi.fn(async () => undefined),
+      now: () => new Date('2026-08-12T00:00:01.000Z'),
+    });
+
+    const first = await module.reconcile();
+    expect(rollbackPending).not.toHaveBeenCalledWith(undefined);
+    expect(first).toEqual({ kind: 'unavailable' });
+    // Readable again: the sweep reruns, finds nothing, and may now clean up.
+    await expect(module.reconcile()).resolves.toEqual({
+      kind: 'reconciled',
+      recovered: 0,
+    });
+    expect(rollbackPending).toHaveBeenCalledWith(undefined);
+    eventStore.close();
+  });
+
   test('#2823 control: a genuinely empty startup scan reconciles and latches the sweep', async () => {
     const { eventStore } = fixture();
     const scan = preparedScan(eventStore);
