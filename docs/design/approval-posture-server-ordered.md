@@ -403,10 +403,13 @@ A session spawned before this change has nothing recorded.
   device holding the new operator-promotion scope `approval:full-access`.
   - The scope is in no preset and never in the default grant, like
     `engine:login` and #2412's `coding:exec`.
-  - The operator grants it once per device, in the device access editor
-    (**Paired devices** → the device → **Change access** → "Allow full
-    access") or on the Station host with `station environment access scope
-    <device> --add approval:full-access` (#1796).
+  - The operator grants it once per device: when approving a pairing
+    request that asked for it (the Station app asks for it; only the operator
+    credential or the desktop's local grant may keep it, and **Limit access**
+    leaves it out), in the device access editor (**Paired devices** → the
+    device → **Change access** → "Skip approval prompts"), or on the Station
+    host with `station environment access scope <device> --add
+    approval:full-access` (#1796).
 - **One derivation.** The check is `mayGrantFullAccess` in
   `src-server/security/coding-authority.ts`, next to #2412's
   `mayRunCommandsOnHost`. It shares the same `isOperatorInPerson`.
@@ -471,7 +474,8 @@ A session spawned before this change has nothing recorded.
   the refusing Station's environment id, and the operator's grant path
   (`grant.cli`, the exact host command
   `station environment access scope <short-id> --add approval:full-access`,
-  and `grant.uiSteps`, the desktop app steps through **Paired devices** →
+  run through the published package for the Station's channel, such as
+  `npx @kontourai/station-cli@nightly` for a nightly Station, and `grant.uiSteps`, the desktop app steps through **Paired devices** →
   the device → **Change access**). An Agent's refusal has `grant: null`: no
   scope lets an Agent choose full access. The requester chooses its pairing
   name, so the name is sanitized (control, format and separator characters
