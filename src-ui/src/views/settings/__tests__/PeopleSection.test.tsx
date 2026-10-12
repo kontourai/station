@@ -714,6 +714,25 @@ describe('People section', () => {
     );
   });
 
+  test('the only person, opened by default, stays open when a refetch adds a second', async () => {
+    let people = [ada()];
+    handler = peopleRoute(() => people);
+    const { client } = mount(<PeopleSection />);
+    await screen.findByText('human:tailscale-serve:ada@example.com');
+    people = [
+      ...people,
+      ada({
+        principalId: 'human:tailscale-serve:mei@example.com',
+        displayName: 'mei@example.com',
+      }),
+    ];
+    await act(() => client.invalidateQueries({ queryKey: ['station-people'] }));
+    await screen.findByText('mei@example.com');
+    expect(toggleButton('ada@example.com').getAttribute('aria-expanded')).toBe(
+      'true',
+    );
+  });
+
   test('the only person stays open when a refetch adds a second, even mid-revoke', async () => {
     let people = [ada({ tokens: [token()] })];
     handler = peopleRoute(() => people);
