@@ -19,6 +19,7 @@ import {
   lookupProcessBirthFingerprint,
   lookupProcessBirthFingerprintAsync,
   probeExactProcessIdentity,
+  probeExactProcessIdentityAsync,
   resolveOwnProcessIdentity,
   WINDOWS_OWN_PROCESS_BIRTH_DEADLINE_MS,
   WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS,
@@ -50,12 +51,59 @@ describe('birthProvesReuse (station#2904)', () => {
     expect(probeExactProcessIdentity(42, { kill: failure('ESRCH') })).toEqual({
       state: 'dead',
     });
-    expect(probeExactProcessIdentity(42, { kill: failure('EPERM') })).toEqual({
+    // EPERM with an unreadable birth stays unavailable: nothing proves reuse.
+    expect(
+      probeExactProcessIdentity(42, {
+        kill: failure('EPERM'),
+        lookup: () => null,
+      }),
+    ).toEqual({ state: 'unavailable' });
+    expect(
+      probeExactProcessIdentity(42, {
+        kill: failure(),
+        lookup: () => 'birth-never-read',
+      }),
+    ).toEqual({
       state: 'unavailable',
     });
-    expect(probeExactProcessIdentity(42, { kill: failure() })).toEqual({
-      state: 'unavailable',
+  });
+
+  // #3563: EPERM proves the pid EXISTS (it belongs to another user), so it is
+  // not a reason to skip the birth lookup. A dead owner's pid reused by a
+  // foreign process used to read as `unavailable`, which every birth-aware
+  // caller treats as live, so it fenced the owner's work until a later boot.
+  test('EPERM still reads the birth, so a foreign reused pid is decidable', async () => {
+    const eperm = () => {
+      const error = new Error('injected EPERM') as NodeJS.ErrnoException;
+      error.code = 'EPERM';
+      throw error;
+    };
+    const lookups: number[] = [];
+    expect(
+      probeExactProcessIdentity(42, {
+        kill: eperm,
+        lookup: (pid: number) => {
+          lookups.push(pid);
+          return 'foreign-birth';
+        },
+      }),
+    ).toEqual({ state: 'exact', identity: { pid: 42, start: 'foreign-birth' } });
+    expect(lookups).toEqual([42]);
+    await expect(
+      probeExactProcessIdentityAsync(42, {
+        kill: eperm,
+        lookup: async () => 'foreign-birth',
+      }),
+    ).resolves.toEqual({
+      state: 'exact',
+      identity: { pid: 42, start: 'foreign-birth' },
     });
+    await expect(
+      probeExactProcessIdentityAsync(42, {
+        kill: eperm,
+        lookup: async () => null,
+      }),
+    ).resolves.toEqual({ state: 'unavailable' });
   });
 
   test('a probe FAILURE is not proof of reuse — fail-open', () => {
