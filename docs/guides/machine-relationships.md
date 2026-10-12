@@ -67,9 +67,15 @@ public application, physical-device and release qualification limits.
 
 A paired device holds scopes: `orchestration:read`, `orchestration:operate`,
 `terminal:operate`, and the elevated ones the operator adds to an
-already-paired device (`station environment access scopes` lists them all with
-their meanings). The operator changes them per device on the Station's own
-host:
+already-paired device, or keeps when approving a request that asked for
+`coding:exec` or `approval:full-access`, as the Station app does (**Limit
+access** leaves them out; `station environment access scopes` lists them all
+with their meanings). The operator changes them per device on the Station's own
+host. Without a global install, prefix these with
+`npx @kontourai/station-cli@<tag>` (`nightly` for a nightly Station, otherwise
+`latest`); a full-access refusal's command already includes the prefix. A
+device paired by an older Station may also hold `access:manage`, which no device
+can be granted again; the first change removes it and says so:
 
 ```bash
 station environment access devices

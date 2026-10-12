@@ -99,7 +99,9 @@ function CommandBlock({ command }: { command: string }) {
           margin: 0,
           flex: 1,
           whiteSpace: 'pre-wrap',
-          wordBreak: 'break-all',
+          // Break between words, so a device id stays whole and copies the
+          // way it reads; only a word too long for the line is split.
+          overflowWrap: 'anywhere',
           fontFamily: 'var(--font-mono, monospace)',
           fontSize: '0.9em',
         }}
