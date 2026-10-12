@@ -1,0 +1,7 @@
+{
+  "revision": "df8ee6ef102b5a9f6670dac53128a14500e2c271",
+
+  "notes": [
+    {"path":"docs/design/cli-product.md","note":"Checked against the launcher/installer staged-write fix: install.sh, the portable launcher and the shared service-launcher protocol now remove their own staging file (lock record, service state, update request, atomic JSON) when a write, fsync or rename fails, e.g. ENOSPC; behaviour on success, lock semantics, update/backup/restore flow, channels, ports and install steps are unchanged, so no claim here changes.","inputs":["docs/design/cli-product.md","install.sh"]}
+  ]
+}
