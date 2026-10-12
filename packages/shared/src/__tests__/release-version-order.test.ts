@@ -1,0 +1,80 @@
+import { describe, expect, test } from 'vitest';
+import {
+  clientVersionInHostOrder,
+  compareStationReleaseVersions,
+} from '../release-version-order.js';
+
+// The two writers whose shapes this module bridges. Plain ESM scripts with no
+// types, loaded by path, so the bridge is pinned to the real allocators rather
+// than to a copy of their arithmetic.
+const NIGHTLY_IDENTITY = '../../../../scripts/lib/nightly-build-identity.mjs';
+const PORTABLE_NIGHTLY = '../../../../scripts/portable-nightly-publication.mjs';
+const { nightlyVersion, nightlyVersionCode } = (await import(
+  NIGHTLY_IDENTITY
+)) as {
+  nightlyVersion: (pkg: string, date: Date, build?: number) => string;
+  nightlyVersionCode: (date: Date, build?: number) => number;
+};
+const { portableNightlyVersion } = (await import(PORTABLE_NIGHTLY)) as {
+  portableNightlyVersion: (pkg: string, code: number | string) => string;
+};
+
+describe('clientVersionInHostOrder', () => {
+  test.each([
+    [0, '2026-10-01T00:00:00Z'],
+    [2, '2026-10-01T00:00:00Z'],
+    [99, '2027-03-15T00:00:00Z'],
+  ])(
+    'a native Nightly (build %s, %s) names the portable Nightly of the same allocation',
+    (build, iso) => {
+      const date = new Date(iso);
+      const client = nightlyVersion('0.1.11', date, build);
+      const host = portableNightlyVersion(
+        '0.1.11',
+        nightlyVersionCode(date, build),
+      );
+      expect(clientVersionInHostOrder(client)).toBe(host);
+      expect(
+        compareStationReleaseVersions(clientVersionInHostOrder(client)!, host),
+      ).toBe(0);
+    },
+  );
+
+  test('literal shapes, independent of the allocators above', () => {
+    // Day 2463, build 2 is version code 246302 (the issue's observed pair).
+    expect(clientVersionInHostOrder('0.1.11-nightly.2463.2')).toBe(
+      '0.1.11-nightly.246302',
+    );
+    expect(clientVersionInHostOrder('0.1.11-nightly.2463')).toBe(
+      '0.1.11-nightly.246300',
+    );
+    expect(clientVersionInHostOrder('0.2.0')).toBe('0.2.0');
+    expect(clientVersionInHostOrder('0.2.0-preview.3')).toBe('0.2.0-preview.3');
+  });
+
+  test('a later night outranks an earlier one once both are in host order', () => {
+    const client = clientVersionInHostOrder('0.1.11-nightly.2465')!;
+    expect(compareStationReleaseVersions(client, '0.1.11-nightly.246303')).toBe(
+      1,
+    );
+    // Without the bridge, the raw day number reads as far older.
+    expect(
+      compareStationReleaseVersions(
+        '0.1.11-nightly.2465',
+        '0.1.11-nightly.246303',
+      ),
+    ).toBe(-1);
+  });
+
+  test.each([
+    '0.0.0-dev',
+    'v0.2.0',
+    '0.2',
+    '0.1.11-nightly.2463.100',
+    '0.1.11-nightly.0',
+    '0.1.11-nightly.2463.0',
+    '',
+  ])('refuses %j', (version) => {
+    expect(clientVersionInHostOrder(version)).toBeNull();
+  });
+});

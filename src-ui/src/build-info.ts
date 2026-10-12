@@ -58,3 +58,23 @@ export const verifiedBuildLabel: string | null =
 
 /** Full detail for tooltips. */
 export const buildTitle = `Station v${buildInfo.version} · commit ${buildInfo.commit}`;
+
+/**
+ * This client's release version, or null when it has none to compare: a
+ * dev or locally built UI carries the bare package version, which names no
+ * release. Only a build whose version a release pipeline stamped (see
+ * `isReleaseStampedBuild` in vite.config.ts) is a client release identity.
+ */
+export function readClientReleaseVersion(
+  documentLike:
+    | Pick<Document, 'querySelectorAll'>
+    | undefined = typeof document === 'undefined' ? undefined : document,
+): string | null {
+  if (!documentLike) return null;
+  const stamps = documentLike.querySelectorAll<HTMLMetaElement>(
+    'meta[name="station-build-release"]',
+  );
+  if (stamps.length !== 1 || stamps[0]?.content.trim() !== 'true') return null;
+  const info = readBuildInfo(documentLike);
+  return info === FALLBACK_BUILD_INFO ? null : info.version;
+}

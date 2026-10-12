@@ -2,7 +2,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfigFromFile } from 'vite';
 import { describe, expect, it } from 'vitest';
-import { buildVersion, injectBuildIdentity } from '../../../vite.config';
+import {
+  buildVersion,
+  injectBuildIdentity,
+  isReleaseStampedBuild,
+} from '../../../vite.config';
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -47,6 +51,24 @@ describe('build identity stays outside the JavaScript hash graph', () => {
     );
     expect(html.match(/station-build-version/g)).toHaveLength(1);
     expect(html.match(/station-build-commit/g)).toHaveLength(1);
+  });
+
+  it('stamps a release only on a production build given a release version', () => {
+    expect(isReleaseStampedBuild('build', '0.1.11-nightly.2465')).toBe(true);
+    expect(isReleaseStampedBuild('build', undefined)).toBe(false);
+    expect(isReleaseStampedBuild('build', '  ')).toBe(false);
+    expect(isReleaseStampedBuild('serve', '0.1.11-nightly.2465')).toBe(false);
+
+    const head = '<html><head></head><body></body></html>';
+    const identity = { version: '1.2.3', commit: 'abc' };
+    expect(
+      injectBuildIdentity(head, { ...identity, release: true }).match(
+        /<meta name="station-build-release" content="true">/g,
+      ),
+    ).toHaveLength(1);
+    expect(injectBuildIdentity(head, identity)).not.toContain(
+      'station-build-release',
+    );
   });
 
   it('uses a build-specific native release identity without changing source authority', () => {

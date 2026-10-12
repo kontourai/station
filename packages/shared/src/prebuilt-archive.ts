@@ -316,39 +316,5 @@ export function packagedInstallerCommand(
   };
 }
 
-/**
- * Station's release order, the one install.sh's downgrade check and the
- * service launcher (packaging/portable-server/bin/station-launcher.mjs
- * `compareVersions`) apply: X.Y.Z, or X.Y.Z-<ring>.N within one ring, and a
- * release outranks every prerelease of its X.Y.Z. Null when the two cannot be
- * ordered (another ring's prerelease, or not a Station version at all).
- */
-export function compareStationReleaseVersions(
-  left: string,
-  right: string,
-): -1 | 0 | 1 | null {
-  const shape =
-    /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([a-z]+)\.([1-9][0-9]*))?$/;
-  const read = (version: string) => {
-    const match = shape.exec(version);
-    if (!match) return null;
-    return {
-      release: match.slice(1, 4).map((part) => BigInt(part)),
-      ring: match[4] ?? null,
-      build: match[5] === undefined ? null : BigInt(match[5]),
-    };
-  };
-  const a = read(left);
-  const b = read(right);
-  if (!a || !b) return null;
-  const order = (x: bigint | null, y: bigint | null): -1 | 0 | 1 =>
-    x === y ? 0 : (x ?? 0n) < (y ?? 0n) ? -1 : 1;
-  for (let part = 0; part < 3; part += 1) {
-    const result = order(a.release[part] ?? 0n, b.release[part] ?? 0n);
-    if (result !== 0) return result;
-  }
-  if (a.ring === b.ring) return a.ring === null ? 0 : order(a.build, b.build);
-  if (a.ring === null) return 1;
-  if (b.ring === null) return -1;
-  return null;
-}
+/** Station's release order; browser-safe, so it lives in its own module. */
+export { compareStationReleaseVersions } from './release-version-order.js';
