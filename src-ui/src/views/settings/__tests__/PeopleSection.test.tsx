@@ -4,6 +4,7 @@ import type { StationPerson } from '@kontourai/station-contracts/station-groups'
 import { _setApiBase } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -671,6 +672,150 @@ describe('People section', () => {
 
     fireEvent.change(filter, { target: { value: 'zzz' } });
     expect(screen.getByText('Nobody matches that filter.')).toBeTruthy();
+  });
+
+  test('one secret at a time: while one shows, every other + New waits', async () => {
+    const mei = ada({
+      principalId: 'human:tailscale-serve:mei@example.com',
+      displayName: 'mei@example.com',
+    });
+    const list = peopleRoute(() => [ada(), mei]);
+    handler = (call) =>
+      call.method === 'POST'
+        ? json({ token: token({ name: 'CI' }), secret: 'stp_first' }, 201)
+        : list(call);
+    mount(<PeopleSection />);
+    await screen.findByText('mei@example.com');
+    toggle('ada@example.com');
+    await createToken(NEW_FOR_ADA, 'CI');
+    expect(await screen.findByDisplayValue('stp_first')).toBeTruthy();
+
+    toggle('mei@example.com');
+    const meiNew = within(
+      personItem('human:tailscale-serve:mei@example.com'),
+    ).getByRole('button', { name: 'New token for mei@example.com' });
+    expect((meiNew as HTMLButtonElement).disabled).toBe(true);
+    expect(meiNew.getAttribute('title')).toContain('showing');
+    fireEvent.click(meiNew);
+    expect(screen.queryByLabelText('Name')).toBeNull();
+    expect(screen.getByDisplayValue('stp_first')).toBeTruthy();
+    expect(writes().filter((call) => call.method === 'POST')).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await waitFor(() =>
+      expect(
+        (
+          within(personItem('human:tailscale-serve:mei@example.com')).getByRole(
+            'button',
+            { name: 'New token for mei@example.com' },
+          ) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+  });
+
+  test('the only person stays open when a refetch adds a second, even mid-revoke', async () => {
+    let people = [ada({ tokens: [token()] })];
+    handler = peopleRoute(() => people);
+    const { client } = mount(<PeopleSection />);
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Revoke token Release script',
+      }),
+    );
+    expect(await screen.findByRole('alertdialog')).toBeTruthy();
+
+    people = [
+      ...people,
+      ada({
+        principalId: 'human:tailscale-serve:mei@example.com',
+        displayName: 'mei@example.com',
+      }),
+    ];
+    await act(() => client.invalidateQueries({ queryKey: ['station-people'] }));
+    await screen.findByText('mei@example.com');
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
+    expect(toggleButton('ada@example.com').getAttribute('aria-expanded')).toBe(
+      'true',
+    );
+    expect(toggleButton('mei@example.com').getAttribute('aria-expanded')).toBe(
+      'false',
+    );
+  });
+
+  test('a filter keeps the row with an unshown secret, and the row with a draft', async () => {
+    const list = peopleRoute(crowd);
+    handler = (call) =>
+      call.method === 'POST'
+        ? json({ token: token({ name: 'CI' }), secret: 'stp_filtered' }, 201)
+        : list(call);
+    mount(<PeopleSection />);
+    await screen.findByText('tomas@example.com');
+
+    toggle('ada@example.com');
+    await createToken(NEW_FOR_ADA, 'CI');
+    expect(await screen.findByDisplayValue('stp_filtered')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+    // A draft in Omar's row survives a filter that does not match him.
+    toggle('omar@example.com');
+    fireEvent.click(
+      screen.getByRole('button', { name: 'New token for omar@example.com' }),
+    );
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Half-typed' },
+    });
+    fireEvent.change(screen.getByLabelText('Filter'), {
+      target: { value: 'priya' },
+    });
+    expect(screen.getByText('priya@example.com')).toBeTruthy();
+    expect(screen.getByText('omar@example.com')).toBeTruthy();
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe(
+      'Half-typed',
+    );
+    expect(screen.queryByText('mei@example.com')).toBeNull();
+  });
+
+  test('a secret survives a filter that does not match its owner', async () => {
+    const list = peopleRoute(crowd);
+    handler = (call) =>
+      call.method === 'POST'
+        ? json({ token: token({ name: 'CI' }), secret: 'stp_kept' }, 201)
+        : list(call);
+    mount(<PeopleSection />);
+    await screen.findByText('tomas@example.com');
+    toggle('ada@example.com');
+    await createToken(NEW_FOR_ADA, 'CI');
+    expect(await screen.findByDisplayValue('stp_kept')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Filter'), {
+      target: { value: 'priya' },
+    });
+    expect(screen.getByText('ada@example.com')).toBeTruthy();
+    expect(
+      within(
+        personItem('human:tailscale-serve:ada@example.com'),
+      ).getByDisplayValue('stp_kept'),
+    ).toBeTruthy();
+  });
+
+  test('Done on a secret whose person left the list focuses the section', async () => {
+    let minted = false;
+    const list = peopleRoute(() => (minted ? [] : [ada()]));
+    handler = (call) => {
+      if (call.method === 'POST') {
+        minted = true;
+        return json({ token: token(), secret: 'stp_orphan' }, 201);
+      }
+      return list(call);
+    };
+    mount(<PeopleSection />);
+    await createToken(NEW_FOR_ADA, 'CI');
+    expect(await screen.findByDisplayValue('stp_orphan')).toBeTruthy();
+    await screen.findByText('Nothing here yet');
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await waitFor(() =>
+      expect(document.activeElement?.id).toBe('section-people'),
+    );
   });
 
   test('no one tied to a device shows the empty state', async () => {

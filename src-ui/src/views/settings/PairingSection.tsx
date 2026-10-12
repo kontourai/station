@@ -29,6 +29,9 @@ export function PairingSection() {
       action={
         <Button
           {...settingsRow('mobile-pairing')}
+          // The catalog title ("Device pairing") is not this control's
+          // description; its name is its label.
+          title={undefined}
           size="sm"
           className="settings__header-action"
           onClick={() =>

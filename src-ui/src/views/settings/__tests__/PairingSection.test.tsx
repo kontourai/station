@@ -41,6 +41,8 @@ describe('Settings device pairing', () => {
     // It carries the catalog row, so a Settings deep link lands on it.
     expect(action.getAttribute('data-catalog-id')).toBe('mobile-pairing');
     expect(action.id).toBe('mobile-pairing');
+    // Its name is its label; the catalog title is not attached to it.
+    expect(action.getAttribute('title')).toBeNull();
     fireEvent.click(action);
     expect(consumePendingConnectionsModal()).toEqual({ mode: 'pair-host' });
   });

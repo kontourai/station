@@ -360,6 +360,7 @@ export function PersonalTokens({
   onDone,
   revoke,
   onEditingChange,
+  newDisabledReason,
 }: {
   heading: string;
   /** One muted line under the header. */
@@ -379,15 +380,20 @@ export function PersonalTokens({
   revoke: (token: PersonalAccessToken) => Promise<void>;
   /** Told when the New token form opens or closes, so a caller can keep it shown. */
   onEditingChange?: (editing: boolean) => void;
+  /** Set when "+ New" must wait (another token's secret is still showing). */
+  newDisabledReason?: string;
 }) {
   const [creating, setCreating] = useState(false);
-  useEffect(() => {
-    onEditingChange?.(creating);
-  }, [creating, onEditingChange]);
   const [minting, setMinting] = useState(false);
   const [pendingRevoke, setPendingRevoke] =
     useState<PersonalAccessToken | null>(null);
   const [revoking, setRevoking] = useState(false);
+  // Busy: a form, a revoke confirmation, or a revoke in flight. A caller
+  // keeps this list shown while it is, so none of them unmounts mid-way.
+  const busy = creating || pendingRevoke !== null || revoking;
+  useEffect(() => {
+    onEditingChange?.(busy);
+  }, [busy, onEditingChange]);
   const [error, setError] = useState<string | null>(null);
   const [revokeError, setRevokeError] = useState<string | null>(null);
   // Leaving the form or the secret returns focus to "+ New".
@@ -440,6 +446,8 @@ export function PersonalTokens({
             size="sm"
             className="people__compact"
             aria-label={`New token for ${ownerLabel}`}
+            disabled={newDisabledReason !== undefined}
+            {...(newDisabledReason ? { title: newDisabledReason } : {})}
             onClick={() => {
               setError(null);
               setCreating(true);

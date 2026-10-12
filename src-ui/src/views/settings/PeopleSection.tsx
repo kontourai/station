@@ -22,7 +22,7 @@ import {
   useStationPeopleQuery,
 } from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { Empty, ErrorState } from '../../components/state';
@@ -108,8 +108,40 @@ export function PeopleSection() {
   // Which people the reader opened or closed. Local UI state only: an absent
   // entry follows the default (open when there is exactly one person).
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  // Who opened by themselves, decided ONCE, when the list first arrives:
+  // re-deriving it each render would close the only person the moment a
+  // refetch added a second one, under whatever they had open.
+  const [autoOpen, setAutoOpen] = useState<string | null | undefined>(
+    undefined,
+  );
+  if (autoOpen === undefined && people.data)
+    setAutoOpen(
+      people.data.length === 1 ? (people.data[0]?.principalId ?? null) : null,
+    );
+  // People whose row has a form, a revoke confirmation or a revoke in
+  // flight: kept visible through a filter, like the held secret's owner.
+  const [busyRows, setBusyRows] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const setRowBusy = useCallback((principalId: string, busy: boolean) => {
+    setBusyRows((current) => {
+      if (current.has(principalId) === busy) return current;
+      const next = new Set(current);
+      if (busy) next.add(principalId);
+      else next.delete(principalId);
+      return next;
+    });
+  }, []);
   const [filter, setFilter] = useState('');
   const filterId = useId();
+  // After Done on a secret shown apart from its row, focus lands on the
+  // section rather than on the document body.
+  const [focusSection, setFocusSection] = useState(false);
+  useEffect(() => {
+    if (!focusSection) return;
+    document.getElementById('section-people')?.focus();
+    setFocusSection(false);
+  }, [focusSection]);
   const refused = isStationAccessUnavailable(people.error);
   if (refused && !held) return null;
   // The heading is a claim that the caller administers people; it waits for
@@ -118,17 +150,18 @@ export function PeopleSection() {
 
   const list = refused ? undefined : people.data;
   const filtering = (list?.length ?? 0) >= PEOPLE_FILTER_THRESHOLD;
-  // The person holding an unshown secret is never filtered away.
+  // The person holding an unshown secret, or with a token action under way,
+  // is never filtered away.
   const visible = (list ?? []).filter(
     (person) =>
       !filtering ||
       matchesFilter(person, filter) ||
-      held?.principalId === person.principalId,
+      held?.principalId === person.principalId ||
+      busyRows.has(person.principalId),
   );
   const heldInList =
     held !== null &&
     visible.some((person) => person.principalId === held.principalId);
-  const openByDefault = list?.length === 1;
 
   async function mint(person: StationPerson, input: PersonalTokenInput) {
     try {
@@ -171,7 +204,10 @@ export function PeopleSection() {
           <SecretOnce
             minted={held.minted}
             ownerLabel={held.displayName}
-            onDone={() => setHeld(null)}
+            onDone={() => {
+              setHeld(null);
+              setFocusSection(true);
+            }}
           />
         )}
         {list === undefined ? (
@@ -226,7 +262,10 @@ export function PeopleSection() {
                       <PersonCard
                         key={person.principalId}
                         person={person}
-                        open={toggled[person.principalId] ?? openByDefault}
+                        open={
+                          toggled[person.principalId] ??
+                          autoOpen === person.principalId
+                        }
                         onToggle={(open) =>
                           setToggled((current) => ({
                             ...current,
@@ -240,6 +279,15 @@ export function PeopleSection() {
                         }
                         mint={(input) => mint(person, input)}
                         onDone={() => setHeld(null)}
+                        onBusyChange={setRowBusy}
+                        // One secret at a time: a second mint would replace
+                        // the one still waiting to be copied.
+                        {...(held && held.principalId !== person.principalId
+                          ? {
+                              newDisabledReason:
+                                'Finish with the token that is showing first.',
+                            }
+                          : {})}
                       />
                     ))}
                   </ul>
@@ -288,8 +336,12 @@ function PersonCard({
   minted,
   mint,
   onDone,
+  onBusyChange,
+  newDisabledReason,
 }: {
   person: StationPerson;
+  onBusyChange: (principalId: string, busy: boolean) => void;
+  newDisabledReason?: string;
   /** What the reader (or the default) asked for. */
   open: boolean;
   onToggle: (open: boolean) => void;
@@ -306,7 +358,14 @@ function PersonCard({
     null,
   );
   const [editing, setEditing] = useState(false);
-  const onEditingChange = useCallback((next: boolean) => setEditing(next), []);
+  const principalId = person.principalId;
+  const onEditingChange = useCallback(
+    (next: boolean) => {
+      setEditing(next);
+      onBusyChange(principalId, next);
+    },
+    [onBusyChange, principalId],
+  );
   const id = useId();
   const groupLabel = STATION_GROUP_LABELS[person.group].label;
   // A New token form or an unshown secret pins the person open: collapsing
@@ -457,6 +516,7 @@ function PersonCard({
             mint={mint}
             onDone={onDone}
             onEditingChange={onEditingChange}
+            {...(newDisabledReason ? { newDisabledReason } : {})}
             revoke={(token) =>
               revoke.mutateAsync({
                 principalId: person.principalId,
