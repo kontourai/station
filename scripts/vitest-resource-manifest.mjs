@@ -379,6 +379,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2012: a real child runtime races the home maintenance ownership fence.
   'packages/shared/src/__tests__/station-home-lifecycle.test.ts',
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
+  // #3565: a real child claims a turn through the node:sqlite adapter and is
+  // SIGKILLed; the parent reopens the file. Single-shot, no wall-clock bound.
+  'packages/monument/src/__tests__/sqlite-crash.process.test.ts',
+  // #3565: runs the monument import boundary gate as a child process against
+  // throwaway git repositories. Single-shot spawns, no wall-clock assertion.
+  'scripts/__tests__/monument-import-boundary-gate.test.ts',
   // Drives the changed-verification CLI through spawnSync against a real
   // fixture worktree to prove its dependency and selection behavior.
   'scripts/__tests__/changed-verification.test.ts',
@@ -661,6 +667,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2675: runs the manifest signer CLI (sign, verify, assemble) as bounded
   // single-shot children for each golden vector.
   'scripts/__tests__/release-manifest-vectors.test.ts',
+  // #187: runs install.sh's accepted-release functions (cut from the shipped
+  // script) as bounded single-shot `sh -c` children, two per parity case.
+  'scripts/__tests__/accepted-release-parity.test.ts',
   // #2675 slice E: drives the manifest signer and the Nightly publication
   // helper CLIs as bounded single-shot children (dry-run sign and verify).
   'scripts/__tests__/portable-nightly-publish-workflow.test.ts',

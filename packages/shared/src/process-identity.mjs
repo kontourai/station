@@ -72,7 +72,11 @@ function windowsBirthStatements(pid) {
   // visible management projection for the coordinator's newly started PID.
   // The guard truncates GetProcessTimes FILETIME to microseconds, so do the
   // identical tick normalization here before emitting its canonical format.
+  // Stop on the first error (#3563): without it a denied StartTime read is
+  // non-terminating, `$created` stays unset, and the script prints
+  // DateTime.MinValue and exits 0 as if it had read a birth.
   return [
+    "$ErrorActionPreference = 'Stop'",
     `$process = [System.Diagnostics.Process]::GetProcessById(${pid})`,
     'try { $created = $process.StartTime.ToUniversalTime() } finally { $process.Dispose() }',
     '$ticks = $created.Ticks - ($created.Ticks % 10)',
@@ -130,9 +134,17 @@ function windowsCreationDateProbe(
   };
 }
 
+// FILETIME, the source of every Windows process creation time, starts in 1601.
+// Anything earlier (DateTime.MinValue in particular) is a failed read that
+// printed a default value, never a birth (#3563).
+const WINDOWS_FILETIME_EPOCH_YEAR = 1601;
+
 function canonicalWindowsCreationDate(output) {
   const value = typeof output === 'string' ? output.trim() : '';
-  return isWindowsRoundTripUtcIso(value) ? value : null;
+  if (!isWindowsRoundTripUtcIso(value)) return null;
+  return Number(value.slice(0, 4)) >= WINDOWS_FILETIME_EPOCH_YEAR
+    ? value
+    : null;
 }
 
 // Why recent birth probes returned nothing, so a caller that fails closed on
@@ -440,14 +452,22 @@ export function birthProvesReuse(recordedBirth, pid, dependencies = {}) {
  */
 export const PROCESS_BIRTH_FINGERPRINT_CACHE_TTL_MS = 2_000;
 
-function aliveState(pid, kill = process.kill) {
+function aliveState(pid, kill = process.kill, platform = process.platform) {
   try {
     kill(pid, 0);
     return 'alive';
   } catch (error) {
-    // Only ESRCH proves absence. EPERM and every other probe failure are
-    // live-or-ambiguous, never authorization to reclaim an owner.
-    return error?.code === 'ESRCH' ? 'dead' : 'unavailable';
+    // Only ESRCH proves absence. On POSIX, EPERM proves the pid EXISTS but
+    // belongs to another user, so it is alive for identity purposes: the
+    // birth lookup still decides whether it is the recorded owner or a reused
+    // pid (#3563). Windows reports EPERM for elevated, other-user and service
+    // processes, where the birth read has not been proven by a real
+    // non-elevated caller, so it stays ambiguous there. Every other probe
+    // failure stays ambiguous, never authorization to reclaim an owner.
+    if (error?.code === 'ESRCH') return 'dead';
+    return error?.code === 'EPERM' && platform !== 'win32'
+      ? 'alive'
+      : 'unavailable';
   }
 }
 
@@ -679,12 +699,17 @@ export function lookupProcessBirthFingerprintCachedAsync(
  * A three-way exact process probe. In particular, a live Windows PID whose
  * round-trip UTC process creation time cannot be read is unavailable, never dead:
  * callers must retain the fence rather than reclaiming a possibly-live owner.
+ * Off Windows, a pid that answers signal 0 with EPERM is still looked up:
+ * `exact` with a different birth proves reuse, and only an unreadable birth
+ * stays `unavailable` (#3563). On Windows EPERM stays `unavailable`. `exact`
+ * is not permission to signal the pid.
  */
 function probeExactProcessIdentityOnce(pid, dependencies) {
   if (!Number.isInteger(pid) || pid < 1) return { state: 'dead' };
   const alive =
     dependencies.alive ??
-    ((candidate) => aliveState(candidate, dependencies.kill));
+    ((candidate) =>
+      aliveState(candidate, dependencies.kill, dependencies.platform));
   const liveness = alive(pid);
   if (liveness === 'dead') return { state: 'dead' };
   if (liveness !== 'alive') return { state: 'unavailable' };
@@ -808,7 +833,8 @@ export async function probeExactProcessIdentityAsync(pid, dependencies = {}) {
   if (!Number.isInteger(pid) || pid < 1) return { state: 'dead' };
   const alive =
     dependencies.alive ??
-    ((candidate) => aliveState(candidate, dependencies.kill));
+    ((candidate) =>
+      aliveState(candidate, dependencies.kill, dependencies.platform));
   const liveness = alive(pid);
   if (liveness === 'dead') return { state: 'dead' };
   if (liveness !== 'alive') return { state: 'unavailable' };

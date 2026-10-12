@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
 import type {
   RecoveryLedgerProcessIdentity,
   RecoveryOwner,
@@ -133,6 +134,13 @@ export interface SessionStartBoundaryClaim {
   started(): SessionTurnBoundaryTransition;
   notInvoked(): SessionTurnBoundaryTransition;
   indeterminate(now: string): SessionTurnBoundaryTransition;
+  /**
+   * The provider was invoked and DEFINITIVELY refused (a
+   * `SessionStartRefusedError`): release the boundary instead of leaving it
+   * `indeterminate`. Optional so a claim that cannot tell the difference stays
+   * conservative: anything but `applied` is recorded as an indeterminate start.
+   */
+  refused?(): SessionTurnBoundaryTransition;
 }
 
 /** Terminate an engine message so the explanation that follows reads as its own sentence. */
@@ -185,6 +193,14 @@ export async function runSessionStartWithBoundary<T>(
   try {
     result = await invoke();
   } catch (error) {
+    // A definitive refusal settles the start: the thread is not fenced behind
+    // an inspection that has nothing to find. Anything the claim cannot confirm
+    // releasing stays the conservative indeterminate start.
+    if (
+      error instanceof SessionStartRefusedError &&
+      owned.claim.refused?.().kind === 'applied'
+    )
+      throw error;
     owned.claim.indeterminate(new Date().toISOString());
     throw new SessionStartIndeterminateError(error);
   }
@@ -395,7 +411,12 @@ export function createSessionTurnBoundaryAuthority(options: {
     const boundaryId = record.boundaryId;
     let attempted = false;
     let invoked = false;
-    let terminal: 'started' | 'not-invoked' | 'indeterminate' | undefined;
+    let terminal:
+      | 'started'
+      | 'not-invoked'
+      | 'indeterminate'
+      | 'refused'
+      | undefined;
     const remove = (from: BoundaryState[]) =>
       retainUntilApplied(boundaryId, () =>
         options.coordinator.remove({
@@ -435,6 +456,14 @@ export function createSessionTurnBoundaryAuthority(options: {
             return { kind: 'stale' } as const;
           terminal = 'not-invoked';
           return remove(['prepared']);
+        },
+        refused() {
+          if (!invoked || terminal) return { kind: 'stale' } as const;
+          // Terminal only once released: an unconfirmed release must still be
+          // free to become the indeterminate start the caller falls back to.
+          const released = remove(['invoking']);
+          if (released.kind === 'applied') terminal = 'refused';
+          return released;
         },
         indeterminate(at: string) {
           if (terminal && terminal !== 'indeterminate')

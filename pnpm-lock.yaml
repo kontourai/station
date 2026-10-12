@@ -729,6 +729,8 @@ importers:
         specifier: 0.5.0
         version: 0.5.0
 
+  packages/monument: {}
+
   packages/sdk:
     dependencies:
       '@kontourai/console-core':
