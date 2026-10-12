@@ -1,14 +1,16 @@
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  createSqliteKernelLocation,
   openSqliteKernelStorage,
   SQLITE_KERNEL_SCHEMA_VERSION,
   SqliteKernelConfigurationError,
   type SqliteKernelDatabase,
-  type SqliteKernelLocation,
 } from '../sqlite.js';
-import { createFakeProcessTable } from '../testing/index.js';
+import {
+  createFakeProcessTable,
+  createSqliteKernelLocation,
+  type SqliteKernelLocation,
+} from '../testing/index.js';
 
 const locations: SqliteKernelLocation[] = [];
 const location = () => {
@@ -273,6 +275,7 @@ describe('node:sqlite adapter read-only commands with a writing participant', ()
       participants: [
         {
           name: 'audit',
+          observeReads: true,
           commit: ({ command }, db) => {
             if (command.type !== 'turnDedup.read') return;
             // Another connection tries to commit while this one reads. It
@@ -376,5 +379,170 @@ describe('node:sqlite adapter co-commit participants', () => {
     database.exec('ROLLBACK');
     await storage.close();
     database.close();
+  });
+});
+
+describe('node:sqlite adapter participants and read-only commands', () => {
+  it('does not call a participant on a read unless it opts in, and reads stay deferred', async () => {
+    const { path } = location();
+    const seen: string[] = [];
+    const storage = openSqliteKernelStorage({
+      path,
+      busyTimeoutMs: 50,
+      participants: [
+        {
+          name: 'writes-only',
+          commit: ({ command }) => seen.push(`w:${command.type}`),
+        },
+        {
+          name: 'reads-too',
+          observeReads: true,
+          commit: ({ command }) => seen.push(`r:${command.type}`),
+        },
+      ],
+    });
+    const processes = createFakeProcessTable();
+    const context = { liveness: processes.liveness };
+    storage.executeSync({ type: 'turnDedup.read', key: 'k' }, context);
+    expect(seen).toEqual(['r:turnDedup.read']);
+    await storage.close();
+    // Without an opted-in participant a read takes no write lock.
+    const quiet = openSqliteKernelStorage({
+      path,
+      busyTimeoutMs: 50,
+      participants: [{ name: 'writes-only', commit: () => {} }],
+    });
+    const writer = new DatabaseSync(path);
+    writer.exec('PRAGMA busy_timeout = 50');
+    writer.exec('BEGIN IMMEDIATE');
+    try {
+      expect(
+        quiet.executeSync({ type: 'turnDedup.read', key: 'k' }, context).kind,
+      ).toBe('absent');
+    } finally {
+      writer.exec('ROLLBACK');
+      writer.close();
+      await quiet.close();
+    }
+  });
+
+  it("rolls back an earlier participant's admit writes when a later one refuses", async () => {
+    const { path } = location();
+    const host = new DatabaseSync(path);
+    host.exec('CREATE TABLE IF NOT EXISTS admitted (entry TEXT NOT NULL)');
+    const storage = openSqliteKernelStorage({
+      database: host,
+      participants: [
+        {
+          name: 'records-admission',
+          admit: (_command, db) => {
+            db.prepare('INSERT INTO admitted (entry) VALUES (?)').run('x');
+            return undefined;
+          },
+        },
+        { name: 'refuses', admit: () => ({ refuse: 'sealed' }) },
+      ],
+    });
+    const processes = createFakeProcessTable();
+    expect(
+      storage.executeSync(
+        {
+          type: 'turnDedup.claim',
+          key: 'k',
+          owner: processes.spawn(),
+          now: 1,
+          tracking: 'tracked',
+        },
+        { liveness: processes.liveness },
+      ),
+    ).toEqual({ kind: 'refused', participant: 'refuses', reason: 'sealed' });
+    expect(host.prepare('SELECT COUNT(*) AS n FROM admitted').get()).toEqual({
+      n: 0,
+    });
+    await storage.close();
+    host.close();
+  });
+});
+
+describe('node:sqlite adapter boundary rows', () => {
+  it('holds at most one occupying boundary row per thread, as Station does', async () => {
+    const { path } = location();
+    await openSqliteKernelStorage({ path }).close();
+    const raw = new DatabaseSync(path);
+    const insert = (id: string, state: string) =>
+      raw
+        .prepare(
+          `INSERT INTO monument_turn_boundaries
+             (boundary_id, thread_id, state, purpose, provider_turn_id, owner_json, created_at, updated_at)
+           VALUES (?, 't', ?, 'turn', NULL, ?, 'a', 'a')`,
+        )
+        .run(
+          id,
+          state,
+          JSON.stringify({ id: 'o', pid: 1, identityKind: 'unverified' }),
+        );
+    try {
+      insert('a1', 'accepted');
+      insert('a2', 'accepted');
+      insert('p1', 'prepared');
+      expect(() => insert('p2', 'invoking')).toThrow(/UNIQUE/);
+      expect(() => insert('l1', 'lifecycle')).toThrow(/UNIQUE/);
+    } finally {
+      raw.close();
+    }
+  });
+
+  it('reads a legacy exact owner without a birth as unverified instead of refusing every row', async () => {
+    const { path } = location();
+    await openSqliteKernelStorage({ path }).close();
+    const processes = createFakeProcessTable();
+    const live = processes.spawn();
+    const raw = new DatabaseSync(path);
+    raw
+      .prepare(
+        `INSERT INTO monument_turn_boundaries
+           (boundary_id, thread_id, state, purpose, provider_turn_id, owner_json, created_at, updated_at)
+         VALUES ('legacy', 't2', 'invoking', 'turn', NULL, ?, 'a', 'a')`,
+      )
+      .run(
+        JSON.stringify({
+          id: 'legacy-owner',
+          pid: live.pid,
+          identityKind: 'exact',
+        }),
+      );
+    raw.close();
+    const storage = openSqliteKernelStorage({ path });
+    const context = { liveness: processes.liveness };
+    const listed = storage.executeSync({ type: 'turnBoundary.list' }, context);
+    expect(
+      listed.kind === 'records' ? listed.records[0]?.owner : undefined,
+    ).toEqual({
+      id: 'legacy-owner',
+      pid: live.pid,
+      identityKind: 'unverified',
+    });
+    // Other threads keep working.
+    expect(
+      storage.executeSync(
+        {
+          type: 'turnBoundary.create',
+          boundaryId: 'b',
+          threadId: 't1',
+          state: 'prepared',
+          purpose: 'turn',
+          owner: live,
+          now: 'b',
+        },
+        context,
+      ),
+    ).toEqual({ kind: 'applied' });
+    expect(
+      storage.executeSync(
+        { type: 'turnBoundary.hasPossibleEffect', threadId: 't2' },
+        context,
+      ),
+    ).toEqual({ kind: 'available', active: true });
+    await storage.close();
   });
 });

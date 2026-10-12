@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
-import type { KernelCommand, KernelResult } from '../commands.js';
+import type {
+  KernelCommand,
+  KernelResult,
+  TurnBoundaryReconcileCommand,
+} from '../commands.js';
+import { planTurnBoundaryReconcile } from '../decisions/turn-boundary.js';
 import type { OwnerIdentity } from '../owner.js';
 import type { CommitParticipant, KernelLimits } from '../port.js';
 import type { RequestKeyId, TurnBoundaryRecord } from '../records.js';
@@ -147,8 +152,24 @@ async function boundary(
   );
 }
 
+/**
+ * How a host reconciles: list the rows, probe each process once outside the
+ * transaction, then commit the verdicts guarded by each row's `updatedAt`.
+ */
+async function reconcile(session: Session, now: string) {
+  const listed = await session.run({ type: 'turnBoundary.list' });
+  assert.equal(listed.kind, 'records');
+  return session.run(
+    planTurnBoundaryReconcile(
+      listed.kind === 'records' ? listed.records : [],
+      { probe: session.processes.probe },
+      now,
+    ),
+  );
+}
+
 function interruptedOf(
-  result: KernelResult<{ type: 'turnBoundary.reconcile'; now: string }>,
+  result: KernelResult<TurnBoundaryReconcileCommand>,
 ): readonly TurnBoundaryRecord[] {
   assert.equal(result.kind, 'reconciled');
   return result.kind === 'reconciled' ? result.interrupted : [];
@@ -899,10 +920,7 @@ const turnBoundary: KernelConformanceCase[] = [
         );
         session.processes.kill(dead);
         session.processes.makeUnobservable(hidden);
-        const first = await session.run({
-          type: 'turnBoundary.reconcile',
-          now: at(10),
-        });
+        const first = await reconcile(session, at(10));
         assert.equal(first.kind, 'reconciled');
         const reported = interruptedOf(first);
         assert.deepEqual(
@@ -923,10 +941,7 @@ const turnBoundary: KernelConformanceCase[] = [
         );
         assert.equal((await boundary(session, 'invoking'))?.updatedAt, at(10));
         // A row left unresolved is reported again until its owner retires it.
-        const second = await session.run({
-          type: 'turnBoundary.reconcile',
-          now: at(11),
-        });
+        const second = await reconcile(session, at(11));
         assert.deepEqual(
           interruptedOf(second)
             .map((row) => row.boundaryId)
@@ -966,6 +981,55 @@ const turnBoundary: KernelConformanceCase[] = [
       }),
   },
 ];
+
+turnBoundary.push({
+  name: 'turn boundary: reconcile probes each process once and acts only on rows it saw unchanged',
+  run: (harness) =>
+    withSession(harness, async (session) => {
+      const dead = session.processes.spawn();
+      const other = session.processes.spawn();
+      await session.run(create('i1', 't1', dead, at(1)));
+      await session.run(
+        transition('i1', dead, ['prepared'], 'invoking', at(2)),
+      );
+      await session.run(create('i2', 't2', dead, at(1)));
+      await session.run(
+        transition('i2', dead, ['prepared'], 'invoking', at(2)),
+      );
+      await session.run(create('p3', 't3', other, at(1)));
+      session.processes.kill(dead);
+      session.processes.kill(other);
+      const probed: number[] = [];
+      const listed = await session.run({ type: 'turnBoundary.list' });
+      const plan = planTurnBoundaryReconcile(
+        listed.kind === 'records' ? listed.records : [],
+        {
+          probe: (pid) => {
+            probed.push(pid);
+            return session.processes.probe(pid);
+          },
+        },
+        at(5),
+      );
+      assert.deepEqual(probed.sort(), [dead.pid, other.pid].sort());
+      // i2 moves on after the probe and before the commit.
+      await session.run(
+        transition('i2', dead, ['invoking'], 'accepted', at(6), 'p2'),
+      );
+      const result = await session.run(plan);
+      assert.deepEqual(
+        interruptedOf(result).map((row) => [row.boundaryId, row.state]),
+        [['i1', 'indeterminate']],
+      );
+      assert.deepEqual(
+        (await boundaries(session)).map((row) => [row.boundaryId, row.state]),
+        [
+          ['i1', 'indeterminate'],
+          ['i2', 'accepted'],
+        ],
+      );
+    }),
+});
 
 const requestKeys: KernelConformanceCase[] = [
   {
@@ -1252,10 +1316,7 @@ const crashPoints: KernelConformanceCase[] = [
         await assert.rejects(invoking, KernelCrashError);
         session.processes.kill(first);
         await session.store.reopen();
-        const recovered = await session.run({
-          type: 'turnBoundary.reconcile',
-          now: at(3),
-        });
+        const recovered = await reconcile(session, at(3));
         assert.deepEqual(recovered, { kind: 'reconciled', interrupted: [] });
         assert.deepEqual(await boundaries(session), []);
         assert.deepEqual(
@@ -1279,10 +1340,7 @@ const crashPoints: KernelConformanceCase[] = [
         await session.store.crash();
         session.processes.kill(first);
         await session.store.reopen();
-        const recovered = await session.run({
-          type: 'turnBoundary.reconcile',
-          now: at(3),
-        });
+        const recovered = await reconcile(session, at(3));
         assert.deepEqual(
           interruptedOf(recovered).map((row) => [row.boundaryId, row.state]),
           [['b1', 'indeterminate']],
@@ -1322,10 +1380,7 @@ const crashPoints: KernelConformanceCase[] = [
         await assert.rejects(accepted, KernelCrashError);
         session.processes.kill(first);
         await session.store.reopen();
-        const recovered = await session.run({
-          type: 'turnBoundary.reconcile',
-          now: at(4),
-        });
+        const recovered = await reconcile(session, at(4));
         const [row] = interruptedOf(recovered);
         assert.equal(row?.state, 'indeterminate');
         assert.equal(row?.providerTurnId, undefined);
@@ -1407,9 +1462,7 @@ crashPoints.push(
         );
         session.processes.kill(dead);
         session.store.failNextCommit();
-        await assert.rejects(
-          session.run({ type: 'turnBoundary.reconcile', now: at(3) }),
-        );
+        await assert.rejects(reconcile(session, at(3)));
         await session.store.reopen();
         assert.deepEqual(
           (await boundaries(session)).map((row) => [row.boundaryId, row.state]),
@@ -1418,10 +1471,7 @@ crashPoints.push(
             ['p', 'prepared'],
           ],
         );
-        const recovered = await session.run({
-          type: 'turnBoundary.reconcile',
-          now: at(4),
-        });
+        const recovered = await reconcile(session, at(4));
         assert.deepEqual(
           interruptedOf(recovered).map((row) => [row.boundaryId, row.state]),
           [['i', 'indeterminate']],

@@ -10,11 +10,11 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { OwnerLiveness } from '../owner.js';
+import { openSqliteKernelStorage } from '../sqlite.js';
 import {
   createSqliteKernelLocation,
-  openSqliteKernelStorage,
   type SqliteKernelLocation,
-} from '../sqlite.js';
+} from '../testing/index.js';
 
 const ADAPTER = pathToFileURL(resolve('packages/monument/src/sqlite.ts')).href;
 

@@ -264,7 +264,12 @@ describe('monument import boundary gate', () => {
   it('rejects declaring a Station package as a dependency', {
     timeout: CASE_TIMEOUT,
   }, () => {
-    const manifest = JSON.parse(readFileSync(MANIFEST, 'utf8'));
+    const manifest = JSON.parse(
+      readFileSync(
+        new URL('../../packages/monument/package.json', import.meta.url),
+        'utf8',
+      ),
+    );
     const result = run({
       ...CLEAN,
       [MANIFEST]: JSON.stringify({
@@ -282,6 +287,93 @@ describe('monument import boundary gate', () => {
     expect(result.stderr).toContain(
       `station-import: ${ROOT}/src/evil.ts:1 @kontourai/station-contracts`,
     );
+  });
+
+  it('resolves relative specifiers as Node does: no percent-encoding or backslashes', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const result = run({
+      ...CLEAN,
+      'src-server/secret.mjs': 'export const secret = 1;\n',
+      [`${ROOT}/src/encoded.ts`]: [
+        "export * from './%2e%2e/%2e%2e/%2e%2e/src-server/secret.mjs';",
+        "export * from '.\\\\..\\\\..\\\\..\\\\src-server\\\\secret.mjs';",
+        "export * from './local%2ejs';",
+        '',
+      ].join('\n'),
+    });
+    expect(result.status, result.output).toBe(1);
+    for (const line of [
+      `encoded-specifier: ${ROOT}/src/encoded.ts:1 ./%2e%2e/%2e%2e/%2e%2e/src-server/secret.mjs`,
+      `encoded-specifier: ${ROOT}/src/encoded.ts:2`,
+      `encoded-specifier: ${ROOT}/src/encoded.ts:3 ./local%2ejs`,
+    ])
+      expect(result.stderr).toContain(line);
+  });
+
+  it('refuses every dependency entry, aliased or not', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const manifest = JSON.parse(
+      readFileSync(
+        new URL('../../packages/monument/package.json', import.meta.url),
+        'utf8',
+      ),
+    );
+    const result = run({
+      ...CLEAN,
+      [MANIFEST]: JSON.stringify({
+        ...manifest,
+        dependencies: {
+          innocent: 'workspace:@kontourai/station-shared@*',
+          a: 'npm:@kontourai/station-sdk@1',
+          b: 'file:../shared',
+          c: 'link:../sdk',
+          'left-pad': '1.3.0',
+        },
+        peerDependencies: { d: 'portal:../cli' },
+      }),
+      [`${ROOT}/src/aliased.ts`]: "export * from 'innocent';\n",
+    });
+    expect(result.status, result.output).toBe(1);
+    for (const line of [
+      `aliased-dependency: ${MANIFEST}:1 dependencies.innocent`,
+      `aliased-dependency: ${MANIFEST}:1 dependencies.a`,
+      `aliased-dependency: ${MANIFEST}:1 dependencies.b`,
+      `aliased-dependency: ${MANIFEST}:1 dependencies.c`,
+      `aliased-dependency: ${MANIFEST}:1 peerDependencies.d`,
+      `unapproved-dependency: ${MANIFEST}:1 dependencies.left-pad`,
+      `undeclared-import: ${ROOT}/src/aliased.ts:1 innocent`,
+    ])
+      expect(result.stderr).toContain(line);
+  });
+
+  it('refuses Station code that reaches past the package entry points', {
+    timeout: CASE_TIMEOUT,
+  }, () => {
+    const result = run({
+      ...CLEAN,
+      'src-server/uses-entry.ts': [
+        "import { openMemoryKernelStorage } from '@kontourai/monument';",
+        "import { openSqliteKernelStorage } from '@kontourai/monument/sqlite';",
+        'export { openMemoryKernelStorage, openSqliteKernelStorage };',
+        '',
+      ].join('\n'),
+      'src-server/uses-internals.ts': [
+        "export * from '../packages/monument/src/step.js';",
+        "export * from '@kontourai/monument/src/step';",
+        "export * from '@kontourai/monument/package.json';",
+        '',
+      ].join('\n'),
+    });
+    expect(result.status, result.output).toBe(1);
+    for (const line of [
+      'monument-internal-import: src-server/uses-internals.ts:1 ../packages/monument/src/step.js',
+      'monument-internal-import: src-server/uses-internals.ts:2 @kontourai/monument/src/step',
+      'monument-internal-import: src-server/uses-internals.ts:3 @kontourai/monument/package.json',
+    ])
+      expect(result.stderr).toContain(line);
+    expect(result.stderr).not.toContain('uses-entry.ts');
   });
 
   it('refuses an empty scope rather than reporting it clean', {
