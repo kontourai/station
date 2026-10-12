@@ -641,7 +641,8 @@ methods require `orchestration:operate`; explicit family and leaf rules can
 require a different tier. All `/api/registry/sources` methods require
 `access:manage` plus a separate Station operator principal check in the handlers.
 The terminal WebSocket requires `terminal:operate`, and the voice WebSocket
-requires `orchestration:operate`. Pairing-family routes
+requires `orchestration:operate`; both refuse an account-bound device and any
+personal access token whatever its scope (#3586). Pairing-family routes
 have additional credential-kind and explicit approval-leaf rules described
 above; a generic operate grant cannot reach them. A
 route the table does not recognize fails closed — denied, with a loud server
