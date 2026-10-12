@@ -446,6 +446,42 @@ describe('EventStore Session work-item associations', () => {
     }
   });
 
+  // #3561 review F2: the session row is a co-commit participant, and an
+  // upsert is what establishes a root Session's lineage. Admission reads that
+  // lineage, so the participant must run before the work item is taken.
+  test('a co-committed session row establishes the lineage its terminal admission reads', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-work-item-store-'));
+    directories.push(directory);
+    const store = new EventStore(join(directory, 'orchestration.sqlite'));
+    try {
+      expect(
+        store.stageSessionWorkItemCandidate({
+          candidate: candidate(),
+          current: () => true,
+        }),
+      ).toEqual({ kind: 'staged' });
+      expect(
+        store.appendEvent(completion(), [], () =>
+          store.upsertSession({
+            provider: 'claude',
+            threadId: 'session-a',
+            status: 'ready',
+            createdAt: '2026-08-28T11:00:00.000Z',
+            updatedAt: '2026-08-28T12:00:00.000Z',
+          }),
+        ),
+      ).toBe(1);
+      expect(observations(store)).toEqual([
+        expect.objectContaining({
+          associationId: 'association-a',
+          eventId: 'event-a',
+        }),
+      ]);
+    } finally {
+      store.close();
+    }
+  });
+
   test('commits failed terminal closure only after append and restores it after rollback', () => {
     let fail = true;
     const { store } = open({

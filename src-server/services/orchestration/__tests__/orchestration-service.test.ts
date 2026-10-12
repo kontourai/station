@@ -95,6 +95,7 @@ import {
   orchestrationSteerDispatches,
   orchestrationStoreContentionObserved,
   orchestrationTurnStallDetections,
+  sessionActivityEvents,
   sessionBackgroundTasks,
   sessionOwnerCacheOps,
   tenantExecutionContextOutcomes,
@@ -21886,7 +21887,7 @@ describe('OrchestrationService', () => {
       return eventStore.listEvents(threadId).map((entry) => entry.payload);
     }
 
-    async function startService(threadId: string) {
+    async function startService(threadId: string, stopBudgetMs = 60_000) {
       const events = new AsyncEventQueue<CanonicalRuntimeEvent>(16);
       (claude as any).events = events;
       const warn = vi.fn();
@@ -21899,7 +21900,7 @@ describe('OrchestrationService', () => {
         adapterRegistry: createRegistry([claude]),
         eventBus,
         eventStore,
-        cooperativeStopBudgetMs: 60_000,
+        cooperativeStopBudgetMs: stopBudgetMs,
         logger: { debug: vi.fn(), warn },
       });
       isolated.initialize();
@@ -21922,8 +21923,42 @@ describe('OrchestrationService', () => {
       } as CanonicalRuntimeEvent;
     }
 
-    async function startTurn(threadId: string, turnId: string) {
-      const started = await startService(threadId);
+    /**
+     * Review F2: fail INSIDE the real append, at the event row's INSERT, after
+     * the co-commit participants have run. A throw from an `appendEvent` spy
+     * never reaches them.
+     */
+    function failEventInsertOnce(eventId: string, error: () => Error) {
+      const db = (eventStore as any).db;
+      const prepare = db.prepare.bind(db);
+      let failed = false;
+      return vi.spyOn(db, 'prepare').mockImplementation((sql: unknown) => {
+        const statement = prepare(sql);
+        if (failed || !String(sql).includes('INTO orchestration_events'))
+          return statement;
+        return new Proxy(statement, {
+          get(target, property) {
+            if (property === 'run')
+              return (...args: unknown[]) => {
+                if (!failed && args[0] === eventId) {
+                  failed = true;
+                  throw error();
+                }
+                return target.run(...args);
+              };
+            const value = Reflect.get(target, property);
+            return typeof value === 'function' ? value.bind(target) : value;
+          },
+        });
+      });
+    }
+
+    async function startTurn(
+      threadId: string,
+      turnId: string,
+      stopBudgetMs?: number,
+    ) {
+      const started = await startService(threadId, stopBudgetMs);
       started.events.push(providerStart(threadId, turnId));
       await vi.waitFor(async () =>
         expect(await started.isolated.readSession(threadId)).toMatchObject({
@@ -21961,6 +21996,7 @@ describe('OrchestrationService', () => {
       const progress = vi.spyOn(internals.turnProgress, 'observe');
       const childWork = vi.spyOn(internals.childWork, 'observe');
       const retire = vi.spyOn(internals.clientOriginTurns, 'retire');
+      const threadProviders = vi.spyOn(internals.threadProviders, 'set');
       const isTerminal = ([event]: unknown[]) =>
         (event as CanonicalRuntimeEvent).eventId === terminalId;
       const isTerminalTurn = (args: unknown[]) =>
@@ -21979,6 +22015,10 @@ describe('OrchestrationService', () => {
         progress: callsFor(progress, isTerminal),
         childWork: callsFor(childWork, isTerminal),
         retire: callsFor(retire, isTerminalTurn),
+        threadProviders: callsFor(
+          threadProviders,
+          (args) => args[0] === threadId,
+        ),
         boundaries: boundaryRows(threadId),
       });
       let duringFailure: ReturnType<typeof snapshot> | undefined;
@@ -22023,9 +22063,11 @@ describe('OrchestrationService', () => {
         progress: 0,
         childWork: 0,
         retire: 0,
+        threadProviders: 0,
         boundaries: 1,
       });
       const after = snapshot();
+      expect(after.threadProviders).toBeGreaterThan(0);
       expect(after).toMatchObject({
         emitted: 1,
         stopResult: { outcome: 'turn-completed', threadId, turnId },
@@ -22244,6 +22286,256 @@ describe('OrchestrationService', () => {
       expect(
         stored(threadId).find((event) => event.eventId === terminalId),
       ).toMatchObject({ previousState: 'review_pending' });
+      appendSpy.mockRestore();
+      await isolated.shutdown();
+    });
+
+    test('a turn.started whose append fails after its boundary row was written leaves no row during the retry, and one after (review F2)', async () => {
+      const threadId = 'store-before-show-insert-start';
+      const turnId = 'turn-insert-start';
+      const { events, isolated } = await startService(threadId);
+      let rowsDuringSleep: number | undefined;
+      const prepareSpy = failEventInsertOnce(`${turnId}-started`, () => {
+        // The participant has already written the row inside this append.
+        expect(boundaryRows(threadId)).toBe(1);
+        setTimeout(() => {
+          rowsDuringSleep = boundaryRows(threadId);
+        }, 0);
+        return busy();
+      });
+      events.push(providerStart(threadId, turnId));
+      await vi.waitFor(() =>
+        expect(
+          stored(threadId).some((event) => event.method === 'turn.started'),
+        ).toBe(true),
+      );
+      expect(rowsDuringSleep).toBe(0);
+      expect(boundaryRows(threadId)).toBe(1);
+      prepareSpy.mockRestore();
+      await isolated.shutdown();
+    });
+
+    test('a session.exited whose append fails after the session row was closed keeps the session ready until the retry commits (review F2)', async () => {
+      const threadId = 'store-before-show-insert-exit';
+      const exitId = 'store-before-show-insert-exited';
+      const { events, isolated, internals } = await startService(threadId);
+      expect(internals.sessionReadModel.get(threadId)?.status).toBe('ready');
+      expect(eventStore.readSessionByThread(threadId)?.status).toBe('ready');
+      let duringSleep: { row?: string; readModel?: string } | undefined;
+      const prepareSpy = failEventInsertOnce(exitId, () => {
+        // The participant has already closed the row inside this append.
+        expect(eventStore.readSessionByThread(threadId)?.status).toBe('closed');
+        setTimeout(() => {
+          duringSleep = {
+            row: eventStore.readSessionByThread(threadId)?.status,
+            readModel: internals.sessionReadModel.get(threadId)?.status,
+          };
+        }, 0);
+        return busy();
+      });
+      events.push({
+        eventId: exitId,
+        provider: 'claude',
+        threadId,
+        createdAt: new Date().toISOString(),
+        method: 'session.exited',
+        sessionId: threadId,
+        exitCode: 0,
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(stored(threadId).some((event) => event.eventId === exitId)).toBe(
+          true,
+        ),
+      );
+      expect(duringSleep).toEqual({ row: 'ready', readModel: 'ready' });
+      expect(eventStore.readSessionByThread(threadId)?.status).toBe('closed');
+      expect(internals.sessionReadModel.get(threadId)?.status).toBe('closed');
+      prepareSpy.mockRestore();
+      await isolated.shutdown();
+    });
+
+    test('a session-row participant that throws fails its event with it (review F2)', async () => {
+      const threadId = 'store-before-show-participant';
+      const terminalId = 'store-before-show-participant-completed';
+      const turnId = 'turn-participant';
+      const { events, isolated, warn } = await startTurn(threadId, turnId);
+      const upsertSession = eventStore.upsertSession.bind(eventStore);
+      const upsertSpy = vi
+        .spyOn(eventStore, 'upsertSession')
+        .mockImplementation((session) => {
+          if (session.threadId === threadId)
+            throw new Error('injected session row failure');
+          return upsertSession(session);
+        });
+      events.push({
+        eventId: terminalId,
+        provider: 'claude',
+        threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+        method: 'turn.completed',
+        finishReason: 'stop',
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(warn).toHaveBeenCalledWith(
+          'Provider adapter event stream stopped',
+          expect.objectContaining({ error: 'injected session row failure' }),
+        ),
+      );
+      expect(
+        stored(threadId).some((event) => event.eventId === terminalId),
+      ).toBe(false);
+      upsertSpy.mockRestore();
+      await isolated.shutdown();
+    });
+
+    test('a boundary INSERT that SQLite answers by rolling back the whole transaction stores nothing of the turn.started (review F1)', async () => {
+      const threadId = 'store-before-show-lost-transaction';
+      const turnId = 'turn-lost-transaction';
+      const { events, isolated, emitted } = await startService(threadId);
+      const rowBefore = eventStore.readSessionByThread(threadId);
+      const db = (eventStore as any).db;
+      const prepare = db.prepare.bind(db);
+      let failed = false;
+      const prepareSpy = vi
+        .spyOn(db, 'prepare')
+        .mockImplementation((sql: unknown) => {
+          if (
+            failed ||
+            !String(sql).includes('INSERT INTO orchestration_turn_boundaries')
+          )
+            return prepare(sql);
+          failed = true;
+          // SQLITE_FULL may roll back the whole transaction, not just the
+          // statement (https://sqlite.org/lang_transaction.html).
+          return {
+            run: () => {
+              db.exec('ROLLBACK');
+              throw Object.assign(new Error('database or disk is full'), {
+                errcode: 13,
+                code: 'ERR_SQLITE_ERROR',
+              });
+            },
+          };
+        });
+      events.push(providerStart(threadId, turnId));
+      await vi.waitFor(() =>
+        expect(
+          stored(threadId).some(
+            (event) =>
+              event.method === 'runtime.warning' &&
+              event.code === 'adapter-event-stream-interrupted',
+          ),
+        ).toBe(true),
+      );
+      expect(failed).toBe(true);
+      // Stored and shown, or neither: here neither.
+      expect(
+        stored(threadId).some((event) => event.method === 'turn.started'),
+      ).toBe(false);
+      expect(emitted.some((event) => event.method === 'turn.started')).toBe(
+        false,
+      );
+      expect(boundaryRows(threadId)).toBe(0);
+      expect(eventStore.readSessionByThread(threadId)).toEqual(rowBefore);
+      prepareSpy.mockRestore();
+      await isolated.shutdown();
+    });
+
+    test('an observer that throws after a terminal commits still settles the pending stop (review F3)', async () => {
+      const threadId = 'store-before-show-observer-throws';
+      const turnId = 'turn-observer-throws';
+      const terminalId = 'store-before-show-observer-completed';
+      const { events, isolated, internals } = await startTurn(
+        threadId,
+        turnId,
+        300,
+      );
+      claude.interruptTurn.mockImplementationOnce(() => new Promise(() => {}));
+      let stopResult: unknown;
+      const stop = isolated
+        .dispatch({ type: 'interruptTurn', threadId })
+        .then((result) => {
+          stopResult = result;
+        });
+      await vi.waitFor(() => expect(claude.interruptTurn).toHaveBeenCalled());
+      const observe = internals.childWork.observe.bind(internals.childWork);
+      const observeSpy = vi
+        .spyOn(internals.childWork, 'observe')
+        .mockImplementation((event: CanonicalRuntimeEvent) => {
+          if (event.eventId === terminalId)
+            throw new Error('injected post-commit observer failure');
+          return observe(event);
+        });
+      events.push({
+        eventId: terminalId,
+        provider: 'claude',
+        threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+        method: 'turn.completed',
+        finishReason: 'stop',
+      } as CanonicalRuntimeEvent);
+      await stop;
+      expect(stopResult).toMatchObject({ outcome: 'turn-completed', turnId });
+      // Give a stranded stop time to ride its 300ms budget into the forced
+      // path, which would store a second terminal.
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      const terminals = stored(threadId).filter(
+        (event) =>
+          event.turnId === turnId &&
+          (event.method === 'turn.completed' ||
+            event.method === 'turn.aborted' ||
+            event.method === 'session.stop-settled'),
+      );
+      expect(terminals.map((event) => event.eventId)).toEqual([terminalId]);
+      observeSpy.mockRestore();
+      await isolated.shutdown();
+    });
+
+    test('an activity notification is counted once, after its retried append commits (review F4)', async () => {
+      const threadId = 'store-before-show-activity';
+      const noticeId = 'store-before-show-activity-notice';
+      const { events, isolated } = await startService(threadId);
+      const counter = vi.mocked(sessionActivityEvents.add);
+      counter.mockClear();
+      const appendEvent = eventStore.appendEvent.bind(eventStore);
+      let countDuringSleep: number | undefined;
+      let attempts = 0;
+      const appendSpy = vi
+        .spyOn(eventStore, 'appendEvent')
+        .mockImplementation((event, ...rest) => {
+          if (event.eventId === noticeId && ++attempts === 1) {
+            setTimeout(() => {
+              countDuringSleep = counter.mock.calls.length;
+            }, 0);
+            throw busy();
+          }
+          return appendEvent(event, ...rest);
+        });
+      events.push({
+        eventId: noticeId,
+        provider: 'claude',
+        threadId,
+        createdAt: new Date().toISOString(),
+        method: 'extension.notification',
+        namespace: 'claude-code',
+        type: 'api/retry',
+        payload: { attempt: 1, delayMs: 1000 },
+      } as CanonicalRuntimeEvent);
+      await vi.waitFor(() =>
+        expect(
+          stored(threadId).some((event) => event.eventId === noticeId),
+        ).toBe(true),
+      );
+      expect(attempts).toBe(2);
+      expect(countDuringSleep).toBe(0);
+      expect(counter).toHaveBeenCalledOnce();
+      expect(counter).toHaveBeenCalledWith(1, {
+        provider: 'claude',
+        namespace: 'claude-code',
+        kind: 'api/retry',
+      });
       appendSpy.mockRestore();
       await isolated.shutdown();
     });

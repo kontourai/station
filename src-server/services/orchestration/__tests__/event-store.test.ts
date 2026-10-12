@@ -557,6 +557,44 @@ describe('EventStore', () => {
     }
   });
 
+  // #3561 review F1: SQLite can answer SQLITE_FULL/IOERR/NOMEM by rolling
+  // back the whole transaction. A co-commit participant that swallows that
+  // error returns into autocommit mode; the append must then store nothing,
+  // not commit the event row by row and report it failed.
+  test('an append whose co-commit participant ends the transaction stores nothing and fails', () => {
+    expect(() =>
+      store.appendEvent(
+        {
+          eventId: 'participant-lost-transaction',
+          provider: 'codex',
+          threadId: 'lost-transaction',
+          method: 'turn.started',
+          turnId: 'lost-transaction-turn',
+          createdAt: '2026-10-10T00:00:00.000Z',
+          prompt: 'never stored',
+        },
+        [],
+        () => {
+          (store as any).db.exec('ROLLBACK');
+        },
+      ),
+    ).toThrow();
+    expect(store.listEvents('lost-transaction')).toEqual([]);
+    expect(store.hasEventId('participant-lost-transaction')).toBe(false);
+    // Nothing was left open: the next append commits on its own.
+    expect(
+      store.appendEvent({
+        eventId: 'after-lost-transaction',
+        provider: 'codex',
+        threadId: 'lost-transaction',
+        method: 'turn.started',
+        turnId: 'lost-transaction-turn',
+        createdAt: '2026-10-10T00:00:01.000Z',
+        prompt: 'stored',
+      }),
+    ).toBe(1);
+  });
+
   test('seeded replay cursors remain monotonic across physical Draft discard', () => {
     // The connected client has seen every append. The reconnecting client
     // must see every surviving event whose append happened after its cursor.
