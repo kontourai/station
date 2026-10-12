@@ -1162,6 +1162,11 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
       provider: 'station-agent',
       agentSlug: 'demo-agent',
       boundaryState: 'invoking',
+      // #3562 fix round 1 (F2): no turn of its own, so no abort is attempted
+      // and the decline lands on the BANNER publish — the path this test
+      // exists for. With a started turn the abort is declined first and
+      // this would duplicate the #2235 declined-abort test below.
+      turnStarted: false,
     });
     stores.push(eventStore);
     eventStore.upsertSession({
@@ -1924,6 +1929,361 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
       const rebooted = new EventStore(path);
       stores.push(rebooted);
       expect(rebooted.takeInterruptedTurnBoundaries()).toEqual([]);
+    });
+
+    /**
+     * #3562 fix round 1. Fixtures for the rows recovery must NOT read as
+     * owning a turn: `accepted` rows do not block a new claim, and a steer
+     * takes no claim and re-publishes a non-provider `turn.started` carrying
+     * the id of the turn it steers — which can be an EARLIER accepted row's.
+     */
+    const startOf = (
+      threadId: string,
+      turnId: string,
+      createdAt: string,
+      extra: Record<string, unknown> = {},
+    ) =>
+      ({
+        eventId: `turn-started:${threadId}:${turnId}:${createdAt}`,
+        provider: 'acp',
+        threadId,
+        turnId,
+        createdAt,
+        method: 'turn.started',
+        prompt: 'go',
+        ...extra,
+      }) as CanonicalRuntimeEvent;
+    const completionOf = (
+      threadId: string,
+      turnId: string,
+      createdAt: string,
+    ) =>
+      ({
+        eventId: `turn-completed:${threadId}:${turnId}:${createdAt}`,
+        provider: 'acp',
+        threadId,
+        turnId,
+        createdAt,
+        method: 'turn.completed',
+        finishReason: 'stop',
+      }) as CanonicalRuntimeEvent;
+    const summarize = (eventStore: EventStore, threadId: string) => {
+      const { aborts, banners } = recoveryEvents(eventStore, threadId);
+      return {
+        aborts: aborts.map((e) => e.payload.turnId),
+        banners: banners.length,
+      };
+    };
+    const reboot = (path: string, threadId: string) => {
+      const booted = new EventStore(path);
+      stores.push(booted);
+      booted.upsertSession({
+        provider: 'acp',
+        threadId,
+        status: 'running',
+        createdAt: '2026-08-16T00:00:00.000Z',
+        updatedAt: '2026-08-16T00:00:05.000Z',
+      });
+      return booted;
+    };
+    /** R0 accepted for T0, then R1 claims (accepted rows don't block) and invokes. */
+    function acceptedThenInvoking(
+      path: string,
+      threadId: string,
+      beforeCrash: (dying: EventStore) => void,
+    ): EventStore {
+      const dying = new EventStore(path);
+      dying.appendEvent(sessionStartedEvent({ threadId, provider: 'acp' }));
+      const authority = dying.sessionTurnBoundaryAuthority();
+      const r0 = authority.claim(threadId, '2026-08-16T00:00:01.000Z');
+      if (r0.kind !== 'owner') throw new Error('expected R0 owner');
+      r0.claim.beginInvocation('2026-08-16T00:00:01.050Z');
+      dying.appendEvent(startOf(threadId, 'T0', '2026-08-16T00:00:01.100Z'));
+      expect(r0.claim.accepted('T0', '2026-08-16T00:00:01.150Z')).toEqual({
+        kind: 'applied',
+      });
+      const r1 = authority.claim(threadId, '2026-08-16T00:00:02.000Z');
+      if (r1.kind !== 'owner') throw new Error('expected R1 owner');
+      r1.claim.beginInvocation('2026-08-16T00:00:02.050Z');
+      beforeCrash(dying);
+      dying.close();
+      return reboot(path, threadId);
+    }
+
+    test('F1/P1: a steer of an earlier accepted turn, which then completed, is not the invoking dispatch’s turn — it is bannered without an abort', async () => {
+      const path = databasePath();
+      const threadId = 'thread-steer-earlier-completed';
+      const eventStore = acceptedThenInvoking(path, threadId, (dying) => {
+        dying.appendEvent(
+          startOf(threadId, 'T0', '2026-08-16T00:00:02.100Z', {
+            inputKind: 'steer',
+          }),
+        );
+        dying.appendEvent(
+          completionOf(threadId, 'T0', '2026-08-16T00:00:02.500Z'),
+        );
+      });
+
+      await (serviceOn(eventStore) as any).interruptedTurns.consume();
+
+      expect(summarize(eventStore, threadId)).toEqual({
+        aborts: [],
+        banners: 1,
+      });
+    });
+
+    test('F1/P2: a steer of an earlier still-open accepted turn: that row aborts it once, and the invoking row only banners', async () => {
+      const path = databasePath();
+      const threadId = 'thread-steer-earlier-open';
+      const eventStore = acceptedThenInvoking(path, threadId, (dying) => {
+        dying.appendEvent(
+          startOf(threadId, 'T0', '2026-08-16T00:00:02.100Z', {
+            inputKind: 'steer',
+          }),
+        );
+      });
+
+      await (serviceOn(eventStore) as any).interruptedTurns.consume();
+
+      expect(summarize(eventStore, threadId)).toEqual({
+        aborts: ['T0'],
+        banners: 2,
+      });
+    });
+
+    test('F1: a fresh start whose turn id another boundary row names is that row’s turn, not the invoking dispatch’s', async () => {
+      // An accepted row's own start arriving late (e.g. deferred behind a
+      // Stop) after a later claim: the id is R0's, so R1 owns no turn.
+      const path = databasePath();
+      const threadId = 'thread-late-start-of-other-row';
+      const dying = new EventStore(path);
+      dying.appendEvent(sessionStartedEvent({ threadId, provider: 'acp' }));
+      const authority = dying.sessionTurnBoundaryAuthority();
+      const r0 = authority.claim(threadId, '2026-08-16T00:00:01.000Z');
+      if (r0.kind !== 'owner') throw new Error('expected R0 owner');
+      r0.claim.beginInvocation('2026-08-16T00:00:01.050Z');
+      r0.claim.accepted('T0', '2026-08-16T00:00:01.150Z');
+      const r1 = authority.claim(threadId, '2026-08-16T00:00:02.000Z');
+      if (r1.kind !== 'owner') throw new Error('expected R1 owner');
+      r1.claim.beginInvocation('2026-08-16T00:00:02.050Z');
+      dying.appendEvent(startOf(threadId, 'T0', '2026-08-16T00:00:02.100Z'));
+      dying.close();
+      const eventStore = reboot(path, threadId);
+
+      await (serviceOn(eventStore) as any).interruptedTurns.consume();
+
+      expect(summarize(eventStore, threadId)).toEqual({
+        aborts: ['T0'],
+        banners: 2,
+      });
+    });
+
+    test('two fresh non-provider starts after the claim: the LATEST is the dispatch’s own (closed), never read as moved on', async () => {
+      const path = databasePath();
+      const threadId = 'thread-two-fresh-starts';
+      const eventStore = crashWhileInvoking(path, threadId, (dying) => {
+        dying.appendEvent(
+          startOf(threadId, 'turn-1b', '2026-08-16T00:00:01.400Z'),
+        );
+      });
+
+      await (serviceOn(eventStore) as any).interruptedTurns.consume();
+
+      const { events } = recoveryEvents(eventStore, threadId);
+      expect(summarize(eventStore, threadId)).toEqual({
+        aborts: ['turn-1b'],
+        banners: 1,
+      });
+      expect(
+        activeTurnIdForEvents(events.map((row) => row.payload)),
+      ).toBeUndefined();
+    });
+
+    test('M3: an invoking row whose turn never started, after an earlier completed turn, still banners (that turn is not its own)', async () => {
+      const path = databasePath();
+      const threadId = 'thread-invoking-after-completed';
+      const dying = new EventStore(path);
+      dying.appendEvent(sessionStartedEvent({ threadId, provider: 'acp' }));
+      dying.appendEvent(startOf(threadId, 'T0', '2026-08-16T00:00:00.500Z'));
+      dying.appendEvent(
+        completionOf(threadId, 'T0', '2026-08-16T00:00:00.700Z'),
+      );
+      const r1 = dying
+        .sessionTurnBoundaryAuthority()
+        .claim(threadId, '2026-08-16T00:00:01.000Z');
+      if (r1.kind !== 'owner') throw new Error('expected R1 owner');
+      r1.claim.beginInvocation('2026-08-16T00:00:01.050Z');
+      dying.close();
+      const eventStore = reboot(path, threadId);
+
+      await (serviceOn(eventStore) as any).interruptedTurns.consume();
+
+      expect(summarize(eventStore, threadId)).toEqual({
+        aborts: [],
+        banners: 1,
+      });
+    });
+
+    test('M5: abort published, banner declined, process dies — the next boot still banners (its own recovery abort is not the turn finishing)', async () => {
+      const path = databasePath();
+      const threadId = 'thread-abort-then-banner-declined';
+      const eventStore = crashWhileInvoking(path, threadId);
+      const service = serviceOn(eventStore) as any;
+      const publish = service.projectAndPublishEvent.bind(service);
+      service.projectAndPublishEvent = (event: CanonicalRuntimeEvent) =>
+        event.method === 'session.state-changed' ? false : publish(event);
+
+      await service.interruptedTurns.consume();
+      expect(summarize(eventStore, threadId)).toEqual({
+        aborts: ['turn-1'],
+        banners: 0,
+      });
+      eventStore.close();
+
+      const rebooted = reboot(path, threadId);
+      await (serviceOn(rebooted) as any).interruptedTurns.consume();
+      expect(summarize(rebooted, threadId)).toEqual({
+        aborts: ['turn-1'],
+        banners: 1,
+      });
+    });
+
+    test('M8: a non-provider turn starting during the FileMemory await is never taken as the dead dispatch’s own', async () => {
+      const path = databasePath();
+      const threadId = 'thread-start-during-await';
+      const dying = new EventStore(path);
+      dying.appendEvent(
+        sessionStartedEvent({
+          threadId,
+          provider: 'acp',
+          agentSlug: 'demo-agent',
+        }),
+      );
+      const r1 = dying
+        .sessionTurnBoundaryAuthority()
+        .claim(threadId, '2026-08-16T00:00:01.000Z');
+      if (r1.kind !== 'owner') throw new Error('expected R1 owner');
+      r1.claim.beginInvocation('2026-08-16T00:00:01.050Z');
+      dying.appendEvent(
+        startOf(threadId, 'turn-1', '2026-08-16T00:00:01.100Z'),
+      );
+      dying.close();
+      const eventStore = reboot(path, threadId);
+      const memory = fakeMemoryAdapter({
+        conventionalUserId: 'agent:demo-agent',
+      });
+      let interleaved = false;
+      memory.getMessages.mockImplementation(async () => {
+        if (!interleaved) {
+          interleaved = true;
+          eventStore.appendEvent(
+            startOf(threadId, 'turn-2', '2026-08-16T00:05:00.000Z'),
+          );
+        }
+        return [];
+      });
+      const service = new OrchestrationService({
+        adapterRegistry: createRegistry(),
+        eventBus: new EventBus(),
+        eventStore,
+        logger,
+        memoryAdapters: new Map([['demo-agent', memory]]),
+      });
+
+      await (service as any).interruptedTurns.consume();
+
+      // Derived before the await, the dead turn is `turn-1`; `turn-2` then
+      // reads as the thread moving on, and nothing lands on the live turn.
+      expect(summarize(eventStore, threadId)).toEqual({
+        aborts: [],
+        banners: 0,
+      });
+    });
+
+    test('M6: a terminal carrying the turn’s id that precedes its own start does not read as the turn finishing', async () => {
+      // A real finish is sequenced AFTER the turn's start; this terminal is
+      // sequenced before it (a stale fact under a reused id), so it says
+      // nothing about whether the started turn finished.
+      const path = databasePath();
+      const threadId = 'thread-terminal-before-start';
+      const dying = new EventStore(path);
+      dying.appendEvent(sessionStartedEvent({ threadId, provider: 'acp' }));
+      const claimed = dying
+        .sessionTurnBoundaryAuthority()
+        .claim(threadId, '2026-08-16T00:00:01.000Z');
+      if (claimed.kind !== 'owner') throw new Error('expected boundary owner');
+      claimed.claim.beginInvocation('2026-08-16T00:00:01.100Z');
+      dying.appendEvent(
+        completionOf(threadId, 'turn-1', '2026-08-16T00:00:01.150Z'),
+      );
+      dying.appendEvent(
+        startOf(threadId, 'turn-1', '2026-08-16T00:00:01.200Z'),
+      );
+      dying.close();
+      const rebooted = reboot(path, threadId);
+
+      await (serviceOn(rebooted) as any).interruptedTurns.consume();
+
+      expect(summarize(rebooted, threadId)).toEqual({
+        aborts: ['turn-1'],
+        banners: 1,
+      });
+    });
+
+    test('F4: a later terminal of a DIFFERENT turn does not hide that the dispatch’s own turn already finished', async () => {
+      const path = databasePath();
+      const threadId = 'thread-own-done-then-other-terminal';
+      const eventStore = crashWhileInvoking(path, threadId, (dying) => {
+        dying.appendEvent(
+          completionOf(threadId, 'turn-1', '2026-08-16T00:00:01.500Z'),
+        );
+        // A late confirmation for some earlier turn lands afterwards.
+        dying.appendEvent({
+          eventId: `late-abort:${threadId}`,
+          provider: 'acp',
+          threadId,
+          turnId: 'turn-0',
+          createdAt: '2026-08-16T00:00:01.600Z',
+          method: 'turn.aborted',
+          reason: 'stopped',
+        } as CanonicalRuntimeEvent);
+      });
+
+      await (serviceOn(eventStore) as any).interruptedTurns.consume();
+
+      expect(summarize(eventStore, threadId)).toEqual({
+        aborts: ['turn-0'],
+        banners: 0,
+      });
+      eventStore.close();
+      const rebooted = new EventStore(path);
+      stores.push(rebooted);
+      expect(rebooted.takeInterruptedTurnBoundaries()).toEqual([]);
+    });
+
+    test('a codex deferred-retriable runtime.error on the own turn is not that turn finishing: it is still closed and bannered', async () => {
+      const path = databasePath();
+      const threadId = 'thread-own-deferred-retry';
+      const eventStore = crashWhileInvoking(path, threadId, (dying) => {
+        dying.appendEvent({
+          eventId: `retry:${threadId}`,
+          provider: 'codex',
+          threadId,
+          turnId: 'turn-1',
+          createdAt: '2026-08-16T00:00:01.300Z',
+          method: 'runtime.error',
+          severity: 'error',
+          message: 'reconnecting',
+          retriable: true,
+        } as CanonicalRuntimeEvent);
+      });
+
+      await (serviceOn(eventStore) as any).interruptedTurns.consume();
+
+      expect(summarize(eventStore, threadId)).toEqual({
+        aborts: ['turn-1'],
+        banners: 1,
+      });
     });
   });
 });
