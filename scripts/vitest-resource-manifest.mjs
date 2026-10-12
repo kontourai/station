@@ -1115,6 +1115,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/ssh/__tests__/openssh-reachability.process.test.ts',
   'src-server/services/orchestration/__tests__/planned-home-transfer-store.process.test.ts',
   'src-server/services/ssh/__tests__/openssh-launch-bootstrap.test.ts',
+  // #2675: runs the Windows identity probe (System32 PowerShell) against a
+  // real child node.exe; it runs only on win32, in the Windows PR job.
+  'packages/cli/src/__tests__/windows-process-identity.process.test.ts',
   'src-server/services/ssh/__tests__/openssh-worker-probe.test.ts',
   'src-server/services/terminal/__tests__/terminal-subprocess-state.test.ts',
   // Timing-sensitive responsive-UI suites: no child_process import, kept out

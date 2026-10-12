@@ -1,0 +1,7 @@
+{
+  "revision": "8887792b813d62701c6d76a1b7183bd60da21c44",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Reviewed the station stop paragraph against stopRecord: added the Windows fingerprint (start time and executable image) and the unread-identity refusal that keeps the record. Other lifecycle claims unchanged by this delta.","inputs":["docs/reference/cli.md","packages/cli/src/commands/lifecycle.ts"]}
+  ]
+}

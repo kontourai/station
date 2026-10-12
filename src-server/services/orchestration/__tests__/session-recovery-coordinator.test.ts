@@ -2604,6 +2604,97 @@ describe('SessionRecoveryCoordinator', () => {
     vi.useRealTimers();
   });
 
+  /** A prior process claimed a due recovery and exited before invoking it. */
+  function abandonedDueClaim() {
+    const path = join(
+      makeTempDir('recovery-due-startup-'),
+      'orchestration.sqlite',
+    );
+    const first = new EventStore(path);
+    const ledger = recoveryLedger(first);
+    const intent = ledger.arm({
+      fingerprint: 'due-thread:turn:capacity:account',
+      threadId: 'due-thread',
+      provider: 'claude',
+      sourceEventId: 'due-event',
+      sourceTurnId: 'turn',
+      failureKind: 'capacity',
+      scope: 'account',
+      decision: 'retry-now',
+      dueAt: '2026-08-11T12:00:00.000Z',
+      maxAttempts: 1,
+      outcome: 'armed',
+      createdAt: '2026-08-11T12:00:00.000Z',
+      updatedAt: '2026-08-11T12:00:00.000Z',
+    });
+    expect(
+      ledger.claim({
+        fingerprint: intent.fingerprint,
+        kind: 'due',
+        now: '2026-08-11T12:00:00.000Z',
+      }).kind,
+    ).toBe('owner');
+    // Closing releases this process's owner registration, as an exit would.
+    first.close();
+    return { path, fingerprint: intent.fingerprint };
+  }
+
+  function restartedCoordinator(store: EventStore) {
+    const outcomes = vi.fn();
+    const coordinator = new SessionRecoveryCoordinator({
+      eventStore: store,
+      adapterForProvider: () =>
+        ({ metadata: { recovery: { sameSession: true } } }) as any,
+      sendTurn: vi.fn(async () => ({ turnId: 'must-not-run' })),
+      onOutcome: outcomes,
+      now: () => new Date('2026-08-11T12:00:01.000Z'),
+    });
+    return { coordinator, outcomes };
+  }
+
+  test('#2823: startup records indeterminate for an abandoned due claim that its scan fenced', () => {
+    const { path, fingerprint } = abandonedDueClaim();
+    const store = new EventStore(path);
+    const { coordinator, outcomes } = restartedCoordinator(store);
+
+    coordinator.reconcile();
+
+    expect(recoveryLedger(store).find(fingerprint)).toMatchObject({
+      outcome: 'indeterminate',
+    });
+    expect(outcomes).toHaveBeenCalledWith({
+      failureKind: 'capacity',
+      decision: 'retry-now',
+      outcome: 'indeterminate',
+    });
+    store.close();
+  });
+
+  test('#2823: startup records nothing when the due scan is unavailable', () => {
+    const { path, fingerprint } = abandonedDueClaim();
+    const store = new EventStore(path);
+    vi.spyOn(
+      store as unknown as {
+        preparedRecoveryDispatches: (...args: unknown[]) => unknown;
+      },
+      'preparedRecoveryDispatches',
+    ).mockImplementation(() => {
+      throw new Error('SQLITE_BUSY: database is locked');
+    });
+    const { coordinator, outcomes } = restartedCoordinator(store);
+
+    coordinator.reconcile();
+
+    // Nothing was fenced, so there is no outcome to record; the claim stays
+    // durable for a later startup.
+    expect(outcomes).not.toHaveBeenCalled();
+    expect(recoveryLedger(store).find(fingerprint)).toMatchObject({
+      outcome: 'resumed',
+      dispatchSettlement: 'prepared',
+    });
+    store.close();
+  });
+
   test('refuses a re-entrant runtime error after dispose publishes its stopping gate', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'recovery-stopping-gate-'));
     dirs.push(dir);

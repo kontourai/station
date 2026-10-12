@@ -181,8 +181,12 @@ export class SessionRecoveryCoordinator {
       this.now().toISOString(),
       'due',
     );
-    for (const intent of unsettled)
-      this.recordIntentOutcome(intent, 'indeterminate');
+    // An unreadable scan fences nothing, so there is no outcome to record.
+    // Its prepared rows stay durable for the next startup; this due-path
+    // sweep has no in-process retry (#2823 scopes that to credentials).
+    if (unsettled.kind === 'available')
+      for (const intent of unsettled.obligations)
+        this.recordIntentOutcome(intent, 'indeterminate');
     // #3563: the bulk repair is defence in depth. Each timer re-checks the
     // same rule for its own intent before it can dispatch, so a failed
     // repair only needs to be said, not to pause every recovery.

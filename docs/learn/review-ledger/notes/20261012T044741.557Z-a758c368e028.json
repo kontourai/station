@@ -1,0 +1,7 @@
+{
+  "revision": "8887792b813d62701c6d76a1b7183bd60da21c44",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Delta review for #2675: docs/reference/cli.md gained two sentences on the Windows stop fingerprint and the unread-identity refusal. This document does not describe station stop identity checks; no prose change.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]}
+  ]
+}

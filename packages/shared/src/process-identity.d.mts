@@ -40,6 +40,15 @@ export function lookupProcessBirthFingerprint(
   pid: number,
   dependencies?: ProcessIdentityDependencies,
 ): string | null;
+export const WINDOWS_PROCESS_IMAGE_IDENTITY_TIMEOUT_MS: number;
+export type WindowsProcessImageIdentity = { birth: string; image: string };
+export function lookupWindowsProcessImageIdentity(
+  pid: number,
+  dependencies?: Pick<
+    ProcessIdentityDependencies,
+    'exec' | 'env' | 'timeoutMs'
+  >,
+): WindowsProcessImageIdentity | null;
 export type OwnProcessBirthProbeSchedule = {
   retryDelayMs: number;
   attempts: Array<{ timeoutMs: number; windowsShell: string | undefined }>;
