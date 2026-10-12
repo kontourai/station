@@ -200,10 +200,15 @@ refreshes the capability observation before reloading.
 
 Above the composer, a failed session's banner offers its "send a message" note
 only when a send can go out: not while the conversation's continuation is
-unproven, and not for a paired device without `orchestration:operate`. That
-device is also not offered Start new chat. The agent-turn toast's session
-chord (⌘1/Ctrl+1) and the composer menu's command-launcher chord are not shown
-on a coarse primary pointer.
+unproven, and not when the server's open read says this caller may not
+continue the conversation (`callerAccess.continue`). Start new chat is not
+offered when it says this caller may not start a chat
+(`callerAccess.startChat`). The client does not re-derive scopes; when the
+server sent no answer, the actions show and the server still enforces. The
+agent-turn toast's session chord (⌘1/Ctrl+1) and the composer menu's
+command-launcher chord are not shown on a coarse primary pointer. A touch
+tablet with a hardware keyboard loses them too; Station has no
+keyboard-presence signal, and that limit is accepted.
 
 The pill uses compact state labels such as Working, Thinking, and Reconnecting;
 it does not expand to display tool names. State changes animate its width with

@@ -1291,9 +1291,14 @@ Resolves one inventory row under the server's request-derived authority before
 a caller treats it as a writable Session. The discriminated result is
 `resolved`, `missing-session`, or `unavailable`; only the `resolved` arm can
 carry a current Session identity and a server-derived
-`canContinue` decision. Transport, rejection, and invalid wire failures throw a
-typed `ConversationOpenResolutionFailure` rather than degrading to an empty
-chat.
+`canContinue` decision. Every arm may also carry `callerAccess`
+(`{ continue, startChat }`): whether the server's HTTP boundary would let THIS
+caller post `POST /api/orchestration/chat/:conversationId/continue` or
+`POST /api/orchestration/chat`. Older servers, and requests with no
+authenticated principal, omit it; treat absent as unknown. A present value that
+is not that pair of booleans is an invalid response. Transport, rejection, and
+invalid wire failures throw a typed `ConversationOpenResolutionFailure` rather
+than degrading to an empty chat.
 
 Import this exceptional-path API from
 `@kontourai/station-sdk/conversation-open`. Keeping it on a dedicated subpath
