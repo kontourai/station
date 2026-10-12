@@ -1139,6 +1139,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // launches a real Chromium via `@playwright/test` to measure real cascade-
   // resolved layout at phone viewports.
   'src-ui/src/components/notifications/__tests__/NotificationContainer.touch-target.test.tsx',
+  // Same shape: launches a real Chromium via `@playwright/test` to measure
+  // the chat dock's failure banner and recovery notice at a phone viewport.
+  'src-ui/src/components/chat-dock/__tests__/ChatDockFailureStack.geometry.test.tsx',
   // station#4470a: same shape again — launches a real Chromium via
   // `@playwright/test` to measure real cascade-resolved geometry (the
   // disclosure toggle vs. the message text's own line rects) at a phone
