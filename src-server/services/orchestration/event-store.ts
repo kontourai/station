@@ -12235,7 +12235,7 @@ export class EventStore {
         : "outcome IN ('armed', 'manual')";
     const row = this.db
       .prepare(
-        `UPDATE orchestration_recovery_intents
+        `UPDATE orchestration_recovery_intents AS intent
          SET outcome = 'resumed', attempts = attempts + 1, outcome_reason = NULL,
              dispatch_attempt_id = ?, recovery_correlation_id = ?,
              dispatch_settlement = 'prepared', dispatch_kind = ?,
@@ -12243,6 +12243,7 @@ export class EventStore {
              dispatch_owner_birth = ?, dispatch_owner_identity_kind = ?, updated_at = ?
          WHERE fingerprint = ? AND ${eligibility} AND attempts < max_attempts
            AND dispatch_attempt_id IS NULL AND recovery_correlation_id IS NULL
+           AND NOT ${RECOVERY_SOURCE_TERMINATED}
          RETURNING fingerprint, thread_id, provider, source_event_id, source_turn_id,
                    failure_kind, scope, decision, due_at, attempts, max_attempts,
                    outcome, dispatch_attempt_id, recovery_correlation_id,

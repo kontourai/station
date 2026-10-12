@@ -222,21 +222,32 @@ export class SessionRecoveryCoordinator {
       if (intent) this.recordIntentOutcome(intent, 'canceled');
       return false;
     }
+    // An unread intent is re-armed too: the claim is a compare-and-set, so a
+    // timer for an intent that is no longer armed can never dispatch.
+    if (intent === undefined || intent?.outcome === 'armed') {
+      this.deferUnreadFence(fingerprint);
+    }
+    return false;
+  }
+
+  /**
+   * #3563: a fire-time read that failed. The dispatch waits and asks again.
+   * Never while stopping: shutdown owns every timer from that point. A store
+   * closed without disposing this coordinator keeps re-arming every 60s;
+   * production disposes first, and the timers are unref'd.
+   */
+  private deferUnreadFence(fingerprint: string): void {
     this.options.logger?.warn(
       'Recovery fire-time source-terminal check is unavailable; the dispatch waits and retries',
       { retryInMs: SOURCE_TERMINAL_FENCE_RETRY_MS },
     );
-    // An unread intent is re-armed too: the claim is a compare-and-set, so a
-    // timer for an intent that is no longer armed can never dispatch.
-    if (intent === undefined || intent?.outcome === 'armed') {
-      this.schedule(
-        fingerprint,
-        new Date(
-          this.now().getTime() + SOURCE_TERMINAL_FENCE_RETRY_MS,
-        ).toISOString(),
-      );
-    }
-    return false;
+    if (this.stopping || this.disposed) return;
+    this.schedule(
+      fingerprint,
+      new Date(
+        this.now().getTime() + SOURCE_TERMINAL_FENCE_RETRY_MS,
+      ).toISOString(),
+    );
   }
 
   async dispose(): Promise<void> {
@@ -876,10 +887,18 @@ export class SessionRecoveryCoordinator {
   }
 
   private trackClaimAndResume(fingerprint: string): void {
-    if (
-      !this.options.autoResume ||
-      !this.ledger.find(fingerprint)?.usageLimit
-    ) {
+    // This runs in the timer callback itself, so a throwing read must not
+    // escape it (#3563 review M1): it is an unread fence like any other.
+    let usageLimit: boolean | undefined;
+    try {
+      usageLimit = this.options.autoResume
+        ? this.ledger.find(fingerprint)?.usageLimit
+        : undefined;
+    } catch {
+      this.deferUnreadFence(fingerprint);
+      return;
+    }
+    if (!this.options.autoResume || !usageLimit) {
       this.enqueueLifecycle(fingerprint, () =>
         this.claimAndResume(fingerprint),
       );
