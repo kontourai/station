@@ -1,0 +1,19 @@
+{
+  "revision": "529f2a241f16e1278239ee4aa4375afc39858739",
+
+  "notes": [
+    {"path":"docs/design/instance-registry.md","note":"#561 fix round: process-identity.mjs drops compareProcessBirthFingerprints (no caller left) and keeps processBirthPredatesCurrentBoot; existing birth probes unchanged. Re-read the birth-aware liveness and retain-on-unknown claims; still accurate. No prose change.","inputs":["docs/design/instance-registry.md","packages/shared/src/process-identity.mjs"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"#561 fix round: the process-utils sweep no longer signals a group whose leader is dead; it retains and reports it (survivingGroups, Station logger warning), and the ps listing parser is a pure function. The lab's owned-process teardown and cleanup claims concern its own runner and stay accurate. No prose change.","inputs":["docs/guides/local-collaboration-lab.md","src-server/services/infra/process-utils.ts"]},
+
+    {"path":"docs/guides/native-releases.md","note":"#561 fix round: process-identity.mjs drops the unused compareProcessBirthFingerprints; existing probes unchanged. No claim in the guide is bound to it. No prose change.","inputs":["docs/guides/native-releases.md","packages/shared/src/process-identity.mjs"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"#561 fix round: process-identity.mjs drops the unused compareProcessBirthFingerprints; existing probes unchanged. Orphan allowance, cleanup receipt and boot-ID mentions refer to shell lanes and native bootstrap. No prose change.","inputs":["docs/guides/native-shell-verification.md","packages/shared/src/process-identity.mjs"]},
+
+    {"path":"docs/guides/nightly.md","note":"#561 fix round: process-identity.mjs drops the unused compareProcessBirthFingerprints; existing probes unchanged. Only an unrelated upload-certificate fingerprint is mentioned. No prose change.","inputs":["docs/guides/nightly.md","packages/shared/src/process-identity.mjs"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"#561 fix round: the process-utils sweep retains (never signals) a dead leader's live group and reports it. The settled-owned-processes claim is a dated broker receipt and stays accurate. No prose change.","inputs":["docs/guides/self-hosted-broker.md","src-server/services/infra/process-utils.ts"]},
+
+    {"path":"src-server/services/connections/pion-peer/README.md","note":"#561 fix round: the process-utils sweep retains (never signals) a dead leader's live group and reports it. The peer cleanup claim (closes the peer and its owned process tree) is unaffected. No prose change.","inputs":["src-server/services/connections/pion-peer/README.md","src-server/services/infra/process-utils.ts"]}
+  ]
+}

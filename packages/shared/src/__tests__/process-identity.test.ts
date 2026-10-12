@@ -19,6 +19,7 @@ import {
   lookupProcessBirthFingerprint,
   lookupProcessBirthFingerprintAsync,
   probeExactProcessIdentity,
+  processBirthPredatesCurrentBoot,
   resolveOwnProcessIdentity,
   WINDOWS_OWN_PROCESS_BIRTH_DEADLINE_MS,
   WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS,
@@ -597,5 +598,85 @@ describe('birthProvesReuse (station#2904)', () => {
       exec: () => '2026-08-29T16:16:27.1234567Z\n',
     });
     expect(describeRecentProcessBirthProbeFailures(pid)).toBe('');
+  });
+});
+
+// #561: the orphan sweep drops a dead leader's record from an earlier boot
+// without signaling. Every null below is a "cannot tell" the sweep must read
+// as retain, never as either answer.
+describe('processBirthPredatesCurrentBoot', () => {
+  const sysctl =
+    (output: string) =>
+    (file: string, args: readonly string[]): string => {
+      expect(file).toBe('sysctl');
+      expect(args).toEqual(['-n', 'kern.boottime']);
+      return output;
+    };
+  const bootOutput =
+    '{ sec = 1790526207, usec = 331171 } Sun Sep 27 10:23:27 2026\n';
+
+  test('compares an lstart birth with kern.boottime', () => {
+    // 1790526207 is 2026-09-27T16:23:27Z.
+    expect(
+      processBirthPredatesCurrentBoot('Sun Sep 27 16:23:26 2026', {
+        platform: 'darwin',
+        exec: sysctl(bootOutput),
+      }),
+    ).toBe(true);
+    expect(
+      processBirthPredatesCurrentBoot('Sun Sep 27 16:23:27 2026', {
+        platform: 'darwin',
+        exec: sysctl(bootOutput),
+      }),
+    ).toBe(false);
+  });
+
+  test('compares a Linux birth with the current boot id', () => {
+    const readFile = () => '0b6c3e9a-1f2d-4c5b-9a8e-7d6f5e4c3b2a\n';
+    expect(
+      processBirthPredatesCurrentBoot(
+        'linux:0b6c3e9a-1f2d-4c5b-9a8e-7d6f5e4c3b2a:42',
+        { platform: 'linux', readFile },
+      ),
+    ).toBe(false);
+    expect(
+      processBirthPredatesCurrentBoot(
+        'linux:00000000-0000-0000-0000-000000000000:42',
+        { platform: 'linux', readFile },
+      ),
+    ).toBe(true);
+  });
+
+  test('is null when the boot clock or the birth cannot be read', () => {
+    expect(
+      processBirthPredatesCurrentBoot('Sun Sep 27 14:23:26 2026', {
+        platform: 'darwin',
+        exec: () => {
+          throw new Error('sysctl timed out');
+        },
+      }),
+    ).toBeNull();
+    expect(
+      processBirthPredatesCurrentBoot('Sun Sep 27 14:23:26 2026', {
+        platform: 'darwin',
+        exec: sysctl('kern.boottime: unknown'),
+      }),
+    ).toBeNull();
+    expect(
+      processBirthPredatesCurrentBoot('linux:abc:1', {
+        platform: 'linux',
+        readFile: () => {
+          throw new Error('ENOENT');
+        },
+      }),
+    ).toBeNull();
+    expect(
+      processBirthPredatesCurrentBoot('not a birth', { platform: 'darwin' }),
+    ).toBeNull();
+    expect(
+      processBirthPredatesCurrentBoot('Sun Sep 27 14:23:26 2026', {
+        platform: 'win32',
+      }),
+    ).toBeNull();
   });
 });
