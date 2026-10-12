@@ -99,14 +99,38 @@ function temporaryPath(path: string): string {
   return `${path}.${process.pid}.${randomUUID()}.tmp`;
 }
 
+/**
+ * Writes `text` to a new owner-only `temp`. A failed write (ENOSPC, EIO)
+ * removes the partly created file instead of leaving it beside the target.
+ */
+function writeTemporaryFile(temp: string, text: string): void {
+  try {
+    writeFileSync(temp, text, { mode: 0o600, flag: 'wx' });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') removeQuietly(temp);
+    throw error;
+  }
+}
+
+/** Cleanup that never replaces the error being reported. */
+function removeQuietly(path: string): void {
+  try {
+    rmSync(path, { force: true });
+  } catch {
+    // The caller rethrows the original failure.
+  }
+}
+
 /** Durably publishes one small owner-only JSON file by rename. */
 export function writeJsonAtomically(path: string, value: unknown): void {
   const temp = temporaryPath(path);
-  writeFileSync(temp, `${JSON.stringify(value)}\n`, {
-    mode: 0o600,
-    flag: 'wx',
-  });
-  renameSync(temp, path);
+  writeTemporaryFile(temp, `${JSON.stringify(value)}\n`);
+  try {
+    renameSync(temp, path);
+  } catch (error) {
+    removeQuietly(temp);
+    throw error;
+  }
 }
 
 /** Another request is queued or being staged. */
@@ -141,10 +165,7 @@ export function writeServiceUpdateRequest(
     ...(targetVersion ? { targetVersion } : {}),
   };
   const temp = temporaryPath(paths.request);
-  writeFileSync(temp, `${JSON.stringify(request)}\n`, {
-    mode: 0o600,
-    flag: 'wx',
-  });
+  writeTemporaryFile(temp, `${JSON.stringify(request)}\n`);
   try {
     linkSync(temp, paths.request);
   } catch (error) {
