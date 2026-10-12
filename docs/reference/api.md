@@ -3519,7 +3519,8 @@ operator credential or the desktop's own local grant); changing a group needs
 the operator credential itself, as changing a device's access does:
 
 - `GET /api/pairing/people` returns `{ people: StationPerson[] }`: everyone
-  with a group assignment or a live device tied to them, each with `group`,
+  with a group assignment, a live device tied to them, or a personal access
+  token (a token outlives its person's devices), each with `group`,
   `assigned`, and their tied devices' granted `scope` and `effectiveScope`
   (the scope capped by the group).
 - `PUT /api/pairing/people/:principalId/group` with `{ "group": "admin" |

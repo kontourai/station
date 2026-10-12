@@ -1,0 +1,9 @@
+{
+  "revision": "fe63a6d5848e9a2b21838740a613588b05a53506",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Inputs changed: approval-posture-server-ordered.md (added the #3557 group-limited refusal details) and remote-access-threat-model.md (same, in the approval:full-access paragraph). This design cites the threat model only for the Funnel/ingress rejection and the approval-posture doc only for defaultApprovalMode at session start; both claims are untouched.","inputs":["docs/design/automations.md","docs/design/approval-posture-server-ordered.md","docs/security/remote-access-threat-model.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Input docs/reference/api.md changed only in the People list membership (token owners are listed too). This guide routes callers to the API, SDK and contracts references without restating the people routes; its routing still holds.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

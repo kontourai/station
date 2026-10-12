@@ -163,8 +163,8 @@ as a device, so revoking a device does not reset it.
 
 A device approved with a person's verified identity or account is tied to that
 person (#3557). **Settings → Devices → People**, shown only to the operator,
-lists everyone with a tied device or a group, what each tied device may use,
-and their personal access tokens.
+lists everyone with a tied device, a group or a token, what each tied device
+may use, and their personal access tokens.
 
 A person's **group** caps every device tied to them. **Member**, the default,
 allows Read, Operate and Terminal. **Admin** also allows `coding:exec`, full
