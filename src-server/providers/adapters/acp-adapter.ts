@@ -296,6 +296,14 @@ export function acpConnectionDefaultCwd(config: {
 
 export interface AcpAdapterOptions {
   getConnections: () => Promise<ACPConnectionConfig[]>;
+  /**
+   * The model ids a connection's observed initialize handshake offered, read
+   * from the manager's live status. Feeds `offeredStartModelIds`; the exact
+   * check inside `startSession` remains the authority.
+   */
+  getAdvertisedModelIds?: (
+    connectionId: string,
+  ) => readonly string[] | undefined;
   logger?: AcpLogger;
   processFactory?: (opts: ACPProcessOptions) => ACPProcess;
   /** Injectable Station home for private unbound-session workspaces. */
@@ -1964,6 +1972,10 @@ export class AcpAdapter implements ProviderAdapterShape {
     signal?: AbortSignal;
   }): AsyncIterable<CanonicalRuntimeEvent> {
     return this.events.iterable(options);
+  }
+
+  offeredStartModelIds(connectionId: string): readonly string[] | undefined {
+    return this.options.getAdvertisedModelIds?.(connectionId);
   }
 
   async getPrerequisites(options?: {

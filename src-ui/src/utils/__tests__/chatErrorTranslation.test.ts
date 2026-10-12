@@ -649,3 +649,23 @@ describe('attachment refusal (attachment_input_unsupported)', () => {
     expect(translated.retryable).toBe(false);
   });
 });
+
+describe('model refusal (model_not_advertised)', () => {
+  const refusal = {
+    status: 400,
+    // The literal the server forwards, not the constant.
+    code: 'model_not_advertised',
+    message:
+      "Engine connection 'opencode' did not offer the model 'gpt-6.1-sol'. Choose one of the models it offers.",
+  };
+
+  it('is deterministic and names nothing as started: not retryable, no "temporary" hint', () => {
+    const translated = translateChatError(refusal);
+    expect(translated.title).toBe("This engine doesn't offer that model");
+    expect(translated.body).toBe(`${refusal.message} Nothing was sent.`);
+    expect(translated.hint).toContain('Choose one of the models');
+    expect(translated.hint).not.toContain('temporary');
+    expect(translated.hint).not.toContain('may already have started');
+    expect(translated.retryable).toBe(false);
+  });
+});

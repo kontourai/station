@@ -12269,6 +12269,106 @@ describe('OrchestrationService', () => {
     );
   });
 
+  describe('a new ACP session whose model the connection did not advertise', () => {
+    // The real ACP adapter applies a model at start (`overrideAtStart`) and
+    // reports what a connection's handshake offered.
+    function acpOffering(advertised: readonly string[] | undefined) {
+      const acp = new FakeAdapter('acp');
+      acp.metadata.modelLaunch = {
+        defaultAtStart: 'engine-selected',
+        omissionAtResume: 'engine-selected',
+        omissionPerTurn: 'engine-selected',
+        overrideAtStart: true,
+        overrideAtResume: false,
+        overridePerTurn: false,
+      };
+      const offeredStartModelIds = vi.fn((connectionId: string) =>
+        connectionId === 'opencode' ? advertised : undefined,
+      );
+      Object.assign(acp, { offeredStartModelIds });
+      const service = new OrchestrationService({
+        adapterRegistry: createRegistry([acp]),
+        eventBus,
+        eventStore,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      return { acp, service, offeredStartModelIds };
+    }
+    const start = (threadId: string, modelId?: string) => ({
+      type: 'startSession' as const,
+      input: {
+        threadId,
+        provider: 'acp' as const,
+        ...(modelId ? { modelId } : {}),
+        metadata: { connectionId: 'opencode' },
+      },
+    });
+
+    test('is refused before the adapter is invoked, as a rejection, with its code', async () => {
+      const { acp, service } = acpOffering(['anthropic/claude-sonnet-4-6']);
+
+      await expect(
+        service.dispatchWithReceipt(start('acp-unadvertised', 'gpt-6.1-sol')),
+      ).rejects.toMatchObject({
+        code: 'model_not_advertised',
+        message: expect.stringContaining("'gpt-6.1-sol'"),
+        receipt: expect.objectContaining({ status: 'rejected' }),
+      });
+      expect(acp.startSession).not.toHaveBeenCalled();
+    });
+
+    test('starts when the connection offered the model', async () => {
+      const { acp, service } = acpOffering(['anthropic/claude-sonnet-4-6']);
+
+      await service.dispatchWithReceipt(
+        start('acp-advertised', 'anthropic/claude-sonnet-4-6'),
+      );
+      expect(acp.startSession).toHaveBeenCalledTimes(1);
+    });
+
+    test('makes no claim without an observed offer: the adapter stays authoritative', async () => {
+      const { acp, service } = acpOffering(undefined);
+
+      await service.dispatchWithReceipt(
+        start('acp-no-observation', 'gpt-6.1-sol'),
+      );
+      expect(acp.startSession).toHaveBeenCalledTimes(1);
+    });
+
+    test('a resume reattaches the engine session and is never held to the offer', async () => {
+      const { acp, service, offeredStartModelIds } = acpOffering([
+        'anthropic/claude-sonnet-4-6',
+      ]);
+      acp.metadata.modelLaunch = {
+        ...acp.metadata.modelLaunch!,
+        overrideAtResume: true,
+      };
+
+      await service.dispatchWithReceipt({
+        type: 'startSession',
+        input: {
+          threadId: 'acp-resume',
+          provider: 'acp',
+          modelId: 'retired-since-first-start',
+          resumeCursor: { acpSessionId: 'native-1' },
+          metadata: { connectionId: 'opencode' },
+        },
+      });
+      expect(acp.startSession).toHaveBeenCalledTimes(1);
+      expect(offeredStartModelIds).not.toHaveBeenCalled();
+    });
+
+    test('a start naming no model never consults the offer', async () => {
+      const { acp, service, offeredStartModelIds } = acpOffering([
+        'anthropic/claude-sonnet-4-6',
+      ]);
+
+      await service.dispatchWithReceipt(start('acp-no-model'));
+      expect(acp.startSession).toHaveBeenCalledTimes(1);
+      expect(offeredStartModelIds).not.toHaveBeenCalled();
+    });
+  });
+
   test('rejects a model override on a repeated ACP start instead of accepting the existing session', async () => {
     const acp = new FakeAdapter('acp');
     const acpService = new OrchestrationService({

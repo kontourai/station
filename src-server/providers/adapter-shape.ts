@@ -397,6 +397,17 @@ export interface ProviderAdapterShape {
       originalId: string;
     }>
   >;
+  /**
+   * The model ids this adapter will accept as a new session's model on
+   * `connectionId`, when it has OBSERVED them (an engine's own handshake).
+   * `undefined` makes no claim: nothing observed, or an engine that does not
+   * enumerate its models. It never widens what the adapter's exact check at
+   * start accepts; its only use is letting the dispatch seam refuse a model
+   * the engine already told us it does not offer BEFORE the engine is spawned
+   * and a session created only to be thrown away. It is not a catalog for a
+   * picker (`listModelCatalog`) and is read synchronously from memory.
+   */
+  offeredStartModelIds?(connectionId: string): readonly string[] | undefined;
   listModelCatalog?(options?: {
     signal?: AbortSignal;
     maxEntries?: number;

@@ -524,6 +524,18 @@ addressing the reported failure. A failed reconnect returns an explicit error;
 its bounded diagnostic describes the latest attempt. A missing connection
 returns not-found.
 
+A new session on a model the connection's handshake did not offer is refused
+before the engine is spawned, with the `model_not_advertised` code and a
+rejected receipt: nothing ran, so there is no "Station may already have started
+this session" to check. The chat error offers no Retry (the same model is
+refused again) and the client re-reads the Agent catalog, the ACP connection
+list and the engine inventory, because the composer's snapshot of those is what
+let the model be chosen. This is the case where the Agent's engine changed after
+the snapshot was taken (the built-in Station Agent re-binds to an external
+engine once its ACP handshake completes). An engine with no observed handshake,
+or that advertised no model option, is not refused here; the adapter's own exact
+check at `session/new` still is.
+
 OpenCode's own model listing and Station's ACP model listing are different
 observations. Station obtains model options through its ACP connection. An
 initialization timeout can therefore leave Station's model list empty even when

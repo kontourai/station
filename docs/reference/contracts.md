@@ -385,7 +385,15 @@ An ACP send whose attachments the engine cannot take (images when its
 non-image file) is refused before any engine effect with
 `ATTACHMENT_INPUT_UNSUPPORTED_CODE` (`attachment_input_unsupported`, from
 `provider`). Unlike the two codes above it is not retryable: the same send is
-refused again. An ACP steer delivered by the cancel + re-prompt fallback, for
+refused again. A new ACP session whose requested model the connection's own
+`initialize` handshake did not offer is refused before the engine is spawned
+with `MODEL_NOT_ADVERTISED_CODE` (`model_not_advertised`, from `provider`),
+classed as a rejection (nothing ran) rather than an uncertain start. Only an
+observed offer is held against: an engine that has not handshaked, or that
+advertised no model option, makes no claim and the adapter's own exact check
+remains the authority. The adapter states the offer through
+`ProviderAdapterShape.offeredStartModelIds`; a resume never applies a model and
+is not held to it. An ACP steer delivered by the cancel + re-prompt fallback, for
 an engine without a native steer method, cancels the running prompt and any
 tool it was running. Its steer `turn.started` carries
 `steerInterruptedRun: true` so a client can say why that step shows as

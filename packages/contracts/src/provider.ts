@@ -107,6 +107,15 @@ export interface ModelLaunchCapabilities extends ModelLifecycleCapabilities {
 export type ModelLifecyclePoint = 'start' | 'resume' | 'turn';
 
 export const MODEL_OVERRIDE_UNSUPPORTED_CODE = 'model-override-unsupported';
+/**
+ * A new session was refused before it started because the model the request
+ * names is not one the engine connection's own initialize handshake offered.
+ * Deterministic for that connection and catalog, so NOT retryable as sent: the
+ * caller has to choose a model the engine offers (or the engine the request
+ * resolved to is not the one the caller meant — see
+ * `EXECUTION_ENGINE_CHANGED_CODE`).
+ */
+export const MODEL_NOT_ADVERTISED_CODE = 'model_not_advertised';
 export const SESSION_REATTACH_CONFLICT_CODE = 'session-reattach-conflict';
 export type SessionReattachConflictReason =
   | 'model-change'

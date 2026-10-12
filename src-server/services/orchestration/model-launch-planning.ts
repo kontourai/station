@@ -1,6 +1,7 @@
 import {
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
+  MODEL_NOT_ADVERTISED_CODE,
   MODEL_OVERRIDE_UNSUPPORTED_CODE,
   type ModelLaunchPlan,
   modelLaunchTelemetryAttributes,
@@ -204,6 +205,24 @@ export class ModelLaunchPlanUnavailableError extends Error {
 
   constructor(readonly reason: string) {
     super(`${MODEL_OVERRIDE_UNSUPPORTED_CODE}: ${reason}`);
+  }
+}
+
+/**
+ * A new session asked for a model the engine connection's own handshake did
+ * not offer. Raised before the adapter is invoked, so nothing was spawned and
+ * no session exists to inspect: a refusal, not an uncertain start.
+ */
+export class ModelNotAdvertisedError extends Error {
+  readonly code = MODEL_NOT_ADVERTISED_CODE;
+
+  constructor(
+    readonly connectionId: string,
+    readonly modelId: string,
+  ) {
+    super(
+      `Engine connection '${connectionId}' did not offer the model '${modelId}'. Choose one of the models it offers.`,
+    );
   }
 }
 
