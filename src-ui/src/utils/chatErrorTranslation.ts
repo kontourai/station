@@ -384,10 +384,10 @@ export function translateChatError(
   }
 
   // The engine this chat resolved to refused the model the composer showed.
-  // The refused session has ended, and the conversation continues in a
-  // successor session on the next send (the continuation seam starts it with
-  // the model then requested), so this is not a terminal chat: the user picks
-  // another model and sends again. Deterministic (the same model is refused
+  // The adapter ended the refused session (with this as its cause), and the
+  // conversation continues in a successor session on the next send (the
+  // continuation seam starts it with the model then requested), so this is not
+  // a terminal chat: the user picks another model and sends again. Deterministic (the same model is refused
   // again), so no "temporary" hint and no Retry. This is also what a composer
   // working from a stale snapshot looks like once the engine behind an Agent
   // changed; the client re-reads those snapshots.

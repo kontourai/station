@@ -12339,42 +12339,53 @@ describe('OrchestrationService', () => {
       expect(acp.startSession).toHaveBeenCalledTimes(2);
     });
 
-    // The real adapter has already published `session.started` when it
-    // refuses (it does so before `session/new` answers).
+    // What the real ACP adapter publishes for a refused start (pinned in
+    // acp-adapter.test.ts): `session.started` goes out before `session/new`
+    // answers, and on a confirmed teardown it then states the cause and ends
+    // that session. The thread is bound to the adapter by the first event and
+    // only the exit unbinds it.
     function refusingAfterAnnouncing(
       acp: FakeAdapter,
       threadId: string,
       metadata: Record<string, unknown>,
     ) {
+      const base = () => ({
+        provider: 'acp' as const,
+        threadId,
+        sessionId: threadId,
+        createdAt: new Date().toISOString(),
+        eventId: `evt-${Math.random()}`,
+      });
       acp.startSession.mockImplementationOnce(async () => {
         acp.events.push({
-          provider: 'acp' as const,
-          threadId,
-          sessionId: threadId,
-          createdAt: new Date().toISOString(),
-          eventId: `evt-started-${Math.random()}`,
+          ...base(),
           method: 'session.started',
           metadata,
+        } as never);
+        acp.events.push({
+          ...base(),
+          method: 'runtime.error',
+          severity: 'error',
+          code: 'model_not_advertised',
+          message: refusal().message,
+        } as never);
+        acp.events.push({
+          ...base(),
+          method: 'session.exited',
+          reason: 'start-refused',
         } as never);
         throw refusal();
       });
     }
     const settle = () => new Promise((resolve) => setTimeout(resolve, 25));
-
-    // What the user's resend goes through is the conversation's continuation
-    // seam, not a raw start on the refused session id: that session's binding
-    // has ended, so the seam reserves a SUCCESSOR session and starts it with
-    // the model now requested. The same chat can take another model.
-    test('a resend in the same conversation continues in a successor session with the chosen model', async () => {
+    const refusedConversation = async (conversationId: string) => {
       const { acp, service } = acpService();
-      const conversationId = 'conversation-refused-then-resent';
       const metadata = {
         connectionId: 'opencode',
         userId: 'owner-user',
         conversationId,
       };
       refusingAfterAnnouncing(acp, conversationId, metadata);
-
       await expect(
         service.dispatchWithReceipt({
           type: 'startSession',
@@ -12387,44 +12398,68 @@ describe('OrchestrationService', () => {
         }),
       ).rejects.toMatchObject({ code: 'model_not_advertised' });
       await settle();
+      return { acp, service };
+    };
 
-      const continuation = await service.resolveConversationContinuation(
-        conversationId,
-        INTERNAL_SESSION_READ_SCOPE,
-        {
-          provider: 'acp',
-          connectionId: 'opencode',
-          modelOverride: 'anthropic/claude-sonnet-4-6',
-        },
-      );
+    // What the user's resend goes through is the conversation's continuation
+    // seam, not a raw start on the refused session id. The refused session has
+    // ended, so whatever the resend names (another model, the same one, or no
+    // override at all because the model came from the Agent) it continues in a
+    // SUCCESSOR session; it must never be told the refused one is still open.
+    test.each([
+      ['another model', 'anthropic/claude-sonnet-4-6'],
+      ['the same model', 'gpt-6.1-sol'],
+      ['no model override', undefined],
+    ] as const)(
+      'a resend naming %s continues in a successor session',
+      async (_label, modelOverride) => {
+        const conversationId = `conversation-refused-${String(modelOverride)}`;
+        const { service } = await refusedConversation(conversationId);
 
-      expect(continuation).toMatchObject({ startRequired: true });
-      expect(continuation.sessionId).not.toBe(conversationId);
-    });
+        const continuation = await service.resolveConversationContinuation(
+          conversationId,
+          INTERNAL_SESSION_READ_SCOPE,
+          {
+            provider: 'acp',
+            connectionId: 'opencode',
+            ...(modelOverride ? { modelOverride } : {}),
+          },
+        );
 
-    // A start that names a different model on the refused session id itself is
-    // a model change, which a reattach refuses; only the continuation above
-    // moves to a new session.
-    test('a different model on the refused session id is a model-change reattach conflict', async () => {
-      const { acp, service } = acpService();
-      refusingAfterAnnouncing(acp, 'acp-refused-model-change', {
-        connectionId: 'opencode',
-      });
+        expect(continuation).toMatchObject({ startRequired: true });
+        expect(continuation.sessionId).not.toBe(conversationId);
+      },
+    );
 
-      await expect(
-        service.dispatchWithReceipt(
-          start('acp-refused-model-change', 'gpt-6.1-sol'),
-        ),
-      ).rejects.toMatchObject({ code: 'model_not_advertised' });
-      await settle();
+    // A raw start on the refused session id itself is not accepted as a
+    // reattach to a session that was never created, whatever it names.
+    test.each([
+      ['a different model', 'anthropic/claude-sonnet-4-6'],
+      ['no model', undefined],
+    ] as const)(
+      'a raw start naming %s on the refused session id is refused',
+      async (_label, modelId) => {
+        const conversationId = `conversation-refused-raw-${String(modelId)}`;
+        const { acp, service } = await refusedConversation(conversationId);
 
-      await expect(
-        service.dispatchWithReceipt(
-          start('acp-refused-model-change', 'anthropic/claude-sonnet-4-6'),
-        ),
-      ).rejects.toThrow();
-      expect(acp.startSession).toHaveBeenCalledTimes(1);
-    });
+        await expect(
+          service.dispatchWithReceipt({
+            type: 'startSession',
+            input: {
+              threadId: conversationId,
+              provider: 'acp',
+              ...(modelId ? { modelId } : {}),
+              metadata: { connectionId: 'opencode', userId: 'owner-user' },
+            },
+          }),
+        ).rejects.toThrow(
+          modelId
+            ? 'session-reattach-conflict: model-change'
+            : 'Session already exists',
+        );
+        expect(acp.startSession).toHaveBeenCalledTimes(1);
+      },
+    );
 
     test('an engine failure that is not a definitive refusal stays an uncertain start', async () => {
       const { acp, service } = acpService();
