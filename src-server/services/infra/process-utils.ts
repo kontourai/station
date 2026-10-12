@@ -995,16 +995,30 @@ export function releaseOwnedChildAfterGroupExit(
 ): void {
   const pollMs = options.pollMs ?? 50;
   const maxWaitMs = options.maxWaitMs ?? 5_000;
+  // This runs from an 'exit' listener or a timer, where a throw (a record
+  // that cannot be removed) would be an uncaught exception and would stop
+  // the child's 'close' from firing. A record left behind is re-checked by
+  // the next startup sweep.
+  const releaseQuietly = () => {
+    try {
+      release();
+    } catch (error) {
+      logger.warn('owned-process registry: record removal failed', {
+        pid: proc.pid,
+        error: String(error),
+      });
+    }
+  };
   proc.once('exit', () => {
     const pid = proc.pid;
     if (typeof pid !== 'number' || process.platform === 'win32') {
-      release();
+      releaseQuietly();
       return;
     }
     const deadline = Date.now() + maxWaitMs;
     const check = () => {
       if (!processGroupExists(pid)) {
-        release();
+        releaseQuietly();
         return;
       }
       if (Date.now() >= deadline) return;
