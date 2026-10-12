@@ -1,0 +1,7 @@
+{
+  "revision": "1b0a82ad418ed08f89544d2ed2ec6f3e9dea4973",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-checked after the fix rounds: split Send/mode control, shared anchored popup for slash, /model and @ results, @ list closing on blur, staying open on presses inside it, and reopening when focus returns with the caret in an @ query (synced a frame after focus). Updated the paragraph accordingly.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

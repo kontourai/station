@@ -23,6 +23,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 
 | Module | Intent | Primary source |
 | --- | --- | --- |
+| [ProductTelemetryReceiver](#producttelemetryreceiver) | Commit and query disclosed product observations with scoped source credentials and explicit delivery coverage. | `packages/telemetry-broker/src/store.ts` |
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
 | [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
 | [StationControlDispatchScope](#stationcontroldispatchscope) | Resolve server-owned dispatch targets for the shared Station-control scope rule. | `src-server/runtime/mcp/station-control-dispatch-scope.ts` |
@@ -1487,11 +1488,11 @@ This owner records when a provider call may have crossed into an external effect
 
 A repeated client message should join the same turn instead of invoking the engine again. The [deduplicator](../../src-server/services/orchestration/turn-deduplicator.ts) maps a retained `(threadId, clientTurnId)` to its provider turn; the separate invocation boundary records whether a provider effect remains possible.
 
-**Interface.** `claim({ threadId, clientTurnId })` returns either an opaque owner `TurnClaim` or `contended`; `awaitResolution` observes durable resolution. Only the owner capability can `resolve(turnId)` or `release()`.
+**Interface.** `claim({ threadId, clientTurnId })` returns an opaque owner `TurnClaim`, `contended`, or `indeterminate`; `awaitResolution` observes durable resolution. Only the owner capability can `beginInvocation()`, `resolve(turnId)` or `release()`.
 
-**Behavior.** The SQLite store admits one current owner across concurrent connections and restart. A contending caller may receive an already-resolved turn ID or wait for one. An unresolved claim can be reclaimed only when its recorded process owner is provably dead or its exact birth identity changed; unknown liveness remains contended. A claim latches its exact transition: after a durable write fault the same transition may retry, while a changed transition or double success is rejected. Resolved rows are oldest-first pruning candidates at the shared default soft 2,000-row ceiling; unresolved rows are never capacity victims. Deduplication lasts while the row is retained. Reclaiming a dead owner is not permission to repeat a possible provider effect: the invocation-boundary owner must still admit the call.
+**Behavior.** The SQLite store admits one current owner across concurrent connections and restart. A contending caller may receive an already-resolved turn ID or wait for one. An unresolved claim can be reclaimed only when its recorded process owner is provably dead or its exact birth identity changed, and only when that owner never called `beginInvocation`; unknown liveness remains contended. The owner calls `beginInvocation` durably before it moves the invocation boundary to `invoking` and calls the provider, and a failure there invokes nothing and releases the claim. A dead owner's claim that began invoking, or a thread row whose invocation is unknown, answers `indeterminate`, and the send fails with the same possible-effect error as a live indeterminate start. Invocation is stored inside the row's owner record, so a writer that replaces the owner without recording it (an older peer or a downgraded runtime) leaves it unknown rather than a stale `pending`. That rule lives on the claim row because the invocation boundary cannot answer it: boot recovery deletes a dead owner's boundary row once it has bannered the interrupted turn. A claim latches its exact transition: after a durable write fault the same transition may retry, while a changed transition or double success is rejected. Resolved rows are oldest-first pruning candidates at the shared default soft 2,000-row ceiling; unresolved rows are never capacity victims. Deduplication lasts while the row is retained.
 
-**Code and evidence.** `EventStore` composes its private `src-server/services/orchestration/sqlite-turn-dedup-persistence.ts` coordinator into the Module; orchestration callers receive only the Interface. `src-server/services/orchestration/__tests__/turn-deduplicator.test.ts` uses real temporary SQLite for ownership, restart, and fault behaviour. The separate `/chat` facade retains its own `EventStore` chat-turn family because it owns conversation-id replay, bounded retention, and direct-route compatibility; it is not a second TurnDeduplicator caller family. **Do not reintroduce:** a process-local map, raw `(threadId, clientTurnId)` updates, elapsed-time takeover or pruning unresolved claims, or a generic ledger wrapper around the retained chat-turn facade.
+**Code and evidence.** `EventStore` composes its private `src-server/services/orchestration/sqlite-turn-dedup-persistence.ts` coordinator into the Module; orchestration callers receive only the Interface. `src-server/services/orchestration/__tests__/turn-deduplicator.test.ts` uses real temporary SQLite for ownership, restart, and fault behaviour, and `turn-dedup-crash.process.test.ts` SIGKILLs a real owner process before and after its provider call. `/chat` claims, including unmarked legacy `chat:` rows, are `untracked`: they record no invocation boundary and keep the dead-owner reclaim rule, so `/chat` can still resend a turn whose owner died after invoking the agent ([#3581](https://github.com/kontourai/station/issues/3581)). The separate `/chat` facade retains its own `EventStore` chat-turn family because it owns conversation-id replay, bounded retention, and direct-route compatibility; it is not a second TurnDeduplicator caller family. **Do not reintroduce:** a process-local map, raw `(threadId, clientTurnId)` updates, elapsed-time takeover or pruning unresolved claims, or a generic ledger wrapper around the retained chat-turn facade.
 
 ## AdoptionLedger
 
@@ -3942,3 +3943,32 @@ prompt, memory, hooks and configuration-generation guards. Hookless temporary
 model recovery refuses positive additions. Agent restrictions and store ACLs
 remain authoritative. The [Knowledge guide](../guides/knowledge.md#project-tools-and-automatic-store-detection)
 explains the UI and opt-out behavior.
+
+
+## ProductTelemetryReceiver
+
+**Purpose.** The optional [receiver](../../packages/telemetry-broker/README.md)
+accepts the shared disclosed product envelope. Its
+[HTTP owner](../../packages/telemetry-broker/src/app.ts) separates source ingest
+and source-scoped receipt lookup from operator source management, storage health
+and bounded received-observation trends. The
+[PostgreSQL repository](../../packages/telemetry-broker/src/store.ts) validates
+compatible permanent tables and constraints inside every transaction, fences
+revocation against ingestion, deduplicates retained source/event UUIDs, and
+returns acceptance only after acknowledged durable commit. Database waits and
+request concurrency are bounded; uncertainty returns a failure.
+
+**Composition and limits.** The
+[Unix entrypoint](../../packages/telemetry-broker/src/main.ts) admits private
+operator credentials and composes the database pool separately from Station's
+runtime. No endpoint is enabled automatically. This product namespace neither
+collects OTel metrics/traces nor authorizes personal receipt synchronization.
+Producer clocks and unknown delivery coverage remain explicit in queries;
+installation hashes are not people. Retention limits deduplication, and deleted
+rows do not guarantee physical database-file shrinkage.
+
+**Evidence.** Focused HTTP mocks own parser/credential/admission behavior. The
+[live qualifier](../../packages/telemetry-broker/qualify.mjs) uses its own PostgreSQL
+database to exercise commit/replay, revocation, capacity, corrupt live schemas
+and stalled transport recovery. Neither establishes persistent deployment,
+actual Station execution, final-source backup/restore or native acceptance.

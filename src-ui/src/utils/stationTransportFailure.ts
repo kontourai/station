@@ -11,7 +11,9 @@
  */
 const TRANSPORT_FAILURE_PATTERNS = [
   /timed out before response headers arrived/i,
-  /could not be resolved/i,
+  // The native transport's exact phrase: a bare 'could not be resolved' also
+  // matches server refusals ('caller could not be resolved').
+  /Station host could not be resolved/i,
   /TLS connection to Station failed/i,
   /refused the connection/i,
   /reset before a response arrived/i,

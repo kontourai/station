@@ -1,0 +1,7 @@
+{
+  "revision": "a23a8d18bc3e311d56e89341f31eaa1baac8042c",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"chat.css change touches only composer send controls and the @ picker; no placement, region, pane or tooltip claim depends on them.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]}
+  ]
+}
