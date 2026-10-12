@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import type { AccountDirectory } from '../../identity/account-directory.js';
 import type { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
 import {
@@ -360,5 +361,79 @@ describe('personal access tokens', () => {
         expiresAt: null,
       } as never),
     ).rejects.toMatchObject({ code: 'account_bound_person' });
+  });
+
+  test('#3586: an account-tied token is made and accepted only while its issuer directory says the account is current', async () => {
+    const { security, advance, now } = await station();
+    const pairing = security.devicePairing;
+    const standing = new Map<string, 'current' | 'disabled'>([
+      ['dana', 'current'],
+    ]);
+    let revokedAt = 0;
+    const directory: AccountDirectory = {
+      issuer: 'urn:station:local-accounts:test',
+      standing: (subject, since) => {
+        const state = standing.get(subject);
+        if (!state) return 'unknown';
+        return state === 'current' && (since === undefined || since > revokedAt)
+          ? 'current'
+          : 'disabled';
+      },
+      list: () => [],
+    };
+    // The shape an approved account pairing records.
+    const accountBinding = (issuer: string, subject: string) =>
+      ({
+        kind: 'account',
+        issuer,
+        subject,
+        displayName: subject,
+        approvedAt: Date.UTC(2026, 9, 1),
+        approvalId: `approval-${subject}`,
+        approvedBy: 'human:local:operator',
+      }) as const;
+    const mint = (issuer: string, subject: string) =>
+      pairing.mintPersonalToken({
+        name: 'script',
+        binding: accountBinding(issuer, subject),
+        ownerPrincipalId: `human:deployment:${subject}`,
+        scope: 'orchestration:read',
+        expiresAt: null,
+      });
+    const dana = accountBinding(directory.issuer, 'dana');
+    expect(pairing.canHoldPersonalToken(dana)).toBe(false);
+    await expect(mint(directory.issuer, 'dana')).rejects.toMatchObject({
+      code: 'account_bound_person',
+    });
+
+    pairing.setAccountDirectory(directory);
+    expect(pairing.canHoldPersonalToken(dana)).toBe(true);
+    expect(
+      pairing.canHoldPersonalToken({ ...dana, issuer: 'urn:elsewhere' }),
+    ).toBe(false);
+    for (const [issuer, subject] of [
+      ['urn:elsewhere', 'dana'],
+      [directory.issuer, 'nobody'],
+    ])
+      await expect(mint(issuer, subject)).rejects.toMatchObject({
+        code: 'account_bound_person',
+      });
+    const { secret } = await mint(directory.issuer, 'dana');
+    expect(pairing.identifyDevice(secret)?.principalBinding).toEqual(dana);
+
+    // Signed out everywhere after the token was made: no longer current.
+    advance(1);
+    revokedAt = now();
+    expect(pairing.identifyDevice(secret)).toBeNull();
+    expect(pairing.verifyCredential(secret)).toBe(false);
+    // And one made after that is current again.
+    advance(1);
+    const later = await mint(directory.issuer, 'dana');
+    expect(pairing.verifyCredential(later.secret)).toBe(true);
+    standing.set('dana', 'disabled');
+    expect(pairing.verifyCredential(later.secret)).toBe(false);
+    await expect(mint(directory.issuer, 'dana')).rejects.toMatchObject({
+      code: 'account_bound_person',
+    });
   });
 });

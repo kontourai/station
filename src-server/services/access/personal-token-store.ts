@@ -57,6 +57,18 @@ interface StoredTokens {
   tokens: StoredPersonalToken[];
 }
 
+const SECRET_PATTERN = /^stp_[A-Za-z0-9_-]{43}$/;
+
+/**
+ * #3586: whether `candidate` has the shape of a personal access token
+ * secret (`stp_` and 32 random bytes, base64url). A paired device's own
+ * credential is 32 random bytes with no prefix, so the two never collide.
+ * The shape proves nothing; only {@link PersonalTokenStore.find} does.
+ */
+export function isPersonalTokenSecret(candidate: string): boolean {
+  return SECRET_PATTERN.test(candidate);
+}
+
 function digest(secret: string): Buffer {
   return createHash('sha256').update(secret).digest();
 }

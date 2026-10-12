@@ -64,6 +64,7 @@ import {
   PersonalTokenUnavailableError,
   type StoredPersonalToken,
 } from '../access/personal-token-store.js';
+import type { AccountDirectory } from '../identity/account-directory.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
 import {
   isValidNativePushRequest,
@@ -1144,6 +1145,12 @@ export class DevicePairingService {
   readonly #capScope: NonNullable<DevicePairingServiceOptions['capScope']>;
   /** #3557: personal access tokens, resolved as headless devices. */
   readonly #tokens: PersonalTokenStore;
+  /**
+   * #3586: the standing an account-tied token is checked against. Absent
+   * unless Station's own local accounts are configured: then no token is
+   * made for, or accepted from, an account-tied person.
+   */
+  #accountDirectory: AccountDirectory | undefined;
   readonly #offers = new Map<string, PairingOfferState>();
   #registry: DeviceRegistry;
   #pendingRegistryMigrationPersist = false;
@@ -3039,10 +3046,51 @@ export class DevicePairingService {
     return device;
   }
 
+  /**
+   * #3586: installs (or removes) the account directory account-tied tokens
+   * are checked against. Runtime composition sets it once local accounts
+   * load; without one, account-tied tokens are refused.
+   */
+  setAccountDirectory(directory: AccountDirectory | undefined): void {
+    this.#accountDirectory = directory;
+  }
+
+  /**
+   * #3586: whether a token can be made for the person `binding` names: a
+   * Tailscale-tied person always; an account-tied person only when this
+   * Station's account directory answers for their issuer.
+   */
+  canHoldPersonalToken(binding: DevicePrincipalBinding): boolean {
+    if (!('kind' in binding) || binding.kind !== 'account') return true;
+    return this.#accountDirectory?.issuer === binding.issuer;
+  }
+
+  /**
+   * #3586: an account-tied token acts only while its account is current:
+   * it exists, is enabled, and has not been signed out everywhere since the
+   * token was made. Any other token is not checked here.
+   */
+  #accountStandingCurrent(
+    binding: DevicePrincipalBinding,
+    since?: number,
+  ): boolean {
+    if (!('kind' in binding) || binding.kind !== 'account') return true;
+    const directory = this.#accountDirectory;
+    if (!directory || directory.issuer !== binding.issuer) return false;
+    try {
+      return directory.standing(binding.subject, since) === 'current';
+    } catch {
+      // An unreadable account store vouches for no one.
+      return false;
+    }
+  }
+
   /** #3557: the active token for `candidate`, touching its last use. */
   #resolveToken(candidate: string): StoredPersonalToken | undefined {
     const token = this.#tokens.find(candidate);
     if (!token) return undefined;
+    if (!this.#accountStandingCurrent(token.binding, token.createdAt))
+      return undefined;
     const now = this.#now();
     if (
       token.lastUsedAt === null ||
@@ -3083,10 +3131,10 @@ export class DevicePairingService {
   }): Promise<MintedPersonalAccessToken> {
     const name = input.name.trim();
     const now = this.#now();
-    // v1 tokens are for people tied by a Tailscale identity. An account's
-    // devices act only alongside its account session, which a script does
-    // not hold, so a token tied to an account would never work.
-    if ('kind' in input.binding && input.binding.kind === 'account')
+    // #3586: a token tied to an account is checked against the account's
+    // standing instead of a session, which only Station's own local
+    // accounts can answer for. Any other account-tied person is refused.
+    if (!this.#accountStandingCurrent(input.binding))
       throw new DevicePairingError('account_bound_person');
     if (
       name.length === 0 ||

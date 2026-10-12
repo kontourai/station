@@ -4,6 +4,10 @@ import { join } from 'node:path';
 import { openPrivateSqlite } from '../../utils/private-sqlite.js';
 import type { ProjectMembershipService } from '../projects/project-membership-service.js';
 import {
+  type AccountDirectory,
+  localAccountDirectory,
+} from './account-directory.js';
+import {
   createDeploymentAuthenticationHost,
   type LoadedDeploymentAuthentication,
   readAuthenticationBrowserOrigins,
@@ -26,6 +30,8 @@ export interface LocalAccountConfiguration {
 export interface LoadedLocalAccounts extends LoadedDeploymentAuthentication {
   administration: LocalAccountProvider['administration'];
   issueRecovery: LocalAccountProvider['issueRecovery'];
+  /** #3586: account standing for credentials that outlive a session. */
+  accountDirectory: AccountDirectory;
 }
 export function readLocalAccountConfiguration(
   environment: Readonly<Record<string, string | undefined>>,
@@ -128,6 +134,10 @@ export async function loadLocalAccounts(
       allowedBrowserOrigins: providerHost.allowedBrowserOrigins,
       administration: provider.administration,
       issueRecovery: provider.issueRecovery.bind(provider),
+      accountDirectory: localAccountDirectory(
+        provider.issuer,
+        provider.administration,
+      ),
     };
   } catch (error) {
     await provider?.close?.();

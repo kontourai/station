@@ -489,6 +489,9 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     exact: true,
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
+    // #3586: who holds a Project, and its open invitations, are not a
+    // script's to read; the person uses a device.
+    personalTokens: 'refused',
   },
   ...[
     '/api/projects/:slug/access/enable',
