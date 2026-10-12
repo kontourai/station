@@ -3272,11 +3272,17 @@ class SqliteSchedulerLedger implements SchedulerLedger {
       const consumedForMs =
         claim.scheduled_for_ms ?? (claim.manual ? null : now);
       if (!claim.manual && consumedForMs !== null) {
+        // The cursor column always advances. Unreadable record bytes are left
+        // as they are (#3563): json_set on them raises and would roll back
+        // this whole claim transaction, so claimDue could never quarantine
+        // the record.
         this.db
           .prepare(
             `UPDATE scheduler_jobs
              SET last_run_ms = MAX(COALESCE(last_run_ms, 0), ?),
-                 data = json_set(data, '$.lastRunMs', MAX(COALESCE(last_run_ms, 0), ?))
+                 data = CASE WHEN json_valid(data)
+                   THEN json_set(data, '$.lastRunMs', MAX(COALESCE(last_run_ms, 0), ?))
+                   ELSE data END
              WHERE job_id = ?`,
           )
           .run(consumedForMs, consumedForMs, claim.job_id);
