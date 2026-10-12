@@ -997,6 +997,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // grandchild in its group) to prove the spawn is registered and released
   // only once the whole group exits. Same shape as the Codex test above.
   'src-server/services/flow/__tests__/flow-run-service.owned-process.test.ts',
+  // #561: wraps the birth-probe primitives pass-through and registers two
+  // real detached sleepers to count probes of this process.
+  'src-server/services/infra/__tests__/owned-process-owner-birth.test.ts',
   // station#1895: spawns a real node child process (through `tsx`) to prove
   // the durable log sink survives an actual uncaught exception, the same
   // resource shape as `agent-registry.test.ts`'s schema-gate child probe.

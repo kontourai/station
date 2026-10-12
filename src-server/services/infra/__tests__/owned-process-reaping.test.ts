@@ -1922,3 +1922,35 @@ describe('process-group listing parser (#561)', () => {
     ).toBeNull();
   });
 });
+
+describe.skipIf(process.platform === 'win32')(
+  'owned child release (#561)',
+  () => {
+    const makeTempDir = trackTempDirs();
+
+    test('an owned child release that cannot remove its record logs and does not throw (#561)', async () => {
+      // Callers run release() inside 'exit' listeners (h264-jpeg-decoder) and
+      // shutdown paths (chromium-server-host), where a throw is uncaught.
+      const registryDir = makeTempDir('station-release-ro-');
+      const { proc, release } = spawnOwnedChild(
+        process.execPath,
+        ['-e', 'setInterval(() => {}, 86400000)'],
+        { registryDir, stdio: 'ignore' },
+      );
+      const recordFile = join(registryDir, `engine-${proc.pid}.json`);
+      try {
+        expect(existsSync(recordFile)).toBe(true);
+        chmodSync(registryDir, 0o500);
+        expect(() => release()).not.toThrow();
+        expect(existsSync(recordFile)).toBe(true);
+      } finally {
+        chmodSync(registryDir, 0o700);
+        const exited = new Promise<void>((resolve) =>
+          proc.once('exit', () => resolve()),
+        );
+        reapGroup(proc.pid!);
+        await exited;
+      }
+    });
+  },
+);

@@ -11,7 +11,7 @@
  * in afterEach. Spawns processes, so it is classified process-heavy in
  * `scripts/vitest-resource-manifest.mjs`.
  */
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import {
   chmodSync,
   existsSync,
@@ -21,8 +21,13 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import {
+  lookupProcessBirthFingerprint,
+  probeExactProcessIdentity as realProbe,
+} from '@kontourai/station-shared/process-identity';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { sweepOrphanedOwnedProcesses } from '../../infra/process-utils.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   flowRunsStarted: { add: vi.fn() },
@@ -110,6 +115,7 @@ describe.skipIf(process.platform === 'win32')(
     });
 
     afterEach(async () => {
+      // Kill by exact pid: the stub shell, its grandchild, any helper.
       for (const pid of pids.splice(0)) {
         try {
           process.kill(pid, 'SIGKILL');
@@ -117,7 +123,11 @@ describe.skipIf(process.platform === 'win32')(
           // Already gone.
         }
       }
+      // Never the runner's own group: a regression that stops detaching the
+      // command would otherwise make cleanup SIGKILL this test process.
+      const ownGroup = processGroupOf(process.pid);
       for (const pgid of groups.splice(0)) {
+        if (pgid === ownGroup) continue;
         try {
           process.kill(-pgid, 'SIGKILL');
         } catch {
@@ -128,17 +138,33 @@ describe.skipIf(process.platform === 'win32')(
       vi.unstubAllEnvs();
     });
 
-    function records(): Array<{ file: string; enginePid: number }> {
+    function records(): Array<{
+      file: string;
+      enginePid: number;
+      engineBirth: string | null;
+      ownerPid: number;
+    }> {
       return readdirSync(registryDir)
         .filter((name) => name.startsWith('engine-') && name.endsWith('.json'))
         .map((name) => {
           const file = join(registryDir, name);
           const record = JSON.parse(readFileSync(file, 'utf8'));
-          return { file, enginePid: record.enginePid as number };
+          return {
+            file,
+            enginePid: record.enginePid as number,
+            engineBirth: record.engineBirth as string | null,
+            ownerPid: record.owner.pid as number,
+          };
         });
     }
 
-    test('a running command is registered, and the record is released only after its whole group exits', async () => {
+    /**
+     * Run a stub command through the real FlowRunService. It starts a
+     * grandchild in the command's group (stdio detached from the pipes, so
+     * the command's 'close' can fire), reports both pids, and waits for a
+     * release file before exiting without the grandchild.
+     */
+    async function startStubCommand() {
       const cwd = makeTempDir('station-flow-owned-run-');
       mkdirSync(join(cwd, '.flow', 'definitions'), { recursive: true });
       writeFileSync(
@@ -147,13 +173,11 @@ describe.skipIf(process.platform === 'win32')(
       );
       const stubDir = makeTempDir('station-flow-owned-stub-');
       const stub = join(stubDir, 'stub-command.sh');
-      // Starts a grandchild in the command's group (stdio detached from the
-      // pipes, so the command's 'close' can fire), reports it, and waits for
-      // the release file before exiting without it.
       writeFileSync(
         stub,
         [
           '#!/bin/sh',
+          `echo $$ > '${stubDir}/shell.pid'`,
           'sleep 600 >/dev/null 2>&1 &',
           `echo $! > '${stubDir}/grandchild.pid'`,
           `while [ ! -e '${stubDir}/release' ]; do sleep 0.05; done`,
@@ -172,11 +196,21 @@ describe.skipIf(process.platform === 'win32')(
       });
       const grandchildFile = join(stubDir, 'grandchild.pid');
       expect(await waitFor(() => existsSync(grandchildFile))).toBe(true);
+      const shellPid = Number(
+        readFileSync(join(stubDir, 'shell.pid'), 'utf8').trim(),
+      );
       const grandchildPid = Number(readFileSync(grandchildFile, 'utf8').trim());
-      pids.push(grandchildPid);
+      pids.push(grandchildPid, shellPid);
       const pgid = processGroupOf(grandchildPid);
-      groups.push(pgid);
+      // Assert BEFORE the group is handed to cleanup.
       expect(pgid).not.toBe(processGroupOf(process.pid));
+      groups.push(pgid);
+      return { attached, stubDir, grandchildPid, pgid };
+    }
+
+    test('a running command is registered, and the record is released only after its whole group exits', async () => {
+      const { attached, stubDir, grandchildPid, pgid } =
+        await startStubCommand();
 
       // While the command runs, exactly one record names its process group.
       const running = records();
@@ -195,6 +229,41 @@ describe.skipIf(process.platform === 'win32')(
       process.kill(grandchildPid, 'SIGKILL');
       expect(await waitFor(() => !groupAlive(pgid))).toBe(true);
       expect(await waitFor(() => !existsSync(running[0].file))).toBe(true);
+    }, 30_000);
+
+    test('the real sweep reaps the recorded group once this owner is gone', async () => {
+      const { attached, grandchildPid, pgid } = await startStubCommand();
+      const [record] = records();
+      // The record must be actionable: owned by this process, with the
+      // engine birth a live lookup reads. A null birth would make the sweep
+      // drop it as unverifiable and never reap the group.
+      expect(record.enginePid).toBe(pgid);
+      expect(record.ownerPid).toBe(process.pid);
+      expect(record.engineBirth).not.toBeNull();
+      expect(record.engineBirth).toBe(lookupProcessBirthFingerprint(pgid));
+      const unrelated = spawn(
+        process.execPath,
+        ['-e', 'setInterval(() => {}, 86400000)'],
+        { stdio: 'ignore', detached: true },
+      );
+      pids.push(unrelated.pid!);
+
+      // Simulate the SIGKILLed Station: only this owner's liveness answer is
+      // replaced; the command group is probed for real.
+      const swept = await sweepOrphanedOwnedProcesses({
+        registryDir,
+        probeIdentity: (candidate) =>
+          candidate === process.pid ? { state: 'dead' } : realProbe(candidate),
+      });
+
+      expect(swept.reaped).toEqual([pgid]);
+      expect(swept.unverifiable).toBe(0);
+      expect(await waitFor(() => !groupAlive(pgid))).toBe(true);
+      expect(isAlive(grandchildPid)).toBe(false);
+      expect(isAlive(unrelated.pid!)).toBe(true);
+      expect(existsSync(record.file)).toBe(false);
+      // The killed command settles as a failed, non-zero run.
+      expect((await attached).exitCode).not.toBe(0);
     }, 30_000);
   },
 );
