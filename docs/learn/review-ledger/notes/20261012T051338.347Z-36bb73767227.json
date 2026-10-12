@@ -1,0 +1,7 @@
+{
+  "revision": "ca676dd4df8fa0deebb69c1862d7595c7935ce3e",
+
+  "notes": [
+    {"path":"docs/guides/nightly.md","note":"Reworded the server-older paragraph (says the server is older and names both versions) and disclosed that the bare-client rule also quiets a stable client against its own preview; checked against serverOlderThanClient.ts.","inputs":["docs/guides/nightly.md",".github/workflows/nightly-native-stage.yml"]}
+  ]
+}
