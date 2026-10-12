@@ -28,6 +28,7 @@ import {
   useApiBase,
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
+import { useCanOperateConversations } from '../../contexts/AuthorityPersistenceContext';
 import { activeChatDurableId } from '../../contexts/active-chats-state';
 import { CONFIG_DEFAULTS, useConfig } from '../../contexts/ConfigContext';
 import { conversationCanMutate as canMutateConversation } from '../../contexts/conversation-open-policy';
@@ -60,6 +61,7 @@ import { useChatDockKeyboardShortcuts } from '../../hooks/useChatDockKeyboardSho
 import { useChatDockState } from '../../hooks/useChatDockState';
 import { useChatInput } from '../../hooks/useChatInput';
 import { useCoarseNow } from '../../hooks/useCoarseNow';
+import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useDerivedSessions } from '../../hooks/useDerivedSessions';
 import {
   type DockShellChrome,
@@ -1314,6 +1316,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     [setActiveWorkPanel],
   );
 
+  const coarsePointer = useCoarsePointer();
   const commandLauncherEnabled = Boolean(
     !importedSessionId &&
       isPaneOpen &&
@@ -1329,7 +1332,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     openCommandLauncher,
     commandLauncherEnabled,
   );
-  const commandLauncherShortcut = isMac ? '⌘⇧L' : 'Ctrl+Shift+L';
+  // Empty on a coarse primary pointer: the menu then shows no chord hint a
+  // finger cannot press (ComposerActionsMenu renders the kbd only when set).
+  const commandLauncherShortcut = coarsePointer
+    ? ''
+    : isMac
+      ? '⌘⇧L'
+      : 'Ctrl+Shift+L';
 
   // Project actions remain project-scoped. Agent handoff is a conversation
   // action, so the same menu is also present for global conversations.
@@ -1643,6 +1652,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       (tabId) => activeChatsStore.getSnapshot()[tabId],
     );
   }, [activeSession, apiBase, showToast, updateChat]);
+  const canOperateConversations = useCanOperateConversations();
   const retryConversationOpenRecovery = useCallback(async () => {
     if (!conversationOpenRecovery) return;
     await openConversationForDock(conversationOpenRecovery.conversation);
@@ -2611,7 +2621,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         // which statuses are verdicts.
                         state: conversationOpenRecovery.status,
                         onRetry: () => void retryConversationOpenRecovery(),
-                        onStartNew: startNewFromConversationRecovery,
+                        // Withheld from a client that cannot create a chat.
+                        onStartNew: canOperateConversations
+                          ? startNewFromConversationRecovery
+                          : undefined,
                       }}
                       pending={
                         <div className="session-history-error" role="status">

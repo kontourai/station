@@ -1,3 +1,5 @@
+import './ConversationOpenRecoveryNotice.css';
+
 export interface ConversationOpenRecoveryNoticeProps {
   title: string;
   /**
@@ -21,6 +23,12 @@ export interface ConversationOpenRecoveryNoticeProps {
     | 'unavailable'
     | 'error'
     | 'unverified';
+  /**
+   * Each action renders only when passed. Callers pass one only when this
+   * client can actually take it — e.g. no `onStartNew` for a paired device
+   * that lacks the scope to create a chat — so the notice never offers an
+   * action that would only fail.
+   */
   onRetry?: () => void;
   onStartNew?: () => void;
 }
@@ -36,38 +44,51 @@ export function ConversationOpenRecoveryNotice({
   onStartNew,
 }: ConversationOpenRecoveryNoticeProps) {
   const verdict = state === 'missing-session' || state === 'resolved';
+  // The detail names Retry only when Retry is on screen: a caller that cannot
+  // re-check passes no `onRetry`, and the sentence must not point at it.
   const detail =
     state === 'missing-session'
       ? 'Its execution session is no longer available.'
       : verdict
         ? 'Station could not prove this chat can continue.'
-        : 'Checking this chat failed, so sending is paused. Retry to check again.';
+        : onRetry
+          ? 'Checking this chat failed, so sending is paused. Retry to check again.'
+          : 'Checking this chat failed, so sending is paused.';
+  // The title is the user's own text ("New chat" by default), so it is
+  // quoted: interpolated bare it reads as broken grammar ("confirm New chat
+  // can continue"). It stays in the sentence because the picker path shows
+  // this notice for a conversation other than the one in the header.
+  const quoted = `“${title}”`;
 
   return (
     <div className="session-history-error" role="alert">
       <strong>
         {verdict
-          ? `${title} is read-only.`
-          : `Station couldn't confirm ${title} can continue.`}
+          ? `${quoted} is read-only.`
+          : `Station couldn't confirm ${quoted} can continue.`}
       </strong>
       <span className="session-history-error__detail"> {detail}</span>
-      {onRetry ? (
-        <button
-          type="button"
-          className="button button--secondary session-history-error__retry"
-          onClick={onRetry}
-        >
-          Retry
-        </button>
-      ) : null}
-      {onStartNew ? (
-        <button
-          type="button"
-          className="button button--secondary"
-          onClick={onStartNew}
-        >
-          Start new chat
-        </button>
+      {onRetry || onStartNew ? (
+        <div className="session-history-error__actions">
+          {onRetry ? (
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={onRetry}
+            >
+              Retry
+            </button>
+          ) : null}
+          {onStartNew ? (
+            <button
+              type="button"
+              className="button button--secondary"
+              onClick={onStartNew}
+            >
+              Start new chat
+            </button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

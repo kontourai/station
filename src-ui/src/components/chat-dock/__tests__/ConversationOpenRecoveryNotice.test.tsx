@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   ConversationOpenRecoveryNotice,
@@ -29,7 +29,7 @@ describe('ConversationOpenRecoveryNotice verdicts (#2424)', () => {
   test.each(['missing-session', 'resolved'] as const)(
     '%s is a verdict and says read-only',
     (state) => {
-      expect(renderNotice(state)).toContain('Cool chat is read-only.');
+      expect(renderNotice(state)).toContain('“Cool chat” is read-only.');
     },
   );
 
@@ -45,7 +45,56 @@ describe('ConversationOpenRecoveryNotice verdicts (#2424)', () => {
   ] as const)('%s is a failed check and never claims read-only', (state) => {
     const text = renderNotice(state);
     expect(text).not.toContain('read-only');
-    expect(text).toContain("Station couldn't confirm Cool chat can continue.");
+    expect(text).toContain(
+      "Station couldn't confirm “Cool chat” can continue.",
+    );
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+});
+
+describe('ConversationOpenRecoveryNotice copy and actions', () => {
+  // The phone report: the default title, interpolated bare, read
+  // "Station couldn't confirm New chat can continue." The title is the
+  // user's own text, so it is quoted.
+  test('quotes the chat title instead of splicing it into the sentence', () => {
+    render(
+      <ConversationOpenRecoveryNotice title="New chat" state="unverified" />,
+    );
+    const heading = screen.getByRole('alert').querySelector('strong');
+    expect(heading?.textContent).toBe(
+      "Station couldn't confirm “New chat” can continue.",
+    );
+  });
+
+  test('Retry and Start new chat share one action row', () => {
+    render(
+      <ConversationOpenRecoveryNotice
+        title="New chat"
+        state="unverified"
+        onRetry={() => {}}
+        onStartNew={() => {}}
+      />,
+    );
+    const retry = screen.getByRole('button', { name: 'Retry' });
+    const startNew = screen.getByRole('button', { name: 'Start new chat' });
+    const row = retry.parentElement;
+    // The `__actions` row is what the global phone rule holds to the 44px
+    // touch floor (index.css). This proves the structure, not the layout.
+    expect(row?.className).toBe('session-history-error__actions');
+    expect(startNew.parentElement).toBe(row);
+    // Equal-weight actions: the same classes, so neither is sized apart.
+    expect(retry.className).toBe(startNew.className);
+  });
+
+  // Owner direction: never offer an action the caller cannot take.
+  test('renders no action the caller did not pass, and does not point at a missing Retry', () => {
+    render(
+      <ConversationOpenRecoveryNotice title="New chat" state="unverified" />,
+    );
+    const notice = screen.getByRole('alert');
+    expect(within(notice).queryAllByRole('button')).toHaveLength(0);
+    expect(notice.querySelector('.session-history-error__actions')).toBeNull();
+    expect(notice.textContent).not.toContain('Retry');
+    expect(notice.textContent).toContain('sending is paused');
   });
 });

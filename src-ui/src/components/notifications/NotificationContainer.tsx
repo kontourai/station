@@ -15,6 +15,7 @@ import {
 import { useAllActiveChats } from '../../contexts/ActiveChatsContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
 import { useNotificationHistory, useToast } from '../../contexts/ToastContext';
+import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import {
   focusRenderedApprovalCard,
@@ -288,6 +289,9 @@ export function NotificationContainer() {
   const history = useNotificationHistory();
   const { dismissToast } = useToast();
   const activeChats = useAllActiveChats();
+  // A finger has no keyboard chord to press: the card's ⌘1/Ctrl+1 hint is
+  // withheld on a coarse primary pointer rather than shown as dead text.
+  const coarsePointer = useCoarsePointer();
   const { navigate } = useNavigationActions();
   const approvalQueueRef = useRef<HTMLDivElement>(null);
   const approvalQueueTriggerRef = useRef<HTMLButtonElement>(null);
@@ -494,7 +498,7 @@ export function NotificationContainer() {
   );
 
   const getSessionShortcut = (sessionId: string | undefined): string | null => {
-    if (!sessionId) return null;
+    if (!sessionId || coarsePointer) return null;
     const sessionIndex = Object.keys(activeChats).indexOf(sessionId);
     if (sessionIndex < 0 || sessionIndex >= 9) return null;
     const isMac = navigator.platform.toUpperCase().includes('MAC');

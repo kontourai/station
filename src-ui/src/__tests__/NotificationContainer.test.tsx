@@ -61,6 +61,28 @@ vi.mock('../contexts/NavigationContext', () => {
 import { NotificationContainer } from '../components/notifications/NotificationContainer';
 import { claimApprovalThreads } from '../components/status/approvalReveal';
 
+/**
+ * A `matchMedia` with the MediaQueryList shape the browser returns (the
+ * container's pointer hook subscribes to changes), answering per query: a
+ * coarse device matches `(pointer: coarse)` and not `(hover: hover)`.
+ */
+function matchMediaFor({ coarse }: { coarse: boolean }) {
+  return (query: string) => ({
+    matches: query.includes('pointer: coarse')
+      ? coarse
+      : query.includes('hover: hover')
+        ? !coarse
+        : false,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  });
+}
+
 describe('NotificationContainer', () => {
   beforeEach(() => {
     dismissToast.mockClear();
@@ -118,6 +140,40 @@ describe('NotificationContainer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open chat' }));
     expect(onNavigate).toHaveBeenCalledTimes(1);
     expect(dismissToast).toHaveBeenCalledWith('turn-failed');
+  });
+
+  describe('session shortcut hint', () => {
+    function renderTurnToast() {
+      notifications = [
+        {
+          id: 'turn-done',
+          type: 'turn-activity',
+          message: 'Turn finished',
+          timestamp: Date.now(),
+          dismissed: false,
+          conversationTitle: 'New chat',
+          sessionId: 'session-1',
+          onNavigate: vi.fn(),
+        },
+      ];
+      render(<NotificationContainer />);
+      return document.querySelector('.toast-card__shortcut');
+    }
+
+    test('a fine pointer shows the chord that switches to the chat', () => {
+      vi.stubGlobal('matchMedia', matchMediaFor({ coarse: false }));
+      expect(renderTurnToast()?.textContent).toMatch(/^(⌘|Ctrl\+)1$/);
+      vi.unstubAllGlobals();
+    });
+
+    // The phone report: "New chat Ctrl+1" on a touch device, a chord no
+    // finger can press.
+    test('a coarse pointer shows no keyboard chord', () => {
+      vi.stubGlobal('matchMedia', matchMediaFor({ coarse: true }));
+      expect(renderTurnToast()).toBeNull();
+      expect(screen.getByText('New chat')).toBeTruthy();
+      vi.unstubAllGlobals();
+    });
   });
 
   test('renders View and routes a notification navigateTo action', () => {
@@ -706,7 +762,7 @@ describe('NotificationContainer', () => {
   test('a coarse-pointer tap expands the stack instead of activating the front card', () => {
     // (hover: hover) does not match → a device that cannot hover, where CSS
     // hover expansion can never fire (archive#3308, #1960 follow-up).
-    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    vi.stubGlobal('matchMedia', matchMediaFor({ coarse: true }));
     const onNavigate = vi.fn();
     notifications = ['a', 'b', 'c'].map((id) => ({
       id,
@@ -744,7 +800,7 @@ describe('NotificationContainer', () => {
   });
 
   test('a hover-capable pointer keeps click-to-activate on the front card', () => {
-    vi.stubGlobal('matchMedia', () => ({ matches: true }));
+    vi.stubGlobal('matchMedia', matchMediaFor({ coarse: false }));
     const onNavigate = vi.fn();
     notifications = ['a', 'b'].map((id) => ({
       id,

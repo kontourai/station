@@ -22,6 +22,7 @@ import {
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useCanOperateConversations } from '../../contexts/AuthorityPersistenceContext';
 import { isTurnInFlight } from '../../contexts/active-chats-state';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
@@ -498,6 +499,14 @@ export function ChatDockBody({
   const recoveryOpen = openPhase === 'read-only' || unverifiedOpen;
   const busyOpen = openPhase === 'busy';
   const resolvingOpen = openPhase === 'resolving';
+  // Whether this client may start a chat or send a turn at all (a paired
+  // device without the operate scope may not). Actions that need it are
+  // withheld rather than offered to fail.
+  const canOperate = useCanOperateConversations();
+  // Sending is refused outright while the open is unproven, so no surface may
+  // invite a send then — the failure banner's "you can send a message" note
+  // contradicted the recovery notice's "sending is paused" right below it.
+  const sendInvitable = canOperate && !recoveryOpen && !resolvingOpen;
   const transcript = useActiveChatTranscript(apiBase, activeSession);
   const streamStatus = useChatStreamStatus(apiBase, activeSession.replay);
   const windowRequests = useMemo(
@@ -517,6 +526,11 @@ export function ChatDockBody({
       ),
     [transcript.events],
   );
+  const observationUnavailable =
+    unverifiedOpen ||
+    Boolean(
+      transcript.enabled && (transcript.error || transcript.upgradeRequired),
+    );
   // Live chat status shares the composer rail; replay keeps its recorded rows.
   const { pill: statusPill, statusInPill } = useChatStatusPill({
     activeSession,
@@ -524,12 +538,25 @@ export function ChatDockBody({
     turnLive: isTurnStreamLive(activeSession),
     enabled: !activeSession.replay,
     windowRequests,
-    observationUnavailable:
-      unverifiedOpen ||
-      Boolean(
-        transcript.enabled && (transcript.error || transcript.upgradeRequired),
-      ),
+    observationUnavailable,
   });
+  // The state the recovery notice is given. Only `missing-session` and
+  // `resolved` are verdicts there; anything else renders "couldn't confirm",
+  // a failed check.
+  const recoveryState = unverifiedOpen
+    ? 'unverified'
+    : activeSession.conversationOpenState?.status;
+  const recoveryReportsFailedCheck =
+    recoveryOpen &&
+    recoveryState !== 'missing-session' &&
+    recoveryState !== 'resolved';
+  // With observation unavailable the pill can only say "Status unavailable".
+  // While the recovery notice already reports a failed check, with its own
+  // Retry, that pill is a third surface for one condition, so it is not
+  // shown. `observationUnavailable` still feeds the derivation, so the pill
+  // never falls back to a stale cached Working clock.
+  const composerActivity =
+    recoveryReportsFailedCheck && observationUnavailable ? null : statusPill;
   /*
    * One transitional state for the whole conversation, from the two things
    * that are actually still in flight after a reload: the conversation-open
@@ -1709,12 +1736,20 @@ export function ChatDockBody({
         terminal-session marker says so and offers a new chat instead. It is
         also why the composer below stays enabled: disabling it would be a
         second untruth in the opposite direction.
+
+        Every note invites a send, so it is withheld whenever a send cannot
+        go out (`sendInvitable`): the recovery notice below then owns what
+        happens next, and the banner keeps only the recorded cause.
       */}
       <SessionFailureAlert
         failureText={bannerFailureText}
         className="chat-dock__session-failure"
         testId="chat-dock-session-failure"
-        note={sessionFailureNote(activeOrchestrationSession)}
+        note={
+          sendInvitable
+            ? sessionFailureNote(activeOrchestrationSession)
+            : undefined
+        }
       />
       {/* #3157: the limited conversation's own banner, from the server's
           recovery projection; it re-reads with each snapshot update. */}
@@ -1830,19 +1865,21 @@ export function ChatDockBody({
         BEFORE the transcript's first read satisfies both conditions at once,
         and rendered the control twice (delta-review L1).
       */}
-      {conversationLoading && loadingLong && !recoveryOpen ? (
+      {conversationLoading &&
+      loadingLong &&
+      !recoveryOpen &&
+      onNewChat &&
+      canOperate ? (
         <div className="session-history-controls">
-          {onNewChat ? (
-            <button
-              type="button"
-              className="button button--secondary"
-              onClick={() =>
-                void Promise.resolve(onNewChat()).catch(surfaceRecoveryFailure)
-              }
-            >
-              Start new chat
-            </button>
-          ) : null}
+          <button
+            type="button"
+            className="button button--secondary"
+            onClick={() =>
+              void Promise.resolve(onNewChat()).catch(surfaceRecoveryFailure)
+            }
+          >
+            Start new chat
+          </button>
         </div>
       ) : null}
       {recoveryOpen ? (
@@ -1852,18 +1889,20 @@ export function ChatDockBody({
             title:
               activeSession.conversationOpenState?.conversation.title ??
               activeSession.title,
-            state: unverifiedOpen
-              ? 'unverified'
-              : activeSession.conversationOpenState?.status,
+            state: recoveryState,
+            // Retry re-reads the open (`GET /api/conversations/:id/open`,
+            // the read tier this client already holds to see the chat);
+            // starting a chat needs the operate tier.
             onRetry: onRetryConversationOpen
               ? () => void onRetryConversationOpen()
               : undefined,
-            onStartNew: onNewChat
-              ? () =>
-                  void Promise.resolve(onNewChat()).catch(
-                    surfaceRecoveryFailure,
-                  )
-              : undefined,
+            onStartNew:
+              onNewChat && canOperate
+                ? () =>
+                    void Promise.resolve(onNewChat()).catch(
+                      surfaceRecoveryFailure,
+                    )
+                : undefined,
           }}
           pending={
             <div className="session-history-error" role="status">
@@ -1999,7 +2038,7 @@ export function ChatDockBody({
             />
           )}
           <DeferredChatInputArea
-            activity={statusPill}
+            activity={composerActivity}
             activityRef={setScrollControlsTarget}
             hasQuotedContext={chatInput.quotes.length > 0}
             draftText={chatInput.quotedDraftText}

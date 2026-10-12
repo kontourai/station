@@ -1216,6 +1216,18 @@
   overflow-y: auto;
 }
 
+/* archive#3213: placement only. The failed-session banner's appearance and
+   its wrap/clamp policy belong to the shared `SessionFailureAlert.css`; this
+   is just the inset its siblings above the composer (the recovery notice,
+   the usage-limit banner) already use. It lived in index.css as a one-class
+   rule, which tied `.session-failure { margin: 0 }` on specificity and lost
+   on source order once the dock's lazy chunk injected that sheet after the
+   entry stylesheet: the banner ran edge to edge while the notice under it
+   stayed inset. Two classes win whatever the injection order. */
+.chat-dock__body > .chat-dock__session-failure {
+  margin: 0 12px 8px;
+}
+
 /* No room above the composer (data-composer-priority): the transcript has
    shrunk to nothing, so the send-failure notice inside it cannot be read; the
    composer repeats the latest one as a single line. */
