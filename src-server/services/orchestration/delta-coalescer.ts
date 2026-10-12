@@ -79,10 +79,11 @@ interface DeltaCoalescerOptions {
    */
   logger?: CoalescerLogger;
   /**
-   * #3560: asked when a flush made synchronously by `offer` fails — one made
-   * ahead of another event, or at the size cap. Returning true puts the text
-   * buffered before the offered event back, so the caller's retry of that
-   * event delivers it first and nothing overtakes or loses it. The owner
+   * #3560: asked when a flush `offer` makes ahead of the offered event fails
+   * (before a different event, before a different stream, or before a delta
+   * that would reach the size cap). Returning true puts the buffered text
+   * back untimed, so a retry of the offered event delivers it first; the
+   * owner calls `resumeRetained` when no retry is in flight. The owner
    * decides, because only it knows whether the failure is transient and
    * whether the delivery committed before it threw. Omitted, the buffer is
    * dropped as before.
@@ -194,7 +195,7 @@ export class DeltaCoalescer {
 
     if (text === undefined) {
       // Not coalescable: whatever is buffered for this thread happened first.
-      this.flushPending(event.threadId, 'propagate', { excludeTrailing: 0 });
+      this.flushPending(event.threadId, 'propagate', true);
       // A tool call, an approval or a turn boundary ends the current run of
       // text, so whatever text comes next is a fresh paint, not a
       // continuation of what this event interrupted — UNLESS the flush above
@@ -206,7 +207,7 @@ export class DeltaCoalescer {
     const current = this.pending.get(event.threadId);
     if (current && !mergeable(current.event, event)) {
       // A different turn, item or kind of delta: not the same text.
-      this.flushPending(event.threadId, 'propagate', { excludeTrailing: 0 });
+      this.flushPending(event.threadId, 'propagate', true);
     }
 
     // The FIRST delta of a run of text is never held. Batching starts with
@@ -219,6 +220,17 @@ export class DeltaCoalescer {
       this.deliver(event, 'propagate');
       return true;
     }
+
+    // #3560: a buffer this delta would take to the cap is emitted BEFORE the
+    // delta joins it, as a flush ahead of the offered event. No emitted event
+    // then contains the delta being offered, so when that flush fails after
+    // committing, the caller's retry of this delta cannot store its text a
+    // second time; and when it fails before committing, the buffer is
+    // retained and the retry delivers it first. A merged event now stays
+    // under the cap; only a single delta at or over it is emitted that large.
+    const buffered = this.pending.get(event.threadId);
+    if (buffered && buffered.text.length + text.length >= this.maxChars)
+      this.flushPending(event.threadId, 'propagate', true);
 
     const existing = this.pending.get(event.threadId);
     if (!existing) {
@@ -241,12 +253,27 @@ export class DeltaCoalescer {
         );
     }
 
+    // Normally only a single delta at or over the cap reaches this. Its event
+    // is the offered one, so the caller's committed-event check covers it.
     const held = this.pending.get(event.threadId);
     if (held && held.text.length >= this.maxChars)
-      this.flushPending(event.threadId, 'propagate', {
-        excludeTrailing: text.length,
-      });
+      this.flushPending(event.threadId, 'propagate');
     return true;
+  }
+
+  /**
+   * #3560: give text retained for an owner's retry its window timer back,
+   * once that owner has no retry in flight for the thread. Without this,
+   * text kept after the owner gave up would wait for an unrelated event or
+   * shutdown, even after the store recovered.
+   */
+  resumeRetained(threadId: string): void {
+    const held = this.pending.get(threadId);
+    if (held && held.timer === undefined)
+      held.timer = this.setTimer(
+        () => this.flushThread(threadId),
+        this.windowMs,
+      );
   }
 
   /**
@@ -292,24 +319,22 @@ export class DeltaCoalescer {
   }
 
   /**
-   * `retain` is given only by `offer`'s synchronous flushes, whose caller
-   * retries the event it offered (#3560). The retry must deliver this text
-   * first, so a failed delivery the owner agrees to retry puts it back.
+   * `retain` is set only by `offer`'s flushes AHEAD of the offered event
+   * (a different event, a different stream, or a delta that would take the
+   * buffer to the cap), none of which contains the offered event (#3560). A
+   * failed delivery the owner agrees to keep is put back, so a retry of the
+   * offered event delivers it first.
    *
-   * `excludeTrailing` is how much of the buffer is the offered delta itself.
-   * It is zero for a flush made ahead of a different event. The size-cap
-   * flush runs after the offered delta was appended, so its tail is left for
-   * the caller to re-offer; keeping it too would duplicate that delta.
-   *
-   * Retained text gets NO window timer. The owner's retry is asleep, and a
+   * Retained text gets NO window timer: an owner retry may be asleep, and a
    * timer firing then would take the warn path and drop the text it was
-   * retained to keep. `offer` re-times it when later text merges in, and
-   * `flushAll`/`forgetThread` still flush it.
+   * retained to keep. The owner calls `resumeRetained` once no retry is in
+   * flight; `offer` also re-times it when later text merges in, and
+   * `flushAll`/`forgetThread` flush it regardless.
    */
   private flushPending(
     threadId: string,
     onFailure: DeliveryFailureMode,
-    retain?: { excludeTrailing: number },
+    retain = false,
   ): void {
     const held = this.pending.get(threadId);
     if (!held) return;
@@ -323,22 +348,17 @@ export class DeltaCoalescer {
     try {
       this.emit(merged);
     } catch (error) {
-      const kept = held.text.slice(
-        0,
-        held.text.length - retain.excludeTrailing,
-      );
       // The publish body throws before its bus fan-out, so normally nothing
       // has re-buffered this thread. If something did, that buffer holds
       // LATER text and must not be overwritten by this earlier text; the
       // earlier text is then dropped, as it always was.
       if (
-        kept.length > 0 &&
         !this.pending.has(threadId) &&
         this.retainFailedFlush(merged, error)
       ) {
         this.pending.set(threadId, {
           event: held.event,
-          text: kept,
+          text: held.text,
           timer: undefined,
         });
       }

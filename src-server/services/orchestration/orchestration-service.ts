@@ -1992,8 +1992,11 @@ export class OrchestrationService {
       logger: {
         warn: (message, meta) => this.options.logger.warn(message, meta),
       },
-      // #3560: text flushed ahead of an observed event is kept for that
-      // event's retry exactly when the event itself would be retried.
+      // #3560: text that failed to flush ahead of an offered event is kept
+      // whenever the failure is retryable contention and the text did not
+      // commit. Most `projectAndPublishEvent` callers never retry; for them
+      // the text is re-timed in that method's `finally`, and an observed
+      // event's retry re-times it when it finishes (`resumeRetained`).
       retainFailedFlush: (event, error) =>
         this.isRetryablePublishFailure(event, error),
     },
@@ -2004,6 +2007,12 @@ export class OrchestrationService {
    * again. Cleared when the publish returns or gives up.
    */
   private readonly providerTurnBoundariesInFlight = new Set<string>();
+  /**
+   * #3560: threads with an observed-event retry asleep or running. Text the
+   * coalescer retained for such a thread stays untimed until the retry
+   * finishes, so a window timer cannot drop it on the warn path meanwhile.
+   */
+  private readonly observedRetryThreads = new Set<string>();
   /** Threads whose missing configuration has already been logged for monitoring. */
   private readonly monitoringUnconfiguredThreads = new Set<string>();
   private readonly turnAdmissions = new Set<OrchestrationTurnAdmission>();
@@ -9887,6 +9896,7 @@ export class OrchestrationService {
               error: errorMessage(error),
             },
           );
+          this.observedRetryThreads.add(admitted.threadId);
           // node:sqlite is synchronous: each failed attempt may already have
           // blocked the whole process for busy_timeout. Only this sleep yields.
           await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -9897,6 +9907,10 @@ export class OrchestrationService {
       throw new Error('unreachable: the final attempt returns or throws');
     } finally {
       this.providerTurnBoundariesInFlight.delete(admitted.eventId);
+      // Whatever the outcome, no retry of this event is in flight now: text
+      // still retained for the thread gets its window timer back.
+      this.observedRetryThreads.delete(admitted.threadId);
+      this.deltaCoalescer.resumeRetained(admitted.threadId);
     }
   }
 
@@ -11110,6 +11124,8 @@ export class OrchestrationService {
       return this.offerOrPublishEvent(admitted);
     } finally {
       this.providerTurnBoundariesInFlight.delete(admitted.eventId);
+      if (!this.observedRetryThreads.has(admitted.threadId))
+        this.deltaCoalescer.resumeRetained(admitted.threadId);
     }
   }
 
