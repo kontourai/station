@@ -3,17 +3,11 @@
  * authenticates as a headless device of its person, is stored only as a
  * hash, expires, revokes, and never touches the paired-device registry.
  */
-import {
-  chmodSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { chmodSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { AccountDirectory } from '../../identity/account-directory.js';
 import type { DevicePairingService } from '../../ssh/device-pairing-service.js';
 import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
@@ -23,15 +17,10 @@ import {
 } from '../personal-token-store.js';
 
 const STANDARD = 'orchestration:read orchestration:operate terminal:operate';
-const homes: string[] = [];
-afterEach(() => {
-  for (const home of homes.splice(0))
-    rmSync(home, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 async function station() {
-  const homeDir = mkdtempSync(join(tmpdir(), 'station-tokens-'));
-  homes.push(homeDir);
+  const homeDir = makeTempDir('station-tokens-');
   let clock = Date.UTC(2026, 9, 20);
   const security = new EnvironmentSecurityService({
     homeDir,
