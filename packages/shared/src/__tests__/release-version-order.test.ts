@@ -115,3 +115,19 @@ describe('hostNightlyAllocation', () => {
     expect(hostNightlyAllocation(version)).toBeNull();
   });
 });
+
+describe('compareStationReleaseVersions', () => {
+  // The browser-safe export must order exactly as the installers and the
+  // server do; it delegates to accepted-release.mjs rather than copying it.
+  test.each<[string, string, -1 | 0 | 1 | null]>([
+    ['1.2.3', '1.2.3', 0],
+    ['1.2.4', '1.2.3', 1],
+    ['1.2.3', '1.2.3-preview.9', 1],
+    ['1.2.3-nightly.1', '1.2.3', -1],
+    ['1.2.3-preview.10', '1.2.3-preview.9', 1],
+    ['1.2.3-preview.1', '1.2.3-nightly.1', null],
+    ['v1.2.3', '1.2.3', null],
+  ])('%s against %s is %s', (left, right, order) => {
+    expect(compareStationReleaseVersions(left, right)).toBe(order);
+  });
+});
