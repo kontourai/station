@@ -12,11 +12,11 @@ import {
   lstatSync,
   readFileSync,
   realpathSync,
-  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
+import { renamePathSyncRetrying } from './fs-windows-compat.js';
 import { STATION_RELEASE_RINGS, type StationReleaseRing } from './ports.js';
 import { windowsSystemUtilityPath } from './windows-system-utility.mjs';
 
@@ -345,9 +345,22 @@ export const ACCEPTED_RELEASE_FILENAME = '.station-release-accepted.json';
 
 export type AcceptedReleaseMark =
   | { state: 'absent' }
-  /** Present but not a mark for this ring: callers refuse, never guess. */
+  /**
+   * Present but not a safe mark for this ring (a symlink, another owner,
+   * group- or world-accessible, malformed, another ring, or a version of
+   * another ring's shape): callers refuse, never guess.
+   */
   | { state: 'invalid' }
   | { state: 'recorded'; version: string };
+
+/** Whether `version` has `ring`'s own shape (X.Y.Z, or X.Y.Z-<ring>.N). */
+function isRingVersion(ring: string, version: unknown): version is string {
+  return (
+    isPackagedReleaseChannel(ring) &&
+    typeof version === 'string' &&
+    packagedReleaseTag(ring).test(`v${version}`)
+  );
+}
 
 export function readAcceptedRelease(
   installRoot: string,
@@ -356,6 +369,18 @@ export function readAcceptedRelease(
   const path = join(installRoot, ACCEPTED_RELEASE_FILENAME);
   let text: string;
   try {
+    // The checks install.sh and the installer core apply to the install
+    // state beside it: a regular file this user owns, private to it (the
+    // mode and owner are not meaningful on Windows).
+    const info = lstatSync(path);
+    const owner =
+      typeof process.getuid === 'function' ? process.getuid() : null;
+    if (
+      !info.isFile() ||
+      info.isSymbolicLink() ||
+      (owner !== null && (info.uid !== owner || (info.mode & 0o077) !== 0))
+    )
+      return { state: 'invalid' };
     text = readFileSync(path, 'utf8');
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === 'ENOENT'
@@ -377,29 +402,50 @@ export function readAcceptedRelease(
       JSON.stringify(['releaseChannel', 'schemaVersion', 'version']) ||
     mark.schemaVersion !== 1 ||
     mark.releaseChannel !== releaseChannel ||
-    typeof mark.version !== 'string' ||
-    // Not a Station version at all (it orders against nothing, not even itself).
-    compareStationReleaseVersions(mark.version, mark.version) !== 0
+    !isRingVersion(releaseChannel, mark.version)
   )
     return { state: 'invalid' };
   return { state: 'recorded', version: mark.version };
 }
 
 /**
- * Raises the mark to `version` (never lowers it), atomically. An unreadable
- * mark is replaced: a caller reaches this only after its own check of the
- * mark passed or was explicitly overridden.
+ * How `version` relates to the mark: `older` is refused, `incomparable`
+ * (not a version of the mark's ring) is refused too, and anything else
+ * passes. Both installers word each outcome the same way.
+ */
+export function compareWithAcceptedRelease(
+  releaseChannel: string,
+  version: string,
+  accepted: string,
+): 'older' | 'not-older' | 'incomparable' {
+  if (!isRingVersion(releaseChannel, version)) return 'incomparable';
+  const order = compareStationReleaseVersions(version, accepted);
+  if (order === null) return 'incomparable';
+  return order < 0 ? 'older' : 'not-older';
+}
+
+/**
+ * Raises the mark to `version`, atomically, and never lowers it: a valid
+ * mark is kept unless `version` is newer. A missing or invalid mark is
+ * replaced, since a caller reaches this only after its own check of the mark
+ * passed or was explicitly overridden. Throws for a `version` that is not of
+ * the ring's shape (it would write a mark every later check refuses).
  */
 export function recordAcceptedRelease(
   installRoot: string,
   releaseChannel: string,
   version: string,
 ): void {
+  if (!isRingVersion(releaseChannel, version))
+    throw new Error(
+      `${version} is not a ${releaseChannel} release version; the accepted release was not recorded`,
+    );
   const existing = readAcceptedRelease(installRoot, releaseChannel);
-  if (existing.state === 'recorded') {
-    const order = compareStationReleaseVersions(version, existing.version);
-    if (order !== null && order <= 0) return;
-  }
+  if (
+    existing.state === 'recorded' &&
+    compareStationReleaseVersions(version, existing.version) !== 1
+  )
+    return;
   const path = join(installRoot, ACCEPTED_RELEASE_FILENAME);
   const stage = `${path}.${process.pid}.tmp`;
   try {
@@ -408,7 +454,7 @@ export function recordAcceptedRelease(
       `${JSON.stringify({ schemaVersion: 1, releaseChannel, version })}\n`,
       { mode: 0o600 },
     );
-    renameSync(stage, path);
+    renamePathSyncRetrying(stage, path);
   } catch (error) {
     rmSync(stage, { force: true });
     throw error;

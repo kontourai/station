@@ -41,7 +41,7 @@ import { renamePathSyncRetrying } from '../fs-windows-compat.js';
 import { findPortableServerTarget } from '../portable-server-targets.mjs';
 import {
   ACCEPTED_RELEASE_FILENAME,
-  compareStationReleaseVersions,
+  compareWithAcceptedRelease,
   readAcceptedRelease,
   recordAcceptedRelease,
 } from '../prebuilt-archive.js';
@@ -1054,8 +1054,16 @@ export async function prepareRelease(
         actualChecksum,
         isActive,
       );
-      if (outcome === 'nothing-to-do')
+      if (outcome === 'nothing-to-do') {
+        // An install from before the mark existed has none; the verified
+        // active release seeds it. An existing mark, valid or not, is left
+        // to the next install that reaches the mark's own check.
+        if (
+          readAcceptedRelease(paths.installRoot, paths.ring).state === 'absent'
+        )
+          recordAccepted(io, paths, payload);
         return { ...result, outcome: 'nothing-to-do' };
+      }
     }
     checkAgainstAccepted(env, io, paths, payload);
     prepare();
@@ -1064,12 +1072,7 @@ export async function prepareRelease(
     // becomes the newest this install has accepted. It is raised even if a
     // later step fails: the manifest is validly signed either way, and an
     // older one is stale whatever became of this release.
-    try {
-      recordAcceptedRelease(paths.installRoot, paths.ring, payload.version);
-    } catch (error) {
-      io.err(`${(error as Error).message}`);
-      fail('could not record the newest release this install accepted');
-    }
+    recordAccepted(io, paths, payload);
     if (isCompleteVersion(releaseDir, actualChecksum)) {
       io.out('Station release already installed; reusing verified files.');
       return { ...result, outcome: 'ready' };
@@ -1188,6 +1191,19 @@ function withZipOrRefuse<T>(
   }
 }
 
+function recordAccepted(
+  io: InstallerIo,
+  paths: Paths,
+  payload: ReleaseManifestPayload,
+): void {
+  try {
+    recordAcceptedRelease(paths.installRoot, paths.ring, payload.version);
+  } catch (error) {
+    io.err(`${(error as Error).message}`);
+    fail('could not record the newest release this install accepted');
+  }
+}
+
 /**
  * Replay protection beyond `current` (install.sh check_accepted_release): a
  * manifest older than the newest release this install root ever accepted is
@@ -1218,14 +1234,22 @@ function checkAgainstAccepted(
       `cannot read the newest release this install accepted (${join(paths.installRoot, ACCEPTED_RELEASE_FILENAME)}); set STATION_VERSION=${tag} and STATION_INSTALL_ALLOW_ROLLBACK=1 to install ${tag} explicitly`,
     );
   }
-  const order = compareStationReleaseVersions(payload.version, mark.version);
-  if (order !== null && order >= 0) return;
+  const relation = compareWithAcceptedRelease(
+    paths.ring,
+    payload.version,
+    mark.version,
+  );
+  if (relation === 'not-older') return;
   if (explicit) {
     io.out(
-      `Installing Station ${tag}, older than v${mark.version} which this install already accepted (STATION_INSTALL_ALLOW_ROLLBACK=1).`,
+      `Installing Station ${tag}, not newer than v${mark.version} which this install already accepted (STATION_INSTALL_ALLOW_ROLLBACK=1).`,
     );
     return;
   }
+  if (relation === 'incomparable')
+    fail(
+      `cannot compare Station ${tag} with v${mark.version}, the newest release this install accepted; set STATION_VERSION=${tag} and STATION_INSTALL_ALLOW_ROLLBACK=1 to install ${tag} explicitly`,
+    );
   fail(
     `refusing Station ${tag}: this install already accepted the newer signed release v${mark.version}, so this manifest is stale or replayed; to install ${tag} deliberately, set STATION_VERSION=${tag} and STATION_INSTALL_ALLOW_ROLLBACK=1`,
   );

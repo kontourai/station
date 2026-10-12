@@ -270,6 +270,26 @@ Follow [native release recovery](native-releases.md#stage-inspect-publish-and-ro
 for those authorities, communicate the affected version through the incident
 owner, and publish a higher fixed version. Never silently move the tag.
 
+Withdrawal is roll-forward only for public-manifest installs. Each install
+root records the newest release it accepted from a verified manifest
+(`.station-release-accepted.json`). The record is raised as soon as the
+manifest verifies, before extraction, so it holds even when that install or
+the launcher's trial of it then failed and was rolled back. After that, a
+re-signed manifest for an older release is refused on that install as stale
+or replayed, the same as a hostile replay. So:
+
+- publish a higher fixed version, or
+- on each affected host, install the older release deliberately with
+  `STATION_VERSION=v<x.y.z>` and `STATION_INSTALL_ALLOW_ROLLBACK=1`. That
+  does not lower the record, so later updates still need a release at least
+  as new as the withdrawn one.
+
+One accepted edge: the record compares versions, not bytes. After a launcher
+rollback from vN, a manifest for different bytes signed as the same vN is not
+older than the record, and it is newer than the active release, so it
+installs without a flag. It still needs a valid signature from a key pinned
+for the ring.
+
 ## Rotating the attestation action pin
 
 Treat a pin update as a release-policy change: review the upstream action release

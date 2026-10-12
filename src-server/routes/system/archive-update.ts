@@ -3,6 +3,7 @@ import type { ServiceUpdateProgress } from '@kontourai/station-contracts/system-
 import {
   type ArchiveInstallState,
   compareStationReleaseVersions,
+  compareWithAcceptedRelease,
   readAcceptedRelease,
   readArchiveInstallState,
 } from '@kontourai/station-shared/prebuilt-archive';
@@ -259,9 +260,11 @@ function acceptedReleaseRefusal(
   if (mark.state === 'absent') return null;
   if (mark.state === 'invalid')
     return 'the record of the newest release this install accepted is unreadable';
-  const order = compareStationReleaseVersions(version, mark.version);
-  if (order !== null && order >= 0) return null;
-  return `the manifest offers ${version}, older than ${mark.version} which this install already accepted; it is stale or replayed`;
+  const relation = compareWithAcceptedRelease(ring, version, mark.version);
+  if (relation === 'not-older') return null;
+  return relation === 'older'
+    ? `the manifest offers ${version}, older than ${mark.version} which this install already accepted; it is stale or replayed`
+    : `the manifest offers ${version}, which cannot be compared with ${mark.version}, the newest release this install accepted`;
 }
 
 export interface ArchiveUpdateStatus {

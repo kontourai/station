@@ -368,9 +368,12 @@ describe('GET /core-update on a launcher-run archive', () => {
 describe('a manifest older than a release this install already accepted (#187)', () => {
   /** The mark exactly as install.sh and the Windows installer core write it. */
   function acceptRelease(install: Install, text: string) {
+    // Owner-only, as the installers write it (a group- or world-readable
+    // mark is not trusted).
     writeFileSync(
       join(install.installRoot, '.station-release-accepted.json'),
       text,
+      { mode: 0o600 },
     );
   }
   const mark = (version: string) =>

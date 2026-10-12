@@ -1581,74 +1581,100 @@ fi
 accepted_release_file() {
   printf '%s/.station-release-accepted.json' "$install_root"
 }
-check_accepted_release() {
-  accepted_order="$(node -e '
+# One program for both uses, so the check and the record read the mark the
+# same way: `check` prints how the offered version relates to the mark
+# (`absent`, `not-older`, `older <mark>`, `incomparable <mark>`) and exits 1
+# for an unsafe or invalid mark; `record` raises it and never lowers it (a
+# valid mark is kept unless the offered version is newer; a missing or
+# invalid one is replaced, after the caller's check passed or was
+# explicitly overridden), and refuses a version not of the ring's shape.
+accepted_release_node() {
+  node -e '
     const fs = require("node:fs");
-    const [markPath, ring, candidate] = process.argv.slice(1);
-    let text;
-    try { text = fs.readFileSync(markPath, "utf8"); } catch (error) { process.exit(error.code === "ENOENT" ? 0 : 1); }
-    const shape = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([a-z]+)\.([1-9][0-9]*))?$/;
-    const parse = (version) => {
-      const match = shape.exec(version);
-      return match ? { core: match.slice(1, 4).map(BigInt), label: match[4] ?? null, build: match[5] === undefined ? null : BigInt(match[5]) } : null;
+    const [mode, markPath, ring, offered, ringsJson] = process.argv.slice(1);
+    const rings = JSON.parse(ringsJson);
+    const ringShape = (version) => typeof version === "string" && Object.hasOwn(rings, ring) &&
+      new RegExp(`^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)${rings[ring].prerelease ? `-${ring}\\.[1-9][0-9]*` : ""}$`).test(version);
+    // compareStationReleaseVersions (packages/shared/src/prebuilt-archive.ts).
+    const compare = (left, right) => {
+      const read = (version) => {
+        const match = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([a-z]+)\.([1-9][0-9]*))?$/.exec(version);
+        return match ? { release: match.slice(1, 4).map(BigInt), ring: match[4] ?? null, build: match[5] === undefined ? null : BigInt(match[5]) } : null;
+      };
+      const a = read(left), b = read(right);
+      if (!a || !b) return null;
+      const order = (x, y) => (x === y ? 0 : (x ?? 0n) < (y ?? 0n) ? -1 : 1);
+      for (let part = 0; part < 3; part += 1) { const result = order(a.release[part], b.release[part]); if (result !== 0) return result; }
+      if (a.ring === b.ring) return a.ring === null ? 0 : order(a.build, b.build);
+      if (a.ring === null) return 1;
+      if (b.ring === null) return -1;
+      return null;
     };
-    let mark;
-    try { mark = JSON.parse(text); } catch { process.exit(1); }
-    if (!mark || typeof mark !== "object" || Array.isArray(mark) ||
-      JSON.stringify(Object.keys(mark).sort()) !== JSON.stringify(["releaseChannel", "schemaVersion", "version"]) ||
-      mark.schemaVersion !== 1 || mark.releaseChannel !== ring || typeof mark.version !== "string") process.exit(1);
-    const accepted = parse(mark.version);
-    const offered = parse(candidate);
-    if (!accepted || !offered) process.exit(1);
-    let order = 0;
-    for (let index = 0; index < 3 && order === 0; index += 1)
-      order = offered.core[index] === accepted.core[index] ? 0 : offered.core[index] < accepted.core[index] ? -1 : 1;
-    if (order === 0) {
-      if (accepted.label === offered.label) order = accepted.label === null ? 0 : offered.build === accepted.build ? 0 : offered.build < accepted.build ? -1 : 1;
-      else if (accepted.label === null) order = -1;
-      else if (offered.label === null) order = 1;
-      else process.exit(1);
+    // The checks applied to the install state beside it: a regular file this
+    // user owns, private to it.
+    let mark = { state: "absent" };
+    let info = null;
+    try { info = fs.lstatSync(markPath); } catch (error) { if (error.code !== "ENOENT") mark = { state: "invalid" }; }
+    if (info) {
+      mark = { state: "invalid" };
+      if (info.isFile() && !info.isSymbolicLink() && (typeof process.getuid !== "function" || (info.uid === process.getuid() && (info.mode & 0o077) === 0))) {
+        let value = null;
+        try { value = JSON.parse(fs.readFileSync(markPath, "utf8")); } catch {}
+        if (value && typeof value === "object" && !Array.isArray(value) &&
+          JSON.stringify(Object.keys(value).sort()) === JSON.stringify(["releaseChannel", "schemaVersion", "version"]) &&
+          value.schemaVersion === 1 && value.releaseChannel === ring && ringShape(value.version))
+          mark = { state: "recorded", version: value.version };
+      }
     }
-    if (order < 0) process.stdout.write(`v${mark.version}`);
-  ' "$(accepted_release_file)" "$release_channel" "$release_version")" || {
+    if (mode === "check") {
+      if (mark.state === "invalid") process.exit(1);
+      if (mark.state === "absent") { process.stdout.write("absent"); process.exit(0); }
+      const order = ringShape(offered) ? compare(offered, mark.version) : null;
+      process.stdout.write(order === null ? `incomparable v${mark.version}` : order < 0 ? `older v${mark.version}` : "not-older");
+      process.exit(0);
+    }
+    if (!ringShape(offered)) { console.error(`${offered} is not a ${ring} release version; the accepted release was not recorded`); process.exit(1); }
+    if (mark.state === "recorded" && compare(offered, mark.version) !== 1) process.exit(0);
+    const stage = `${markPath}.${process.pid}.tmp`;
+    try {
+      fs.writeFileSync(stage, `${JSON.stringify({ schemaVersion: 1, releaseChannel: ring, version: offered })}\n`, { mode: 0o600 });
+      fs.renameSync(stage, markPath);
+    } catch (error) {
+      try { fs.rmSync(stage, { force: true }); } catch {}
+      console.error(error.message);
+      process.exit(1);
+    }
+  ' "$1" "$(accepted_release_file)" "$release_channel" "$release_version" "$RELEASE_RINGS_JSON"
+}
+check_accepted_release() {
+  accepted_relation="$(accepted_release_node check)" || {
     if explicit_replacement_requested; then
       printf 'Warning: cannot read the newest release this install accepted; installing %s as explicitly requested (STATION_INSTALL_ALLOW_ROLLBACK=1).\n' "$release_tag" >&2
       return 0
     fi
     fail "cannot read the newest release this install accepted ($(accepted_release_file)); set STATION_VERSION=$release_tag and STATION_INSTALL_ALLOW_ROLLBACK=1 to install $release_tag explicitly"
   }
-  [ -n "$accepted_order" ] || return 0
+  case "$accepted_relation" in
+    absent|not-older) return 0 ;;
+  esac
+  accepted_tag="${accepted_relation#* }"
   if explicit_replacement_requested; then
-    printf 'Installing Station %s, older than %s which this install already accepted (STATION_INSTALL_ALLOW_ROLLBACK=1).\n' "$release_tag" "$accepted_order"
+    printf 'Installing Station %s, not newer than %s which this install already accepted (STATION_INSTALL_ALLOW_ROLLBACK=1).\n' "$release_tag" "$accepted_tag"
     return 0
   fi
-  fail "refusing Station $release_tag: this install already accepted the newer signed release $accepted_order, so this manifest is stale or replayed; to install $release_tag deliberately, set STATION_VERSION=$release_tag and STATION_INSTALL_ALLOW_ROLLBACK=1"
+  case "$accepted_relation" in
+    older\ *) fail "refusing Station $release_tag: this install already accepted the newer signed release $accepted_tag, so this manifest is stale or replayed; to install $release_tag deliberately, set STATION_VERSION=$release_tag and STATION_INSTALL_ALLOW_ROLLBACK=1" ;;
+    *) fail "cannot compare Station $release_tag with $accepted_tag, the newest release this install accepted; set STATION_VERSION=$release_tag and STATION_INSTALL_ALLOW_ROLLBACK=1 to install $release_tag explicitly" ;;
+  esac
 }
 # Raised once the install root is claimed, before anything is extracted: the
 # manifest is validly signed whatever becomes of this release, so an older
-# one is stale even if this install then fails.
+# one is stale even if this install then fails. Consequence: once a release
+# was verified here, re-publishing an older manifest (withdrawing it) cannot
+# move this install back; roll forward, or install the older release with
+# STATION_VERSION and STATION_INSTALL_ALLOW_ROLLBACK=1.
 record_accepted_release() {
-  node -e '
-    const fs = require("node:fs");
-    const [markPath, ring, version] = process.argv.slice(1);
-    const shape = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([a-z]+)\.([1-9][0-9]*))?$/;
-    const parse = (value) => {
-      const match = typeof value === "string" ? shape.exec(value) : null;
-      return match ? [...match.slice(1, 4).map(BigInt), match[4] ?? null, match[5] === undefined ? null : BigInt(match[5])] : null;
-    };
-    let mark = null;
-    try { mark = JSON.parse(fs.readFileSync(markPath, "utf8")); } catch {}
-    const accepted = mark?.schemaVersion === 1 && mark.releaseChannel === ring ? parse(mark.version) : null;
-    const offered = parse(version);
-    if (accepted && offered && accepted[3] === offered[3]) {
-      let order = 0;
-      for (const index of [0, 1, 2, 4]) if (order === 0 && accepted[index] !== offered[index]) order = offered[index] < accepted[index] ? -1 : 1;
-      if (order <= 0) process.exit(0);
-    }
-    const stage = `${markPath}.${process.pid}.tmp`;
-    fs.writeFileSync(stage, `${JSON.stringify({ schemaVersion: 1, releaseChannel: ring, version })}\n`, { mode: 0o600 });
-    fs.renameSync(stage, markPath);
-  ' "$(accepted_release_file)" "$release_channel" "$release_version"
+  accepted_release_node record
 }
 
 # Downgrade protection for the public-manifest path (archive#187). A signed
@@ -1718,6 +1744,12 @@ check_public_manifest_version() {
         [ -f "$release_dir/.station-install-complete" ] && \
         [ "$(cat "$release_dir/.station-install-complete")" = "$actual_checksum" ]; then
         printf 'Station %s is already installed; nothing to do.\n' "$release_tag"
+        # An install from before the mark existed has none; the verified
+        # active release seeds it. An existing mark, valid or not, is left to
+        # the next install that reaches its check.
+        if [ ! -e "$(accepted_release_file)" ] && [ ! -L "$(accepted_release_file)" ]; then
+          record_accepted_release || fail 'could not record the newest release this install accepted'
+        fi
         [ "$stage_only" = false ] || printf 'STATION_STAGED_VERSION=%s\n' "$release_version"
         exit 0
       fi

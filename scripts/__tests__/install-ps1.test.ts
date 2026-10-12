@@ -6,6 +6,7 @@ import {
   mkdirSync,
   readdirSync,
   readFileSync,
+  rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
@@ -237,6 +238,26 @@ describe('install.ps1 installer core: stage-only (#2675 W1)', () => {
     // Control: the accepted release itself stages without a flag.
     const forward = stage(f, signed(f, newest));
     expect(forward.status, forward.stderr).toBe(0);
+  });
+
+  it('seeds the accepted release from the verified active one when an install predates it (#187)', () => {
+    const f = fixture();
+    const mark = join(f.installRoot, '.station-release-accepted.json');
+    const archive = buildWindowsArchive(f.dir, '0.7.0-nightly.12');
+    expect(stage(f, signed(f, archive)).status).toBe(0);
+    symlinkSync(
+      join(f.installRoot, 'versions', '0.7.0-nightly.12'),
+      join(f.installRoot, 'current'),
+    );
+    rmSync(mark);
+    const same = stage(f, signed(f, archive));
+    expect(same.status, same.stderr).toBe(0);
+    expect(same.stdout).toContain(
+      'Station v0.7.0-nightly.12 is already installed; nothing to do.',
+    );
+    expect(JSON.parse(readFileSync(mark, 'utf8')).version).toBe(
+      '0.7.0-nightly.12',
+    );
   });
 
   // Each rejection path: the named refusal, exit 1, and no version staged.

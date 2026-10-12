@@ -2062,6 +2062,66 @@ describe('prebuilt archive installs (#2675 B2)', {
     );
   });
 
+  it('keeps the accepted release raised when its install fails, and a retry of that release is allowed (#187)', () => {
+    const harness = archiveHarness(tempDir('station-archive-accepted-fail-'));
+    const mark = join(harness.installRoot, '.station-release-accepted.json');
+    const first = buildPrebuiltArchive(harness.root, '1.2.3');
+    expect(
+      runArchiveInstaller(harness, archiveManifest(harness, first)).status,
+    ).toBe(0);
+    const version = (name: string) =>
+      join(realpathSync(harness.installRoot), 'versions', name);
+
+    // 1.2.4 verifies, raises the mark, then does not start: rolled back.
+    const failing = buildPrebuiltArchive(harness.root, '1.2.4', {
+      failStart: true,
+    });
+    const failed = runArchiveInstaller(
+      harness,
+      archiveManifest(harness, failing),
+    );
+    expect(failed.stderr).toContain(
+      'the new release did not start; the previous release was restored',
+    );
+    expect(failed.status).toBe(1);
+    expect(readlinkSync(join(harness.installRoot, 'current'))).toBe(
+      version('1.2.3'),
+    );
+    expect(readFileSync(mark, 'utf8')).toBe(
+      `${JSON.stringify({ schemaVersion: 1, releaseChannel: 'stable', version: '1.2.4' })}\n`,
+    );
+
+    // A retry of 1.2.4 is not refused by the mark (equal is allowed): a
+    // republished 1.2.4 installs without any flag.
+    const fixed = buildPrebuiltArchive(harness.root, '1.2.4', {
+      variant: 'fixed',
+    });
+    const retried = runArchiveInstaller(
+      harness,
+      archiveManifest(harness, fixed),
+    );
+    expect(retried.status, retried.stderr).toBe(0);
+    expect(readlinkSync(join(harness.installRoot, 'current'))).toBe(
+      version('1.2.4'),
+    );
+    expect(existsSync(join(version('1.2.4'), 'variant-fixed'))).toBe(true);
+  });
+
+  it('seeds the accepted release from the verified active one when an install predates it (#187)', () => {
+    const harness = archiveHarness(tempDir('station-archive-accepted-seed-'));
+    const mark = join(harness.installRoot, '.station-release-accepted.json');
+    const archive = buildPrebuiltArchive(harness.root, '1.2.3');
+    const manifest = archiveManifest(harness, archive);
+    expect(runArchiveInstaller(harness, manifest).status).toBe(0);
+    rmSync(mark);
+    const again = runArchiveInstaller(harness, manifest);
+    expect(again.status, again.stderr).toBe(0);
+    expect(again.stdout).toContain(
+      'Station v1.2.3 is already installed; nothing to do.',
+    );
+    expect(JSON.parse(readFileSync(mark, 'utf8')).version).toBe('1.2.3');
+  });
+
   it('restores the source release, its launcher and state when the archive does not start', () => {
     const root = tempDir('station-archive-rollback-');
     const fixture = makeFixtureArchive(root);
