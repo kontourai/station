@@ -96,10 +96,15 @@ whose consumers only the queue runs. Every other candidate takes the fast path
 their integration protections.
 
 The reusable regression performs the same capacity admission as main
-qualification. Insufficient observed capacity stops before fanout and remains
-a failed required queue check; it is not successful regression evidence. Keep
-the admission receipt when diagnosing a dequeue. A genuine capacity change
-needs a fresh assessment before another attempt, rather than a blind rerun.
+qualification. Insufficient observed capacity holds the resolve job before
+fanout: it re-observes every minute for up to 20 minutes, and the required
+check stays pending meanwhile. The ceiling sits below the merge queue's
+120-minute check timeout with room for the slowest observed qualification. Only
+an elapsed ceiling fails the check, with an explicit timeout naming the last
+observed capacity. A deferral is never regression evidence. Keep the admission
+receipt, one JSON line per observation, when diagnosing a dequeue. A genuine
+capacity change needs a fresh assessment before another attempt, rather than a
+blind rerun.
 
 ## Qualification cadence and evidence reuse
 
@@ -179,7 +184,9 @@ not a guarantee that another repository will leave capacity unused.
 
 Before fresh corpus execution, the resolver observes all in-progress jobs in
 this repository, excludes its own run, and retains a dated admission receipt.
-Insufficient observed headroom fails admission before fanout. Other repositories
+Insufficient observed headroom waits before fanout, re-observing every minute,
+and fails admission only when the 20-minute ceiling elapses. An observation
+error fails at once and is not retried. Other repositories
 share the pool and are not certified by that snapshot. Valid exact-source reuse
 avoids this expensive fanout. Main source qualification is serialized independently
 of the `nightly` delivery lock. Native staging uses two platform build slots and
