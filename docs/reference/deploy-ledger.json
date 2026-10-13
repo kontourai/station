@@ -1,5 +1,34 @@
 [
   {
+    "timestampUtc": "2026-10-13T20:47:53Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2477.38449708392",
+    "sha": "26a8add197eea235bb7b4f6fddcee3a381fa10d2",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38449708392",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2477.38449708392 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "2479f38b1ab062e2d9cd6df9f8fa2cdbeee1d136",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#3640](https://github.com/kontourai/station/pull/3640) fix(memory): report a torn transcript tail on read and write state files atomically"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-10-13T20:10:26Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.2477.2",

@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-13T20:47:53Z | nightly-npm | 0.7.0-nightly.2477.38449708392 | `26a8add` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38449708392) |
 | 2026-10-13T20:10:26Z | nightly-android | 0.1.11-nightly.2477.2 | `2479f38` | native cohort final receipt partial | [run](https://github.com/kontourai/station/actions/runs/38446068075) |
 | 2026-10-13T18:59:20Z | nightly-npm | 0.7.0-nightly.2477.38446068075 | `2479f38` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38446068075) |
 | 2026-10-13T15:22:30Z | nightly-npm | 0.7.0-nightly.2477.38412128216 | `21bc011` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38412128216) |
@@ -252,6 +253,21 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-13T20:47:53Z · nightly-npm · 0.7.0-nightly.2477.38449708392
+
+- Ship SHA: `26a8add197eea235bb7b4f6fddcee3a381fa10d2`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2477.38449708392 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `2479f38` ([full sha](https://github.com/kontourai/station/commit/2479f38b1ab062e2d9cd6df9f8fa2cdbeee1d136)):
+
+**Fixes**
+
+- [#3640](https://github.com/kontourai/station/pull/3640) fix(memory): report a torn transcript tail on read and write state files atomically
 
 ## 2026-10-13T20:10:26Z · nightly-android · 0.1.11-nightly.2477.2
 
