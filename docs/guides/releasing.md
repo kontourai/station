@@ -97,7 +97,7 @@ their integration protections.
 
 The reusable regression performs the same capacity admission as main
 qualification. Insufficient observed capacity holds the resolve job before
-fanout: it re-observes every minute for up to 20 minutes, and the required
+fanout: it re-observes every minute for up to 15 minutes, and the required
 check stays pending meanwhile. The ceiling sits below the merge queue's
 120-minute check timeout with room for the slowest observed qualification. Only
 an elapsed ceiling fails the check, with an explicit timeout naming the last

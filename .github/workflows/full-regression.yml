@@ -25,7 +25,7 @@ concurrency:
 jobs:
   resolve:
     runs-on: ubuntu-22.04
-    # The admission step may wait up to 20 minutes for capacity (#3612).
+    # The admission step may wait up to 15 minutes for capacity (#3612).
     timeout-minutes: 30
     outputs:
       reuse_run: ${{ steps.evidence.outputs.reuse_run }}
@@ -61,11 +61,11 @@ jobs:
           ALLOW_REUSE: ${{ inputs.allow_reuse }}
         run: node scripts/qualification-evidence.mjs resolve
       # Waits for capacity, re-observing every minute, instead of failing a
-      # required check; it fails only when its 20-minute ceiling elapses
+      # required check; it fails only when its 15-minute ceiling elapses
       # (scripts/release-pipeline.mjs). The step timeout is a backstop.
       - name: Admit fresh qualification before expensive fanout
         if: steps.evidence.outputs.reuse_run == ''
-        timeout-minutes: 23
+        timeout-minutes: 18
         env:
           GH_TOKEN: ${{ github.token }}
           STATION_QUALIFICATION_RUNNER_PROFILE: ${{ vars.STATION_QUALIFICATION_RUNNER_PROFILE }}

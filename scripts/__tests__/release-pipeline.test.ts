@@ -358,8 +358,8 @@ describe('qualification admission waits for capacity instead of failing (#3612)'
     vi.restoreAllMocks();
   });
 
-  it('pins the ceiling below the merge queue check timeout', () => {
-    expect(ADMISSION_WAIT_CEILING_MS).toBe(20 * 60_000);
+  it('pins the ceiling and the observation interval', () => {
+    expect(ADMISSION_WAIT_CEILING_MS).toBe(15 * 60_000);
     expect(ADMISSION_OBSERVE_INTERVAL_MS).toBe(60_000);
   });
 
@@ -381,10 +381,10 @@ describe('qualification admission waits for capacity instead of failing (#3612)'
     const admission = job.steps.find((step) =>
       step.run?.includes('node scripts/release-pipeline.mjs admission'),
     );
-    const ceilingMinutes = 20;
+    const ceilingMinutes = ADMISSION_WAIT_CEILING_MS / 60_000;
     // A backstop that fires first kills the step without the explicit
     // timeout message, so both must outlast the ceiling.
-    expect(admission?.['timeout-minutes']).toBe(23);
+    expect(admission?.['timeout-minutes']).toBe(18);
     expect(admission?.['timeout-minutes']).toBeGreaterThan(ceilingMinutes);
     expect(job['timeout-minutes']).toBe(30);
     expect(job['timeout-minutes']).toBeGreaterThan(
@@ -431,7 +431,7 @@ describe('qualification admission waits for capacity instead of failing (#3612)'
     let clock = 0;
     const wakes: number[] = [];
     // Each observation takes 7 s of wall clock, which counts against the
-    // ceiling: 18 full one-minute sleeps, then a short one that lands on it.
+    // ceiling: 13 full one-minute sleeps, then a short one that lands on it.
     const observe = vi.fn(async () => {
       clock += 7_000;
       return capacity(18, 5);
@@ -442,20 +442,22 @@ describe('qualification admission waits for capacity instead of failing (#3612)'
         observe,
         now: () => clock,
         sleep: async (ms: number) => {
+          // A broken ceiling would loop on microtasks forever; fail instead.
+          if (wakes.length > 100) throw new Error('admission never timed out');
           clock += ms;
           wakes.push(clock);
         },
       }),
     ).rejects.toThrow(
-      /timed out after 20 minutes without repository capacity \(19 observations\); last observed at 2026-10-12T09:26:20\.800Z: occupied 18 \+ background 6 exceeds total 20, or macOS occupied 5 is not below 5/,
+      /timed out after 15 minutes without repository capacity \(15 observations\); last observed at 2026-10-12T09:26:20\.800Z: occupied 18 \+ background 6 exceeds total 20, or macOS occupied 5 is not below 5/,
     );
-    expect(observe).toHaveBeenCalledTimes(19);
+    expect(observe).toHaveBeenCalledTimes(15);
     // The last re-observation starts exactly at the ceiling, never past it.
-    expect(wakes).toHaveLength(18);
-    expect(Math.max(...wakes)).toBe(20 * 60_000);
+    expect(wakes).toHaveLength(14);
+    expect(Math.max(...wakes)).toBe(ADMISSION_WAIT_CEILING_MS);
     expect(readFileSync(env.GITHUB_OUTPUT, 'utf8')).toBe('');
     const summary = readFileSync(env.GITHUB_STEP_SUMMARY, 'utf8');
-    expect(summary.match(/waiting for capacity/g)).toHaveLength(19);
+    expect(summary.match(/waiting for capacity/g)).toHaveLength(15);
     expect(summary).toContain(
       'Qualification admission failed: qualification admission timed out',
     );

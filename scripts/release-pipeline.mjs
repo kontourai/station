@@ -178,12 +178,14 @@ export async function qualificationAdmission(env = process.env) {
 // A capacity denial waits instead of failing (#3612): a failed resolve is a red
 // required check, and the merge queue dequeues the green entry. The ceiling
 // must sit below the merge_queue rule's check_response_timeout_minutes (120),
-// which counts from the queue's check request. Across 42 fresh merge-queue
-// qualifications (2026-10-05..13), the slowest start before this step was 25
-// minutes and the slowest finish after it was 72, so 25 + 20 + 72 = 117 still
-// concludes inside the queue's window. The wait never relaxes the capacity
-// rule; it only re-observes it.
-export const ADMISSION_WAIT_CEILING_MS = 20 * 60_000;
+// which counts from the queue's check request. Across 103 merge-queue
+// qualifications that reached this step (2026-10-05..13, failed runs
+// included), the slowest start before it was 29 minutes and the slowest
+// finish after it was 72, so 29 + 15 + 72 = 116 concludes inside the queue's
+// window even when both worst cases coincide. Each observation costs a few
+// dozen API calls, so the ceiling also bounds that spend. The wait never
+// relaxes the capacity rule; it only re-observes it.
+export const ADMISSION_WAIT_CEILING_MS = 15 * 60_000;
 export const ADMISSION_OBSERVE_INTERVAL_MS = 60_000;
 
 const sleepFor = (ms) => new Promise((done) => setTimeout(done, ms));
