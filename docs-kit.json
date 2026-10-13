@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "product": "station",
   "title": "Station",
-  "tagline": "An agent workspace for projects, execution, and evidence",
+  "tagline": "The agent workspace where work ships with receipts.",
   "repo": "kontourai/station",
   "landing": "README.md",
   "documents": [

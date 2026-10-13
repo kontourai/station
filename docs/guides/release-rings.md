@@ -60,8 +60,10 @@ The optional `STATION_INSTALL_PUBLIC_MANIFEST_URL` path instead verifies an
 Ed25519 envelope against pinned channel-authorized keys, then verifies the
 archive digest. It needs no `gh` token. This is a separate opt-in trust path,
 not the default ring resolver: signature validity proves origin/integrity,
-not freshness. Existing-install downgrade guards do not prevent an old signed
-manifest from being offered to a fresh installation. Read the exact owner in
+not freshness. Existing-install downgrade guards compare with the active
+release and with the newest release the install root ever accepted (so a
+replayed manifest is refused after a rollback too), but they do not prevent an
+old signed manifest from being offered to a fresh installation. Read the exact owner in
 [`install.sh`](../../install.sh) before changing that policy.
 
 This public path also accepts the platform-array v2 manifest for prebuilt
@@ -270,6 +272,41 @@ That does not repair independent desktop rolling feeds or external stores.
 Follow [native release recovery](native-releases.md#stage-inspect-publish-and-roll-back)
 for those authorities, communicate the affected version through the incident
 owner, and publish a higher fixed version. Never silently move the tag.
+
+Withdrawal is roll-forward only for public-manifest installs. Each install
+root records the newest release it accepted from a verified manifest
+(`.station-release-accepted.json`). The record is raised as soon as the
+manifest verifies, before extraction, so it holds even when that install or
+the launcher's trial of it then failed and was rolled back. After that, a
+re-signed manifest for an older release is refused on that install as stale
+or replayed, the same as a hostile replay. So:
+
+- publish a higher fixed version, or
+- on each affected host, install the older release deliberately with
+  `STATION_VERSION=v<x.y.z>` and `STATION_INSTALL_ALLOW_ROLLBACK=1`. That
+  does not lower the record, so later updates still need a release at least
+  as new as the withdrawn one.
+
+The installers trust the record only if it is a regular file, owned by the
+installing user and readable by nobody else (`0600`), and names a release of
+the install's own ring. Anything else is treated as unreadable: installs and
+updates are refused, and the server's update check offers nothing and says
+why. To recover on the host, do one of these:
+
+- fix the record's owner or permissions,
+- remove `.station-release-accepted.json` from the install root (the next
+  verified install writes a fresh one), or
+- install a release explicitly with `STATION_VERSION=v<x.y.z>` and
+  `STATION_INSTALL_ALLOW_ROLLBACK=1`, which rewrites the record.
+
+Leftover `.station-release-accepted.json.*.tmp` files in the install root are
+staging files from an interrupted install and are safe to delete.
+
+One accepted edge: the record compares versions, not bytes. After a launcher
+rollback from vN, a manifest for different bytes signed as the same vN is not
+older than the record, and it is newer than the active release, so it
+installs without a flag. It still needs a valid signature from a key pinned
+for the ring.
 
 ## Rotating the attestation action pin
 
