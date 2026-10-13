@@ -97,6 +97,80 @@ describe('delegation result retention (#3158)', () => {
   });
 });
 
+describe('delegation result cancellation records (#3158)', () => {
+  function storeWithPendingRow(clock = { now: 0 }) {
+    const db = new DatabaseSync(':memory:');
+    db.exec(DELEGATION_RESULT_DELIVERY_SCHEMA);
+    const store = createSqliteDelegationResultStore(db, () => clock.now);
+    store.arm({
+      childConversationId: 'child',
+      taskId: 'child',
+      parentConversationId: 'parent',
+      actor: { userId: 'human:local:owner', attribution: 'verified-bound' },
+    });
+    store.record({
+      childConversationId: 'child',
+      transitionKey: 'settled:child:turn-1',
+      transition: 'settled',
+      parentConversationId: 'parent',
+      childSessionId: 'child',
+      childTurnId: 'turn-1',
+      outcome: 'completed',
+      deliveryId: 'dr-1',
+      text: 'result',
+      cancelledBy: [],
+    });
+    const state = () => store.listForChild('child')[0]!.state;
+    return { store, state, clock };
+  }
+
+  test('a refused interrupt leaves a row another interrupt still holds cancelled', () => {
+    const { store, state } = storeWithPendingRow();
+    store.beginCancel('child', 'token-a', null);
+    store.beginCancel('child', 'token-b', null);
+    store.refuseCancel('token-a');
+    expect(state()).toBe('cancelled');
+    store.refuseCancel('token-b');
+    expect(state()).toBe('pending');
+  });
+
+  test('a refused interrupt never reopens a row a read consumed meanwhile', () => {
+    const { store, state } = storeWithPendingRow();
+    store.beginCancel('child', 'token-a', null);
+    store.consume('child');
+    store.refuseCancel('token-a');
+    expect(state()).toBe('consumed');
+  });
+
+  test('a suppression is spent by the turn it names and never matches a later one', () => {
+    const { store } = storeWithPendingRow();
+    store.beginCancel('child', 'token-unlogged', undefined);
+    store.bindUnloggedSuppressions('child', 'turn-2');
+    store.beginCancel('child', 'token-visible', 'turn-2');
+    expect(store.spendSuppressions('child', 'turn-2').sort()).toEqual([
+      'token-unlogged',
+      'token-visible',
+    ]);
+    expect(store.spendSuppressions('child', 'turn-3')).toEqual([]);
+  });
+
+  test('a suppression for an unlogged turn expires if no turn appears in its window', () => {
+    const { store, clock } = storeWithPendingRow();
+    store.beginCancel('child', 'token-unlogged', undefined);
+    clock.now = 121_000;
+    store.bindUnloggedSuppressions('child', 'turn-days-later');
+    expect(store.spendSuppressions('child', 'turn-days-later')).toEqual([]);
+  });
+
+  test('a refused interrupt deletes only its own unspent suppression', () => {
+    const { store } = storeWithPendingRow();
+    store.beginCancel('child', 'token-a', 'turn-2');
+    store.beginCancel('child', 'token-b', 'turn-2');
+    store.refuseCancel('token-a');
+    expect(store.spendSuppressions('child', 'turn-2')).toEqual(['token-b']);
+  });
+});
+
 describe('EventStore.listTurnEventsByMethods bound (#3158)', () => {
   const stores: EventStore[] = [];
   afterEach(() => {

@@ -802,21 +802,36 @@ describe('delegated task result delivery (#3158)', () => {
   // Fix round 2, P3-1: waits on a busy parent do not use up the retries that
   // take a failing row to undeliverable.
   test('busy waits and refused starts have separate retry budgets', async () => {
-    retryDelays = [1, 1, 1, 1];
-    const h = setup();
-    await routes(h, PARENT, () => 'running').delegate();
-    emit(h, PARENT, 'turn.started', { turnId: 'parent-turn-a' });
-    runChildTurn(h, CHILD, 'child-turn-1', 'done');
-    // Every busy re-check is refused (no mid-turn steer) until its budget ends.
-    await vi.waitFor(() => expect(h.steers).toHaveLength(5));
-    refuseStarts = new Error('no verified local Environment and Agent binding');
-    emit(h, PARENT, 'turn.completed', { turnId: 'parent-turn-a' });
-    // No further events: the failure budget alone reaches undeliverable.
-    await vi.waitFor(() =>
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      retryDelays = [10, 10, 10, 10];
+      const h = setup();
+      await routes(h, PARENT, () => 'running').delegate();
+      emit(h, PARENT, 'turn.started', { turnId: 'parent-turn-a' });
+      runChildTurn(h, CHILD, 'child-turn-1', 'done');
+      await h.delivery.idle();
+      // Two busy re-checks (no mid-turn steer), well inside their budget.
+      for (let index = 0; index < 2; index += 1) {
+        await vi.advanceTimersByTimeAsync(10);
+        await h.delivery.idle();
+      }
+      expect(h.steers).toHaveLength(3);
+      refuseStarts = new Error(
+        'no verified local Environment and Agent binding',
+      );
+      emit(h, PARENT, 'turn.completed', { turnId: 'parent-turn-a' });
+      await h.delivery.idle();
+      // No further events: the failure budget alone reaches undeliverable.
+      for (let index = 0; index < 6; index += 1) {
+        await vi.advanceTimersByTimeAsync(10);
+        await h.delivery.idle();
+      }
       expect(h.store.delegationResultStore().listForChild(CHILD)).toEqual([
         expect.objectContaining({ state: 'undeliverable', attempts: 5 }),
-      ]),
-    );
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   // Fix round 2, P3-2: once a start may have landed, a refused re-drive
