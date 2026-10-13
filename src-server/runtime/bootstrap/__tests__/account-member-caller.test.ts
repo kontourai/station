@@ -1,18 +1,60 @@
 /**
- * #3586: the member-caller decisions that HTTP cannot reach on demand.
- * `agentOwnerMemberCaller` is the synchronous rule the Task board and
- * knowledge roots use (runtime-routes' `agentOwnerMayUseProject`), and
- * `agentAudienceForMemberCaller` is the Agent audience gate's decision; the
- * production composition tests (guest-admin, agent audience, station-control
- * scope) exercise both through real requests.
+ * #3586: the member-caller decisions that HTTP cannot reach on demand. The
+ * production composition is exercised by
+ * `runtime-routes-project-guest-admin.test.ts` (sessions),
+ * `runtime-routes-account-personal-tokens.test.ts` (tokens) and the agent
+ * audience and station-control scope suites; this pins the branches they
+ * cannot reach: a token that stops resolving between the gate and a Project
+ * read is no caller, `agentOwnerMemberCaller` (the Task board and knowledge
+ * roots' synchronous rule) and `agentAudienceForMemberCaller` (the Agent
+ * audience gate's decision, including tokens, which the gate refuses on
+ * every Agent path before audience is consulted).
  */
 import { describe, expect, test, vi } from 'vitest';
 import {
+  accountMemberCaller,
   agentAudienceForMemberCaller,
   agentOwnerMemberCaller,
 } from '../account-member-caller.js';
 
 const ACCOUNT = 'human:deployment:0123abcd';
+const request = new Request('https://station.example.test/api/projects');
+
+describe('accountMemberCaller', () => {
+  test('a token that no longer resolves is no caller, not the operator', async () => {
+    expect(
+      await accountMemberCaller(request, {
+        accountToken: () => null,
+        agentOwnerId: () => undefined,
+      }),
+    ).toEqual({ kind: 'none' });
+  });
+
+  test('a current account token is a member; an untied request keeps operator rules', async () => {
+    expect(
+      await accountMemberCaller(request, {
+        accountToken: () => ACCOUNT,
+        agentOwnerId: () => undefined,
+      }),
+    ).toEqual({ kind: 'member', via: 'personal-token', principalId: ACCOUNT });
+    expect(
+      await accountMemberCaller(request, {
+        accountToken: () => undefined,
+        agentOwnerId: () => undefined,
+      }),
+    ).toBeUndefined();
+  });
+
+  test('an invalid account credential is no caller even with a token', async () => {
+    expect(
+      await accountMemberCaller(request, {
+        authenticate: async () => ({ kind: 'invalid', reason: 'expired' }),
+        accountToken: () => ACCOUNT,
+        agentOwnerId: () => undefined,
+      }),
+    ).toEqual({ kind: 'none' });
+  });
+});
 
 describe('agentOwnerMemberCaller', () => {
   test('an account owner is a member, an owner-less call is no caller, anyone else keeps operator rules', () => {
@@ -38,6 +80,20 @@ describe('agentAudienceForMemberCaller', () => {
     await expect(
       agentAudienceForMemberCaller(
         { kind: 'member', via: 'account-session', principalId: ACCOUNT },
+        d,
+      ),
+    ).resolves.toEqual({
+      kind: 'member',
+      admissions: 'human:deployment:current',
+    });
+    expect(d.currentPrincipalId).toHaveBeenCalledTimes(1);
+  });
+
+  test('an account-tied token is re-resolved through the current principal too', async () => {
+    const d = deps();
+    await expect(
+      agentAudienceForMemberCaller(
+        { kind: 'member', via: 'personal-token', principalId: ACCOUNT },
         d,
       ),
     ).resolves.toEqual({

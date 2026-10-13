@@ -411,7 +411,10 @@ import {
 import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
 import { runAsStationServer } from '../../security/station-server-scope.js';
 import { principalForDeviceBinding } from '../../services/access/device-binding-principal.js';
-import { PersonalTokenUnavailableError } from '../../services/access/personal-token-store.js';
+import {
+  isPersonalTokenSecret,
+  PersonalTokenUnavailableError,
+} from '../../services/access/personal-token-store.js';
 import { StationGroupsError } from '../../services/access/station-groups-service.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
@@ -1777,6 +1780,25 @@ export function configureRuntimeRoutes(
               context.deploymentAuthentication!.service.authenticate(candidate),
           }
         : {}),
+      accountToken: (candidate: Request) => {
+        const runtime = getRuntimeAuthenticatedRequestPrincipal(candidate);
+        if (
+          runtime?.authority !== 'device-credential' ||
+          !isPersonalTokenSecret(runtime.credential)
+        )
+          return undefined;
+        // A token that stopped resolving mid-request (revoked, expired, or
+        // its account no longer current) acts for no one; it never falls
+        // back to operator rules.
+        const token = context.environmentSecurityService.identifyDevice(
+          runtime.credential,
+        );
+        if (token?.credentialKind !== 'personal-token') return null;
+        const binding = token.principalBinding;
+        return binding && 'kind' in binding && binding.kind === 'account'
+          ? principalForDeviceBinding(binding).id
+          : undefined;
+      },
       agentOwnerId: agentOwnerIdForRequest,
     });
   // station#4075 stage 3 slice 1: `ProjectTaskRoomRequestAuthority.resolve`
@@ -9166,10 +9188,7 @@ export function configureDevicePairingHostRoutes(
         continue;
       const principal = principalForDeviceBinding(device.principalBinding);
       const person = personFor(principal.id, principal.display);
-      if (
-        !('kind' in device.principalBinding) ||
-        device.principalBinding.kind !== 'account'
-      )
+      if (pairing.canHoldPersonalToken(device.principalBinding))
         person.canHoldTokens = true;
       person.devices.push({
         id: device.id,

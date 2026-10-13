@@ -7,6 +7,9 @@
  * - its account session is authenticated (`via: 'account-session'`); an
  *   account credential that is present but not authenticated is no caller
  *   at all (`{ kind: 'none' }`);
+ * - it presents a personal access token tied to an account whose standing
+ *   is current (`via: 'personal-token'`, #3586); a token that no longer
+ *   resolves is `{ kind: 'none' }`, never operator rules;
  * - it is a station-control tool call whose session an account principal
  *   owns (`via: 'agent-owner'`); a principal-scoped tool call that acts for
  *   no one is `{ kind: 'none' }`.
@@ -22,7 +25,7 @@ import { isDeploymentAccountPrincipalId } from '../../services/identity/deployme
 export type AccountMemberCaller =
   | {
       kind: 'member';
-      via: 'account-session' | 'agent-owner';
+      via: 'account-session' | 'personal-token' | 'agent-owner';
       /** The account principal's id the membership is read for. */
       principalId: string;
     }
@@ -34,6 +37,13 @@ export interface AccountMemberCallerDeps {
   authenticate?: (
     request: Request,
   ) => Promise<ResolvedDeploymentAuthentication>;
+  /**
+   * #3586: the account principal id a personal access token acts for when
+   * its account is current; `null` for a token that does not resolve (now
+   * revoked, expired, or its account no longer current); `undefined` when
+   * the request presents no token, or a token tied to no account.
+   */
+  accountToken?: (request: Request) => string | null | undefined;
   /**
    * The principal a principal-scoped station-control request acts for:
    * `null` when it acts for no one, `undefined` for every other request.
@@ -53,6 +63,14 @@ export async function accountMemberCaller(
       principalId: account.principal.id,
     };
   if (account && account.kind !== 'absent') return { kind: 'none' };
+  const tokenAccount = deps.accountToken?.(request);
+  if (tokenAccount === null) return { kind: 'none' };
+  if (tokenAccount !== undefined)
+    return {
+      kind: 'member',
+      via: 'personal-token',
+      principalId: tokenAccount,
+    };
   return agentOwnerMemberCaller(deps.agentOwnerId(request));
 }
 
@@ -76,7 +94,8 @@ export function agentOwnerMemberCaller(
 /**
  * The Agent audience decision for a member caller (#3276): operator rules,
  * no Agent, or the admissions of the principal it acts for. A caller that
- * authenticated as an account (not a station-control owner) is re-resolved
+ * authenticated as an account (an account session or, #3586, an
+ * account-tied personal token; not a station-control owner) is re-resolved
  * through `currentPrincipalId`, which rechecks that the request is still
  * current and still that account; a station-control owner is the recorded
  * owner itself.
