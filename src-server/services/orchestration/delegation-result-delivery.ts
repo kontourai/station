@@ -1375,8 +1375,14 @@ export class DelegationResultDelivery {
    * `turnId` is the turn the interrupt request names. The service stops only
    * that turn, running or held for it (`CooperativeStop`), so exactly that
    * turn is suppressed, as a turn the interrupt named, whether or not the
-   * log shows it yet. A named turn that is not the running one gets
-   * `no-active-turn`, and {@link settleCancellation} undoes this.
+   * log shows it yet. While the child has an engine session, a named turn
+   * that is not the running one gets `no-active-turn`, and
+   * {@link settleCancellation} undoes this. Without one, the service answers
+   * `pending-turn-start` for any named turn, so the cancel is kept. Accepted
+   * gap: a named suppression has no TTL, while the service drops its held
+   * stop after `PENDING_TURN_INTERRUPT_TTL_MS`. A named turn that starts only
+   * after that is still suppressed; one that never starts sits inert until
+   * `prune`.
    */
   beginCancel(
     taskReference: string,
