@@ -12,7 +12,13 @@
  * `json + "\n"`, written raw with no terminator.
  */
 
-import { appendFile as appendRaw, readdir, readFile } from 'node:fs/promises';
+import {
+  appendFile as appendRaw,
+  mkdir,
+  readdir,
+  readFile,
+  rm,
+} from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { UIMessage } from 'ai';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -159,6 +165,48 @@ describe('a read reports a torn transcript tail (#3564)', () => {
     const read = await adapter.getMessages(USER, CONVERSATION);
 
     expect(read.map((m) => m.id)).toEqual(['a', 'c']);
+    expect(counted).not.toHaveBeenCalled();
+  });
+
+  test('a tail check that hits an fs error does not fail the read', async () => {
+    await adapter.addMessage(message('a'), USER, CONVERSATION);
+    const path = await messagesPath();
+    await appendRaw(path, '{"id":"b","role":"us', 'utf-8');
+    counted.mockClear();
+
+    // The file is replaced under the reader between its parse and the
+    // queued re-check, as another process truncating or swapping it would.
+    // The directory opens and stats, then fails the first read (EISDIR), the
+    // same class of error as the short read of a truncation.
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let held: () => void = () => {};
+    const holding = new Promise<void>((resolve) => {
+      held = resolve;
+    });
+    const swapper = withFileMutation(path, async () => {
+      held();
+      await gate;
+      await rm(path);
+      await mkdir(path);
+    });
+    await holding;
+
+    const reading = adapter.getMessages(USER, CONVERSATION);
+    await vi.waitFor(() =>
+      expect(
+        loggerCalls.some(
+          (call) =>
+            call.level === 'error' && call.msg === 'Failed to parse message',
+        ),
+      ).toBe(true),
+    );
+    release();
+    await swapper;
+
+    expect((await reading).map((m) => m.id)).toEqual(['a']);
     expect(counted).not.toHaveBeenCalled();
   });
 

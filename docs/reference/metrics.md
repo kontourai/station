@@ -7,7 +7,7 @@ These source declarations do **not** establish producers, live collection, corre
 The [Monitoring guide](../guides/monitoring.md) owns producer semantics, configuration and current limitations. Follow a declaration’s source link to find its callers before making an operational claim. Observable declarations inside a function do not establish that the function is called or its callback runs.
 
 Source: [`src-server/telemetry/metrics.ts`](../../src-server/telemetry/metrics.ts).
-Source SHA-256: `34b973f40e988a85b9df5cd619f3e6bfd1cfbe9f2d36bb290ce01c29ebac3b31`. This identifies the input file, not a running build or collection receipt.
+Source SHA-256: `9fb0aa96f84752333534ab581a350a6a2956973cb20cb721c6355d9a7ef43bf2`. This identifies the input file, not a running build or collection receipt.
 
 The TypeScript AST contains **312 creation calls**, listed in source order. Binding/export labels describe the creation declaration, not later aliases or re-exports. String cells use JSON notation, preserving quotes, backslashes and control characters; “not declared” does not infer an SDK default.
 
@@ -324,6 +324,6 @@ Regenerate with `npm run docs:metrics:generate`; verify exact output with `npm r
 | "station.consent.decision\_ops" | createCounter | "consentDecisionOps (exported declaration)" | "Consent-listener decision outcomes by result (approved&#124;denied&#124;refused) and refusal reason" | not declared | [line 2545](../../src-server/telemetry/metrics.ts#L2545) |
 | "station.operator\_passkey.enrollment\_ops" | createCounter | "operatorPasskeyEnrollmentOps (exported declaration)" | "Operator passkey enrollment outcomes by step (requested&#124;confirmed&#124;denied&#124;enrolled&#124;revoked&#124;refused) and refusal reason; never a credential, challenge or code" | not declared | [line 2552](../../src-server/telemetry/metrics.ts#L2552) |
 | "station.consent.listener\_state" | createCounter | "consentListenerState (exported declaration)" | "Consent listener availability transitions (listening&#124;unavailable)" | not declared | [line 2559](../../src-server/telemetry/metrics.ts#L2559) |
-| "station.memory.transcript\_tail\_recoveries" | createCounter | "transcriptTailRecoveries (exported declaration)" | "Unterminated station-agent transcript tails found by a read or repaired by an append, by kind (observed&#124;completed&#124;quarantined) (station#3564); never a path or message content" | not declared | [line 2567](../../src-server/telemetry/metrics.ts#L2567) |
+| "station.memory.transcript\_tail\_recoveries" | createCounter | "transcriptTailRecoveries (exported declaration)" | "Reads that observe an unterminated station-agent transcript tail (kind observed), and appends that repair one (completed&#124;quarantined) (station#3564). Counts reads, not distinct tears: every read of a still-torn transcript counts. Never a path or message content" | not declared | [line 2567](../../src-server/telemetry/metrics.ts#L2567) |
 | "station.agents.active" | createObservableGauge | "unbound call in registerObservableGauges" | "Number of active agents" | not declared | [line 2579](../../src-server/telemetry/metrics.ts#L2579) |
 | "station.mcp.connections" | createObservableGauge | "unbound call in registerObservableGauges" | "Number of MCP connections" | not declared | [line 2585](../../src-server/telemetry/metrics.ts#L2585) |

@@ -2568,7 +2568,7 @@ export const transcriptTailRecoveries = meter.createCounter(
   'station.memory.transcript_tail_recoveries',
   {
     description:
-      'Unterminated station-agent transcript tails found by a read or repaired by an append, by kind (observed|completed|quarantined) (station#3564); never a path or message content',
+      'Reads that observe an unterminated station-agent transcript tail (kind observed), and appends that repair one (completed|quarantined) (station#3564). Counts reads, not distinct tears: every read of a still-torn transcript counts. Never a path or message content',
   },
 );
 

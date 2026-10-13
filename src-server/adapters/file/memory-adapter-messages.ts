@@ -497,20 +497,22 @@ export async function addStoredMessages({
  */
 async function observeTornTail(path: string): Promise<TornTailRecovery | null> {
   return withMessagesFile(path, async () => {
-    let handle: FileHandle;
+    // The check is diagnostic, so nothing it hits may fail the read it
+    // follows. Another process truncating or removing the file mid-check
+    // surfaces here as a short read (`readExactly`) or an fs error.
+    let handle: FileHandle | undefined;
     try {
       handle = await open(path, 'r');
-    } catch {
-      return null;
-    }
-    try {
       const { size } = await handle.stat();
       const offset = await findUnterminatedTailOffset(handle, size);
       if (offset === null) return null;
       if (await tailIsCompleteRecord(handle, offset, size)) return null;
       return { kind: 'observed', path, offset, bytes: size - offset };
+    } catch (error) {
+      logger.debug('Skipped the torn-tail check of a transcript', { error });
+      return null;
     } finally {
-      await handle.close();
+      await handle?.close().catch(() => {});
     }
   });
 }
