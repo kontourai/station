@@ -211,11 +211,18 @@ unchanged inputs is allowed (`--rereview` remains accepted for compatibility).
 `--verify-bindings` applies only to legacy digest records; path-only records
 have no bindings to verify.
 
-A cited JSON value can still use a JSON Pointer, for example
+A cited JSON or YAML value can use a JSON Pointer, for example
 `package.json#/scripts/docs:truth:gate`. Git comparisons compute the value's
 change at runtime; unrelated committed manifest edits do not require a review
-of that value. No value digest is stored in a record. Other formats use whole
-file paths. Notes document review decisions, not automated semantic approval.
+of that value. A lock citation can name a reviewed resolution, for example
+`pnpm-lock.yaml#/packages/yaml@2.9.1/resolution/integrity`, without citing unrelated
+workspace version labels. YAML value bindings refuse malformed documents,
+duplicate keys, aliases, unsupported tags, non-string mapping keys and non-JSON
+values. Missing or unreadable values stay stale and cannot be recorded as
+reviewed. No value digest is stored in a path-only record. Other formats use
+whole file paths. Narrow a citation only after reviewing the claim it supports;
+retain version fields when the claim actually depends on that version.
+Notes document review decisions, not automated semantic approval.
 
 ### Ledger layout and merges
 
@@ -349,7 +356,12 @@ behavior.
 A purpose-classified release-note file under `.changeset/` may become absent
 without invalidating the retained classification. It must have no behavioral
 source/check claims; absence does not prove that a release consumed it. The
-README, current guides, malformed records and missing behavioral dependencies
+ordinary `docs:review:record` command can record a reviewed, committed deletion
+of a previously tracked note. Declared checks remain separate from appended
+review notes, so recording the deletion does not invent a new check claim.
+Any existing check claim needs an explicit reviewed reclassification first.
+The review records absence, not release consumption or publication.
+The README, current guides, malformed records and missing behavioral dependencies
 are still errors. Catch-up reporting keeps these lifecycle states separate from
 claims that need source review. New generated owners need their own reviewed
 contract and refusal tests; `kind: generated` alone never exempts a file.

@@ -20,7 +20,43 @@ limits traversal to 1,000 nested objects and throws `MaxDepthExceededError`, a
 `RangeError` subclass. This bounds traversal; it does not make arbitrary deep
 input succeed or establish that an unauthenticated request reaches that call.
 
-`sprintf-js` remains version 1.0.3 with a Station-owned
+### Legacy YAML CLI parent migration
+
+The workspace removes `sprintf-js` and argparse 1 from the locked graph by
+pinning only `js-yaml@3.15.2>argparse` to 2.0.1. The
+[BIN-only patch](../../patches/js-yaml-3.15.2-argparse2-cli.patch) adapts the
+legacy CLI to the modern argument API. It keeps `-v`/`--version`, help,
+compact/trace errors, optional stdin/file input, and the hidden `-j`/`--to-json`
+compatibility flag. That flag retains the CLI's content-based conversion; it
+does not force JSON output. The parser calls use the modern names to avoid
+alias deprecation messages. The YAML 3 package's library API and published
+index/lib/dist bytes stay unchanged, including gray-matter's
+`safeLoad`/`safeDump` callers. YAML 4's incompatible library API is not
+substituted.
+
+The installed [compatibility keeper](../../scripts/__tests__/js-yaml3-argparse2-compatibility.test.ts)
+reaches the actual legacy YAML CLI and gray-matter parse/stringify boundary.
+The reviewed candidate's managed install and separate verification completed
+on Node 24.19.0. Its complete lock and installed inventories found no
+`sprintf-js` or argparse 1; the installed Voltagent CLI and Core consumers
+resolved the patched YAML 3 copy and argparse 2.0.1. All 32 published library
+artifacts matched. Replacing only that owned installed BIN with its original
+bytes caused 14 compatibility failures; exact restoration returned all 19
+controls to PASS. These are source-bound local observations, not a hosted,
+provider, native, or release receipt.
+
+The current six-view registry audit found no formatter advisory in this
+candidate. The obsolete formatter residual is removed in the same remediation;
+its original expired-and-unused failure remains retained evidence. All other
+records and expiry dates are preserved. No expiry is renewed, no unused record
+is automatically accepted, and the historical formatter patch file is retained
+without registration. Graph removal addresses dependency presence;
+it does not establish that a Station endpoint was unreachable or that upstream
+published a patched formatter.
+
+### Historical formatter patch and acceptance
+
+The preceding graph retained `sprintf-js` version 1.0.3 with a Station-owned
 [package patch](../../patches/sprintf-js-1.0.3.patch), bound through
 `patchedDependencies` and the lockfile hash. The
 [formatter advisory](https://github.com/advisories/GHSA-hp3w-g68c-fv3c) concerns
@@ -34,7 +70,7 @@ compatibility choice for previously invalid input, not a new upstream version.
 Width, padding, parser input size, and nonnumeric type errors are outside this
 patch's scope. The Angular artifacts delegate to the formatter globals.
 
-The dependency path is VoltAgent → gray-matter → js-yaml 3 → argparse 1 →
+That graph's dependency path was VoltAgent → gray-matter → js-yaml 3 → argparse 1 →
 sprintf-js. Gray-matter uses js-yaml's library `safeLoad`/`safeDump` exports;
 that library entrypoint does not import argparse. The bundled js-yaml CLI
 does import argparse. Installed dependency reachability is broader than an
@@ -54,16 +90,16 @@ behavior observations, not production reachability or full browser/native
 qualification.
 
 That historical scan remained red for high-severity `source-map-js` and the
-version-reported production `sprintf-js` advisory. The composed graph now
-inherits `source-map-js` 1.2.2 from the existing Dependabot change. Managed
+version-reported production `sprintf-js` advisory. The reviewed composed graph
+inherited `source-map-js` 1.2.2 from the existing Dependabot change. Managed
 installation and verification observed that version and the exact patched
 formatter bytes on Node 24.19.0; this does not establish hosted qualification.
 
 Brian approved an exact root production `sprintf-js` 1.0.3 residual for
 GHSA-hp3w-g68c-fv3c through **2026-10-13**, conditional on drift/restoration
 proof, independent review, and installed binding verification. The
-[residual record](../../scripts/dependency-advisory-exceptions.json) retains
-that expiry and has no automatic renewal. It accepts the version-reported
+[residual record](../../scripts/dependency-advisory-exceptions.json) retained
+that expiry and had no automatic renewal. It accepted the version-reported
 finding for the reviewed local patch; it does not claim upstream remediation
 or absence of attacker-controlled Station format strings.
 
@@ -135,8 +171,9 @@ separate from this advisory's saved-credential binding claim.
 The earlier local audit and hosted receipts retain their observation times:
 these newly disclosed findings do not rewrite those results. Current audit,
 new-source CI, normal hooks, hosted checks and actual landing each own their
-subsequent verdict. The formatter patch, machine binding and exact
-2026-10-13 residual remain unchanged; no new advisory exception is added.
+subsequent verdict. At the time of that MCP repair, the formatter patch, machine binding and exact
+2026-10-13 residual remained unchanged. The parent migration above is a separate
+remediation; no new advisory exception is added.
 
 ## Lifecycle scripts are reviewed capabilities
 

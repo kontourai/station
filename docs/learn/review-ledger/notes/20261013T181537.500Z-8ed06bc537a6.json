@@ -1,0 +1,19 @@
+{
+  "revision": "40167e55cbc73969ddf1ecb4b9015ceacb57aa6b",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Reviewed the documentation guide and value-binding owner: required documentation-truth remains scoped to the PR, and readiness is not runtime/deployment certification. Exact JSON/YAML values digest their selected content; malformed or missing values fail closed. No protected standard, required check or authority policy changed.","inputs":[".veritas/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/README.md","note":"Reviewed the documentation maintenance link and classification/publication boundaries against the owning guide. Claim-specific JSON/YAML citations replace unrelated manifest/lock version invalidation without granting prose or release approval; public site allowlist and source ownership are unchanged.","inputs":["docs/README.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the value-reader/history comparison change against the guide’s real-caller/authority/failure questions. Unreadable values count as changed, the bounded parse cache uses source-byte digests, and this source observation neither certifies the cited historical defect resolutions nor changes its dated investigation status.","inputs":["docs/architecture/abstraction-review.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/guides/documentation.md","note":"Reviewed the implemented shared JSON/YAML RFC6901 reader, strict YAML ambiguity/alias/nonfinite rejection, byte-digest keyed bounded parse reuse, and history fail-closed undefined comparison. Reviewed canonical recorder source edits with explicit review notes; no derived hashes, baseline or historical notes are rewritten. Preserved the landed narrow absent committed classification route, raw declaredChecks decision comparison, and PR-owned deletion-note obligation. Eight real recorder/freshness tests passed on 4f2142f; old unreadable-comparison mutant and exact restoration remain distinct from actual current release qualification.","inputs":["docs/guides/documentation.md","scripts/lib/review-binding.mjs","scripts/lib/review-history.mjs"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the contributor documentation-maintenance route against the value citation guide; deployment estimates, commercial proposals, reviewed isolation/authentication boundaries and unqualified delivery claims remain unchanged. Metadata review is not customer-account deployment or installer evidence.","inputs":["docs/guides/integrating-station.md","docs/guides/documentation.md"]},
+
+    {"path":"docs/learn/README.md","note":"Reviewed history value comparison and byte-keyed parse reuse against the reader review-status contract. A changed cited value or unreadable pair still requires review, unrelated workspace labels do not, and classification is not runtime verification. Immutable source snapshots, generated-output labels, media and public Pages boundaries are unchanged.","inputs":["docs/learn/README.md","scripts/lib/review-history.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed the new real migration/recorder/freshness child-process test classification in the existing process-heavy resource pool. Existing managed gate/test/CI commands and evidence/ownership rules remain unchanged; the eight executed controls do not qualify other lanes or native/provider behavior.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

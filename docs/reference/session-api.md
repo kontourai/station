@@ -106,8 +106,10 @@ credential needs the grant).
 For a saved Environment use `{ "kind": "saved", "id": "..." }`. The
 controlling Station reaches that Environment through its configured peer or SSH
 access, rewrites the forwarded target to `current`, and the target Station resolves
-its own Agent. Tunnel URLs, provider IDs, and connection IDs are never request inputs
-or response data.
+its own Agent. Tunnel URLs, provider IDs, and connection IDs are never request
+inputs that choose where work runs; the one place a connection ID appears in a
+request is the `expectedEngine` precondition below, which can only refuse.
+Tunnel URLs are never response data.
 
 Calls made by a station-control Agent also pass the
 [dispatch authority checks](../guides/self-configuring-agent.md#dispatch-authority):
@@ -132,6 +134,31 @@ The response is a foreground handle containing `conversationId`, `sessionId`,
 `providerTurnId`, the
 resolved Agent target, and an `ExecutionResolutionReceipt` describing the Environment,
 Agent, engine kind, provider, and honest model launch plan.
+
+### State the engine you expect
+
+A client that shows an Agent to a user knows which engine the Agent ran on *when
+it was shown*. A request may state that as a precondition:
+
+```json
+{ "expectedEngine": { "kind": "station" } }
+```
+
+or `{ "kind": "connection", "connectionId": "<engine connection id>" }`. It has
+the shape of the receipt's `engine`, and it never selects: the target Station
+still resolves the Agent's binding itself. When that resolution names a
+different engine, the request is refused with `409` and
+`code: "execution_engine_changed"` before anything is started or reserved, and
+the message names the two engines. Absent, no expectation is stated. The fields
+are strict: nothing beside `kind` (and `connectionId` for a connection) is
+accepted, so it cannot carry an endpoint or credential.
+
+The Station UI states it only on a chat's first send, only to this Station
+(an explicit current Environment, not a Project's default Environment), and
+only when its Agent catalog snapshot is settled; it re-reads the catalog and
+asks the user to look again after a refusal. A receiver from before this field
+ignores it, so a caller that needs the guarantee must know its receiver's
+version.
 
 ### Preserve an Agent profile with an execution override
 

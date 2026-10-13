@@ -62,9 +62,9 @@ describe('node:sqlite adapter connection settings', () => {
           : real.prepare(sql),
     };
     try {
-      expect(() => openSqliteKernelStorage({ database: lying })).toThrow(
-        SqliteKernelConfigurationError,
-      );
+      expect(() =>
+        openSqliteKernelStorage({ database: lying, configureConnection: true }),
+      ).toThrow(SqliteKernelConfigurationError);
     } finally {
       real.close();
     }
@@ -84,9 +84,9 @@ describe('node:sqlite adapter connection settings', () => {
           : real.prepare(sql),
     };
     try {
-      expect(() => openSqliteKernelStorage({ database: lying })).toThrow(
-        /busy_timeout is 0/,
-      );
+      expect(() =>
+        openSqliteKernelStorage({ database: lying, configureConnection: true }),
+      ).toThrow(/busy_timeout is 0/);
     } finally {
       real.close();
     }
@@ -447,7 +447,12 @@ describe('node:sqlite adapter participants and read-only commands', () => {
     // No claim exists: beginInvocation's own answer is `refused`.
     expect(
       storage.executeSync(
-        { type: 'turnDedup.beginInvocation', key: 'k', ownerId: 'nobody' },
+        {
+          type: 'turnDedup.beginInvocation',
+          key: 'k',
+          ownerId: 'nobody',
+          now: 1,
+        },
         { liveness: processes.liveness },
       ),
     ).toEqual({ kind: 'refused' });

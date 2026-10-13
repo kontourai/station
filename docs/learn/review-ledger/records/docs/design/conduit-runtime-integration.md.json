@@ -16,8 +16,6 @@
 
     "package.json#/scripts/verify:static",
 
-    "pnpm-lock.yaml",
-
     "scripts/generate-runtime-conformance.mjs",
 
     "src-server/runtime/__tests__/voltagent-agent-hooks.test.ts",
@@ -30,7 +28,11 @@
 
     "src-server/runtime/frameworks/strands-agent-hooks.ts",
 
-    "src-server/runtime/frameworks/voltagent-adapter.ts"
+    "src-server/runtime/frameworks/voltagent-adapter.ts",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots"
   ],
 
   "checks": [

@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
-import { resetLocalSelfProvisionLatchForTests } from '@kontourai/station-connect/local-self-provision';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-import { bootstrapBundledLocalProfile } from '../bundledLocalProfileBootstrap';
+let bootstrapBundledLocalProfile: typeof import('../bundledLocalProfileBootstrap')['bootstrapBundledLocalProfile'];
 
 describe('bundled local profile bootstrap', () => {
-  beforeEach(() => {
-    resetLocalSelfProvisionLatchForTests();
+  beforeEach(async () => {
+    vi.resetModules();
+    ({ bootstrapBundledLocalProfile } = await import(
+      '../bundledLocalProfileBootstrap'
+    ));
   });
 
   afterEach(() => {

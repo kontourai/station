@@ -2564,6 +2564,14 @@ export const consentListenerState = meter.createCounter(
   },
 );
 
+export const transcriptTailRecoveries = meter.createCounter(
+  'station.memory.transcript_tail_recoveries',
+  {
+    description:
+      'Reads that observe an unterminated station-agent transcript tail (kind observed), and appends that repair one (completed|quarantined) (station#3564). Counts reads, not distinct tears: every read of a still-torn transcript counts. Never a path or message content',
+  },
+);
+
 export function registerObservableGauges(callbacks: {
   activeAgents: () => number;
   mcpConnections: () => number;

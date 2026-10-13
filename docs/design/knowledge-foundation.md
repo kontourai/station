@@ -510,6 +510,10 @@ explicit validation AC.
 >   (no connection registered, or the lazy real-driver load failed) — never a crash, never a silent
 >   empty success.
 > - **Record-id traversal hardening at the route layer.** Discovered while landing
+>   Historical route-layer rationale follows. The default adapter now rejects
+>   unsafe IDs on create, including IDs over 200 ASCII characters. Other adapter
+>   calls still rely on the transaction owner's store-root path boundary; see
+>   [Store formats and external edits](../guides/knowledge.md#store-formats-and-external-edits).
 >   `knowledge-record-routes.ts`: `kit-default-store`'s `recordPath(id)` joins a caller-supplied id
 >   straight into `records/<id>.md` with no validation of its own, so the new HTTP boundary is a real
 >   traversal vector for any id-shaped input reaching that join (`create`'s optional `id`, `link`'s

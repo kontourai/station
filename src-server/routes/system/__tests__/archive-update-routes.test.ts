@@ -8,6 +8,7 @@
  */
 import { generateKeyPairSync, type KeyObject, sign } from 'node:crypto';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -365,6 +366,95 @@ describe('GET /core-update on a launcher-run archive', () => {
       expect(body.selfUpdateUnavailableReason).toMatch(/station upgrade/);
     }
     expect(fetchFn).not.toHaveBeenCalled();
+  });
+});
+
+describe('a manifest older than a release this install already accepted (#187)', () => {
+  /** The mark exactly as install.sh and the Windows installer core write it. */
+  function acceptRelease(install: Install, text: string) {
+    // Owner-only, as the installers write it (a group- or world-readable
+    // mark is not trusted).
+    writeFileSync(
+      join(install.installRoot, '.station-release-accepted.json'),
+      text,
+      { mode: 0o600 },
+    );
+  }
+  const mark = (version: string) =>
+    `${JSON.stringify({ schemaVersion: 1, releaseChannel: 'preview', version })}\n`;
+
+  test('is not offered, and an apply is refused, even though it is newer than the running release', async () => {
+    // The service rolled back from preview.5 to preview.1; a replayed,
+    // validly signed preview.3 manifest is newer than what runs.
+    const install = makeInstall();
+    acceptRelease(install, mark('0.8.0-preview.5'));
+    serveManifest(signedManifest(releasePayload('0.8.0-preview.3')));
+    const body = await json(await createApp(install).request('/core-update'));
+    expect(body).toMatchObject({
+      releaseCheck: 'unverified',
+      updateAvailable: false,
+    });
+    expect(body.latestVersion).toBeUndefined();
+    const record = join(install.installRoot, '.station-release-accepted.json');
+    expect(body.message).toBe(
+      'The preview release manifest offers 0.8.0-preview.3, older than 0.8.0-preview.5 which this install already accepted, so it is not offered.',
+    );
+    expect(body.technicalDetail).toBe(
+      `the manifest is stale or replayed (accepted release recorded in ${record})`,
+    );
+    const post = await createApp(install).request('/core-update', {
+      method: 'POST',
+    });
+    expect(post.status).toBe(409);
+    expect(existsSync(serviceUpdatePaths(install.installRoot).request)).toBe(
+      false,
+    );
+  });
+
+  test('the accepted release itself, or a newer one, is still offered', async () => {
+    const install = makeInstall();
+    acceptRelease(install, mark(NEWER));
+    for (const version of [NEWER, '0.8.0-preview.9']) {
+      serveManifest(signedManifest(releasePayload(version)));
+      expect(
+        await json(await createApp(install).request('/core-update')),
+      ).toMatchObject({
+        releaseCheck: 'verified',
+        latestVersion: version,
+        updateAvailable: true,
+        selfUpdateUnavailableReason: null,
+      });
+    }
+  });
+
+  test('an unreadable, foreign-ring or group-readable record offers nothing, and says how to recover', async () => {
+    for (const [text, mode] of [
+      ['not json', 0o600],
+      [
+        `${JSON.stringify({ schemaVersion: 1, releaseChannel: 'nightly', version: '0.8.0-nightly.1' })}\n`,
+        0o600,
+      ],
+      [mark('0.8.0-preview.1'), 0o644],
+    ] as const) {
+      const install = makeInstall();
+      acceptRelease(install, text);
+      chmodSync(
+        join(install.installRoot, '.station-release-accepted.json'),
+        mode,
+      );
+      const body = await json(await createApp(install).request('/core-update'));
+      expect(body).toMatchObject({
+        releaseCheck: 'unverified',
+        updateAvailable: false,
+      });
+      // Not the stale-manifest wording: the record is the problem.
+      expect(body.message).toBe(
+        "This install's record of the newest release it accepted is unreadable, so no update is offered. On the host, fix its owner and permissions or remove it, then check again.",
+      );
+      expect(body.technicalDetail).toBe(
+        `${join(install.installRoot, '.station-release-accepted.json')} is not a private file of this user holding a preview release record`,
+      );
+    }
   });
 });
 

@@ -1,0 +1,7 @@
+{
+  "revision": "7f9cbcef429b5a08412f4f1fbe2860585e890622",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"#187: the only change to docs/reference/cli.md is one added sentence in the service section (Check for server updates does not offer a manifest older than the install root's accepted release). Searched this document for server-update, core-update, station upgrade and manifest claims that rely on that section: its manifest mentions concern record-identity and build manifests (#2809), not the server update check. No claim changed.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]}
+  ]
+}

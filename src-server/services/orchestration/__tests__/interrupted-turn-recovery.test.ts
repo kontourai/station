@@ -32,7 +32,7 @@ import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-event-projection';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
@@ -70,6 +70,23 @@ vi.mock(
 const { resolveConversationTranscriptSource } = await import(
   '../../../runtime/conversation/conversation-transcript-source.js'
 );
+
+// #3562: the retry backoff sleeps through `utils/sleep`. Mocked so a retrying
+// `consume()` neither waits in real time nor hides its schedule: `delays`
+// records every backoff the module asked for, and `hook` lets a test change the
+// world while "time passes" (e.g. lift a quarantine).
+const sleepProbe = vi.hoisted(() => ({
+  delays: [] as number[],
+  signals: [] as Array<AbortSignal | undefined>,
+  hook: undefined as (() => void) | undefined,
+}));
+vi.mock('../../../utils/sleep.js', () => ({
+  sleep: vi.fn(async (ms: number, signal?: AbortSignal) => {
+    sleepProbe.delays.push(ms);
+    sleepProbe.signals.push(signal);
+    sleepProbe.hook?.();
+  }),
+}));
 
 const logger = { debug: () => {}, warn: () => {} };
 
@@ -1000,12 +1017,18 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     // event has already landed durably, but the FileMemory write itself
     // never completes — the mocked call throws WITHOUT appending, exactly
     // like a process dying mid-write leaves nothing on disk.
-    sharedAdapter.addMessage.mockImplementationOnce(async () => {
+    // #3562: a one-shot throw is now retried within the boot, so the outage
+    // lasts the whole boot (every in-boot attempt) and then clears.
+    const realAddMessage = sharedAdapter.addMessage.getMockImplementation()!;
+    sharedAdapter.addMessage.mockImplementation(async () => {
       throw new Error('simulated crash before the FileMemory write lands');
     });
     await (service1 as any).interruptedTurns.consume();
+    sharedAdapter.addMessage.mockImplementation(realAddMessage);
+    sharedAdapter.addMessage.mockClear();
 
-    expect(sharedAdapter.addMessage).toHaveBeenCalledOnce();
+    // Boot 1 gave up with the write outstanding: nothing landed.
+    expect(sharedAdapter.addMessage).not.toHaveBeenCalled();
     // The event DID land — this is the fact boot 2 must not re-derive.
     expect(
       eventStore1
@@ -1031,9 +1054,9 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     });
     await (service2 as any).interruptedTurns.consume();
 
-    // `addMessage` was called a SECOND time (the retry) — this boot's call
-    // succeeds (no mocked override left), landing the banner for real.
-    expect(sharedAdapter.addMessage).toHaveBeenCalledTimes(2);
+    // This boot's `addMessage` succeeds (the outage cleared), landing the
+    // banner for real, once.
+    expect(sharedAdapter.addMessage).toHaveBeenCalledOnce();
     // Still exactly ONE event, never re-published (hasEventId skipped it).
     expect(
       eventStore2
@@ -1463,11 +1486,12 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
       expect(
         dying
           .sessionTurnBoundaryAuthority()
-          .recordProviderTurn(
+          .prepareProviderTurn(
             threadId,
             'provider:turn-1',
             '2026-08-16T00:00:01.000Z',
-          ),
+          )
+          .record(),
       ).toEqual({ kind: 'applied' });
       dying.close();
 
@@ -3165,5 +3189,410 @@ describe('#3071: a request the interrupted turn opened is settled', () => {
       status: 'expired',
     });
     expect(eventStore.listEvents(threadId)).toHaveLength(before);
+  });
+});
+
+describe('#3562: a per-record recovery failure is retried within the boot, then surfaced', () => {
+  const makeTempDir = trackTempDirs();
+  const stores: EventStore[] = [];
+
+  beforeEach(() => {
+    sleepProbe.delays.length = 0;
+    sleepProbe.signals.length = 0;
+    sleepProbe.hook = undefined;
+  });
+
+  afterEach(() => {
+    sleepProbe.hook = undefined;
+    for (const store of stores.splice(0)) {
+      try {
+        store.close();
+      } catch {
+        // Already closed by the test.
+      }
+    }
+  });
+
+  function databasePath() {
+    return join(makeTempDir('interrupted-turn-retry-'), 'orchestration.sqlite');
+  }
+
+  function crashedThread(
+    boundaryState: 'invoking' | 'accepted',
+    options: { turnStarted?: boolean } = {},
+  ) {
+    const path = databasePath();
+    const threadId = 'thread-retry';
+    const eventStore = bootAfterCrash({
+      path,
+      threadId,
+      provider: 'station-agent',
+      agentSlug: 'demo-agent',
+      boundaryState,
+      ...options,
+    });
+    stores.push(eventStore);
+    eventStore.upsertSession({
+      provider: 'station-agent',
+      threadId,
+      status: 'running',
+      createdAt: '2026-08-16T00:00:00.000Z',
+      updatedAt: '2026-08-16T00:00:02.000Z',
+    });
+    return { path, threadId, eventStore };
+  }
+
+  function serviceFor(
+    eventStore: EventStore,
+    adapter: InterruptedTurnMemoryAdapter,
+    warn = vi.fn(),
+  ) {
+    return new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger: { debug: vi.fn(), warn },
+      memoryAdapters: new Map([['demo-agent', adapter]]),
+    });
+  }
+
+  const occupied = () =>
+    fakeMemoryAdapter({
+      conventionalUserId: 'agent:demo-agent',
+      conventionalMessages: [
+        { id: 'm1', role: 'user', parts: [{ type: 'text', text: 'do it' }] },
+      ],
+    });
+
+  function methods(eventStore: EventStore, threadId: string, method: string) {
+    return eventStore
+      .listEvents(threadId)
+      .filter((event) => event.payload.method === method);
+  }
+
+  /** What a restart would find: opened on the same file, then closed. */
+  function rowsLeftForNextBoot(path: string) {
+    const probe = new EventStore(path);
+    try {
+      return probe.takeInterruptedTurnBoundaries();
+    } finally {
+      probe.close();
+    }
+  }
+
+  test('a transient FileMemory write failure is retried in the same boot: one banner, row resolved, no restart needed', async () => {
+    const { path, threadId, eventStore } = crashedThread('accepted');
+    const adapter = occupied();
+    adapter.addMessage.mockImplementationOnce(async () => {
+      throw new Error('simulated transient FileMemory write failure');
+    });
+
+    await (serviceFor(eventStore, adapter) as any).interruptedTurns.consume();
+
+    expect(adapter.addMessage).toHaveBeenCalledTimes(2);
+    expect(sleepProbe.delays).toEqual([250]);
+    expect(methods(eventStore, threadId, 'session.state-changed')).toHaveLength(
+      1,
+    );
+    expect(methods(eventStore, threadId, 'turn.aborted')).toHaveLength(1);
+    expect(
+      (await adapter.getMessages('agent:demo-agent', threadId)).filter(
+        (message) => message.metadata?.interruptedTurnBoundaryId,
+      ),
+    ).toHaveLength(1);
+    expect(rowsLeftForNextBoot(path)).toEqual([]);
+  });
+
+  test('a transient failure to close the row (invoking, own turn.started after the claim) retries without a second abort, banner or message', async () => {
+    const { path, threadId, eventStore } = crashedThread('invoking');
+    const adapter = occupied();
+    const resolveSpy = vi
+      .spyOn(eventStore, 'resolveInterruptedTurnBoundary')
+      .mockImplementationOnce(() => {
+        throw new Error('simulated SQLITE_BUSY on the boundary delete');
+      });
+
+    await (serviceFor(eventStore, adapter) as any).interruptedTurns.consume();
+
+    expect(resolveSpy).toHaveBeenCalledTimes(2);
+    expect(sleepProbe.delays).toEqual([250]);
+    // The retry re-ran the whole record. It does not abort twice because the
+    // abort's deterministic event id (`turn-interrupted-abort:<boundaryId>`)
+    // is found by `hasEventId`; likewise the banner event and the FileMemory
+    // marker. (`ownEnding === 'ended'` on the retry only skips request
+    // settlement, which finds nothing left open, so no assertion here can
+    // depend on it.)
+    expect(methods(eventStore, threadId, 'turn.aborted')).toHaveLength(1);
+    expect(methods(eventStore, threadId, 'session.state-changed')).toHaveLength(
+      1,
+    );
+    expect(adapter.addMessage).toHaveBeenCalledOnce();
+    resolveSpy.mockRestore();
+    expect(rowsLeftForNextBoot(path)).toEqual([]);
+  });
+
+  test('a declined publish is retried: once the refusal lifts mid-boot, the banner lands and the row closes', async () => {
+    const { path, threadId, eventStore } = crashedThread('invoking', {
+      turnStarted: false,
+    });
+    const adapter = occupied();
+    const service = serviceFor(eventStore, adapter);
+    (service as any).quarantinedThreads.add(threadId);
+    sleepProbe.hook = () =>
+      (service as any).quarantinedThreads.delete(threadId);
+
+    await (service as any).interruptedTurns.consume();
+
+    expect(sleepProbe.delays).toEqual([250]);
+    expect(methods(eventStore, threadId, 'session.state-changed')).toHaveLength(
+      1,
+    );
+    expect(adapter.addMessage).toHaveBeenCalledOnce();
+    expect(rowsLeftForNextBoot(path)).toEqual([]);
+  });
+
+  test('a persistent failure is bounded and never a silent success: finite attempts with doubling backoff, the unrecovered boundary returned and warned, the row kept for the next boot', async () => {
+    const { path, threadId, eventStore } = crashedThread('accepted');
+    const adapter = occupied();
+    adapter.addMessage.mockImplementation(async () => {
+      throw new Error('simulated persistent FileMemory outage');
+    });
+    const warn = vi.fn();
+
+    const unrecovered = await (
+      serviceFor(eventStore, adapter, warn) as any
+    ).interruptedTurns.consume();
+
+    // 4 attempts, 3 backoffs: not a give-up on the first failure, not a loop.
+    expect(adapter.addMessage).toHaveBeenCalledTimes(4);
+    expect(sleepProbe.delays).toEqual([250, 500, 1000]);
+    // The event half stayed exactly-once across all four attempts.
+    expect(methods(eventStore, threadId, 'session.state-changed')).toHaveLength(
+      1,
+    );
+    // The durable row is the pending state: a restart finds it again, and
+    // the give-up names exactly that row.
+    const left = rowsLeftForNextBoot(path);
+    expect(left).toHaveLength(1);
+    expect(unrecovered).toEqual([left[0]!.boundaryId]);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('gave up for this boot'),
+      { boundaryIds: unrecovered, attempts: 4 },
+    );
+  });
+
+  test('only the failing record is retried; a record that already recovered is not reprocessed', async () => {
+    const path = databasePath();
+    const dying = new EventStore(path);
+    for (const threadId of ['thread-a', 'thread-b']) {
+      dying.appendEvent(
+        sessionStartedEvent({
+          threadId,
+          provider: 'station-agent',
+          agentSlug: 'demo-agent',
+        }),
+      );
+      const claimed = dying
+        .sessionTurnBoundaryAuthority()
+        .claim(threadId, '2026-08-16T00:00:00.800Z');
+      if (claimed.kind !== 'owner') throw new Error('expected boundary owner');
+      claimed.claim.beginInvocation('2026-08-16T00:00:00.900Z');
+    }
+    dying.close();
+    const eventStore = new EventStore(path);
+    stores.push(eventStore);
+    const resolveSpy = vi
+      .spyOn(eventStore, 'resolveInterruptedTurnBoundary')
+      .mockImplementationOnce(() => {
+        throw new Error('simulated transient failure on the first record');
+      });
+    const service = serviceFor(eventStore, occupied());
+
+    await (service as any).interruptedTurns.consume();
+
+    // Two records: one resolve threw, its retry succeeded, the other
+    // succeeded first time and is not run again. A pass over both would be 4.
+    expect(resolveSpy).toHaveBeenCalledTimes(3);
+    for (const threadId of ['thread-a', 'thread-b']) {
+      expect(
+        methods(eventStore, threadId, 'session.state-changed'),
+      ).toHaveLength(1);
+    }
+    resolveSpy.mockRestore();
+    expect(rowsLeftForNextBoot(path)).toEqual([]);
+  });
+
+  test('shutdown during the first backoff stops recovery: no further pass, nothing published after it, rows kept, and the log says stopped, not gave up', async () => {
+    const { path, threadId, eventStore } = crashedThread('accepted');
+    const adapter = occupied();
+    adapter.addMessage.mockImplementation(async () => {
+      throw new Error('simulated persistent FileMemory outage');
+    });
+    const warn = vi.fn();
+    const service = serviceFor(eventStore, adapter, warn);
+    const publish = vi.spyOn(service as any, 'projectAndPublishEvent');
+    const resolveSpy = vi.spyOn(eventStore, 'resolveInterruptedTurnBoundary');
+    let shutdown: Promise<void> | undefined;
+    let publishedBefore = -1;
+    sleepProbe.hook = () => {
+      publishedBefore = publish.mock.calls.length;
+      shutdown = service.shutdown();
+    };
+
+    const unrecovered = await (service as any).interruptedTurns.consume();
+    await shutdown;
+
+    // Exactly the first pass ran, and the backoff was handed the stop signal
+    // (the real sleep clears its timer when that aborts).
+    expect(adapter.addMessage).toHaveBeenCalledOnce();
+    expect(sleepProbe.delays).toEqual([250]);
+    expect(sleepProbe.signals[0]).toBeInstanceOf(AbortSignal);
+    expect(publishedBefore).toBeGreaterThan(0);
+    expect(publish.mock.calls.length).toBe(publishedBefore);
+    expect(resolveSpy).not.toHaveBeenCalled();
+    // Not a success: the row is reported, warned as stopped, and kept.
+    const left = rowsLeftForNextBoot(path);
+    expect(left).toHaveLength(1);
+    expect(unrecovered).toEqual([left[0]!.boundaryId]);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('stopped before it finished'),
+      { boundaryIds: unrecovered, reason: 'shutdown' },
+    );
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('gave up'),
+      expect.anything(),
+    );
+    expect(methods(eventStore, threadId, 'session.state-changed')).toHaveLength(
+      1,
+    );
+  });
+
+  test('shutdown inside a pass leaves the records it had not reached', async () => {
+    const path = databasePath();
+    const dying = new EventStore(path);
+    for (const threadId of ['thread-a', 'thread-b']) {
+      dying.appendEvent(
+        sessionStartedEvent({
+          threadId,
+          provider: 'station-agent',
+          agentSlug: 'demo-agent',
+        }),
+      );
+      const claimed = dying
+        .sessionTurnBoundaryAuthority()
+        .claim(threadId, '2026-08-16T00:00:00.800Z');
+      if (claimed.kind !== 'owner') throw new Error('expected boundary owner');
+      claimed.claim.beginInvocation('2026-08-16T00:00:00.900Z');
+    }
+    dying.close();
+    const eventStore = new EventStore(path);
+    stores.push(eventStore);
+    const service = serviceFor(eventStore, occupied());
+    // The first record's close is where shutdown lands.
+    const realResolve =
+      eventStore.resolveInterruptedTurnBoundary.bind(eventStore);
+    const resolveSpy = vi
+      .spyOn(eventStore, 'resolveInterruptedTurnBoundary')
+      .mockImplementation((record) => {
+        realResolve(record);
+        void service.shutdown();
+      });
+
+    const unrecovered = await (service as any).interruptedTurns.consume();
+
+    expect(resolveSpy).toHaveBeenCalledOnce();
+    expect(unrecovered).toHaveLength(1);
+    expect(sleepProbe.delays).toEqual([]);
+    const banners = ['thread-a', 'thread-b'].filter(
+      (threadId) =>
+        methods(eventStore, threadId, 'session.state-changed').length === 1,
+    );
+    expect(banners).toHaveLength(1);
+    resolveSpy.mockRestore();
+    expect(rowsLeftForNextBoot(path).map((row) => row.boundaryId)).toEqual(
+      unrecovered,
+    );
+  });
+
+  test('shutdown during the FileMemory occupancy await publishes nothing and keeps the row', async () => {
+    const { path, threadId, eventStore } = crashedThread('accepted');
+    const adapter = occupied();
+    const service = serviceFor(eventStore, adapter, vi.fn());
+    const publish = vi.spyOn(service as any, 'projectAndPublishEvent');
+    const resolveSpy = vi.spyOn(eventStore, 'resolveInterruptedTurnBoundary');
+    // The occupancy lookup is the await inside a record, so shutdown lands
+    // there.
+    let shutdown: Promise<void> | undefined;
+    adapter.getMessages.mockImplementationOnce(async () => {
+      shutdown = service.shutdown();
+      return [];
+    });
+    const publishedBefore = publish.mock.calls.length;
+
+    const unrecovered = await (service as any).interruptedTurns.consume();
+    await shutdown;
+
+    expect(adapter.getMessages).toHaveBeenCalled();
+    expect(publish.mock.calls.length).toBe(publishedBefore);
+    expect(resolveSpy).not.toHaveBeenCalled();
+    expect(adapter.addMessage).not.toHaveBeenCalled();
+    expect(methods(eventStore, threadId, 'turn.aborted')).toHaveLength(0);
+    expect(methods(eventStore, threadId, 'session.state-changed')).toHaveLength(
+      0,
+    );
+    const left = rowsLeftForNextBoot(path);
+    expect(left).toHaveLength(1);
+    expect(unrecovered).toEqual([left[0]!.boundaryId]);
+    expect(sleepProbe.delays).toEqual([]);
+  });
+
+  test('a swapped event store ends the retries: the drained rows are not replayed against another store', async () => {
+    const { path, eventStore } = crashedThread('accepted');
+    const adapter = occupied();
+    adapter.addMessage.mockImplementation(async () => {
+      throw new Error('simulated persistent FileMemory outage');
+    });
+    const warn = vi.fn();
+    const service = serviceFor(eventStore, adapter, warn);
+    const other = new EventStore(databasePath());
+    stores.push(other);
+    sleepProbe.hook = () => {
+      (service as any).options.eventStore = other;
+    };
+
+    const unrecovered = await (service as any).interruptedTurns.consume();
+
+    expect(adapter.addMessage).toHaveBeenCalledOnce();
+    expect(unrecovered).toHaveLength(1);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('stopped before it finished'),
+      { boundaryIds: unrecovered, reason: 'event-store-changed' },
+    );
+    expect(rowsLeftForNextBoot(path)).toHaveLength(1);
+  });
+
+  test('initialize() reaches the retrying recovery: a record failing at boot is retried, then reported', async () => {
+    const { path, threadId, eventStore } = crashedThread('accepted');
+    const adapter = occupied();
+    adapter.addMessage.mockImplementation(async () => {
+      throw new Error('simulated persistent FileMemory outage');
+    });
+    const warn = vi.fn();
+    const service = serviceFor(eventStore, adapter, warn);
+
+    service.initialize();
+    await vi.waitFor(() =>
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('gave up for this boot'),
+        expect.objectContaining({ attempts: 4 }),
+      ),
+    );
+
+    expect(adapter.addMessage).toHaveBeenCalledTimes(4);
+    expect(methods(eventStore, threadId, 'session.state-changed')).toHaveLength(
+      1,
+    );
+    expect(rowsLeftForNextBoot(path)).toHaveLength(1);
+    await service.shutdown().catch(() => undefined);
   });
 });

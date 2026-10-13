@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { CHANNEL_PORTS, RELEASE_RINGS } from '../channel-ports.mjs';
 import {
+  acceptedReleaseFunctionSource,
   bundleInstallerCore,
   checkInstallPs1Script,
   checkInstallScript,
@@ -37,6 +38,38 @@ function scratchCopy(): string {
   copyFileSync(INSTALL_SCRIPT_PATH, path);
   return path;
 }
+
+describe('the accepted-release program block (#187)', () => {
+  it('carries the shipped function, which is comments and one exported function', () => {
+    const source = readFileSync(
+      resolve(root, 'packages/shared/src/accepted-release.mjs'),
+      'utf8',
+    );
+    expect(acceptedReleaseFunctionSource(source)).toMatch(
+      /^function acceptedReleaseRules\(/,
+    );
+  });
+
+  it.each([
+    ["import { x } from 'node:fs';\n"],
+    ['const helper = 1;\n'],
+    ['/** doc */\nexport const extra = 1;\n'],
+  ])('refuses a statement before the function: %j', (prefix) => {
+    expect(() =>
+      acceptedReleaseFunctionSource(
+        `/** doc */\n${prefix}export function acceptedReleaseRules(rings) {}\n`,
+      ),
+    ).toThrow(/only comments and its one exported function/);
+  });
+
+  it('refuses a second export after the function', () => {
+    expect(() =>
+      acceptedReleaseFunctionSource(
+        'export function acceptedReleaseRules(rings) {}\nexport const x = 1;\n',
+      ),
+    ).toThrow(/only comments and its one exported function/);
+  });
+});
 
 describe('install.sh generated blocks', () => {
   it('matches what the generator renders from its config sources', () => {
@@ -388,6 +421,8 @@ describe('install-script:check as a process', () => {
       'config/channel-ports.json',
       'config/release-manifest-keys.json',
       'config/portable-server-node-runtime.json',
+      // Read as text for the ACCEPTED RELEASE PROGRAM block, not imported.
+      'packages/shared/src/accepted-release.mjs',
     ]) {
       mkdirSync(dirname(join(copy, file)), { recursive: true });
       copyFileSync(join(root, file), join(copy, file));
@@ -432,6 +467,10 @@ describe('install-script:check as a process', () => {
       'packages/shared/src/windows-system-utility.mjs',
       'packages/shared/src/fs-windows-compat.ts',
       'packages/shared/src/service-launcher-protocol.ts',
+      'packages/shared/src/prebuilt-archive.ts',
+      'packages/shared/src/accepted-release.mjs',
+      'packages/shared/src/accepted-release.d.mts',
+      'packages/shared/src/ports.ts',
       'packages/shared/src/installer',
       'install.sh',
     ])

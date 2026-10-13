@@ -122,8 +122,6 @@
 
     "packages/shared/src/workspace-package.ts",
 
-    "pnpm-lock.yaml",
-
     "scripts/__tests__/startup-readiness-static.test.ts",
 
     "scripts/__tests__/verification-coordinator.test.ts",
@@ -968,7 +966,11 @@
 
     "tests/helpers/journey-profile.ts",
 
-    "src-ui/src/platform/native/bundledLocalProfileBootstrap.ts"
+    "src-ui/src/platform/native/bundledLocalProfileBootstrap.ts",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots"
   ],
 
   "checks": [

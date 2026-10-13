@@ -1,7 +1,8 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { openSqliteKernelStorage } from '../sqlite.js';
+import { DatabaseSync } from 'node:sqlite';
+import { openSqliteKernelStorage, type SqliteKernelTables } from '../sqlite.js';
 import type {
   KernelStorageHarness,
   KernelStorageLocation,
@@ -12,16 +13,36 @@ export interface SqliteKernelLocation extends KernelStorageLocation {
   readonly path: string;
 }
 
+export interface SqliteKernelHarnessOptions {
+  readonly via?: 'execute' | 'executeSync';
+  /** Bind a host's tables in place of the kernel's. */
+  readonly tables?: SqliteKernelTables;
+  /**
+   * Creates the host's tables, in a connection of its own, before the first
+   * open. Needed when `tables` binds any.
+   */
+  readonly prepare?: (database: DatabaseSync) => void;
+}
+
 export function createSqliteKernelLocation(
-  options: { readonly via?: 'execute' | 'executeSync' } = {},
+  options: SqliteKernelHarnessOptions = {},
 ): SqliteKernelLocation {
   const directory = mkdtempSync(join(tmpdir(), 'monument-sqlite-'));
   const path = join(directory, 'kernel.sqlite');
+  if (options.prepare) {
+    const database = new DatabaseSync(path);
+    try {
+      options.prepare(database);
+    } finally {
+      database.close();
+    }
+  }
   return {
     path,
     async open(openOptions = {}) {
       const storage = openSqliteKernelStorage({
         path,
+        ...(options.tables ? { tables: options.tables } : {}),
         ...(openOptions.participants
           ? { participants: openOptions.participants }
           : {}),
@@ -47,10 +68,10 @@ export function createSqliteKernelLocation(
  * synchronous extension agrees with the async port.
  */
 export function createSqliteKernelHarness(
-  options: { readonly via?: 'execute' | 'executeSync' } = {},
+  options: SqliteKernelHarnessOptions & { readonly name?: string } = {},
 ): KernelStorageHarness {
   return {
-    name: `node:sqlite (${options.via ?? 'execute'})`,
+    name: options.name ?? `node:sqlite (${options.via ?? 'execute'})`,
     async createLocation() {
       return createSqliteKernelLocation(options);
     },

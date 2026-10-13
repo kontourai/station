@@ -74,7 +74,8 @@ function validateRecord(record, tracked, reportMissing) {
   }
 }
 
-function absentReleaseNote(record, documents, tracked) {
+/** A retained purpose classification, without behavioral evidence claims. */
+export function absentReleaseNote(record, documents, tracked) {
   return (
     !documents.has(record.path) &&
     !tracked.has(record.path) &&
@@ -83,7 +84,7 @@ function absentReleaseNote(record, documents, tracked) {
     record.kind === 'release-note' &&
     record.state === 'classified' &&
     record.sources.length === 0 &&
-    record.checks.length === 0
+    (record.declaredChecks ?? record.checks).length === 0
   );
 }
 
