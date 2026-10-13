@@ -191,11 +191,11 @@ const sleepFor = (ms) => new Promise((done) => setTimeout(done, ms));
 // Re-observes capacity until admitted or the ceiling elapses. An observation
 // that throws (API error, invalid configuration) propagates at once: it fails
 // closed exactly as a single observation always has, and is never retried.
-export async function awaitQualificationAdmission({
+async function awaitQualificationAdmission({
   observe,
-  record = () => {},
-  now = Date.now,
-  sleep = sleepFor,
+  record,
+  now,
+  sleep,
   ceilingMs = ADMISSION_WAIT_CEILING_MS,
   intervalMs = ADMISSION_OBSERVE_INTERVAL_MS,
 }) {
@@ -226,8 +226,8 @@ export async function main(
   {
     env = process.env,
     observe = () => qualificationAdmission(env),
-    now,
-    sleep,
+    now = Date.now,
+    sleep = sleepFor,
   } = {},
 ) {
   if (argv[0] === 'publisher') return publisherAdmission();

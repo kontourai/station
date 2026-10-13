@@ -337,6 +337,8 @@ describe('qualification admission waits for capacity instead of failing (#3612)'
     macosOccupied,
     admitted: occupied + 6 <= 20 && macosOccupied < 5,
     observedAt: '2026-10-12T09:26:20.800Z',
+    scope:
+      'configured repository snapshot; omitted organization workloads are not certified',
   });
   const makeTempDir = trackTempDirs();
   const workflowFiles = () => {
