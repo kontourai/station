@@ -44,22 +44,32 @@ interface Harness {
   /** Every parent turn start the seam asked for, in order. */
   starts: Array<{
     parentConversationId: string;
+    threadId: string;
     text: string;
     clientTurnId: string;
+    attribution: string;
   }>;
   steers: Array<{ threadId: string; text: string; clientInputId: string }>;
+  warn: ReturnType<typeof vi.fn>;
 }
 
 /** The durable chat-turn claim, shared across a simulated restart. */
 const startedTurns = new Map<string, string>();
 let steerOutcome: 'steered' | 'unsupported-engine' = 'unsupported-engine';
 let holdStarts = false;
+/** A start the parent cleanly refuses (e.g. it has no Agent binding). */
+let refuseStarts: Error | undefined;
+/** A conversation's current Session, when it has moved on from its first. */
+const currentSessions = new Map<string, string>();
+/** Sessions whose turn the live coordinator holds before the log shows it. */
+const coordinatorBusy = new Set<string>();
 let sequence = 0;
 
 function harness(path: string): Harness {
   const store = new EventStore(path);
   const bus = new EventBus();
   const starts: Harness['starts'] = [];
+  const warn = vi.fn();
   const steers: Harness['steers'] = [];
   const ports: DelegationResultDeliveryPorts = {
     store: store.delegationResultStore(),
@@ -71,20 +81,34 @@ function harness(path: string): Harness {
           event: stored.payload,
         })),
     headSequence: (threadId) => store.readSessionInventoryHighWater(threadId),
-    turnEvents: (threadId, turnId, methods) =>
+    turnEvents: (threadId, turnId, methods, limit) =>
       store
-        .listTurnEventsByMethods(threadId, turnId, methods)
+        .listTurnEventsByMethods(threadId, turnId, methods, limit)
         .map((stored) => ({
           ...(stored.turnId ? { turnId: stored.turnId } : {}),
           method: stored.method,
           payload: stored.payload,
         })),
     conversationOf: (threadId) => threadId,
-    currentSessionId: (conversationId) => conversationId,
-    coordinatorBusy: () => false,
+    currentSessionId: (conversationId) =>
+      currentSessions.get(conversationId) ?? conversationId,
+    coordinatorBusy: (threadId) => coordinatorBusy.has(threadId),
     sessionOwnerId: () => OWNER,
-    start: async ({ parentConversationId, text, clientTurnId }) => {
-      starts.push({ parentConversationId, text, clientTurnId });
+    start: async ({
+      parentConversationId,
+      threadId,
+      actor,
+      text,
+      clientTurnId,
+    }) => {
+      starts.push({
+        parentConversationId,
+        threadId,
+        text,
+        clientTurnId,
+        attribution: actor.attribution,
+      });
+      if (refuseStarts) throw refuseStarts;
       if (holdStarts) return new Promise(() => {});
       const existing = startedTurns.get(clientTurnId);
       const turnId = existing ?? `parent-turn-${startedTurns.size + 1}`;
@@ -108,12 +132,12 @@ function harness(path: string): Harness {
         if (frame.event === 'orchestration:event' && event)
           listener({ threadId: event.threadId, method: event.method });
       }),
-    logger: { warn: vi.fn() },
+    logger: { warn },
     retryDelaysMs: [],
   };
   const delivery = new DelegationResultDelivery(ports);
   delivery.start();
-  return { store, bus, delivery, starts, steers };
+  return { store, bus, delivery, starts, steers, warn };
 }
 
 /** Persist, then publish, as the orchestration service does. */
@@ -154,7 +178,17 @@ function runChildTurn(
 }
 
 /** The routes an agent's Station Control tools reach, as `callerSession`. */
-function routes(h: Harness, callerSession: string, status: () => string) {
+function routes(
+  h: Harness,
+  callerSession: string,
+  status: () => string,
+  options: {
+    /** What `resolveAgentDispatchActor` says of the caller (default verified). */
+    actor?: 'verified' | 'unattributed' | 'none';
+    /** The interrupt itself is refused (e.g. the task is not interruptible). */
+    interruptRefused?: boolean;
+  } = {},
+) {
   const app = new Hono();
   app.use('*', async (c, next) => {
     setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
@@ -187,10 +221,12 @@ function routes(h: Harness, callerSession: string, status: () => string) {
         eventBus: { subscribe: () => () => {} },
         logger: { debug: vi.fn() },
         getUserId: () => OWNER,
-        resolveAgentDispatchActor: () => ({
-          kind: 'verified',
-          principalId: OWNER,
-        }),
+        resolveAgentDispatchActor: () =>
+          options.actor === 'none'
+            ? undefined
+            : options.actor === 'unattributed'
+              ? { kind: 'unattributed' }
+              : { kind: 'verified', principalId: OWNER },
         stationControlDispatchScope: {
           target: () => ({
             ownerId: OWNER,
@@ -233,11 +269,17 @@ function routes(h: Harness, callerSession: string, status: () => string) {
           taskId: input.taskId,
           status: status(),
         }),
-        interruptDelegatedTask: async (input: { taskId: string }) => ({
-          conversationId: input.taskId,
-          taskId: input.taskId,
-          interruptRequested: true,
-        }),
+        interruptDelegatedTask: async (input: { taskId: string }) => {
+          if (options.interruptRefused)
+            throw new Error(
+              'Delegated task cannot be interrupted while completed',
+            );
+          return {
+            conversationId: input.taskId,
+            taskId: input.taskId,
+            interruptRequested: true,
+          };
+        },
         delegationResults: h.delivery,
       } as never,
     ),
@@ -274,12 +316,12 @@ function routes(h: Harness, callerSession: string, status: () => string) {
       );
       expect(response.status).toBe(200);
     },
-    interrupt: async (taskId: string) => {
+    interrupt: async (taskId: string, expected = 200) => {
       const response = await app.request(
         `/delegations/${encodeURIComponent(taskId)}/interrupt`,
         { method: 'POST', headers, body: JSON.stringify({}) },
       );
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(expected);
     },
   };
 }
@@ -300,8 +342,11 @@ describe('delegated task result delivery (#3158)', () => {
       h.store.close();
     }
     startedTurns.clear();
+    currentSessions.clear();
+    coordinatorBusy.clear();
     steerOutcome = 'unsupported-engine';
     holdStarts = false;
+    refuseStarts = undefined;
   });
 
   test('a settled child wakes its idle parent exactly once, with its stored output', async () => {
@@ -315,6 +360,7 @@ describe('delegated task result delivery (#3158)', () => {
 
     expect(h.starts).toHaveLength(1);
     expect(h.starts[0]!.parentConversationId).toBe(PARENT);
+    expect(h.starts[0]!.attribution).toBe('verified-bound');
     expect(h.starts[0]!.text).toContain('not from the person');
     expect(h.starts[0]!.text).toContain('> Notes written to docs/notes.md');
     expect(h.starts[0]!.text).toContain(JSON.stringify(CHILD));
@@ -525,5 +571,141 @@ describe('delegated task result delivery (#3158)', () => {
     expect(second.store.delegationResultStore().listForChild(CHILD)).toEqual([
       expect.objectContaining({ state: 'delivered' }),
     ]);
+  });
+
+  // Fix round 1, P1: delivery never acts with a stronger attribution than
+  // the delegating dispatch carried.
+  test('a copied-token (unattributed) caller is delivered to as unattributed, never verified-bound', async () => {
+    const h = setup();
+    await routes(h, PARENT, () => 'running', {
+      actor: 'unattributed',
+    }).delegate();
+    runChildTurn(h, CHILD, 'child-turn-1', 'done');
+    await h.delivery.idle();
+    expect(h.starts.map((start) => start.attribution)).toEqual([
+      'unattributed-agent',
+    ]);
+  });
+
+  test('a dispatch with no agent owner attribution arms nothing', async () => {
+    const h = setup();
+    await routes(h, PARENT, () => 'running', { actor: 'none' }).delegate();
+    runChildTurn(h, CHILD, 'child-turn-1', 'done');
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(0);
+    expect(h.store.delegationResultStore().owner(CHILD)).toBeUndefined();
+  });
+
+  // Fix round 1, P2: interrupt cancels only when it succeeds, and only for
+  // the recorded parent.
+  test('a refused interrupt leaves the result to be delivered', async () => {
+    const h = setup();
+    await routes(h, PARENT, () => 'running').delegate();
+    emit(h, PARENT, 'turn.started', { turnId: 'parent-turn-a' });
+    runChildTurn(h, CHILD, 'child-turn-1', 'done');
+    await h.delivery.idle();
+    await routes(h, PARENT, () => 'completed', {
+      interruptRefused: true,
+    }).interrupt(CHILD, 400);
+    expect(h.store.delegationResultStore().listForChild(CHILD)).toEqual([
+      expect.objectContaining({ state: 'pending' }),
+    ]);
+    emit(h, PARENT, 'turn.completed', { turnId: 'parent-turn-a' });
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(1);
+  });
+
+  test('a refused interrupt of a running child does not suppress its turn', async () => {
+    const h = setup();
+    await routes(h, PARENT, () => 'running').delegate();
+    emit(h, CHILD, 'turn.started', { turnId: 'child-turn-1' });
+    await routes(h, PARENT, () => 'running', {
+      interruptRefused: true,
+    }).interrupt(CHILD, 400);
+    emit(h, CHILD, 'turn.completed', { turnId: 'child-turn-1' });
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(1);
+  });
+
+  test('an interrupt from a conversation that is not the parent cancels nothing', async () => {
+    const h = setup();
+    await routes(h, PARENT, () => 'running').delegate();
+    emit(h, CHILD, 'turn.started', { turnId: 'child-turn-1' });
+    await routes(h, 'conversation-other', () => 'running').interrupt(CHILD);
+    emit(h, CHILD, 'turn.aborted', { turnId: 'child-turn-1' });
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(1);
+    expect(h.starts[0]!.text).toContain('was stopped');
+  });
+
+  // Fix round 1, P2: a parent that can never take a turn settles, once.
+  test('a parent whose starts are always refused settles undeliverable after bounded attempts', async () => {
+    refuseStarts = new Error(
+      'The requested conversation has no verified local Environment and Agent binding',
+    );
+    const h = setup();
+    await routes(h, PARENT, () => 'running').delegate();
+    runChildTurn(h, CHILD, 'child-turn-1', 'done');
+    await h.delivery.idle();
+    for (let index = 0; index < 8; index += 1) {
+      emit(h, PARENT, 'session.exited');
+      await h.delivery.idle();
+    }
+    expect(h.starts).toHaveLength(5);
+    expect(h.store.delegationResultStore().listForChild(CHILD)).toEqual([
+      expect.objectContaining({ state: 'undeliverable', attempts: 5 }),
+    ]);
+    expect(
+      h.warn.mock.calls.filter(
+        ([message]) => message === 'delegation result not delivered',
+      ),
+    ).toHaveLength(1);
+    expect(h.warn).toHaveBeenCalledTimes(1);
+  });
+
+  // Fix round 1, P2: turn dedupe is per Session, so an unconfirmed start is
+  // never re-driven into the parent's successor Session.
+  test('an unconfirmed start is not re-driven after the parent moved to another Session', async () => {
+    const path = join(
+      makeTempDir('delegation-result-'),
+      'orchestration.sqlite',
+    );
+    const first = setup(path);
+    await routes(first, PARENT, () => 'running').delegate();
+    holdStarts = true;
+    runChildTurn(first, CHILD, 'child-turn-1', 'done');
+    await vi.waitFor(() => expect(first.starts).toHaveLength(1));
+    expect(first.starts[0]!.threadId).toBe(PARENT);
+    first.delivery.stop();
+    first.store.close();
+    open.splice(open.indexOf(first), 1);
+
+    holdStarts = false;
+    currentSessions.set(PARENT, 'parent-successor-session');
+    const second = setup(path);
+    await second.delivery.reconcile();
+    expect(second.starts).toHaveLength(0);
+    expect(second.store.delegationResultStore().listForChild(CHILD)).toEqual([
+      expect.objectContaining({ state: 'undeliverable' }),
+    ]);
+  });
+
+  // Fix round 1, P3: an interrupt that races the child's not-yet-persisted
+  // turn.started still fences the turn it stops.
+  test('an interrupt before the stopped turn reaches the log still cancels its result', async () => {
+    const h = setup();
+    const api = routes(h, PARENT, () => 'running');
+    await api.delegate();
+    coordinatorBusy.add(CHILD);
+    await api.interrupt(CHILD);
+    coordinatorBusy.delete(CHILD);
+    emit(h, CHILD, 'turn.started', { turnId: 'child-turn-1' });
+    emit(h, CHILD, 'turn.aborted', { turnId: 'child-turn-1' });
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(0);
+    // The fence is spent: the next turn delivers.
+    runChildTurn(h, CHILD, 'child-turn-2', 'second');
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(1);
   });
 });

@@ -6953,17 +6953,23 @@ export class EventStore {
   }
 
   /**
-   * #3158: one turn's events of a finite method set, oldest first, through
-   * the `(thread_id, turn_id, sequence)` index, so reading a settled turn's
-   * output does not scan the rest of a long Session.
+   * #3158: one turn's events of a finite method set, oldest first, at most
+   * `limit` rows, through the `(thread_id, turn_id, sequence)` index, so
+   * reading a settled turn's output never scans the rest of a long Session or
+   * an unbounded turn. A caller that must know whether the turn had more asks
+   * for one row past its bound.
    */
   listTurnEventsByMethods(
     threadId: string,
     turnId: string,
     methods: readonly string[],
+    limit: number,
   ): PersistedRuntimeEvent[] {
     if (methods.length === 0) {
       throw new Error('An event-method query requires at least one method');
+    }
+    if (!Number.isInteger(limit) || limit < 1 || limit > 5_000) {
+      throw new Error('A turn event read limit must be between 1 and 5000');
     }
     const placeholders = methods.map(() => '?').join(', ');
     return (
@@ -6972,9 +6978,10 @@ export class EventStore {
           `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
            FROM orchestration_events
            WHERE thread_id = ? AND turn_id = ? AND method IN (${placeholders})
-           ORDER BY sequence ASC`,
+           ORDER BY sequence ASC
+           LIMIT ?`,
         )
-        .all(threadId, turnId, ...methods) as Record<string, unknown>[]
+        .all(threadId, turnId, ...methods, limit) as Record<string, unknown>[]
     ).map((row) => this.mapEventRow(row));
   }
 

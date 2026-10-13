@@ -121,7 +121,10 @@ import {
   DelegationAttemptPendingError,
   type DelegationAttemptProjection,
 } from '../../services/orchestration/delegation-attempt-claim-store.js';
-import type { DelegationResultDelivery } from '../../services/orchestration/delegation-result-delivery.js';
+import type {
+  DelegationResultCanceller,
+  DelegationResultDelivery,
+} from '../../services/orchestration/delegation-result-delivery.js';
 import type { DispatchCwdAdmission } from '../../services/orchestration/dispatch-cwd-admission.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import {
@@ -1424,9 +1427,7 @@ export function resolveActorPrincipal(
  * without a principal). `isInboundDelegationPeer` ignores it and
  * `authorizeReceiverExecution` reads request currency, not the principal.
  */
-export function principalRefForSessionOwner(
-  id: string,
-): PrincipalRef | undefined {
+function principalRefForSessionOwner(id: string): PrincipalRef | undefined {
   const match = /^human:([^:]+):(.+)$/.exec(id);
   if (!match) return undefined;
   try {
@@ -1495,16 +1496,26 @@ export function resolveDispatchActor(
 
 /**
  * #3158: record that the calling agent's conversation receives this child's
- * results. Only a context Station DERIVED for a verified station-control
- * caller (`caller-derived`) arms delivery, and only for a child this Station
- * runs: the parent is the caller's own conversation, never an id the body
- * or the model named.
+ * results. Only a context Station DERIVED from the station-control caller
+ * (`caller-derived`) arms delivery, and only for a child this Station runs:
+ * the parent is the caller's own conversation, never an id the body or the
+ * model named. Delivery acts exactly as this dispatch did: its user, its
+ * owner attribution (`verified-bound` for a bound caller only, otherwise
+ * `unattributed-agent`) and its principal. A request with no owner
+ * attribution (not an agent dispatch) arms nothing.
  */
 function armDelegationResult(
   c: Context,
   delivery: Pick<DelegationResultDelivery, 'arm'> | undefined,
   resolved: ResolvedRequestDelegation | undefined,
-  dispatched: { handle: unknown; userId: string },
+  dispatched: {
+    handle: unknown;
+    actor: {
+      userId: string;
+      principal: PrincipalRef | undefined;
+      ownerAttribution: StartOwnerAttribution | undefined;
+    };
+  },
 ): void {
   if (!delivery || resolved?.provenance !== 'caller-derived') return;
   const authority = stationControlRequestAuthority(c.req.raw);
@@ -1512,27 +1523,55 @@ function armDelegationResult(
   const callerConversationId =
     authority.caller.conversationId ?? authority.caller.sessionId;
   if (resolved.context.parentConversationId !== callerConversationId) return;
-  const handle = dispatched.handle as {
-    conversationId?: unknown;
-    taskId?: unknown;
-    environment?: { kind?: unknown };
-    target?: { id?: unknown };
-  };
-  if (
-    handle?.environment?.kind !== 'current' ||
-    typeof handle.conversationId !== 'string' ||
-    typeof handle.taskId !== 'string'
-  )
-    return;
+  const { actor } = dispatched;
+  const child = localDelegatedChild(dispatched.handle);
+  if (!child || !actor.ownerAttribution) return;
   delivery.arm({
-    childConversationId: handle.conversationId,
-    taskId: handle.taskId,
+    ...child,
     parentConversationId: callerConversationId,
-    ownerUserId: dispatched.userId,
-    ...(typeof handle.target?.id === 'string'
-      ? { childAgent: handle.target.id }
-      : {}),
+    actor: {
+      userId: actor.userId,
+      attribution: actor.ownerAttribution,
+      ...(actor.principal ? { principal: actor.principal } : {}),
+    },
   });
+}
+
+/**
+ * The child a dispatch started on THIS Station, read from the route's
+ * dispatch result. `delegateTask` is typed `unknown` at this seam because its
+ * Task-room callers return only `{ sessionId }`; anything that is not a
+ * current-environment handle with string identities is not armed.
+ */
+function localDelegatedChild(
+  handle: unknown,
+):
+  | { childConversationId: string; taskId: string; childAgent?: string }
+  | undefined {
+  if (!handle || typeof handle !== 'object') return undefined;
+  const { conversationId, taskId, environment, target } = handle as Record<
+    string,
+    unknown
+  >;
+  const environmentKind =
+    environment && typeof environment === 'object'
+      ? (environment as { kind?: unknown }).kind
+      : undefined;
+  if (
+    environmentKind !== 'current' ||
+    typeof conversationId !== 'string' ||
+    typeof taskId !== 'string'
+  )
+    return undefined;
+  const agent =
+    target && typeof target === 'object'
+      ? (target as { id?: unknown }).id
+      : undefined;
+  return {
+    childConversationId: conversationId,
+    taskId,
+    ...(typeof agent === 'string' ? { childAgent: agent } : {}),
+  };
 }
 
 /**
@@ -1541,19 +1580,40 @@ function armDelegationResult(
  * an error here is logged, and at worst a result is delivered that a read
  * already showed, or not delivered automatically at all.
  */
-function bestEffortDelegationResult(
+function bestEffortDelegationResult<T>(
   logger: { warn?(message: string, meta?: Record<string, unknown>): void },
-  step: 'arm' | 'read' | 'cancel',
-  run: () => unknown,
-): void {
+  step: 'arm' | 'read' | 'cancel' | 'reopen',
+  run: () => T,
+): T | undefined {
   try {
-    run();
+    return run();
   } catch (error) {
     logger.warn?.('delegation result bookkeeping failed', {
       step,
       error: errorMessage(error),
     });
+    return undefined;
   }
+}
+
+/**
+ * #3158: who an `interrupt_task` request cancels a pending result for: an
+ * agent caller only as its own conversation (the recorded parent is checked
+ * by `beginCancel`), a person or device credential as its user. Station's
+ * own server code and caller-less internal requests cancel nothing.
+ */
+function delegationResultCanceller(
+  c: Context,
+  userId: string,
+): DelegationResultCanceller | undefined {
+  const authority = stationControlRequestAuthority(c.req.raw);
+  if (authority?.kind === 'caller')
+    return {
+      kind: 'conversation',
+      conversationId:
+        authority.caller.conversationId ?? authority.caller.sessionId,
+    };
+  return authority === undefined ? { kind: 'person', userId } : undefined;
 }
 
 /** #3158: a verified caller's `get_task` read of a child; see `recordRead`. */
@@ -1793,7 +1853,7 @@ export function createOrchestrationRoutes(
      */
     delegationResults?: Pick<
       DelegationResultDelivery,
-      'arm' | 'recordRead' | 'cancel'
+      'arm' | 'recordRead' | 'beginCancel' | 'reopenCancellation'
     >;
     /**
      * archive#4075 stage 2: DEPRECATED legacy test-only escape hatch. Never
@@ -3085,7 +3145,7 @@ export function createOrchestrationRoutes(
       bestEffortDelegationResult(deps.logger, 'arm', () =>
         armDelegationResult(c, deps.delegationResults, resolvedDelegation, {
           handle: data,
-          userId,
+          actor: { userId, principal, ownerAttribution },
         }),
       );
       return c.json({ success: true, data });
@@ -3657,23 +3717,40 @@ export function createOrchestrationRoutes(
           deps,
           c,
         );
-        // #3158: fenced before the interrupt's effect, so the turn it stops
-        // and any result not yet delivered never wake the parent.
-        if (
+        // #3158: the recorded parent's interrupt fences the turn it stops and
+        // cancels results not yet delivered. Fenced before the effect (the
+        // stopped turn's settlement is delivered synchronously from the
+        // event), and undone below if the interrupt is refused.
+        const canceller =
           (getBody(c) as { environmentId?: unknown }).environmentId ===
           undefined
-        )
-          bestEffortDelegationResult(deps.logger, 'cancel', () =>
-            deps.delegationResults?.cancel(param(c, 'taskId')),
-          );
-        const data = await deps.interruptDelegatedTask({
-          ...getBody(c),
-          taskId: param(c, 'taskId'),
-          userId,
-          principal,
-          ownerAttribution,
-          clientOrigin: resolveClientOriginForRequest(c.req.raw),
-        });
+            ? delegationResultCanceller(c, userId)
+            : undefined;
+        const cancellation = canceller
+          ? bestEffortDelegationResult(deps.logger, 'cancel', () =>
+              deps.delegationResults?.beginCancel(
+                param(c, 'taskId'),
+                canceller,
+              ),
+            )
+          : undefined;
+        let data: unknown;
+        try {
+          data = await deps.interruptDelegatedTask({
+            ...getBody(c),
+            taskId: param(c, 'taskId'),
+            userId,
+            principal,
+            ownerAttribution,
+            clientOrigin: resolveClientOriginForRequest(c.req.raw),
+          });
+        } catch (error) {
+          if (cancellation)
+            bestEffortDelegationResult(deps.logger, 'reopen', () =>
+              deps.delegationResults?.reopenCancellation(cancellation),
+            );
+          throw error;
+        }
         return c.json({ success: true, data });
       } catch (error) {
         return c.json({ success: false, error: errorMessage(error) }, 400);

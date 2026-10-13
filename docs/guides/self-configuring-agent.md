@@ -419,14 +419,20 @@ these rules.
    a child it started on this Station. When the child's turn ends, Station delivers its
    result to the delegating conversation once. An idle conversation gets a
    new turn. A running one is steered if its engine accepts mid-turn input;
-   otherwise the result waits until that turn ends. The delivered text is
-   marked as a Station-delivered task result, not the person's message. It
-   quotes the child's recorded output, clipped at 8,000 characters. Reading a
-   finished child with `get_task` first means the same result is not
-   delivered again, and `interrupt_task` cancels a result that has not been
-   delivered yet. Children on an SSH or paired Station, children of Station's
-   own agent, and children on a hosted Station are not delivered this way:
-   use `get_task` for those.
+   otherwise the result waits until that turn ends. The new turn or steer
+   carries the same owner attribution as the `delegate_task` call: a Codex or
+   ACP token is not proof of who presented it, so their results arrive
+   unattributed, exactly like their own `send_to_session` messages. The
+   delivered text is marked as a Station-delivered task result, not the
+   person's message. It quotes the child's recorded output, clipped at 8,000
+   characters. Reading a finished child with `get_task` first means the same
+   result is not delivered again, and a successful `interrupt_task` from the
+   delegating conversation cancels a result that has not been delivered yet.
+   Station gives up after five failed or unconfirmed attempts, for example
+   when the delegating conversation has no Agent binding to continue.
+   Children on an SSH or paired Station, children of Station's own agent, and
+   children on a hosted Station are not delivered this way: use `get_task`
+   for those.
 4. Keep child sessions isolated with delegation limits.
 5. Refine successful skills instead of baking everything into one giant system prompt.
 

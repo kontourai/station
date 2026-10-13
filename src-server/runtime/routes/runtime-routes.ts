@@ -327,7 +327,6 @@ import {
   createOrchestrationRoutes,
   isForegroundDispatchHandle,
   isForegroundIndeterminateShape,
-  principalRefForSessionOwner,
 } from '../../routes/orchestration/orchestration.js';
 import { createProjectTaskRoomRoutes } from '../../routes/orchestration/project-task-rooms.js';
 import { createRunRoutes } from '../../routes/orchestration/runs.js';
@@ -4316,9 +4315,9 @@ export function configureRuntimeRoutes(
           })),
       headSequence: (threadId) =>
         eventStore.readSessionInventoryHighWater(threadId),
-      turnEvents: (threadId, turnId, methods) =>
+      turnEvents: (threadId, turnId, methods, limit) =>
         eventStore
-          .listTurnEventsByMethods(threadId, turnId, methods)
+          .listTurnEventsByMethods(threadId, turnId, methods, limit)
           .map((stored) => ({
             ...(stored.turnId ? { turnId: stored.turnId } : {}),
             method: stored.method,
@@ -4334,13 +4333,14 @@ export function configureRuntimeRoutes(
         context.orchestrationService.hasActiveTurn(threadId),
       sessionOwnerId: (threadId) =>
         context.orchestrationService.sessionRecordedOwnerId(threadId),
-      // The parent's owner acts: the same attribution a verified agent
-      // caller's own `send_to_session` start carries, never the operator's.
+      // Delivery acts exactly as the delegating dispatch did (its user,
+      // owner attribution and principal, recorded when it armed), never as
+      // the operator and never with a stronger attribution.
       start: stationServerEntry(
         async ({
           parentConversationId,
           threadId,
-          ownerUserId,
+          actor,
           text,
           clientTurnId,
         }) => {
@@ -4350,12 +4350,12 @@ export function configureRuntimeRoutes(
                 conversationId: parentConversationId,
                 message: text,
                 clientTurnId,
-                userId: ownerUserId,
-                principal: principalRefForSessionOwner(ownerUserId),
-                ownerAttribution: 'verified-bound',
+                userId: actor.userId,
+                principal: actor.principal,
+                ownerAttribution: actor.attribution,
                 fullAccessGrant: null,
                 clientOrigin: origin,
-                readAuthority: readAuthorityForExecution(ownerUserId),
+                readAuthority: readAuthorityForExecution(actor.userId),
               },
               context.orchestrationService,
               remoteStations,
@@ -4380,17 +4380,25 @@ export function configureRuntimeRoutes(
         },
       ),
       steer: stationServerEntry(
-        async ({ threadId, ownerUserId, text, clientInputId }) => {
-          const dispatched =
-            await context.orchestrationService.dispatchWithReceipt(
+        async ({ threadId, actor, text, clientInputId }) => {
+          let dispatched: Awaited<
+            ReturnType<typeof context.orchestrationService.dispatchWithReceipt>
+          >;
+          try {
+            dispatched = await context.orchestrationService.dispatchWithReceipt(
               { type: 'steerTurn', threadId, input: text, clientInputId },
               {
-                userId: ownerUserId,
-                ownerAttribution: 'verified-bound',
-                principal: principalRefForSessionOwner(ownerUserId),
+                userId: actor.userId,
+                ownerAttribution: actor.attribution,
+                ...(actor.principal ? { principal: actor.principal } : {}),
                 clientOrigin: origin,
               },
             );
+          } catch {
+            // A throw may follow an accepted steer: never read it as "nothing
+            // was sent". The steer receipt settles a later re-drive.
+            return { outcome: 'indeterminate' as const };
+          }
           const result = dispatched.result as
             | { outcome?: string; turnId?: string }
             | undefined;

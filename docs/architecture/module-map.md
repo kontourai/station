@@ -1300,17 +1300,27 @@ tool-level behavior.
 [DelegationResultDelivery](../../src-server/services/orchestration/delegation-result-delivery.ts)
 delivers a local child's result to the conversation that delegated it through
 this module in `auto` mode. The `POST /delegations` route records ownership
-only from a `caller-derived` delegation context, so the parent is always the
-verified caller's own conversation. A child transition (today `settled`) is read
-from the persisted lifecycle fold after the event bus publishes it, and again
-at startup. Each transition is one durable row in `EventStore`, holding the
-text composed from the child's stored output. That row is the consumption record
-shared with `get_task`: a parent's read of its own child at rest consumes it, and
-`interrupt_task` cancels it. An engine without mid-turn steer leaves the row
-pending until the parent's turn ends. Remote and SSH children, hosted Stations,
+only from a `caller-derived` delegation context, so the parent is the calling
+Station Control session's own conversation, never an id the request names.
+`caller-derived` covers every caller channel, including a copied or app-held
+token. The route therefore also records the owner attribution the dispatch
+carried: `verified-bound` only for a bound caller acting for an authenticated
+owner, otherwise `unattributed-agent`. Delivery replays exactly that attribution
+and principal, which is no more than `send_to_session` allows the same caller.
+A child transition (today `settled`) is read from the persisted lifecycle fold
+after the event bus publishes it, and again at startup. Each transition is one
+durable row in `EventStore`, holding the text composed from the child's stored
+output. That row is the consumption record shared with `get_task`: the recorded
+parent's read of its own child at rest consumes it. `interrupt_task` from the
+recorded parent, or from the delegating owner in person, cancels it; a refused
+interrupt reopens it. An engine without mid-turn steer leaves the row pending
+until the parent's turn ends. A start is re-driven only into the Session it
+named, and a row that keeps failing or stays unconfirmed is settled
+`undeliverable` after five attempts. Remote and SSH children, hosted Stations,
 and `needs_input`/`blocked` transitions are not delivered. The
 [route-level integration test](../../src-server/routes/orchestration/__tests__/delegation-result-delivery.integration.test.ts)
-uses recorded start and steer ports, not a real engine.
+and the [runtime composition test](../../src-server/runtime/routes/__tests__/runtime-routes-delegation-result-delivery.test.ts)
+use recorded start and steer effects, not a real engine.
 
 ## SessionDigest
 
