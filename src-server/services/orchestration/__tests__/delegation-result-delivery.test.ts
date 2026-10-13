@@ -490,7 +490,7 @@ describe('delegation result cancellation, fix round 6 (#3158)', () => {
     ]);
   });
 
-  test('a transition recorded as it lands takes every waiting suppression', () => {
+  test('a transition recorded as it lands takes every suppression waiting since the store opened', () => {
     const clock = { now: 0 };
     const db = new DatabaseSync(':memory:');
     migrateDelegationResultSchema(db);
@@ -515,6 +515,41 @@ describe('delegation result cancellation, fix round 6 (#3158)', () => {
       text: 'x',
     });
     expect(store.listForChild('child')[0]!.state).toBe('cancelled');
+  });
+
+  // Fix round 7, P3-b: the service's pending interrupts are in memory, so a
+  // suppression recorded before a restart can stop no turn that runs after
+  // it, whether that turn is bound while open or recorded as it lands.
+  test('a turn running since the restart takes no suppression from before it', () => {
+    const clock = { now: 0 };
+    const db = new DatabaseSync(':memory:');
+    migrateDelegationResultSchema(db);
+    const before = createSqliteDelegationResultStore(db, () => clock.now);
+    before.arm({
+      childConversationId: 'child',
+      taskId: 'child',
+      parentConversationId: 'parent',
+      actor: { userId: 'human:local:owner', attribution: 'verified-bound' },
+    });
+    before.beginCancel('child', 'token-before-restart', undefined);
+    clock.now = 10;
+    const after = createSqliteDelegationResultStore(db, () => clock.now);
+    after.bindUnloggedSuppressions('child', 'turn-open');
+    expect(after.spendSuppressions('child', 'turn-open', 'aborted')).toEqual(
+      [],
+    );
+    after.record({
+      childConversationId: 'child',
+      transitionKey: 'settled:child:turn-live',
+      transition: 'settled',
+      parentConversationId: 'parent',
+      childSessionId: 'child',
+      childTurnId: 'turn-live',
+      outcome: 'aborted',
+      deliveryId: 'dr-live',
+      text: 'live',
+    });
+    expect(after.listForChild('child')[0]!.state).toBe('pending');
   });
 });
 

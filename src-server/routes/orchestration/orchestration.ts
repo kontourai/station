@@ -1206,9 +1206,11 @@ type RespondToDelegatedTaskRequest = z.infer<
   clientOrigin?: ClientOrigin;
 };
 
-type InterruptDelegatedTaskRequest = z.infer<
+type InterruptDelegatedTaskBody = z.infer<
   typeof interruptDelegatedTaskBodySchema
-> & {
+>;
+
+type InterruptDelegatedTaskRequest = InterruptDelegatedTaskBody & {
   taskId: string;
   userId: string;
   principal?: PrincipalRef;
@@ -3728,10 +3730,11 @@ export function createOrchestrationRoutes(
         // cancels results not yet delivered. Fenced before the effect (the
         // stopped turn's settlement is delivered synchronously from the
         // event), and undone below if the interrupt is refused or the
-        // service reports it stopped nothing.
+        // service reports it stopped nothing. A named turn is the only turn
+        // the service will stop, so it is the only one fenced.
+        const body = getBody(c) as InterruptDelegatedTaskBody;
         const canceller =
-          (getBody(c) as { environmentId?: unknown }).environmentId ===
-          undefined
+          body.environmentId === undefined
             ? delegationResultCanceller(c, userId)
             : undefined;
         const cancellation = canceller
@@ -3739,6 +3742,7 @@ export function createOrchestrationRoutes(
               deps.delegationResults?.beginCancel(
                 param(c, 'taskId'),
                 canceller,
+                body.turnId,
               ),
             )
           : undefined;

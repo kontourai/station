@@ -1,5 +1,5 @@
 ---
-'@kontourai/station-sdk': patch
+'@kontourai/station-sdk': minor
 ---
 
 `interruptDelegatedTask` results carry an optional `interruptOutcome`, the

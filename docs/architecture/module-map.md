@@ -1313,13 +1313,15 @@ durable row in `EventStore`, holding the text composed from the child's stored
 output. That row is the consumption record shared with `get_task`: the recorded
 parent's read of its own child at rest consumes it. `interrupt_task` from the
 recorded parent, or from the delegating owner in person, cancels it and
-suppresses the one turn it stops. A turn the interrupt named is suppressed even
+suppresses the one turn it stops. An interrupt that names a turn suppresses only
+that turn, whether or not the log shows it yet, and it is suppressed even
 if it completed normally. A turn not yet in the log when the interrupt arrived
 is matched as the service matches its one pending interrupt (the next turn to
 start, until a completion, abort or Session exit on the child's Session, or the
 pending-interrupt TTL), and is suppressed only
 if it did not complete normally. A transition found after a restart, rather
-than as its terminal landed, never takes a suppression made since. A refused
+than as its terminal landed, never takes a suppression made since, and a turn
+that runs after a restart never takes one made before it. A refused
 interrupt, or one the orchestration service reports stopped nothing
 (`no-active-turn`, for example a `turnId` that is not the running turn), undoes
 only its own records: a row a read consumed or another interrupt also cancelled

@@ -49,7 +49,8 @@
  *    the others), and a terminal the service also drops its pending cancel
  *    on (not `runtime.error`), logged on the child's Session whether or not
  *    it settled a turn, drops those still waiting. A transition found late
- *    (after a restart) takes only suppressions older than this process. A
+ *    (after a restart) takes only suppressions older than this process; a
+ *    turn running in this process only those made since it started. A
  *    bound one cancels that turn's result only if the turn did not complete
  *    normally (the interrupt stopped it). It is spent by its turn's
  *    settlement, whatever that cancels;
@@ -514,11 +515,18 @@ export function createSqliteDelegationResultStore(
    * undo just itself: the service still holds the other interrupt's pending
    * cancel, and its suppression must still be here when that cancel stops
    * the turn, whichever of them was refused.
+   *
+   * `epoch` is which suppressions this turn may take. A turn running in this
+   * process (`since-open`: its `turn.started` or terminal landed live, or it
+   * is open in the log) takes only those created since the store opened:
+   * the service's pending interrupts are in memory, so one recorded before a
+   * restart can no longer stop anything. A transition found late
+   * (`before-open`; see `record`) takes only the older ones.
    */
   const bindUnlogged = (
     childConversationId: string,
     turnId: string,
-    createdBefore?: number,
+    epoch: 'since-open' | 'before-open',
   ) => {
     db.prepare(
       `DELETE FROM delegation_result_suppressions
@@ -535,11 +543,12 @@ export function createSqliteDelegationResultStore(
     db.prepare(
       `UPDATE delegation_result_suppressions SET turn_id = ?
        WHERE child_conversation_id = ? AND spent = 0 AND turn_id IS NULL
-         AND created_at < ?`,
+         AND created_at >= ? AND created_at < ?`,
     ).run(
       turnId,
       childConversationId,
-      createdBefore ?? Number.MAX_SAFE_INTEGER,
+      epoch === 'since-open' ? openedAt : 0,
+      epoch === 'since-open' ? Number.MAX_SAFE_INTEGER : openedAt,
     );
   };
   /**
@@ -687,7 +696,9 @@ export function createSqliteDelegationResultStore(
      * unlogged-turn suppression created since the store opened waits for a
      * later turn and is neither bound to this transition nor dropped by it.
      * Only those created before the store opened (whose interrupts may have
-     * been for this turn) are.
+     * been for this turn) are. Conversely a transition recorded as it lands
+     * binds only suppressions created since the store opened (see
+     * `bindUnlogged`).
      */
     record(
       row: Omit<
@@ -725,7 +736,11 @@ export function createSqliteDelegationResultStore(
           ) > 0;
         if (!written) return false;
         if (row.childTurnId) {
-          bindUnlogged(row.childConversationId, row.childTurnId, waitingBefore);
+          bindUnlogged(
+            row.childConversationId,
+            row.childTurnId,
+            options.caughtUp ? 'before-open' : 'since-open',
+          );
           const tokens = spend(
             row.childConversationId,
             row.childTurnId,
@@ -962,12 +977,15 @@ export function createSqliteDelegationResultStore(
     dropUnboundSuppressions(childConversationId: string): void {
       atomically(() => dropUnbound(childConversationId));
     },
-    /** A turn is now in the log; see `bindUnlogged`. */
+    /**
+     * A turn is open in the log, so it runs in this process (a process that
+     * died mid-turn left no engine behind): see `bindUnlogged`.
+     */
     bindUnloggedSuppressions(
       childConversationId: string,
       turnId: string,
     ): void {
-      atomically(() => bindUnlogged(childConversationId, turnId));
+      atomically(() => bindUnlogged(childConversationId, turnId, 'since-open'));
     },
     /** Spend a turn's suppressions; see `spend`. */
     spendSuppressions(
@@ -1353,10 +1371,17 @@ export class DelegationResultDelivery {
    * conversation, or the delegating owner acting in person, may cancel.
    * Returns the cancellation so a refused interrupt can undo it
    * ({@link reopenCancellation}).
+   *
+   * `turnId` is the turn the interrupt request names. The service stops only
+   * that turn, running or held for it (`CooperativeStop`), so exactly that
+   * turn is suppressed, as a turn the interrupt named, whether or not the
+   * log shows it yet. A named turn that is not the running one gets
+   * `no-active-turn`, and {@link settleCancellation} undoes this.
    */
   beginCancel(
     taskReference: string,
     by: DelegationResultCanceller,
+    turnId?: string,
   ): DelegationResultCancellation | undefined {
     const owner = this.ports.store.ownerByReference(taskReference);
     if (!owner) return undefined;
@@ -1380,8 +1405,10 @@ export class DelegationResultDelivery {
     this.ports.store.beginCancel(
       owner.childConversationId,
       cancellation.token,
-      // A turn the coordinator accepted but the log has not shown yet.
-      open ?? (this.ports.coordinatorBusy(thread) ? undefined : null),
+      turnId ??
+        open ??
+        // A turn the coordinator accepted but the log has not shown yet.
+        (this.ports.coordinatorBusy(thread) ? undefined : null),
     );
     return cancellation;
   }
@@ -1397,7 +1424,11 @@ export class DelegationResultDelivery {
    * `turn-completed` means the stop reached the running turn as it finished
    * (a turn the interrupt named is suppressed even then; see `spend`). An
    * outcome the stopping Station did not report keeps the cancel, as before
-   * outcomes were reported.
+   * outcomes were reported. Accepted gap: a second stop coalesced onto one
+   * already running reports that stop's outcome without checking its own
+   * requested turn (`CooperativeStop.interruptUserTurnCooperatively`), so an
+   * interrupt naming a stale turn that coalesces onto the user's own Stop
+   * keeps its cancel.
    */
   settleCancellation(
     cancellation: DelegationResultCancellation,

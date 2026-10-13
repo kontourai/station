@@ -1162,4 +1162,92 @@ describe('delegated task result delivery (#3158)', () => {
       ['child-turn-y', 'cancelled'],
     ]);
   });
+
+  // Fix round 7, P3-a: the service holds a stop that names a turn for that
+  // turn only (`CooperativeStop.applyPendingTurnInterrupt`), so the route
+  // fences exactly the named turn, never whichever turn starts next.
+  test('a held interrupt naming a stale turn does not cancel the next turn', async () => {
+    const h = setup();
+    const api = routes(h, PARENT, () => 'running', {
+      interruptOutcome: 'pending-turn-start',
+    });
+    await api.delegate();
+    coordinatorBusy.add(CHILD);
+    await api.interrupt(CHILD, 200, { turnId: 'child-turn-stale' });
+    coordinatorBusy.delete(CHILD);
+    // The next turn ends without completing for its own reasons.
+    runChildTurn(
+      h,
+      CHILD,
+      'child-turn-1',
+      'aborted on its own',
+      'turn.aborted',
+    );
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(1);
+    expect(h.starts[0]!.text).toContain('> aborted on its own');
+  });
+
+  test('a held interrupt naming the turn about to start cancels that turn', async () => {
+    const h = setup();
+    const api = routes(h, PARENT, () => 'running', {
+      interruptOutcome: 'pending-turn-start',
+    });
+    await api.delegate();
+    await api.interrupt(CHILD, 200, { turnId: 'child-turn-1' });
+    runChildTurn(h, CHILD, 'child-turn-1', 'stopped', 'turn.aborted');
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(0);
+    expect(h.store.delegationResultStore().listForChild(CHILD)).toEqual([
+      expect.objectContaining({
+        childTurnId: 'child-turn-1',
+        state: 'cancelled',
+      }),
+    ]);
+  });
+
+  // Fix round 7, P3-b: the service's held stops are in memory and gone after
+  // a restart, so a suppression from before it must not cancel a turn that
+  // runs after it, whether bound as the turn opens or as it settles.
+  test('a suppression from before a restart does not cancel a turn run after it', async () => {
+    const path = join(
+      makeTempDir('delegation-result-'),
+      'orchestration.sqlite',
+    );
+    const first = setup(path);
+    const before = routes(first, PARENT, () => 'running', {
+      interruptOutcome: 'pending-turn-start',
+    });
+    await before.delegate();
+    coordinatorBusy.add(CHILD);
+    await before.interrupt(CHILD); // a held turn the restart then loses
+    coordinatorBusy.delete(CHILD);
+    first.delivery.stop();
+    first.store.close();
+    open.splice(open.indexOf(first), 1);
+    // The reopened store's clock must be past the suppression's.
+    const closedAt = Date.now();
+    while (Date.now() <= closedAt)
+      await new Promise((resolve) => setTimeout(resolve, 1));
+
+    const second = setup(path);
+    emit(second, CHILD, 'turn.started', { turnId: 'child-turn-2' });
+    await second.delivery.reconcile();
+    emit(second, CHILD, 'content.text-delta', {
+      turnId: 'child-turn-2',
+      itemId: 'child-turn-2-text',
+      delta: 'after the restart',
+    });
+    emit(second, CHILD, 'turn.aborted', { turnId: 'child-turn-2' });
+    await second.delivery.idle();
+    expect(second.starts.map((start) => start.text)).toEqual([
+      expect.stringContaining('> after the restart'),
+    ]);
+    expect(
+      second.store
+        .delegationResultStore()
+        .listForChild(CHILD)
+        .map((row) => [row.childTurnId, row.state]),
+    ).toEqual([['child-turn-2', 'delivered']]);
+  });
 });
