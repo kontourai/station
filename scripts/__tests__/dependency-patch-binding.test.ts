@@ -147,6 +147,7 @@ function fixture() {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   Object.defineProperty(process.versions, 'node', { value: nodeVersion });
 });
@@ -154,9 +155,12 @@ afterEach(() => {
 describe('machine-bound production residual acceptance', () => {
   it('reaches real file verification through the audit CLI and refuses changed bytes on the next decision', async () => {
     const f = fixture();
-    vi.spyOn(console, 'log').mockImplementation(() => {});
-    const run = () =>
-      runPolicyCli({
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-06T00:00:00Z'));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const run = async () => {
+      log.mockClear();
+      const status = await runPolicyCli({
         root: f.root,
         decide: () => ({
           required: true,
@@ -166,14 +170,43 @@ describe('machine-bound production residual acceptance', () => {
         }),
         runAudits: async () => [f.audit],
       });
-    expect(await run()).toBe(0);
+      return { status, report: log.mock.calls.flat().join('\n') };
+    };
+    const good = await run();
+    expect(good.status, `good decision:\n${good.report}`).toBe(0);
     f.write(
       'node_modules/sprintf-js/dist/sprintf.min.js',
       'pristine vulnerable formatter',
     );
-    expect(await run()).toBe(1);
+    const bad = await run();
+    expect(bad.status, `bad-byte decision:\n${bad.report}`).toBe(1);
+    expect(bad.report).toContain('installed entrypoint bytes changed');
     f.write('node_modules/sprintf-js/dist/sprintf.min.js', minified);
-    expect(await run()).toBe(0);
+    const restored = await run();
+    expect(restored.status, `restored decision:\n${restored.report}`).toBe(0);
+  });
+
+  it('refuses an expired residual through the real audit CLI with valid machine-bound bytes', async () => {
+    const f = fixture();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-13T00:00:00Z'));
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const status = await runPolicyCli({
+      root: f.root,
+      decide: () => ({
+        required: true,
+        scopes: ['root'],
+        reason: 'fixture expiry control',
+        range: null,
+      }),
+      runAudits: async () => [f.audit],
+    });
+    const report = log.mock.calls.flat().join('\n');
+    expect(status, `expiry decision:\n${report}`).toBe(1);
+    expect(
+      report.split('\n').filter((line) => line.startsWith('EXCEPTION ERROR:')),
+    ).toEqual(['EXCEPTION ERROR: residual 1 is expired (2026-10-13)']);
+    expect(report).not.toContain('patch binding refused');
   });
 
   it.each([

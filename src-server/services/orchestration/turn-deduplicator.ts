@@ -13,7 +13,8 @@ import {
  *
  * #3559: a claim whose owner process died is taken over only if that owner
  * never called `beginInvocation`. Otherwise the provider may already have the
- * turn, so the claim answers `indeterminate` and is never replayed.
+ * turn, so the claim answers `indeterminate` and is never replayed. A key
+ * whose resolved row retention evicted answers `expired`, never a new claim.
  */
 export interface TurnClaim {
   /**
@@ -41,7 +42,12 @@ export interface TurnDeduplicator {
     | { kind: 'owner'; claim: TurnClaim }
     | { kind: 'contended'; turnId?: string }
     /** The dead owner may have invoked the provider. Never send this turn. */
-    | { kind: 'indeterminate' };
+    | { kind: 'indeterminate' }
+    /**
+     * #3559: the key's resolved row was evicted. The turn was sent, and its
+     * id can no longer be replayed. Never send this turn again.
+     */
+    | { kind: 'expired' };
   awaitResolution(input: {
     threadId: string;
     clientTurnId: string;
@@ -61,10 +67,11 @@ export function createTurnDeduplicator(options: {
         Date.now(),
         'tracked',
       );
-      if (!claim.claimed)
-        return claim.indeterminate
-          ? { kind: 'indeterminate' }
-          : { kind: 'contended', turnId: claim.value };
+      if (!claim.claimed) {
+        if (claim.indeterminate) return { kind: 'indeterminate' };
+        if (claim.expired) return { kind: 'expired' };
+        return { kind: 'contended', turnId: claim.value };
+      }
       let settled = false;
       let intent:
         | { kind: 'resolve'; turnId: string }

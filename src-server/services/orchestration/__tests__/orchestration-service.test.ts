@@ -16187,6 +16187,53 @@ describe('OrchestrationService', () => {
       expect(claude.sendTurn).toHaveBeenCalledTimes(2);
     });
 
+    // #3559: retention must never turn an old key back into a new one.
+    test('a retry of an evicted clientTurnId is refused as indeterminate and never reaches the adapter', async () => {
+      const cappedStore = new EventStore(join(tmp, 'capped-dedup.sqlite'), 2);
+      const cappedService = new OrchestrationService({
+        adapterRegistry: createRegistry([claude]),
+        eventBus: new EventBus(),
+        eventStore,
+        turnDeduplicator: cappedStore.createTurnDeduplicator(),
+        listProjects: () => [],
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      try {
+        await cappedService.dispatch({
+          type: 'startSession',
+          input: { threadId: 'thread-3559-evicted', provider: 'claude' },
+        });
+        claude.sendTurn.mockClear();
+        let sent = 0;
+        claude.sendTurn.mockImplementation(async (input) => ({
+          threadId: input.threadId,
+          turnId: `evicted-turn-${++sent}`,
+        }));
+        const send = (clientTurnId: string) =>
+          cappedService.dispatch({
+            type: 'sendTurn',
+            input: {
+              threadId: 'thread-3559-evicted',
+              input: 'hi',
+              clientTurnId,
+            },
+          });
+        // Same-millisecond rows are evicted in key order: `client-a` first.
+        for (const clientTurnId of ['client-a', 'client-b', 'client-c'])
+          await send(clientTurnId);
+        expect(claude.sendTurn).toHaveBeenCalledTimes(3);
+
+        await expect(send('client-a')).rejects.toMatchObject({
+          code: 'foreground_message_indeterminate',
+          outcome: 'indeterminate',
+        });
+        expect(claude.sendTurn).toHaveBeenCalledTimes(3);
+      } finally {
+        await cappedService.shutdown();
+        cappedStore.close();
+      }
+    });
+
     test('retains accepted truth when interrupt fails before a later terminal', async () => {
       await service.dispatch({
         type: 'startSession',

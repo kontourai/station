@@ -1,5 +1,45 @@
 [
   {
+    "timestampUtc": "2026-10-13T11:18:18Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2477.38385119405",
+    "sha": "5134cf526c989b2ed9d62c76d78335ca371fa908",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38385119405",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2477.38385119405 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "e02cc8223a912464a43b82ffb3fd07a793ee6961",
+      "groups": {
+        "feat": [
+          "[#3607](https://github.com/kontourai/station/pull/3607) feat(monument): add the durable kernel package with a command-shaped storage port"
+        ],
+        "fix": [
+          "[#3626](https://github.com/kontourai/station/pull/3626) fix(sdk): accept current conversation execution metadata",
+          "[#3614](https://github.com/kontourai/station/pull/3614) fix(install): refuse a manifest older than the newest release an install accepted (#187)",
+          "[#3618](https://github.com/kontourai/station/pull/3618) fix(acp): settle a refused model at session start; do not send unchecked defaults",
+          "[#3615](https://github.com/kontourai/station/pull/3615) fix(liveness): decide reused PIDs, dead null-birth claims, malformed jobs and failed source-terminal repair (#3563 items 1-4)"
+        ],
+        "ci": [],
+        "docs": [
+          "[#3625](https://github.com/kontourai/station/pull/3625) docs: align docs-kit tagline with the README",
+          "[#3617](https://github.com/kontourai/station/pull/3617) docs(readme): align the tagline with the site and add a badge row"
+        ],
+        "other": [
+          "[#3629](https://github.com/kontourai/station/pull/3629) test(dependency-advisory): pin the audit CLI test's clock and add the same-CLI expiry control (fixture clock defect)",
+          "[#3204](https://github.com/kontourai/station/pull/3204) test(connect): remove boot reset seam and stale native commentary"
+        ]
+      },
+      "note": null,
+      "commitCount": 9
+    }
+  },
+  {
     "timestampUtc": "2026-10-12T17:26:03Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.2476.2",

@@ -3369,6 +3369,12 @@ does not yet pass the header to the renderer, so requests it carries stay on
 the fallback.
 `ForegroundMessageIndeterminateError` keeps its `detail` and fixed `code`.
 Both classes retain their positional constructors.
+The direct chat stream (`streamConversationTurn`) rejects a retried
+`clientTurnId` that may already have reached the agent, or whose result
+Station no longer keeps, with a `ChatHttpError` whose `code` is
+`foreground_message_indeterminate` and whose `outcome` is `'indeterminate'`.
+Do not resend that turn automatically; open the conversation instead. Other
+refusals leave `outcome` unset.
 
 `ProjectTaskRoomProtocolError` remains a plain `Error` subclass. Its
 HTTP/envelope failure form carries `status`, `code`, `details` and

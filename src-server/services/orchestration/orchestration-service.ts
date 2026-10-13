@@ -7087,12 +7087,13 @@ export class OrchestrationService {
             });
             if (claim) {
               // #3559: the key's owner died after it may have handed this
-              // turn to the provider. Never send it again; report the same
+              // turn to the provider, or the key's resolved row was evicted
+              // after the turn was sent. Never send it again; report the same
               // possible-effect outcome a live indeterminate start does.
-              if (claim.kind === 'indeterminate') {
+              if (claim.kind === 'indeterminate' || claim.kind === 'expired') {
                 orchestrationTurnDedup.add(1, {
                   provider: adapter.provider,
-                  outcome: 'indeterminate',
+                  outcome: claim.kind,
                 });
                 throw new SessionTurnStartIndeterminateError();
               }

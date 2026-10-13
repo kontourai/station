@@ -562,7 +562,7 @@ describe('conversation inventory query controls', () => {
   });
 });
 
-test('conversation open accepts exact execution metadata and refuses wrong-child or cursor-bearing snapshots', async () => {
+test('conversation open accepts declared execution metadata and refuses wrong-child or private snapshots', async () => {
   const data = {
     status: 'resolved',
     currentSessionId: 'child-b',
@@ -585,17 +585,47 @@ test('conversation open accepts exact execution metadata and refuses wrong-child
     },
   };
   try {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(Response.json({ success: true, data })),
-    );
-    await expect(
-      resolveConversationOpen('conversation', 'https://station.example'),
-    ).resolves.toEqual(data);
+    for (const execution of [
+      data.execution,
+      { ...data.execution, environment: { kind: 'current' } },
+      {
+        ...data.execution,
+        environment: { kind: 'current' },
+        executionAgentId: 'claude-runtime',
+        expectedDefinitionFingerprint: `sha256:${'a'.repeat(64)}`,
+      },
+      {
+        ...data.execution,
+        environment: { kind: 'current' },
+        provider: 'acp',
+        engineConnectionId: 'opencode',
+        model: 'zai-coding-plan/glm-5.3-flash',
+      },
+    ]) {
+      const response = { ...data, execution };
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValue(Response.json({ success: true, data: response })),
+      );
+      await expect(
+        resolveConversationOpen('conversation', 'https://station.example'),
+      ).resolves.toEqual(response);
+    }
     for (const execution of [
       { ...data.execution, sessionId: 'child-a' },
       { ...data.execution, agentId: 'codex-agent' },
       { ...data.execution, resumeCursor: 'private' },
+      { ...data.execution, environment: { kind: 'peer' } },
+      {
+        ...data.execution,
+        environment: { kind: 'current', endpoint: 'private' },
+      },
+      { ...data.execution, environment: null },
+      { ...data.execution, environment: [] },
+      { ...data.execution, executionAgentId: 'invalid/agent' },
+      { ...data.execution, expectedDefinitionFingerprint: 'unbound' },
     ]) {
       vi.stubGlobal(
         'fetch',
