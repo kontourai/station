@@ -46,7 +46,7 @@ export function isProviderTurnBoundary(record: {
   return record.boundaryId.startsWith(PROVIDER_TURN_BOUNDARY_PREFIX);
 }
 
-type SessionTurnBoundaryTransition =
+export type SessionTurnBoundaryTransition =
   | { kind: 'applied' }
   | { kind: 'busy' }
   | { kind: 'ambiguous' }
@@ -257,16 +257,24 @@ export interface SessionTurnBoundaryAuthority {
   ): { kind: 'available'; active: boolean } | { kind: 'unavailable' };
   observe(event: CanonicalRuntimeEvent): SessionTurnBoundaryTransition;
   /**
-   * #2324: the durable row for a turn the engine opened on its own, recorded
-   * before its `turn.started` is persisted. Retired by that turn's terminal
-   * like any accepted turn; left behind by a crash, it is closed at the next
-   * boot with the interrupted-turn banner a user turn gets.
+   * #2324: the durable row for a turn the engine opened on its own. Retired
+   * by that turn's terminal like any accepted turn; left behind by a crash,
+   * it is closed at the next boot with the interrupted-turn banner a user
+   * turn gets.
+   *
+   * #3561: two steps, so the caller writes the row inside the append of the
+   * turn's `turn.started` and it commits or rolls back with that event.
+   * Preparing retries pending transitions, which open transactions of their
+   * own, so it runs BEFORE that append; `record` writes only the row and
+   * joins the caller's open transaction. `record` reports a row it could not
+   * write as `unavailable`, and throws only when the caller's transaction
+   * itself was rolled back.
    */
-  recordProviderTurn(
+  prepareProviderTurn(
     threadId: string,
     providerTurnId: string,
     now: string,
-  ): SessionTurnBoundaryTransition;
+  ): { record(): SessionTurnBoundaryTransition };
   /**
    * archive#4080: `reconcile`'s existing dead-owner sweep already
    * flips a dead `invoking` owner to `indeterminate` — this surfaces THAT
@@ -318,6 +326,33 @@ export function createSessionTurnBoundaryAuthority(options: {
       const result = operation();
       if (result.kind !== 'unavailable') pendingTransitions.delete(boundaryId);
     }
+  };
+  const prepareProviderTurn = (
+    threadId: string,
+    providerTurnId: string,
+    now: string,
+  ): { record(): SessionTurnBoundaryTransition } => {
+    retryPendingTransitions();
+    return {
+      // Not caught (#3561 review F1): inside a caller's append, a throw here
+      // means the caller's transaction is gone, and the caller must fail. A
+      // lost row alone is reported as `unavailable` by the coordinator.
+      record: () =>
+        options.coordinator.recordAccepted({
+          boundaryId: `${PROVIDER_TURN_BOUNDARY_PREFIX}${randomUUID()}`,
+          threadId,
+          state: 'accepted',
+          providerTurnId,
+          ownerId: options.owner.id,
+          ownerPid: options.owner.pid,
+          ...(options.owner.identityKind === 'exact'
+            ? { ownerBirth: options.owner.birth }
+            : {}),
+          ownerIdentityKind: options.owner.identityKind,
+          createdAt: now,
+          updatedAt: now,
+        }),
+    };
   };
   const reconcileDeadOwners = (
     now: string,
@@ -811,27 +846,7 @@ export function createSessionTurnBoundaryAuthority(options: {
         terminalCreatedAt: event.createdAt,
       });
     },
-    recordProviderTurn(threadId, providerTurnId, now) {
-      retryPendingTransitions();
-      try {
-        return options.coordinator.recordAccepted({
-          boundaryId: `${PROVIDER_TURN_BOUNDARY_PREFIX}${randomUUID()}`,
-          threadId,
-          state: 'accepted',
-          providerTurnId,
-          ownerId: options.owner.id,
-          ownerPid: options.owner.pid,
-          ...(options.owner.identityKind === 'exact'
-            ? { ownerBirth: options.owner.birth }
-            : {}),
-          ownerIdentityKind: options.owner.identityKind,
-          createdAt: now,
-          updatedAt: now,
-        });
-      } catch {
-        return { kind: 'unavailable' };
-      }
-    },
+    prepareProviderTurn,
     reconcile(now) {
       retryPendingTransitions();
       const result = reconcileDeadOwners(now);
