@@ -3552,8 +3552,8 @@ person_device_required`:
   use now is `400 scope_exceeds_access`; a malformed body is `400
   invalid_request`; a person already holding 20 active tokens gets `409
   token_limit_reached`; a token record Station cannot trust is `503
-  tokens_unavailable`; a person tied by an account rather than a Tailscale
-  identity is `400 account_bound_person`.
+  tokens_unavailable`; a person tied by an account Station cannot vouch for
+  is `400 account_bound_person` (see below).
 - `DELETE /api/access/tokens/:tokenId` (`orchestration:read`: revoking only
   reduces access) revokes one of the caller's person's tokens; anything else
   is `404 not_found`, and an untrusted token record `503
@@ -3567,9 +3567,26 @@ person_not_found` unless a live device is tied to the person) mints one, and
 operator-minted token is bounded by the person's Station group rather than
 by their devices. The desktop's local grant lists them but cannot mint or
 revoke. A token is refused (`403`) on a Project's member-administration
-routes (`POST /api/projects/:slug/access/**`). Only a person tied by a
-Tailscale identity can hold a token; minting for an account-bound person is
-`400 account_bound_person`.
+routes (`GET /api/projects/:slug/access` and `POST
+/api/projects/:slug/access/**`).
+
+A person tied by a Station local account can hold a token too (#3586). It
+acts as that account without an account session, is held to the account's
+Project membership, and works only while the account exists, is enabled and
+has not been signed out everywhere since the token was made; otherwise it is
+`401`. Deleting the account ends it too, and re-enabling a disabled account
+does not revive tokens made before it was disabled. It must be presented alone: beside an account cookie or session
+continuation, or an ingress identity, it is `401 { "error": { "code":
+"account_identity_conflict" } }`. It reaches only the account-bound device
+routes, minus the account routes, `/api/access/tokens` and every Project
+access route (`403 account_bound_device_route_forbidden` or `403
+insufficient_scope`). No personal access token, and no account-bound device,
+opens the terminal or voice WebSocket, whatever its scope. Minting for an account-tied person is `400
+account_bound_person` when the Station has no local accounts (any other
+deployment provider), the account belongs to another issuer, or it is not
+current. An account-bound device manages its own tokens through `GET`/`POST
+/api/access/tokens` and `DELETE /api/access/tokens/:tokenId` alongside its
+account session.
 
 ## Decide a pending paired-device request
 
