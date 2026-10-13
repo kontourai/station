@@ -56,10 +56,14 @@ export function ServerOlderLaunchCheck({
 }: {
   clientVersion?: string | null;
 }) {
-  const relevantBuild = clientVersion !== null;
-  const context = useConnectedServerUpdateContext({
-    identityEnabled: relevantBuild,
-  });
+  // A dev or locally built app has no release version to compare: it mounts
+  // nothing below, so it asks the server nothing and holds no update state.
+  if (clientVersion === null) return null;
+  return <ServerOlderCheck clientVersion={clientVersion} />;
+}
+
+function ServerOlderCheck({ clientVersion }: { clientVersion: string }) {
+  const context = useConnectedServerUpdateContext();
   const { apiBase } = context;
   const sameOrigin = servedByServer(apiBase);
   const scopeKey = coreUpdateScopeFromContext(context);
@@ -72,7 +76,6 @@ export function ServerOlderLaunchCheck({
     apiBase,
     {
       enabled:
-        relevantBuild &&
         !sameOrigin &&
         context.kind !== 'embedded-sidecar' &&
         context.reachability === 'connected' &&

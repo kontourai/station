@@ -329,14 +329,14 @@ describe('ServerOlderLaunchCheck', () => {
     );
   });
 
-  test('stays silent for a dev build and asks the server nothing', () => {
+  test('stays silent for a dev build and mounts no server check at all', () => {
     renderWithChrome(null);
     expect(bannerStore.getSnapshot()).toHaveLength(0);
-    expect(sdk.useCoreUpdateStatusQuery).toHaveBeenLastCalledWith(
-      expect.any(String),
-      expect.objectContaining({ enabled: false }),
-      expect.anything(),
-    );
+    // No update hook runs, so a shell whose SDK provides none (App's own
+    // tests, a dev build) is untouched by this check.
+    expect(sdk.useCoreUpdateStatusQuery).not.toHaveBeenCalled();
+    expect(sdk.useApplyCoreUpdateMutation).not.toHaveBeenCalled();
+    expect(sdk.useServiceUpdateProgressQuery).not.toHaveBeenCalled();
   });
 
   test('stays silent when the versions are equal', () => {
