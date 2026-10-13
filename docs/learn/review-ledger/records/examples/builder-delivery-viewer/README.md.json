@@ -24,8 +24,6 @@
 
     "examples/registry/manifest.json",
 
-    "pnpm-lock.yaml",
-
     "src-server/routes/plugins/plugin-lifecycle-routes.ts",
 
     "src-server/routes/plugins/plugin-public-routes.ts",
@@ -38,7 +36,11 @@
 
     "src-server/services/plugins/plugin-permissions.ts",
 
-    "src-server/services/plugins/plugin-public-server.ts"
+    "src-server/services/plugins/plugin-public-server.ts",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots"
   ],
 
   "checks": [
