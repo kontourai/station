@@ -455,6 +455,106 @@ describe('delegation result schema migration (#3158)', () => {
   );
 });
 
+describe('upgrading a home created at f352640350 (#3158)', () => {
+  test('reconcile delivers its pending row as unattributed, and a new arm succeeds', async () => {
+    const path = join(
+      makeTempDir('delegation-upgrade-'),
+      'orchestration.sqlite',
+    );
+    const old = new DatabaseSync(path);
+    // f352640350's tables, its armed owner and its pending row, verbatim.
+    old.exec(`CREATE TABLE delegation_result_owners (
+      child_conversation_id TEXT PRIMARY KEY, task_id TEXT NOT NULL,
+      parent_conversation_id TEXT NOT NULL, owner_user_id TEXT NOT NULL,
+      child_agent TEXT, suppressed_turn_id TEXT, armed_at INTEGER NOT NULL);
+    CREATE INDEX delegation_result_owners_task ON delegation_result_owners (task_id);
+    CREATE TABLE delegation_result_deliveries (
+      child_conversation_id TEXT NOT NULL, transition_key TEXT NOT NULL,
+      transition TEXT NOT NULL, parent_conversation_id TEXT NOT NULL,
+      child_session_id TEXT NOT NULL, child_turn_id TEXT, outcome TEXT NOT NULL,
+      delivery_id TEXT NOT NULL, text TEXT NOT NULL, state TEXT NOT NULL,
+      fence TEXT, decision TEXT, result_json TEXT, created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (child_conversation_id, transition_key));
+    CREATE INDEX delegation_result_deliveries_open
+      ON delegation_result_deliveries (state, parent_conversation_id);`);
+    const armedAt = Date.now() - 1_000;
+    old
+      .prepare(
+        `INSERT INTO delegation_result_owners
+           (child_conversation_id, task_id, parent_conversation_id, owner_user_id,
+            child_agent, armed_at)
+         VALUES ('task:old-child', 'task:old-child', 'parent', 'human:local:owner', 'writer', ?)`,
+      )
+      .run(armedAt);
+    old
+      .prepare(
+        `INSERT INTO delegation_result_deliveries
+           (child_conversation_id, transition_key, transition, parent_conversation_id,
+            child_session_id, child_turn_id, outcome, delivery_id, text, state,
+            created_at, updated_at)
+         VALUES ('task:old-child', 'settled:task:old-child:turn-1', 'settled', 'parent',
+                 'task:old-child', 'turn-1', 'completed', 'dr-old', 'old result',
+                 'pending', ?, ?)`,
+      )
+      .run(armedAt, armedAt);
+    old.close();
+
+    const eventStore = new EventStore(path);
+    try {
+      const store = eventStore.delegationResultStore();
+      const owner = store.owner('task:old-child');
+      // Never upgraded: an owner recorded before attribution was stored.
+      expect(owner?.actor.attribution).toBe('unattributed-agent');
+      const starts: Array<{ attribution: string; text: string }> = [];
+      const delivery = new DelegationResultDelivery({
+        store,
+        foldEvents: () => [],
+        headSequence: () => 0,
+        turnEvents: () => [],
+        conversationOf: (threadId) => threadId,
+        currentSessionId: (conversationId) => conversationId,
+        coordinatorBusy: () => false,
+        sessionOwnerId: () => 'human:local:owner',
+        start: async ({ actor, text, parentConversationId }) => {
+          starts.push({ attribution: actor.attribution, text });
+          return {
+            outcome: 'started',
+            conversationId: parentConversationId,
+            sessionId: parentConversationId,
+            turnId: 'parent-turn',
+          };
+        },
+        steer: async () => ({ outcome: 'unsupported-engine' }),
+        subscribe: () => () => {},
+        logger: { warn: vi.fn() },
+        retryDelaysMs: [],
+      });
+      await delivery.reconcile();
+      expect(starts).toEqual([
+        { attribution: 'unattributed-agent', text: 'old result' },
+      ]);
+      expect(store.listForChild('task:old-child')[0]).toMatchObject({
+        state: 'delivered',
+        attempts: 0,
+      });
+      // A new delegation arms on the upgraded tables.
+      delivery.arm({
+        childConversationId: 'task:new-child',
+        taskId: 'task:new-child',
+        parentConversationId: 'parent',
+        actor: { userId: 'human:local:owner', attribution: 'verified-bound' },
+      });
+      expect(store.owner('task:new-child')?.actor.attribution).toBe(
+        'verified-bound',
+      );
+      delivery.stop();
+    } finally {
+      eventStore.close();
+    }
+  });
+});
+
 describe('EventStore.listTurnEventsByMethods bound (#3158)', () => {
   const stores: EventStore[] = [];
   afterEach(() => {
