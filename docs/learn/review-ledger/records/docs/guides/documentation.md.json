@@ -38,9 +38,9 @@
 
     "scripts/lib/review-git.mjs",
 
-    "docs-kit.json",
+    ".github/workflows/docs-kit.yml",
 
-    ".github/workflows/docs-kit.yml"
+    "corpus.json"
   ],
 
   "checks": [
