@@ -185,7 +185,7 @@ not a guarantee that another repository will leave capacity unused.
 Before fresh corpus execution, the resolver observes all in-progress jobs in
 this repository, excludes its own run, and retains a dated admission receipt.
 Insufficient observed headroom waits before fanout, re-observing every minute,
-and fails admission only when the 20-minute ceiling elapses. An observation
+and fails admission only when the 15-minute ceiling elapses. An observation
 error fails at once and is not retried. Other repositories
 share the pool and are not certified by that snapshot. Valid exact-source reuse
 avoids this expensive fanout. Main source qualification is serialized independently
