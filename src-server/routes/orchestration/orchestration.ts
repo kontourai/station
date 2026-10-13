@@ -1535,6 +1535,27 @@ function armDelegationResult(
   });
 }
 
+/**
+ * #3158: delivery bookkeeping never fails the request it rides on. The child
+ * is already started, the read already answered, the interrupt still owed:
+ * an error here is logged, and at worst a result is delivered that a read
+ * already showed, or not delivered automatically at all.
+ */
+function bestEffortDelegationResult(
+  logger: { warn?(message: string, meta?: Record<string, unknown>): void },
+  step: 'arm' | 'read' | 'cancel',
+  run: () => unknown,
+): void {
+  try {
+    run();
+  } catch (error) {
+    logger.warn?.('delegation result bookkeeping failed', {
+      step,
+      error: errorMessage(error),
+    });
+  }
+}
+
 /** #3158: a verified caller's `get_task` read of a child; see `recordRead`. */
 function recordDelegationResultRead(
   c: Context,
@@ -3061,10 +3082,12 @@ export function createOrchestrationRoutes(
         );
       }
       const data = await dispatch();
-      armDelegationResult(c, deps.delegationResults, resolvedDelegation, {
-        handle: data,
-        userId,
-      });
+      bestEffortDelegationResult(deps.logger, 'arm', () =>
+        armDelegationResult(c, deps.delegationResults, resolvedDelegation, {
+          handle: data,
+          userId,
+        }),
+      );
       return c.json({ success: true, data });
     } catch (error) {
       const refused =
@@ -3330,7 +3353,9 @@ export function createOrchestrationRoutes(
       // #3158: the parent read its own child at rest; that result is not
       // delivered to it again. Only for a task this Station serves.
       if (parsed.data.environmentId === undefined)
-        recordDelegationResultRead(c, deps.delegationResults, data);
+        bestEffortDelegationResult(deps.logger, 'read', () =>
+          recordDelegationResultRead(c, deps.delegationResults, data),
+        );
       // Only for a task this Station serves: a forwarded read carries the
       // serving Station's own answer about this Station's credential.
       return c.json({
@@ -3638,7 +3663,9 @@ export function createOrchestrationRoutes(
           (getBody(c) as { environmentId?: unknown }).environmentId ===
           undefined
         )
-          deps.delegationResults?.cancel(param(c, 'taskId'));
+          bestEffortDelegationResult(deps.logger, 'cancel', () =>
+            deps.delegationResults?.cancel(param(c, 'taskId')),
+          );
         const data = await deps.interruptDelegatedTask({
           ...getBody(c),
           taskId: param(c, 'taskId'),

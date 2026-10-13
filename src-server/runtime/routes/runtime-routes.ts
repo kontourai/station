@@ -4430,11 +4430,23 @@ export function configureRuntimeRoutes(
   // #3158: a delegated child's result goes back to the conversation that
   // delegated it. Personal Stations only: a hosted delivery would run outside
   // any request's tenant context.
-  const delegationResults =
-    context.orchestrationEventStore && hostedTenantRegistry === undefined
-      ? createDelegationResultDelivery(context.orchestrationEventStore)
-      : undefined;
-  delegationResults?.start();
+  // Optional: if it cannot start, no route arms it and agents poll as before.
+  const delegationResults = (() => {
+    if (!context.orchestrationEventStore || hostedTenantRegistry !== undefined)
+      return undefined;
+    try {
+      const delivery = createDelegationResultDelivery(
+        context.orchestrationEventStore,
+      );
+      delivery.start();
+      return delivery;
+    } catch (error) {
+      context.logger.warn('delegation result delivery is unavailable', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
+  })();
 
   context.app.route(
     '/api/orchestration',
