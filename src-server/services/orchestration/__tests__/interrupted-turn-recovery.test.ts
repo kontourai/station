@@ -3514,6 +3514,38 @@ describe('#3562: a per-record recovery failure is retried within the boot, then 
     );
   });
 
+  test('shutdown during the FileMemory occupancy await publishes nothing and keeps the row', async () => {
+    const { path, threadId, eventStore } = crashedThread('accepted');
+    const adapter = occupied();
+    const service = serviceFor(eventStore, adapter, vi.fn());
+    const publish = vi.spyOn(service as any, 'projectAndPublishEvent');
+    const resolveSpy = vi.spyOn(eventStore, 'resolveInterruptedTurnBoundary');
+    // The occupancy lookup is the await inside a record, so shutdown lands
+    // there.
+    let shutdown: Promise<void> | undefined;
+    adapter.getMessages.mockImplementationOnce(async () => {
+      shutdown = service.shutdown();
+      return [];
+    });
+    const publishedBefore = publish.mock.calls.length;
+
+    const unrecovered = await (service as any).interruptedTurns.consume();
+    await shutdown;
+
+    expect(adapter.getMessages).toHaveBeenCalled();
+    expect(publish.mock.calls.length).toBe(publishedBefore);
+    expect(resolveSpy).not.toHaveBeenCalled();
+    expect(adapter.addMessage).not.toHaveBeenCalled();
+    expect(methods(eventStore, threadId, 'turn.aborted')).toHaveLength(0);
+    expect(methods(eventStore, threadId, 'session.state-changed')).toHaveLength(
+      0,
+    );
+    const left = rowsLeftForNextBoot(path);
+    expect(left).toHaveLength(1);
+    expect(unrecovered).toEqual([left[0]!.boundaryId]);
+    expect(sleepProbe.delays).toEqual([]);
+  });
+
   test('a swapped event store ends the retries: the drained rows are not replayed against another store', async () => {
     const { path, eventStore } = crashedThread('accepted');
     const adapter = occupied();

@@ -664,6 +664,13 @@ export class InterruptedTurnRecovery {
         // #3071: the occupancy check above awaited. If a newer turn started
         // meanwhile, this boundary is stale now even though it was not when
         // first asked; publish nothing, exactly as the first check would.
+        // #3562: likewise a shutdown that landed during that await. Checked
+        // before `movedOn()`, which can itself resolve the row; a stopped
+        // record keeps its row and counts as unrecovered, not resolved.
+        if (this.stopSignal.signal.aborted) {
+          failed.push(record);
+          continue;
+        }
         if (movedOn()) continue;
         // #3562: a derived turn that already ended is closed; recovery
         // banners it but neither settles its requests nor aborts it again.
