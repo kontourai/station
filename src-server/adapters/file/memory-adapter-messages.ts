@@ -14,8 +14,10 @@ import { CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES } from '@kontourai/station-contr
 import { fsyncDirectorySync } from '@kontourai/station-shared/fs-windows-compat';
 import type { GetMessagesOptions } from '@voltagent/core';
 import type { UIMessage } from 'ai';
+import { transcriptTailRecoveries } from '../../telemetry/metrics.js';
 import { createLogger } from '../../utils/logger.js';
 import { parseReasoningFromMessage } from '../../utils/reasoning-parser.js';
+import { withFileMutation } from './memory-adapter-mutation-queue.js';
 import { MemoryAdapterPaths } from './memory-adapter-paths.js';
 
 interface UIMessageWithMetadata extends UIMessage {
@@ -72,32 +74,7 @@ const logger = createLogger({ name: 'memory-adapter-messages' });
  * supported shape (collaboration), the answer is a different adapter with
  * real transactions — see archive#2904 — not a lock protocol taped to this one.
  */
-const messageFileMutations = new Map<string, Promise<unknown>>();
-
-async function withMessagesFile<T>(
-  path: string,
-  run: () => Promise<T>,
-): Promise<T> {
-  const previous = messageFileMutations.get(path) ?? Promise.resolve();
-  // Chain off the settled tail: a rejected mutation must not poison the queue
-  // for every later caller on this file.
-  const next = previous.then(run, run);
-  const tail = next.then(
-    () => undefined,
-    () => undefined,
-  );
-  messageFileMutations.set(path, tail);
-  try {
-    return await next;
-  } finally {
-    // Release when still the tail, matching `persistConversation`'s
-    // identity-guarded delete. Serialization is unaffected — a later caller
-    // has already replaced the entry — and the map stops retaining one entry
-    // per file mutated since boot, including for deleted conversations.
-    if (messageFileMutations.get(path) === tail)
-      messageFileMutations.delete(path);
-  }
-}
+const withMessagesFile = withFileMutation;
 
 /**
  * Publish a whole messages file without a truncate-then-write window.
@@ -166,9 +143,12 @@ function flushDirectoryAfterCommit(
  * - `quarantined`: the tail is a fragment. Its bytes are appended, verbatim
  *   and newline-terminated, to `quarantinePath`, and the transcript is
  *   truncated back to its last complete line.
+ * - `observed`: a read found a tail that is a fragment. Nothing on disk
+ *   changed; the reader skipped the fragment, and the next append quarantines
+ *   it. Reported so a torn transcript is visible before that append happens.
  */
 export interface TornTailRecovery {
-  kind: 'completed' | 'quarantined';
+  kind: 'completed' | 'quarantined' | 'observed';
   path: string;
   /** Byte offset where the unterminated record starts. */
   offset: number;
@@ -350,6 +330,7 @@ async function appendMessageRecords(
     wasEmpty = size === 0;
     const recovery = await repairTornTail(handle, path, size);
     if (recovery) {
+      transcriptTailRecoveries.add(1, { kind: recovery.kind });
       logger.warn('Recovered an unterminated record in a messages file', {
         recovery,
       });
@@ -504,7 +485,45 @@ export async function addStoredMessages({
   await touchConversation(conversationId);
 }
 
-export async function readStoredMessages({
+/**
+ * Re-examine a transcript's tail inside the path's queue slot.
+ *
+ * The reader streams without the queue, so a fragment it parsed last may be
+ * an append still being written (Node writes large payloads in pieces).
+ * Queuing behind every in-flight mutation and then looking at the file as it
+ * is NOW separates a torn tail from a write in progress. Reports only a
+ * fragment: a tail that is a whole record missing its newline is read fine
+ * and is completed by the next append.
+ */
+async function observeTornTail(path: string): Promise<TornTailRecovery | null> {
+  return withMessagesFile(path, async () => {
+    // The check is diagnostic, so nothing it hits may fail the read it
+    // follows. Another process truncating or removing the file mid-check
+    // surfaces here as a short read (`readExactly`) or an fs error.
+    let handle: FileHandle | undefined;
+    try {
+      handle = await open(path, 'r');
+      const { size } = await handle.stat();
+      const offset = await findUnterminatedTailOffset(handle, size);
+      if (offset === null) return null;
+      if (await tailIsCompleteRecord(handle, offset, size)) return null;
+      return { kind: 'observed', path, offset, bytes: size - offset };
+    } catch (error) {
+      logger.debug('Skipped the torn-tail check of a transcript', { error });
+      return null;
+    } finally {
+      await handle?.close().catch(() => {});
+    }
+  });
+}
+
+/**
+ * Read a transcript and, separately, report whether it ends in a torn
+ * fragment (#3564). VoltAgent's `getMessages` returns only messages, so the
+ * recovery travels beside them here and `readStoredMessages` hands it to
+ * telemetry.
+ */
+async function readStoredMessagesWithRecovery({
   paths,
   resolveResourceId,
   findConversationLocation,
@@ -520,19 +539,19 @@ export async function readStoredMessages({
   userId: string;
   conversationId: string;
   options?: GetMessagesOptions;
-}): Promise<UIMessage[]> {
+}): Promise<{ messages: UIMessage[]; recovery: TornTailRecovery | null }> {
   let resourceId = await resolveResourceId(conversationId, userId);
   let messagesPath = paths.getMessagesPath(resourceId, conversationId);
 
   if (!existsSync(messagesPath)) {
     const location = await findConversationLocation(conversationId);
     if (!location) {
-      return [];
+      return { messages: [], recovery: null };
     }
     resourceId = location.resourceId;
     messagesPath = paths.getMessagesPath(resourceId, conversationId);
     if (!existsSync(messagesPath)) {
-      return [];
+      return { messages: [], recovery: null };
     }
   }
 
@@ -543,20 +562,42 @@ export async function readStoredMessages({
     crlfDelay: Infinity,
   });
 
+  // Whether the LAST non-empty line failed to parse. Only then can the file
+  // end in a torn fragment, so only then is the tail re-examined.
+  let lastLineUnparseable = false;
   for await (const line of rl) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     try {
       messages.push(JSON.parse(trimmed) as UIMessage);
+      lastLineUnparseable = false;
     } catch (error) {
+      lastLineUnparseable = true;
       logger.error('Failed to parse message', { error });
     }
   }
 
-  if (options?.limit && messages.length > options.limit) {
-    return messages.slice(-options.limit);
-  }
+  const recovery = lastLineUnparseable
+    ? await observeTornTail(messagesPath)
+    : null;
 
+  const limited =
+    options?.limit && messages.length > options.limit
+      ? messages.slice(-options.limit)
+      : messages;
+  return { messages: limited, recovery };
+}
+
+export async function readStoredMessages(
+  params: Parameters<typeof readStoredMessagesWithRecovery>[0],
+): Promise<UIMessage[]> {
+  const { messages, recovery } = await readStoredMessagesWithRecovery(params);
+  if (recovery) {
+    transcriptTailRecoveries.add(1, { kind: recovery.kind });
+    logger.warn('Found an unterminated fragment at the end of a transcript', {
+      recovery,
+    });
+  }
   return messages;
 }
 

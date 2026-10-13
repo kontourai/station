@@ -3670,6 +3670,9 @@ export class OrchestrationService {
   }
 
   async shutdown(): Promise<void> {
+    // #3562: boot recovery retries on a backoff; none of it may publish once
+    // the publish path below starts coming down. Its rows stay for next boot.
+    this.interruptedTurns.stop();
     if (this.idleSweepTimer) clearInterval(this.idleSweepTimer);
     this.idleSweepTimer = undefined;
     this.transcriptSearchStopped = true;
