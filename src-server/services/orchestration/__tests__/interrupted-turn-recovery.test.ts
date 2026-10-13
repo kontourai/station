@@ -71,6 +71,21 @@ const { resolveConversationTranscriptSource } = await import(
   '../../../runtime/conversation/conversation-transcript-source.js'
 );
 
+// #3562: the retry backoff sleeps through `utils/sleep`. Mocked so a retrying
+// `consume()` neither waits in real time nor hides its schedule: `delays`
+// records every backoff the module asked for, and `hook` lets a test change the
+// world while "time passes" (e.g. lift a quarantine).
+const sleepProbe = vi.hoisted(() => ({
+  delays: [] as number[],
+  hook: undefined as (() => void) | undefined,
+}));
+vi.mock('../../../utils/sleep.js', () => ({
+  sleep: vi.fn(async (ms: number) => {
+    sleepProbe.delays.push(ms);
+    sleepProbe.hook?.();
+  }),
+}));
+
 const logger = { debug: () => {}, warn: () => {} };
 
 type StoredMessage = {
@@ -3166,5 +3181,257 @@ describe('#3071: a request the interrupted turn opened is settled', () => {
       status: 'expired',
     });
     expect(eventStore.listEvents(threadId)).toHaveLength(before);
+  });
+});
+
+describe('#3562: a per-record recovery failure is retried within the boot, then surfaced', () => {
+  const makeTempDir = trackTempDirs();
+  const stores: EventStore[] = [];
+
+  afterEach(() => {
+    sleepProbe.delays.length = 0;
+    sleepProbe.hook = undefined;
+    for (const store of stores.splice(0)) {
+      try {
+        store.close();
+      } catch {
+        // Already closed by the test.
+      }
+    }
+  });
+
+  function databasePath() {
+    return join(makeTempDir('interrupted-turn-retry-'), 'orchestration.sqlite');
+  }
+
+  function crashedThread(
+    boundaryState: 'invoking' | 'accepted',
+    options: { turnStarted?: boolean } = {},
+  ) {
+    const path = databasePath();
+    const threadId = 'thread-retry';
+    const eventStore = bootAfterCrash({
+      path,
+      threadId,
+      provider: 'station-agent',
+      agentSlug: 'demo-agent',
+      boundaryState,
+      ...options,
+    });
+    stores.push(eventStore);
+    eventStore.upsertSession({
+      provider: 'station-agent',
+      threadId,
+      status: 'running',
+      createdAt: '2026-08-16T00:00:00.000Z',
+      updatedAt: '2026-08-16T00:00:02.000Z',
+    });
+    return { path, threadId, eventStore };
+  }
+
+  function serviceFor(
+    eventStore: EventStore,
+    adapter: InterruptedTurnMemoryAdapter,
+    warn = vi.fn(),
+  ) {
+    return new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger: { debug: vi.fn(), warn },
+      memoryAdapters: new Map([['demo-agent', adapter]]),
+    });
+  }
+
+  const occupied = () =>
+    fakeMemoryAdapter({
+      conventionalUserId: 'agent:demo-agent',
+      conventionalMessages: [
+        { id: 'm1', role: 'user', parts: [{ type: 'text', text: 'do it' }] },
+      ],
+    });
+
+  function methods(eventStore: EventStore, threadId: string, method: string) {
+    return eventStore
+      .listEvents(threadId)
+      .filter((event) => event.payload.method === method);
+  }
+
+  /** What a restart would find: opened on the same file, then closed. */
+  function rowsLeftForNextBoot(path: string) {
+    const probe = new EventStore(path);
+    try {
+      return probe.takeInterruptedTurnBoundaries();
+    } finally {
+      probe.close();
+    }
+  }
+
+  test('a transient FileMemory write failure is retried in the same boot: one banner, row resolved, no restart needed', async () => {
+    const { path, threadId, eventStore } = crashedThread('accepted');
+    const adapter = occupied();
+    adapter.addMessage.mockImplementationOnce(async () => {
+      throw new Error('simulated transient FileMemory write failure');
+    });
+
+    await (
+      serviceFor(eventStore, adapter) as any
+    ).interruptedTurns.consumeAtBoot();
+
+    expect(adapter.addMessage).toHaveBeenCalledTimes(2);
+    expect(sleepProbe.delays).toEqual([250]);
+    expect(methods(eventStore, threadId, 'session.state-changed')).toHaveLength(
+      1,
+    );
+    expect(methods(eventStore, threadId, 'turn.aborted')).toHaveLength(1);
+    expect(
+      (await adapter.getMessages('agent:demo-agent', threadId)).filter(
+        (message) => message.metadata?.interruptedTurnBoundaryId,
+      ),
+    ).toHaveLength(1);
+    expect(rowsLeftForNextBoot(path)).toEqual([]);
+  });
+
+  test('a transient failure to close the row (invoking, own turn.started after the claim) retries without a second abort, banner or message', async () => {
+    const { path, threadId, eventStore } = crashedThread('invoking');
+    const adapter = occupied();
+    const resolveSpy = vi
+      .spyOn(eventStore, 'resolveInterruptedTurnBoundary')
+      .mockImplementationOnce(() => {
+        throw new Error('simulated SQLITE_BUSY on the boundary delete');
+      });
+
+    await (
+      serviceFor(eventStore, adapter) as any
+    ).interruptedTurns.consumeAtBoot();
+
+    expect(resolveSpy).toHaveBeenCalledTimes(2);
+    expect(sleepProbe.delays).toEqual([250]);
+    // The retry re-derived its decision from the log (its own recovery abort
+    // now reads as an ended turn, so it banners without aborting again) and
+    // every write stayed idempotent by boundary-derived id.
+    expect(methods(eventStore, threadId, 'turn.aborted')).toHaveLength(1);
+    expect(methods(eventStore, threadId, 'session.state-changed')).toHaveLength(
+      1,
+    );
+    expect(adapter.addMessage).toHaveBeenCalledOnce();
+    resolveSpy.mockRestore();
+    expect(rowsLeftForNextBoot(path)).toEqual([]);
+  });
+
+  test('a declined publish is retried: once the refusal lifts mid-boot, the banner lands and the row closes', async () => {
+    const { path, threadId, eventStore } = crashedThread('invoking', {
+      turnStarted: false,
+    });
+    const adapter = occupied();
+    const service = serviceFor(eventStore, adapter);
+    (service as any).quarantinedThreads.add(threadId);
+    sleepProbe.hook = () =>
+      (service as any).quarantinedThreads.delete(threadId);
+
+    await (service as any).interruptedTurns.consumeAtBoot();
+
+    expect(sleepProbe.delays).toEqual([250]);
+    expect(methods(eventStore, threadId, 'session.state-changed')).toHaveLength(
+      1,
+    );
+    expect(adapter.addMessage).toHaveBeenCalledOnce();
+    expect(rowsLeftForNextBoot(path)).toEqual([]);
+  });
+
+  test('a persistent failure is bounded and never a silent success: finite attempts with doubling backoff, then a rejection naming the boundary, and the row kept for the next boot', async () => {
+    const { path, threadId, eventStore } = crashedThread('accepted');
+    const adapter = occupied();
+    adapter.addMessage.mockImplementation(async () => {
+      throw new Error('simulated persistent FileMemory outage');
+    });
+
+    const outcome = (
+      serviceFor(eventStore, adapter) as any
+    ).interruptedTurns.consumeAtBoot();
+
+    await expect(outcome).rejects.toThrow(
+      /gave up for this boot after 4 attempts/,
+    );
+    // 4 attempts, 3 backoffs: not a give-up on the first failure, not a loop.
+    expect(adapter.addMessage).toHaveBeenCalledTimes(4);
+    expect(sleepProbe.delays).toEqual([250, 500, 1000]);
+    // The event half stayed exactly-once across all four attempts.
+    expect(methods(eventStore, threadId, 'session.state-changed')).toHaveLength(
+      1,
+    );
+    // The durable row is the pending state: a restart finds it again, and the
+    // rejection names exactly that row.
+    const left = rowsLeftForNextBoot(path);
+    expect(left).toHaveLength(1);
+    await expect(outcome).rejects.toThrow(left[0]!.boundaryId);
+  });
+
+  test('only the failing record is retried; a record that already recovered is not reprocessed', async () => {
+    const path = databasePath();
+    const dying = new EventStore(path);
+    for (const threadId of ['thread-a', 'thread-b']) {
+      dying.appendEvent(
+        sessionStartedEvent({
+          threadId,
+          provider: 'station-agent',
+          agentSlug: 'demo-agent',
+        }),
+      );
+      const claimed = dying
+        .sessionTurnBoundaryAuthority()
+        .claim(threadId, '2026-08-16T00:00:00.800Z');
+      if (claimed.kind !== 'owner') throw new Error('expected boundary owner');
+      claimed.claim.beginInvocation('2026-08-16T00:00:00.900Z');
+    }
+    dying.close();
+    const eventStore = new EventStore(path);
+    stores.push(eventStore);
+    const resolveSpy = vi
+      .spyOn(eventStore, 'resolveInterruptedTurnBoundary')
+      .mockImplementationOnce(() => {
+        throw new Error('simulated transient failure on the first record');
+      });
+    const service = serviceFor(eventStore, occupied());
+
+    await (service as any).interruptedTurns.consumeAtBoot();
+
+    // Two records: one resolve threw, its retry succeeded, the other
+    // succeeded first time and is not run again. A pass over both would be 4.
+    expect(resolveSpy).toHaveBeenCalledTimes(3);
+    for (const threadId of ['thread-a', 'thread-b']) {
+      expect(
+        methods(eventStore, threadId, 'session.state-changed'),
+      ).toHaveLength(1);
+    }
+    resolveSpy.mockRestore();
+    expect(rowsLeftForNextBoot(path)).toEqual([]);
+  });
+
+  test('initialize() runs the retrying boot path and reports an exhausted retry instead of reading as done', async () => {
+    const { path, threadId, eventStore } = crashedThread('accepted');
+    const adapter = occupied();
+    adapter.addMessage.mockImplementation(async () => {
+      throw new Error('simulated persistent FileMemory outage');
+    });
+    const warn = vi.fn();
+    const service = serviceFor(eventStore, adapter, warn);
+
+    service.initialize();
+    await vi.waitFor(() =>
+      expect(warn).toHaveBeenCalledWith(
+        'Interrupted-turn boundary consumption did not complete',
+        expect.objectContaining({
+          error: expect.stringContaining('gave up for this boot'),
+        }),
+      ),
+    );
+
+    expect(adapter.addMessage).toHaveBeenCalledTimes(4);
+    expect(methods(eventStore, threadId, 'session.state-changed')).toHaveLength(
+      1,
+    );
+    expect(rowsLeftForNextBoot(path)).toHaveLength(1);
+    await service.shutdown().catch(() => undefined);
   });
 });

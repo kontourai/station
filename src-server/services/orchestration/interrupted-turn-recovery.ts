@@ -12,6 +12,7 @@ import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-even
 // delegation test — the T12 failure mode in a non-metrics guise.
 import { resolveConversationTranscriptSource } from '../../runtime/conversation/conversation-transcript-source.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { sleep } from '../../utils/sleep.js';
 import type { EventStore, PersistedRuntimeEvent } from './event-store.js';
 import { TURN_ABORT_SETTLED_REQUEST_STATUS } from './open-requests.js';
 import {
@@ -148,6 +149,14 @@ async function resolveFileMemoryOccupancy(
       ),
   };
 }
+
+/**
+ * #3562: the in-boot backoff `consumeAtBoot` retries a failed record on, one
+ * delay per retry (so four attempts in all, about 1.75s of waiting). Bounded
+ * on purpose: a failure that outlives it is not transient, and the boundary
+ * row is the durable "recovery pending" state a restart finds again.
+ */
+const INTERRUPTED_TURN_RETRY_DELAYS_MS: readonly number[] = [250, 500, 1_000];
 
 /**
  * #3562: how many `turn.started` rows after a claim `deriveOwnTurn` reads.
@@ -383,11 +392,57 @@ export class InterruptedTurnRecovery {
    * DELETE discards is unavailable to a future slice (e.g. bounded
    * auto-resume) reading the durable event alone.
    */
-  async consume(): Promise<void> {
+  async consume(
+    options: { retryDelaysMs?: readonly number[] } = {},
+  ): Promise<string[]> {
     const eventStore = this.deps.eventStore();
-    if (!eventStore) return;
+    if (!eventStore) return [];
+    // Drained once: the retry below works from this list, never from a second
+    // take, which would be empty.
     const interrupted = eventStore.takeInterruptedTurnBoundaries();
-    for (const record of interrupted) {
+    let pending = await this.recoverPass(eventStore, interrupted, interrupted);
+    // #3562: a record that failed (a throw, or a declined publish) keeps its
+    // row but was drained from the store's in-memory list, so nothing else
+    // would look at it before the next boot. Retry just those records, each
+    // time re-deciding from the log (the writes are idempotent by
+    // boundary-derived id), on a bounded schedule.
+    for (const delay of options.retryDelaysMs ?? []) {
+      if (pending.length === 0) break;
+      await sleep(delay);
+      pending = await this.recoverPass(eventStore, interrupted, pending);
+    }
+    return pending.map((record) => record.boundaryId);
+  }
+
+  /**
+   * #3562: the boot entry point. `consume` with the in-boot retry schedule,
+   * and a rejection if records are still unrecovered once it is spent, so
+   * the caller's catch reports it rather than the run reading as done. The
+   * rows stay: the next boot finds them again.
+   */
+  async consumeAtBoot(): Promise<void> {
+    const pending = await this.consume({
+      retryDelaysMs: INTERRUPTED_TURN_RETRY_DELAYS_MS,
+    });
+    if (pending.length > 0) {
+      throw new Error(
+        `Interrupted-turn recovery gave up for this boot after ${INTERRUPTED_TURN_RETRY_DELAYS_MS.length + 1} attempts; ${pending.length} boundary row(s) stay for the next boot: ${pending.join(', ')}`,
+      );
+    }
+  }
+
+  /**
+   * One pass over `pending`. Returns the records whose recovery did not
+   * finish (their row is kept); `interrupted` is every record this boot
+   * drained, which `deriveOwnTurn` reads to tell the rows' turns apart.
+   */
+  private async recoverPass(
+    eventStore: EventStore,
+    interrupted: readonly SessionTurnBoundaryRecord[],
+    pending: readonly SessionTurnBoundaryRecord[],
+  ): Promise<SessionTurnBoundaryRecord[]> {
+    const failed: SessionTurnBoundaryRecord[] = [];
+    for (const record of pending) {
       if (record.state !== 'accepted' && record.state !== 'indeterminate') {
         // Read-only defensive guard: `EventStore.takeInterruptedTurnBoundaries()`
         // only ever fills this list from those two states (see
@@ -662,6 +717,7 @@ export class InterruptedTurnRecovery {
                 reason: 'projectAndPublishEvent returned false',
               },
             );
+            failed.push(record);
             continue;
           }
           const abortEventId = `turn-interrupted-abort:${record.boundaryId}`;
@@ -698,6 +754,7 @@ export class InterruptedTurnRecovery {
                   reason: 'projectAndPublishEvent returned false',
                 },
               );
+              failed.push(record);
               continue;
             }
           }
@@ -743,6 +800,7 @@ export class InterruptedTurnRecovery {
                 reason: 'projectAndPublishEvent returned false',
               },
             );
+            failed.push(record);
             continue;
           }
         }
@@ -773,6 +831,7 @@ export class InterruptedTurnRecovery {
           state: record.state,
         });
       } catch (error) {
+        failed.push(record);
         this.deps.logger.warn(
           'Interrupted-turn banner failed; leaving the boundary row for the next boot',
           {
@@ -782,5 +841,6 @@ export class InterruptedTurnRecovery {
         );
       }
     }
+    return failed;
   }
 }
