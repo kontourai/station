@@ -1,5 +1,36 @@
 [
   {
+    "timestampUtc": "2026-10-13T15:22:30Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2477.38412128216",
+    "sha": "21bc0112066aa804d7dc366370ac5e9654df750b",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38412128216",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2477.38412128216 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "5134cf526c989b2ed9d62c76d78335ca371fa908",
+      "groups": {
+        "feat": [
+          "[#3620](https://github.com/kontourai/station/pull/3620) feat(execution): let a request state the engine its caller saw, as a refusal-only precondition"
+        ],
+        "fix": [
+          "[#3606](https://github.com/kontourai/station/pull/3606) fix(chat): never resend a /chat turn that may have reached the agent; evicted dedup keys answer expired (#3581, #3559)"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
     "timestampUtc": "2026-10-13T11:18:18Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2477.38385119405",
