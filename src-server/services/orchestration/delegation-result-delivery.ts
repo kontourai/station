@@ -44,9 +44,10 @@
  * undoes only itself:
  *  - a single-use SUPPRESSION of the turn it stops. When that turn is not in
  *    the log yet, the suppression waits as the service's own pending
- *    interrupt does: the newest waiting one binds to the next turn that
- *    appears there within the service's pending-interrupt TTL and the others
- *    are dropped, and any recorded terminal drops those still waiting. A
+ *    interrupt does: every waiting one binds to the next turn that appears
+ *    there within the service's pending-interrupt TTL (so refusing one leaves
+ *    the others), and a recorded terminal the service also drops its pending
+ *    cancel on (not `runtime.error`) drops those still waiting. A
  *    bound one cancels that turn's result only if the turn did not complete
  *    normally (the interrupt stopped it). It is spent by its turn's
  *    settlement, whatever that cancels;
@@ -209,17 +210,65 @@ CREATE INDEX IF NOT EXISTS delegation_result_cancel_links_token
  * the weakest attribution, never an upgrade. A claimed row an earlier
  * version fenced as cancelled keeps that cancel as a link.
  */
-export function migrateDelegationResultSchema(db: SqliteDatabase): void {
+export function migrateDelegationResultSchema(
+  db: TransactionalSqliteDatabase,
+): void {
   // All or nothing, so a crash cannot leave a column added but not
-  // backfilled. A SAVEPOINT, so it also nests inside a caller's transaction.
-  db.exec('SAVEPOINT delegation_result_migration');
+  // backfilled.
+  writeTransaction(db, 'delegation_result_migration', () =>
+    migrateDelegationResultSchemaNow(db),
+  );
+}
+
+/** The EventStore connection, as far as a write transaction needs it. */
+export type TransactionalSqliteDatabase = SqliteDatabase & {
+  /** node:sqlite: true while any transaction or savepoint is open. */
+  readonly isTransaction: boolean;
+};
+
+/**
+ * Run `run` as one write transaction on a connection a peer runtime may be
+ * writing to (a shared STATION_HOME, archive#2895).
+ *
+ * At top level it is `BEGIN IMMEDIATE`, as `EventStore` opens its own write
+ * transactions (`reserveAttachmentCapacity`): the write lock is taken first,
+ * through the busy timeout. A deferred transaction (a bare SAVEPOINT) that
+ * reads before it writes holds a read snapshot when it asks for the write
+ * lock, and SQLite then answers SQLITE_BUSY at once, without consulting the
+ * busy handler, whenever a peer holds that lock. Nested in a caller's
+ * transaction it is a SAVEPOINT, and the caller owns how the lock was taken.
+ */
+function writeTransaction<T>(
+  db: TransactionalSqliteDatabase,
+  savepoint: string,
+  run: () => T,
+): T {
+  if (db.isTransaction) {
+    db.exec(`SAVEPOINT ${savepoint}`);
+    try {
+      const value = run();
+      db.exec(`RELEASE ${savepoint}`);
+      return value;
+    } catch (error) {
+      try {
+        db.exec(`ROLLBACK TO ${savepoint}`);
+        db.exec(`RELEASE ${savepoint}`);
+      } catch {
+        // The original failure is the one to report.
+      }
+      throw error;
+    }
+  }
+  db.exec('BEGIN IMMEDIATE');
   try {
-    migrateDelegationResultSchemaNow(db);
-    db.exec('RELEASE delegation_result_migration');
+    const value = run();
+    db.exec('COMMIT');
+    return value;
   } catch (error) {
     try {
-      db.exec('ROLLBACK TO delegation_result_migration');
-      db.exec('RELEASE delegation_result_migration');
+      // A failure SQLite already rolled back leaves nothing to roll back,
+      // and "no transaction is active" must not replace the real error.
+      if (db.isTransaction) db.exec('ROLLBACK');
     } catch {
       // The original failure is the one to report.
     }
@@ -361,7 +410,7 @@ function parsePrincipal(value: unknown): PrincipalRef | undefined {
 
 /** The durable records; every transition is one conditional UPDATE. */
 export function createSqliteDelegationResultStore(
-  db: SqliteDatabase,
+  db: TransactionalSqliteDatabase,
   now: () => number = () => Date.now(),
 ) {
   const ownerOf = (row: Record<string, unknown>): DelegationResultOwner => {
@@ -420,27 +469,14 @@ export function createSqliteDelegationResultStore(
     return row ? ownerOf(row) : undefined;
   };
   /**
-   * One transition, all or nothing. A SAVEPOINT, as `EventStore.upsertSession`
-   * uses, so it also nests inside a caller's own transaction.
+   * One transition, all or nothing, holding the write lock from its first
+   * statement (see `writeTransaction`): `arm` and `spendSuppressions` read
+   * before they write.
    */
   let savepoints = 0;
   const atomically = <T>(run: () => T): T => {
     savepoints += 1;
-    const name = `delegation_result_${savepoints}`;
-    db.exec(`SAVEPOINT ${name}`);
-    try {
-      const value = run();
-      db.exec(`RELEASE ${name}`);
-      return value;
-    } catch (error) {
-      try {
-        db.exec(`ROLLBACK TO ${name}`);
-        db.exec(`RELEASE ${name}`);
-      } catch {
-        // The original failure is the one to report.
-      }
-      throw error;
-    }
+    return writeTransaction(db, `delegation_result_${savepoints}`, run);
   };
   const unloggedSince = () => now() - DELEGATION_RESULT_UNLOGGED_TURN_WINDOW_MS;
   /** Forget every unlogged-turn suppression no turn has taken yet. */
@@ -453,16 +489,17 @@ export function createSqliteDelegationResultStore(
       .run(childConversationId);
   /**
    * A turn is now in the log: drop unlogged-turn suppressions past their
-   * window, then bind the NEWEST one still waiting to this turn and drop the
-   * rest, unless one is already bound to it. This mirrors the service, which
-   * keeps ONE pending interrupt per thread (a second replaces the first) and
-   * applies it to the thread's next `turn.started` only
-   * (`CooperativeStop.recordPendingTurnInterrupt` /
-   * `applyPendingTurnInterrupt`): however many interrupts preceded this turn,
-   * at most one stopped it, and none of them can reach a later turn.
-   * Collapsing here rather than when the second interrupt is recorded keeps
-   * the earlier suppression if the replacing interrupt is refused, as the
-   * service keeps its earlier pending cancel.
+   * window, then bind EVERY one still waiting to this turn, unless one is
+   * already bound to it. This mirrors the service, which keeps ONE pending
+   * interrupt per thread (a second replaces the first) and applies it to the
+   * thread's next `turn.started` only (`CooperativeStop
+   * .recordPendingTurnInterrupt` / `applyPendingTurnInterrupt`): however many
+   * interrupts preceded this turn, they stop this turn or nothing, so they
+   * are bound together, spent together, and none can reach a later turn.
+   * Keeping each one (rather than only the newest) is what lets a refusal
+   * undo just itself: the service still holds the other interrupt's pending
+   * cancel, and its suppression must still be here when that cancel stops
+   * the turn, whichever of them was refused.
    */
   const bindUnlogged = (childConversationId: string, turnId: string) => {
     db.prepare(
@@ -479,12 +516,8 @@ export function createSqliteDelegationResultStore(
     if (bound) return;
     db.prepare(
       `UPDATE delegation_result_suppressions SET turn_id = ?
-       WHERE token = (
-         SELECT token FROM delegation_result_suppressions
-         WHERE child_conversation_id = ? AND spent = 0 AND turn_id IS NULL
-         ORDER BY created_at DESC, rowid DESC LIMIT 1)`,
+       WHERE child_conversation_id = ? AND spent = 0 AND turn_id IS NULL`,
     ).run(turnId, childConversationId);
-    dropUnbound(childConversationId);
   };
   /**
    * Spend every unspent suppression bound to this turn, once, and return the
@@ -672,10 +705,14 @@ export function createSqliteDelegationResultStore(
                WHERE child_conversation_id = ? AND transition_key = ?`,
             ).run(row.childConversationId, row.transitionKey);
         }
-        // Any terminal ends a pending interrupt the turns so far did not
-        // take, as the service drops its pending cancel on any terminal for
-        // the thread, so a stale cancel cannot reach a turn started later.
-        dropUnbound(row.childConversationId);
+        // A terminal ends a pending interrupt the turns so far did not take,
+        // so a stale cancel cannot reach a turn started later: exactly the
+        // terminals on which the service drops its own pending cancel
+        // (`turn.completed`, `turn.aborted`, `session.exited`;
+        // `CooperativeStop.applyPendingTurnInterrupt`). A `runtime.error`
+        // leaves the service's cancel armed for the next turn, so it leaves
+        // the suppression waiting for that turn too.
+        if (row.outcome !== 'error') dropUnbound(row.childConversationId);
         this.touchOwner(row.childConversationId);
         return true;
       });

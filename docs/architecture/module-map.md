@@ -1316,7 +1316,8 @@ recorded parent, or from the delegating owner in person, cancels it and
 suppresses the one turn it stops. A turn the interrupt named is suppressed even
 if it completed normally. A turn not yet in the log when the interrupt arrived
 is matched as the service matches its one pending interrupt (the next turn to
-start, until any terminal or the pending-interrupt TTL), and is suppressed only
+start, until a completion, abort or Session exit, or the pending-interrupt
+TTL), and is suppressed only
 if it did not complete normally. A refused interrupt undoes only its own
 records: a row a read consumed or another interrupt also cancelled stays closed. An engine without mid-turn steer leaves the row pending
 until the parent's turn ends. A start is re-driven only into the Session it

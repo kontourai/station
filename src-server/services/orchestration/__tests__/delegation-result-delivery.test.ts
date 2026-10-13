@@ -348,6 +348,81 @@ describe('delegation result suppressions, fix round 3 (#3158)', () => {
       'token',
     ]);
   });
+
+  // Fix round 5, P2-A / P3-A: every waiting suppression binds to the turn
+  // that appears, so whichever interrupt is refused afterwards, the other's
+  // suppression is still there for the turn the service's pending cancel
+  // stops. Binding only the newest loses it when the newer one is refused;
+  // binding only the oldest loses it when the older one is.
+  test('both waiting interrupts bind to the held turn and are spent by it together', () => {
+    const { store, clock } = bare();
+    store.beginCancel('child', 'token-1', undefined);
+    clock.now = 1;
+    store.beginCancel('child', 'token-2', undefined);
+    store.bindUnloggedSuppressions('child', 'turn-a');
+    expect(
+      store.spendSuppressions('child', 'turn-a', 'aborted').sort(),
+    ).toEqual(['token-1', 'token-2']);
+    store.bindUnloggedSuppressions('child', 'turn-b');
+    expect(store.spendSuppressions('child', 'turn-b', 'aborted')).toEqual([]);
+  });
+
+  test.each(['token-1', 'token-2'] as const)(
+    'refusing %s after both bound to the held turn leaves the other to cancel it',
+    (refused) => {
+      const { store, settle, clock } = bare();
+      store.beginCancel('child', 'token-1', undefined);
+      clock.now = 1;
+      store.beginCancel('child', 'token-2', undefined);
+      store.bindUnloggedSuppressions('child', 'turn-a');
+      store.refuseCancel(refused);
+      expect(settle('turn-a')).toBe('cancelled');
+      // Spent with that turn: neither reaches an aborted turn 30 s later.
+      clock.now = 30_000;
+      store.bindUnloggedSuppressions('child', 'turn-b');
+      expect(settle('turn-b')).toBe('pending');
+    },
+  );
+
+  // Fix round 5, P3-B: the service drops its pending cancel on
+  // `turn.completed`, `turn.aborted` and `session.exited`, not on
+  // `runtime.error`, so after an error the waiting suppression still binds
+  // to (and cancels) the next turn that cancel stops.
+  test.each([
+    ['error', 'no turn', 'cancelled'],
+    ['error', 'an earlier bound turn', 'cancelled'],
+    ['exited', 'no turn', 'pending'],
+    ['completed', 'an earlier bound turn', 'pending'],
+    ['aborted', 'an earlier bound turn', 'pending'],
+  ] as const)(
+    'a waiting interrupt survives a %s settlement of %s only when the service keeps its cancel',
+    (outcome, shape, expected) => {
+      const { store, settle, clock } = bare();
+      if (shape === 'an earlier bound turn') {
+        store.beginCancel('child', 'token-earlier', undefined);
+        store.bindUnloggedSuppressions('child', 'turn-a');
+      }
+      clock.now = 1;
+      store.beginCancel('child', 'token', undefined);
+      store.record({
+        childConversationId: 'child',
+        transitionKey:
+          shape === 'no turn'
+            ? 'settled:child:sequence-7'
+            : 'settled:child:turn-a',
+        transition: 'settled',
+        parentConversationId: 'parent',
+        childSessionId: 'child',
+        ...(shape === 'no turn' ? {} : { childTurnId: 'turn-a' }),
+        outcome,
+        deliveryId: 'dr-first',
+        text: 'result',
+      });
+      clock.now = 30_000;
+      store.bindUnloggedSuppressions('child', 'turn-b');
+      expect(settle('turn-b')).toBe(expected);
+    },
+  );
 });
 
 describe('delegation result schema migration (#3158)', () => {
@@ -544,6 +619,9 @@ describe('delegation result schema migration, fix round 4 (#3158)', () => {
         db.exec(sql);
       },
       prepare: (sql: string) => db.prepare(sql),
+      get isTransaction() {
+        return db.isTransaction;
+      },
     };
     expect(() => migrateDelegationResultSchema(crashing)).toThrow('crash');
     const columns = (

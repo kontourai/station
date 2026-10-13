@@ -197,6 +197,8 @@ function routes(
     interruptRefused?: boolean;
     /** Holds the interrupt until the test settles it (refused or not). */
     interruptGate?: Promise<'ok' | 'refuse'>;
+    /** Called when the interrupt reaches the service, after its cancel was recorded. */
+    interruptReached?: () => void;
   } = {},
 ) {
   const app = new Hono();
@@ -280,6 +282,7 @@ function routes(
           status: status(),
         }),
         interruptDelegatedTask: async (input: { taskId: string }) => {
+          options.interruptReached?.();
           if (
             options.interruptGate &&
             (await options.interruptGate) === 'refuse'
@@ -771,6 +774,47 @@ describe('delegated task result delivery (#3158)', () => {
     emit(h, PARENT, 'turn.completed', { turnId: 'parent-turn-a' });
     await h.delivery.idle();
     expect(h.starts).toHaveLength(0);
+  });
+
+  // Fix round 5, P2-A: two interrupts of a held turn; the turn reaches the
+  // log while the second is still in flight, and then the second is refused.
+  // The service still holds the first's pending cancel and stops the turn, so
+  // its result must stay suppressed.
+  test('a refusal after the held turn reached the log keeps the other interrupt suppressing it', async () => {
+    const h = setup();
+    const api = routes(h, PARENT, () => 'running');
+    await api.delegate();
+    coordinatorBusy.add(CHILD);
+    await api.interrupt(CHILD); // interrupt 1: the turn is held, not logged
+    let settle!: (value: 'ok' | 'refuse') => void;
+    const gate = new Promise<'ok' | 'refuse'>((resolve) => {
+      settle = resolve;
+    });
+    let reached!: () => void;
+    const atService = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    const second = routes(h, PARENT, () => 'running', {
+      interruptGate: gate,
+      interruptReached: reached,
+    }).interrupt(CHILD, 400);
+    await atService; // interrupt 2 recorded, awaiting the service
+    coordinatorBusy.delete(CHILD);
+    emit(h, CHILD, 'turn.started', { turnId: 'child-turn-1' });
+    settle('refuse');
+    await second;
+    // Interrupt 1's pending cancel stops the turn.
+    emit(h, CHILD, 'turn.aborted', { turnId: 'child-turn-1' });
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(0);
+    expect(h.store.delegationResultStore().listForChild(CHILD)).toEqual([
+      expect.objectContaining({ state: 'cancelled' }),
+    ]);
+    // Both were spent by that turn: the next one is delivered.
+    runChildTurn(h, CHILD, 'child-turn-2', 'second');
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(1);
+    expect(h.starts[0]!.text).toContain('> second');
   });
 
   test('probe C: a refused interrupt does not reopen a result the parent read meanwhile', async () => {
