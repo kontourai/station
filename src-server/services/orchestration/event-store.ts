@@ -197,8 +197,8 @@ import {
 } from './credential-application-ledger.js';
 import {
   createSqliteDelegationResultStore,
-  DELEGATION_RESULT_DELIVERY_SCHEMA,
   type DelegationResultStore,
+  migrateDelegationResultSchema,
 } from './delegation-result-delivery.js';
 import {
   createNativeInvocationRuns,
@@ -2092,8 +2092,9 @@ export class EventStore {
       )`);
       // #3160: the request keys behind `send_to_session` / `interrupt_session`.
       this.db.exec(SESSION_CONTROL_REQUEST_KEY_SCHEMA);
-      // #3158: delegated-result ownership and its one consumption record.
-      this.db.exec(DELEGATION_RESULT_DELIVERY_SCHEMA);
+      // #3158: delegated-result ownership and its one consumption record,
+      // migrated from any earlier version of the schema.
+      migrateDelegationResultSchema(this.db);
       this.db.exec(PACKAGE_MCP_ADMISSION_SCHEMA);
       this.db.exec(REGISTRY_TRUST_POLICY_SCHEMA);
       this.db
