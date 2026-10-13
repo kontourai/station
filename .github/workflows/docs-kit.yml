@@ -38,7 +38,7 @@ jobs:
     uses: kontourai/.github/.github/workflows/docs-gate.yml@ac67c2a7484cc79cc51f81fa8b68c855c3879f94
     with:
       # Org-wide Corpus 0.7.0 pin, shared with Pages bundle publishing.
-      corpus-ref: cc7f6e4939dcc0777c4c3e2d5222b30455013861
+      corpus-ref: 340b66fc8f723c1babe35fce8240c82cd196b0db
       repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}
       ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
     permissions:
