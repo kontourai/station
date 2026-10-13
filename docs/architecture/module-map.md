@@ -1264,7 +1264,7 @@ An agent that messages another Session must not deliver twice when it retries,
 and must not start a second turn on a Session that is already running one.
 [SessionMessageDelivery](../../src-server/services/orchestration/session-message-delivery.ts)
 is the one place that decides which of those a message becomes, for Station
-Control's `send_to_session` and later for delegation result delivery.
+Control's `send_to_session` and for delegated task result delivery.
 
 **Interface.** `deliverSessionMessage(ports, { threadId, text, mode, deliveryId,
 decided?, recordDecision? })` returns `started`, `steered`, `session_busy`,
@@ -1295,6 +1295,22 @@ and the [mounted boundary matrix](../../src-server/runtime/routes/__tests__/runt
 Their presence is not an executed receipt against a real engine. See
 [agent configuration](../guides/self-configuring-agent.md#session-control) for the
 tool-level behavior.
+
+**Delegated task results (#3158).**
+[DelegationResultDelivery](../../src-server/services/orchestration/delegation-result-delivery.ts)
+delivers a local child's result to the conversation that delegated it through
+this module in `auto` mode. The `POST /delegations` route records ownership
+only from a `caller-derived` delegation context, so the parent is always the
+verified caller's own conversation. A child transition (today `settled`) is read
+from the persisted lifecycle fold after the event bus publishes it, and again
+at startup. Each transition is one durable row in `EventStore`, holding the
+text composed from the child's stored output. That row is the consumption record
+shared with `get_task`: a parent's read of its own child at rest consumes it, and
+`interrupt_task` cancels it. An engine without mid-turn steer leaves the row
+pending until the parent's turn ends. Remote and SSH children, hosted Stations,
+and `needs_input`/`blocked` transitions are not delivered. The
+[route-level integration test](../../src-server/routes/orchestration/__tests__/delegation-result-delivery.integration.test.ts)
+uses recorded start and steer ports, not a real engine.
 
 ## SessionDigest
 

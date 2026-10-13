@@ -76,7 +76,10 @@ import {
   ORCHESTRATION_STREAM_REPLAY_MAX_SERIALIZED_BYTES,
   ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD,
 } from '../../constants.js';
-import type { RequestDelegationResolver } from '../../runtime/agents/request-delegation.js';
+import type {
+  RequestDelegationResolver,
+  ResolvedRequestDelegation,
+} from '../../runtime/agents/request-delegation.js';
 import {
   getTenantRequestContext,
   tenantExecutionContextForRequest,
@@ -84,6 +87,7 @@ import {
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
 import type { FullAccessGrant } from '../../security/coding-authority.js';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
+import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import {
   AnswerAssessmentConflictError,
   AnswerAssessmentModule,
@@ -117,6 +121,7 @@ import {
   DelegationAttemptPendingError,
   type DelegationAttemptProjection,
 } from '../../services/orchestration/delegation-attempt-claim-store.js';
+import type { DelegationResultDelivery } from '../../services/orchestration/delegation-result-delivery.js';
 import type { DispatchCwdAdmission } from '../../services/orchestration/dispatch-cwd-admission.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import {
@@ -1419,7 +1424,9 @@ export function resolveActorPrincipal(
  * without a principal). `isInboundDelegationPeer` ignores it and
  * `authorizeReceiverExecution` reads request currency, not the principal.
  */
-function principalRefForSessionOwner(id: string): PrincipalRef | undefined {
+export function principalRefForSessionOwner(
+  id: string,
+): PrincipalRef | undefined {
   const match = /^human:([^:]+):(.+)$/.exec(id);
   if (!match) return undefined;
   try {
@@ -1484,6 +1491,71 @@ export function resolveDispatchActor(
     ownerAttribution: UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
     fullAccessGrant: null,
   };
+}
+
+/**
+ * #3158: record that the calling agent's conversation receives this child's
+ * results. Only a context Station DERIVED for a verified station-control
+ * caller (`caller-derived`) arms delivery, and only for a child this Station
+ * runs: the parent is the caller's own conversation, never an id the body
+ * or the model named.
+ */
+function armDelegationResult(
+  c: Context,
+  delivery: Pick<DelegationResultDelivery, 'arm'> | undefined,
+  resolved: ResolvedRequestDelegation | undefined,
+  dispatched: { handle: unknown; userId: string },
+): void {
+  if (!delivery || resolved?.provenance !== 'caller-derived') return;
+  const authority = stationControlRequestAuthority(c.req.raw);
+  if (authority?.kind !== 'caller') return;
+  const callerConversationId =
+    authority.caller.conversationId ?? authority.caller.sessionId;
+  if (resolved.context.parentConversationId !== callerConversationId) return;
+  const handle = dispatched.handle as {
+    conversationId?: unknown;
+    taskId?: unknown;
+    environment?: { kind?: unknown };
+    target?: { id?: unknown };
+  };
+  if (
+    handle?.environment?.kind !== 'current' ||
+    typeof handle.conversationId !== 'string' ||
+    typeof handle.taskId !== 'string'
+  )
+    return;
+  delivery.arm({
+    childConversationId: handle.conversationId,
+    taskId: handle.taskId,
+    parentConversationId: callerConversationId,
+    ownerUserId: dispatched.userId,
+    ...(typeof handle.target?.id === 'string'
+      ? { childAgent: handle.target.id }
+      : {}),
+  });
+}
+
+/** #3158: a verified caller's `get_task` read of a child; see `recordRead`. */
+function recordDelegationResultRead(
+  c: Context,
+  delivery: Pick<DelegationResultDelivery, 'recordRead'> | undefined,
+  snapshot: unknown,
+): void {
+  if (!delivery) return;
+  const authority = stationControlRequestAuthority(c.req.raw);
+  if (authority?.kind !== 'caller') return;
+  const read = snapshot as { conversationId?: unknown; status?: unknown };
+  if (
+    typeof read?.conversationId !== 'string' ||
+    typeof read.status !== 'string'
+  )
+    return;
+  delivery.recordRead({
+    taskReference: read.conversationId,
+    readerConversationId:
+      authority.caller.conversationId ?? authority.caller.sessionId,
+    status: read.status,
+  });
 }
 
 export function createOrchestrationRoutes(
@@ -1692,6 +1764,16 @@ export function createOrchestrationRoutes(
     interruptDelegatedTask?: (
       input: InterruptDelegatedTaskRequest,
     ) => Promise<unknown>;
+    /**
+     * #3158: automatic delivery of a delegated child's results to its parent
+     * conversation (`delegation-result-delivery.ts`). The routes only report
+     * what they verified: a dispatch's caller-derived ownership, a parent's
+     * read of its own child at rest, an interrupt.
+     */
+    delegationResults?: Pick<
+      DelegationResultDelivery,
+      'arm' | 'recordRead' | 'cancel'
+    >;
     /**
      * archive#4075 stage 2: DEPRECATED legacy test-only escape hatch. Never
      * wired by production runtime composition (production sets
@@ -2979,6 +3061,10 @@ export function createOrchestrationRoutes(
         );
       }
       const data = await dispatch();
+      armDelegationResult(c, deps.delegationResults, resolvedDelegation, {
+        handle: data,
+        userId,
+      });
       return c.json({ success: true, data });
     } catch (error) {
       const refused =
@@ -3241,6 +3327,10 @@ export function createOrchestrationRoutes(
         taskId: param(c, 'taskId'),
         userId: resolveActorPrincipal(deps, c).userId,
       });
+      // #3158: the parent read its own child at rest; that result is not
+      // delivered to it again. Only for a task this Station serves.
+      if (parsed.data.environmentId === undefined)
+        recordDelegationResultRead(c, deps.delegationResults, data);
       // Only for a task this Station serves: a forwarded read carries the
       // serving Station's own answer about this Station's credential.
       return c.json({
@@ -3542,6 +3632,13 @@ export function createOrchestrationRoutes(
           deps,
           c,
         );
+        // #3158: fenced before the interrupt's effect, so the turn it stops
+        // and any result not yet delivered never wake the parent.
+        if (
+          (getBody(c) as { environmentId?: unknown }).environmentId ===
+          undefined
+        )
+          deps.delegationResults?.cancel(param(c, 'taskId'));
         const data = await deps.interruptDelegatedTask({
           ...getBody(c),
           taskId: param(c, 'taskId'),

@@ -323,7 +323,12 @@ import { createDeclarePullRequestRoutes } from '../../routes/orchestration/decla
 import { createEventRoutes } from '../../routes/orchestration/events.js';
 import { createLiveActivityRoutes } from '../../routes/orchestration/live-activity.js';
 import { createOperatingStateRoutes } from '../../routes/orchestration/operating-state.js';
-import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
+import {
+  createOrchestrationRoutes,
+  isForegroundDispatchHandle,
+  isForegroundIndeterminateShape,
+  principalRefForSessionOwner,
+} from '../../routes/orchestration/orchestration.js';
 import { createProjectTaskRoomRoutes } from '../../routes/orchestration/project-task-rooms.js';
 import { createRunRoutes } from '../../routes/orchestration/runs.js';
 import { createSessionAgentControlRoutes } from '../../routes/orchestration/session-agent-control.js';
@@ -527,6 +532,10 @@ import {
   delegationAttemptClaimKey,
   projectDelegationAttemptClaim,
 } from '../../services/orchestration/delegation-attempt-claim-store.js';
+import {
+  DELEGATION_RESULT_CLIENT_ORIGIN,
+  DelegationResultDelivery,
+} from '../../services/orchestration/delegation-result-delivery.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
@@ -536,7 +545,10 @@ import { ProjectTaskRoomRuntime } from '../../services/orchestration/project-tas
 import { RunService } from '../../services/orchestration/run-service.js';
 import { createSessionInventoryAppReadModule } from '../../services/orchestration/session-inventory-app-read-module.js';
 import { createSessionInventoryModule } from '../../services/orchestration/session-inventory-module.js';
-import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
+import {
+  ACTIVE_TURN_FOLD_METHODS,
+  projectSessionLifecycle,
+} from '../../services/orchestration/session-lifecycle-service.js';
 import { createSessionWorkItemModule } from '../../services/orchestration/session-work-item-module.js';
 import { resolveWorkspaceIdentity } from '../../services/orchestration/workspace-identity.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
@@ -4289,10 +4301,146 @@ export function configureRuntimeRoutes(
       config: context.configLoader,
     }));
 
+  function createDelegationResultDelivery(
+    eventStore: EventStore,
+  ): DelegationResultDelivery {
+    const origin = DELEGATION_RESULT_CLIENT_ORIGIN;
+    return new DelegationResultDelivery({
+      store: eventStore.delegationResultStore(),
+      foldEvents: (threadId) =>
+        eventStore
+          .listEventsByMethods(threadId, ACTIVE_TURN_FOLD_METHODS)
+          .map((stored) => ({
+            sequence: stored.sequence,
+            event: stored.payload,
+          })),
+      headSequence: (threadId) =>
+        eventStore.readSessionInventoryHighWater(threadId),
+      turnEvents: (threadId, turnId, methods) =>
+        eventStore
+          .listTurnEventsByMethods(threadId, turnId, methods)
+          .map((stored) => ({
+            ...(stored.turnId ? { turnId: stored.turnId } : {}),
+            method: stored.method,
+            payload: stored.payload,
+          })),
+      conversationOf: (threadId) =>
+        eventStore.conversationForSession(threadId)?.conversationId ?? threadId,
+      currentSessionId: (conversationId) =>
+        context.orchestrationService.currentConversationSessionId(
+          conversationId,
+        ),
+      coordinatorBusy: (threadId) =>
+        context.orchestrationService.hasActiveTurn(threadId),
+      sessionOwnerId: (threadId) =>
+        context.orchestrationService.sessionRecordedOwnerId(threadId),
+      // The parent's owner acts: the same attribution a verified agent
+      // caller's own `send_to_session` start carries, never the operator's.
+      start: stationServerEntry(
+        async ({
+          parentConversationId,
+          threadId,
+          ownerUserId,
+          text,
+          clientTurnId,
+        }) => {
+          try {
+            const handle = await continueExecutionTargetMessage(
+              {
+                conversationId: parentConversationId,
+                message: text,
+                clientTurnId,
+                userId: ownerUserId,
+                principal: principalRefForSessionOwner(ownerUserId),
+                ownerAttribution: 'verified-bound',
+                fullAccessGrant: null,
+                clientOrigin: origin,
+                readAuthority: readAuthorityForExecution(ownerUserId),
+              },
+              context.orchestrationService,
+              remoteStations,
+            );
+            if (!isForegroundDispatchHandle(handle))
+              return { outcome: 'indeterminate' as const };
+            const started = handle as { sessionId?: unknown };
+            return {
+              outcome: 'started' as const,
+              conversationId: handle.conversationId,
+              sessionId:
+                typeof started.sessionId === 'string'
+                  ? started.sessionId
+                  : threadId,
+              turnId: handle.providerTurnId,
+            };
+          } catch (error) {
+            if (isForegroundIndeterminateShape(error))
+              return { outcome: 'indeterminate' as const };
+            throw error;
+          }
+        },
+      ),
+      steer: stationServerEntry(
+        async ({ threadId, ownerUserId, text, clientInputId }) => {
+          const dispatched =
+            await context.orchestrationService.dispatchWithReceipt(
+              { type: 'steerTurn', threadId, input: text, clientInputId },
+              {
+                userId: ownerUserId,
+                ownerAttribution: 'verified-bound',
+                principal: principalRefForSessionOwner(ownerUserId),
+                clientOrigin: origin,
+              },
+            );
+          const result = dispatched.result as
+            | { outcome?: string; turnId?: string }
+            | undefined;
+          switch (result?.outcome) {
+            case 'steered':
+              return {
+                outcome: 'steered' as const,
+                turnId: result.turnId ?? '',
+              };
+            case 'no-active-turn':
+            case 'unsupported-engine':
+            case 'concurrent-steer':
+              return { outcome: result.outcome };
+            default:
+              return { outcome: 'indeterminate' as const };
+          }
+        },
+      ),
+      subscribe: (listener) =>
+        context.eventBus.subscribe((frame) => {
+          if (frame.event !== 'orchestration:event') return;
+          const inner = (
+            frame.data as
+              | { event?: { threadId?: unknown; method?: unknown } }
+              | undefined
+          )?.event;
+          if (
+            typeof inner?.threadId === 'string' &&
+            typeof inner.method === 'string'
+          )
+            listener({ threadId: inner.threadId, method: inner.method });
+        }),
+      logger: context.logger,
+    });
+  }
+
+  // #3158: a delegated child's result goes back to the conversation that
+  // delegated it. Personal Stations only: a hosted delivery would run outside
+  // any request's tenant context.
+  const delegationResults =
+    context.orchestrationEventStore && hostedTenantRegistry === undefined
+      ? createDelegationResultDelivery(context.orchestrationEventStore)
+      : undefined;
+  delegationResults?.start();
+
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
       eventBus: context.eventBus,
+      ...(delegationResults ? { delegationResults } : {}),
       logger: context.logger,
       actionOperations,
       terminalService: context.terminalService,
@@ -6946,6 +7094,16 @@ export function configureRuntimeRoutes(
     // exact-once room/history/outbox startup replay.
     projectTaskRoomLifecycleReady,
   ]).then(() => undefined);
+  // #3158: results a restart left undelivered. Never part of readiness: a
+  // delivery that cannot run now is retried, not allowed to block startup.
+  if (delegationResults)
+    void kitLifecycleReady
+      .then(() => delegationResults.reconcile())
+      .catch((error: unknown) =>
+        context.logger.warn('delegation result reconcile failed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
 
   return {
     schedulerService,
