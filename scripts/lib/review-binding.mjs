@@ -94,7 +94,8 @@ export function bindingDigest(path, bytes) {
       if (format === 'json') parsed = JSON.parse(text);
       else {
         const document = parseDocument(text, { uniqueKeys: true });
-        if (document.errors.length || document.warnings.length) return undefined;
+        if (document.errors.length || document.warnings.length)
+          return undefined;
         parsed = yamlJsonValue(
           document.toJS({ maxAliasCount: 0, mapAsMap: true }),
         );
