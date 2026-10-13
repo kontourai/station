@@ -96,6 +96,33 @@ describe('KitDefaultStoreAdapter — on-disk fixture proof (store-contract.md §
     },
   );
 
+  test.each([201, 300])(
+    'accepts a 200-character record ID and rejects a %i-character ID on create',
+    async (length) => {
+      const input = {
+        type: 'raw' as const,
+        title: 'Record',
+        body: 'Body',
+        category: 'engineering',
+        provenance: { agent: 'test' },
+      };
+      const boundaryId = 'a'.repeat(200);
+      await expect(adapter.create({ ...input, id: boundaryId })).resolves.toBe(
+        boundaryId,
+      );
+      await expect(
+        adapter.create({ ...input, id: 'b'.repeat(length) }),
+      ).rejects.toMatchObject({
+        code: 'MISSING_EVIDENCE',
+        message: 'create: record id must be at most 200 characters',
+      });
+      expect((await adapter.get(boundaryId))?.id).toBe(boundaryId);
+      expect(
+        (await adapter.listByType('raw')).map((record) => record.id),
+      ).toEqual([boundaryId]);
+    },
+  );
+
   test('record files are literal YAML-frontmatter + markdown, parseable by a plain YAML reader', async () => {
     const id = await adapter.create({
       type: 'compiled',

@@ -338,6 +338,11 @@ export class KitDefaultStoreAdapter implements KnowledgeStoreAdapter {
         'create: record id must be a safe single path segment',
       );
     }
+    if (id.length > 200) {
+      throw new MissingEvidenceError(
+        'create: record id must be at most 200 characters',
+      );
+    }
     if (this.readRecord(id)) {
       throw new MissingEvidenceError('create: record id already exists');
     }
