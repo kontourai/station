@@ -128,7 +128,9 @@
 
     "src-ui/src/components/CreatePlusButton.css",
 
-    "src-ui/src/components/chat-dock/ChatDockProjectContext.css"
+    "src-ui/src/components/chat-dock/ChatDockProjectContext.css",
+
+    "src-ui/src/components/status/live-status.css"
   ],
 
   "checks": [
