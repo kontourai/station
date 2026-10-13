@@ -128,6 +128,9 @@ importers:
       '@kontourai/flow-agents':
         specifier: 6.5.1
         version: 6.5.1(@ai-sdk/provider@3.0.18)(@kontourai/bearing@0.2.0(playwright@1.63.0))(playwright@1.63.0)(supports-color@7.2.0)(typescript@7.0.2)(zod@4.6.5)
+      '@kontourai/monument':
+        specifier: ^0.1.0
+        version: link:packages/monument
       '@kontourai/relay':
         specifier: 0.7.1
         version: 0.7.1(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.122.0(zod@4.6.5))

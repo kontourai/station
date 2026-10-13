@@ -1,6 +1,10 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { KernelCommand, KernelResult } from './commands.js';
-import { ownerFields, parseOwnerIdentity } from './owner.js';
+import {
+  type OwnerIdentity,
+  ownerFields,
+  parseOwnerIdentity,
+} from './owner.js';
 import {
   type CommitParticipant,
   type KernelContext,
@@ -24,19 +28,66 @@ import {
 
 /**
  * The structural slice of a `node:sqlite` `DatabaseSync` this adapter uses,
- * so a host can hand over the connection it already owns.
+ * so a host can hand over the connection it already owns. `run` returns
+ * `unknown` so a host's own narrower statement type is accepted as it is; the
+ * adapter reads `changes` from the result itself.
  */
 export interface SqliteKernelDatabase {
   exec(sql: string): void;
   prepare(sql: string): {
-    run(...values: Array<string | number | null>): {
-      changes: number | bigint;
-    };
+    run(...values: Array<string | number | null>): unknown;
     get(...values: Array<string | number | null>): unknown;
     all(...values: Array<string | number | null>): unknown[];
   };
   readonly isTransaction?: boolean;
   close?(): void;
+}
+
+/**
+ * A host's existing turn-dedup tables, bound in place of the kernel's own.
+ * The host creates them. `table` holds `dedup_key`, `value`, `created_at` and
+ * `owner_json`; `tombstoneTable` holds `dedup_key` and `expired_at`.
+ */
+export interface SqliteTurnDedupTables {
+  readonly table: string;
+  readonly tombstoneTable: string;
+  /**
+   * The `owner_json` field that names the owner, which older writers of the
+   * host's table call something other than `id`. Written and read under this
+   * name, so a writer that predates the kernel still reads the rows.
+   */
+  readonly ownerIdField: string;
+  /**
+   * Thrown, as is, for any `owner_json` the adapter refuses, in place of the
+   * detailed reason. The host's callers may already match on it.
+   */
+  readonly ownerErrorMessage?: string;
+  /**
+   * Keys under these prefixes were written by claimants that recorded no
+   * invocation: a row of theirs with no invocation record at all reads as
+   * `untracked`. A record that is present but unrecognised stays unknown.
+   */
+  readonly legacyUntrackedKeyPrefixes?: readonly string[];
+}
+
+/** A host's existing request-key table: the kernel's columns, one renamed. */
+export interface SqliteRequestKeyTable {
+  readonly table: string;
+  /** The column holding the serialized result (the kernel's is `result`). */
+  readonly resultColumn: string;
+}
+
+/**
+ * Which tables back each machine. An area left out is kernel-owned: its
+ * `monument_*` tables are created at open. A bound area uses the host's
+ * tables, which must already exist and are checked at open. An `'unused'`
+ * area has no table at all, and its commands are refused: a host that keeps
+ * only some machines here creates nothing for the others.
+ */
+export interface SqliteKernelTables {
+  readonly turnDedup?: SqliteTurnDedupTables | 'unused';
+  readonly requestKeys?: SqliteRequestKeyTable | 'unused';
+  readonly turnBoundary?: 'unused';
 }
 
 export interface SqliteKernelStorageOptions {
@@ -46,8 +97,19 @@ export interface SqliteKernelStorageOptions {
   readonly database?: SqliteKernelDatabase;
   /** Defaults to 5000 ms, as Station's stores use. */
   readonly busyTimeoutMs?: number;
+  /**
+   * Whether to set and assert `busy_timeout`, `journal_mode` and
+   * `synchronous` on the connection. A connection the adapter opens is always
+   * configured. A connection the host hands over is the host's: by default
+   * its pragmas are left as they are and reported in `pragmas`, so a host that
+   * relaxes durability on purpose (a test fixture) is not silently undone.
+   * Pass `true` to hand the pragmas to the adapter.
+   */
+  readonly configureConnection?: boolean;
   /** Host projections that join each command's transaction. */
   readonly participants?: readonly CommitParticipant<SqliteKernelDatabase>[];
+  /** Bind the host's own tables; by default the kernel owns all of them. */
+  readonly tables?: SqliteKernelTables;
 }
 
 /** What the connection was observed to run with after open. */
@@ -58,9 +120,12 @@ export interface SqliteKernelPragmas {
    * up in another mode. Reported, not asserted.
    */
   readonly journalMode: string;
-  /** Asserted at open. */
-  readonly synchronous: 'FULL';
-  /** Asserted at open. */
+  /**
+   * `FULL` is asserted on a connection the adapter configures. On one the
+   * host kept, this is whatever the host chose.
+   */
+  readonly synchronous: 'OFF' | 'NORMAL' | 'FULL' | 'EXTRA' | 'unknown';
+  /** Asserted on a connection the adapter configures; otherwise observed. */
   readonly busyTimeoutMs: number;
 }
 
@@ -75,7 +140,19 @@ export interface SqliteKernelStorage extends KernelStorage {
   executeSync<C extends KernelCommand>(
     command: C,
     context: KernelContext,
+    options?: SqliteExecuteOptions,
   ): KernelResult<C>;
+}
+
+export interface SqliteExecuteOptions {
+  /**
+   * Run inside the transaction the host already holds, instead of refusing.
+   * The command is one savepoint in it: its writes, and every participant's,
+   * commit or roll back with the host's transaction, so the host can retire
+   * the kernel's records in the same transaction as its own. A command that
+   * throws or is refused by a participant undoes only itself.
+   */
+  readonly withinHostTransaction?: boolean;
 }
 
 export const SQLITE_KERNEL_SCHEMA_VERSION = 1;
@@ -90,17 +167,27 @@ export class SqliteKernelConfigurationError extends Error {
   }
 }
 
-const SCHEMA = `
+const META_SCHEMA = `
 CREATE TABLE IF NOT EXISTS monument_meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+`;
+const TURN_DEDUP_SCHEMA = `
 CREATE TABLE IF NOT EXISTS monument_turn_dedup (
   dedup_key TEXT PRIMARY KEY,
   value TEXT,
   created_at INTEGER NOT NULL,
   owner_json TEXT
 );
+CREATE TABLE IF NOT EXISTS monument_turn_dedup_expired (
+  dedup_key TEXT PRIMARY KEY,
+  expired_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS monument_turn_dedup_expired_at
+  ON monument_turn_dedup_expired (expired_at);
+`;
+const TURN_BOUNDARY_SCHEMA = `
 CREATE TABLE IF NOT EXISTS monument_turn_boundaries (
   boundary_id TEXT PRIMARY KEY,
   thread_id TEXT NOT NULL,
@@ -121,6 +208,8 @@ CREATE TABLE IF NOT EXISTS monument_turn_terminals (
   provider_turn_id TEXT NOT NULL,
   PRIMARY KEY (thread_id, provider_turn_id)
 );
+`;
+const REQUEST_KEYS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS monument_request_keys (
   caller_session_id TEXT NOT NULL,
   tool TEXT NOT NULL,
@@ -134,6 +223,78 @@ CREATE TABLE IF NOT EXISTS monument_request_keys (
 CREATE INDEX IF NOT EXISTS monument_request_keys_caller
   ON monument_request_keys (caller_session_id, created_at);
 `;
+
+/** The tables an area uses: the kernel's own, or the host's bound ones. */
+interface ResolvedTables {
+  readonly turnDedup:
+    | (SqliteTurnDedupTables & { readonly owned: boolean })
+    | 'unused';
+  readonly requestKeys:
+    | (SqliteRequestKeyTable & { readonly owned: boolean })
+    | 'unused';
+  readonly turnBoundary: 'owned' | 'unused';
+}
+
+const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function identifier(name: string): string {
+  // Names are spliced into SQL, so only plain identifiers are accepted.
+  if (!IDENTIFIER.test(name))
+    throw new TypeError(`Not a plain SQL identifier: ${name}`);
+  return name;
+}
+
+/** `owner_json` fields the kernel writes itself; the owner id may not use one. */
+const RESERVED_OWNER_FIELDS = new Set([
+  'pid',
+  'identityKind',
+  'birth',
+  'invocation',
+]);
+
+function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
+  const dedup = tables.turnDedup;
+  const keys = tables.requestKeys;
+  if (
+    dedup &&
+    dedup !== 'unused' &&
+    RESERVED_OWNER_FIELDS.has(dedup.ownerIdField)
+  )
+    throw new TypeError(`ownerIdField cannot be ${dedup.ownerIdField}.`);
+  return {
+    turnDedup:
+      dedup === 'unused'
+        ? 'unused'
+        : dedup
+          ? {
+              ...dedup,
+              table: identifier(dedup.table),
+              tombstoneTable: identifier(dedup.tombstoneTable),
+              owned: false,
+            }
+          : {
+              table: 'monument_turn_dedup',
+              tombstoneTable: 'monument_turn_dedup_expired',
+              ownerIdField: 'id',
+              owned: true,
+            },
+    requestKeys:
+      keys === 'unused'
+        ? 'unused'
+        : keys
+          ? {
+              table: identifier(keys.table),
+              resultColumn: identifier(keys.resultColumn),
+              owned: false,
+            }
+          : {
+              table: 'monument_request_keys',
+              resultColumn: 'result',
+              owned: true,
+            },
+    turnBoundary: tables.turnBoundary ?? 'owned',
+  };
+}
 
 function isContention(error: unknown): boolean {
   const record = error as { errcode?: unknown; message?: unknown } | null;
@@ -189,6 +350,18 @@ function configureConnection(
   return { journalMode, synchronous: 'FULL', busyTimeoutMs };
 }
 
+/** What a connection the host configured is running with; nothing is changed. */
+function observeConnection(db: SqliteKernelDatabase): SqliteKernelPragmas {
+  const synchronous = ['OFF', 'NORMAL', 'FULL', 'EXTRA'][
+    Number(pragmaValue(db, 'synchronous'))
+  ] as SqliteKernelPragmas['synchronous'] | undefined;
+  return {
+    journalMode: String(pragmaValue(db, 'journal_mode') ?? 'unknown'),
+    synchronous: synchronous ?? 'unknown',
+    busyTimeoutMs: Number(pragmaValue(db, 'busy_timeout')),
+  };
+}
+
 function inTransaction<T>(
   db: SqliteKernelDatabase,
   body: () => T,
@@ -211,9 +384,89 @@ function inTransaction<T>(
   return result;
 }
 
-function migrate(db: SqliteKernelDatabase): void {
+/** The columns a bound table must have, checked once when the adapter opens. */
+function requireColumns(
+  db: SqliteKernelDatabase,
+  table: string,
+  columns: readonly string[],
+): void {
+  const present = new Set(
+    (
+      db.prepare(`PRAGMA table_info(${table})`).all() as Array<{
+        name?: string;
+      }>
+    ).map((row) => row.name),
+  );
+  const missing = columns.filter((column) => !present.has(column));
+  if (missing.length > 0)
+    throw new SqliteKernelConfigurationError(
+      present.size === 0
+        ? `bound table ${table} does not exist.`
+        : `bound table ${table} has no column ${missing.join(', ')}.`,
+    );
+}
+
+/** `inTransaction` for a host that already holds a transaction. */
+function inSavepoint<T>(
+  db: SqliteKernelDatabase,
+  body: () => T,
+  keep: (result: T) => boolean,
+): T {
+  db.exec('SAVEPOINT monument_command');
+  try {
+    const result = body();
+    if (!keep(result)) db.exec('ROLLBACK TO monument_command');
+    db.exec('RELEASE monument_command');
+    return result;
+  } catch (error) {
+    try {
+      db.exec('ROLLBACK TO monument_command');
+      db.exec('RELEASE monument_command');
+    } catch {
+      // The host's transaction is gone; nothing is left to undo.
+    }
+    throw error;
+  }
+}
+
+function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
   inTransaction(db, () => {
-    db.exec(SCHEMA);
+    // Bound tables are the host's: checked, never created or altered.
+    if (tables.turnDedup !== 'unused' && !tables.turnDedup.owned) {
+      requireColumns(db, tables.turnDedup.table, [
+        'dedup_key',
+        'value',
+        'created_at',
+        'owner_json',
+      ]);
+      requireColumns(db, tables.turnDedup.tombstoneTable, [
+        'dedup_key',
+        'expired_at',
+      ]);
+    }
+    if (tables.requestKeys !== 'unused' && !tables.requestKeys.owned)
+      requireColumns(db, tables.requestKeys.table, [
+        'caller_session_id',
+        'tool',
+        'request_key',
+        'digest',
+        'decision',
+        'created_at',
+        tables.requestKeys.resultColumn,
+      ]);
+    const owned = [
+      tables.turnDedup !== 'unused' && tables.turnDedup.owned
+        ? TURN_DEDUP_SCHEMA
+        : '',
+      tables.turnBoundary === 'owned' ? TURN_BOUNDARY_SCHEMA : '',
+      tables.requestKeys !== 'unused' && tables.requestKeys.owned
+        ? REQUEST_KEYS_SCHEMA
+        : '',
+    ].join('');
+    // With nothing of its own to version, the kernel leaves no table behind.
+    if (!owned) return;
+    db.exec(META_SCHEMA);
+    db.exec(owned);
     const row = db
       .prepare("SELECT value FROM monument_meta WHERE key = 'schema_version'")
       .get() as { value: string } | undefined;
@@ -247,30 +500,56 @@ function parseInvocation(raw: unknown): TurnClaimInvocation | undefined {
     : undefined;
 }
 
-function decodeDedup(row: {
-  dedup_key: string;
-  value: string | null;
-  created_at: number;
-  owner_json: string | null;
-}): TurnDedupRecord {
-  if (row.owner_json === null)
-    return { key: row.dedup_key, value: row.value, createdAt: row.created_at };
+/** Reads the owner out of `owner_json`; every refusal is one error. */
+function decodeDedupOwner(
+  ownerJson: string,
+  binding: SqliteTurnDedupTables,
+): { readonly owner: OwnerIdentity; readonly recorded: unknown } {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(row.owner_json);
+    parsed = JSON.parse(ownerJson);
   } catch {
-    throw new Error('Invalid monument turn dedup owner_json.');
+    throw new Error(
+      binding.ownerErrorMessage ?? 'Invalid monument turn dedup owner_json.',
+    );
   }
-  const invocation = parseInvocation(
-    (parsed as { invocation?: unknown } | null)?.invocation,
-  );
-  return {
-    key: row.dedup_key,
-    value: row.value,
-    createdAt: row.created_at,
-    owner: parseOwnerIdentity(parsed),
-    ...(invocation ? { invocation } : {}),
+  try {
+    const fields = (parsed ?? {}) as Record<string, unknown>;
+    return {
+      owner: parseOwnerIdentity({
+        ...fields,
+        id: fields[binding.ownerIdField],
+      }),
+      recorded: fields.invocation,
+    };
+  } catch (error) {
+    if (binding.ownerErrorMessage) throw new Error(binding.ownerErrorMessage);
+    throw error;
+  }
+}
+
+function decodeDedup(
+  row: Record<string, unknown>,
+  binding: SqliteTurnDedupTables,
+): TurnDedupRecord {
+  const key = String(row.dedup_key);
+  const base = {
+    key,
+    value: typeof row.value === 'string' ? row.value : null,
+    createdAt: Number(row.created_at),
   };
+  const legacyUntracked = (binding.legacyUntrackedKeyPrefixes ?? []).some(
+    (prefix) => key.startsWith(prefix),
+  );
+  if (typeof row.owner_json !== 'string')
+    return { ...base, ...(legacyUntracked ? { invocation: 'untracked' } : {}) };
+  const { owner, recorded } = decodeDedupOwner(row.owner_json, binding);
+  // An unrecognised value reads as absent, which a dead owner never reclaims;
+  // only a row with no record at all can fall back to `untracked`.
+  const invocation =
+    parseInvocation(recorded) ??
+    (legacyUntracked && recorded === undefined ? 'untracked' : undefined);
+  return { ...base, owner, ...(invocation ? { invocation } : {}) };
 }
 
 /**
@@ -278,10 +557,15 @@ function decodeDedup(row: {
  * describes (station#3579): a writer that replaces the owner without it
  * drops it, and the row then reads as unknown, never as a stale `pending`.
  */
-function encodeDedupOwner(record: TurnDedupRecord): string | null {
+function encodeDedupOwner(
+  record: TurnDedupRecord,
+  binding: SqliteTurnDedupTables,
+): string | null {
   if (!record.owner) return null;
+  const { id, ...rest } = ownerFields(record.owner);
   return JSON.stringify({
-    ...ownerFields(record.owner),
+    ...rest,
+    [binding.ownerIdField]: id,
     ...(record.invocation ? { invocation: record.invocation } : {}),
   });
 }
@@ -326,40 +610,54 @@ function decodeRequestKey(row: Record<string, unknown>): RequestKeyRecord {
 const BOUNDARY_COLUMNS =
   'boundary_id, thread_id, state, purpose, provider_turn_id, owner_json, created_at, updated_at';
 
-function sqliteTransaction(db: SqliteKernelDatabase): KernelTransaction {
+function sqliteTransaction(
+  db: SqliteKernelDatabase,
+  tables: ResolvedTables,
+): KernelTransaction {
   const one = (sql: string, ...values: Array<string | number | null>) =>
     db.prepare(sql).get(...values) as Record<string, unknown> | undefined;
   const all = (sql: string, ...values: Array<string | number | null>) =>
     db.prepare(sql).all(...values) as Array<Record<string, unknown>>;
   const run = (sql: string, ...values: Array<string | number | null>) =>
-    Number(db.prepare(sql).run(...values).changes);
+    Number(
+      (db.prepare(sql).run(...values) as { changes: number | bigint }).changes,
+    );
+  // An unused area is never reached: `executeSync` refuses its commands.
+  const dedup = tables.turnDedup as Exclude<
+    ResolvedTables['turnDedup'],
+    'unused'
+  >;
+  const keys = tables.requestKeys as Exclude<
+    ResolvedTables['requestKeys'],
+    'unused'
+  >;
+  const result = keys.resultColumn;
+
   const count = (sql: string, ...values: Array<string | number | null>) =>
     Number((one(sql, ...values) as { total: number }).total);
   return {
     turnDedup: {
       get: (key) => {
         const row = one(
-          'SELECT dedup_key, value, created_at, owner_json FROM monument_turn_dedup WHERE dedup_key = ?',
+          `SELECT dedup_key, value, created_at, owner_json FROM ${dedup.table} WHERE dedup_key = ?`,
           key,
         );
-        return row
-          ? decodeDedup(row as Parameters<typeof decodeDedup>[0])
-          : undefined;
+        return row ? decodeDedup(row, dedup) : undefined;
       },
       put: (record) => {
         run(
-          `INSERT INTO monument_turn_dedup (dedup_key, value, created_at, owner_json)
+          `INSERT INTO ${dedup.table} (dedup_key, value, created_at, owner_json)
            VALUES (?, ?, ?, ?)
            ON CONFLICT(dedup_key) DO UPDATE SET value = excluded.value,
              created_at = excluded.created_at, owner_json = excluded.owner_json`,
           record.key,
           record.value,
           record.createdAt,
-          encodeDedupOwner(record),
+          encodeDedupOwner(record, dedup),
         );
       },
       delete: (key) => {
-        run('DELETE FROM monument_turn_dedup WHERE dedup_key = ?', key);
+        run(`DELETE FROM ${dedup.table} WHERE dedup_key = ?`, key);
       },
       // Compared as bytes in the database's own encoding, measured by SQLite:
       // an exact prefix match with no wildcard semantics, unaffected by NUL
@@ -367,19 +665,45 @@ function sqliteTransaction(db: SqliteKernelDatabase): KernelTransaction {
       // host database that stores UTF-16.
       deletePrefix: (prefix) =>
         run(
-          'DELETE FROM monument_turn_dedup WHERE substr(CAST(dedup_key AS BLOB), 1, length(CAST(?1 AS BLOB))) = CAST(?1 AS BLOB)',
+          `DELETE FROM ${dedup.table} WHERE substr(CAST(dedup_key AS BLOB), 1, length(CAST(?1 AS BLOB))) = CAST(?1 AS BLOB)`,
+          prefix,
+        ) +
+        run(
+          `DELETE FROM ${dedup.tombstoneTable} WHERE substr(CAST(dedup_key AS BLOB), 1, length(CAST(?1 AS BLOB))) = CAST(?1 AS BLOB)`,
           prefix,
         ),
-      pruneResolved: (maxEntries) => {
+      pruneResolved: (maxEntries, now) => {
+        // Both statements pick the same overflow: nothing writes the table
+        // between them inside this transaction, and the order is total.
+        const overflow = `SELECT dedup_key FROM ${dedup.table}
+          WHERE value IS NOT NULL
+          ORDER BY created_at ASC, dedup_key ASC
+          LIMIT MAX(0, (SELECT count(*) FROM ${dedup.table}) - ?)`;
         run(
-          `DELETE FROM monument_turn_dedup
-            WHERE dedup_key IN (
-              SELECT dedup_key FROM monument_turn_dedup
-               WHERE value IS NOT NULL
-               ORDER BY created_at ASC, dedup_key ASC
-               LIMIT MAX(0, (SELECT count(*) FROM monument_turn_dedup) - ?)
-            )`,
+          `INSERT OR IGNORE INTO ${dedup.tombstoneTable} (dedup_key, expired_at)
+           SELECT dedup_key, ? FROM (${overflow})`,
+          now,
           maxEntries,
+        );
+        run(
+          `DELETE FROM ${dedup.table} WHERE dedup_key IN (${overflow})`,
+          maxEntries,
+        );
+      },
+      expiredAt: (key) => {
+        const row = one(
+          `SELECT expired_at FROM ${dedup.tombstoneTable} WHERE dedup_key = ?`,
+          key,
+        );
+        return row ? Number(row.expired_at) : undefined;
+      },
+      deleteTombstonesBefore: (keyPrefix, cutoff) => {
+        run(
+          `DELETE FROM ${dedup.tombstoneTable}
+            WHERE expired_at < ?2
+              AND substr(CAST(dedup_key AS BLOB), 1, length(CAST(?1 AS BLOB))) = CAST(?1 AS BLOB)`,
+          keyPrefix,
+          cutoff,
         );
       },
     },
@@ -450,8 +774,8 @@ function sqliteTransaction(db: SqliteKernelDatabase): KernelTransaction {
     requestKeys: {
       get: (id) => {
         const row = one(
-          `SELECT caller_session_id, tool, request_key, digest, decision, result, created_at
-             FROM monument_request_keys
+          `SELECT caller_session_id, tool, request_key, digest, decision, ${result} AS result, created_at
+             FROM ${keys.table}
             WHERE caller_session_id = ? AND tool = ? AND request_key = ?`,
           id.callerSessionId,
           id.tool,
@@ -462,12 +786,12 @@ function sqliteTransaction(db: SqliteKernelDatabase): KernelTransaction {
       // An upsert keeps the row's rowid, which is its insertion order.
       put: (record) => {
         run(
-          `INSERT INTO monument_request_keys
-             (caller_session_id, tool, request_key, digest, decision, result, created_at)
+          `INSERT INTO ${keys.table}
+             (caller_session_id, tool, request_key, digest, decision, ${result}, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(caller_session_id, tool, request_key) DO UPDATE SET
              digest = excluded.digest, decision = excluded.decision,
-             result = excluded.result, created_at = excluded.created_at`,
+             ${result} = excluded.${result}, created_at = excluded.created_at`,
           record.id.callerSessionId,
           record.id.tool,
           record.id.key,
@@ -479,32 +803,41 @@ function sqliteTransaction(db: SqliteKernelDatabase): KernelTransaction {
       },
       delete: (id) => {
         run(
-          'DELETE FROM monument_request_keys WHERE caller_session_id = ? AND tool = ? AND request_key = ?',
+          `DELETE FROM ${keys.table} WHERE caller_session_id = ? AND tool = ? AND request_key = ?`,
           id.callerSessionId,
           id.tool,
           id.key,
         );
       },
-      deleteCreatedBefore: (cutoff) => {
-        run('DELETE FROM monument_request_keys WHERE created_at < ?', cutoff);
+      deleteCompletedCreatedBefore: (cutoff) => {
+        run(
+          `DELETE FROM ${keys.table} WHERE created_at < ? AND ${result} IS NOT NULL`,
+          cutoff,
+        );
       },
-      countCaller: (caller) =>
+      countCaller: (caller, countedSince) =>
         count(
-          'SELECT COUNT(*) AS total FROM monument_request_keys WHERE caller_session_id = ?',
+          `SELECT COUNT(*) AS total FROM ${keys.table}
+            WHERE caller_session_id = ? AND (${result} IS NOT NULL OR created_at >= ?)`,
           caller,
+          countedSince,
         ),
       countCallerCompleted: (caller) =>
         count(
-          'SELECT COUNT(*) AS total FROM monument_request_keys WHERE caller_session_id = ? AND result IS NOT NULL',
+          `SELECT COUNT(*) AS total FROM ${keys.table} WHERE caller_session_id = ? AND ${result} IS NOT NULL`,
           caller,
         ),
-      countAll: () =>
-        count('SELECT COUNT(*) AS total FROM monument_request_keys'),
+      countAll: (countedSince) =>
+        count(
+          `SELECT COUNT(*) AS total FROM ${keys.table}
+            WHERE ${result} IS NOT NULL OR created_at >= ?`,
+          countedSince,
+        ),
       evictOldestCompleted: (caller, limit) => {
         run(
-          `DELETE FROM monument_request_keys WHERE rowid IN (
-             SELECT rowid FROM monument_request_keys
-              WHERE caller_session_id = ? AND result IS NOT NULL
+          `DELETE FROM ${keys.table} WHERE rowid IN (
+             SELECT rowid FROM ${keys.table}
+              WHERE caller_session_id = ? AND ${result} IS NOT NULL
               ORDER BY created_at ASC, rowid ASC LIMIT ?)`,
           caller,
           limit,
@@ -523,18 +856,22 @@ export function openSqliteKernelStorage(
   const db: SqliteKernelDatabase =
     options.database ?? new DatabaseSync(options.path as string);
   const participants = options.participants ?? [];
+  const tables = resolveTables(options.tables);
   let pragmas: SqliteKernelPragmas;
   try {
-    pragmas = configureConnection(
-      db,
-      options.busyTimeoutMs ?? DEFAULT_BUSY_TIMEOUT_MS,
-    );
-    migrate(db);
+    pragmas =
+      owned || options.configureConnection
+        ? configureConnection(
+            db,
+            options.busyTimeoutMs ?? DEFAULT_BUSY_TIMEOUT_MS,
+          )
+        : observeConnection(db);
+    migrate(db, tables);
   } catch (error) {
     if (owned) db.close?.();
     throw error;
   }
-  const tx = sqliteTransaction(db);
+  const tx = sqliteTransaction(db, tables);
   // Read-only commands run in a deferred transaction, so under WAL they are
   // served from a snapshot while another connection holds the write lock.
   // Not when a participant observes reads: a host write inside a deferred
@@ -548,12 +885,29 @@ export function openSqliteKernelStorage(
   const executeSync = <C extends KernelCommand>(
     command: C,
     context: KernelContext,
+    executeOptions: SqliteExecuteOptions = {},
   ): KernelResult<C> => {
     if (closed) throw new KernelStorageClosedError();
-    if (db.isTransaction)
-      throw new Error(
-        'monument commands cannot run inside a transaction the host already holds.',
+    const area = command.type.slice(0, command.type.indexOf('.')) as
+      | 'turnDedup'
+      | 'turnBoundary'
+      | 'requestKeys';
+    if (tables[area] === 'unused')
+      throw new SqliteKernelConfigurationError(
+        `${command.type}: this storage keeps no ${area} tables.`,
       );
+    if (db.isTransaction) {
+      if (!executeOptions.withinHostTransaction)
+        throw new Error(
+          'monument commands cannot run inside a transaction the host already holds.',
+        );
+      return inSavepoint(
+        db,
+        () => runKernelTransactionStep(command, context, tx, participants, db),
+        // A refusal keeps nothing, not even an earlier participant's admission.
+        (result) => !isParticipantRefusal(result),
+      );
+    }
     return inTransaction(
       db,
       () => runKernelTransactionStep(command, context, tx, participants, db),

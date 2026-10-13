@@ -33,12 +33,20 @@ export type TurnDedupClaimResult =
   | { readonly kind: 'resolved'; readonly value: string }
   | { readonly kind: 'contended' }
   /** The dead owner may have started the effect. Never replay it. */
-  | { readonly kind: 'indeterminate' };
+  | { readonly kind: 'indeterminate' }
+  /**
+   * The key's resolved row was evicted by retention. Its effect ran and the
+   * result can no longer be replayed. The key is never claimable again until
+   * its tombstone is forgotten.
+   */
+  | { readonly kind: 'expired' };
 
 export interface TurnDedupBeginInvocationCommand {
   readonly type: 'turnDedup.beginInvocation';
   readonly key: string;
   readonly ownerId: string;
+  /** Stamps any tombstone the write's retention leaves. */
+  readonly now: number;
 }
 export type TurnDedupBeginInvocationResult =
   | { readonly kind: 'applied' }
@@ -50,11 +58,15 @@ export interface TurnDedupResolveCommand {
   readonly key: string;
   readonly ownerId: string;
   readonly value: string;
+  /** Stamps any tombstone the write's retention leaves. */
+  readonly now: number;
 }
 export interface TurnDedupReleaseCommand {
   readonly type: 'turnDedup.release';
   readonly key: string;
   readonly ownerId: string;
+  /** Stamps any tombstone the write's retention leaves. */
+  readonly now: number;
 }
 export type TurnDedupSettleResult =
   | { readonly kind: 'applied' }
@@ -66,15 +78,18 @@ export interface TurnDedupReadCommand {
 }
 export type TurnDedupReadResult =
   | { readonly kind: 'found'; readonly record: TurnDedupRecord }
+  /** The resolved row was evicted; only the tombstone is left. */
+  | { readonly kind: 'expired'; readonly expiredAt: number }
   | { readonly kind: 'absent' };
 
 export interface TurnDedupForgetPrefixCommand {
   readonly type: 'turnDedup.forgetPrefix';
-  /** Exact string prefix; no wildcard semantics. */
+  /** Exact string prefix; no wildcard semantics. Tombstones go with the rows. */
   readonly prefix: string;
 }
 export type TurnDedupForgetPrefixResult = {
   readonly kind: 'applied';
+  /** Rows and tombstones forgotten. */
   readonly removed: number;
 };
 

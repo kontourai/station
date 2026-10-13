@@ -20,7 +20,7 @@ takes no model dependency.
 
 | Machine | Durable record | Rule |
 | --- | --- | --- |
-| Turn dedup | one claim per key, with its owner and invocation state | A dead owner's claim is reclaimed only when that owner provably never began its effect (`pending` or `untracked`). `begun` and unknown answer `indeterminate`, and the turn is never sent again. |
+| Turn dedup | one claim per key, with its owner and invocation state | A dead owner's claim is reclaimed only when that owner provably never began its effect (`pending` or `untracked`). `begun` and unknown answer `indeterminate`, and the turn is never sent again. A key whose resolved row retention evicted answers `expired`: the effect ran, and the key is never claimed afresh. |
 | Turn boundary | one row per provider invocation | `prepared` → `invoking` → `accepted` or `indeterminate`. After a crash, a dead owner's `prepared` row is removed, an `invoking` row becomes `indeterminate`, and both `accepted` and `indeterminate` rows are reported until their owner retires them. |
 | Request keys | one row per caller, tool and key, with a digest | A reused key with a different digest is a conflict. A stored attempt without a result is never treated as new. |
 | Owner liveness | none | There is one three-state rule: `dead`, `live` or `unknown`. A pid whose birth differs from the recorded one is `dead`, and `unknown` never frees a claim. Reconcile takes its verdicts before the transaction, one probe per process, and applies each only to a row that has not changed since. |
@@ -82,13 +82,20 @@ vite or vitest configs are accepted limits, left to review.
 
 - **Turn dedup:** rows past `turnDedupMaxEntries` are evicted oldest first,
   among resolved rows only. An unresolved claim is never evicted.
-  A resolve retried after its row was evicted answers `stale`, which a caller
-  cannot tell apart from a lost claim; an exact retry of a stored row answers
-  `applied`.
-- **Request keys:** a claim first forgets rows older than `requestKeyTtlMs`.
-  This includes unresolved rows, which reproduces Station's current
-  behaviour; #3581 is fixing that in Station, and the kernel will adopt the
-  semantics that lane lands.
+  An evicted key leaves a tombstone, which holds only the key and the time
+  and does not count toward the cap. A claim of a tombstoned key answers
+  `expired`, and nothing writes. A rule in `turnDedupTombstoneRetention`
+  forgets the tombstones under a key prefix once they are older than its
+  `maxAgeMs`, on the next dedup write; a tombstone no rule covers lasts until
+  `turnDedup.forgetPrefix` forgets it with its rows. A resolve retried after
+  its row was evicted answers `stale`, which a caller cannot tell apart from
+  a lost claim; an exact retry of a stored row answers `applied`.
+- **Request keys:** a claim first forgets completed rows older than
+  `requestKeyTtlMs`. An unresolved row is kept however old: its attempt may
+  have had its effect, so a late retry must re-drive it with its recorded
+  decision, never claim the key afresh. Past the TTL it stops holding a quota
+  slot, so a claim that can never resolve does not lock its caller out of the
+  per-caller cap, or everyone out of the store-wide one.
 - **Terminal-turn facts:** these are the provider turn ids a thread has seen
   end, which make a later acceptance of the same id `ambiguous`. They are
   retired together with the thread's boundaries by
