@@ -43,9 +43,11 @@
  * kinds of record keyed by that interrupt's own token, so a refused interrupt
  * undoes only itself:
  *  - a single-use SUPPRESSION of the turn it stops. When that turn is not in
- *    the log yet, the suppression binds one-to-one, oldest first, to the next
- *    turn that appears there within the service's own pending-interrupt TTL,
- *    and then cancels that turn's result only if the turn did not complete
+ *    the log yet, the suppression waits as the service's own pending
+ *    interrupt does: the newest waiting one binds to the next turn that
+ *    appears there within the service's pending-interrupt TTL and the others
+ *    are dropped, and any recorded terminal drops those still waiting. A
+ *    bound one cancels that turn's result only if the turn did not complete
  *    normally (the interrupt stopped it). It is spent by its turn's
  *    settlement, whatever that cancels;
  *  - a LINK from each open row to the token. A row is cancelled while any link
@@ -208,6 +210,24 @@ CREATE INDEX IF NOT EXISTS delegation_result_cancel_links_token
  * version fenced as cancelled keeps that cancel as a link.
  */
 export function migrateDelegationResultSchema(db: SqliteDatabase): void {
+  // All or nothing, so a crash cannot leave a column added but not
+  // backfilled. A SAVEPOINT, so it also nests inside a caller's transaction.
+  db.exec('SAVEPOINT delegation_result_migration');
+  try {
+    migrateDelegationResultSchemaNow(db);
+    db.exec('RELEASE delegation_result_migration');
+  } catch (error) {
+    try {
+      db.exec('ROLLBACK TO delegation_result_migration');
+      db.exec('RELEASE delegation_result_migration');
+    } catch {
+      // The original failure is the one to report.
+    }
+    throw error;
+  }
+}
+
+function migrateDelegationResultSchemaNow(db: SqliteDatabase): void {
   db.exec(DELEGATION_RESULT_DELIVERY_SCHEMA);
   const columns = (table: string) =>
     new Set(
@@ -225,13 +245,18 @@ export function migrateDelegationResultSchema(db: SqliteDatabase): void {
     db.exec(
       'ALTER TABLE delegation_result_owners ADD COLUMN owner_principal_json TEXT',
     );
-  if (!owners.has('last_activity_at')) {
+  if (!owners.has('last_activity_at'))
     db.exec(
       `ALTER TABLE delegation_result_owners
        ADD COLUMN last_activity_at INTEGER NOT NULL DEFAULT 0`,
     );
-    db.exec('UPDATE delegation_result_owners SET last_activity_at = armed_at');
-  }
+  // Every run, not only when the column was just added: an owner left at the
+  // column default by an interrupted earlier migration would otherwise read
+  // as idle since 1970 and be pruned with its result undelivered.
+  db.exec(
+    `UPDATE delegation_result_owners SET last_activity_at = armed_at
+     WHERE last_activity_at = 0`,
+  );
   const deliveries = columns('delegation_result_deliveries');
   if (!deliveries.has('attempts'))
     db.exec(
@@ -243,11 +268,20 @@ export function migrateDelegationResultSchema(db: SqliteDatabase): void {
       'ALTER TABLE delegation_result_deliveries ADD COLUMN unconfirmed TEXT',
     );
   const suppressions = columns('delegation_result_suppressions');
-  if (!suppressions.has('from_unlogged'))
+  if (!suppressions.has('from_unlogged')) {
     db.exec(
       `ALTER TABLE delegation_result_suppressions
        ADD COLUMN from_unlogged INTEGER NOT NULL DEFAULT 0`,
     );
+    // An earlier version wrote an unlogged-turn suppression as a row with no
+    // turn yet. Left at the default it would read as one that NAMED its
+    // turn and cancel even a turn that completed normally. A bound unspent
+    // row cannot be told apart from an explicit one and stays explicit.
+    db.exec(
+      `UPDATE delegation_result_suppressions SET from_unlogged = 1
+       WHERE turn_id IS NULL AND spent = 0`,
+    );
+  }
   db.exec(
     `INSERT OR IGNORE INTO delegation_result_cancel_links
        (child_conversation_id, transition_key, token)
@@ -409,11 +443,26 @@ export function createSqliteDelegationResultStore(
     }
   };
   const unloggedSince = () => now() - DELEGATION_RESULT_UNLOGGED_TURN_WINDOW_MS;
+  /** Forget every unlogged-turn suppression no turn has taken yet. */
+  const dropUnbound = (childConversationId: string) =>
+    db
+      .prepare(
+        `DELETE FROM delegation_result_suppressions
+         WHERE child_conversation_id = ? AND spent = 0 AND turn_id IS NULL`,
+      )
+      .run(childConversationId);
   /**
    * A turn is now in the log: drop unlogged-turn suppressions past their
-   * window, then bind the OLDEST one still waiting to this turn, unless one
-   * is already bound to it. One-to-one, so a second held turn takes the next
-   * interrupt's suppression rather than none.
+   * window, then bind the NEWEST one still waiting to this turn and drop the
+   * rest, unless one is already bound to it. This mirrors the service, which
+   * keeps ONE pending interrupt per thread (a second replaces the first) and
+   * applies it to the thread's next `turn.started` only
+   * (`CooperativeStop.recordPendingTurnInterrupt` /
+   * `applyPendingTurnInterrupt`): however many interrupts preceded this turn,
+   * at most one stopped it, and none of them can reach a later turn.
+   * Collapsing here rather than when the second interrupt is recorded keeps
+   * the earlier suppression if the replacing interrupt is refused, as the
+   * service keeps its earlier pending cancel.
    */
   const bindUnlogged = (childConversationId: string, turnId: string) => {
     db.prepare(
@@ -433,13 +482,21 @@ export function createSqliteDelegationResultStore(
        WHERE token = (
          SELECT token FROM delegation_result_suppressions
          WHERE child_conversation_id = ? AND spent = 0 AND turn_id IS NULL
-         ORDER BY created_at ASC, rowid ASC LIMIT 1)`,
+         ORDER BY created_at DESC, rowid DESC LIMIT 1)`,
     ).run(turnId, childConversationId);
+    dropUnbound(childConversationId);
   };
   /**
    * Spend every unspent suppression bound to this turn, once, and return the
-   * tokens whose cancel applies: an explicit turn always; an unlogged-turn
-   * suppression only if the turn did not complete normally.
+   * tokens whose cancel applies. The two kinds deliberately differ for a turn
+   * that completed normally:
+   *  - a suppression for a turn the interrupt NAMED (it was in the log)
+   *    cancels the result whatever the outcome: the parent asked to stop that
+   *    turn, so even a completion that won the race is not pushed to it;
+   *  - an unlogged-turn suppression cancels only a turn that did not complete
+   *    normally. It was bound by position (the next turn the log showed), not
+   *    by identity, so a turn that completed normally is delivered: either
+   *    the interrupt lost the race or that turn was not the one it stopped.
    */
   const spend = (
     childConversationId: string,
@@ -615,6 +672,10 @@ export function createSqliteDelegationResultStore(
                WHERE child_conversation_id = ? AND transition_key = ?`,
             ).run(row.childConversationId, row.transitionKey);
         }
+        // Any terminal ends a pending interrupt the turns so far did not
+        // take, as the service drops its pending cancel on any terminal for
+        // the thread, so a stale cancel cannot reach a turn started later.
+        dropUnbound(row.childConversationId);
         this.touchOwner(row.childConversationId);
         return true;
       });
@@ -936,6 +997,63 @@ export interface DelegationResultDeliveryPorts {
   };
   /** Test seam for the bounded retry schedule. */
   readonly retryDelaysMs?: readonly number[];
+}
+
+/** The orchestration service's receipted dispatch, as the steer port uses it. */
+export type DelegationResultSteerDispatch = (
+  command: {
+    readonly type: 'steerTurn';
+    readonly threadId: string;
+    readonly input: string;
+    readonly clientInputId: string;
+  },
+  context: {
+    readonly userId: string;
+    readonly ownerAttribution: StartOwnerAttribution;
+    readonly principal?: PrincipalRef;
+    readonly clientOrigin: ClientOrigin;
+  },
+) => Promise<{ readonly result?: unknown }>;
+
+/**
+ * The steer port over the service's `steerTurn`, as the actor the delegating
+ * dispatch carried and with Station's internal origin. A throw may follow an
+ * accepted steer, so it is never read as "nothing was sent": it is
+ * `indeterminate`, and the steer receipt settles a later re-drive. Only the
+ * service's explicit refusals mean no effect.
+ */
+export function createDelegationResultSteerPort(
+  dispatch: DelegationResultSteerDispatch,
+): DelegationResultDeliveryPorts['steer'] {
+  return async ({ threadId, actor, text, clientInputId }) => {
+    let dispatched: { readonly result?: unknown };
+    try {
+      dispatched = await dispatch(
+        { type: 'steerTurn', threadId, input: text, clientInputId },
+        {
+          userId: actor.userId,
+          ownerAttribution: actor.attribution,
+          ...(actor.principal ? { principal: actor.principal } : {}),
+          clientOrigin: DELEGATION_RESULT_CLIENT_ORIGIN,
+        },
+      );
+    } catch {
+      return { outcome: 'indeterminate' };
+    }
+    const result = dispatched.result as
+      | { outcome?: string; turnId?: string }
+      | undefined;
+    switch (result?.outcome) {
+      case 'steered':
+        return { outcome: 'steered', turnId: result.turnId ?? '' };
+      case 'no-active-turn':
+      case 'unsupported-engine':
+      case 'concurrent-steer':
+        return { outcome: result.outcome };
+      default:
+        return { outcome: 'indeterminate' };
+    }
+  };
 }
 
 const FOLD_METHODS = new Set([
@@ -1414,9 +1532,11 @@ export class DelegationResultDelivery {
   }
 
   /**
-   * A timer's re-drive. It runs outside any caller, so it never throws: a
-   * store closed at shutdown, or any other failure, is logged and the row
-   * stays as it is for the next event or startup.
+   * A timer's re-drive. It runs outside any caller, so it never throws and
+   * the row stays as it is for the next event or startup. A store closed at
+   * shutdown (`node:sqlite` answers `ERR_INVALID_STATE`) is expected and
+   * logged as such; any other failure is a defect and is logged with its
+   * stack.
    */
   private redrivePending(row: DelegationResultRow): void {
     if (this.stopped) return;
@@ -1427,10 +1547,20 @@ export class DelegationResultDelivery {
       );
       if (current?.state === 'pending') this.drive(current, false);
     } catch (error) {
-      this.ports.logger.warn('delegation result re-check failed', {
-        deliveryId: row.deliveryId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      const storeClosed =
+        (error as { code?: unknown } | null)?.code === 'ERR_INVALID_STATE';
+      this.ports.logger.warn(
+        storeClosed
+          ? 'delegation result re-check skipped: the store is closed'
+          : 'delegation result re-check failed',
+        {
+          deliveryId: row.deliveryId,
+          error: error instanceof Error ? error.message : String(error),
+          ...(storeClosed
+            ? {}
+            : { stack: error instanceof Error ? error.stack : undefined }),
+        },
+      );
     }
   }
 

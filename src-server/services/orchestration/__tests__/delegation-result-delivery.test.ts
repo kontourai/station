@@ -10,6 +10,7 @@ import { PENDING_TURN_INTERRUPT_TTL_MS } from '@kontourai/station-contracts/orch
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
+  createDelegationResultSteerPort,
   createSqliteDelegationResultStore,
   DELEGATION_RESULT_DELIVERY_SCHEMA,
   DELEGATION_RESULT_UNLOGGED_TURN_WINDOW_MS,
@@ -201,7 +202,7 @@ describe('delegation result suppressions, fix round 3 (#3158)', () => {
     });
     const settle = (
       turnId: string,
-      outcome: 'completed' | 'aborted' = 'aborted',
+      outcome: 'completed' | 'aborted' | 'error' = 'aborted',
     ) => {
       store.record({
         childConversationId: 'child',
@@ -262,16 +263,53 @@ describe('delegation result suppressions, fix round 3 (#3158)', () => {
     expect(store.spendSuppressions('child', 'turn-b', 'aborted')).toEqual([]);
   });
 
-  test('two held turns each take one interrupt, oldest first', () => {
+  // Fix round 4: the service keeps ONE pending interrupt per thread (a second
+  // replaces the first) and applies it to the next `turn.started` only, so
+  // however many interrupts precede a turn, none reaches a later one.
+  test.each(['completed', 'error'] as const)(
+    'two interrupts before one turn starts stop only that turn: a later %s turn is delivered',
+    (outcome) => {
+      const { store, settle, clock } = bare();
+      store.beginCancel('child', 'token-1', undefined);
+      clock.now = 1;
+      store.beginCancel('child', 'token-2', undefined);
+      store.bindUnloggedSuppressions('child', 'turn-a');
+      store.bindUnloggedSuppressions('child', 'turn-a'); // re-read of the same turn
+      expect(settle('turn-a')).toBe('cancelled');
+      // A follow-up turn 30 s later, well inside the pending-interrupt TTL.
+      clock.now = 30_000;
+      store.bindUnloggedSuppressions('child', 'turn-b');
+      expect(settle('turn-b', outcome)).toBe('pending');
+    },
+  );
+
+  test('a terminal ends an interrupt no turn took: a later failed turn is delivered', () => {
+    const { store, settle, clock } = bare();
+    store.beginCancel('child', 'token', undefined);
+    // The child's Session ends with no turn in the log (no turn id).
+    store.record({
+      childConversationId: 'child',
+      transitionKey: 'settled:child:sequence-7',
+      transition: 'settled',
+      parentConversationId: 'parent',
+      childSessionId: 'child',
+      outcome: 'exited',
+      deliveryId: 'dr-sequence-7',
+      text: 'result',
+    });
+    clock.now = 30_000;
+    store.bindUnloggedSuppressions('child', 'turn-b');
+    expect(settle('turn-b', 'error')).toBe('pending');
+  });
+
+  test('a refused second interrupt leaves the first one to stop the held turn', () => {
     const { store, settle, clock } = bare();
     store.beginCancel('child', 'token-1', undefined);
     clock.now = 1;
     store.beginCancel('child', 'token-2', undefined);
+    store.refuseCancel('token-2');
     store.bindUnloggedSuppressions('child', 'turn-a');
-    store.bindUnloggedSuppressions('child', 'turn-a'); // re-read of the same turn
     expect(settle('turn-a')).toBe('cancelled');
-    store.bindUnloggedSuppressions('child', 'turn-b');
-    expect(settle('turn-b')).toBe('cancelled');
   });
 
   test('a duplicate interrupt of one held turn does not cancel the next normal turn', () => {
@@ -455,6 +493,183 @@ describe('delegation result schema migration (#3158)', () => {
   );
 });
 
+describe('delegation result schema migration, fix round 4 (#3158)', () => {
+  /** The tables exactly as f352640350 created them (owners only). */
+  const F352_OWNERS = `CREATE TABLE delegation_result_owners (
+    child_conversation_id TEXT PRIMARY KEY, task_id TEXT NOT NULL,
+    parent_conversation_id TEXT NOT NULL, owner_user_id TEXT NOT NULL,
+    child_agent TEXT, suppressed_turn_id TEXT, armed_at INTEGER NOT NULL)`;
+  const ARMED_AT = 100 * DAY;
+  const insertF352Owner = (db: DatabaseSync) =>
+    db.exec(
+      `INSERT INTO delegation_result_owners
+       (child_conversation_id, task_id, parent_conversation_id, owner_user_id, armed_at)
+       VALUES ('child', 'child', 'parent', 'human:local:owner', ${ARMED_AT})`,
+    );
+  const lastActivity = (db: DatabaseSync) =>
+    (
+      db
+        .prepare(
+          'SELECT last_activity_at FROM delegation_result_owners WHERE child_conversation_id = ?',
+        )
+        .get('child') as { last_activity_at: number }
+    ).last_activity_at;
+
+  test('a half-migrated owner (column added, never backfilled) is repaired and not pruned', () => {
+    const db = new DatabaseSync(':memory:');
+    db.exec(F352_OWNERS);
+    insertF352Owner(db);
+    // The state an earlier, non-transactional migration left on a crash.
+    db.exec(
+      `ALTER TABLE delegation_result_owners
+       ADD COLUMN last_activity_at INTEGER NOT NULL DEFAULT 0`,
+    );
+    expect(lastActivity(db)).toBe(0);
+    migrateDelegationResultSchema(db);
+    expect(lastActivity(db)).toBe(ARMED_AT);
+    const store = createSqliteDelegationResultStore(db, () => ARMED_AT + 1);
+    store.prune();
+    expect(store.owner('child')).toBeDefined();
+  });
+
+  test('a migration that fails part-way changes nothing, and the next run completes it', () => {
+    const db = new DatabaseSync(':memory:');
+    db.exec(F352_OWNERS);
+    insertF352Owner(db);
+    // Crash between adding the column and backfilling it.
+    const crashing = {
+      exec(sql: string) {
+        if (sql.includes('SET last_activity_at = armed_at'))
+          throw new Error('crash');
+        db.exec(sql);
+      },
+      prepare: (sql: string) => db.prepare(sql),
+    };
+    expect(() => migrateDelegationResultSchema(crashing)).toThrow('crash');
+    const columns = (
+      db.prepare('PRAGMA table_info(delegation_result_owners)').all() as {
+        name: string;
+      }[]
+    ).map((column) => column.name);
+    expect(columns).not.toContain('last_activity_at');
+    expect(columns).not.toContain('owner_attribution');
+    migrateDelegationResultSchema(db);
+    expect(lastActivity(db)).toBe(ARMED_AT);
+  });
+
+  test('the migration nests inside a caller transaction', () => {
+    const db = new DatabaseSync(':memory:');
+    db.exec(F352_OWNERS);
+    insertF352Owner(db);
+    db.exec('BEGIN');
+    migrateDelegationResultSchema(db);
+    db.exec('COMMIT');
+    expect(lastActivity(db)).toBe(ARMED_AT);
+  });
+
+  /** The tables exactly as 92dba6f9fd created them. */
+  const SCHEMA_92DBA = `CREATE TABLE IF NOT EXISTS delegation_result_owners (
+  child_conversation_id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  parent_conversation_id TEXT NOT NULL,
+  owner_user_id TEXT NOT NULL,
+  owner_attribution TEXT NOT NULL,
+  owner_principal_json TEXT,
+  child_agent TEXT,
+  armed_at INTEGER NOT NULL,
+  last_activity_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS delegation_result_owners_task
+  ON delegation_result_owners (task_id);
+CREATE TABLE IF NOT EXISTS delegation_result_deliveries (
+  child_conversation_id TEXT NOT NULL,
+  transition_key TEXT NOT NULL,
+  transition TEXT NOT NULL,
+  parent_conversation_id TEXT NOT NULL,
+  child_session_id TEXT NOT NULL,
+  child_turn_id TEXT,
+  outcome TEXT NOT NULL,
+  delivery_id TEXT NOT NULL,
+  text TEXT NOT NULL,
+  state TEXT NOT NULL,
+  fence TEXT,
+  decision TEXT,
+  unconfirmed TEXT,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  result_json TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (child_conversation_id, transition_key)
+);
+CREATE INDEX IF NOT EXISTS delegation_result_deliveries_open
+  ON delegation_result_deliveries (state, parent_conversation_id);
+CREATE TABLE IF NOT EXISTS delegation_result_suppressions (
+  token TEXT PRIMARY KEY,
+  child_conversation_id TEXT NOT NULL,
+  turn_id TEXT,
+  spent INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS delegation_result_suppressions_child
+  ON delegation_result_suppressions (child_conversation_id, spent);
+CREATE TABLE IF NOT EXISTS delegation_result_cancel_links (
+  child_conversation_id TEXT NOT NULL,
+  transition_key TEXT NOT NULL,
+  token TEXT NOT NULL,
+  PRIMARY KEY (child_conversation_id, transition_key, token)
+);
+CREATE INDEX IF NOT EXISTS delegation_result_cancel_links_token
+  ON delegation_result_cancel_links (token)`;
+
+  test('a 92dba6f9fd suppression still waiting for its turn migrates as unlogged; a named one stays explicit', () => {
+    const path = join(makeTempDir('delegation-92dba-'), 'orchestration.sqlite');
+    const now = Date.now();
+    const old = new DatabaseSync(path);
+    old.exec(SCHEMA_92DBA);
+    old.exec(
+      `INSERT INTO delegation_result_owners
+       (child_conversation_id, task_id, parent_conversation_id, owner_user_id,
+        owner_attribution, armed_at, last_activity_at)
+       VALUES ('child', 'child', 'parent', 'human:local:owner', 'verified-bound', ${now}, ${now})`,
+    );
+    // Recorded just now, inside the unlogged-turn window.
+    old.exec(
+      `INSERT INTO delegation_result_suppressions
+       (token, child_conversation_id, turn_id, spent, created_at)
+       VALUES ('waiting', 'child', NULL, 0, ${now}), ('named', 'child', 'turn-named', 0, ${now})`,
+    );
+    old.close();
+
+    const eventStore = new EventStore(path);
+    try {
+      const store = eventStore.delegationResultStore();
+      const record = (turnId: string) => {
+        store.record({
+          childConversationId: 'child',
+          transitionKey: `settled:child:${turnId}`,
+          transition: 'settled',
+          parentConversationId: 'parent',
+          childSessionId: 'child',
+          childTurnId: turnId,
+          outcome: 'completed',
+          deliveryId: `dr-${turnId}`,
+          text: 'result',
+        });
+        return store
+          .listForChild('child')
+          .find((row) => row.childTurnId === turnId)!.state;
+      };
+      // The waiting one binds to the next turn, which completed normally:
+      // an unlogged-turn suppression delivers it. The named one cancels.
+      store.bindUnloggedSuppressions('child', 'turn-next');
+      expect(record('turn-next')).toBe('pending');
+      expect(record('turn-named')).toBe('cancelled');
+    } finally {
+      eventStore.close();
+    }
+  });
+});
+
 describe('upgrading a home created at f352640350 (#3158)', () => {
   test('reconcile delivers its pending row as unattributed, and a new arm succeeds', async () => {
     const path = join(
@@ -605,8 +820,8 @@ describe('EventStore.listTurnEventsByMethods bound (#3158)', () => {
  * through the REAL `steerTurn` path (`OrchestrationService.dispatchWithReceipt`
  * over a real EventStore). Its receipt read runs before every refusal branch,
  * so a steer whose claim was recorded is answered from that receipt and is
- * never re-sent, and never followed by a start. The port maps the outcome as
- * the production steer port in `runtime-routes.ts` does.
+ * never re-sent, and never followed by a start. The steer port is the
+ * production one `runtime-routes.ts` wires.
  */
 describe('unconfirmed steer re-drive over the real steer receipt (#3158)', () => {
   const PARENT_THREAD = 'parent-thread';
@@ -665,7 +880,8 @@ describe('unconfirmed steer re-drive over the real steer receipt (#3158)', () =>
       currentSessionId: (conversationId) =>
         conversationId === 'parent' ? PARENT_THREAD : conversationId,
       coordinatorBusy: () => false,
-      sessionOwnerId: () => 'human:local:owner',
+      sessionOwnerId: (threadId) =>
+        world.service.sessionRecordedOwnerId(threadId),
       start: async ({ clientTurnId }) => {
         starts.push(clientTurnId);
         return {
@@ -682,35 +898,17 @@ describe('unconfirmed steer re-drive over the real steer receipt (#3158)', () =>
     });
   }
 
-  /** The production steer port's outcome mapping, over the real service. */
-  const realSteer =
-    (world: ReturnType<typeof open>): DelegationResultDeliveryPortsSteer =>
-    async ({ threadId, text, clientInputId }) => {
-      let dispatched: { result?: unknown };
-      try {
-        dispatched = await world.service.dispatchWithReceipt({
-          type: 'steerTurn',
-          threadId,
-          input: text,
-          clientInputId,
-        });
-      } catch {
-        return { outcome: 'indeterminate' };
-      }
-      const result = dispatched.result as
-        | { outcome?: string; turnId?: string }
-        | undefined;
-      switch (result?.outcome) {
-        case 'steered':
-          return { outcome: 'steered', turnId: result.turnId ?? '' };
-        case 'no-active-turn':
-        case 'unsupported-engine':
-        case 'concurrent-steer':
-          return { outcome: result.outcome };
-        default:
-          return { outcome: 'indeterminate' };
-      }
-    };
+  /**
+   * The production steer port (`createDelegationResultSteerPort`, the one
+   * `runtime-routes.ts` wires) over the real service, with the dispatch
+   * context it passes there.
+   */
+  const realSteer = (
+    world: ReturnType<typeof open>,
+  ): DelegationResultDeliveryPortsSteer =>
+    createDelegationResultSteerPort((command, context) =>
+      world.service.dispatchWithReceipt(command, context),
+    );
 
   async function steerLostThenRestart(options: {
     /** The engine took the steer before its answer was lost. */
@@ -725,6 +923,12 @@ describe('unconfirmed steer re-drive over the real steer receipt (#3158)', () =>
       taskId: 'child',
       parentConversationId: 'parent',
       actor: { userId: 'human:local:owner', attribution: 'verified-bound' },
+    });
+    // The parent's start record names its owner, as a real start writes it;
+    // the steer below runs as that owner and passes the service's read check.
+    first.append(PARENT_THREAD, 'session.started', {
+      sessionId: PARENT_THREAD,
+      metadata: { userId: 'human:local:owner' },
     });
     first.append(PARENT_THREAD, 'turn.started', { turnId: 'parent-turn-a' });
     const before: string[] = [];

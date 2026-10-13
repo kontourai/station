@@ -532,6 +532,7 @@ import {
   projectDelegationAttemptClaim,
 } from '../../services/orchestration/delegation-attempt-claim-store.js';
 import {
+  createDelegationResultSteerPort,
   DELEGATION_RESULT_CLIENT_ORIGIN,
   DelegationResultDelivery,
 } from '../../services/orchestration/delegation-result-delivery.js';
@@ -4380,42 +4381,12 @@ export function configureRuntimeRoutes(
         },
       ),
       steer: stationServerEntry(
-        async ({ threadId, actor, text, clientInputId }) => {
-          let dispatched: Awaited<
-            ReturnType<typeof context.orchestrationService.dispatchWithReceipt>
-          >;
-          try {
-            dispatched = await context.orchestrationService.dispatchWithReceipt(
-              { type: 'steerTurn', threadId, input: text, clientInputId },
-              {
-                userId: actor.userId,
-                ownerAttribution: actor.attribution,
-                ...(actor.principal ? { principal: actor.principal } : {}),
-                clientOrigin: origin,
-              },
-            );
-          } catch {
-            // A throw may follow an accepted steer: never read it as "nothing
-            // was sent". The steer receipt settles a later re-drive.
-            return { outcome: 'indeterminate' as const };
-          }
-          const result = dispatched.result as
-            | { outcome?: string; turnId?: string }
-            | undefined;
-          switch (result?.outcome) {
-            case 'steered':
-              return {
-                outcome: 'steered' as const,
-                turnId: result.turnId ?? '',
-              };
-            case 'no-active-turn':
-            case 'unsupported-engine':
-            case 'concurrent-steer':
-              return { outcome: result.outcome };
-            default:
-              return { outcome: 'indeterminate' as const };
-          }
-        },
+        createDelegationResultSteerPort((command, dispatchContext) =>
+          context.orchestrationService.dispatchWithReceipt(
+            command,
+            dispatchContext,
+          ),
+        ),
       ),
       subscribe: (listener) =>
         context.eventBus.subscribe((frame) => {
