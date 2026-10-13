@@ -16,9 +16,19 @@
 
     "packages/cli/esbuild.config.mjs",
 
-    "packages/cli/package.json",
+    "packages/cli/src/commands/lifecycle.ts",
 
-    "packages/cli/src/commands/lifecycle.ts"
+    "packages/cli/package.json#/name",
+
+    "packages/cli/package.json#/bin",
+
+    "packages/cli/package.json#/files",
+
+    "packages/cli/package.json#/scripts",
+
+    "packages/cli/package.json#/engines",
+
+    "packages/cli/package.json#/publishConfig"
   ],
 
   "checks": [
