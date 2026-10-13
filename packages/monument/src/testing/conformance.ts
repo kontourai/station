@@ -188,6 +188,26 @@ async function dedupRecord(session: Session, key: string) {
   return read.kind === 'found' ? read.record : undefined;
 }
 
+/** Claim a key and resolve it, as one finished turn. */
+async function settleDedup(
+  session: Session,
+  owner: OwnerIdentity,
+  key: string,
+  now: number,
+): Promise<void> {
+  assert.deepEqual(await session.run(claim(key, owner, now)), {
+    kind: 'claimed',
+    reclaimed: false,
+  });
+  await session.run({
+    type: 'turnDedup.resolve',
+    key,
+    ownerId: owner.id,
+    now,
+    value: `v-${key}`,
+  });
+}
+
 const durability: KernelConformanceCase[] = [
   {
     name: 'durability: a committed command survives reopen',
@@ -597,19 +617,8 @@ const turnDedup: KernelConformanceCase[] = [
         harness,
         async (session) => {
           const a = session.processes.spawn();
-          const settle = async (key: string, now: number) => {
-            assert.deepEqual(await session.run(claim(key, a, now)), {
-              kind: 'claimed',
-              reclaimed: false,
-            });
-            await session.run({
-              type: 'turnDedup.resolve',
-              key,
-              ownerId: a.id,
-              now,
-              value: `v-${key}`,
-            });
-          };
+          const settle = (key: string, now: number) =>
+            settleDedup(session, a, key, now);
           await settle('k1', 1);
           await settle('k2', 2);
           await settle('k3', 3);
@@ -676,16 +685,8 @@ const turnDedup: KernelConformanceCase[] = [
         harness,
         async (session) => {
           const a = session.processes.spawn();
-          const settle = async (key: string, now: number) => {
-            await session.run(claim(key, a, now));
-            await session.run({
-              type: 'turnDedup.resolve',
-              key,
-              ownerId: a.id,
-              now,
-              value: `v-${key}`,
-            });
-          };
+          const settle = (key: string, now: number) =>
+            settleDedup(session, a, key, now);
           // Both are evicted at 3 and 4 by the two later keys.
           await settle('chat:a', 1);
           await settle('thread:a', 2);
@@ -732,16 +733,8 @@ const turnDedup: KernelConformanceCase[] = [
         harness,
         async (session) => {
           const a = session.processes.spawn();
-          const settle = async (key: string, now: number) => {
-            await session.run(claim(key, a, now));
-            await session.run({
-              type: 'turnDedup.resolve',
-              key,
-              ownerId: a.id,
-              now,
-              value: 'v',
-            });
-          };
+          const settle = (key: string, now: number) =>
+            settleDedup(session, a, key, now);
           for (const [index, key] of ['a::1', 'b::1', 'a::2', 'b::2'].entries())
             await settle(key, index + 1);
           // a::1 and b::1 were evicted; a::2 and b::2 are rows.

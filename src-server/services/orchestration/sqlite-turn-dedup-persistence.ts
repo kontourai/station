@@ -54,10 +54,10 @@ export function turnDedupKey(threadId: string, clientTurnId: string): string {
 
 /**
  * The length-prefixed, unambiguous prefix identifying every dedup key for
- * `threadId` — see `turnDedupKey`'s doc comment. Exported for
- * `EventStore.deleteThread`'s exact-prefix cleanup.
+ * `threadId` — see `turnDedupKey`'s doc comment. `forgetThread`'s exact-prefix
+ * cleanup uses it.
  */
-export function turnDedupThreadPrefix(threadId: string): string {
+function turnDedupThreadPrefix(threadId: string): string {
   return `${threadId.length}:${threadId}::`;
 }
 const CHAT_KEY_PREFIX = 'chat:';

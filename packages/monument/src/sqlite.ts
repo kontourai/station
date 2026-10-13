@@ -476,51 +476,55 @@ function parseInvocation(raw: unknown): TurnClaimInvocation | undefined {
     : undefined;
 }
 
-interface DedupRow {
-  dedup_key: string;
-  value: string | null;
-  created_at: number;
-  owner_json: string | null;
+/** Reads the owner out of `owner_json`; every refusal is one error. */
+function decodeDedupOwner(
+  ownerJson: string,
+  binding: SqliteTurnDedupTables,
+): { readonly owner: OwnerIdentity; readonly recorded: unknown } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(ownerJson);
+  } catch {
+    throw new Error(
+      binding.ownerErrorMessage ?? 'Invalid monument turn dedup owner_json.',
+    );
+  }
+  try {
+    const fields = (parsed ?? {}) as Record<string, unknown>;
+    return {
+      owner: parseOwnerIdentity({
+        ...fields,
+        id: fields[binding.ownerIdField],
+      }),
+      recorded: fields.invocation,
+    };
+  } catch (error) {
+    if (binding.ownerErrorMessage) throw new Error(binding.ownerErrorMessage);
+    throw error;
+  }
 }
 
 function decodeDedup(
-  row: DedupRow,
+  row: Record<string, unknown>,
   binding: SqliteTurnDedupTables,
 ): TurnDedupRecord {
+  const key = String(row.dedup_key);
   const base = {
-    key: row.dedup_key,
-    value: row.value,
-    createdAt: row.created_at,
+    key,
+    value: typeof row.value === 'string' ? row.value : null,
+    createdAt: Number(row.created_at),
   };
   const legacyUntracked = (binding.legacyUntrackedKeyPrefixes ?? []).some(
-    (prefix) => row.dedup_key.startsWith(prefix),
+    (prefix) => key.startsWith(prefix),
   );
-  if (row.owner_json === null)
+  if (typeof row.owner_json !== 'string')
     return { ...base, ...(legacyUntracked ? { invocation: 'untracked' } : {}) };
-  let parsed: unknown;
-  let owner: OwnerIdentity;
-  try {
-    parsed = JSON.parse(row.owner_json);
-    owner = parseOwnerIdentity(
-      parsed !== null && typeof parsed === 'object'
-        ? {
-            ...parsed,
-            id: (parsed as Record<string, unknown>)[binding.ownerIdField],
-          }
-        : parsed,
-    );
-  } catch (error) {
-    if (binding.ownerErrorMessage) throw new Error(binding.ownerErrorMessage);
-    if (parsed === undefined)
-      throw new Error('Invalid monument turn dedup owner_json.');
-    throw error;
-  }
-  const record = (parsed as { invocation?: unknown }).invocation;
+  const { owner, recorded } = decodeDedupOwner(row.owner_json, binding);
   // An unrecognised value reads as absent, which a dead owner never reclaims;
   // only a row with no record at all can fall back to `untracked`.
   const invocation =
-    parseInvocation(record) ??
-    (legacyUntracked && record === undefined ? 'untracked' : undefined);
+    parseInvocation(recorded) ??
+    (legacyUntracked && recorded === undefined ? 'untracked' : undefined);
   return { ...base, owner, ...(invocation ? { invocation } : {}) };
 }
 
@@ -614,7 +618,7 @@ function sqliteTransaction(
           `SELECT dedup_key, value, created_at, owner_json FROM ${dedup.table} WHERE dedup_key = ?`,
           key,
         );
-        return row ? decodeDedup(row as unknown as DedupRow, dedup) : undefined;
+        return row ? decodeDedup(row, dedup) : undefined;
       },
       put: (record) => {
         run(

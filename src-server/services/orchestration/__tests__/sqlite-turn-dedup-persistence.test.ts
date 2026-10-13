@@ -1,8 +1,7 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../event-store.js';
 import {
   chatTurnDedupKey,
@@ -15,16 +14,12 @@ import {
  * real EventStore and its real tables.
  */
 describe('turn dedup over Station tables', () => {
-  const directories: string[] = [];
-  afterEach(() =>
-    directories
-      .splice(0)
-      .forEach((path) => rmSync(path, { recursive: true, force: true })),
-  );
+  const makeTempDir = trackTempDirs();
   function open() {
-    const directory = mkdtempSync(join(tmpdir(), 'station-dedup-seam-'));
-    directories.push(directory);
-    const file = join(directory, 'orchestration.sqlite');
+    const file = join(
+      makeTempDir('station-dedup-seam-'),
+      'orchestration.sqlite',
+    );
     return { store: new EventStore(file), file };
   }
   const rows = (file: string, sql: string, ...params: string[]) => {
