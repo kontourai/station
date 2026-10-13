@@ -605,7 +605,9 @@ test('conversation open accepts declared execution metadata and refuses wrong-ch
       const response = { ...data, execution };
       vi.stubGlobal(
         'fetch',
-        vi.fn().mockResolvedValue(Response.json({ success: true, data: response })),
+        vi
+          .fn()
+          .mockResolvedValue(Response.json({ success: true, data: response })),
       );
       await expect(
         resolveConversationOpen('conversation', 'https://station.example'),
@@ -616,7 +618,10 @@ test('conversation open accepts declared execution metadata and refuses wrong-ch
       { ...data.execution, agentId: 'codex-agent' },
       { ...data.execution, resumeCursor: 'private' },
       { ...data.execution, environment: { kind: 'peer' } },
-      { ...data.execution, environment: { kind: 'current', endpoint: 'private' } },
+      {
+        ...data.execution,
+        environment: { kind: 'current', endpoint: 'private' },
+      },
       { ...data.execution, environment: null },
       { ...data.execution, environment: [] },
       { ...data.execution, executionAgentId: 'invalid/agent' },

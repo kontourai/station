@@ -201,7 +201,9 @@ function validExecution(
     parseEngineId(execution.provider) !== undefined &&
     (execution.expectedDefinitionFingerprint === undefined ||
       (typeof execution.expectedDefinitionFingerprint === 'string' &&
-        /^sha256:[a-f0-9]{64}$/.test(execution.expectedDefinitionFingerprint))) &&
+        /^sha256:[a-f0-9]{64}$/.test(
+          execution.expectedDefinitionFingerprint,
+        ))) &&
     (execution.engineConnectionId === undefined ||
       parseEngineConnectionId(execution.engineConnectionId) !== undefined) &&
     (execution.model === undefined || boundedText(execution.model)) &&
