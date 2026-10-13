@@ -77,6 +77,8 @@ export interface SessionTurnBoundaryCoordinator {
     providerTurnId?: string;
     sessionTerminal: boolean;
     terminalCreatedAt: string;
+    /** Session terminals use their persisted sequence; turn terminals retain timestamp ordering. */
+    terminalEventId?: string;
   }): SessionTurnBoundaryTransition;
   hasPossibleEffect(threadId: string): boolean;
   active(): SessionTurnBoundaryRecord[];
@@ -844,6 +846,7 @@ export function createSessionTurnBoundaryAuthority(options: {
           event.method === 'session.exited' ||
           (event.method === 'runtime.error' && typeof turnId !== 'string'),
         terminalCreatedAt: event.createdAt,
+        terminalEventId: event.eventId,
       });
     },
     prepareProviderTurn,

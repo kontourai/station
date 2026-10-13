@@ -1,0 +1,25 @@
+{
+  "revision": "84a45d4da36ecf5f6134d4124c8266818f4efa56",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the #3644 round-1 delta against the SessionTurnBoundaryAuthority explanation: two caller-boundary tests now exercise a delayed reused-ID terminal through hasPossibleEffect reconciliation and a missing persisted session terminal through observe. Deleting only the turn-scoped timestamp clause produced a meaningful active:false versus active:true failure (1 failed, 16 passed); restoration passed all 45 focused tests. The production delta is only a comment explaining legacy timestamp ordering and a NULL terminal-sequence subquery. Existing sequence, NULL-fence, turn-generation and recovery API claims remain accurate; no prose change or broader runtime qualification is implied.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/__tests__/session-turn-boundary-sequence.test.ts","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Reread Receipt and Gate verdict semantics against the round-1 missing-terminal test. An applied boundary observation remains a no-op when its terminal is not persisted; it is not proof of settlement or a gate pass. The source change only explains this existing NULL-subquery behavior, with no receipt or governance API change.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reread the verification-lane scope definition. The added SQLite tests and executed clause-deletion failure establish their two named boundary contracts only. EventStore gains an explanatory comment, with no scheduling, telemetry, notification or generated-artifact contract change.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reread the Steer delivery uncertainty and indeterminate-wait paragraphs. The review round adds reconciliation and missing-terminal coverage plus a behavior-neutral SQL comment; it changes no steering receipts, canonical event publication or composer rendering. The existing explanation remains accurate.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reread the EventStore composition and completed behavioral-extraction dispositions. This round changes no ledger owner, schema or transaction direction; the retained boundary implementation only gains explanatory comments and direct persistence-path tests. No Monument extraction is claimed.","inputs":["docs/design/event-store-ledger-migration.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Reread worker composition and independent room-local sequence claims. The EventStore delta explains its existing boundary delete predicate and adds tests against a separate orchestration table; room envelopes, worker lifetime and cursor/retention behavior remain unchanged.","inputs":["docs/design/project-task-room-history.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Reread the SQLite composition route and immutable snapshot receipt identity. No revision receipt, attribution or scoped-reader implementation changes in this round; the only production delta is the session-boundary SQL comment. Existing receipt claims remain accurate.","inputs":["docs/design/revision-bound-evidence.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/shared-working-state.md","note":"Reread causal-parent/deferred-release and deterministic operation-order paragraphs. Boundary predicate coverage and the NULL-subquery comment do not change shared-working-state operations, authorization, persistence or causal ordering. The explanation needs no prose update.","inputs":["docs/design/shared-working-state.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reread the canonical EventStore versus operational event-log distinction and coverage limits. This round introduces no metric, usage fold, event observer or publication change; focused boundary assertion evidence does not upgrade provider-invoice or delivery qualification.","inputs":["docs/guides/monitoring.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reread configuration defaults and logging routes against the comment-only EventStore delta. No configuration field, default, attachment authorization or log persistence changes; the new tests pin private boundary behavior and add no setting or public config contract.","inputs":["docs/reference/config.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}
