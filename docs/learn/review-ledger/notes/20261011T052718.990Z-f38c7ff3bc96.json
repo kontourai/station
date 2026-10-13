@@ -1,0 +1,7 @@
+{
+  "revision": "1c759e496c031266871a13cad1dca60dd9198593",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"#463: MonitoringContext.tsx only dropped the unmeasured cost/totalCost fields from its AgentStats/MonitoringStats types; the module-map claims (chronological reconciliation, retained window, truncation flag) are unchanged and accurate.","inputs":["docs/architecture/module-map.md","src-ui/src/contexts/MonitoringContext.tsx"]}
+  ]
+}

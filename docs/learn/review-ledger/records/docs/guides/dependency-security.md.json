@@ -92,7 +92,11 @@
 
     "packages/shared/src/mcp-connection.ts",
 
-    "packages/shared/package.json"
+    "packages/shared/package.json",
+
+    "patches/js-yaml-3.15.2-argparse2-cli.patch",
+
+    "scripts/__tests__/js-yaml3-argparse2-compatibility.test.ts"
   ],
 
   "checks": [

@@ -3855,6 +3855,7 @@ export class StationRuntime {
       homeDir: this.configLoader.getProjectHomeDir(),
       appConfig: this.appConfig,
       version: packageJson.version,
+      buildProvenance: this.buildProvenanceSnapshot ?? null,
       logger: this.logger,
     });
     // A saved, current receipt remains consent after a restart. This read is

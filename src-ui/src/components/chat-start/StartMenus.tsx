@@ -5,7 +5,7 @@ import { useExecutionStationCatalog } from '../../hooks/useExecutionStationCatal
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import {
   type EffectiveModelSource,
-  modelSourceLabel,
+  modelResetSourceLabel,
 } from '../../utils/execution';
 import type {
   NewChatModelChoice,
@@ -123,7 +123,7 @@ export function StartAgentMenu({
       returnFocusTarget={anchor}
       initialFocusRef={searchRef}
       initialFocusPolicy="desktop"
-      overlayClassName="composer-popover-overlay composer-popover-overlay--start"
+      overlayClassName="composer-popover-overlay composer-popover-overlay--start start-menu__overlay"
       panelClassName="composer-popover-panel start-menu__panel"
     >
       <ResponsiveDialogHeader
@@ -267,7 +267,7 @@ export function StartProjectMenu({
       anchorRef={anchorRef}
       returnFocusTarget={anchor}
       initialFocusPolicy="desktop"
-      overlayClassName="composer-popover-overlay composer-popover-overlay--start"
+      overlayClassName="composer-popover-overlay composer-popover-overlay--start start-menu__overlay"
       panelClassName="composer-popover-panel start-menu__panel"
     >
       <ResponsiveDialogHeader
@@ -405,11 +405,7 @@ export function StartModelPicker({
             // The reset names where the default comes from, never the
             // current choice: with a Model chosen that is always the
             // override itself ("Use session override").
-            defaultSourceLabel={
-              (defaultModel?.source &&
-                modelSourceLabel(defaultModel.source).toLowerCase()) ||
-              'default model'
-            }
+            defaultSourceLabel={modelResetSourceLabel(defaultModel?.source)}
             runtimeOptions={choice?.providerOptions}
             // Choosing or resetting a Model finishes the picker, as it does
             // in a chat's composer; effort changes keep it open.
@@ -508,11 +504,10 @@ function StationScopedModelPicker(
           currentModel={props.choice?.modelId}
           currentExecutionAgentId={props.choice?.executionAgentId}
           defaultModel={props.defaultModel?.id ?? undefined}
-          defaultSourceLabel={
-            props.defaultModel?.source
-              ? modelSourceLabel(props.defaultModel.source).toLowerCase()
-              : 'Agent defaults'
-          }
+          defaultSourceLabel={modelResetSourceLabel(
+            props.defaultModel?.source,
+            'Agent defaults',
+          )}
           runtimeOptions={props.choice?.providerOptions}
           returnFocusTarget={props.anchor}
           catalogNotice={

@@ -108,6 +108,10 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
   Object.freeze(['npm', Object.freeze(['run', 'native-platform:ratchet'])]),
   Object.freeze([
     'npm',
+    Object.freeze(['run', 'monument-import-boundary:gate']),
+  ]),
+  Object.freeze([
+    'npm',
     Object.freeze(['run', 'agent-plugin:validators:gate']),
   ]),
   Object.freeze(['npm', Object.freeze(['run', 'settings:registry:gate'])]),

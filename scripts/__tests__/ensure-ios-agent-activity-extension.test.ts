@@ -41,6 +41,11 @@ targets:
 
 const makeTempDir = trackTempDirs();
 
+/** The app's declared iOS floor, read from the file that sets it. */
+const IOS_APP_MINIMUM = JSON.parse(
+  readFileSync('src-desktop/tauri.ios.conf.json', 'utf8'),
+).bundle.iOS.minimumSystemVersion;
+
 const committedSpec = 'src-desktop/gen/apple/project.yml';
 const committedXcodeProject =
   'src-desktop/gen/apple/station.xcodeproj/project.pbxproj';
@@ -336,7 +341,8 @@ describe('iOS agent-activity extension project spec', () => {
     expect(extension.type).toBe('app-extension');
     expect(extension.platform).toBe('iOS');
     // Where the app deploys, so an alert opens on every iOS the app runs on.
-    expect(extension.deploymentTarget).toBe('14.0');
+    expect(extension.deploymentTarget).toBe('16.4');
+    expect(extension.deploymentTarget).toBe(IOS_APP_MINIMUM);
     expect(extension.settings.base.STATION_APP_BUNDLE_IDENTIFIER).toBe(
       'io.kontourai.station.beta',
     );
@@ -455,6 +461,26 @@ describe('iOS agent-activity extension project spec', () => {
     expect(refused.status).toBe(1);
     expect(refused.stderr).toContain('--notification-service');
     expect(readFileSync(path, 'utf8')).toBe(written);
+  });
+
+  test("the committed Xcode project deploys at the app's iOS floor", () => {
+    // #3399: every declaration of the floor agrees with tauri.ios.conf.json.
+    expect(IOS_APP_MINIMUM).toBe('16.4');
+    // Failsafe keeps every scalar a string: `16.10` must not read as 16.1.
+    expect(
+      YAML.parse(readFileSync(committedSpec, 'utf8'), { schema: 'failsafe' })
+        .options.deploymentTarget.iOS,
+    ).toBe(IOS_APP_MINIMUM);
+    const targets = [
+      ...readFileSync(committedXcodeProject, 'utf8').matchAll(
+        /IPHONEOS_DEPLOYMENT_TARGET = "?([^";]+)"?;/g,
+      ),
+    ].map((match) => match[1]);
+    expect(targets.length).toBeGreaterThan(0);
+    expect(new Set(targets)).toEqual(new Set([IOS_APP_MINIMUM]));
+    expect(readFileSync('src-desktop/gen/apple/Podfile', 'utf8')).toContain(
+      `platform :ios, '${IOS_APP_MINIMUM}'`,
+    );
   });
 
   test('the committed project does not carry the extension until a build enables it', () => {

@@ -8,6 +8,7 @@
  */
 import { generateKeyPairSync, type KeyObject, sign } from 'node:crypto';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -16,7 +17,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { serviceUpdatePaths } from '@kontourai/station-shared/service-launcher-protocol';
+import {
+  parseServiceUpdateRequest,
+  serviceUpdatePaths,
+} from '@kontourai/station-shared/service-launcher-protocol';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -365,6 +369,95 @@ describe('GET /core-update on a launcher-run archive', () => {
   });
 });
 
+describe('a manifest older than a release this install already accepted (#187)', () => {
+  /** The mark exactly as install.sh and the Windows installer core write it. */
+  function acceptRelease(install: Install, text: string) {
+    // Owner-only, as the installers write it (a group- or world-readable
+    // mark is not trusted).
+    writeFileSync(
+      join(install.installRoot, '.station-release-accepted.json'),
+      text,
+      { mode: 0o600 },
+    );
+  }
+  const mark = (version: string) =>
+    `${JSON.stringify({ schemaVersion: 1, releaseChannel: 'preview', version })}\n`;
+
+  test('is not offered, and an apply is refused, even though it is newer than the running release', async () => {
+    // The service rolled back from preview.5 to preview.1; a replayed,
+    // validly signed preview.3 manifest is newer than what runs.
+    const install = makeInstall();
+    acceptRelease(install, mark('0.8.0-preview.5'));
+    serveManifest(signedManifest(releasePayload('0.8.0-preview.3')));
+    const body = await json(await createApp(install).request('/core-update'));
+    expect(body).toMatchObject({
+      releaseCheck: 'unverified',
+      updateAvailable: false,
+    });
+    expect(body.latestVersion).toBeUndefined();
+    const record = join(install.installRoot, '.station-release-accepted.json');
+    expect(body.message).toBe(
+      'The preview release manifest offers 0.8.0-preview.3, older than 0.8.0-preview.5 which this install already accepted, so it is not offered.',
+    );
+    expect(body.technicalDetail).toBe(
+      `the manifest is stale or replayed (accepted release recorded in ${record})`,
+    );
+    const post = await createApp(install).request('/core-update', {
+      method: 'POST',
+    });
+    expect(post.status).toBe(409);
+    expect(existsSync(serviceUpdatePaths(install.installRoot).request)).toBe(
+      false,
+    );
+  });
+
+  test('the accepted release itself, or a newer one, is still offered', async () => {
+    const install = makeInstall();
+    acceptRelease(install, mark(NEWER));
+    for (const version of [NEWER, '0.8.0-preview.9']) {
+      serveManifest(signedManifest(releasePayload(version)));
+      expect(
+        await json(await createApp(install).request('/core-update')),
+      ).toMatchObject({
+        releaseCheck: 'verified',
+        latestVersion: version,
+        updateAvailable: true,
+        selfUpdateUnavailableReason: null,
+      });
+    }
+  });
+
+  test('an unreadable, foreign-ring or group-readable record offers nothing, and says how to recover', async () => {
+    for (const [text, mode] of [
+      ['not json', 0o600],
+      [
+        `${JSON.stringify({ schemaVersion: 1, releaseChannel: 'nightly', version: '0.8.0-nightly.1' })}\n`,
+        0o600,
+      ],
+      [mark('0.8.0-preview.1'), 0o644],
+    ] as const) {
+      const install = makeInstall();
+      acceptRelease(install, text);
+      chmodSync(
+        join(install.installRoot, '.station-release-accepted.json'),
+        mode,
+      );
+      const body = await json(await createApp(install).request('/core-update'));
+      expect(body).toMatchObject({
+        releaseCheck: 'unverified',
+        updateAvailable: false,
+      });
+      // Not the stale-manifest wording: the record is the problem.
+      expect(body.message).toBe(
+        "This install's record of the newest release it accepted is unreadable, so no update is offered. On the host, fix its owner and permissions or remove it, then check again.",
+      );
+      expect(body.technicalDetail).toBe(
+        `${join(install.installRoot, '.station-release-accepted.json')} is not a private file of this user holding a preview release record`,
+      );
+    }
+  });
+});
+
 describe('who may apply', () => {
   test('an archive no launcher runs, or another install’s or version’s launcher, is not the service', async () => {
     const install = makeInstall();
@@ -443,6 +536,41 @@ describe('POST /core-update on a launcher-run archive', () => {
     expect(again.status).toBe(409);
     expect((await json(again)).error).toMatch(/already in progress/);
     expect(JSON.parse(readFileSync(paths.request, 'utf8')).id).toBe(requestId);
+  });
+
+  test('under the Windows service, the desktop’s apply reaches the launcher the same way (#2675 W3)', async () => {
+    // The environment `service run` hands the server on Windows: the Task
+    // Scheduler wrapper's service marker, the supervisor's pid and the
+    // launcher's context. The service marker refuses a source checkout's
+    // in-place update; it must not refuse an archive the launcher runs.
+    const install = makeInstall();
+    const app = createApp(install, {
+      platform: 'win32',
+      arch: 'x64',
+      env: {
+        ...launcherEnv(install),
+        STATION_SERVICE_MANAGED: '1',
+        STATION_SUPERVISOR_PID: '4242',
+      },
+    });
+    expect(await json(await app.request('/core-update'))).toMatchObject({
+      installKind: 'archive-service',
+      applyMethod: 'service-update',
+      latestVersion: NEWER,
+      updateAvailable: true,
+      selfUpdateUnavailableReason: null,
+    });
+
+    const res = await app.request('/core-update', { method: 'POST' });
+    expect(res.status).toBe(202);
+    const requestId = (await json(res)).serviceUpdate.requestId as string;
+    // The request the launcher's child claims: no version, so it stages the
+    // newest one with the version's own installer (install.ps1 on Windows).
+    expect(
+      parseServiceUpdateRequest(
+        readFileSync(serviceUpdatePaths(install.installRoot).request, 'utf8'),
+      ),
+    ).toEqual({ id: requestId, requestedAt: expect.any(String) });
   });
 
   test('refuses, writing nothing, when the same verified check finds nothing to apply', async () => {

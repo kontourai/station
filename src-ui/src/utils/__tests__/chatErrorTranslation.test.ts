@@ -649,3 +649,46 @@ describe('attachment refusal (attachment_input_unsupported)', () => {
     expect(translated.retryable).toBe(false);
   });
 });
+
+describe('engine changed (execution_engine_changed)', () => {
+  const stale = {
+    status: 409,
+    // The literal the server forwards, not the constant.
+    code: 'execution_engine_changed',
+    message:
+      "Agent 'station' now runs on engine connection 'opencode', not Station's own engine as this request expected. Re-read the Agent and choose again.",
+  };
+
+  it('is a conflict with the user view, not a transient failure or a terminal chat', () => {
+    const translated = translateChatError(stale);
+    expect(translated.title).toBe('This Agent now runs somewhere else');
+    expect(translated.body).toBe(`${stale.message} Nothing was sent.`);
+    expect(translated.hint).toContain('Check the engine and model shown');
+    expect(translated.hint).not.toContain('temporary');
+    expect(translated.retryable).toBe(false);
+    expect(translated.terminalSession).toBeUndefined();
+  });
+});
+
+describe('model refusal (model_not_advertised)', () => {
+  const refusal = {
+    status: 400,
+    // The literal the server forwards, not the constant.
+    code: 'model_not_advertised',
+    message:
+      "ACP model value unsupported: connection 'opencode' did not advertise 'gpt-6.1-sol' for this session.",
+  };
+
+  it('is deterministic and names nothing as started: not retryable, no "temporary" hint', () => {
+    const translated = translateChatError(refusal);
+    expect(translated.title).toBe("This engine doesn't offer that model");
+    expect(translated.body).toBe(`${refusal.message} Nothing was sent.`);
+    expect(translated.hint).toContain('Choose one of the models');
+    expect(translated.hint).toContain('send again');
+    // The conversation continues in a successor session: not a terminal chat.
+    expect(translated.terminalSession).toBeUndefined();
+    expect(translated.hint).not.toContain('temporary');
+    expect(translated.hint).not.toContain('may already have started');
+    expect(translated.retryable).toBe(false);
+  });
+});

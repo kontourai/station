@@ -140,6 +140,8 @@ export interface ComposerAttachmentStageSnapshot {
   expired?: boolean;
   /** See `ComposerAttachmentStageUpdate.capacityFull`. */
   capacityFull?: boolean;
+  /** See `ComposerAttachmentStageUpdate.callerUnresolved`. */
+  callerUnresolved?: boolean;
   error?: string;
   /** Retained provenance is safe across reload; source bytes are never retained. */
   transformation?: TransformationReceipt;

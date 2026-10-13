@@ -15,7 +15,7 @@ import type { AgentEditorFormProps } from './types';
  * composer chip does.
  *
  * Full access here is the same authority as full access on a chat: saving it
- * needs the operator in person or a device granted "Allow full access". The
+ * needs the operator in person or a device granted "Skip approval prompts". The
  * server refuses otherwise, and the save error says so.
  */
 export function AgentEditorApprovalDefault({

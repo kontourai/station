@@ -1,0 +1,9 @@
+{
+  "revision": "f2070c4176b9700aa5a8f010497e4a4f26c3545d",
+
+  "notes": [
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the #354 ACP turn.completed stopReason delta and the #225 delegated usage projection delta. The example's track_skill_run usage report is a skill-usage record, not token usage, and the README makes no turn.completed or delegated event field claim; no prose change. Source inspection only.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/acp-adapter.ts","src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed the #776 delta, which adds one new child-process test to scripts/vitest-resource-manifest.mjs. The rule that new child-process tests must be classified there is what the change follows; no prose change. Source inspection only.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

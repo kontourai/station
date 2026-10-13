@@ -26,6 +26,7 @@ import {
 import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
 import {
   type EffectiveModelSource,
+  modelResetSourceLabel,
   modelSourceLabel,
 } from '../../utils/execution';
 import {
@@ -631,9 +632,22 @@ export function ChatInputArea({
       ? composerMentionWireLength(input, composerTokens)
       : composerMentionWireLength(draftText)) - CHAT_INPUT_MAX_CHARS;
   const isOverLimit = overLimitBy > 0;
+  // A blocked Send is disabled; it must not keep the active accent that reads
+  // as "ready". The send-mode segment takes the same accent when Send is ready
+  // so the pair reads as one split button.
+  const sendReady =
+    !isOverLimit &&
+    !sendBlockedReason &&
+    (workspaceRefused || hasSendableDraft);
   const mentionAutocompleteAvailable = Boolean(
     mentionLocation && mentionRequestScope,
   );
+  const syncMentionQuery = (value: string, cursor: number) => {
+    const trigger = mentionAutocompleteAvailable
+      ? mentionQueryAt(value, cursor)
+      : null;
+    setMentionQuery(trigger ? { ...trigger, end: cursor } : null);
+  };
   const mentionAutocompleteOpen = Boolean(
     mentionQuery && mentionAutocompleteAvailable,
   );
@@ -895,11 +909,7 @@ export function ChatInputArea({
                 }
                 currentModel={currentModel}
                 defaultModel={agentDefaultModel}
-                defaultSourceLabel={
-                  defaultModelSource
-                    ? modelSourceLabel(defaultModelSource).toLowerCase()
-                    : 'default model'
-                }
+                defaultSourceLabel={modelResetSourceLabel(defaultModelSource)}
                 runtimeOptions={modelRuntimeOptions}
                 onSelect={onModelSelect}
                 onReset={onModelReset}
@@ -965,10 +975,7 @@ export function ChatInputArea({
               onClick={onModelReset}
               title="Reset this chat to its default model"
             >
-              Use{' '}
-              {defaultModelSource
-                ? modelSourceLabel(defaultModelSource).toLowerCase()
-                : 'default'}
+              Use {modelResetSourceLabel(defaultModelSource)}
             </button>
           )}
           {acpSessionModes.length > 0 && onAcpSessionModeChange ? (
@@ -1088,50 +1095,43 @@ export function ChatInputArea({
             </React.Suspense>
           )}
           {mentionQuery && mentionLocation && mentionRequestScope && (
-            <div>
-              <React.Suspense
-                fallback={
-                  <div className="file-mention-picker__status">
-                    Finding files…
-                  </div>
-                }
-              >
-                <FileMentionAutocomplete
-                  location={mentionLocation}
-                  requestScope={mentionRequestScope}
-                  query={mentionQuery.query}
-                  listboxId={mentionListboxId}
-                  keyboardController={mentionKeyboardController}
-                  onActiveDescendantChange={setMentionActiveDescendant}
-                  onSelect={(entry) => {
-                    const generation = mentionGeneration.current;
-                    const next = insertComposerMention(
-                      input,
-                      mentionQuery.start,
-                      mentionQuery.end,
-                      {
-                        label: entry.name,
-                        path: entry.path,
-                        workspace: mentionLocation.workingDir,
-                        authority: mentionAuthority ?? '',
-                        type: entry.type,
-                      },
-                    );
-                    onInputChange(next);
-                    updateFromInput(next);
-                    setMentionQuery(null);
-                    requestAnimationFrame(() => {
-                      if (mentionGeneration.current !== generation) return;
-                      const textarea = textareaRef.current;
-                      if (!textarea) return;
-                      textarea.focus();
-                      const cursor = mentionQuery.start + entry.name.length + 2;
-                      textarea.setSelectionRange(cursor, cursor);
-                    });
-                  }}
-                />
-              </React.Suspense>
-            </div>
+            <React.Suspense fallback={null}>
+              <FileMentionAutocomplete
+                location={mentionLocation}
+                requestScope={mentionRequestScope}
+                query={mentionQuery.query}
+                listboxId={mentionListboxId}
+                keyboardController={mentionKeyboardController}
+                onActiveDescendantChange={setMentionActiveDescendant}
+                anchorRef={textareaRef}
+                onSelect={(entry) => {
+                  const generation = mentionGeneration.current;
+                  const next = insertComposerMention(
+                    input,
+                    mentionQuery.start,
+                    mentionQuery.end,
+                    {
+                      label: entry.name,
+                      path: entry.path,
+                      workspace: mentionLocation.workingDir,
+                      authority: mentionAuthority ?? '',
+                      type: entry.type,
+                    },
+                  );
+                  onInputChange(next);
+                  updateFromInput(next);
+                  setMentionQuery(null);
+                  requestAnimationFrame(() => {
+                    if (mentionGeneration.current !== generation) return;
+                    const textarea = textareaRef.current;
+                    if (!textarea) return;
+                    textarea.focus();
+                    const cursor = mentionQuery.start + entry.name.length + 2;
+                    textarea.setSelectionRange(cursor, cursor);
+                  });
+                }}
+              />
+            </React.Suspense>
           )}
           {modelQuery !== null && input.startsWith('/model ') && (
             <React.Suspense fallback={null}>
@@ -1176,24 +1176,41 @@ export function ChatInputArea({
             value={displayInput}
             disabled={disabled && !allowDraftWhileDisabled}
             tabIndex={0}
-            onFocus={() => {
+            onFocus={(e) => {
               setShortcutContext('composerFocused', true);
               updateFromInput(input);
+              // Blur closes the file picker; refocusing inside an `@` query brings it
+              // back, as it does for the other pickers. Read the caret a frame later: a
+              // click focuses on mousedown, before the caret moves to the click point.
+              const textarea = e.currentTarget;
+              const focusedValue = textarea.value;
+              requestAnimationFrame(() => {
+                if (
+                  document.activeElement !== textarea ||
+                  textarea.value !== focusedValue
+                )
+                  return;
+                syncMentionQuery(
+                  input,
+                  textarea.selectionStart ?? focusedValue.length,
+                );
+              });
             }}
             onBlur={() => {
               setShortcutContext('composerFocused', false);
               closeAll();
+              // The file picker is portaled out of the composer, so it no
+              // longer hides with it; close it like the other pickers.
+              setMentionQuery(null);
             }}
             onChange={(e) => {
               const next = reconcileComposerDisplay(input, e.target.value);
               onInputChange(next);
               updateFromInput(next);
-              const cursor = e.target.selectionStart ?? e.target.value.length;
-              const trigger =
-                mentionLocation && mentionRequestScope
-                  ? mentionQueryAt(next, cursor)
-                  : null;
-              setMentionQuery(trigger ? { ...trigger, end: cursor } : null);
+              syncMentionQuery(
+                next,
+                e.target.selectionStart ?? e.target.value.length,
+              );
             }}
             onPaste={(event) => {
               const files = filesFromDataTransfer(event.clipboardData);
@@ -1568,16 +1585,7 @@ export function ChatInputArea({
                     : (sendBlockedReason ?? 'Send')
                 }
                 className={`send-button chat-input__send-btn ${
-                  !isOverLimit &&
-                  // A blocked Send is disabled; it must not keep the active
-                  // accent that reads as "ready".
-                  !sendBlockedReason &&
-                  (
-                    workspaceRefused ||
-                      input.trim() ||
-                      hasQuotedContext ||
-                      attachments.length > 0
-                  )
+                  sendReady
                     ? 'chat-input__send-btn--active'
                     : 'chat-input__send-btn--inactive'
                 }`}
@@ -1601,7 +1609,9 @@ export function ChatInputArea({
               {turnInFlight && onQueueFollowUp && (
                 <button
                   type="button"
-                  className="choice-trigger chat-input__send-mode"
+                  className={`chat-input__send-mode ${
+                    sendReady ? 'chat-input__send-mode--active' : ''
+                  }`}
                   aria-label={`Send mode: ${sendMode === 'steer' && busyFollowUp === 'steer' ? 'Steer' : 'Queue'}`}
                   title={`Send mode: ${sendMode === 'steer' && busyFollowUp === 'steer' ? 'Steer' : 'Queue'}`}
                   tabIndex={hideMobileSubmit ? -1 : 0}
@@ -1616,9 +1626,6 @@ export function ChatInputArea({
                   </span>
                   <ArrowDownGlyph />
                 </button>
-              )}
-              {!(turnInFlight && onQueueFollowUp) && (
-                <span className="chat-input__mode-slot" aria-hidden="true" />
               )}
             </div>
           </div>

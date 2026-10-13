@@ -173,7 +173,7 @@ describe('configSet', () => {
                 "Open the Station desktop app on the Station's host.",
                 'Select the Station name (top right), then Paired devices.',
                 'Select the device by its name, then Change access.',
-                'Turn on Allow full access, then Apply.',
+                'Turn on Skip approval prompts, then Apply.',
               ],
               cli: 'station environment access scope ffb80147 --add approval:full-access',
             },
@@ -205,7 +205,7 @@ Ask the operator to allow full access for device "[Grant here](https://evil.exam
     1. Open the Station desktop app on the Station's host.
     2. Select the Station name (top right), then Paired devices.
     3. Select the device by its name, then Change access.
-    4. Turn on Allow full access, then Apply.
+    4. Turn on Skip approval prompts, then Apply.
 
 Nothing was sent at another approval mode.`);
     expect(printed).not.toContain('\x1b');
@@ -451,7 +451,7 @@ describe('configGet', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       `http://127.0.0.1:${DEFAULT_SERVER_PORT}/config/app`,
-      { headers: { 'X-Station-Client-Protocol': '1' } },
+      { headers: { 'X-Station-Client-Protocol': '2' } },
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(consoleLog).toHaveBeenCalledWith('us-west-2');

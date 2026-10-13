@@ -120,6 +120,8 @@ import {
   orchestrationEventWindowElisions,
   orchestrationStoreCorruptionObserved,
 } from '../../telemetry/metrics.js';
+import { errorMessage } from '../../utils/error-message.js';
+import { createLogger } from '../../utils/logger.js';
 import { applyWalJournalMode } from '../../utils/sqlite-wal.js';
 import {
   type OperationalEventConsumer,
@@ -280,9 +282,9 @@ import { createSqliteRevisionEvidencePersistence } from './sqlite-revision-evide
 import {
   chatTurnDedupKey,
   createSqliteTurnDedupPersistence,
+  type SqliteTurnDedupPersistence,
   TURN_DEDUP_MAX_ENTRIES,
   turnDedupKey,
-  turnDedupThreadPrefix,
 } from './sqlite-turn-dedup-persistence.js';
 import {
   MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES,
@@ -312,6 +314,22 @@ import {
 } from './work-item-result-projector.js';
 
 const require = createRequire(import.meta.url);
+const logger = createLogger({ name: 'event-store' });
+
+/**
+ * #3561 review F1: an append's transaction ended while a co-commit
+ * participant ran, so nothing of the append may be written. Thrown instead of
+ * letting the remaining statements autocommit.
+ */
+class EventAppendTransactionLostError extends Error {
+  constructor(options?: { cause?: unknown }) {
+    super(
+      'The event append transaction was rolled back by SQLite during a co-commit participant',
+      options,
+    );
+    this.name = 'EventAppendTransactionLostError';
+  }
+}
 const SQLITE_BUSY_TIMEOUT_MS = 5_000;
 /** Last-resort ingress ceiling; upstream adapters own useful projection. */
 export const MAX_EVENT_STORE_INGRESS_BYTES = 64 * 1024;
@@ -1895,6 +1913,7 @@ export class EventStore {
    */
   private readonly attachmentBlobs: AttachmentBlobStore;
   private readonly turnIdempotence: TurnIdempotencyStore;
+  private readonly turnDedupPersistence: SqliteTurnDedupPersistence;
   private readonly turnDedupMaxEntries: number;
   private readonly recoveryLedgerOwner: RecoveryOwner;
   private readonly recoveryProcessIdentity: RecoveryLedgerProcessIdentity;
@@ -2151,11 +2170,12 @@ export class EventStore {
       // still in flight, and set once it resolves.
       ensureOrchestrationTurnDedupColumns(this.db);
       ensureOrchestrationBoundaryPurpose(this.db);
+      this.turnDedupPersistence = createSqliteTurnDedupPersistence({
+        db: this.db,
+        maxEntries: this.turnDedupMaxEntries,
+      });
       this.turnIdempotence = new TurnIdempotencyStore(
-        createSqliteTurnDedupPersistence({
-          db: this.db,
-          maxEntries: this.turnDedupMaxEntries,
-        }),
+        this.turnDedupPersistence,
         turnProcessIdentity,
       );
       ensureOrchestrationSessionStateColumns(this.db);
@@ -3485,9 +3505,20 @@ export class EventStore {
     return this.hydrateAttachments(mapPersistedEventRow(row));
   }
 
+  /**
+   * `coCommit` (#3561) is a synchronous participant in this append's
+   * transaction: it runs inside the savepoint, after the write lock is taken
+   * and before the event row, so its writes commit with the event or roll
+   * back with it. It is what a durable projection of the event (the session
+   * row, a provider turn's boundary row) uses instead of a transaction of its
+   * own that could commit when the append does not. It runs once per call,
+   * including for an exact replay of a stored event, and a throw from it
+   * fails the append.
+   */
   appendEvent(
     event: CanonicalRuntimeEvent,
     declaredOutputs: readonly NativeOutputTerminalAdmission[] = [],
+    coCommit?: () => void,
   ): number {
     if (
       declaredOutputs.length > 0 &&
@@ -3501,7 +3532,7 @@ export class EventStore {
     // A tool image's quota charge is written inside this append's savepoint
     // (`chargeCommittedToolImages`); afterwards the pending entry is dropped.
     try {
-      return this.appendIngressedEvent(ingress, declaredOutputs);
+      return this.appendIngressedEvent(ingress, declaredOutputs, coCommit);
     } finally {
       this.settleToolImageCharges(ingress.persisted.toolImageKey);
     }
@@ -3510,6 +3541,7 @@ export class EventStore {
   private appendIngressedEvent(
     ingress: ReturnType<EventStore['prepareEventIngress']>,
     declaredOutputs: readonly NativeOutputTerminalAdmission[],
+    coCommit: (() => void) | undefined,
   ): number {
     const event = ingress.event;
     const startedAt = performance.now();
@@ -3528,8 +3560,18 @@ export class EventStore {
     this.openAppendEventSavepoint();
     let nextSequence: number;
     let globalSequence: number;
+    let replayedSequence: number | undefined;
     try {
       this.reserveEventAppendWriter();
+      coCommit?.();
+      // A participant that swallowed an error SQLite answered by rolling
+      // back the whole transaction (SQLITE_FULL, IOERR, NOMEM) returns into
+      // autocommit mode: every statement below would commit on its own and
+      // RELEASE would then report the stored event as failed. Fail it here,
+      // while nothing has been written (#3561 review F1). No error reached
+      // this frame, so there is no cause to attach: the participant that
+      // swallowed it is the one to fix.
+      if (!this.db.isTransaction) throw new EventAppendTransactionLostError();
       // Persisted event time is the sole replay authority. A new terminal gets
       // exactly one host observation time, shared by its event and association.
       const observedAt =
@@ -3641,34 +3683,36 @@ export class EventStore {
           );
         }
         this.db.exec('RELEASE SAVEPOINT append_event_history');
-        this.commitSessionWorkItemAdmission(workItemAdmission);
-        return Number(existing.sequence);
+        replayedSequence = Number(existing.sequence);
+      } else {
+        this.db
+          .prepare(
+            'UPDATE orchestration_stream_identity SET high_water = ? WHERE singleton = 1',
+          )
+          .run(globalSequence);
+        this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
+        this.chargeCommittedToolImages(persisted.toolImageKey);
+        this.projectConversationHistoryEvent(event);
+        this.projectMessageSearchEvent(event);
+        this.projectRequestState(event, requestId, nextSequence);
+        this.projectSessionProjectionFacts(event);
+        this.recordDeclaredOutputs(event, declaredOutputs);
+        if (workItemAdmission) this.faults.sessionWorkItemAdmission?.();
+        if (workItemAdmission?.kind === 'association')
+          this.recordSessionWorkItemAssociation(
+            event,
+            workItemAdmission.association,
+          );
+        this.db.exec('RELEASE SAVEPOINT append_event_history');
       }
-      this.db
-        .prepare(
-          'UPDATE orchestration_stream_identity SET high_water = ? WHERE singleton = 1',
-        )
-        .run(globalSequence);
-      this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
-      this.chargeCommittedToolImages(persisted.toolImageKey);
-      this.projectConversationHistoryEvent(event);
-      this.projectMessageSearchEvent(event);
-      this.projectRequestState(event, requestId, nextSequence);
-      this.projectSessionProjectionFacts(event);
-      this.recordDeclaredOutputs(event, declaredOutputs);
-      if (workItemAdmission) this.faults.sessionWorkItemAdmission?.();
-      if (workItemAdmission?.kind === 'association')
-        this.recordSessionWorkItemAssociation(
-          event,
-          workItemAdmission.association,
-        );
-      this.db.exec('RELEASE SAVEPOINT append_event_history');
-      this.commitSessionWorkItemAdmission(workItemAdmission);
     } catch (error) {
       try {
-        this.db.exec(
-          'ROLLBACK TO SAVEPOINT append_event_history; RELEASE SAVEPOINT append_event_history',
-        );
+        // SQLite may already have rolled the whole transaction back; a
+        // ROLLBACK TO would then fail and mask the original error.
+        if (this.db.isTransaction)
+          this.db.exec(
+            'ROLLBACK TO SAVEPOINT append_event_history; RELEASE SAVEPOINT append_event_history',
+          );
       } finally {
         // A SQLite rollback error cannot strand a claim; its candidate must be
         // retryable unless the savepoint release above already committed it.
@@ -3676,6 +3720,11 @@ export class EventStore {
       }
       throw error;
     }
+    // #3561: past RELEASE the event is durable, so nothing below may report
+    // this append as failed or answer with a ROLLBACK TO the released
+    // savepoint (SQLite: `no such savepoint`).
+    this.commitSessionWorkItemAdmission(workItemAdmission);
+    if (replayedSequence !== undefined) return replayedSequence;
     // archive#3433: deliberately OUTSIDE the transaction's error boundary
     // (a throwing instrument here must not be caught as a store failure and
     // answered with a ROLLBACK against a transaction that has already
@@ -3850,9 +3899,19 @@ export class EventStore {
     admission: SessionWorkItemTerminalAdmission | undefined,
   ): void {
     if (!admission) return;
-    // This can only reject if EventStore itself double-settles a private claim.
-    // Do not throw after RELEASE: persistence is already authoritative.
-    this.sessionWorkItemAdmissions.commit(admission.claim);
+    // Runs after RELEASE. This can only reject if EventStore itself
+    // double-settles a private claim. Persistence is already authoritative,
+    // so a rejection is logged and the committed append still succeeds.
+    try {
+      this.sessionWorkItemAdmissions.commit(admission.claim);
+    } catch (error) {
+      logger.warn(
+        'Session work-item admission settled after its event committed',
+        {
+          error: errorMessage(error),
+        },
+      );
+    }
   }
 
   private rollbackSessionWorkItemAdmission(
@@ -6395,6 +6454,32 @@ export class EventStore {
         turnId,
       );
     return row ? this.mapEventRow(row) : undefined;
+  }
+
+  /**
+   * #3562: the thread's `turn.started` rows created at or after
+   * `sinceCreatedAt`, newest first, at most `limit`. Boot recovery reads one
+   * past its own bound so it can tell "these are all of them" from "there
+   * were more" and refuse to guess an owner in the second case.
+   */
+  listTurnStartsSince(
+    threadId: string,
+    sinceCreatedAt: string,
+    limit: number,
+  ): PersistedRuntimeEvent[] {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1_000) {
+      throw new Error('A turn-start page limit must be between 1 and 1000');
+    }
+    return this.db
+      .prepare(
+        `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+         FROM orchestration_events
+         WHERE thread_id = ? AND method = 'turn.started' AND created_at >= ?
+         ORDER BY sequence DESC
+         LIMIT ?`,
+      )
+      .all(threadId, sinceCreatedAt, limit)
+      .map((row) => this.mapEventRow(row));
   }
 
   private listRequestSettlementFacts(
@@ -8999,9 +9084,13 @@ export class EventStore {
         );
       this.db.exec('RELEASE SAVEPOINT upsert_session_history');
     } catch (error) {
-      this.db.exec(
-        'ROLLBACK TO SAVEPOINT upsert_session_history; RELEASE SAVEPOINT upsert_session_history',
-      );
+      // SQLite may already have rolled the whole transaction back
+      // (SQLITE_FULL, IOERR, NOMEM); a ROLLBACK TO would then fail with
+      // `no such savepoint` and hide the original error (#3561).
+      if (this.db.isTransaction)
+        this.db.exec(
+          'ROLLBACK TO SAVEPOINT upsert_session_history; RELEASE SAVEPOINT upsert_session_history',
+        );
       throw error;
     }
   }
@@ -9020,6 +9109,11 @@ export class EventStore {
 
     this.db.exec('SAVEPOINT mark_session_closed_lineage');
     try {
+      // The lineage read below would otherwise open a read snapshot that a
+      // peer commit makes stale, and the INSERT's upgrade then fails BUSY
+      // without waiting. That throw lands before the caller appends
+      // `session.exited`, so the exit fact was lost (#3521).
+      this.reserveEventAppendWriter();
       const lineage =
         this.conversationSessionLineage.sessionForExecution(threadId);
       this.db
@@ -9048,9 +9142,13 @@ export class EventStore {
       }
       this.db.exec('RELEASE SAVEPOINT mark_session_closed_lineage');
     } catch (error) {
-      this.db.exec(
-        'ROLLBACK TO SAVEPOINT mark_session_closed_lineage; RELEASE SAVEPOINT mark_session_closed_lineage',
-      );
+      // SQLite may already have rolled the whole transaction back
+      // (SQLITE_FULL, IOERR, NOMEM); a ROLLBACK TO would then fail with
+      // `no such savepoint` and hide the original error (#3561).
+      if (this.db.isTransaction)
+        this.db.exec(
+          'ROLLBACK TO SAVEPOINT mark_session_closed_lineage; RELEASE SAVEPOINT mark_session_closed_lineage',
+        );
       throw error;
     }
   }
@@ -10990,6 +11088,27 @@ export class EventStore {
   }
 
   private composeSessionTurnBoundaries(): SessionTurnBoundaryAuthority {
+    const insertAcceptedRow = (
+      record: SessionTurnBoundaryRecord & { providerTurnId: string },
+    ) =>
+      this.db
+        .prepare(
+          `INSERT INTO orchestration_turn_boundaries
+            (boundary_id, thread_id, state, provider_turn_id, owner_id,
+             owner_pid, owner_birth, owner_identity_kind, created_at, updated_at, purpose)
+           VALUES (?, ?, 'accepted', ?, ?, ?, ?, ?, ?, ?, 'turn')`,
+        )
+        .run(
+          record.boundaryId,
+          record.threadId,
+          record.providerTurnId,
+          record.ownerId,
+          record.ownerPid,
+          record.ownerBirth ?? null,
+          record.ownerIdentityKind,
+          record.createdAt,
+          record.updatedAt,
+        );
     const exact = (input: {
       boundaryId: string;
       ownerId: string;
@@ -11269,6 +11388,44 @@ export class EventStore {
         }
       },
       recordAccepted: (record) => {
+        // #3561: a provider-started turn's row is recorded inside its
+        // `turn.started` append, as a co-commit participant, so it commits
+        // or rolls back with that event. Inside a transaction it takes a
+        // nested savepoint: a BEGIN would throw there, and a ROLLBACK would
+        // discard the caller's whole transaction, event included.
+        if (this.db.isTransaction) {
+          this.db.exec('SAVEPOINT record_accepted_turn_boundary');
+          try {
+            const { rows } = this.db
+              .prepare(
+                `SELECT COUNT(*) AS rows FROM orchestration_turn_boundaries
+                  WHERE thread_id = ?`,
+              )
+              .get(record.threadId) as { rows: number };
+            if (rows < SESSION_TURN_ACCEPTED_CAPACITY)
+              insertAcceptedRow(record);
+            this.db.exec(
+              rows < SESSION_TURN_ACCEPTED_CAPACITY
+                ? 'RELEASE SAVEPOINT record_accepted_turn_boundary'
+                : 'ROLLBACK TO SAVEPOINT record_accepted_turn_boundary; RELEASE SAVEPOINT record_accepted_turn_boundary',
+            );
+            return rows < SESSION_TURN_ACCEPTED_CAPACITY
+              ? { kind: 'applied' }
+              : { kind: 'busy' };
+          } catch (error) {
+            // SQLite answered with a rollback of the caller's whole
+            // transaction: the event cannot commit either, so this is the
+            // caller's failure, not a lost row (#3561 review F1).
+            if (!this.db.isTransaction)
+              throw new EventAppendTransactionLostError({ cause: error });
+            // Otherwise the row is lost and the caller's event still
+            // commits: a missing crash banner is better than a lost turn.
+            this.db.exec(
+              'ROLLBACK TO SAVEPOINT record_accepted_turn_boundary; RELEASE SAVEPOINT record_accepted_turn_boundary',
+            );
+            return { kind: 'unavailable' };
+          }
+        }
         try {
           this.db.exec('BEGIN IMMEDIATE');
           const { rows } = this.db
@@ -11281,24 +11438,7 @@ export class EventStore {
             this.db.exec('ROLLBACK');
             return { kind: 'busy' };
           }
-          this.db
-            .prepare(
-              `INSERT INTO orchestration_turn_boundaries
-                (boundary_id, thread_id, state, provider_turn_id, owner_id,
-                 owner_pid, owner_birth, owner_identity_kind, created_at, updated_at, purpose)
-               VALUES (?, ?, 'accepted', ?, ?, ?, ?, ?, ?, ?, 'turn')`,
-            )
-            .run(
-              record.boundaryId,
-              record.threadId,
-              record.providerTurnId,
-              record.ownerId,
-              record.ownerPid,
-              record.ownerBirth ?? null,
-              record.ownerIdentityKind,
-              record.createdAt,
-              record.updatedAt,
-            );
+          insertAcceptedRow(record);
           this.db.exec('COMMIT');
           return { kind: 'applied' };
         } catch {
@@ -11563,6 +11703,8 @@ export class EventStore {
       awaitingUser: () => this.readUsageLimitIntentsAwaitingUser(),
       cancelSourceTerminated: (now) =>
         this.cancelSourceTerminatedRecoveries(now),
+      cancelIfSourceTerminated: (fingerprint, now) =>
+        this.cancelRecoveryIfSourceTerminated(fingerprint, now),
       cancelShutdownRequested: (now) => this.cancelShutdownRecoveries(now),
     };
     const startup = options.credentialStartup;
@@ -12202,7 +12344,7 @@ export class EventStore {
         : "outcome IN ('armed', 'manual')";
     const row = this.db
       .prepare(
-        `UPDATE orchestration_recovery_intents
+        `UPDATE orchestration_recovery_intents AS intent
          SET outcome = 'resumed', attempts = attempts + 1, outcome_reason = NULL,
              dispatch_attempt_id = ?, recovery_correlation_id = ?,
              dispatch_settlement = 'prepared', dispatch_kind = ?,
@@ -12210,6 +12352,7 @@ export class EventStore {
              dispatch_owner_birth = ?, dispatch_owner_identity_kind = ?, updated_at = ?
          WHERE fingerprint = ? AND ${eligibility} AND attempts < max_attempts
            AND dispatch_attempt_id IS NULL AND recovery_correlation_id IS NULL
+           AND NOT ${RECOVERY_SOURCE_TERMINATED}
          RETURNING fingerprint, thread_id, provider, source_event_id, source_turn_id,
                    failure_kind, scope, decision, due_at, attempts, max_attempts,
                    outcome, dispatch_attempt_id, recovery_correlation_id,
@@ -12554,17 +12697,31 @@ export class EventStore {
         `UPDATE orchestration_recovery_intents AS intent
          SET outcome = 'canceled', updated_at = ?
          WHERE intent.outcome IN ('armed', 'resumed', 'manual')
-           AND (
-             intent.shutdown_cancel_requested_at IS NOT NULL
-             OR EXISTS (
-               SELECT 1 FROM orchestration_events AS event
-               WHERE event.thread_id = intent.thread_id
-                 AND event.turn_id = intent.source_turn_id
-                 AND event.method IN ('turn.aborted', 'turn.failed')
-             )
-           )`,
+           AND ${RECOVERY_SOURCE_TERMINATED}`,
       )
       .run(now) as { changes: number | bigint };
+    return recoveryTransition(result);
+  }
+
+  /**
+   * #3563: the same rule for one intent, when its timer fires. A startup
+   * repair that answered `unavailable` cannot then replay a turn whose source
+   * already ended, and it no longer has to gate every other recovery.
+   * `applied` canceled the intent; `stale` means dispatch may proceed.
+   */
+  private cancelRecoveryIfSourceTerminated(
+    fingerprint: string,
+    now: string,
+  ): RecoveryTransition {
+    const result = this.db
+      .prepare(
+        `UPDATE orchestration_recovery_intents AS intent
+         SET outcome = 'canceled', updated_at = ?
+         WHERE intent.fingerprint = ?
+           AND intent.outcome IN ('armed', 'resumed', 'manual')
+           AND ${RECOVERY_SOURCE_TERMINATED}`,
+      )
+      .run(now, fingerprint) as { changes: number | bigint };
     return recoveryTransition(result);
   }
 
@@ -12762,19 +12919,8 @@ export class EventStore {
           'DELETE FROM orchestration_attachment_refs WHERE thread_id = ?',
         )
         .run(threadId);
-      {
-        // archive#1224 HIGH fix (independent review): an unescaped `LIKE`
-        // prefix would let `%`/`_` inside threadId behave as SQL wildcards,
-        // over-matching another thread's keys. `substr(...) = ?` is an exact
-        // string comparison -- no wildcard semantics at all -- against the
-        // exact prefix `turnDedupThreadPrefix` produces.
-        const prefix = turnDedupThreadPrefix(threadId);
-        this.db
-          .prepare(
-            'DELETE FROM orchestration_turn_dedup WHERE substr(dedup_key, 1, ?) = ?',
-          )
-          .run(prefix.length, prefix);
-      }
+      // #3559: a deleted thread's claims and their tombstones leave with it.
+      this.turnDedupPersistence.forgetThread(threadId);
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');
@@ -12817,14 +12963,32 @@ export class EventStore {
     });
   }
 
-  claimChatTurn(clientTurnId: string): {
-    claimed: boolean;
-    conversationId?: string;
-  } {
-    const claim = this.turnIdempotence.claim(chatTurnDedupKey(clientTurnId));
-    return claim.claimed
-      ? { claimed: true }
-      : { claimed: false, conversationId: claim.value };
+  /**
+   * #3581: a `/chat` claim is tracked like a thread claim. The route calls
+   * {@link beginChatTurnInvocation} before the agent call, so a dead owner's
+   * claim past that point answers `indeterminate` instead of being reclaimed.
+   * An unmarked legacy `chat:` row still reads as untracked (reclaimable).
+   */
+  claimChatTurn(
+    clientTurnId: string,
+  ):
+    | { claimed: true }
+    | { claimed: false; conversationId?: string }
+    | { claimed: false; outcome: 'indeterminate' | 'expired' } {
+    const claim = this.turnIdempotence.claim(
+      chatTurnDedupKey(clientTurnId),
+      Date.now(),
+      'tracked',
+    );
+    if (claim.claimed) return { claimed: true };
+    if (claim.indeterminate)
+      return { claimed: false, outcome: 'indeterminate' };
+    if (claim.expired) return { claimed: false, outcome: 'expired' };
+    return { claimed: false, conversationId: claim.value };
+  }
+  /** Durable before the agent call; do not call the agent if it throws. */
+  beginChatTurnInvocation(clientTurnId: string): void {
+    this.turnIdempotence.beginInvocation(chatTurnDedupKey(clientTurnId));
   }
   resolveChatTurn(clientTurnId: string, conversationId: string): void {
     this.turnIdempotence.resolve(
@@ -13824,6 +13988,21 @@ function sqliteRunChanges(result: unknown): number {
     throw new Error('SQLite write returned an invalid change count.');
   return Number(result.changes);
 }
+
+/**
+ * The one source-terminal rule (#3563): shutdown asked to cancel the intent,
+ * or its source turn has a durable terminal event. The startup repair and the
+ * fire-time fence both use it, so they cannot disagree about an intent.
+ */
+const RECOVERY_SOURCE_TERMINATED = `(
+  intent.shutdown_cancel_requested_at IS NOT NULL
+  OR EXISTS (
+    SELECT 1 FROM orchestration_events AS event
+    WHERE event.thread_id = intent.thread_id
+      AND event.turn_id = intent.source_turn_id
+      AND event.method IN ('turn.aborted', 'turn.failed')
+  )
+)`;
 
 function recoveryTransition(result: {
   changes: number | bigint;

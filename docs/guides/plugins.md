@@ -1593,7 +1593,6 @@ by plugin code.
   "guardrails": {
     "maxTokens": 4096,
     "temperature": 0.7,
-    "topP": 0.9,
     "maxSteps": 10
   },
   "tools": {

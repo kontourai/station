@@ -511,6 +511,169 @@ describe('EventStore', () => {
     },
   );
 
+  // #3521: the live `session.exited` projection closes the session BEFORE it
+  // appends the event. markSessionClosed read lineage first inside its
+  // savepoint, so a peer commit made the upgrade throw BUSY and the exit
+  // event was never appended. Mirror that order under a held peer writer.
+  test('closes a session and keeps its exit event after a peer writer releases', async () => {
+    store.upsertSession({
+      provider: 'codex',
+      threadId: 'peer-close',
+      status: 'running',
+      createdAt: '2026-10-10T00:00:00.000Z',
+      updatedAt: '2026-10-10T00:00:01.000Z',
+    });
+    const peer = await holdPeerWriteLock(
+      join(dir, 'orchestration.sqlite'),
+      1_000,
+    );
+    const startedAt = Date.now();
+    let returnedAt: number | undefined;
+    try {
+      expect(() => {
+        store.markSessionClosed('peer-close', 'codex');
+        store.appendEvent({
+          eventId: 'exit-after-peer-writer',
+          provider: 'codex',
+          threadId: 'peer-close',
+          method: 'session.exited',
+          sessionId: 'peer-close',
+          exitCode: 0,
+          createdAt: '2026-10-10T00:00:02.000Z',
+        });
+      }).not.toThrow();
+      returnedAt = Date.now();
+      expect(store.readSessions()).toEqual([
+        expect.objectContaining({ threadId: 'peer-close', status: 'closed' }),
+      ]);
+      expect(
+        store.listEvents('peer-close').map((event) => event.method),
+      ).toEqual(['session.exited']);
+    } finally {
+      const releasedAt = await peer.releasedAt();
+      expect(startedAt).toBeLessThan(releasedAt);
+      if (returnedAt !== undefined)
+        expect(returnedAt).toBeGreaterThanOrEqual(releasedAt);
+    }
+  });
+
+  // #3561 review F1: SQLite can answer SQLITE_FULL/IOERR/NOMEM by rolling
+  // back the whole transaction. A co-commit participant that swallows that
+  // error returns into autocommit mode; the append must then store nothing,
+  // not commit the event row by row and report it failed.
+  test('an append whose co-commit participant ends the transaction stores nothing and fails', () => {
+    expect(() =>
+      store.appendEvent(
+        {
+          eventId: 'participant-lost-transaction',
+          provider: 'codex',
+          threadId: 'lost-transaction',
+          method: 'turn.started',
+          turnId: 'lost-transaction-turn',
+          createdAt: '2026-10-10T00:00:00.000Z',
+          prompt: 'never stored',
+        },
+        [],
+        () => {
+          (store as any).db.exec('ROLLBACK');
+        },
+      ),
+    ).toThrow();
+    expect(store.listEvents('lost-transaction')).toEqual([]);
+    expect(store.hasEventId('participant-lost-transaction')).toBe(false);
+    // Nothing was left open: the next append commits on its own.
+    expect(
+      store.appendEvent({
+        eventId: 'after-lost-transaction',
+        provider: 'codex',
+        threadId: 'lost-transaction',
+        method: 'turn.started',
+        turnId: 'lost-transaction-turn',
+        createdAt: '2026-10-10T00:00:01.000Z',
+        prompt: 'stored',
+      }),
+    ).toBe(1);
+  });
+
+  // #3561 delta review: SQLITE_FULL/IOERR/NOMEM may roll back the whole
+  // transaction. A session write's own ROLLBACK TO then has no savepoint, and
+  // must not replace the real error with `no such savepoint`.
+  describe('a session write whose statement SQLite answers with a full rollback surfaces the original error', () => {
+    function rollBackWholeTransactionOnSessionInsert() {
+      const db = (store as any).db;
+      const prepare = db.prepare.bind(db);
+      return vi.spyOn(db, 'prepare').mockImplementation((sql: unknown) => {
+        if (!String(sql).includes('INSERT INTO provider_session_state'))
+          return prepare(sql);
+        return {
+          run: () => {
+            db.exec('ROLLBACK');
+            throw Object.assign(new Error('database or disk is full'), {
+              errcode: 13,
+              code: 'ERR_SQLITE_ERROR',
+            });
+          },
+        };
+      });
+    }
+    const session = {
+      provider: 'codex',
+      threadId: 'full-rollback',
+      status: 'ready' as const,
+      createdAt: '2026-10-10T00:00:00.000Z',
+      updatedAt: '2026-10-10T00:00:00.000Z',
+    };
+
+    test('upsertSession', () => {
+      const spy = rollBackWholeTransactionOnSessionInsert();
+      try {
+        expect(() => store.upsertSession(session)).toThrow(
+          'database or disk is full',
+        );
+      } finally {
+        spy.mockRestore();
+      }
+      expect(store.readSessionByThread('full-rollback')).toBeUndefined();
+    });
+
+    test('markSessionClosed', () => {
+      store.upsertSession(session);
+      const spy = rollBackWholeTransactionOnSessionInsert();
+      try {
+        expect(() => store.markSessionClosed('full-rollback', 'codex')).toThrow(
+          'database or disk is full',
+        );
+      } finally {
+        spy.mockRestore();
+      }
+      expect(store.readSessionByThread('full-rollback')?.status).toBe('ready');
+    });
+
+    test('upsertSession as a co-commit participant of an append', () => {
+      const spy = rollBackWholeTransactionOnSessionInsert();
+      try {
+        expect(() =>
+          store.appendEvent(
+            {
+              eventId: 'full-rollback-started',
+              provider: 'codex',
+              threadId: 'full-rollback',
+              method: 'turn.started',
+              turnId: 'full-rollback-turn',
+              createdAt: '2026-10-10T00:00:01.000Z',
+              prompt: 'never stored',
+            },
+            [],
+            () => store.upsertSession(session),
+          ),
+        ).toThrow('database or disk is full');
+      } finally {
+        spy.mockRestore();
+      }
+      expect(store.listEvents('full-rollback')).toEqual([]);
+    });
+  });
+
   test('seeded replay cursors remain monotonic across physical Draft discard', () => {
     // The connected client has seen every append. The reconnecting client
     // must see every surviving event whose append happened after its cursor.

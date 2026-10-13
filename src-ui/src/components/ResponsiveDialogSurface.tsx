@@ -473,6 +473,9 @@ export function ResponsiveDialogSurface({
        * intended that, but someone may have built a habit on it.
        */
       data-no-dock-drag=""
+      // What this surface decided it is on this viewport, so a consumer
+      // styles its sheet without restating the mobile media query.
+      data-sheet={isMobile ? '' : undefined}
       data-anchored={anchorVars ? '' : undefined}
       data-anchor-side={anchorVars ? anchorSide : undefined}
       role="presentation"

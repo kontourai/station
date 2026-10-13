@@ -48,6 +48,19 @@ describe('insights filters reach the server (station#3075)', () => {
       );
     }
   });
+  test('reads per-agent chats without a token figure, and tolerates the legacy unmeasured one (#463)', async () => {
+    for (const usage of [{ chats: 2 }, { chats: 2, tokens: 0 }]) {
+      authenticatedFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: { ...legacyInsights, agentUsage: { coder: usage } },
+        }),
+      });
+      const insights = await fetchInsights();
+      expect(insights.agentUsage.coder?.chats).toBe(2);
+    }
+  });
   beforeEach(() => {
     authenticatedFetch.mockReset();
     authenticatedFetch.mockResolvedValue({

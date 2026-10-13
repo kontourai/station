@@ -106,8 +106,10 @@ credential needs the grant).
 For a saved Environment use `{ "kind": "saved", "id": "..." }`. The
 controlling Station reaches that Environment through its configured peer or SSH
 access, rewrites the forwarded target to `current`, and the target Station resolves
-its own Agent. Tunnel URLs, provider IDs, and connection IDs are never request inputs
-or response data.
+its own Agent. Tunnel URLs, provider IDs, and connection IDs are never request
+inputs that choose where work runs; the one place a connection ID appears in a
+request is the `expectedEngine` precondition below, which can only refuse.
+Tunnel URLs are never response data.
 
 Calls made by a station-control Agent also pass the
 [dispatch authority checks](../guides/self-configuring-agent.md#dispatch-authority):
@@ -132,6 +134,31 @@ The response is a foreground handle containing `conversationId`, `sessionId`,
 `providerTurnId`, the
 resolved Agent target, and an `ExecutionResolutionReceipt` describing the Environment,
 Agent, engine kind, provider, and honest model launch plan.
+
+### State the engine you expect
+
+A client that shows an Agent to a user knows which engine the Agent ran on *when
+it was shown*. A request may state that as a precondition:
+
+```json
+{ "expectedEngine": { "kind": "station" } }
+```
+
+or `{ "kind": "connection", "connectionId": "<engine connection id>" }`. It has
+the shape of the receipt's `engine`, and it never selects: the target Station
+still resolves the Agent's binding itself. When that resolution names a
+different engine, the request is refused with `409` and
+`code: "execution_engine_changed"` before anything is started or reserved, and
+the message names the two engines. Absent, no expectation is stated. The fields
+are strict: nothing beside `kind` (and `connectionId` for a connection) is
+accepted, so it cannot carry an endpoint or credential.
+
+The Station UI states it only on a chat's first send, only to this Station
+(an explicit current Environment, not a Project's default Environment), and
+only when its Agent catalog snapshot is settled; it re-reads the catalog and
+asks the user to look again after a refusal. A receiver from before this field
+ignores it, so a caller that needs the guarantee must know its receiver's
+version.
 
 ### Preserve an Agent profile with an execution override
 
@@ -195,6 +222,15 @@ non-image file) is refused before any engine effect with
 is not a retry candidate. Staged uploads the refused send had bound are released
 from that turn, so the same references can be sent on another turn. Codex and Muse refuse a non-image file with a plain
 error that carries no code.
+
+A send that starts a new ACP session on a model the engine's fresh session
+options did not offer is refused with `code: "model_not_advertised"`. The start
+is settled, not uncertain: the thread is not fenced behind an inspection, the
+receipt is `rejected`, and the refused session has ended with the engine's
+refusal as its cause. It is not a retry candidate as sent. Sending again in the
+same conversation (another model, the same one, or no override) continues in a
+successor session; a start naming a model on the refused session id itself is
+refused.
 
 A completed turn does not discard the conversation. If the next turn needs a new
 execution Session, it remains linked beneath the same Conversation. Station-native
@@ -525,8 +561,8 @@ and `stopSession` (`{ type: 'stopSession', threadId }`).
 
 External transcript observation does not grant control of the original terminal
 process. The engine capability matrix declares independent continuation support;
-known unsupported and unknown engines retain a disabled **Continue in Station**
-control with a reason. The adoption owner enforces the same declaration before
+known unsupported and unknown engines keep the conversation's message box
+disabled with a reason. The adoption owner enforces the same declaration before
 invoking an adapter, then checks current source, Project, ownership, and runtime
 requirements. A native continuation declaration does not guarantee readiness of
 any particular source.
@@ -732,7 +768,7 @@ identity without exposing a filesystem path.
 Codex continuation forks an independent native thread at a completed turn
 observed in Station's durable history. The original terminal session remains
 read-only in Station and can keep running independently. Until a completed
-boundary exists, **Continue in Station** stays disabled with a reason. Claude
+boundary exists, the message box that continues it stays disabled with a reason. Claude
 uses its SDK's independent session snapshot; it does not claim the same native
 turn-cutoff semantics. Both paths retain the source binding in the adoption
 ledger before native child creation and retain unresolved cleanup for recovery

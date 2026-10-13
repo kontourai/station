@@ -23,6 +23,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 
 | Module | Intent | Primary source |
 | --- | --- | --- |
+| [ProductTelemetryReceiver](#producttelemetryreceiver) | Commit and query disclosed product observations with scoped source credentials and explicit delivery coverage. | `packages/telemetry-broker/src/store.ts` |
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
 | [DeploymentAuthentication](#deploymentauthentication) | Resolve operator-configured account identity independently of device and Project authorization. | `src-server/services/identity/deployment-authentication-service.ts` |
 | [StationControlDispatchScope](#stationcontroldispatchscope) | Resolve server-owned dispatch targets for the shared Station-control scope rule. | `src-server/runtime/mcp/station-control-dispatch-scope.ts` |
@@ -871,33 +872,91 @@ reports only mount through `useLayoutEffect`, outside `PlatformBootstrap`.
 StrictMode/remounts share one module-owned attempt. The host retains early
 page/mount facts until DesktopServerState exists and replays them in order.
 
-While waiting on macOS, the host can show a native startup cover. The WebView
+While waiting on macOS, the host can show a native startup cover laid out like
+the renderer startup screen: the application icon (which carries the channel
+art) centered at 96 pt and a short centered status line below it. The WebView
 stays alive at zero opacity, and the temporary accessibility hierarchy exposes
 the cover rather than hidden application content. Reveal removes the cover,
 restores opacity and normal AppKit accessibility children, then focuses that
 same WebView. Merely hiding the WebView or copying a reveal-time accessibility
-snapshot would change those guarantees.
+snapshot would change those guarantees. Covering always clears first
+responder before the default **Restart** may take it, and WebKit can still
+retake it for the hidden WebView, so while the cover is up a window-scoped key
+monitor evicts the WebView from first responder and routes every key-down and
+key-up event (modifier-only changes still reach the page; they type nothing):
+Return chooses **Restart**, Tab/Shift-Tab/Space operate only the cover's own
+buttons, Escape and typing are swallowed, and only the Quit, Close, Hide, Hide
+Others, Minimize and window-cycling Command shortcuts pass, identified by the
+typed ASCII letter or, when the layout types a non-ASCII character, by the US
+ANSI key position (editing shortcuts would target the page). Reveal or
+main-window destruction removes the monitor and the retained button target.
+Closing the main window only hides it; until the next explicit activation,
+startup recovery is deferred, and each cover change decides on the main thread
+when it applies whether to order the window front, so neither a queued cover
+nor a late reveal brings the hidden window back. Cover
+content is requested while the readiness lock is held, so it cannot land after
+the reveal of an admitted window.
 
 **Recovery.** Server loss invalidates a pending identity proof without erasing
 an already mounted renderer. A new main page invalidates its pre-ready mount
 without inventing server loss. Proof is single-flight; a relevant profile write
-can wake a bounded retry while waiting. Timeout produces one diagnostic per
-epoch. Retry starts a new epoch: with a current owned ticket it first reprobes
-without restarting; a later retry or missing ticket restarts only the owned
-sidecar. A service-owned/unowned backend uses recovery-surface recommit instead
-of signaling a durable service. Dev has an explicit bypass. Activation waits
-for the appropriate state, and startup readiness does not re-hide a window
-already admitted as ready.
+can wake a bounded retry while waiting. The 30-second deadline is a waiting
+threshold, not a liveness verdict: it marks the epoch overdue and offers
+recovery once, but never restarts or signals the sidecar. An overdue epoch
+still admits the exact late ticket, identity proof and mount, which reveal the
+window without user action. The renderer's
+[bundled-profile bootstrap](../../src-ui/src/platform/native/bundledLocalProfileBootstrap.ts)
+treats `starting`, `restarting` (the supervisor's attempt cap ends that in
+`failed`) and `stopping` (set only by a manual restart, which always respawns)
+as progressing. It asks the host whether its WebView is already shown
+(`startup_window_admitted`: a non-main window, or the main window once
+readiness is Ready or bypassed) when the owned sidecar is `failed` or
+`stopped`, and after its fast-poll budget of about a minute. A covered main
+window has no wall-clock limit: it keeps waiting in place behind a cover that
+offers Restart/Quit after the deadline, so a fresh home still gets the profile
+its identity proof requires after a long boot, and an explicit Restart lets the
+same bootstrap author and authorize on its normal path. A shown window has only
+the in-app recovery UI, so it releases the loader at once for a terminal
+sidecar, or after that budget for a progressing one, and then stops polling.
+Because the mount commit sits outside `PlatformBootstrap`, identity commit plus
+renderer mount can reveal the window while the bootstrap is still authorizing. On macOS the cover switches
+in place to a "taking longer than usual" message with **Restart** (the default
+button) and **Quit**; a background (tray-only) launch defers it until
+activation. Hosts without a cover (Windows, Linux, a macOS cover dispatcher
+that did not start, or an overdue cover task that failed) show a native dialog
+with **Restart**, **Quit** and **Keep Waiting**. The dialog does not block the
+main thread; dismissing it keeps waiting and re-offers the choice after 30,
+then 60, then every 120 seconds while that epoch is still overdue. Like the
+Windows/Linux dialog, a macOS fallback alert can outlive the condition that
+showed it (for example after the window reveals); its buttons are then inert.
+Restart starts a new epoch: with a current owned ticket it first reprobes
+without restarting; a later Restart or a missing ticket restarts only the owned
+sidecar. A service-owned/unowned backend re-runs the native recovery commit
+instead of signaling a durable service, so a late renderer mount still
+reveals. Quit exits only while that same epoch is still overdue. Routing is
+exercised through a recording host in the
+[desktop crate tests](../../src-desktop/src/lib.rs).
+Activation never restarts anything. Dev has an explicit bypass. Activation
+waits for the appropriate state, and startup readiness does not re-hide a
+window already admitted as ready.
 
 The status bridge projects sidecar generation/instance/boot identity and clears
 child fields after loss; the generation-tagged stdout handshake remains a
-separate admission check. No browser timer, automatic renderer polling, cache
-reset or CSP weakening supplies readiness.
+separate admission check. The supervisor has no boot or handshake timeout of
+its own: it waits for that handshake or for the child to exit. No browser
+timer, automatic renderer polling, cache reset or CSP weakening supplies
+readiness.
 
 Pure Rust state/claim tests and
 [startup wiring tests](../../scripts/__tests__/startup-readiness-static.test.ts)
-cover the decision boundaries. They do not prove AppKit pixels, OS dialogs,
-real IPC or packaged behavior. The [native verification guide](../guides/native-shell-verification.md)
+cover the decision boundaries, including the fronting decision for a window
+the user hid. That AppKit code applies that decision is only a
+source-structure pin: each occurrence of a fixed list of window-raising
+spellings (order-front, activate, unhide, show and focus variants) in the cover
+code must sit inside the fronting gate; other ways of raising a window would
+not be detected. These tests do not prove
+AppKit pixels, the cover's buttons, OS dialogs, real IPC or packaged
+behavior. The [native verification guide](../guides/native-shell-verification.md)
 and [recovery guide](../user/native-recovery.md) keep those platform checks
 separate.
 
@@ -1226,7 +1285,9 @@ input answers the steer as `session_busy`, never as a start.
 [route](../../src-server/routes/orchestration/session-agent-control.ts) checks
 the caller's scope and keys each request in the durable
 [request-key table](../../src-server/services/orchestration/session-control-request-keys.ts)
-(owned by `EventStore`) before it reaches this module. `wait_session` observes
+(owned by `EventStore`, with the claim, quota and retention rules in
+[`@kontourai/monument`](../../packages/monument/CONTEXT.md)'s request-key commands)
+before it reaches this module. `wait_session` observes
 the same lifecycle fold the steer path reads through
 [SessionTurnWaiter](../../src-server/services/orchestration/session-turn-wait.ts),
 which never acts on the Session. Source tests are the
@@ -1419,21 +1480,21 @@ Marking a Session complete can race a new turn. The [lifecycle module](../../src
 
 This owner records when a provider call may have crossed into an external effect. It is the durable counterpart to process-local coordination: a restart must not turn an unknown outcome into permission to replay. The [claim protocol](../../src-server/services/orchestration/session-turn-boundary.ts) and EventStore’s SQLite adapter share that responsibility.
 
-**Interface.** `claim(threadId, now)` returns an opaque, one-way capability that may move only `prepared → invoking → accepted|indeterminate`, or remove a definitely uninvoked/terminally observed boundary. `claimLifecycle` acquires the conflicting per-thread lifecycle capability. Lifecycle code receives only `hasPossibleEffect`; canonical terminal projection receives only `observe`. A caller cannot supply an owner token or arbitrary stored state. The same authority separately owns Session-start and Task-dispatch claims; those have no invented provider turn ID. `recordProviderTurn` records an engine-initiated turn directly as accepted, without pretending a user command started it.
+**Interface.** `claim(threadId, now)` returns an opaque, one-way capability that may move only `prepared → invoking → accepted|indeterminate`, or remove a definitely uninvoked/terminally observed boundary. `claimLifecycle` acquires the conflicting per-thread lifecycle capability. Lifecycle code receives only `hasPossibleEffect`; canonical terminal projection receives only `observe`. A caller cannot supply an owner token or arbitrary stored state. The same authority separately owns Session-start and Task-dispatch claims; those have no invented provider turn ID. `prepareProviderTurn` records an engine-initiated turn directly as accepted, without pretending a user command started it. It works in two steps, so the canonical publish path writes that row inside the append of the turn's `turn.started` and the row commits or rolls back with the event.
 
-**Behavior.** The SQLite authority serializes cross-process claims with a transaction. Independent accepted turns may coexist up to a bounded protected per-thread capacity; the Module rejects further work at capacity and never prunes unresolved facts. A provider response that reuses any turn id already present in canonical terminal history becomes `indeterminate`, so a delayed or duplicate old callback cannot settle the newer effect. A lifecycle claim conflicts with every retained provider boundary, while a new provider invocation conflicts with lifecycle, another invocation, or indeterminate work. An Adapter error after `beginInvocation` is possible effect and never releases client idempotency for replay. Ambiguous boundary writes retain their exact opaque intent and retry it before later work without reinvoking the Adapter. A dead `prepared` owner is definitely uninvoked and removed; a dead `invoking` owner becomes durable `indeterminate`, including when an already-open peer discovers the dead owner during contention. Exact provider terminal identity removes matching accepted evidence; a session-wide terminal can clear older identity-less turn/start ambiguity. Task-dispatch records are excluded from provider terminal cleanup because provider exit alone does not settle graph and publication work. An interrupt acknowledgement is not terminal evidence: acceptance and the client-turn claim remain until an exact canonical terminal arrives. Post-accept observers cannot replace the known turn result; if command-receipt persistence is not known durable, service, HTTP, and SDK retain the accepted turn and add `receiptStatus: unavailable`.
+**Behavior.** The SQLite authority serializes cross-process claims with a transaction. Independent accepted turns may coexist up to a bounded protected per-thread capacity; the Module rejects further work at capacity and never prunes unresolved facts. A provider response that reuses any turn id already present in canonical terminal history becomes `indeterminate`, so a delayed or duplicate old callback cannot settle the newer effect. A lifecycle claim conflicts with every retained provider boundary, while a new provider invocation conflicts with lifecycle, another invocation, or indeterminate work. An Adapter error after `beginInvocation` is possible effect and never releases client idempotency for replay. The single exception is a Session-start claim whose Adapter throws `SessionStartRefusedError`: that type is the Adapter's assertion that the engine definitively refused and what it spawned is torn down, with a `runtime.error` and `session.exited` published for the `session.started` it had already sent (the ACP adapter throws it for a model its fresh `session/new` options did not offer), so `refused()` removes the `invoking` boundary and the receipt is `rejected`. A claim without `refused` (the nested Task-dispatch start claim) records the usual indeterminate start, and an unconfirmed release falls back to it. Ambiguous boundary writes retain their exact opaque intent and retry it before later work without reinvoking the Adapter. A dead `prepared` owner is definitely uninvoked and removed; a dead `invoking` owner becomes durable `indeterminate`, including when an already-open peer discovers the dead owner during contention. Exact provider terminal identity removes matching accepted evidence; a session-wide terminal can clear older identity-less turn/start ambiguity. Task-dispatch records are excluded from provider terminal cleanup because provider exit alone does not settle graph and publication work. An interrupt acknowledgement is not terminal evidence: acceptance and the client-turn claim remain until an exact canonical terminal arrives. Post-accept observers cannot replace the known turn result; if command-receipt persistence is not known durable, service, HTTP, and SDK retain the accepted turn and add `receiptStatus: unavailable`.
 
-**Code and evidence.** `EventStore` owns SQLite and process identity, then exposes one private `SessionTurnBoundaryAuthority` to `OrchestrationService`. The in-memory Adapter exists only for embedded/test composition and preserves the same capability shape without claiming restart durability. Real two-EventStore, restart, exact-terminal, adapter-throw, route no-retry, and lifecycle race evidence lives in `session-turn-boundary.test.ts`, `orchestration-service.test.ts`, and orchestration route tests. **Do not reintroduce:** generic ledger access, caller-owned state strings, release-after-invocation, session-id inference for turn settlement, a thread-global terminal tombstone shared by concurrent starts, or lifecycle checks that ignore the durable boundary.
+**Code and evidence.** `EventStore` owns SQLite and process identity, then exposes one private `SessionTurnBoundaryAuthority` to `OrchestrationService`. The in-memory Adapter exists only for embedded/test composition and preserves the same capability shape without claiming restart durability. Real two-EventStore, restart, exact-terminal, adapter-throw, route no-retry, and lifecycle race evidence lives in `session-turn-boundary.test.ts`, `orchestration-service.test.ts`, and orchestration route tests. **Do not reintroduce:** generic ledger access, caller-owned state strings, release-after-invocation (other than a Session-start claim's `refused()` for an Adapter-asserted `SessionStartRefusedError`), session-id inference for turn settlement, a thread-global terminal tombstone shared by concurrent starts, or lifecycle checks that ignore the durable boundary.
 
 ## TurnDeduplicator
 
 A repeated client message should join the same turn instead of invoking the engine again. The [deduplicator](../../src-server/services/orchestration/turn-deduplicator.ts) maps a retained `(threadId, clientTurnId)` to its provider turn; the separate invocation boundary records whether a provider effect remains possible.
 
-**Interface.** `claim({ threadId, clientTurnId })` returns either an opaque owner `TurnClaim` or `contended`; `awaitResolution` observes durable resolution. Only the owner capability can `resolve(turnId)` or `release()`.
+**Interface.** `claim({ threadId, clientTurnId })` returns an opaque owner `TurnClaim`, `contended`, `indeterminate`, or `expired`; `awaitResolution` observes durable resolution. Only the owner capability can `beginInvocation()`, `resolve(turnId)` or `release()`.
 
-**Behavior.** The SQLite store admits one current owner across concurrent connections and restart. A contending caller may receive an already-resolved turn ID or wait for one. An unresolved claim can be reclaimed only when its recorded process owner is provably dead or its exact birth identity changed; unknown liveness remains contended. A claim latches its exact transition: after a durable write fault the same transition may retry, while a changed transition or double success is rejected. Resolved rows are oldest-first pruning candidates at the shared default soft 2,000-row ceiling; unresolved rows are never capacity victims. Deduplication lasts while the row is retained. Reclaiming a dead owner is not permission to repeat a possible provider effect: the invocation-boundary owner must still admit the call.
+**Behavior.** The SQLite store admits one current owner across concurrent connections and restart. A contending caller may receive an already-resolved turn ID or wait for one. An unresolved claim can be reclaimed only when its recorded process owner is provably dead or its exact birth identity changed, and only when that owner never called `beginInvocation`; unknown liveness remains contended. The owner calls `beginInvocation` durably before it moves the invocation boundary to `invoking` and calls the provider, and a failure there invokes nothing and releases the claim. A dead owner's claim that began invoking, or a thread row whose invocation is unknown, answers `indeterminate`, and the send fails with the same possible-effect error as a live indeterminate start. Invocation is stored inside the row's owner record, so a writer that replaces the owner without recording it (an older peer or a downgraded runtime) leaves it unknown rather than a stale `pending`. That rule lives on the claim row because the invocation boundary cannot answer it: boot recovery deletes a dead owner's boundary row once it has bannered the interrupted turn. A claim latches its exact transition: after a durable write fault the same transition may retry, while a changed transition or double success is rejected. Resolved rows are oldest-first pruning candidates at the shared default soft 2,000-row ceiling; unresolved rows are never capacity victims. An evicted row leaves a key-only tombstone in `orchestration_turn_dedup_expired`, outside the cap, so a later retry of that key answers `expired` and is refused like `indeterminate` instead of being claimed afresh ([#3559](https://github.com/kontourai/station/issues/3559)). A `chat:` tombstone answers for 30 days (`TURN_DEDUP_TOMBSTONE_RETENTION_MS`), far past Station's longest client retry window of seven days, and is removed on the next dedup write after that; the key is then new again. That bound exists because a turn relayed through the station-agent adapter writes both a thread key and a `chat:` key, and `chat:` tombstones have no thread to delete them with. Thread tombstones are not time-bounded: a session-control start re-drives its unresolved request key forever with the same `clientTurnId`, so its thread tombstone lasts as long, until `deleteThread` removes both.
 
-**Code and evidence.** `EventStore` composes its private `src-server/services/orchestration/sqlite-turn-dedup-persistence.ts` coordinator into the Module; orchestration callers receive only the Interface. `src-server/services/orchestration/__tests__/turn-deduplicator.test.ts` uses real temporary SQLite for ownership, restart, and fault behaviour. The separate `/chat` facade retains its own `EventStore` chat-turn family because it owns conversation-id replay, bounded retention, and direct-route compatibility; it is not a second TurnDeduplicator caller family. **Do not reintroduce:** a process-local map, raw `(threadId, clientTurnId)` updates, elapsed-time takeover or pruning unresolved claims, or a generic ledger wrapper around the retained chat-turn facade.
+**Code and evidence.** `EventStore` composes its private `src-server/services/orchestration/sqlite-turn-dedup-persistence.ts` coordinator into the Module; orchestration callers receive only the Interface. The claim, begin, resolve, release, retention and tombstone rules are the turn-dedup commands of [`@kontourai/monument`](../../packages/monument/CONTEXT.md), run through its `node:sqlite` adapter on `EventStore`'s own connection and bound to the existing `orchestration_turn_dedup` and `orchestration_turn_dedup_expired` tables, which stay the source of truth: no migration, the same `owner_json` encoding (the owner id is still `token`), so an older binary that writes the tables directly keeps working. What stays in Station is the key scheme (`turnDedupKey`, `chatTurnDedupKey`), the `chat:` rule that reads an unmarked legacy row as `untracked`, the 30-day `chat:` tombstone bound, the one-way owner handle, and the metrics. `monument-station-tables.conformance.test.ts` runs Monument's conformance suite against that binding, and `deleteThread` forgets a thread's claims and tombstones through Monument's `turnDedup.forgetPrefix` inside its own transaction, so the prefix comparison is byte-exact for any thread id. `src-server/services/orchestration/__tests__/turn-deduplicator.test.ts` uses real temporary SQLite for ownership, restart, and fault behaviour, and `turn-dedup-crash.process.test.ts` SIGKILLs a real owner process before and after its provider call. `/chat` claims are tracked like thread claims ([#3581](https://github.com/kontourai/station/issues/3581)): `streamPrimaryAgentChat` claims the key before the response starts and records invocation durably immediately before `agent.streamText`, so a retry after its owner died past that point is refused. A refused `/chat` retry (`indeterminate` or `expired`) answers 409 with `code: foreground_message_indeterminate` and `outcome: 'indeterminate'` before any stream, and the SDK's `streamConversationTurn` rejects with a `ChatHttpError` carrying `outcome: 'indeterminate'`. A `chat:` row with no invocation record, written before #3581, still reads as `untracked` and keeps the dead-owner reclaim rule; an unrecognised record fails closed on every key. An in-process agent failure still releases the claim so the user can retry; only a crash past the invocation point is refused. `chat-turn-dedup-crash.process.test.ts` SIGKILLs a real `/chat` owner before and after its agent call. The separate `/chat` facade retains its own `EventStore` chat-turn family because it owns conversation-id replay, bounded retention, and direct-route compatibility; it is not a second TurnDeduplicator caller family. **Do not reintroduce:** a process-local map, raw `(threadId, clientTurnId)` updates, elapsed-time takeover or pruning unresolved claims, or a generic ledger wrapper around the retained chat-turn facade.
 
 ## AdoptionLedger
 
@@ -1451,7 +1512,7 @@ Recovery must distinguish a requested retry, an observed provider turn, and an a
 
 **Interface.** `RecoveryLedger` owns recovery arm, immutable projection, due/profile claim (plus the user's immediate claim of a waiting usage-limit stop), observed provider correlation, terminal/cancel, compensation, and startup reconciliation. A `RecoveryClaim` closes over one dispatch attempt and can replay with correlation, release only before invocation, accept provider evidence, become indeterminate, and prepare a credential application. `prepareCredential` passes the claim-local opaque application key to private `CredentialProfileRecoveryAdapter.stage`; its `ConnectionService` Implementation calls `CredentialApplicationFactory.start` and returns a state-bound `CredentialApplicationHandle` for reserve/stage/settle/ack. This is deliberate dual composition: RecoveryLedger owns dispatch truth while Factory/Handle owns exact credential evidence. The correlation key crosses only the server-owned recovery/connection composition; it is removed from snapshots, route projections, and configuration output.
 
-**Behavior.** A prepared claim is releasable only before external invocation. After invocation, only durable provider acceptance can produce success; observed or unknown provider work is indeterminate and is never silently retried. Startup reconciliation fences abandoned prepared work and returns the records it successfully observed or changed. Its current scan wrappers return an empty list on a coordinator exception as well; an empty sweep is therefore not proof that storage has no remaining obligations. Credential application is linked before profile mutation, has exact settlement and acknowledgement, and keeps unacknowledged evidence through restart. The private store retains at most 64 unacknowledged applications, while preserving terminal capacity for an already staged attempt. Claims, startup handles, immutable snapshots, and exact compare-and-set results prevent foreign settlement. Linked obligations receive scoped work; they never fall through to broad cleanup. An unlinked legacy prepared row is conservatively quarantined; it never authorizes a broad rollback. A still-waiting intent (armed, never claimed) can be retired without a dispatch as `manual` or `canceled`, with an `outcomeReason` the projection carries (#3157). Shutdown fences every pending intent except a usage-limit one that only waits for its reset or was left to the user because automatic resume was off; those hold no dispatch, and a restart rebuilds the waiting timer. Only usage-limit intents are gated: when one is due, `SessionRecoveryCoordinator` reads the `usageLimitAutoResume` setting and retires the intent if a newer turn started in the conversation, a request is open, or the Session closed; a newer turn also retires one left to the user. Ordinary timed recovery is unchanged.
+**Behavior.** A prepared claim is releasable only before external invocation. After invocation, only durable provider acceptance can produce success; observed or unknown provider work is indeterminate and is never silently retried. Startup reconciliation fences abandoned prepared work and returns a typed scan: `available` with the records it observed or changed, or `unavailable` when the coordinator read failed. Only an `available` empty scan proves that storage has no remaining obligations. Boot-time interrupted-turn consumption retries a record whose banner write, publish or row close failed, up to three more times at 250, 500 and 1000 ms, then warns with the unrecovered boundary ids and leaves their rows for the next boot; Orchestration shutdown stops it, ending a backoff early, and logs that distinctly (#3562). For the credential scans, rows fenced before a mid-scan failure stay durable and are read again by the next scan; the due scan selects only still-prepared rows, so a due row fenced before the failure is not returned again. The due-path `SessionRecoveryCoordinator` sweep records nothing from an unavailable scan and has no in-process retry. Credential application is linked before profile mutation, has exact settlement and acknowledgement, and keeps unacknowledged evidence through restart. The private store retains at most 64 unacknowledged applications, while preserving terminal capacity for an already staged attempt. Claims, startup handles, immutable snapshots, and exact compare-and-set results prevent foreign settlement. Linked obligations receive scoped work; they never fall through to broad cleanup. An unlinked legacy prepared row is conservatively quarantined; it never authorizes a broad rollback. A still-waiting intent (armed, never claimed) can be retired without a dispatch as `manual` or `canceled`, with an `outcomeReason` the projection carries (#3157). Shutdown fences every pending intent except a usage-limit one that only waits for its reset or was left to the user because automatic resume was off; those hold no dispatch, and a restart rebuilds the waiting timer. The startup source-terminal repair and a per-intent `cancelIfSourceTerminated` share one rule (a shutdown cancel request, or a durable terminal event on the source turn). `SessionRecoveryCoordinator` arms timers at startup even when the bulk repair is unavailable, and only reports it; each timer applies the same rule to its own intent before it claims, cancels the intent if its source ended, and re-arms itself every 60 seconds while that check cannot be read. The recovery claim's compare-and-set carries the same rule, so a source that ends after the check is still never resumed. Only usage-limit intents are gated: when one is due, `SessionRecoveryCoordinator` reads the `usageLimitAutoResume` setting and retires the intent if a newer turn started in the conversation, a request is open, or the Session closed; a newer turn also retires one left to the user. Ordinary timed recovery is unchanged.
 
 **Code and evidence.** `EventStore` composes the private RecoveryLedger and CredentialApplicationFactory/Handle Implementations over SQLite at runtime startup. `SessionRecoveryCoordinator` uses ordinary recovery claims; `CredentialRecoveryModule` receives opaque startup/claim capabilities and the concrete credential Adapter. Real SQLite proof is in `recovery-ledger.test.ts`, `credential-application-ledger.test.ts`, `credential-recovery-module.test.ts`, and `session-recovery-coordinator.test.ts` under `src-server/services/orchestration/__tests__/`. **Do not reintroduce:** `RecoveryDispatchSettlement`, process-local correlation maps, raw attempt IDs, public storage reopen operations, or automatic retry of indeterminate work.
 
@@ -1461,7 +1522,7 @@ An automatic profile change is a compensation protocol, not a switch followed by
 
 **Interface.** `recover`, `complete`, `abandon`, and `reconcile` form one compensation protocol for credential-profile recovery. Each returns a total recovery or reconciliation outcome rather than making callers infer stage/commit/rollback order.
 
-**Behavior.** A recovery call waits for the shared startup reconciliation attempt before staging. The caller currently does not require that attempt’s result to be `reconciled`; an `indeterminate` result leaves the startup pass eligible for another attempt rather than acting as a global staging barrier. `unavailable` stage truth alone permits ordinary recovery fallback; a staged or indeterminate attempt remains exact compensation work. Candidate session restore or quarantine happens independently of registry cleanup. Commit, rollback, inspect, and acknowledgement are exact, typed facts; cleanup failure keeps durable authority for later scoped retry. A live completion acts only through its original claim; bulk prepared reconciliation is startup-only.
+**Behavior.** A recovery call waits for the shared startup reconciliation attempt before staging. The caller currently does not require that attempt’s result to be `reconciled`; an `indeterminate` result, or `unavailable` when a durable obligation scan could not be read, leaves the startup pass eligible for another attempt rather than acting as a global staging barrier. Only a `reconciled` result latches the startup pass. An unavailable scan, like a visible linked receipt, suppresses the identity-free orphan sweep while independent scoped compensation still drains. `unavailable` stage truth alone permits ordinary recovery fallback; a staged or indeterminate attempt remains exact compensation work. Candidate session restore or quarantine happens independently of registry cleanup. Commit, rollback, inspect, and acknowledgement are exact, typed facts; cleanup failure keeps durable authority for later scoped retry. A live completion acts only through its original claim; bulk prepared reconciliation runs only in the startup pass, retried by later callers until it reconciles.
 
 **Code and evidence.** `OrchestrationService` composes RecoveryLedger, `RecoveryDispatchAdapter`, credential profile Adapter, session restore/quarantine functions, and clock. `SessionRecoveryCoordinator` routes profile recovery to it. Real lifecycle, compensation, two-instance, and provider-truth coverage is in `src-server/services/orchestration/__tests__/credential-recovery-module.test.ts` and `session-recovery-coordinator.test.ts`. **Do not reintroduce:** credential callbacks on the coordinator, profile policy in a provider Adapter, broad rollback for linked work, or ad-hoc restart maps.
 
@@ -1686,7 +1747,9 @@ Two important exceptions explain why the function name is not enforcement:
 use their own per-conversation in-process queue, not this cross-process lock;
 the [telemetry disclosure receipt](../../src-server/services/usage-telemetry-service.ts)
 is a complete value with no read-derived update, so concurrent publication is
-last-rename-wins. Atomic publication prevents torn values; it does not by itself
+last-rename-wins. Its acknowledgement must name the displayed current inventory
+revision; that consent check remains in the route/service, outside the publisher.
+Atomic publication prevents torn values; it does not by itself
 prevent a read/modify/write race or coordinate other processes' queues.
 
 [FileStorageAdapter](../../src-server/domain/file-storage-adapter.ts) and
@@ -3136,7 +3199,12 @@ manual runs do not advance the recurring cursor. Claim and `beginInvocation`
 persist before their respective effects. A dead initial pre-invocation owner
 can release its claim, while an advanced safe retry retains its run/attempt and
 budget. A dead invoked owner becomes indeterminate and is never automatically
-replayed. Exact revision checks let a concurrent job edit/delete win over old
+replayed. A foreign owner's pid is probed before its recorded birth is read, so
+a dead pid releases its claim even when no birth was recorded; a live pid
+without one keeps the fence. One unreadable job record is quarantined in place:
+`claimDue` skips it and reports it once per record revision (BuiltinScheduler
+logs an error), and every other due job still claims. Settling a dead claim on
+such a record advances `last_run_ms` without rewriting the unreadable bytes. Exact revision checks let a concurrent job edit/delete win over old
 completion. Post-commit uncertainty requires exact readback; unavailable storage
 is a typed error, not an empty schedule or invented successful run.
 
@@ -3882,3 +3950,32 @@ prompt, memory, hooks and configuration-generation guards. Hookless temporary
 model recovery refuses positive additions. Agent restrictions and store ACLs
 remain authoritative. The [Knowledge guide](../guides/knowledge.md#project-tools-and-automatic-store-detection)
 explains the UI and opt-out behavior.
+
+
+## ProductTelemetryReceiver
+
+**Purpose.** The optional [receiver](../../packages/telemetry-broker/README.md)
+accepts the shared disclosed product envelope. Its
+[HTTP owner](../../packages/telemetry-broker/src/app.ts) separates source ingest
+and source-scoped receipt lookup from operator source management, storage health
+and bounded received-observation trends. The
+[PostgreSQL repository](../../packages/telemetry-broker/src/store.ts) validates
+compatible permanent tables and constraints inside every transaction, fences
+revocation against ingestion, deduplicates retained source/event UUIDs, and
+returns acceptance only after acknowledged durable commit. Database waits and
+request concurrency are bounded; uncertainty returns a failure.
+
+**Composition and limits.** The
+[Unix entrypoint](../../packages/telemetry-broker/src/main.ts) admits private
+operator credentials and composes the database pool separately from Station's
+runtime. No endpoint is enabled automatically. This product namespace neither
+collects OTel metrics/traces nor authorizes personal receipt synchronization.
+Producer clocks and unknown delivery coverage remain explicit in queries;
+installation hashes are not people. Retention limits deduplication, and deleted
+rows do not guarantee physical database-file shrinkage.
+
+**Evidence.** Focused HTTP mocks own parser/credential/admission behavior. The
+[live qualifier](../../packages/telemetry-broker/qualify.mjs) uses its own PostgreSQL
+database to exercise commit/replay, revocation, capacity, corrupt live schemas
+and stalled transport recovery. Neither establishes persistent deployment,
+actual Station execution, final-source backup/restore or native acceptance.

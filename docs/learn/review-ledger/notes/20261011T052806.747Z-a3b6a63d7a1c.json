@@ -1,0 +1,7 @@
+{
+  "revision": "1c759e496c031266871a13cad1dca60dd9198593",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"#463: Insights agentUsage now carries only chats (legacy tokens:0 noted); /monitoring/stats returns no cost/totalCost; /monitoring/metrics totalCost sums priced completions only and unpricedCount counts the rest. Checked against insights.ts, monitoring.ts, InsightsDashboard.tsx and insightsDashboardUtils.ts.","inputs":["docs/reference/api.md","src-server/routes/operations/insights.ts","src-server/routes/operations/monitoring.ts","src-ui/src/components/monitoring/InsightsDashboard.tsx","src-ui/src/components/monitoring/insightsDashboardUtils.ts"]}
+  ]
+}

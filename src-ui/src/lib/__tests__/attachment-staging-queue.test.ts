@@ -128,4 +128,38 @@ describe('stageComposerAttachments', () => {
       error: expect.stringContaining('capacity is full'),
     });
   });
+
+  // #545: the route answers 400 `principal_unresolved` when it cannot tell
+  // who is asking. Retrying cannot change that, so it is not a Retry.
+  test('an unresolvable caller is a failed stage, not a Retry', async () => {
+    capability.mockResolvedValueOnce({
+      state: 'supported',
+      version: 1,
+      maxConcurrentUploads: 3,
+    });
+    prepare.mockReset();
+    prepare.mockRejectedValueOnce(
+      Object.assign(
+        new Error('Unable to resolve a principal: no paired device'),
+        {
+          name: 'ChatHttpError',
+          status: 400,
+          code: 'principal_unresolved',
+        },
+      ),
+    );
+    const updates: unknown[] = [];
+    await stageComposerAttachments(
+      'http://station.test',
+      [attachment('unknown-caller')],
+      undefined,
+      (update) => updates.push(update),
+    ).catch(() => undefined);
+    expect(updates.at(-1)).toMatchObject({
+      clientAttachmentId: 'unknown-caller',
+      state: 'failed',
+      callerUnresolved: true,
+    });
+    expect(updates.at(-1)).not.toHaveProperty('capacityFull');
+  });
 });

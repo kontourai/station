@@ -68,6 +68,16 @@ export function useNewProjectDraft(isOpen: boolean) {
   };
 
   useDraftReset(isOpen, reset);
+  // #3552: "Add a project for this folder" opens New project at
+  // `/projects/new?directory=<folder>`, with that folder already chosen.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: read once per opening.
+  useEffect(() => {
+    if (!isOpen) return;
+    const requested = new URLSearchParams(window.location.search).get(
+      'directory',
+    );
+    if (requested) draft.setDirectory(requested);
+  }, [isOpen]);
   useDerivedProjectName(isOpen, draft.nameTouched, draft.setName, derivedName);
 
   // The name and slug the submission will carry, derived once here so the

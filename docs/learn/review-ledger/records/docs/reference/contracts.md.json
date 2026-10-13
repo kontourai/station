@@ -172,7 +172,11 @@
 
     "src-server/routes/chat/conversation-reference-read.ts",
 
-    "packages/contracts/src/enriched-agent.ts"
+    "packages/contracts/src/enriched-agent.ts",
+
+    "packages/contracts/src/product-telemetry.ts",
+
+    "src-server/services/orchestration/delta-coalescer.ts"
   ],
 
   "checks": [

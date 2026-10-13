@@ -217,6 +217,7 @@ also serve release/Nightly callers alongside their direct PR/main triggers.
 | [`desktop-clean-checkout.yml`](../../.github/workflows/desktop-clean-checkout.yml) | Desktop clean-checkout build | **PR: Desktop clean checkout** | PR events (path filtered); main pushes (path filtered); manual dispatch. |
 | [`desktop-rust.yml`](../../.github/workflows/desktop-rust.yml) | Desktop Rust tests | **PR: Desktop Rust** | PR events (path filtered); main pushes (path filtered); manual dispatch. |
 | [`docs-freshness-sweep.yml`](../../.github/workflows/docs-freshness-sweep.yml) | Documentation freshness sweep | **Repo: Docs freshness sweep** | UTC schedule: `37 5 * * *`; manual dispatch. |
+| [`docs-kit.yml`](../../.github/workflows/docs-kit.yml) | Main: Docs kit | **PR: Docs kit** | PR events; merge queue; main pushes; manual dispatch. |
 | [`ecosystem-packaging.yml`](../../.github/workflows/ecosystem-packaging.yml) | Ecosystem packaging dry-run | **PR: Ecosystem packaging** | PR events (path filtered); manual dispatch. |
 | [`fresh-home-walkthrough.yml`](../../.github/workflows/fresh-home-walkthrough.yml) | Fresh-home walkthrough | **Nightly: Fresh-home walkthrough** | UTC schedule: `0 10 * * *`; manual dispatch. |
 | [`full-regression.yml`](../../.github/workflows/full-regression.yml) | Hosted full regression | **Main: Full qualification** | reused by `Main: Publish packages`, `Main: Qualification`, `Nightly`, `PR: CI`, `Release: Publish`, `Release: Stage`. |
@@ -326,7 +327,7 @@ comments into a trend table; `--json` also works for history.
 | Executed / skipped jobs; runner-hours / waiting hours | Executed jobs have a non-skipped conclusion and start/end timestamps; skipped jobs have conclusion `skipped`. Runner time is start to end; wait is creation to start, floored at zero. Unfinished jobs (null conclusion) have a separate count and wait-so-far median/p90 as of `until`: creation to start for running jobs, creation to `until` for queued jobs, floored at zero. They contribute to waiting hours, wait shares and OS wait distributions; runner-hours remain completed-job measurements. |
 | Time with >=18 jobs running | Sweep-line share including idle gaps; running unfinished jobs extend to `until`, while queued jobs contribute zero runner slots from creation through `until`. Completed jobs span start to completion, with completion floored at start for inverted timestamps; simultaneous completions precede starts. |
 | Jobs waiting >5 / >20 minutes; OS wait | Shares among executed and unfinished jobs using their observed wait or wait so far and strict thresholds. Linux/Windows/macOS waits have median/p90 minutes; labels containing macOS or Windows identify those systems, other labels count as Linux as in the baseline. |
-| Per PR push / per merge group | Executed jobs, summed runner-minutes, and creation-to-last-completion wall minutes, each median/p90. The baseline approximates a PR push by PR number and ten-minute creation bucket, combining `pull_request` and `pull_request_target` workflows. Queue branches group merge workflows. Groups with fewer than five executed jobs or any unfinished run/job are excluded, so an in-progress merge group is never a completed wall-time sample. |
+| Per PR push / per merge group | Executed jobs, summed runner-minutes, and creation-to-last-completion wall minutes, each median/p90. The baseline approximates a PR push by PR number and ten-minute creation bucket, combining `pull_request` and `pull_request_target` workflows. When a run's `pull_requests` list is empty, its PR comes from the PRs whose head is the run's branch, found by commit and then by branch name: among those created before the run, the ones still open at the run own it, otherwise the latest-created one. A run with no such PR sets `incomplete: true` with a reason naming the run, commit and branch. Queue branches group merge workflows. Groups with fewer than five executed jobs or any unfinished run/job are excluded, so an in-progress merge group is never a completed wall-time sample. |
 | Shard setup versus tests | Up to 20 executed jobs per family: `fast-checks shard`, `Ordinary corpus`, `Process-heavy corpus`. Named test/corpus/regression/shard steps count as tests; installation, planning, downloads and uploads do not. Remaining job duration counts as overhead, including teardown and gaps. This is a step-name estimate, not a profiler measurement. |
 | PR merges touching the review ledger | First-parent `origin/main` commits with a PR number in the subject and changed paths under `docs/learn/review-ledger/`; count, median and maximum changed record/note files. A note archive and the loose notes a baseline advance deleted into it (#3394) are not counted; notes the same merge adds are. |
 
@@ -675,7 +676,12 @@ CI artifacts, logs, or local files alone do not establish a visual claim.
 
 The Windows portable floor is deliberately not named or treated as
 `test:full`. It combines the physically proven pre-push tier with the portable
-OpenSSH argv, cleanup, and broken-pipe contracts. Full Windows Vitest parity
+OpenSSH argv, cleanup, and broken-pipe contracts, the file-memory
+transcript durability suite, and the Windows process identity probe run
+against real processes. The durability suite is here because torn-tail repair
+truncates through a non-append descriptor, which Windows requires. The probe
+test is the one test of that PowerShell probe that does not fake it (skipped
+off Windows). Full Windows Vitest parity
 remains failing closed under issue #1420; do not add exclusions or
 `continue-on-error` to relabel that gap green.
 
@@ -723,7 +729,11 @@ validated exact coordinator, target, and guard PID/start identities; a wrapper
 start that was not already known remains `null`. Environment, arguments, command
 paths, and raw unredacted output are outside this diagnostic. The record locates
 the missing proof barrier; it does not claim the underlying Windows failure is
-fixed.
+fixed. The [owned-command runner](../../scripts/lib/owned-process.mjs) accepts
+an observed wrapper `exit` after Job settlement, or its existing `close`
+observation. Windows can emit `exit` without
+`close` after IPC disconnect. Wrapper exit alone never proves Job settlement or
+output completion; the command's guard, EOF and drain barriers still apply.
 
 ### Unified usability feedback
 
@@ -1259,7 +1269,7 @@ the selected project consumes package builds.
 
 This command is diagnostic; pre-push, `ci:fast`, and required hosted checks use
 TypeScript 7. Bun has no persistent incremental cache, and a single project
-check does not replace the twelve-lane aggregate or the scripts coverage gate.
+check does not replace the typecheck aggregate or the scripts coverage gate.
 Do not add `@types/bun` to Station's Node/browser projects to make a check pass.
 Compare diagnostics before treating a disagreement as a Station defect.
 

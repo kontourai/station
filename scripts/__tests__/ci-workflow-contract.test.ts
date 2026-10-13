@@ -2885,6 +2885,16 @@ describe('CI verification workflow contracts', () => {
     );
     expect(windows).toContain('run: npm run verification:policy:gate');
     expect(windows).toContain('run: npm run test:windows:portable');
+    // The floor's only real-Windows run of the process identity probe
+    // (#2675): every other test of it fakes PowerShell.
+    const windowsPortable = (
+      JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {
+        scripts: Record<string, string>;
+      }
+    ).scripts['test:windows:portable'];
+    expect(windowsPortable.split(/\s+/)).toContain(
+      'packages/cli/src/__tests__/windows-process-identity.process.test.ts',
+    );
     expect(windows).toContain('name: Compile desktop Rust tests');
     expect(windows).toContain(
       'cargo test --manifest-path src-desktop/Cargo.toml --no-run',

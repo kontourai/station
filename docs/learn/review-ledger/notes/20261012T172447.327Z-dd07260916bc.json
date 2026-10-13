@@ -1,0 +1,7 @@
+{
+  "revision": "1e5825f5d7e451d80b1071a27444c3de34b35e6e",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the station-docs-content.ts delta: it is the generated bundle of shipped documentation, regenerated with docs:mcp:generate after this change edited shipped documents (module-map.md, acp.md, contracts.md, session-api.md, api.md, getting-started.md); only its content and digest lines changed. station-docs.md describes the generator, catalog and digest contract, none of which changed. No prose change needed.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

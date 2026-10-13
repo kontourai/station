@@ -1,0 +1,7 @@
+{
+  "revision": "4d7dd9b704305e729ae5da64e12ce8223c98fc04",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Re-reviewed Continue an Attached Session for #3552: entry is the conversation's message box in Activity, confirmed once in Chat; disabled-with-reason now describes the message box; Starter launch semantics unchanged.","inputs":["docs/guides/starter-work.md","src-ui/src/components/session-detail/AttachedSessionDetail.tsx"]}
+  ]
+}

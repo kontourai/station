@@ -473,9 +473,13 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   // instead of it, so promotion after pairing is the only shape that is both
   // additive and backward-compatible.
   [PAIRING_SCOPE_ENGINE_LOGIN]: ['operator-promotion'],
-  // #2412: operator promotion only, for the reasons on its docblock.
+  // #2412 / #2436: still the operator's grant, for the reasons on their
+  // docblocks. A device may ASK for either at pairing
+  // (DEVICE_REQUESTABLE_EXTRA_SCOPES; the Station app asks for everything),
+  // but asking grants nothing: only the operator credential or the desktop's
+  // own local grant may keep one when approving. That approval is the
+  // operator promoting the device at pairing time, never a pairing preset.
   [PAIRING_SCOPE_CODING_EXEC]: ['operator-promotion'],
-  // #2436: operator promotion only, for the reasons on its docblock.
   [PAIRING_SCOPE_APPROVAL_FULL_ACCESS]: ['operator-promotion'],
 };
 
@@ -545,9 +549,9 @@ export const PAIRING_SCOPE_DESCRIPTIONS: Record<
       "Can run one-off shell commands on this Station's computer (the Coding terminal's command box), as you and with your keys. Without it the device still reads and edits the Project's files.",
   },
   [PAIRING_SCOPE_APPROVAL_FULL_ACCESS]: {
-    label: 'Allow full access',
+    label: 'Skip approval prompts',
     summary:
-      "Can put a chat, or an Agent's default, at full access: the agent runs with no sandbox and no approval prompts, as you. Without it the device can still tighten a chat to Ask or Auto, or pick Default.",
+      "Can put a chat, or an Agent's default, in full access mode: the agent runs with no sandbox and no approval prompts, as you. It grants no other permission. Without it the device can still tighten a chat to Ask or Auto, or pick Default.",
   },
 };
 
@@ -566,6 +570,57 @@ export const DEFAULT_PAIRING_SCOPE_PRESET: PairingScopePreset = 'standard';
 /** The space-delimited scope string a UI preset resolves to. */
 export function pairingScopePresetString(preset: PairingScopePreset): string {
   return PAIRING_SCOPE_PRESETS[preset].join(' ');
+}
+
+/**
+ * What a device may ask for in its own access request
+ * (`PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH`, body `scope`): one base,
+ * Read-only or Standard, plus any of {@link DEVICE_REQUESTABLE_EXTRA_SCOPES}.
+ * The Station app and browser ask for everything (Standard and both extras);
+ * the operator sees the request and may limit it before approving. A request that names no scope still receives
+ * {@link DEFAULT_GRANT_PAIRING_SCOPE}, which Station peers and older clients
+ * rely on; nothing a device asks for includes `access:manage`.
+ */
+export const DEVICE_REQUESTABLE_BASE_PRESETS = [
+  'read-only',
+  'standard',
+] as const satisfies readonly PairingScopePreset[];
+
+/**
+ * The elevated grants a device may ask for at pairing time. Asking grants
+ * nothing by itself: keeping one when approving needs the operator, never an
+ * `access:approve` device or an unauthenticated approval.
+ * The same rule covers an operator-created offer that carries one. Every
+ * other elevated grant stays operator-added after pairing.
+ */
+export const DEVICE_REQUESTABLE_EXTRA_SCOPES = [
+  PAIRING_SCOPE_CODING_EXEC,
+  PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
+] as const satisfies readonly PairingScope[];
+
+/**
+ * Whether `scope` is something a device may ask for: exactly one requestable
+ * base preset, plus only requestable extras.
+ */
+export function isDeviceRequestableScope(scope: string): boolean {
+  const tokens = parsePairingScope(scope);
+  if (!tokens) return false;
+  const extras: readonly PairingScope[] = DEVICE_REQUESTABLE_EXTRA_SCOPES;
+  const base = tokens.filter((token) => !extras.includes(token));
+  return DEVICE_REQUESTABLE_BASE_PRESETS.some((preset) => {
+    const presetTokens: readonly PairingScope[] = PAIRING_SCOPE_PRESETS[preset];
+    return (
+      base.length === presetTokens.length &&
+      presetTokens.every((token) => base.includes(token))
+    );
+  });
+}
+
+/** The requestable extras `scope` carries: what only the operator may keep. */
+export function deviceRequestedExtraScopes(scope: string): PairingScope[] {
+  const tokens = parsePairingScope(scope) ?? [];
+  const extras: readonly PairingScope[] = DEVICE_REQUESTABLE_EXTRA_SCOPES;
+  return tokens.filter((token) => extras.includes(token));
 }
 
 /**
@@ -639,7 +694,9 @@ export function isPairingScopeSubset(
  * too — that is the switch that turns a silent misbehavior into a
  * "update your app" verdict.
  */
-export const STATION_COMPAT_PROTOCOL_VERSION = 1;
+// Protocol 2 adds revision-bound product disclosure acknowledgements. Core
+// protocol-1 callers remain admitted; this optional feature negotiates separately.
+export const STATION_COMPAT_PROTOCOL_VERSION = 2;
 
 /**
  * Oldest client protocol this host still serves. A client advertising less
@@ -850,6 +907,12 @@ export interface DevicePairingAccessRequestResponse {
   expiresAt: number;
   accountCandidate?: DeviceAccountBindingCandidate;
   requireAccountBinding?: true;
+  /**
+   * The operator CLI command on the Station's host, for the approve command
+   * the requester shows (`npx @kontourai/station-cli@nightly` on a nightly).
+   * Absent from a Station that predates it; a client then shows `station`.
+   */
+  operatorCli?: string;
 }
 
 /**

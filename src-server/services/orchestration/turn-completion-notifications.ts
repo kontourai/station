@@ -69,6 +69,7 @@ const SESSION_KIND = 'runtime';
 type TurnOutcome = 'done' | 'failed' | 'stopped' | 'replied' | 'reply-failed';
 
 interface TurnCompletionOrchestrationService {
+  isReadOnlyAttachedSession(threadId: string): boolean;
   resolveSessionPresenceSubject(
     threadId: string,
   ): OrchestrationStreamPresenceSubject | undefined;
@@ -152,7 +153,12 @@ async function deliverTurnCompletionPush(input: {
    * not a terminal event the card folds.
    */
   onActivityCard?: boolean;
-}): Promise<'scheduled' | 'skipped_connected' | 'skipped_no_recipient'> {
+}): Promise<
+  | 'scheduled'
+  | 'skipped_connected'
+  | 'skipped_no_recipient'
+  | 'skipped_external'
+> {
   const {
     orchestrationService,
     presence,
@@ -162,6 +168,8 @@ async function deliverTurnCompletionPush(input: {
     outcome,
     onActivityCard,
   } = input;
+  if (orchestrationService.isReadOnlyAttachedSession(threadId))
+    return 'skipped_external';
   const presenceSubject =
     orchestrationService.resolveSessionPresenceSubject(threadId);
   // No subject means no one may read this session: a push would announce a

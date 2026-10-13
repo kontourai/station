@@ -349,7 +349,12 @@ behavior.
 A purpose-classified release-note file under `.changeset/` may become absent
 without invalidating the retained classification. It must have no behavioral
 source/check claims; absence does not prove that a release consumed it. The
-README, current guides, malformed records and missing behavioral dependencies
+ordinary `docs:review:record` command can record a reviewed, committed deletion
+of a previously tracked note. Declared checks remain separate from appended
+review notes, so recording the deletion does not invent a new check claim.
+Any existing check claim needs an explicit reviewed reclassification first.
+The review records absence, not release consumption or publication.
+The README, current guides, malformed records and missing behavioral dependencies
 are still errors. Catch-up reporting keeps these lifecycle states separate from
 claims that need source review. New generated owners need their own reviewed
 contract and refusal tests; `kind: generated` alone never exempts a file.
@@ -514,6 +519,17 @@ documentation tests, and generated Pages output. They do not prove every prose
 claim or deployment. Inspect changed instructions against source and report
 runtime steps not exercised. New Pages content must be explicitly admitted in
 `docs/pages/public-docs.json`; creating a guide does not publish it there.
+The root `docs-kit.json` must track `public-docs.json` (same sources, sections
+and order): the Pages workflow publishes its `docs-bundle.json`, which feeds the
+[Kontour docs hub](https://kontourai.github.io/) and the shared `docs-kit mcp`
+server. It also lists the [shipped manual](../reference/station-docs.md) as a
+bundle-only document (`"publish": false`, so it gets no page) and mirrors the
+`docs/learn/mcp-topics.json` topics as anchors into it, so the shared server
+answers with the same sections as Station Docs. `docs-kit-manifest.test.ts`
+fails when either drifts. `PR: Docs kit` runs `docs-kit check` on pull
+requests, merge-queue entries and main as an advisory, non-required check; run
+`npx -y github:kontourai/docs-kit#<sha> docs-kit check` locally for faster
+feedback.
 
 The learning atlas and Station Docs MCP share the concept catalog and module
 map. The [shipped manual](../reference/station-docs.md) owns the MCP's introductory

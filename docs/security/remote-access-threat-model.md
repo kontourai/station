@@ -171,9 +171,9 @@ commit or executable identity. Its schema is:
   "transports": { "http": 1, "sse": 1, "websocket": 1 },
   "compatibility": {
     "serverVersion": "<station package version>",
-    "protocolVersion": 1,
+    "protocolVersion": 2,
     "minClientProtocol": 1,
-    "capabilities": { "remoteAuth": 1, "devicePairing": 1, "environmentProof": 1, "clientProtocolHeader": 1 }
+    "capabilities": { "remoteAuth": 1, "devicePairing": 1, "environmentProof": 1, "clientProtocolHeader": 1, "productTelemetryAcknowledgement": 2 }
   },
   "capabilities": { "sshEnvironments": true, "webPushNotifications": true }
 }
@@ -183,6 +183,19 @@ The environment ID is stable across restarts and endpoint changes. It is an
 identifier, not a secret or authorization token.
 
 ### Client API protocol admission (#2962)
+
+Protocol 2 introduces revision-bound product telemetry acknowledgement as a
+separately versioned capability. Core protocol-1 and headerless callers remain
+admitted at minimum1. The disclosure response reports acknowledgement protocol2;
+its POST requires that version and the displayed inventory revision. Missing or
+unsupported feature versions return426 with update guidance; stale revisions
+return409, and neither creates consent. This prevents an older UI approving
+new metadata it cannot display. An installed older UI can only show its existing
+generic acknowledgement failure until it updates; the current UI renders update
+guidance and retains dismissal/disable actions. No legacy sender fallback runs
+on a new host. See [Usage telemetry](../reference/usage-telemetry.md).
+
+
 
 A client states the client API protocol it was built against in
 `X-Station-Client-Protocol: <integer>` (`CLIENT_PROTOCOL_HEADER` in
@@ -477,21 +490,31 @@ default to the historical four-token grant rather than Standard:
 
 - The server-side fallback when a caller creates a pairing offer without an
   explicit `scope` is the four-token default, not Standard or all current scopes —
-  `DevicePairingService#createOffer`'s default. The pairing UI always sends
-  an explicit scope, so this fallback is reached only by a caller bypassing
-  the UI (or a pre-#1098 integration) and exists to keep that path
-  functioning rather than silently narrowing it.
-- The Device same-origin "Request access" continuity flow (the short-lived access
-  request a browser makes directly from the Station origin, described below)
-  requests the four-token default and has no UI path to ask for less: it exists
-  for the operator's own already-authenticated browser to persist a session,
-  not for pairing a new, potentially less-trusted device. The operator still
-  sees the true requested scope and approves or denies the named request on
-  the host before any credential is issued, exactly as with any other
-  pairing request.
+  `DevicePairingService#createOffer`'s default. The pairing UI and
+  `station environment offer` send an explicit scope (Standard), so this
+  fallback is reached by the desktop SSH launcher's `--payload-only` offer, a
+  caller bypassing the UI, or a pre-#1098 integration, and exists to keep
+  those paths functioning rather than silently narrowing them.
+- The Device same-origin "Request access" flow (the short-lived access request
+  a browser or the Station app makes directly to the Station, described below)
+  sends an explicit scope: Standard plus `coding:exec` and
+  `approval:full-access` (full device access), never `access:manage`. Only a
+  caller that sends no scope (the share-answer prompt, Station peers through
+  `station environment access request`, older clients) still gets the
+  four-token default including `access:manage`. The operator still sees the
+  true requested scope and approves, trims or denies the named request on the
+  host before any credential is issued. The approval surfaces name the grant
+  ("full device access") and keep the request as asked unless narrowed; only
+  the operator credential or the desktop's local grant may keep the two
+  elevated scopes, so a reflexive approval by an `access:approve` device or
+  the unauthenticated floor cannot grant them. The operator accepting a
+  reflexive approval of full device access is the accepted residual: the
+  surfaces show where the request came from and what it grants.
 
 Beyond the presets, the operator adds elevated scopes to an already-paired
-device, never at pairing, on the Station host with `station environment access
+device, never silently at pairing (a device may ask for `coding:exec` or
+`approval:full-access`, and only the operator may keep them when approving),
+on the Station host with `station environment access
 scope <device> --add|--remove|--set <scope>` (#1796). That uses
 `POST /api/pairing/devices/:id/scope`, which only the operator credential
 reaches; the CLI verbs additionally refuse any non-loopback target before

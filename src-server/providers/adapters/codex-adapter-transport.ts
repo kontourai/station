@@ -1,4 +1,4 @@
-import { type ChildProcessWithoutNullStreams, spawn } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import crypto from 'node:crypto';
 import { createInterface } from 'node:readline';
 import type {
@@ -6,6 +6,10 @@ import type {
   CanonicalRuntimeEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
+import {
+  releaseOwnedChildAfterGroupExit,
+  spawnOwnedChild,
+} from '../../services/infra/process-utils.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
 import { findCliBinary, resolveAugmentedPathSync } from '../auth/cli-auth.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
@@ -1399,14 +1403,27 @@ function spawnCodexProcess(
   // is final" invariant. The sanitizer refuses a configured TMPDIR
   // outright; this ordering is the backstop that keeps Station's engine
   // spawn tmp dir authoritative even if one arrives anyway.
-  return spawn(binary, ['app-server', ...(extraArgs ?? [])], {
-    stdio: ['pipe', 'pipe', 'pipe'],
-    env: childProcessEnvironment({
-      PATH: resolveAugmentedPathSync(),
-      ...extraEnv,
-      TMPDIR: ensureEngineSpawnTmpDir(),
-    }),
-    windowsHide: true,
-    detached: true,
-  });
+  //
+  // #561: the app-server is detached (its own process group), so it
+  // outlives a SIGKILLed Station. `spawnOwnedChild` records it in the
+  // owned-process registry for the next startup sweep. A failed registry
+  // write still spawns, as for every other owned child: refusing would turn
+  // an unwritable or untrusted temp dir into a Codex outage, while the
+  // in-process termination paths work either way. The record is released
+  // only once the whole group has exited.
+  const { proc, release } = spawnOwnedChild(
+    binary,
+    ['app-server', ...(extraArgs ?? [])],
+    {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: childProcessEnvironment({
+        PATH: resolveAugmentedPathSync(),
+        ...extraEnv,
+        TMPDIR: ensureEngineSpawnTmpDir(),
+      }),
+    },
+  );
+  releaseOwnedChildAfterGroupExit(proc, release);
+  // All three stdio streams are pipes, so none of them is null.
+  return proc as ChildProcessWithoutNullStreams;
 }
