@@ -88,11 +88,11 @@ export type DelegationResultState =
   | 'refused';
 
 /** The most children one Station tracks; arming past it is refused, not evicted. */
-export const DELEGATION_RESULT_MAX_OWNERS = 10_000;
+const DELEGATION_RESULT_MAX_OWNERS = 10_000;
 /** Settled rows and their owners are forgotten after this long. */
-export const DELEGATION_RESULT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const DELEGATION_RESULT_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 /** The longest child output a delivery quotes; the rest stays in the child. */
-export const DELEGATION_RESULT_OUTPUT_MAX_CHARS = 8_000;
+const DELEGATION_RESULT_OUTPUT_MAX_CHARS = 8_000;
 /** Bounded retries of a delivery a start refused without effect. */
 const RETRY_DELAYS_MS = [2_000, 10_000, 30_000, 120_000] as const;
 
@@ -509,7 +509,7 @@ function flat(value: string): string {
  * the line), and every output line is prefixed `> `, so whatever the child
  * wrote stays quoted. Compatible with #3419's framing of agent-sent text.
  */
-export function composeDelegationResultText(input: {
+function composeDelegationResultText(input: {
   readonly taskId: string;
   readonly agent?: string;
   readonly childSessionId: string;
@@ -540,7 +540,7 @@ export function composeDelegationResultText(input: {
  * (`turn.completed.outputText`) when it recorded one, else the turn's streamed
  * assistant text in order. Reasoning is never included.
  */
-export function storedTurnOutput(
+function storedTurnOutput(
   events: readonly DelegationResultOutputEvent[],
   turnId: string | undefined,
 ): string {
