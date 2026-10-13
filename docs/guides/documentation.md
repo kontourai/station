@@ -356,7 +356,12 @@ behavior.
 A purpose-classified release-note file under `.changeset/` may become absent
 without invalidating the retained classification. It must have no behavioral
 source/check claims; absence does not prove that a release consumed it. The
-README, current guides, malformed records and missing behavioral dependencies
+ordinary `docs:review:record` command can record a reviewed, committed deletion
+of a previously tracked note. Declared checks remain separate from appended
+review notes, so recording the deletion does not invent a new check claim.
+Any existing check claim needs an explicit reviewed reclassification first.
+The review records absence, not release consumption or publication.
+The README, current guides, malformed records and missing behavioral dependencies
 are still errors. Catch-up reporting keeps these lifecycle states separate from
 claims that need source review. New generated owners need their own reviewed
 contract and refusal tests; `kind: generated` alone never exempts a file.

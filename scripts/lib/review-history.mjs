@@ -44,6 +44,7 @@ export function reviewDecisionChanged(before, after) {
       entry.summary,
       entry.limits,
       entry.sources.map((source) => source.path).sort(),
+      [...new Set(entry.declaredChecks ?? entry.checks ?? [])].sort(),
       entry.alt,
       entry.caption,
       entry.scenario,
