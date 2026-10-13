@@ -1,5 +1,42 @@
 [
   {
+    "timestampUtc": "2026-10-13T18:59:20Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2477.38446068075",
+    "sha": "2479f38b1ab062e2d9cd6df9f8fa2cdbeee1d136",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38446068075",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2477.38446068075 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "21bc0112066aa804d7dc366370ac5e9654df750b",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#3637](https://github.com/kontourai/station/pull/3637) fix(knowledge): reject path-shaped default-store record IDs",
+          "[#3636](https://github.com/kontourai/station/pull/3636) fix(docs): allow ordinary reviews of deleted release declarations",
+          "[#3608](https://github.com/kontourai/station/pull/3608) fix(orchestration): change nothing observable before an event's append commits (#3561)",
+          "[#3631](https://github.com/kontourai/station/pull/3631) fix(ci): wait for qualification capacity instead of failing the merge-queue check",
+          "[#3630](https://github.com/kontourai/station/pull/3630) fix(deps): remove sprintf-js through compatible YAML CLI migration",
+          "[#3616](https://github.com/kontourai/station/pull/3616) fix(process): register detached Flow, plugin-draft and flow-agents spawns; drop null-birth records of gone owners"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#3634](https://github.com/kontourai/station/pull/3634) refactor(orchestration): run turn dedup and session-control request keys on Monument (#3565)",
+          "[#3632](https://github.com/kontourai/station/pull/3632) test(relay): derive ICE expiry from one issuance timestamp"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
     "timestampUtc": "2026-10-13T15:22:30Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2477.38412128216",
