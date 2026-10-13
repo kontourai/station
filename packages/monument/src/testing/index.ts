@@ -5,10 +5,12 @@
  * see `registerKernelConformance`.
  */
 export {
+  type KernelConformanceArea,
   type KernelConformanceCase,
   type KernelConformanceOutcome,
   type KernelConformanceRunner,
   kernelConformanceCases,
+  kernelConformanceCasesFor,
   registerKernelConformance,
   runKernelConformance,
 } from './conformance.js';
@@ -28,5 +30,6 @@ export {
 export {
   createSqliteKernelHarness,
   createSqliteKernelLocation,
+  type SqliteKernelHarnessOptions,
   type SqliteKernelLocation,
 } from './sqlite-harness.js';
