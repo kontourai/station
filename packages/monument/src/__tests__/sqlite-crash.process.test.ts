@@ -45,7 +45,7 @@ async function claimThenDie(
     const owner = { id: 'child-owner', pid: process.pid, identityKind: 'unverified' };
     const context = { liveness: () => 'live' };
     storage.executeSync({ type: 'turnDedup.claim', key: 'k', owner, now: 1, tracking: 'tracked' }, context);
-    if (${begin}) storage.executeSync({ type: 'turnDedup.beginInvocation', key: 'k', ownerId: owner.id }, context);
+    if (${begin}) storage.executeSync({ type: 'turnDedup.beginInvocation', key: 'k', ownerId: owner.id, now: 1 }, context);
     process.stdout.write('ready\\n');
     setInterval(() => {}, 1000);
   `;

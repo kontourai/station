@@ -447,7 +447,12 @@ describe('node:sqlite adapter participants and read-only commands', () => {
     // No claim exists: beginInvocation's own answer is `refused`.
     expect(
       storage.executeSync(
-        { type: 'turnDedup.beginInvocation', key: 'k', ownerId: 'nobody' },
+        {
+          type: 'turnDedup.beginInvocation',
+          key: 'k',
+          ownerId: 'nobody',
+          now: 1,
+        },
         { liveness: processes.liveness },
       ),
     ).toEqual({ kind: 'refused' });

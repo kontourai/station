@@ -22,7 +22,7 @@ TypeScript-aware loader.
 | --- | --- | --- |
 | `@kontourai/monument` | The port (`KernelStorage`, `CommitParticipant`), commands and results, the pure decision functions (including `planTurnBoundaryReconcile`), owner liveness, and the in-memory adapter | none |
 | `@kontourai/monument/adapter` | For adapter authors: `KernelTransaction`, `runKernelTransactionStep`, `isReadOnlyKernelCommand` | none |
-| `@kontourai/monument/sqlite` | The `node:sqlite` adapter | Node 24 |
+| `@kontourai/monument/sqlite` | The `node:sqlite` adapter, and the table bindings that let it run over a host's existing tables | Node 24 |
 | `@kontourai/monument/testing` | The conformance suite, the crash-point store, a fake process table, and the in-memory and `node:sqlite` harnesses | Node 24 (`node:assert`, `node:sqlite`) |
 
 ## The port
@@ -49,6 +49,48 @@ command, and every command when a participant has a `commit` hook, takes
 `BEGIN IMMEDIATE`. The adapter also offers `executeSync`, which runs the same transaction
 synchronously, for hosts whose call sites are synchronous. `executeSync` is
 specific to node:sqlite and is not part of the portable contract.
+
+## A host's existing tables
+
+By default the `node:sqlite` adapter owns its `monument_*` tables. A host that
+already keeps these records in tables of its own can bind them instead, so its
+tables stay the source of truth and an older binary that writes them directly
+keeps working:
+
+```ts
+const storage = openSqliteKernelStorage({
+  database: hostConnection,
+  tables: {
+    turnDedup: {
+      table: 'host_turn_dedup', // dedup_key, value, created_at, owner_json
+      tombstoneTable: 'host_turn_dedup_expired', // dedup_key, expired_at
+      ownerIdField: 'token', // the owner's id inside owner_json
+      legacyUntrackedKeyPrefixes: ['chat:'],
+    },
+    requestKeys: { table: 'host_request_keys', resultColumn: 'result_json' },
+    turnBoundary: 'unused',
+  },
+});
+```
+
+- The host creates a bound table. The adapter checks its columns at open and
+  never creates or alters it, and creates no `monument_*` table for a machine
+  it is not given: bind it, or mark it `'unused'`, and its commands are
+  refused. An area left out keeps the adapter's own tables.
+- `ownerIdField` is the `owner_json` field that names the owner. It is read
+  and written under that name, never as `id`, so a writer from before the
+  kernel still parses the rows.
+- `legacyUntrackedKeyPrefixes` names keys whose claimants recorded no
+  invocation: a row with no invocation record at all reads as `untracked`. A
+  record that is present but unrecognised stays unknown and fails closed.
+- `ownerErrorMessage` replaces the reason in the error for an `owner_json`
+  the adapter refuses, for a host whose callers already match on its text.
+
+`executeSync` refuses to run inside a transaction the host holds. A host that
+must retire kernel records in the same transaction as its own (deleting a
+thread and its dedup keys) passes `{ withinHostTransaction: true }`: the
+command is a savepoint in that transaction, so it commits or rolls back with
+it, and a command that throws or is refused undoes only itself.
 
 ## Reconcile after a restart
 

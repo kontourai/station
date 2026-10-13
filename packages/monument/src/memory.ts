@@ -17,6 +17,8 @@ import { isParticipantRefusal, runKernelTransactionStep } from './step.js';
 
 interface MemoryImage {
   readonly turnDedup: Map<string, TurnDedupRecord>;
+  /** Evicted keys and when they were evicted. */
+  readonly turnDedupExpired: Map<string, number>;
   readonly turnBoundaries: Map<string, TurnBoundaryRecord>;
   readonly turnTerminals: Map<string, Set<string>>;
   /** Map insertion order is the request keys' insertion order. */
@@ -26,6 +28,7 @@ interface MemoryImage {
 function emptyImage(): MemoryImage {
   return {
     turnDedup: new Map(),
+    turnDedupExpired: new Map(),
     turnBoundaries: new Map(),
     turnTerminals: new Map(),
     requestKeys: new Map(),
@@ -94,14 +97,15 @@ function transactionOver(image: MemoryImage): KernelTransaction {
       },
       deletePrefix: (prefix) => {
         let removed = 0;
-        for (const key of [...image.turnDedup.keys()])
-          if (key.startsWith(prefix)) {
-            image.turnDedup.delete(key);
-            removed += 1;
-          }
+        for (const table of [image.turnDedup, image.turnDedupExpired])
+          for (const key of [...table.keys()])
+            if (key.startsWith(prefix)) {
+              table.delete(key);
+              removed += 1;
+            }
         return removed;
       },
-      pruneResolved: (maxEntries) => {
+      pruneResolved: (maxEntries, now) => {
         const excess = image.turnDedup.size - maxEntries;
         if (excess <= 0) return;
         const victims = [...image.turnDedup.values()]
@@ -111,7 +115,18 @@ function transactionOver(image: MemoryImage): KernelTransaction {
               a.createdAt - b.createdAt || compareCodePoints(a.key, b.key),
           )
           .slice(0, excess);
-        for (const victim of victims) image.turnDedup.delete(victim.key);
+        for (const victim of victims) {
+          image.turnDedup.delete(victim.key);
+          // An existing tombstone keeps its original time.
+          if (!image.turnDedupExpired.has(victim.key))
+            image.turnDedupExpired.set(victim.key, now);
+        }
+      },
+      expiredAt: (key) => image.turnDedupExpired.get(key),
+      deleteTombstonesBefore: (keyPrefix, cutoff) => {
+        for (const [key, expiredAt] of [...image.turnDedupExpired])
+          if (key.startsWith(keyPrefix) && expiredAt < cutoff)
+            image.turnDedupExpired.delete(key);
       },
     },
     turnBoundary: {
@@ -155,20 +170,27 @@ function transactionOver(image: MemoryImage): KernelTransaction {
       delete: (id) => {
         image.requestKeys.delete(requestKeyId(id));
       },
-      deleteCreatedBefore: (cutoff) => {
+      deleteCompletedCreatedBefore: (cutoff) => {
         for (const [key, record] of [...image.requestKeys])
-          if (record.createdAt < cutoff) image.requestKeys.delete(key);
+          if (record.result !== null && record.createdAt < cutoff)
+            image.requestKeys.delete(key);
       },
-      countCaller: (caller) =>
+      countCaller: (caller, countedSince) =>
         [...image.requestKeys.values()].filter(
-          (record) => record.id.callerSessionId === caller,
+          (record) =>
+            record.id.callerSessionId === caller &&
+            (record.result !== null || record.createdAt >= countedSince),
         ).length,
       countCallerCompleted: (caller) =>
         [...image.requestKeys.values()].filter(
           (record) =>
             record.id.callerSessionId === caller && record.result !== null,
         ).length,
-      countAll: () => image.requestKeys.size,
+      countAll: (countedSince) =>
+        [...image.requestKeys.values()].filter(
+          (record) =>
+            record.result !== null || record.createdAt >= countedSince,
+        ).length,
       evictOldestCompleted: (caller, count) => {
         // A stable sort keeps insertion order among equal timestamps.
         const victims = [...image.requestKeys.entries()]
