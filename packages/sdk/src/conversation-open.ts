@@ -170,9 +170,13 @@ function validExecution(
     if (
       !environment ||
       typeof environment !== 'object' ||
-      Array.isArray(environment) ||
-      Object.keys(environment).length !== 1 ||
-      !Object.hasOwn(environment, 'kind') ||
+      Array.isArray(environment)
+    )
+      return false;
+    const environmentFields = Object.keys(environment);
+    if (
+      environmentFields.length !== 1 ||
+      environmentFields[0] !== 'kind' ||
       (environment as Record<string, unknown>).kind !== 'current'
     )
       return false;
