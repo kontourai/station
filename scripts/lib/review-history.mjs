@@ -55,7 +55,7 @@ export function reviewDecisionChanged(before, after) {
   return decision(before) !== decision(after);
 }
 
-/** Compare cited JSON values, rather than treating every manifest edit as relevant. */
+/** Compare cited values, rather than treating every manifest edit as relevant. */
 export function touchedReviewInputs(root, paths, changedPaths, before, after) {
   const candidates = paths.filter((input) =>
     changedPaths.has(bindingFile(input)),
@@ -72,10 +72,13 @@ export function touchedReviewInputs(root, paths, changedPaths, before, after) {
     values.filter((input, index) => {
       const a = objects[index * 2];
       const b = objects[index * 2 + 1];
+      const beforeDigest =
+        a === undefined ? undefined : bindingDigest(input, a);
+      const afterDigest = b === undefined ? undefined : bindingDigest(input, b);
       return (
-        a === undefined ||
-        b === undefined ||
-        bindingDigest(input, a) !== bindingDigest(input, b)
+        beforeDigest === undefined ||
+        afterDigest === undefined ||
+        beforeDigest !== afterDigest
       );
     }),
   );
