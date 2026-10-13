@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { ANDROID_CHANNEL_IDENTITY } from '../apply-android-channel-icons.mjs';
 import {
   iconSourceDigests,
-  MANIFEST_OUTPUTS,
+  manifestOutputPaths,
   startupMarkGeometryModule,
 } from '../generate-app-icons.mjs';
 import {
@@ -135,10 +135,21 @@ describe('the vector icon source', () => {
     },
   );
 
-  it('records every file the generator writes directly', () => {
-    expect(Object.keys(manifest.outputs).sort()).toEqual(
-      [...MANIFEST_OUTPUTS].sort(),
-    );
+  it('records every committed file the generator writes, fan-out included', () => {
+    const paths = manifestOutputPaths();
+    expect(Object.keys(manifest.outputs).sort()).toEqual(paths);
+    // Pin the fan-out's reach independently of the listing under test.
+    for (const expected of [
+      'src-desktop/icons/icon.ico',
+      'src-desktop/icons/icon.icns',
+      'src-desktop/icons/nightly/32x32.png',
+      'src-desktop/icons/beta/android/mipmap-xxxhdpi/ic_launcher_foreground.png',
+      'src-desktop/icons/nightly/ios/AppIcon-512@2x.png',
+      'src-desktop/gen/apple/Assets.xcassets/AppIcon.appiconset/AppIcon-60x60@3x.png',
+      'src-desktop/gen/android/app/src/debug/res/mipmap-mdpi/ic_launcher.png',
+    ])
+      expect(paths).toContain(expected);
+    expect(paths.some((path) => path.includes('tray-'))).toBe(false);
   });
 
   it('draws each channel in its own water colour only', () => {

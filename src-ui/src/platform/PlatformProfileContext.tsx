@@ -453,6 +453,7 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
     return () => {
       delete root.dataset.appChannel;
       root.classList.remove('is-dev-build');
+      delete root.dataset.startupMark;
     };
   }, [profile]);
 

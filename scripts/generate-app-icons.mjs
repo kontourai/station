@@ -37,7 +37,8 @@ import { createHash } from 'node:crypto';
  *                                     — the monochrome Android status-bar mark
  *   assets/brand/station-icon-manifest.json
  *                                     — sha256 of every source SVG and every
- *                                       file above; station-icon.test.ts
+ *                                       committed file above and below;
+ *                                       station-icon.test.ts
  *                                       holds the committed files to it
  *
  * Platform fan-out (also run by this script, via `tauri icon`):
@@ -103,6 +104,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertOpaqueIosPngs } from './ios-channel-icons.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { canonicalizeIcns } from './lib/icns.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
@@ -299,10 +301,11 @@ const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
 /**
  * The icon manifest: the sha256 of every SVG the source builds and of every
- * file this script writes from them (plus each channel's desktop icon.png
- * fan-out). It ties the committed rasters to the vector source: a source
- * edit without a regeneration changes an SVG digest, and a hand-edited or
- * stale raster changes an output digest.
+ * committed file this script writes, directly or through the `tauri icon`
+ * fan-out. It ties the committed rasters to the vector source: a source edit
+ * without a regeneration changes an SVG digest, and a stale or hand-edited
+ * output changes an output digest. Both runs of the generator are
+ * byte-identical, which is what makes the fan-out pinnable.
  */
 export function iconSourceDigests() {
   const svg = {};
@@ -311,7 +314,7 @@ export function iconSourceDigests() {
       svg[`${channel}-${target}`] = sha256(stationIconSvg(channel, target));
   return svg;
 }
-export const MANIFEST_OUTPUTS = Object.freeze([
+const DIRECT_OUTPUTS = [
   'assets/brand/icon-1024.png',
   'assets/brand/icon-square-1024.png',
   'src-ui/public/favicon.png',
@@ -323,15 +326,38 @@ export const MANIFEST_OUTPUTS = Object.freeze([
   'src-desktop/ios/StationAgentActivity/Assets.xcassets/StationAppIcon.imageset/StationAppIcon@1x.png',
   'src-desktop/ios/StationAgentActivity/Assets.xcassets/StationAppIcon.imageset/StationAppIcon@2x.png',
   'src-desktop/ios/StationAgentActivity/Assets.xcassets/StationAppIcon.imageset/StationAppIcon@3x.png',
-  'src-desktop/icons/icon.png',
-  'src-desktop/icons/beta/icon.png',
-  'src-desktop/icons/nightly/icon.png',
-  'src-desktop/icons/dev/icon.png',
-]);
+];
+// The fan-out destinations. Tray state icons and the README share
+// src-desktop/icons but are not generated here.
+const FAN_OUT_ROOTS = [
+  'src-desktop/icons',
+  'src-desktop/gen/apple/Assets.xcassets/AppIcon.appiconset',
+  'src-desktop/gen/android/app/src/main/res',
+  'src-desktop/gen/android/app/src/debug/res',
+];
+const isFanOutOutput = (path) =>
+  path.startsWith('src-desktop/gen/android/')
+    ? /\/res\/mipmap-[^/]+\/[^/]+$/.test(path)
+    : !/\/(tray-[^/]+|README\.md)$/.test(path);
+
+/** Every committed file the manifest pins, as repository-relative paths. */
+export function manifestOutputPaths(root = ROOT) {
+  const tracked = execFileSyncBounded(
+    'git',
+    ['ls-files', '-z', '--', ...FAN_OUT_ROOTS],
+    { cwd: root, encoding: 'utf8', windowsHide: true },
+  )
+    .split('\0')
+    .filter(Boolean)
+    .filter(isFanOutOutput);
+  if (tracked.length === 0)
+    throw new Error('git ls-files found no committed icon fan-out');
+  return [...DIRECT_OUTPUTS, ...tracked].sort();
+}
 const ICON_MANIFEST = join(BRAND_DIR, 'station-icon-manifest.json');
 function writeManifest() {
   const outputs = {};
-  for (const path of MANIFEST_OUTPUTS)
+  for (const path of manifestOutputPaths())
     outputs[path] = sha256(readFileSync(join(ROOT, path)));
   writeFileSync(
     ICON_MANIFEST,

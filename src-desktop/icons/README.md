@@ -30,7 +30,9 @@ fixed: stable blue, green for Beta, rose for Nightly and amber for Dev.
 Android accents and tints at least 30° of hue from the Station brand purple;
 the in-app channel theme tokens in `src-ui/src/index.css` are not covered.
 `assets/brand/station-icon-manifest.json` records the sha256 of every SVG the
-source builds and of every file the generator writes directly, and the same
+source builds and of every committed file the generator writes, including the
+`tauri icon` fan-out (ico, icns, PNGs, Android mipmaps and iOS app-icon sets;
+not the tray state icons, which it does not generate), and the same
 test rebuilds the SVG and rereads those files against it, so a source edit
 without a regeneration, or a stale or hand-edited raster, fails. Desktop overlays use the corresponding
 `icons/<channel>/` set. Android builds call

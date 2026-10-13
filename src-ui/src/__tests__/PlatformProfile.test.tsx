@@ -200,6 +200,12 @@ async function resolveProfileWithFakeTimers(adapter: typeof state.adapter) {
   return mod;
 }
 
+const readStartupTheme = () =>
+  readFileSync(
+    resolve(import.meta.dirname, '../../public/startup-theme.js'),
+    'utf8',
+  );
+
 describe('PlatformProfile derivation', () => {
   // Unmount before asserting rather than scrubbing `is-desktop-mac` by hand.
   // This file used to remove the class between tests to compensate for
@@ -504,10 +510,7 @@ describe('PlatformProfile derivation', () => {
     // report; it reads what this profile wrote on the previous launch. Run
     // the real script against what the context stored, so a key or value
     // drift on either side fails here.
-    const startupTheme = readFileSync(
-      resolve(import.meta.dirname, '../../public/startup-theme.js'),
-      'utf8',
-    );
+    const startupTheme = readStartupTheme();
     const root = document.documentElement;
     for (const [report, mark] of [
       [{ channel: 'nightly' }, 'nightly'],
@@ -530,6 +533,40 @@ describe('PlatformProfile derivation', () => {
       expect(root.dataset.startupMark).toBe(mark);
     }
     delete root.dataset.startupMark;
+    localStorage.clear();
+  });
+
+  test('a stable report replaces a remembered channel mark', async () => {
+    // Without this, a stable install that once stored another mark (or a
+    // writer that skips 'stable') would open on that mark forever.
+    const root = document.documentElement;
+    localStorage.setItem('station-startup-mark', 'nightly');
+    await resolveProfile(
+      platformProfileAdapter({
+        platform: 'tauri',
+        getCapabilityReport: async () => ({
+          status: 'ok',
+          value: { platform: 'macos', capabilities: [], channel: 'stable' },
+        }),
+      }),
+    );
+    expect(root.dataset.startupMark).toBe('stable');
+    expect(localStorage.getItem('station-startup-mark')).toBe('stable');
+    cleanup();
+    expect(root.dataset.startupMark).toBeUndefined();
+    new Function(readStartupTheme())();
+    expect(root.dataset.startupMark).toBeUndefined();
+    localStorage.clear();
+  });
+
+  test('the first-paint script ignores a stored mark it does not know', () => {
+    const root = document.documentElement;
+    for (const stored of ['violet', 'stable', '']) {
+      localStorage.setItem('station-startup-mark', stored);
+      delete root.dataset.startupMark;
+      new Function(readStartupTheme())();
+      expect(root.dataset.startupMark).toBeUndefined();
+    }
     localStorage.clear();
   });
 

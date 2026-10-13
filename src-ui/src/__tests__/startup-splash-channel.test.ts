@@ -71,7 +71,10 @@ describe.skipIf(!chromiumAvailable)('first-paint splash mark', () => {
         '.station-startup__logo',
         (logo) => getComputedStyle(logo).content,
       );
-      return { content, requested };
+      const mark = await page.evaluate(
+        () => document.documentElement.dataset.startupMark ?? null,
+      );
+      return { content, requested, mark };
     } finally {
       await page.close();
     }
@@ -88,7 +91,8 @@ describe.skipIf(!chromiumAvailable)('first-paint splash mark', () => {
 
   test('stable, a first launch, or an unknown value keeps the stable mark', async () => {
     for (const remembered of ['stable', null, 'violet']) {
-      const { content, requested } = await splash(remembered);
+      const { content, requested, mark } = await splash(remembered);
+      expect(mark).toBeNull();
       expect(content).toBe('normal');
       expect(requested).toContain('/favicon.png');
       expect(requested.filter((path) => path.startsWith('/favicon-'))).toEqual(
