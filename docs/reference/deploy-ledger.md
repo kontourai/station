@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-13T15:22:30Z | nightly-npm | 0.7.0-nightly.2477.38412128216 | `21bc011` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38412128216) |
 | 2026-10-13T11:18:18Z | nightly-npm | 0.7.0-nightly.2477.38385119405 | `5134cf5` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38385119405) |
 | 2026-10-12T17:26:03Z | nightly-android | 0.1.11-nightly.2476.2 | `e02cc82` | native cohort final receipt partial | [run](https://github.com/kontourai/station/actions/runs/38269088168) |
 | 2026-10-12T16:24:27Z | nightly-npm | 0.7.0-nightly.2476.38269088168 | `e02cc82` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38269088168) |
@@ -249,6 +250,25 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-13T15:22:30Z · nightly-npm · 0.7.0-nightly.2477.38412128216
+
+- Ship SHA: `21bc0112066aa804d7dc366370ac5e9654df750b`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2477.38412128216 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `5134cf5` ([full sha](https://github.com/kontourai/station/commit/5134cf526c989b2ed9d62c76d78335ca371fa908)):
+
+**Features**
+
+- [#3620](https://github.com/kontourai/station/pull/3620) feat(execution): let a request state the engine its caller saw, as a refusal-only precondition
+
+**Fixes**
+
+- [#3606](https://github.com/kontourai/station/pull/3606) fix(chat): never resend a /chat turn that may have reached the agent; evicted dedup keys answer expired (#3581, #3559)
 
 ## 2026-10-13T11:18:18Z · nightly-npm · 0.7.0-nightly.2477.38385119405
 
