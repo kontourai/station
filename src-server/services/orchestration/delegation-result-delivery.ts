@@ -92,6 +92,7 @@ import {
 } from '@kontourai/station-contracts/session-lifecycle';
 import {
   deliverSessionMessage,
+  parseSessionDeliveryDecision,
   type SessionDeliveryBranch,
   type SessionMessageDeliveryPorts,
   type SessionStartResult,
@@ -1271,16 +1272,6 @@ function deliveryIdFor(childConversationId: string, transitionKey: string) {
   return `dr-${createHash('sha256').update(`${childConversationId}\u0000${transitionKey}`).digest('hex').slice(0, 40)}`;
 }
 
-function parseDecision(
-  decision: string | undefined,
-): { branch: SessionDeliveryBranch; threadId: string } | undefined {
-  if (!decision) return undefined;
-  const split = decision.indexOf(':');
-  const branch = decision.slice(0, split);
-  if (split < 1 || (branch !== 'start' && branch !== 'steer')) return undefined;
-  return { branch, threadId: decision.slice(split + 1) };
-}
-
 const rowKeyOf = (row: DelegationResultRow) =>
   `${row.childConversationId}\u0000${row.transitionKey}`;
 
@@ -1589,7 +1580,7 @@ export class DelegationResultDelivery {
     } else if (row.state !== 'claimed') return;
     // An attempt that may have landed pins every later one to its branch and
     // Session; otherwise a claimed row re-drives its own recorded decision.
-    pinned = parseDecision(row.unconfirmed ?? row.decision);
+    pinned = parseSessionDeliveryDecision(row.unconfirmed ?? row.decision);
     const current = this.ports.currentSessionId(owner.parentConversationId);
     // Turn deduplication is per Session: an unconfirmed start re-driven into
     // a successor Session would start a second turn.

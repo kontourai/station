@@ -55,7 +55,7 @@ import {
 import { ACTIVE_TURN_FOLD_METHODS } from '../../services/orchestration/session-lifecycle-service.js';
 import {
   deliverSessionMessage,
-  type SessionDeliveryBranch,
+  parseSessionDeliveryDecision,
   type SessionMessageDelivery,
   type SessionMessageDeliveryPorts,
   type SessionSendMode,
@@ -323,17 +323,6 @@ const notFound = (c: Context) =>
     404,
   );
 
-/** `start:<threadId>` / `steer:<threadId>`: the branch an attempt pinned. */
-function parseDecision(
-  decision: string | undefined,
-): { branch: SessionDeliveryBranch; threadId: string } | undefined {
-  if (!decision) return undefined;
-  const split = decision.indexOf(':');
-  const branch = decision.slice(0, split);
-  if (split < 1 || (branch !== 'start' && branch !== 'steer')) return undefined;
-  return { branch, threadId: decision.slice(split + 1) };
-}
-
 type SendAttempt = SessionControlAttempt<SendToSessionResult | RequestFailure>;
 
 /** What the key table does with a delivery's outcome. */
@@ -561,7 +550,7 @@ export function createSessionAgentControlRoutes(deps: SessionAgentControlDeps) {
         sessionControlRequestDigest([body.sessionId, body.mode, body.text]),
         async (resume): Promise<SendAttempt> => {
           // A re-driven attempt acts on the Session its first attempt chose.
-          const pinned = parseDecision(resume.decision);
+          const pinned = parseSessionDeliveryDecision(resume.decision);
           const threadId = pinned?.threadId ?? target.threadId;
           // The pinned Session may no longer be the current one the scope
           // check ran on: it must pass the same checks before it is acted on.
