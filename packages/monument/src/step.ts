@@ -33,7 +33,13 @@ import {
 const LONE_SURROGATE =
   /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
-function resolveKernelLimits(
+/**
+ * The limits a command runs under, or a `RangeError` for one that is not
+ * valid. Every command resolves its limits, so an invalid one fails at its
+ * first command; a host that builds its limits once can call this when it
+ * does, and fail at construction instead.
+ */
+export function resolveKernelLimits(
   limits: Partial<KernelLimits> | undefined,
 ): KernelLimits {
   const resolved = { ...DEFAULT_KERNEL_LIMITS, ...limits };

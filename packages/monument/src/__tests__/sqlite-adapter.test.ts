@@ -62,9 +62,9 @@ describe('node:sqlite adapter connection settings', () => {
           : real.prepare(sql),
     };
     try {
-      expect(() => openSqliteKernelStorage({ database: lying })).toThrow(
-        SqliteKernelConfigurationError,
-      );
+      expect(() =>
+        openSqliteKernelStorage({ database: lying, configureConnection: true }),
+      ).toThrow(SqliteKernelConfigurationError);
     } finally {
       real.close();
     }
@@ -84,9 +84,9 @@ describe('node:sqlite adapter connection settings', () => {
           : real.prepare(sql),
     };
     try {
-      expect(() => openSqliteKernelStorage({ database: lying })).toThrow(
-        /busy_timeout is 0/,
-      );
+      expect(() =>
+        openSqliteKernelStorage({ database: lying, configureConnection: true }),
+      ).toThrow(/busy_timeout is 0/);
     } finally {
       real.close();
     }

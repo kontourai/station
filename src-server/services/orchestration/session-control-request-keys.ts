@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto';
-import type { KernelCommand, KernelResult } from '@kontourai/monument';
+import {
+  type KernelCommand,
+  type KernelResult,
+  resolveKernelLimits,
+} from '@kontourai/monument';
 import {
   openSqliteKernelStorage,
   type SqliteKernelTables,
@@ -149,6 +153,8 @@ export function createSqliteSessionControlRequestKeys(
         options.limits?.station ?? SESSION_CONTROL_REQUEST_KEY_MAX_ROWS,
     },
   };
+  // Refuse a bad limit now, not at the first claim.
+  resolveKernelLimits(context.limits);
   const execute = <C extends KernelCommand>(command: C): KernelResult<C> =>
     kernel.executeSync(command, context);
   // Attempts running in THIS process. A stored claim with no result and no

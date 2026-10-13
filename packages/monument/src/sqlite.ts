@@ -97,6 +97,15 @@ export interface SqliteKernelStorageOptions {
   readonly database?: SqliteKernelDatabase;
   /** Defaults to 5000 ms, as Station's stores use. */
   readonly busyTimeoutMs?: number;
+  /**
+   * Whether to set and assert `busy_timeout`, `journal_mode` and
+   * `synchronous` on the connection. A connection the adapter opens is always
+   * configured. A connection the host hands over is the host's: by default
+   * its pragmas are left as they are and reported in `pragmas`, so a host that
+   * relaxes durability on purpose (a test fixture) is not silently undone.
+   * Pass `true` to hand the pragmas to the adapter.
+   */
+  readonly configureConnection?: boolean;
   /** Host projections that join each command's transaction. */
   readonly participants?: readonly CommitParticipant<SqliteKernelDatabase>[];
   /** Bind the host's own tables; by default the kernel owns all of them. */
@@ -111,9 +120,12 @@ export interface SqliteKernelPragmas {
    * up in another mode. Reported, not asserted.
    */
   readonly journalMode: string;
-  /** Asserted at open. */
-  readonly synchronous: 'FULL';
-  /** Asserted at open. */
+  /**
+   * `FULL` is asserted on a connection the adapter configures. On one the
+   * host kept, this is whatever the host chose.
+   */
+  readonly synchronous: 'OFF' | 'NORMAL' | 'FULL' | 'EXTRA' | 'unknown';
+  /** Asserted on a connection the adapter configures; otherwise observed. */
   readonly busyTimeoutMs: number;
 }
 
@@ -336,6 +348,18 @@ function configureConnection(
       `synchronous is ${synchronous}, expected 2 (FULL).`,
     );
   return { journalMode, synchronous: 'FULL', busyTimeoutMs };
+}
+
+/** What a connection the host configured is running with; nothing is changed. */
+function observeConnection(db: SqliteKernelDatabase): SqliteKernelPragmas {
+  const synchronous = ['OFF', 'NORMAL', 'FULL', 'EXTRA'][
+    Number(pragmaValue(db, 'synchronous'))
+  ] as SqliteKernelPragmas['synchronous'] | undefined;
+  return {
+    journalMode: String(pragmaValue(db, 'journal_mode') ?? 'unknown'),
+    synchronous: synchronous ?? 'unknown',
+    busyTimeoutMs: Number(pragmaValue(db, 'busy_timeout')),
+  };
 }
 
 function inTransaction<T>(
@@ -835,10 +859,13 @@ export function openSqliteKernelStorage(
   const tables = resolveTables(options.tables);
   let pragmas: SqliteKernelPragmas;
   try {
-    pragmas = configureConnection(
-      db,
-      options.busyTimeoutMs ?? DEFAULT_BUSY_TIMEOUT_MS,
-    );
+    pragmas =
+      owned || options.configureConnection
+        ? configureConnection(
+            db,
+            options.busyTimeoutMs ?? DEFAULT_BUSY_TIMEOUT_MS,
+          )
+        : observeConnection(db);
     migrate(db, tables);
   } catch (error) {
     if (owned) db.close?.();

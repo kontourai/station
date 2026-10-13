@@ -3,6 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../event-store.js';
+import { createSqliteSessionControlRequestKeys } from '../session-control-request-keys.js';
 import {
   chatTurnDedupKey,
   turnDedupKey,
@@ -131,6 +132,44 @@ describe('turn dedup over Station tables', () => {
         turnDedupKey('thread', 'a'),
       ),
     ).toHaveLength(1);
+    store.close();
+  });
+
+  // The store owns its connection's settings. In a test worker that includes
+  // the fixture's `synchronous = OFF` (sqlite-fixture-durability.ts), which
+  // opening the kernels must not undo: it would slow every store a test builds.
+  test("opening the kernels leaves the connection's own pragmas alone", () => {
+    const { store } = open();
+    const db = (store as unknown as { db: DatabaseSync }).db;
+    const pragma = (name: string) =>
+      Object.values(db.prepare(`PRAGMA ${name}`).get() as object)[0];
+    const before = {
+      synchronous: pragma('synchronous'),
+      busyTimeout: pragma('busy_timeout'),
+      journalMode: pragma('journal_mode'),
+    };
+    store.sessionControlRequestKeys();
+    expect(before.synchronous).toBe(0);
+    expect({
+      synchronous: pragma('synchronous'),
+      busyTimeout: pragma('busy_timeout'),
+      journalMode: pragma('journal_mode'),
+    }).toEqual(before);
+    store.close();
+  });
+
+  test('refuses an invalid retention limit when the store is built, not at its first claim', () => {
+    const file = join(
+      makeTempDir('station-dedup-limit-'),
+      'orchestration.sqlite',
+    );
+    for (const maxEntries of [0, 1.5])
+      expect(() => new EventStore(file, maxEntries)).toThrow(RangeError);
+    const { store } = open();
+    const db = (store as unknown as { db: DatabaseSync }).db;
+    expect(() =>
+      createSqliteSessionControlRequestKeys(db, { limits: { perCaller: 0 } }),
+    ).toThrow(RangeError);
     store.close();
   });
 });

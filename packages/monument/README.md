@@ -38,11 +38,15 @@ Each `execute` call is one atomic transaction. The adapter runs the command's
 decision inside it and commits every write, including every participant's
 writes, or none of them. The promise settles after the commit or the rollback.
 
-The `node:sqlite` adapter sets `synchronous = FULL` and `busy_timeout`, and
-asserts both when it opens. It tries WAL with a bounded retry and reports the
-journal mode it got in `storage.pragmas.journalMode`. That matches Station's
-stores: converting a file to WAL needs a lock that a contended open may not
-get. Read-only commands (`turnDedup.read`, `turnBoundary.list`,
+The `node:sqlite` adapter sets `synchronous = FULL` and `busy_timeout` on a
+connection it opens, and asserts both. It tries WAL with a bounded retry and
+reports the journal mode it got in `storage.pragmas.journalMode`. That matches
+Station's stores: converting a file to WAL needs a lock that a contended open
+may not get. A connection the host hands over (`database`) is the host's: its
+pragmas are left as they are and reported in `storage.pragmas`, so a host that
+relaxes durability on purpose is not silently undone. Pass
+`configureConnection: true` to hand the pragmas to the adapter.
+Read-only commands (`turnDedup.read`, `turnBoundary.list`,
 `turnBoundary.hasPossibleEffect`) run in a deferred transaction, so under WAL
 they are served while another connection holds the write lock. Every other
 command, and every command when a participant has a `commit` hook, takes

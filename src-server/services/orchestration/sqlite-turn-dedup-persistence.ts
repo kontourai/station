@@ -1,7 +1,8 @@
-import type {
-  KernelCommand,
-  KernelResult,
-  OwnerLiveness,
+import {
+  type KernelCommand,
+  type KernelResult,
+  type OwnerLiveness,
+  resolveKernelLimits,
 } from '@kontourai/monument';
 import {
   openSqliteKernelStorage,
@@ -133,6 +134,8 @@ export function createSqliteTurnDedupPersistence({
       },
     ],
   };
+  // Refuse a bad limit now, not at the first claim.
+  resolveKernelLimits(limits);
   return {
     execute<C extends KernelCommand>(
       command: C,
