@@ -414,6 +414,19 @@ these rules.
    and extension fields. It retains bounded assistant text and request titles;
    those strings are not scrubbed of paths or other sensitive content the
    worker wrote.
+   An agent that delegates through its own Session-bound Station Control
+   connection (Claude Code, Codex, or an ACP engine) does not need to poll for
+   a child it started on this Station. When the child's turn ends, Station delivers its
+   result to the delegating conversation once. An idle conversation gets a
+   new turn. A running one is steered if its engine accepts mid-turn input;
+   otherwise the result waits until that turn ends. The delivered text is
+   marked as a Station-delivered task result, not the person's message. It
+   quotes the child's recorded output, clipped at 8,000 characters. Reading a
+   finished child with `get_task` first means the same result is not
+   delivered again, and `interrupt_task` cancels a result that has not been
+   delivered yet. Children on an SSH or paired Station, children of Station's
+   own agent, and children on a hosted Station are not delivered this way:
+   use `get_task` for those.
 4. Keep child sessions isolated with delegation limits.
 5. Refine successful skills instead of baking everything into one giant system prompt.
 
