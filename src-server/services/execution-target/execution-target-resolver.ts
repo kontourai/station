@@ -14,6 +14,7 @@ import type {
   WorkspaceTarget,
 } from '@kontourai/station-contracts/execution-target';
 import {
+  EXECUTION_ENGINE_CHANGED_CODE,
   EXECUTION_RESOLUTION_RECEIPT_SCHEMA_VERSION,
   environmentId,
   executionBindingAgentId,
@@ -309,6 +310,30 @@ export function matchVerifiedRemoteProjectPath(
 }
 
 /**
+ * The caller's `expectedEngine` precondition did not hold. Nothing was
+ * started or reserved; the message names only engine identities, which a
+ * receipt already discloses.
+ */
+export class ExecutionEngineChangedError extends Error {
+  readonly code = EXECUTION_ENGINE_CHANGED_CODE;
+
+  constructor(
+    agentSlug: string,
+    readonly expected: ResolvedExecutionEngine,
+    readonly actual: ResolvedExecutionEngine,
+  ) {
+    const name = (engine: ResolvedExecutionEngine) =>
+      engine.kind === 'station'
+        ? "Station's own engine"
+        : `engine connection '${engine.connectionId}'`;
+    super(
+      `Agent '${agentSlug}' now runs on ${name(actual)}, not ${name(expected)} as this request expected. Re-read the Agent and choose again.`,
+    );
+    this.name = 'ExecutionEngineChangedError';
+  }
+}
+
+/**
  * #2377 slice C2a: a Project workspace's `cwd` must lie inside that Project.
  * The session start already refuses one outside it, lexically
  * (`resolveStartSessionCwd`); this refuses it before anything runs, and on
@@ -588,6 +613,28 @@ export async function resolveExecutionTarget(
   ) {
     throw new Error(
       'This execution override cannot deliver the selected Agent profile on the Station engine',
+    );
+  }
+  // A precondition only: it can refuse, never choose. Checked on the binding
+  // alone, before readiness, since a different engine's readiness is moot.
+  const resolvedBinding: ResolvedExecutionEngine = boundConnectionId
+    ? {
+        kind: 'connection',
+        connectionId: engineConnectionId(String(boundConnectionId)),
+      }
+    : { kind: 'station' };
+  const expectedEngine = target.expectedEngine;
+  if (
+    expectedEngine &&
+    (expectedEngine.kind !== resolvedBinding.kind ||
+      (expectedEngine.kind === 'connection' &&
+        resolvedBinding.kind === 'connection' &&
+        expectedEngine.connectionId !== resolvedBinding.connectionId))
+  ) {
+    throw new ExecutionEngineChangedError(
+      resolvedAgentId,
+      expectedEngine,
+      resolvedBinding,
     );
   }
   let engine: ResolvedExecutionEngine;

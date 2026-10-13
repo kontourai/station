@@ -25,6 +25,7 @@ overrides:
   micromatch>picomatch: ^2.3.2
   gray-matter>js-yaml: ^3.15.2
   read-yaml-file>js-yaml: ^3.15.2
+  js-yaml@3.15.2>argparse: 2.0.1
   readdirp>picomatch: ^2.3.2
   socket.io-parser: ^4.2.7
   minimatch@^10.0.0>brace-expansion: ^5.0.12
@@ -46,7 +47,7 @@ packageExtensionsChecksum: sha256-V9jQTPrRdqf6Z859wSbwGftx8ZFtQKJ6xDqATP3e4pk=
 patchedDependencies:
   '@voltagent/core@2.10.0': 8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a
   '@voltagent/server-hono@2.0.14': 1ed9acb7ad00289d710ebe5f24822fef3f189794d80d8ec34469405808622ce5
-  sprintf-js@1.0.3: d7a96af1a095bea6b7a54d87e9a4e736387a6ffcec096307717f80b699ecc4c6
+  js-yaml@3.15.2: aaa638645f3fd548080d82130060918173c4ead501413be8c5a20478a13b1992
 
 importers:
 
@@ -4570,9 +4571,6 @@ packages:
     resolution: {integrity: sha512-4Dj6M28JB+oAH8kFkTLUo+a2jwOFkuqb3yucU0CANcRRUbxS0cP0nZYCGjcc3BNXwRIsUVmDGgzawme7zvJHvg==}
     engines: {node: '>=12'}
 
-  argparse@1.0.10:
-    resolution: {integrity: sha512-o5Roy6tNG4SL/FOkCAN6RzjiakZS25RLYFrcMttJqbdd8BWrnA+fGz57iN5Pb06pvBGvl5gQ0B48dJlslXvoTg==}
-
   argparse@2.0.1:
     resolution: {integrity: sha512-8+9WqebbFzpX9OR+Wa6O29asIogeRMzcGtAINdpMHHyAg10f05aSFVBbcEqGf/PXw1EjAZ+q2/bEBg3DvurK3Q==}
 
@@ -7708,9 +7706,6 @@ packages:
   split2@4.2.0:
     resolution: {integrity: sha512-UcjcJOWknrNkF6PLX83qcHM6KHgVKNkV62Y8a5uYDVv9ydGQVwAHMKqHdJje1VTWpljG0WYpCDhrCdAOYH4TWg==}
     engines: {node: '>= 10.x'}
-
-  sprintf-js@1.0.3:
-    resolution: {integrity: sha512-D9cPgkvLlV3t3IzL0D0YLvGA9Ahk4PcvVwUbN0dSGr1aP0Nrt4AEnTUbuGvquEC0mA64Gqt1fzirlRs5ibXx8g==}
 
   sqlite-vec-darwin-arm64@0.1.9:
     resolution: {integrity: sha512-jSsZpE42OfBkGL/ItyJTVCUwl6o6Ka3U5rc4j+UBDIQzC1ulSSKMEhQLthsOnF/MdAf1MuAkYhkdKmmcjaIZQg==}
@@ -12444,10 +12439,6 @@ snapshots:
   ansi-styles@6.2.3:
     optional: true
 
-  argparse@1.0.10:
-    dependencies:
-      sprintf-js: 1.0.3(patch_hash=d7a96af1a095bea6b7a54d87e9a4e736387a6ffcec096307717f80b699ecc4c6)
-
   argparse@2.0.1: {}
 
   aria-query@5.3.0:
@@ -13953,7 +13944,7 @@ snapshots:
 
   gray-matter@4.0.3:
     dependencies:
-      js-yaml: 3.15.2
+      js-yaml: 3.15.2(patch_hash=aaa638645f3fd548080d82130060918173c4ead501413be8c5a20478a13b1992)
       kind-of: 6.0.3
       section-matter: 1.0.0
       strip-bom-string: 1.0.0
@@ -14301,9 +14292,9 @@ snapshots:
 
   js-tokens@4.0.0: {}
 
-  js-yaml@3.15.2:
+  js-yaml@3.15.2(patch_hash=aaa638645f3fd548080d82130060918173c4ead501413be8c5a20478a13b1992):
     dependencies:
-      argparse: 1.0.10
+      argparse: 2.0.1
       esprima: 4.0.1
 
   js-yaml@4.3.2:
@@ -16241,8 +16232,6 @@ snapshots:
   spdx-license-ids@3.0.23: {}
 
   split2@4.2.0: {}
-
-  sprintf-js@1.0.3(patch_hash=d7a96af1a095bea6b7a54d87e9a4e736387a6ffcec096307717f80b699ecc4c6): {}
 
   sqlite-vec-darwin-arm64@0.1.9:
     optional: true

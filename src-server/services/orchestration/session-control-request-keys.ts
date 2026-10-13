@@ -22,12 +22,17 @@ import type { SqliteDatabase } from './sqlite-database.js';
  * tool input says, so one agent cannot replay or collide with another's keys.
  */
 
-/** Rows older than this are forgotten; a retry that late is a new request. */
+/**
+ * Completed rows older than this are forgotten; a retry that late is a new
+ * request. Unresolved claims are kept whatever their age (#3559), and past
+ * this age they stop counting toward the caps.
+ */
 export const SESSION_CONTROL_REQUEST_KEY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /**
  * The most rows one calling Session keeps. Past it, that caller's OWN oldest
  * completed rows are evicted to make room (a key that old no longer replays);
- * only when every one of its rows is an unresolved claim is the caller refused.
+ * only when every one of its counted rows is an unresolved claim younger than
+ * the TTL is the caller refused.
  * One caller therefore cannot fill the table for the others.
  */
 export const SESSION_CONTROL_REQUEST_KEY_MAX_ROWS_PER_CALLER = 300;
@@ -88,6 +93,16 @@ function sqliteChanges(result: unknown): number {
     : 0;
 }
 
+/**
+ * #3606 review F1: the rows that hold a quota slot. An unresolved claim older
+ * than the TTL is kept, so a repeat of its key still re-drives it instead of
+ * running afresh, but it no longer counts toward either cap. A start whose
+ * downstream turn claim is indeterminate re-drives to `pending` on every
+ * repeat and can never be resolved, so counting it would lock the caller (or
+ * Station) out permanently. The single parameter is the TTL cutoff.
+ */
+const COUNTED = '(result_json IS NOT NULL OR created_at >= ?)';
+
 const activeId = (id: SessionControlRequestKeyId): string =>
   JSON.stringify([id.callerSessionId, id.tool, id.key]);
 
@@ -142,10 +157,15 @@ export function createSqliteSessionControlRequestKeys(
 
   return {
     claim(id, digest) {
-      // A row past the TTL is forgotten before it can answer.
+      const cutoff = now() - SESSION_CONTROL_REQUEST_KEY_TTL_MS;
+      // A completed row past the TTL is forgotten before it can answer.
+      // #3559: an unresolved claim is never purged by age. Its attempt may
+      // have had its effect, so a late retry must re-drive it with its
+      // recorded decision rather than claim the key afresh and run again.
       db.prepare(
-        'DELETE FROM session_control_request_keys WHERE created_at < ?',
-      ).run(now() - SESSION_CONTROL_REQUEST_KEY_TTL_MS);
+        `DELETE FROM session_control_request_keys
+         WHERE created_at < ? AND result_json IS NOT NULL`,
+      ).run(cutoff);
       const existing = read(id);
       if (existing) {
         if (existing.digest !== digest) return { kind: 'conflict' };
@@ -169,9 +189,9 @@ export function createSqliteSessionControlRequestKeys(
       const owned = db
         .prepare(
           `SELECT COUNT(*) AS total FROM session_control_request_keys
-           WHERE caller_session_id = ?`,
+           WHERE caller_session_id = ? AND ${COUNTED}`,
         )
-        .get(id.callerSessionId) as { total: number };
+        .get(id.callerSessionId, cutoff) as { total: number };
       const excess = owned.total - perCallerCap + 1;
       if (excess > 0) {
         db.prepare(
@@ -183,15 +203,18 @@ export function createSqliteSessionControlRequestKeys(
         const left = db
           .prepare(
             `SELECT COUNT(*) AS total FROM session_control_request_keys
-             WHERE caller_session_id = ?`,
+             WHERE caller_session_id = ? AND ${COUNTED}`,
           )
-          .get(id.callerSessionId) as { total: number };
+          .get(id.callerSessionId, cutoff) as { total: number };
         if (left.total >= perCallerCap)
           return { kind: 'capacity', scope: 'caller' };
       }
       const count = db
-        .prepare('SELECT COUNT(*) AS total FROM session_control_request_keys')
-        .get() as { total: number };
+        .prepare(
+          `SELECT COUNT(*) AS total FROM session_control_request_keys
+           WHERE ${COUNTED}`,
+        )
+        .get(cutoff) as { total: number };
       if (count.total >= stationCap)
         return { kind: 'capacity', scope: 'station' };
       const inserted = db
