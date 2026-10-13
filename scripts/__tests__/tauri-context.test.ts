@@ -239,7 +239,7 @@ describe('tauri context', () => {
           pids.push(
             await readPidFile(
               join(directory, tool),
-              () => `stalled probes did not start: ${stderr}`,
+              () => `no signalable stub pid; probe trace: ${stderr}`,
             ),
           );
         }
