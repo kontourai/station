@@ -112,11 +112,17 @@ describe('turn dedup over Station tables', () => {
     const { store, file } = open();
     const ledger = store.createTurnDeduplicator();
     ledger.claim({ threadId: 'thread', clientTurnId: 'a' });
-    // Fail deleteThread after its dedup step: a later statement throws.
+    // Fail deleteThread's own COMMIT, but only once the dedup step has run as
+    // a savepoint inside its transaction. If the dedup step opened a
+    // transaction of its own instead, its COMMIT would pass untouched, the
+    // host's COMMIT would not be the one that fails, and this would not throw.
     const inner = store as unknown as { db: DatabaseSync };
     const exec = inner.db.exec.bind(inner.db);
+    let dedupStepJoined = false;
     inner.db.exec = ((sql: string) => {
-      if (sql === 'COMMIT') throw new Error('injected commit failure');
+      if (sql.startsWith('RELEASE')) dedupStepJoined = true;
+      if (sql === 'COMMIT' && dedupStepJoined)
+        throw new Error('injected commit failure');
       return exec(sql);
     }) as typeof inner.db.exec;
     expect(() => store.deleteThread('thread')).toThrow(
