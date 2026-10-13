@@ -101,6 +101,22 @@ describe('working memory and workflow state writes (#3564)', () => {
     ).toBe(body(WRITES - 1));
   });
 
+  test('a delete issued right after a write removes what that write publishes', async () => {
+    const params = {
+      conversationId: CONVERSATION,
+      userId: USER,
+      scope: 'conversation' as const,
+    };
+
+    await Promise.all([
+      adapter.setWorkingMemory({ ...params, content: 'one' }),
+      adapter.deleteWorkingMemory(params),
+    ]);
+
+    // Unqueued, the delete finds nothing to remove and the write then lands.
+    expect(await adapter.getWorkingMemory(params)).toBeNull();
+  });
+
   test('a delete queued after a write removes it, and a write after a delete survives', async () => {
     const params = {
       conversationId: CONVERSATION,
