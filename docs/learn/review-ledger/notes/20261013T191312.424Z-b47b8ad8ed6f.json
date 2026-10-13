@@ -1,0 +1,7 @@
+{
+  "revision": "3722b18db80cfd645555c4d93bb69d79a8dea00a",
+
+  "notes": [
+    {"path":"docs/pages/README.md","note":"Reviewed Pages bundle command against the corrected org-wide Corpus pin 340b66f. Corpus generated and verified 11 pages and 16 topics. Existing public admission, bundle-only manual, URL mapping and fail-open publishing are unchanged; hosted publication remains unverified.","inputs":["docs/pages/README.md",".github/workflows/pages.yml"]}
+  ]
+}
