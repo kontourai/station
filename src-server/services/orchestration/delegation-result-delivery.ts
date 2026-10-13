@@ -34,10 +34,21 @@
  *      |                    |   startup under the SAME delivery id
  *      +-- get_task read -> consumed     +-- interrupt_task -> cancelled
  *
- * A read or an interrupt that arrives while a row is claimed (an effect may be
- * in flight) cannot retract it; it sets a fence the row takes if the attempt
- * turns out to have had no effect. A row that keeps failing, or stays
- * unconfirmed, is settled `undeliverable` after a bounded number of attempts.
+ * A read that arrives while a row is claimed (an effect may be in flight)
+ * cannot retract it; it sets a fence the row takes if the attempt turns out to
+ * have had no effect. A row that keeps failing, or stays unconfirmed, is
+ * settled `undeliverable` after a bounded number of attempts.
+ *
+ * Cancellation. An `interrupt_task` is recorded before its effect as two
+ * kinds of record keyed by that interrupt's own token, so a refused interrupt
+ * undoes only itself:
+ *  - a single-use SUPPRESSION of the turn it stops (or, when the turn is not
+ *    in the log yet, of the turn that appears there within a short window),
+ *    spent by the first settlement it matches;
+ *  - a LINK from each open row to the token. A row is cancelled while any link
+ *    exists. A refusal deletes its own links and unspent suppression, and
+ *    reopens a row only if no other link remains and the row is still
+ *    `cancelled`: a later read, delivery or second interrupt wins.
  *
  * How it is delivered. Through `deliverSessionMessage` (`auto`): an idle
  * parent gets a new turn; a running one is steered only when its adapter
@@ -116,6 +127,12 @@ const DELEGATION_RESULT_OUTPUT_MAX_EVENTS = 2_000;
 const DELEGATION_RESULT_MAX_ATTEMPTS = 5;
 /** Delays of the bounded re-checks after a refusal or failure. */
 const RETRY_DELAYS_MS = [2_000, 10_000, 30_000, 120_000] as const;
+/**
+ * How long a suppression for a turn the log has not shown yet waits for that
+ * turn's `turn.started`. A held turn reaches the log within seconds; a later
+ * turn is someone else's and must not be suppressed.
+ */
+const DELEGATION_RESULT_UNLOGGED_TURN_WINDOW_MS = 120_000;
 /** Startup reconciliation yields to the event loop after this many owners. */
 const RECONCILE_CHUNK = 200;
 
@@ -127,9 +144,6 @@ export const DELEGATION_RESULT_DELIVERY_SCHEMA = `CREATE TABLE IF NOT EXISTS del
   owner_attribution TEXT NOT NULL,
   owner_principal_json TEXT,
   child_agent TEXT,
-  suppressed_turn_id TEXT,
-  suppress_next INTEGER NOT NULL DEFAULT 0,
-  suppress_token TEXT,
   armed_at INTEGER NOT NULL,
   last_activity_at INTEGER NOT NULL
 );
@@ -147,8 +161,8 @@ CREATE TABLE IF NOT EXISTS delegation_result_deliveries (
   text TEXT NOT NULL,
   state TEXT NOT NULL,
   fence TEXT,
-  cancelled_by TEXT,
   decision TEXT,
+  unconfirmed TEXT,
   attempts INTEGER NOT NULL DEFAULT 0,
   result_json TEXT,
   created_at INTEGER NOT NULL,
@@ -156,7 +170,24 @@ CREATE TABLE IF NOT EXISTS delegation_result_deliveries (
   PRIMARY KEY (child_conversation_id, transition_key)
 );
 CREATE INDEX IF NOT EXISTS delegation_result_deliveries_open
-  ON delegation_result_deliveries (state, parent_conversation_id)`;
+  ON delegation_result_deliveries (state, parent_conversation_id);
+CREATE TABLE IF NOT EXISTS delegation_result_suppressions (
+  token TEXT PRIMARY KEY,
+  child_conversation_id TEXT NOT NULL,
+  turn_id TEXT,
+  spent INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS delegation_result_suppressions_child
+  ON delegation_result_suppressions (child_conversation_id, spent);
+CREATE TABLE IF NOT EXISTS delegation_result_cancel_links (
+  child_conversation_id TEXT NOT NULL,
+  transition_key TEXT NOT NULL,
+  token TEXT NOT NULL,
+  PRIMARY KEY (child_conversation_id, transition_key, token)
+);
+CREATE INDEX IF NOT EXISTS delegation_result_cancel_links_token
+  ON delegation_result_cancel_links (token)`;
 
 /** Who a delivery acts as: exactly what the delegating dispatch carried. */
 export interface DelegationResultActor {
@@ -171,9 +202,6 @@ export interface DelegationResultOwner {
   readonly parentConversationId: string;
   readonly actor: DelegationResultActor;
   readonly childAgent?: string;
-  readonly suppressedTurnId?: string;
-  readonly suppressNext: boolean;
-  readonly suppressToken?: string;
 }
 
 export type DelegationResultArm = Pick<
@@ -192,8 +220,10 @@ export interface DelegationResultRow {
   readonly deliveryId: string;
   readonly text: string;
   readonly state: DelegationResultState;
-  readonly fence?: 'consumed' | 'cancelled';
+  readonly fence?: 'consumed';
   readonly decision?: string;
+  /** The branch and Session of an attempt that may have landed; sticky. */
+  readonly unconfirmed?: string;
   readonly attempts: number;
 }
 
@@ -206,11 +236,6 @@ export type DelegationResultCanceller =
 export interface DelegationResultCancellation {
   readonly childConversationId: string;
   readonly token: string;
-  readonly previous: {
-    readonly suppressedTurnId?: string;
-    readonly suppressNext: boolean;
-    readonly suppressToken?: string;
-  };
 }
 
 function changes(result: unknown): number {
@@ -245,13 +270,6 @@ export function createSqliteDelegationResultStore(
         ...(principal ? { principal } : {}),
       },
       ...(row.child_agent ? { childAgent: String(row.child_agent) } : {}),
-      ...(row.suppressed_turn_id
-        ? { suppressedTurnId: String(row.suppressed_turn_id) }
-        : {}),
-      suppressNext: Number(row.suppress_next) === 1,
-      ...(row.suppress_token
-        ? { suppressToken: String(row.suppress_token) }
-        : {}),
     };
   };
   const rowOf = (row: Record<string, unknown>): DelegationResultRow => ({
@@ -265,8 +283,9 @@ export function createSqliteDelegationResultStore(
     deliveryId: String(row.delivery_id),
     text: String(row.text),
     state: row.state as DelegationResultState,
-    ...(row.fence ? { fence: row.fence as 'consumed' | 'cancelled' } : {}),
+    ...(row.fence === 'consumed' ? { fence: 'consumed' as const } : {}),
     ...(row.decision ? { decision: String(row.decision) } : {}),
+    ...(row.unconfirmed ? { unconfirmed: String(row.unconfirmed) } : {}),
     attempts: Number(row.attempts ?? 0),
   });
   const rowKey = (
@@ -278,6 +297,14 @@ export function createSqliteDelegationResultStore(
         .prepare('SELECT COUNT(*) AS total FROM delegation_result_owners')
         .get() as { total: number }
     ).total;
+  /** The state a claim falls back to when its attempt had no effect. */
+  const RELEASED_STATE = `CASE
+    WHEN fence = 'consumed' THEN 'consumed'
+    WHEN EXISTS (SELECT 1 FROM delegation_result_cancel_links link
+      WHERE link.child_conversation_id = delegation_result_deliveries.child_conversation_id
+        AND link.transition_key = delegation_result_deliveries.transition_key)
+      THEN 'cancelled'
+    ELSE 'pending' END`;
   const readOwner = (childConversationId: string) => {
     const row = db
       .prepare(
@@ -291,6 +318,15 @@ export function createSqliteDelegationResultStore(
     db.prepare(
       `DELETE FROM delegation_result_deliveries
        WHERE updated_at < ? AND state NOT IN ('pending', 'claimed')`,
+    ).run(cutoff);
+    db.prepare(
+      `DELETE FROM delegation_result_cancel_links WHERE NOT EXISTS (
+         SELECT 1 FROM delegation_result_deliveries row
+         WHERE row.child_conversation_id = delegation_result_cancel_links.child_conversation_id
+           AND row.transition_key = delegation_result_cancel_links.transition_key)`,
+    ).run();
+    db.prepare(
+      'DELETE FROM delegation_result_suppressions WHERE created_at < ?',
     ).run(cutoff);
     db.prepare(
       `DELETE FROM delegation_result_owners WHERE last_activity_at < ?
@@ -367,17 +403,14 @@ export function createSqliteDelegationResultStore(
     },
     /**
      * Insert a transition's row once; returns whether this call wrote it. A
-     * row the child's suppression cancels names the cancellation, so a
-     * refused interrupt can reopen it; the suppression it used is spent.
+     * row a suppression cancels is linked to each spent suppression's token,
+     * so a refused interrupt can reopen it.
      */
     record(
       row: Omit<
         DelegationResultRow,
-        'fence' | 'decision' | 'attempts' | 'state'
-      > & {
-        readonly cancelledBy?: string;
-        readonly clearSuppressNext?: boolean;
-      },
+        'fence' | 'decision' | 'unconfirmed' | 'attempts' | 'state'
+      > & { readonly cancelledBy: readonly string[] },
     ): boolean {
       const at = now();
       const written =
@@ -387,8 +420,8 @@ export function createSqliteDelegationResultStore(
               `INSERT OR IGNORE INTO delegation_result_deliveries
                  (child_conversation_id, transition_key, transition, parent_conversation_id,
                   child_session_id, child_turn_id, outcome, delivery_id, text, state,
-                  cancelled_by, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             )
             .run(
               row.childConversationId,
@@ -400,20 +433,26 @@ export function createSqliteDelegationResultStore(
               row.outcome,
               row.deliveryId,
               row.text,
-              row.cancelledBy ? 'cancelled' : 'pending',
-              row.cancelledBy ?? null,
+              row.cancelledBy.length > 0 ? 'cancelled' : 'pending',
               at,
               at,
             ),
         ) > 0;
-      if (written)
+      if (!written) return false;
+      for (const token of row.cancelledBy)
         db.prepare(
-          `UPDATE delegation_result_owners
-           SET last_activity_at = ?,
-               suppress_next = CASE WHEN ? THEN 0 ELSE suppress_next END
-           WHERE child_conversation_id = ?`,
-        ).run(at, row.clearSuppressNext ? 1 : 0, row.childConversationId);
-      return written;
+          `INSERT OR IGNORE INTO delegation_result_cancel_links
+             (child_conversation_id, transition_key, token) VALUES (?, ?, ?)`,
+        ).run(row.childConversationId, row.transitionKey, token);
+      this.touchOwner(row.childConversationId);
+      return true;
+    },
+    /** The owner's child is active: keep it from being pruned as idle. */
+    touchOwner(childConversationId: string): void {
+      db.prepare(
+        `UPDATE delegation_result_owners SET last_activity_at = ?
+         WHERE child_conversation_id = ?`,
+      ).run(now(), childConversationId);
     },
     read(
       childConversationId: string,
@@ -499,99 +538,175 @@ export function createSqliteDelegationResultStore(
       ).run(state, JSON.stringify({ reason }), now(), ...rowKey(row));
     },
     /**
-     * claimed -> its fence, or pending: the attempt provably had no effect,
-     * so the branch is forgotten and a read or interrupt that arrived during
-     * it now applies.
+     * claimed -> consumed, cancelled or pending: the attempt provably had no
+     * effect, so its branch is forgotten and a read or interrupt that arrived
+     * during it now applies. `clearUnconfirmed` only when the refusal proves
+     * an earlier unconfirmed attempt never landed either (a steer receipt
+     * answering no turn / not supported).
      */
-    release(row: DelegationResultRow): void {
+    release(row: DelegationResultRow, clearUnconfirmed = false): void {
       db.prepare(
         `UPDATE delegation_result_deliveries
-         SET state = COALESCE(fence, 'pending'), decision = NULL, updated_at = ?
+         SET state = ${RELEASED_STATE}, decision = NULL,
+             unconfirmed = CASE WHEN ? THEN NULL ELSE unconfirmed END,
+             updated_at = ?
          WHERE child_conversation_id = ? AND transition_key = ? AND state = 'claimed'`,
-      ).run(now(), ...rowKey(row));
+      ).run(clearUnconfirmed ? 1 : 0, now(), ...rowKey(row));
     },
     /**
      * Count one failed or unconfirmed attempt and return the new total. A
      * failure (no effect) also releases the claim; an unconfirmed attempt
-     * keeps it, with its branch, for the next re-drive.
+     * keeps it and pins its branch and Session for good (`unconfirmed`), so
+     * no later attempt can land in another Session or on another branch.
      */
     countAttempt(row: DelegationResultRow, release: boolean): number {
       db.prepare(
         `UPDATE delegation_result_deliveries
          SET attempts = attempts + 1,
-             state = CASE WHEN ? THEN COALESCE(fence, 'pending') ELSE state END,
+             unconfirmed = CASE WHEN ? THEN unconfirmed ELSE COALESCE(unconfirmed, decision) END,
+             state = CASE WHEN ? THEN ${RELEASED_STATE} ELSE state END,
              decision = CASE WHEN ? THEN NULL ELSE decision END,
              updated_at = ?
          WHERE child_conversation_id = ? AND transition_key = ? AND state = 'claimed'`,
-      ).run(release ? 1 : 0, release ? 1 : 0, now(), ...rowKey(row));
+      ).run(
+        release ? 1 : 0,
+        release ? 1 : 0,
+        release ? 1 : 0,
+        now(),
+        ...rowKey(row),
+      );
       return (
         this.read(row.childConversationId, row.transitionKey)?.attempts ?? 0
       );
     },
     /**
-     * A `get_task` read (`consumed`) or `interrupt_task` (`cancelled`) closes
-     * every open row of the child: a pending row now, a claimed row through
-     * its fence. `cancelledBy` names a cancellation a refusal may undo.
+     * A `get_task` read: every open or provisionally cancelled row of the
+     * child is consumed now, a claimed row through its fence. A consumed row
+     * is never reopened by a refused interrupt.
      */
-    close(
-      childConversationId: string,
-      as: 'consumed' | 'cancelled',
-      cancelledBy?: string,
-    ): number {
+    consume(childConversationId: string): number {
       const at = now();
       db.prepare(
-        `UPDATE delegation_result_deliveries
-         SET fence = ?, cancelled_by = ?, updated_at = ?
+        `UPDATE delegation_result_deliveries SET fence = 'consumed', updated_at = ?
          WHERE child_conversation_id = ? AND state = 'claimed'`,
-      ).run(as, cancelledBy ?? null, at, childConversationId);
+      ).run(at, childConversationId);
       return changes(
         db
           .prepare(
-            `UPDATE delegation_result_deliveries
-             SET state = ?, cancelled_by = ?, updated_at = ?
-             WHERE child_conversation_id = ? AND state = 'pending'`,
+            `UPDATE delegation_result_deliveries SET state = 'consumed', updated_at = ?
+             WHERE child_conversation_id = ? AND state IN ('pending', 'cancelled')`,
           )
-          .run(as, cancelledBy ?? null, at, childConversationId),
+          .run(at, childConversationId),
       );
     },
-    /** Fence the child turn an interrupt stops, or its next one. */
-    suppress(
+    /**
+     * An interrupt's provisional cancel: link every open or cancelled row to
+     * its token (a claimed row takes the link when it is released), cancel
+     * the pending ones, and record its single-use suppression. `turnId`
+     * names the turn it stops; `undefined` the turn the log has not shown
+     * yet; `null` nothing to suppress.
+     */
+    beginCancel(
       childConversationId: string,
       token: string,
-      turn: { readonly turnId?: string; readonly next: boolean },
+      turnId: string | undefined | null,
     ): void {
-      db.prepare(
-        `UPDATE delegation_result_owners
-         SET suppressed_turn_id = COALESCE(?, suppressed_turn_id),
-             suppress_next = CASE WHEN ? THEN 1 ELSE suppress_next END,
-             suppress_token = ?
-         WHERE child_conversation_id = ?`,
-      ).run(turn.turnId ?? null, turn.next ? 1 : 0, token, childConversationId);
-    },
-    /** Undo exactly what one cancellation did. */
-    reopen(cancellation: DelegationResultCancellation): void {
       const at = now();
       db.prepare(
-        `UPDATE delegation_result_owners
-         SET suppressed_turn_id = ?, suppress_next = ?, suppress_token = ?
-         WHERE child_conversation_id = ? AND suppress_token = ?`,
-      ).run(
-        cancellation.previous.suppressedTurnId ?? null,
-        cancellation.previous.suppressNext ? 1 : 0,
-        cancellation.previous.suppressToken ?? null,
-        cancellation.childConversationId,
-        cancellation.token,
-      );
+        `INSERT OR IGNORE INTO delegation_result_cancel_links
+           (child_conversation_id, transition_key, token)
+         SELECT child_conversation_id, transition_key, ?
+         FROM delegation_result_deliveries
+         WHERE child_conversation_id = ? AND state IN ('pending', 'claimed', 'cancelled')`,
+      ).run(token, childConversationId);
       db.prepare(
-        `UPDATE delegation_result_deliveries
-         SET state = 'pending', cancelled_by = NULL, updated_at = ?
-         WHERE child_conversation_id = ? AND cancelled_by = ? AND state = 'cancelled'`,
-      ).run(at, cancellation.childConversationId, cancellation.token);
+        `UPDATE delegation_result_deliveries SET state = 'cancelled', updated_at = ?
+         WHERE child_conversation_id = ? AND state = 'pending'`,
+      ).run(at, childConversationId);
+      if (turnId !== null)
+        db.prepare(
+          `INSERT INTO delegation_result_suppressions
+             (token, child_conversation_id, turn_id, created_at) VALUES (?, ?, ?, ?)`,
+        ).run(token, childConversationId, turnId ?? null, at);
+    },
+    /**
+     * A turn is now in the log: an unspent suppression waiting for an
+     * unlogged turn binds to it, if it is still inside its window. One past
+     * the window is dropped: the turn it waited for never came.
+     */
+    bindUnloggedSuppressions(
+      childConversationId: string,
+      turnId: string,
+    ): void {
+      const since = now() - DELEGATION_RESULT_UNLOGGED_TURN_WINDOW_MS;
       db.prepare(
-        `UPDATE delegation_result_deliveries
-         SET fence = NULL, cancelled_by = NULL, updated_at = ?
-         WHERE child_conversation_id = ? AND cancelled_by = ? AND state = 'claimed'`,
-      ).run(at, cancellation.childConversationId, cancellation.token);
+        `UPDATE delegation_result_suppressions SET turn_id = ?
+         WHERE child_conversation_id = ? AND spent = 0 AND turn_id IS NULL
+           AND created_at >= ?`,
+      ).run(turnId, childConversationId, since);
+      db.prepare(
+        `DELETE FROM delegation_result_suppressions
+         WHERE child_conversation_id = ? AND spent = 0 AND turn_id IS NULL
+           AND created_at < ?`,
+      ).run(childConversationId, since);
+    },
+    /**
+     * Spend every unspent suppression this settlement matches (its turn, or
+     * an unlogged turn still inside its window) and return their tokens.
+     */
+    spendSuppressions(childConversationId: string, turnId: string): string[] {
+      const since = now() - DELEGATION_RESULT_UNLOGGED_TURN_WINDOW_MS;
+      const tokens = (
+        db
+          .prepare(
+            `SELECT token FROM delegation_result_suppressions
+             WHERE child_conversation_id = ? AND spent = 0
+               AND (turn_id = ? OR (turn_id IS NULL AND created_at >= ?))`,
+          )
+          .all(childConversationId, turnId, since) as { token: string }[]
+      ).map((row) => row.token);
+      for (const token of tokens)
+        db.prepare(
+          'UPDATE delegation_result_suppressions SET spent = 1 WHERE token = ?',
+        ).run(token);
+      return tokens;
+    },
+    /**
+     * The interrupt behind `token` was refused: delete its unspent
+     * suppression and its links, and reopen a row only when no other link
+     * holds it and it is still `cancelled`. A row a read consumed, a
+     * delivery claimed, or another interrupt holds stays as it is.
+     */
+    refuseCancel(token: string): void {
+      db.prepare(
+        'DELETE FROM delegation_result_suppressions WHERE token = ? AND spent = 0',
+      ).run(token);
+      const linked = db
+        .prepare(
+          `SELECT child_conversation_id, transition_key
+           FROM delegation_result_cancel_links WHERE token = ?`,
+        )
+        .all(token) as {
+        child_conversation_id: string;
+        transition_key: string;
+      }[];
+      db.prepare(
+        'DELETE FROM delegation_result_cancel_links WHERE token = ?',
+      ).run(token);
+      const at = now();
+      for (const row of linked)
+        db.prepare(
+          `UPDATE delegation_result_deliveries SET state = 'pending', updated_at = ?
+           WHERE child_conversation_id = ? AND transition_key = ? AND state = 'cancelled'
+             AND NOT EXISTS (SELECT 1 FROM delegation_result_cancel_links link
+               WHERE link.child_conversation_id = ? AND link.transition_key = ?)`,
+        ).run(
+          at,
+          row.child_conversation_id,
+          row.transition_key,
+          row.child_conversation_id,
+          row.transition_key,
+        );
     },
     prune,
   };
@@ -850,7 +965,7 @@ export class DelegationResultDelivery {
     )
       return false;
     this.evaluateChild(owner.childConversationId);
-    this.ports.store.close(owner.childConversationId, 'consumed');
+    this.ports.store.consume(owner.childConversationId);
     return true;
   }
 
@@ -884,30 +999,19 @@ export class DelegationResultDelivery {
     const cancellation: DelegationResultCancellation = {
       childConversationId: owner.childConversationId,
       token: randomUUID(),
-      previous: {
-        ...(owner.suppressedTurnId
-          ? { suppressedTurnId: owner.suppressedTurnId }
-          : {}),
-        suppressNext: owner.suppressNext,
-        ...(owner.suppressToken ? { suppressToken: owner.suppressToken } : {}),
-      },
     };
-    this.ports.store.suppress(owner.childConversationId, cancellation.token, {
-      ...(open ? { turnId: open } : {}),
-      // A turn the coordinator accepted but the log has not shown yet.
-      next: !open && this.ports.coordinatorBusy(thread),
-    });
-    this.ports.store.close(
+    this.ports.store.beginCancel(
       owner.childConversationId,
-      'cancelled',
       cancellation.token,
+      // A turn the coordinator accepted but the log has not shown yet.
+      open ?? (this.ports.coordinatorBusy(thread) ? undefined : null),
     );
     return cancellation;
   }
 
-  /** The interrupt was refused: undo its cancellation and deliver as before. */
+  /** The interrupt was refused: undo only this cancellation. */
   reopenCancellation(cancellation: DelegationResultCancellation): void {
-    this.ports.store.reopen(cancellation);
+    this.ports.store.refuseCancel(cancellation.token);
     this.evaluateChild(cancellation.childConversationId);
     this.driveChild(cancellation.childConversationId);
   }
@@ -939,6 +1043,7 @@ export class DelegationResultDelivery {
     if (this.stopped) return;
     const conversationId = this.ports.conversationOf(threadId);
     if (this.ports.store.owner(conversationId)) {
+      this.ports.store.touchOwner(conversationId);
       this.evaluateChild(conversationId);
       this.driveChild(conversationId);
     }
@@ -963,6 +1068,11 @@ export class DelegationResultDelivery {
       'turn-settled',
       0,
     );
+    if (view.openTurnId)
+      this.ports.store.bindUnloggedSuppressions(
+        childConversationId,
+        view.openTurnId,
+      );
     const settled = view.settledTurn;
     if (view.state !== 'idle' || !settled) return;
     const transitionKey = `settled:${thread}:${settled.turnId ?? `sequence-${settled.sequence}`}`;
@@ -970,12 +1080,9 @@ export class DelegationResultDelivery {
     const output = settled.turnId
       ? storedTurnOutput(this.ports, thread, settled.turnId)
       : { text: '', incomplete: false };
-    const stoppedTurn =
-      settled.turnId !== undefined && settled.turnId === owner.suppressedTurnId;
-    const cancelledBy =
-      stoppedTurn || owner.suppressNext
-        ? (owner.suppressToken ?? 'interrupt')
-        : undefined;
+    const cancelledBy = settled.turnId
+      ? this.ports.store.spendSuppressions(childConversationId, settled.turnId)
+      : [];
     this.ports.store.record({
       childConversationId,
       transitionKey,
@@ -993,8 +1100,7 @@ export class DelegationResultDelivery {
         output: output.text,
         outputIncomplete: output.incomplete,
       }),
-      ...(cancelledBy ? { cancelledBy } : {}),
-      clearSuppressNext: owner.suppressNext && !stoppedTurn,
+      cancelledBy,
     });
   }
 
@@ -1032,9 +1138,10 @@ export class DelegationResultDelivery {
     let pinned: { branch: SessionDeliveryBranch; threadId: string } | undefined;
     if (row.state === 'pending') {
       if (!store.claim(row)) return;
-    } else if (row.state === 'claimed') {
-      pinned = parseDecision(row.decision);
-    } else return;
+    } else if (row.state !== 'claimed') return;
+    // An attempt that may have landed pins every later one to its branch and
+    // Session; otherwise a claimed row re-drives its own recorded decision.
+    pinned = parseDecision(row.unconfirmed ?? row.decision);
     const current = this.ports.currentSessionId(owner.parentConversationId);
     // Turn deduplication is per Session: an unconfirmed start re-driven into
     // a successor Session would start a second turn.
@@ -1094,7 +1201,7 @@ export class DelegationResultDelivery {
           row,
           `start refused: ${error instanceof Error ? error.message : String(error)}`,
         );
-      this.scheduleRetry(row);
+      this.scheduleRetry(row, 'failure');
       return;
     }
     switch (delivery.outcome) {
@@ -1109,9 +1216,11 @@ export class DelegationResultDelivery {
         // may already have been processed while this row was claimed, so an
         // idle parent is re-checked at once; the retry covers a busy flag
         // that outlived the terminal event.
-        store.release(row);
+        // A refused steer or busy answer also proves an earlier unconfirmed
+        // steer to this Session never landed (its receipt would answer).
+        store.release(row, pinned?.branch === 'steer');
         if (!ports.isBusy(threadId)) this.recheckSoon(row);
-        else this.scheduleRetry(row);
+        else this.scheduleRetry(row, 'busy');
         return;
       case 'indeterminate': {
         // Possibly delivered: never sent again under a new id. The row stays
@@ -1147,10 +1256,18 @@ export class DelegationResultDelivery {
     timer.unref?.();
   }
 
-  private scheduleRetry(row: DelegationResultRow): void {
+  /**
+   * A bounded re-check. Waiting on a busy parent and recovering from refused
+   * starts have separate budgets, so waits cannot use up the retries that
+   * take a failing row to `undeliverable`.
+   */
+  private scheduleRetry(
+    row: DelegationResultRow,
+    kind: 'busy' | 'failure',
+  ): void {
     if (this.stopped) return;
     const delays = this.ports.retryDelaysMs ?? RETRY_DELAYS_MS;
-    const key = rowKeyOf(row);
+    const key = `${kind}\u0000${rowKeyOf(row)}`;
     const attempt = (this.retries.get(key)?.attempt ?? 0) + 1;
     const previous = this.retries.get(key);
     if (previous) clearTimeout(previous.timer);
@@ -1173,9 +1290,11 @@ export class DelegationResultDelivery {
   }
 
   private clearRetry(row: DelegationResultRow): void {
-    const key = rowKeyOf(row);
-    const retry = this.retries.get(key);
-    if (retry) clearTimeout(retry.timer);
-    this.retries.delete(key);
+    for (const kind of ['busy', 'failure'] as const) {
+      const key = `${kind}\u0000${rowKeyOf(row)}`;
+      const retry = this.retries.get(key);
+      if (retry) clearTimeout(retry.timer);
+      this.retries.delete(key);
+    }
   }
 }

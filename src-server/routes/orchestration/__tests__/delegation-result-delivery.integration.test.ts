@@ -59,6 +59,10 @@ let steerOutcome: 'steered' | 'unsupported-engine' = 'unsupported-engine';
 let holdStarts = false;
 /** A start the parent cleanly refuses (e.g. it has no Agent binding). */
 let refuseStarts: Error | undefined;
+/** Starts that answer `indeterminate` (may have landed) before succeeding. */
+let indeterminateStarts = 0;
+/** The bounded retry schedule (default: no timers). */
+let retryDelays: number[] = [];
 /** A conversation's current Session, when it has moved on from its first. */
 const currentSessions = new Map<string, string>();
 /** Sessions whose turn the live coordinator holds before the log shows it. */
@@ -109,6 +113,10 @@ function harness(path: string): Harness {
         attribution: actor.attribution,
       });
       if (refuseStarts) throw refuseStarts;
+      if (indeterminateStarts > 0) {
+        indeterminateStarts -= 1;
+        return { outcome: 'indeterminate' };
+      }
       if (holdStarts) return new Promise(() => {});
       const existing = startedTurns.get(clientTurnId);
       const turnId = existing ?? `parent-turn-${startedTurns.size + 1}`;
@@ -133,7 +141,7 @@ function harness(path: string): Harness {
           listener({ threadId: event.threadId, method: event.method });
       }),
     logger: { warn },
-    retryDelaysMs: [],
+    retryDelaysMs: retryDelays,
   };
   const delivery = new DelegationResultDelivery(ports);
   delivery.start();
@@ -187,6 +195,8 @@ function routes(
     actor?: 'verified' | 'unattributed' | 'none';
     /** The interrupt itself is refused (e.g. the task is not interruptible). */
     interruptRefused?: boolean;
+    /** Holds the interrupt until the test settles it (refused or not). */
+    interruptGate?: Promise<'ok' | 'refuse'>;
   } = {},
 ) {
   const app = new Hono();
@@ -270,6 +280,13 @@ function routes(
           status: status(),
         }),
         interruptDelegatedTask: async (input: { taskId: string }) => {
+          if (
+            options.interruptGate &&
+            (await options.interruptGate) === 'refuse'
+          )
+            throw new Error(
+              'Delegated task cannot be interrupted while completed',
+            );
           if (options.interruptRefused)
             throw new Error(
               'Delegated task cannot be interrupted while completed',
@@ -347,6 +364,8 @@ describe('delegated task result delivery (#3158)', () => {
     steerOutcome = 'unsupported-engine';
     holdStarts = false;
     refuseStarts = undefined;
+    indeterminateStarts = 0;
+    retryDelays = [];
   });
 
   test('a settled child wakes its idle parent exactly once, with its stored output', async () => {
@@ -707,5 +726,152 @@ describe('delegated task result delivery (#3158)', () => {
     runChildTurn(h, CHILD, 'child-turn-2', 'second');
     await h.delivery.idle();
     expect(h.starts).toHaveLength(1);
+  });
+
+  // Fix round 2 probes (delta review of 65af39e9b0..bbd41adcba).
+  test('probe A: a fence armed before the turn was logged is spent by that turn, not a later one', async () => {
+    const h = setup();
+    const api = routes(h, PARENT, () => 'running');
+    await api.delegate();
+    coordinatorBusy.add(CHILD);
+    await api.interrupt(CHILD); // the turn is held, not yet logged
+    coordinatorBusy.delete(CHILD);
+    emit(h, CHILD, 'turn.started', { turnId: 'child-turn-1' });
+    await api.interrupt(CHILD); // the same turn, now visible
+    emit(h, CHILD, 'turn.aborted', { turnId: 'child-turn-1' });
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(0);
+    runChildTurn(h, CHILD, 'child-turn-2', 'days later');
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(1);
+    expect(h.starts[0]!.text).toContain('> days later');
+  });
+
+  test('probe B: a refused interrupt does not reopen a result a later interrupt cancelled', async () => {
+    const h = setup();
+    await routes(h, PARENT, () => 'running').delegate();
+    emit(h, PARENT, 'turn.started', { turnId: 'parent-turn-a' });
+    runChildTurn(h, CHILD, 'child-turn-1', 'done');
+    await h.delivery.idle();
+    let settleA!: (value: 'ok' | 'refuse') => void;
+    const gateA = new Promise<'ok' | 'refuse'>((resolve) => {
+      settleA = resolve;
+    });
+    const interruptA = routes(h, PARENT, () => 'running', {
+      interruptGate: gateA,
+    }).interrupt(CHILD, 400);
+    await vi.waitFor(() =>
+      expect(
+        h.store.delegationResultStore().listForChild(CHILD)[0]!.state,
+      ).toBe('cancelled'),
+    );
+    await routes(h, PARENT, () => 'running').interrupt(CHILD); // B succeeds
+    settleA('refuse');
+    await interruptA;
+    emit(h, PARENT, 'turn.completed', { turnId: 'parent-turn-a' });
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(0);
+  });
+
+  test('probe C: a refused interrupt does not reopen a result the parent read meanwhile', async () => {
+    const h = setup();
+    await routes(h, PARENT, () => 'running').delegate();
+    emit(h, PARENT, 'turn.started', { turnId: 'parent-turn-a' });
+    runChildTurn(h, CHILD, 'child-turn-1', 'done');
+    await h.delivery.idle();
+    let settle!: (value: 'ok' | 'refuse') => void;
+    const gate = new Promise<'ok' | 'refuse'>((resolve) => {
+      settle = resolve;
+    });
+    const interrupt = routes(h, PARENT, () => 'completed', {
+      interruptGate: gate,
+    }).interrupt(CHILD, 400);
+    await vi.waitFor(() =>
+      expect(
+        h.store.delegationResultStore().listForChild(CHILD)[0]!.state,
+      ).toBe('cancelled'),
+    );
+    await routes(h, PARENT, () => 'completed').getTask(CHILD); // parallel read
+    settle('refuse');
+    await interrupt;
+    emit(h, PARENT, 'turn.completed', { turnId: 'parent-turn-a' });
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(0);
+  });
+
+  // Fix round 2, P3-1: waits on a busy parent do not use up the retries that
+  // take a failing row to undeliverable.
+  test('busy waits and refused starts have separate retry budgets', async () => {
+    retryDelays = [1, 1, 1, 1];
+    const h = setup();
+    await routes(h, PARENT, () => 'running').delegate();
+    emit(h, PARENT, 'turn.started', { turnId: 'parent-turn-a' });
+    runChildTurn(h, CHILD, 'child-turn-1', 'done');
+    // Every busy re-check is refused (no mid-turn steer) until its budget ends.
+    await vi.waitFor(() => expect(h.steers).toHaveLength(5));
+    refuseStarts = new Error('no verified local Environment and Agent binding');
+    emit(h, PARENT, 'turn.completed', { turnId: 'parent-turn-a' });
+    // No further events: the failure budget alone reaches undeliverable.
+    await vi.waitFor(() =>
+      expect(h.store.delegationResultStore().listForChild(CHILD)).toEqual([
+        expect.objectContaining({ state: 'undeliverable', attempts: 5 }),
+      ]),
+    );
+  });
+
+  // Fix round 2, P3-2: once a start may have landed, a refused re-drive
+  // does not drop its Session pin.
+  test('a refused re-drive of an unconfirmed start keeps its Session pin', async () => {
+    const h = setup();
+    await routes(h, PARENT, () => 'running').delegate();
+    indeterminateStarts = 1;
+    runChildTurn(h, CHILD, 'child-turn-1', 'done');
+    await h.delivery.idle();
+    expect(h.store.delegationResultStore().listForChild(CHILD)).toEqual([
+      expect.objectContaining({ state: 'claimed', attempts: 1 }),
+    ]);
+    // Startup re-drive into the same Session is refused cleanly.
+    refuseStarts = new Error('refused');
+    await h.delivery.reconcile();
+    refuseStarts = undefined;
+    // The parent moves on; the next attempt must not start in the successor.
+    currentSessions.set(PARENT, 'parent-successor-session');
+    emit(h, PARENT, 'session.exited');
+    await h.delivery.idle();
+    expect(
+      h.starts.filter((start) => start.threadId === 'parent-successor-session'),
+    ).toEqual([]);
+    expect(h.store.delegationResultStore().listForChild(CHILD)).toEqual([
+      expect.objectContaining({
+        state: 'undeliverable',
+        unconfirmed: `start:${PARENT}`,
+      }),
+    ]);
+  });
+
+  // Fix round 2, P3-4: the output read is bounded and says so.
+  test('a turn streamed in more chunks than the bound is quoted up to it, with a clip line', async () => {
+    const h = setup();
+    await routes(h, PARENT, () => 'running').delegate();
+    emit(h, CHILD, 'turn.started', { turnId: 'child-turn-1' });
+    for (let index = 0; index < 2_001; index += 1)
+      h.store.appendEvent({
+        eventId: `chunk-${index}`,
+        provider: 'claude',
+        threadId: CHILD,
+        turnId: 'child-turn-1',
+        itemId: 'streamed',
+        createdAt: new Date(Date.UTC(2026, 9, 12, 1)).toISOString(),
+        method: 'content.text-delta',
+        delta: 'x',
+      } as unknown as CanonicalRuntimeEvent);
+    emit(h, CHILD, 'turn.completed', { turnId: 'child-turn-1' });
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(1);
+    const lines = h.starts[0]!.text.split('\n');
+    expect(lines[1]).toBe(`> ${'x'.repeat(2_000)}`);
+    expect(lines[2]).toBe(
+      "[Station: output clipped at 2000 streamed chunks; the rest is in the task's Session.]",
+    );
   });
 });
