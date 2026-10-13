@@ -6974,8 +6974,8 @@ export class EventStore {
            WHERE thread_id = ? AND turn_id = ? AND method IN (${placeholders})
            ORDER BY sequence ASC`,
         )
-        .all(threadId, turnId, ...methods) as any[]
-    ).map((row: any) => this.mapEventRow(row));
+        .all(threadId, turnId, ...methods) as Record<string, unknown>[]
+    ).map((row) => this.mapEventRow(row));
   }
 
   listEventsByMethodsAfterSequence(
