@@ -426,8 +426,10 @@ these rules.
    delivered text is marked as a Station-delivered task result, not the
    person's message. It quotes the child's recorded output, clipped at 8,000
    characters. Reading a finished child with `get_task` first means the same
-   result is not delivered again, and a successful `interrupt_task` from the
-   delegating conversation cancels a result that has not been delivered yet.
+   result is not delivered again. An `interrupt_task` from the delegating
+   conversation that stops a turn, or holds a stop for one being started,
+   cancels a result that has not been delivered yet; one that stops nothing,
+   such as a `turnId` that is not the running turn, cancels nothing.
    Station gives up after five failed or unconfirmed attempts, for example
    when the delegating conversation has no Agent binding to continue.
    Children on an SSH or paired Station, children of Station's own agent, and

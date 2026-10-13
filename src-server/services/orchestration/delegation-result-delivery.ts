@@ -46,8 +46,10 @@
  *    the log yet, the suppression waits as the service's own pending
  *    interrupt does: every waiting one binds to the next turn that appears
  *    there within the service's pending-interrupt TTL (so refusing one leaves
- *    the others), and a recorded terminal the service also drops its pending
- *    cancel on (not `runtime.error`) drops those still waiting. A
+ *    the others), and a terminal the service also drops its pending cancel
+ *    on (not `runtime.error`), logged on the child's Session whether or not
+ *    it settled a turn, drops those still waiting. A transition found late
+ *    (after a restart) takes only suppressions older than this process. A
  *    bound one cancels that turn's result only if the turn did not complete
  *    normally (the interrupt stopped it). It is spent by its turn's
  *    settlement, whatever that cancels;
@@ -55,6 +57,9 @@
  *    exists. A refusal deletes its own links and unspent suppression, and
  *    reopens a row only if no other link remains and the row is still
  *    `cancelled`: a later read, delivery or second interrupt wins.
+ *
+ * An interrupt the service reports stopped nothing (`no-active-turn`: no turn
+ * running, or not the turn it named) is undone exactly as a refusal is.
  *
  * How it is delivered. Through `deliverSessionMessage` (`auto`): an idle
  * parent gets a new turn; a running one is steered only when its adapter
@@ -72,7 +77,10 @@ import {
   type ClientOrigin,
   UNKNOWN_CLIENT_REPORTED_ORIGIN,
 } from '@kontourai/station-contracts/client-origin';
-import { PENDING_TURN_INTERRUPT_TTL_MS } from '@kontourai/station-contracts/orchestration';
+import {
+  type InterruptTurnResult,
+  PENDING_TURN_INTERRUPT_TTL_MS,
+} from '@kontourai/station-contracts/orchestration';
 import {
   isPrincipalRef,
   type PrincipalRef,
@@ -479,14 +487,20 @@ export function createSqliteDelegationResultStore(
     return writeTransaction(db, `delegation_result_${savepoints}`, run);
   };
   const unloggedSince = () => now() - DELEGATION_RESULT_UNLOGGED_TURN_WINDOW_MS;
-  /** Forget every unlogged-turn suppression no turn has taken yet. */
-  const dropUnbound = (childConversationId: string) =>
+  /** When this store was opened: the start of this process's live events. */
+  const openedAt = now();
+  /**
+   * Forget the unlogged-turn suppressions no turn has taken yet, or only
+   * those created before `createdBefore` (see `record`).
+   */
+  const dropUnbound = (childConversationId: string, createdBefore?: number) =>
     db
       .prepare(
         `DELETE FROM delegation_result_suppressions
-         WHERE child_conversation_id = ? AND spent = 0 AND turn_id IS NULL`,
+         WHERE child_conversation_id = ? AND spent = 0 AND turn_id IS NULL
+           AND created_at < ?`,
       )
-      .run(childConversationId);
+      .run(childConversationId, createdBefore ?? Number.MAX_SAFE_INTEGER);
   /**
    * A turn is now in the log: drop unlogged-turn suppressions past their
    * window, then bind EVERY one still waiting to this turn, unless one is
@@ -501,7 +515,11 @@ export function createSqliteDelegationResultStore(
    * cancel, and its suppression must still be here when that cancel stops
    * the turn, whichever of them was refused.
    */
-  const bindUnlogged = (childConversationId: string, turnId: string) => {
+  const bindUnlogged = (
+    childConversationId: string,
+    turnId: string,
+    createdBefore?: number,
+  ) => {
     db.prepare(
       `DELETE FROM delegation_result_suppressions
        WHERE child_conversation_id = ? AND spent = 0 AND turn_id IS NULL
@@ -516,8 +534,13 @@ export function createSqliteDelegationResultStore(
     if (bound) return;
     db.prepare(
       `UPDATE delegation_result_suppressions SET turn_id = ?
-       WHERE child_conversation_id = ? AND spent = 0 AND turn_id IS NULL`,
-    ).run(turnId, childConversationId);
+       WHERE child_conversation_id = ? AND spent = 0 AND turn_id IS NULL
+         AND created_at < ?`,
+    ).run(
+      turnId,
+      childConversationId,
+      createdBefore ?? Number.MAX_SAFE_INTEGER,
+    );
   };
   /**
    * Spend every unspent suppression bound to this turn, once, and return the
@@ -647,19 +670,33 @@ export function createSqliteDelegationResultStore(
           .get(childConversationId, transitionKey) !== undefined
       );
     },
+    /** When this store was opened (see `record`'s `caughtUp`). */
+    openedAt,
     /**
      * Insert a transition's row once, and in the same transaction spend the
      * suppressions its turn matches: the row is cancelled and linked to each
      * applying token, so a refused interrupt can reopen it. Returns whether
      * this call wrote the row; a suppression is never spent by a row that
      * was not written.
+     *
+     * `caughtUp`: the transition is found late, not as its terminal event
+     * landed (startup reconciliation, an arm, a read or a reopen got there
+     * first). An armed child's terminals are recorded as they land from the
+     * moment this store opens, and no interrupt can suppress a child before
+     * it is armed, so a late transition's terminal came before either: an
+     * unlogged-turn suppression created since the store opened waits for a
+     * later turn and is neither bound to this transition nor dropped by it.
+     * Only those created before the store opened (whose interrupts may have
+     * been for this turn) are.
      */
     record(
       row: Omit<
         DelegationResultRow,
         'fence' | 'decision' | 'unconfirmed' | 'attempts' | 'state'
       >,
+      options: { readonly caughtUp?: boolean } = {},
     ): boolean {
+      const waitingBefore = options.caughtUp ? openedAt : undefined;
       return atomically(() => {
         const at = now();
         const written =
@@ -688,7 +725,7 @@ export function createSqliteDelegationResultStore(
           ) > 0;
         if (!written) return false;
         if (row.childTurnId) {
-          bindUnlogged(row.childConversationId, row.childTurnId);
+          bindUnlogged(row.childConversationId, row.childTurnId, waitingBefore);
           const tokens = spend(
             row.childConversationId,
             row.childTurnId,
@@ -712,7 +749,8 @@ export function createSqliteDelegationResultStore(
         // `CooperativeStop.applyPendingTurnInterrupt`). A `runtime.error`
         // leaves the service's cancel armed for the next turn, so it leaves
         // the suppression waiting for that turn too.
-        if (row.outcome !== 'error') dropUnbound(row.childConversationId);
+        if (row.outcome !== 'error')
+          dropUnbound(row.childConversationId, waitingBefore);
         this.touchOwner(row.childConversationId);
         return true;
       });
@@ -916,6 +954,14 @@ export function createSqliteDelegationResultStore(
           at,
         );
     },
+    /**
+     * The child's Session logged a terminal the service drops its pending
+     * cancel on, whether or not it settled a turn: forget the unlogged-turn
+     * suppressions still waiting (see `DelegationResultDelivery.onFoldEvent`).
+     */
+    dropUnboundSuppressions(childConversationId: string): void {
+      atomically(() => dropUnbound(childConversationId));
+    },
     /** A turn is now in the log; see `bindUnlogged`. */
     bindUnloggedSuppressions(
       childConversationId: string,
@@ -1093,6 +1139,17 @@ export function createDelegationResultSteerPort(
   };
 }
 
+/**
+ * The terminals on which the orchestration service drops a pending cancel
+ * that no turn has taken (`CooperativeStop.applyPendingTurnInterrupt`); a
+ * `runtime.error` leaves it armed.
+ */
+const PENDING_INTERRUPT_TERMINALS = new Set([
+  'turn.completed',
+  'turn.aborted',
+  'session.exited',
+]);
+
 const FOLD_METHODS = new Set([
   'turn.started',
   'turn.completed',
@@ -1225,7 +1282,7 @@ export class DelegationResultDelivery {
     this.unsubscribe ??= this.ports.subscribe(({ threadId, method }) => {
       if (!FOLD_METHODS.has(method)) return;
       try {
-        this.onFoldEvent(threadId);
+        this.onFoldEvent(threadId, method);
       } catch (error) {
         this.ports.logger.warn('delegation result delivery failed', {
           error: error instanceof Error ? error.message : String(error),
@@ -1329,7 +1386,27 @@ export class DelegationResultDelivery {
     return cancellation;
   }
 
-  /** The interrupt was refused: undo only this cancellation. */
+  /**
+   * The interrupt behind `cancellation` ran: keep its cancel only if the
+   * stop did something, as the orchestration service derived it
+   * (`InterruptTurnResult`). `no-active-turn` means nothing was interrupted
+   * (no turn was running, or the requested turn was not the running one), so
+   * the cancel is undone exactly as a refused interrupt's is. Every other
+   * outcome is an effect: `cooperative` and `forced` stopped the turn,
+   * `pending-turn-start` holds the stop for the turn not yet started, and
+   * `turn-completed` means the stop reached the running turn as it finished
+   * (a turn the interrupt named is suppressed even then; see `spend`). An
+   * outcome the stopping Station did not report keeps the cancel, as before
+   * outcomes were reported.
+   */
+  settleCancellation(
+    cancellation: DelegationResultCancellation,
+    outcome: InterruptTurnResult['outcome'] | undefined,
+  ): void {
+    if (outcome === 'no-active-turn') this.reopenCancellation(cancellation);
+  }
+
+  /** The interrupt was refused or stopped nothing: undo only this cancellation. */
   reopenCancellation(cancellation: DelegationResultCancellation): void {
     this.ports.store.refuseCancel(cancellation.token);
     this.evaluateChild(cancellation.childConversationId);
@@ -1359,12 +1436,22 @@ export class DelegationResultDelivery {
     };
   }
 
-  private onFoldEvent(threadId: string): void {
+  private onFoldEvent(threadId: string, method: string): void {
     if (this.stopped) return;
     const conversationId = this.ports.conversationOf(threadId);
     if (this.ports.store.owner(conversationId)) {
       this.ports.store.touchOwner(conversationId);
-      this.evaluateChild(conversationId);
+      this.evaluateChild(conversationId, 'live');
+      // The service drops its pending cancel on any of these terminals for
+      // the thread, settled turn or not (`CooperativeStop
+      // .applyPendingTurnInterrupt`): a held dispatch whose Session exits
+      // before its `turn.started` settles nothing, so `record` never runs.
+      // This event landed after every suppression already recorded.
+      if (
+        PENDING_INTERRUPT_TERMINALS.has(method) &&
+        threadId === this.ports.currentSessionId(conversationId)
+      )
+        this.ports.store.dropUnboundSuppressions(conversationId);
       this.driveChild(conversationId);
     }
     // The thread may be a parent whose turn just ended: a queued result can
@@ -1376,9 +1463,14 @@ export class DelegationResultDelivery {
   /**
    * Record the child's current transition, if it has one this store has not
    * seen. The child is read from the log alone: an in-memory "busy" that
-   * outlives the terminal event must not hide a settlement.
+   * outlives the terminal event must not hide a settlement. `live` is the
+   * evaluation of an event that just landed; any other finds a transition
+   * late (see the store's `record`).
    */
-  private evaluateChild(childConversationId: string): void {
+  private evaluateChild(
+    childConversationId: string,
+    source: 'live' | 'caught-up' = 'caught-up',
+  ): void {
     const owner = this.ports.store.owner(childConversationId);
     if (!owner) return;
     const thread = this.ports.currentSessionId(childConversationId);
@@ -1400,24 +1492,27 @@ export class DelegationResultDelivery {
     const output = settled.turnId
       ? storedTurnOutput(this.ports, thread, settled.turnId)
       : { text: '', incomplete: false };
-    this.ports.store.record({
-      childConversationId,
-      transitionKey,
-      transition: 'settled',
-      parentConversationId: owner.parentConversationId,
-      childSessionId: thread,
-      ...(settled.turnId ? { childTurnId: settled.turnId } : {}),
-      outcome: settled.outcome,
-      deliveryId: deliveryIdFor(childConversationId, transitionKey),
-      text: composeDelegationResultText({
-        taskId: owner.taskId,
-        ...(owner.childAgent ? { agent: owner.childAgent } : {}),
+    this.ports.store.record(
+      {
+        childConversationId,
+        transitionKey,
+        transition: 'settled',
+        parentConversationId: owner.parentConversationId,
         childSessionId: thread,
+        ...(settled.turnId ? { childTurnId: settled.turnId } : {}),
         outcome: settled.outcome,
-        output: output.text,
-        outputIncomplete: output.incomplete,
-      }),
-    });
+        deliveryId: deliveryIdFor(childConversationId, transitionKey),
+        text: composeDelegationResultText({
+          taskId: owner.taskId,
+          ...(owner.childAgent ? { agent: owner.childAgent } : {}),
+          childSessionId: thread,
+          outcome: settled.outcome,
+          output: output.text,
+          outputIncomplete: output.incomplete,
+        }),
+      },
+      { caughtUp: source === 'caught-up' },
+    );
   }
 
   private driveChild(childConversationId: string): void {

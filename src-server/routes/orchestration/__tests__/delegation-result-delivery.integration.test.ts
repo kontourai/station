@@ -10,10 +10,16 @@
  * turn claim is) and its receipted steer.
  */
 import { join } from 'node:path';
+import type { InterruptTurnResult } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  createGateTestRegistry,
+  GateTestAdapter,
+} from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import type { ProviderInterruptTurnResult } from '../../../providers/adapter-shape.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import { bindStationControlRequestAuthority } from '../../../security/station-control-request-authority.js';
 import {
@@ -22,6 +28,7 @@ import {
 } from '../../../services/orchestration/delegation-result-delivery.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
+import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../../../services/orchestration/session-lifecycle-service.js';
 import {
   getInternalApiToken,
@@ -199,6 +206,13 @@ function routes(
     interruptGate?: Promise<'ok' | 'refuse'>;
     /** Called when the interrupt reaches the service, after its cancel was recorded. */
     interruptReached?: () => void;
+    /** The outcome the stub reports the service derived (default: none). */
+    interruptOutcome?: InterruptTurnResult['outcome'];
+    /** Replaces the stub: the interrupt as a real service runs it. */
+    interruptTurn?: (input: {
+      taskId: string;
+      turnId?: string;
+    }) => Promise<InterruptTurnResult>;
   } = {},
 ) {
   const app = new Hono();
@@ -281,7 +295,19 @@ function routes(
           taskId: input.taskId,
           status: status(),
         }),
-        interruptDelegatedTask: async (input: { taskId: string }) => {
+        interruptDelegatedTask: async (input: {
+          taskId: string;
+          turnId?: string;
+        }) => {
+          if (options.interruptTurn) {
+            const interrupted = await options.interruptTurn(input);
+            return {
+              conversationId: input.taskId,
+              taskId: input.taskId,
+              interruptRequested: true,
+              interruptOutcome: interrupted.outcome,
+            };
+          }
           options.interruptReached?.();
           if (
             options.interruptGate &&
@@ -298,6 +324,9 @@ function routes(
             conversationId: input.taskId,
             taskId: input.taskId,
             interruptRequested: true,
+            ...(options.interruptOutcome
+              ? { interruptOutcome: options.interruptOutcome }
+              : {}),
           };
         },
         delegationResults: h.delivery,
@@ -336,10 +365,14 @@ function routes(
       );
       expect(response.status).toBe(200);
     },
-    interrupt: async (taskId: string, expected = 200) => {
+    interrupt: async (
+      taskId: string,
+      expected = 200,
+      body: { turnId?: string } = {},
+    ) => {
       const response = await app.request(
         `/delegations/${encodeURIComponent(taskId)}/interrupt`,
-        { method: 'POST', headers, body: JSON.stringify({}) },
+        { method: 'POST', headers, body: JSON.stringify(body) },
       );
       expect(response.status).toBe(expected);
     },
@@ -348,6 +381,8 @@ function routes(
 
 describe('delegated task result delivery (#3158)', () => {
   const open: Harness[] = [];
+  /** Real orchestration services over a harness's store (fix round 6). */
+  const services: OrchestrationService[] = [];
   const setup = (path?: string) => {
     const h = harness(
       path ?? join(makeTempDir('delegation-result-'), 'orchestration.sqlite'),
@@ -356,6 +391,7 @@ describe('delegated task result delivery (#3158)', () => {
     return h;
   };
   afterEach(async () => {
+    for (const service of services.splice(0)) await service.shutdown();
     for (const h of open.splice(0)) {
       h.delivery.stop();
       await h.delivery.idle();
@@ -932,5 +968,198 @@ describe('delegated task result delivery (#3158)', () => {
     expect(lines[2]).toBe(
       "[Station: output clipped at 2000 streamed chunks; the rest is in the task's Session.]",
     );
+  });
+
+  // Fix round 6, P2: the interrupt's cancel follows what the orchestration
+  // service actually did. These run the interrupt through the real service
+  // (its cooperative stop and its active-turn match) on the harness's store
+  // and bus; only the delegated-task lookup in front of it is stood in for.
+  async function realServiceInterrupt(h: Harness) {
+    class AcknowledgingAdapter extends GateTestAdapter {
+      // The child's engine session is live (started below).
+      override async hasSession(): Promise<boolean> {
+        return true;
+      }
+      override async interruptTurn(
+        _threadId: string,
+        turnId?: string,
+      ): Promise<ProviderInterruptTurnResult> {
+        return { outcome: 'cancelled', turnId: turnId ?? '' };
+      }
+    }
+    const service = new OrchestrationService({
+      adapterRegistry: createGateTestRegistry(new AcknowledgingAdapter()),
+      eventBus: h.bus,
+      eventStore: h.store,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    services.push(service);
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: CHILD, provider: 'claude' },
+    });
+    const outcomes: InterruptTurnResult['outcome'][] = [];
+    const interruptTurn = async ({ turnId }: { turnId?: string }) => {
+      const { result } = await service.dispatchWithReceipt({
+        type: 'interruptTurn',
+        threadId: CHILD,
+        ...(turnId ? { turnId } : {}),
+      });
+      const interrupted = result as InterruptTurnResult;
+      outcomes.push(interrupted.outcome);
+      return interrupted;
+    };
+    return { interruptTurn, outcomes };
+  }
+
+  test('an interrupt naming another turn stops nothing, and the running turn is delivered', async () => {
+    const h = setup();
+    const real = await realServiceInterrupt(h);
+    const api = routes(h, PARENT, () => 'running', real);
+    await api.delegate();
+    emit(h, CHILD, 'turn.started', { turnId: 'child-turn-b' });
+    await api.interrupt(CHILD, 200, { turnId: 'child-turn-a' });
+    expect(real.outcomes).toEqual(['no-active-turn']);
+    emit(h, CHILD, 'content.text-delta', {
+      turnId: 'child-turn-b',
+      itemId: 'b-text',
+      delta: 'turn b finished',
+    });
+    emit(h, CHILD, 'turn.completed', { turnId: 'child-turn-b' });
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(1);
+    expect(h.starts[0]!.text).toContain('> turn b finished');
+    expect(h.store.delegationResultStore().listForChild(CHILD)).toEqual([
+      expect.objectContaining({ state: 'delivered' }),
+    ]);
+  });
+
+  test('an interrupt naming the running turn stops it, and its result is cancelled', async () => {
+    const h = setup();
+    const real = await realServiceInterrupt(h);
+    const api = routes(h, PARENT, () => 'running', real);
+    await api.delegate();
+    emit(h, CHILD, 'turn.started', { turnId: 'child-turn-b' });
+    await api.interrupt(CHILD, 200, { turnId: 'child-turn-b' });
+    expect(real.outcomes).toEqual(['cooperative']);
+    emit(h, CHILD, 'turn.aborted', { turnId: 'child-turn-b' });
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(0);
+    expect(h.store.delegationResultStore().listForChild(CHILD)).toEqual([
+      expect.objectContaining({ state: 'cancelled' }),
+    ]);
+  });
+
+  test('an interrupt with no turn running and none held leaves no suppression behind', async () => {
+    const h = setup();
+    const real = await realServiceInterrupt(h);
+    const api = routes(h, PARENT, () => 'running', real);
+    await api.delegate();
+    // The coordinator has accepted a turn the log does not show, so the
+    // route records a suppression waiting for it; the engine session exists,
+    // so the service holds nothing for that turn and stops nothing.
+    coordinatorBusy.add(CHILD);
+    await api.interrupt(CHILD);
+    expect(real.outcomes).toEqual(['no-active-turn']);
+    coordinatorBusy.delete(CHILD);
+    // The next turn ends without completing for its own reasons.
+    runChildTurn(h, CHILD, 'child-turn-1', 'partial', 'turn.aborted');
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(1);
+    expect(h.starts[0]!.text).toContain('> partial');
+  });
+
+  // Fix round 6, P3: a held turn whose Session exits before it starts. The
+  // service drops its pending cancel on that exit, so a later turn is not
+  // stopped by it and must not be suppressed.
+  test('a Session exit before the held turn starts ends the waiting suppression', async () => {
+    const h = setup();
+    const api = routes(h, PARENT, () => 'running', {
+      interruptOutcome: 'pending-turn-start',
+    });
+    await api.delegate();
+    coordinatorBusy.add(CHILD);
+    await api.interrupt(CHILD);
+    emit(h, CHILD, 'session.exited');
+    coordinatorBusy.delete(CHILD);
+    runChildTurn(h, CHILD, 'child-turn-1', 'after the exit', 'turn.aborted');
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(1);
+    expect(h.starts[0]!.text).toContain('> after the exit');
+  });
+
+  test('a runtime error before the held turn starts leaves the suppression waiting for it', async () => {
+    const h = setup();
+    const api = routes(h, PARENT, () => 'running', {
+      interruptOutcome: 'pending-turn-start',
+    });
+    await api.delegate();
+    coordinatorBusy.add(CHILD);
+    await api.interrupt(CHILD);
+    // The service keeps its pending cancel armed through a runtime.error.
+    emit(h, CHILD, 'runtime.error', { message: 'transient' });
+    coordinatorBusy.delete(CHILD);
+    runChildTurn(h, CHILD, 'child-turn-1', 'stopped', 'turn.aborted');
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(0);
+  });
+
+  test('a held turn the interrupt stopped is still suppressed when its Session did not exit first', async () => {
+    const h = setup();
+    const api = routes(h, PARENT, () => 'running', {
+      interruptOutcome: 'pending-turn-start',
+    });
+    await api.delegate();
+    coordinatorBusy.add(CHILD);
+    await api.interrupt(CHILD);
+    coordinatorBusy.delete(CHILD);
+    runChildTurn(h, CHILD, 'child-turn-1', 'stopped', 'turn.aborted');
+    await h.delivery.idle();
+    expect(h.starts).toHaveLength(0);
+  });
+
+  // Fix round 6, disclosed gap: after a restart, a parent interrupts a newly
+  // held turn before startup reconciliation records the child's earlier
+  // terminal. That earlier transition must not take the new suppression.
+  test('a transition found by reconciliation does not take a suppression made since the restart', async () => {
+    const path = join(
+      makeTempDir('delegation-result-'),
+      'orchestration.sqlite',
+    );
+    const first = setup(path);
+    await routes(first, PARENT, () => 'running').delegate();
+    first.delivery.stop();
+    // The child's turn ends while no delivery is following events.
+    runChildTurn(
+      { store: first.store, bus: new EventBus() },
+      CHILD,
+      'child-turn-x',
+      'before the restart',
+    );
+    first.store.close();
+    open.splice(open.indexOf(first), 1);
+
+    const second = setup(path);
+    const api = routes(second, PARENT, () => 'running', {
+      interruptOutcome: 'pending-turn-start',
+    });
+    coordinatorBusy.add(CHILD);
+    await api.interrupt(CHILD); // a new held turn Y
+    await second.delivery.reconcile();
+    coordinatorBusy.delete(CHILD);
+    runChildTurn(second, CHILD, 'child-turn-y', 'stopped', 'turn.aborted');
+    await second.delivery.idle();
+    expect(second.starts.map((start) => start.text)).toEqual([
+      expect.stringContaining('> before the restart'),
+    ]);
+    expect(
+      second.store
+        .delegationResultStore()
+        .listForChild(CHILD)
+        .map((row) => [row.childTurnId, row.state]),
+    ).toEqual([
+      ['child-turn-x', 'delivered'],
+      ['child-turn-y', 'cancelled'],
+    ]);
   });
 });

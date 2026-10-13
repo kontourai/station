@@ -425,6 +425,99 @@ describe('delegation result suppressions, fix round 3 (#3158)', () => {
   );
 });
 
+describe('delegation result cancellation, fix round 6 (#3158)', () => {
+  // The child's turn `long-turn` is open in the log (see `coordinatorAt`), so
+  // an interrupt names it: the outcome the service reported decides whether
+  // that suppression stands.
+  test.each([
+    ['no-active-turn', []],
+    ['cooperative', ['kept']],
+    ['forced', ['kept']],
+    ['turn-completed', ['kept']],
+    ['pending-turn-start', ['kept']],
+    [undefined, ['kept']],
+  ] as const)(
+    'an interrupt the service answered %s keeps its suppression: %j',
+    (outcome, expected) => {
+      const { store, delivery } = coordinatorAt({ now: 0 });
+      const cancellation = delivery.beginCancel('child', {
+        kind: 'conversation',
+        conversationId: 'parent',
+      })!;
+      delivery.settleCancellation(cancellation, outcome);
+      expect(
+        store
+          .spendSuppressions('child', 'long-turn', 'completed')
+          .map((token) => (token === cancellation.token ? 'kept' : token)),
+      ).toEqual(expected);
+    },
+  );
+
+  test('a transition found late takes only suppressions older than the store', () => {
+    const clock = { now: 0 };
+    const db = new DatabaseSync(':memory:');
+    migrateDelegationResultSchema(db);
+    const before = createSqliteDelegationResultStore(db, () => clock.now);
+    before.arm({
+      childConversationId: 'child',
+      taskId: 'child',
+      parentConversationId: 'parent',
+      actor: { userId: 'human:local:owner', attribution: 'verified-bound' },
+    });
+    before.beginCancel('child', 'token-before-restart', undefined);
+    clock.now = 10;
+    const after = createSqliteDelegationResultStore(db, () => clock.now);
+    after.beginCancel('child', 'token-since-restart', undefined);
+    after.record(
+      {
+        childConversationId: 'child',
+        transitionKey: 'settled:child:turn-x',
+        transition: 'settled',
+        parentConversationId: 'parent',
+        childSessionId: 'child',
+        childTurnId: 'turn-x',
+        outcome: 'aborted',
+        deliveryId: 'dr-x',
+        text: 'x',
+      },
+      { caughtUp: true },
+    );
+    expect(after.listForChild('child')[0]!.state).toBe('cancelled');
+    // The suppression made since the store opened still waits for its turn.
+    after.bindUnloggedSuppressions('child', 'turn-y');
+    expect(after.spendSuppressions('child', 'turn-y', 'aborted')).toEqual([
+      'token-since-restart',
+    ]);
+  });
+
+  test('a transition recorded as it lands takes every waiting suppression', () => {
+    const clock = { now: 0 };
+    const db = new DatabaseSync(':memory:');
+    migrateDelegationResultSchema(db);
+    const store = createSqliteDelegationResultStore(db, () => clock.now);
+    store.arm({
+      childConversationId: 'child',
+      taskId: 'child',
+      parentConversationId: 'parent',
+      actor: { userId: 'human:local:owner', attribution: 'verified-bound' },
+    });
+    clock.now = 10;
+    store.beginCancel('child', 'token', undefined);
+    store.record({
+      childConversationId: 'child',
+      transitionKey: 'settled:child:turn-x',
+      transition: 'settled',
+      parentConversationId: 'parent',
+      childSessionId: 'child',
+      childTurnId: 'turn-x',
+      outcome: 'aborted',
+      deliveryId: 'dr-x',
+      text: 'x',
+    });
+    expect(store.listForChild('child')[0]!.state).toBe('cancelled');
+  });
+});
+
 describe('delegation result schema migration (#3158)', () => {
   /** The tables exactly as f352640350 created them. */
   const F352_SCHEMA = `CREATE TABLE delegation_result_owners (

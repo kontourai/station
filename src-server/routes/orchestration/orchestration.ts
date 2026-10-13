@@ -165,7 +165,10 @@ import {
   orchestrationStreamResumeGap,
   sseOps,
 } from '../../telemetry/metrics.js';
-import { PeerDelegationAttemptDuplicateError } from '../../tools/station-control-delegation.js';
+import {
+  type DelegatedTaskInterruptResult,
+  PeerDelegationAttemptDuplicateError,
+} from '../../tools/station-control-delegation.js';
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
@@ -1582,7 +1585,7 @@ function localDelegatedChild(
  */
 function bestEffortDelegationResult<T>(
   logger: { warn?(message: string, meta?: Record<string, unknown>): void },
-  step: 'arm' | 'read' | 'cancel' | 'reopen',
+  step: 'arm' | 'read' | 'cancel' | 'settle' | 'reopen',
   run: () => T,
 ): T | undefined {
   try {
@@ -1844,7 +1847,7 @@ export function createOrchestrationRoutes(
     ) => Promise<unknown>;
     interruptDelegatedTask?: (
       input: InterruptDelegatedTaskRequest,
-    ) => Promise<unknown>;
+    ) => Promise<DelegatedTaskInterruptResult>;
     /**
      * #3158: automatic delivery of a delegated child's results to its parent
      * conversation (`delegation-result-delivery.ts`). The routes only report
@@ -1853,7 +1856,11 @@ export function createOrchestrationRoutes(
      */
     delegationResults?: Pick<
       DelegationResultDelivery,
-      'arm' | 'recordRead' | 'beginCancel' | 'reopenCancellation'
+      | 'arm'
+      | 'recordRead'
+      | 'beginCancel'
+      | 'settleCancellation'
+      | 'reopenCancellation'
     >;
     /**
      * archive#4075 stage 2: DEPRECATED legacy test-only escape hatch. Never
@@ -3720,7 +3727,8 @@ export function createOrchestrationRoutes(
         // #3158: the recorded parent's interrupt fences the turn it stops and
         // cancels results not yet delivered. Fenced before the effect (the
         // stopped turn's settlement is delivered synchronously from the
-        // event), and undone below if the interrupt is refused.
+        // event), and undone below if the interrupt is refused or the
+        // service reports it stopped nothing.
         const canceller =
           (getBody(c) as { environmentId?: unknown }).environmentId ===
           undefined
@@ -3734,7 +3742,7 @@ export function createOrchestrationRoutes(
               ),
             )
           : undefined;
-        let data: unknown;
+        let data: DelegatedTaskInterruptResult;
         try {
           data = await deps.interruptDelegatedTask({
             ...getBody(c),
@@ -3751,6 +3759,13 @@ export function createOrchestrationRoutes(
             );
           throw error;
         }
+        if (cancellation)
+          bestEffortDelegationResult(deps.logger, 'settle', () =>
+            deps.delegationResults?.settleCancellation(
+              cancellation,
+              data.interruptOutcome,
+            ),
+          );
         return c.json({ success: true, data });
       } catch (error) {
         return c.json({ success: false, error: errorMessage(error) }, 400);

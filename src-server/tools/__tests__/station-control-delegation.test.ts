@@ -3647,6 +3647,58 @@ describe('Station Control canonical Environment + Agent execution', () => {
       ),
     ).toBe(false);
   });
+
+  // #3158 fix round 6: the stop's derived outcome reaches the route, which
+  // undoes a delegated-result cancel when nothing was interrupted.
+  test('reports the outcome the orchestration service derived for the interrupt', async () => {
+    installCurrentStationFetch();
+    const service = localDelegatedTaskService();
+    const authority = hostedAuthority('alpha');
+    const { interruptDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    service.dispatchWithReceipt.mockResolvedValueOnce({
+      receipt: { commandId: 'command-1', status: 'accepted' },
+      result: { outcome: 'no-active-turn', threadId: 'task-alpha' },
+    } as never);
+    await expect(
+      interruptDelegatedTask(
+        { taskId: 'task-alpha', turnId: 'turn-old', readAuthority: authority },
+        service as never,
+      ),
+    ).resolves.toMatchObject({
+      interruptRequested: true,
+      interruptOutcome: 'no-active-turn',
+    });
+    expect(service.dispatchWithReceipt.mock.calls[0]![0]).toEqual({
+      type: 'interruptTurn',
+      threadId: 'task-alpha',
+      turnId: 'turn-old',
+    });
+
+    service.dispatchWithReceipt.mockResolvedValueOnce({
+      receipt: { commandId: 'command-2', status: 'accepted' },
+      result: { outcome: 'cooperative', threadId: 'task-alpha', turnId: 't' },
+    } as never);
+    await expect(
+      interruptDelegatedTask(
+        { taskId: 'task-alpha', readAuthority: authority },
+        service as never,
+      ),
+    ).resolves.toMatchObject({ interruptOutcome: 'cooperative' });
+
+    // A result that names no known outcome is reported as unknown, not guessed.
+    service.dispatchWithReceipt.mockResolvedValueOnce({
+      receipt: { commandId: 'command-3', status: 'accepted' },
+      result: { outcome: 'stopped-maybe' },
+    } as never);
+    const unknown = await interruptDelegatedTask(
+      { taskId: 'task-alpha', readAuthority: authority },
+      service as never,
+    );
+    expect(unknown.interruptRequested).toBe(true);
+    expect(unknown).not.toHaveProperty('interruptOutcome');
+  });
 });
 
 /**

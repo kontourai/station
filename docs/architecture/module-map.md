@@ -1316,17 +1316,23 @@ recorded parent, or from the delegating owner in person, cancels it and
 suppresses the one turn it stops. A turn the interrupt named is suppressed even
 if it completed normally. A turn not yet in the log when the interrupt arrived
 is matched as the service matches its one pending interrupt (the next turn to
-start, until a completion, abort or Session exit, or the pending-interrupt
-TTL), and is suppressed only
-if it did not complete normally. A refused interrupt undoes only its own
-records: a row a read consumed or another interrupt also cancelled stays closed. An engine without mid-turn steer leaves the row pending
+start, until a completion, abort or Session exit on the child's Session, or the
+pending-interrupt TTL), and is suppressed only
+if it did not complete normally. A transition found after a restart, rather
+than as its terminal landed, never takes a suppression made since. A refused
+interrupt, or one the orchestration service reports stopped nothing
+(`no-active-turn`, for example a `turnId` that is not the running turn), undoes
+only its own records: a row a read consumed or another interrupt also cancelled
+stays closed. An engine without mid-turn steer leaves the row pending
 until the parent's turn ends. A start is re-driven only into the Session it
 named, and a row that keeps failing or stays unconfirmed is settled
 `undeliverable` after five attempts. Remote and SSH children, hosted Stations,
 and `needs_input`/`blocked` transitions are not delivered. The
 [route-level integration test](../../src-server/routes/orchestration/__tests__/delegation-result-delivery.integration.test.ts)
 and the [runtime composition test](../../src-server/runtime/routes/__tests__/runtime-routes-delegation-result-delivery.test.ts)
-use recorded start and steer effects, not a real engine.
+use recorded start and steer effects, not a real engine; the integration test
+runs its interrupt-outcome cases through the real orchestration service with a
+test adapter.
 
 ## SessionDigest
 
