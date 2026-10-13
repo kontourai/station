@@ -151,7 +151,7 @@ async function resolveFileMemoryOccupancy(
 }
 
 /**
- * #3562: the in-boot backoff `consumeAtBoot` retries a failed record on, one
+ * #3562: the in-boot backoff `consume` retries a failed record on, one
  * delay per retry (so four attempts in all, about 1.75s of waiting). Bounded
  * on purpose: a failure that outlives it is not transient, and the boundary
  * row is the durable "recovery pending" state a restart finds again.
@@ -392,43 +392,37 @@ export class InterruptedTurnRecovery {
    * DELETE discards is unavailable to a future slice (e.g. bounded
    * auto-resume) reading the durable event alone.
    */
-  async consume(
-    options: { retryDelaysMs?: readonly number[] } = {},
-  ): Promise<string[]> {
+  async consume(): Promise<string[]> {
     const eventStore = this.deps.eventStore();
     if (!eventStore) return [];
-    // Drained once: the retry below works from this list, never from a second
+    // Drained once: the retries below work from this list, never from a second
     // take, which would be empty.
     const interrupted = eventStore.takeInterruptedTurnBoundaries();
     let pending = await this.recoverPass(eventStore, interrupted, interrupted);
     // #3562: a record that failed (a throw, or a declined publish) keeps its
     // row but was drained from the store's in-memory list, so nothing else
-    // would look at it before the next boot. Retry just those records, each
-    // time re-deciding from the log (the writes are idempotent by
-    // boundary-derived id), on a bounded schedule.
-    for (const delay of options.retryDelaysMs ?? []) {
+    // would look at it before the next boot. Retry just those records on a
+    // bounded schedule, each pass re-deciding from the log (the writes are
+    // idempotent by boundary-derived id, and `movedOn` is asked again, so a
+    // turn that started during the wait is still honoured).
+    for (const delay of INTERRUPTED_TURN_RETRY_DELAYS_MS) {
       if (pending.length === 0) break;
       await sleep(delay);
       pending = await this.recoverPass(eventStore, interrupted, pending);
     }
-    return pending.map((record) => record.boundaryId);
-  }
-
-  /**
-   * #3562: the boot entry point. `consume` with the in-boot retry schedule,
-   * and a rejection if records are still unrecovered once it is spent, so
-   * the caller's catch reports it rather than the run reading as done. The
-   * rows stay: the next boot finds them again.
-   */
-  async consumeAtBoot(): Promise<void> {
-    const pending = await this.consume({
-      retryDelaysMs: INTERRUPTED_TURN_RETRY_DELAYS_MS,
-    });
-    if (pending.length > 0) {
-      throw new Error(
-        `Interrupted-turn recovery gave up for this boot after ${INTERRUPTED_TURN_RETRY_DELAYS_MS.length + 1} attempts; ${pending.length} boundary row(s) stay for the next boot: ${pending.join(', ')}`,
+    const unrecovered = pending.map((record) => record.boundaryId);
+    if (unrecovered.length > 0) {
+      // The durable "recovery pending" state is the boundary row itself, which
+      // a restart finds again; this is the one line saying so for this boot.
+      this.deps.logger.warn(
+        'Interrupted-turn recovery gave up for this boot; the boundary rows stay for the next boot',
+        {
+          boundaryIds: unrecovered,
+          attempts: INTERRUPTED_TURN_RETRY_DELAYS_MS.length + 1,
+        },
       );
     }
+    return unrecovered;
   }
 
   /**

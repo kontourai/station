@@ -32,7 +32,7 @@ import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-event-projection';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
@@ -1015,12 +1015,18 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     // event has already landed durably, but the FileMemory write itself
     // never completes — the mocked call throws WITHOUT appending, exactly
     // like a process dying mid-write leaves nothing on disk.
-    sharedAdapter.addMessage.mockImplementationOnce(async () => {
+    // #3562: a one-shot throw is now retried within the boot, so the outage
+    // lasts the whole boot (every in-boot attempt) and then clears.
+    const realAddMessage = sharedAdapter.addMessage.getMockImplementation()!;
+    sharedAdapter.addMessage.mockImplementation(async () => {
       throw new Error('simulated crash before the FileMemory write lands');
     });
     await (service1 as any).interruptedTurns.consume();
+    sharedAdapter.addMessage.mockImplementation(realAddMessage);
+    sharedAdapter.addMessage.mockClear();
 
-    expect(sharedAdapter.addMessage).toHaveBeenCalledOnce();
+    // Boot 1 gave up with the write outstanding: nothing landed.
+    expect(sharedAdapter.addMessage).not.toHaveBeenCalled();
     // The event DID land — this is the fact boot 2 must not re-derive.
     expect(
       eventStore1
@@ -1046,9 +1052,9 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     });
     await (service2 as any).interruptedTurns.consume();
 
-    // `addMessage` was called a SECOND time (the retry) — this boot's call
-    // succeeds (no mocked override left), landing the banner for real.
-    expect(sharedAdapter.addMessage).toHaveBeenCalledTimes(2);
+    // This boot's `addMessage` succeeds (the outage cleared), landing the
+    // banner for real, once.
+    expect(sharedAdapter.addMessage).toHaveBeenCalledOnce();
     // Still exactly ONE event, never re-published (hasEventId skipped it).
     expect(
       eventStore2
@@ -3188,8 +3194,12 @@ describe('#3562: a per-record recovery failure is retried within the boot, then 
   const makeTempDir = trackTempDirs();
   const stores: EventStore[] = [];
 
-  afterEach(() => {
+  beforeEach(() => {
     sleepProbe.delays.length = 0;
+    sleepProbe.hook = undefined;
+  });
+
+  afterEach(() => {
     sleepProbe.hook = undefined;
     for (const store of stores.splice(0)) {
       try {
@@ -3274,9 +3284,7 @@ describe('#3562: a per-record recovery failure is retried within the boot, then 
       throw new Error('simulated transient FileMemory write failure');
     });
 
-    await (
-      serviceFor(eventStore, adapter) as any
-    ).interruptedTurns.consumeAtBoot();
+    await (serviceFor(eventStore, adapter) as any).interruptedTurns.consume();
 
     expect(adapter.addMessage).toHaveBeenCalledTimes(2);
     expect(sleepProbe.delays).toEqual([250]);
@@ -3301,9 +3309,7 @@ describe('#3562: a per-record recovery failure is retried within the boot, then 
         throw new Error('simulated SQLITE_BUSY on the boundary delete');
       });
 
-    await (
-      serviceFor(eventStore, adapter) as any
-    ).interruptedTurns.consumeAtBoot();
+    await (serviceFor(eventStore, adapter) as any).interruptedTurns.consume();
 
     expect(resolveSpy).toHaveBeenCalledTimes(2);
     expect(sleepProbe.delays).toEqual([250]);
@@ -3329,7 +3335,7 @@ describe('#3562: a per-record recovery failure is retried within the boot, then 
     sleepProbe.hook = () =>
       (service as any).quarantinedThreads.delete(threadId);
 
-    await (service as any).interruptedTurns.consumeAtBoot();
+    await (service as any).interruptedTurns.consume();
 
     expect(sleepProbe.delays).toEqual([250]);
     expect(methods(eventStore, threadId, 'session.state-changed')).toHaveLength(
@@ -3339,20 +3345,18 @@ describe('#3562: a per-record recovery failure is retried within the boot, then 
     expect(rowsLeftForNextBoot(path)).toEqual([]);
   });
 
-  test('a persistent failure is bounded and never a silent success: finite attempts with doubling backoff, then a rejection naming the boundary, and the row kept for the next boot', async () => {
+  test('a persistent failure is bounded and never a silent success: finite attempts with doubling backoff, the unrecovered boundary returned and warned, the row kept for the next boot', async () => {
     const { path, threadId, eventStore } = crashedThread('accepted');
     const adapter = occupied();
     adapter.addMessage.mockImplementation(async () => {
       throw new Error('simulated persistent FileMemory outage');
     });
+    const warn = vi.fn();
 
-    const outcome = (
-      serviceFor(eventStore, adapter) as any
-    ).interruptedTurns.consumeAtBoot();
+    const unrecovered = await (
+      serviceFor(eventStore, adapter, warn) as any
+    ).interruptedTurns.consume();
 
-    await expect(outcome).rejects.toThrow(
-      /gave up for this boot after 4 attempts/,
-    );
     // 4 attempts, 3 backoffs: not a give-up on the first failure, not a loop.
     expect(adapter.addMessage).toHaveBeenCalledTimes(4);
     expect(sleepProbe.delays).toEqual([250, 500, 1000]);
@@ -3360,11 +3364,15 @@ describe('#3562: a per-record recovery failure is retried within the boot, then 
     expect(methods(eventStore, threadId, 'session.state-changed')).toHaveLength(
       1,
     );
-    // The durable row is the pending state: a restart finds it again, and the
-    // rejection names exactly that row.
+    // The durable row is the pending state: a restart finds it again, and
+    // the give-up names exactly that row.
     const left = rowsLeftForNextBoot(path);
     expect(left).toHaveLength(1);
-    await expect(outcome).rejects.toThrow(left[0]!.boundaryId);
+    expect(unrecovered).toEqual([left[0]!.boundaryId]);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('gave up for this boot'),
+      { boundaryIds: unrecovered, attempts: 4 },
+    );
   });
 
   test('only the failing record is retried; a record that already recovered is not reprocessed', async () => {
@@ -3394,7 +3402,7 @@ describe('#3562: a per-record recovery failure is retried within the boot, then 
       });
     const service = serviceFor(eventStore, occupied());
 
-    await (service as any).interruptedTurns.consumeAtBoot();
+    await (service as any).interruptedTurns.consume();
 
     // Two records: one resolve threw, its retry succeeded, the other
     // succeeded first time and is not run again. A pass over both would be 4.
@@ -3408,7 +3416,7 @@ describe('#3562: a per-record recovery failure is retried within the boot, then 
     expect(rowsLeftForNextBoot(path)).toEqual([]);
   });
 
-  test('initialize() runs the retrying boot path and reports an exhausted retry instead of reading as done', async () => {
+  test('initialize() reaches the retrying recovery: a record failing at boot is retried, then reported', async () => {
     const { path, threadId, eventStore } = crashedThread('accepted');
     const adapter = occupied();
     adapter.addMessage.mockImplementation(async () => {
@@ -3420,10 +3428,8 @@ describe('#3562: a per-record recovery failure is retried within the boot, then 
     service.initialize();
     await vi.waitFor(() =>
       expect(warn).toHaveBeenCalledWith(
-        'Interrupted-turn boundary consumption did not complete',
-        expect.objectContaining({
-          error: expect.stringContaining('gave up for this boot'),
-        }),
+        expect.stringContaining('gave up for this boot'),
+        expect.objectContaining({ attempts: 4 }),
       ),
     );
 

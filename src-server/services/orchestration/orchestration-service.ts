@@ -3062,11 +3062,8 @@ export class OrchestrationService {
         // post-recovery read of it does. Fire-and-forget, like the
         // recovery-intent reconciliation just above — a failure here must
         // never surface as an unhandled rejection after attachment state
-        // has already settled. A record that fails is retried a few times
-        // within this boot (`consumeAtBoot`); one still failing after that
-        // rejects here, is logged, and its boundary row stays for the next
-        // boot.
-        void this.interruptedTurns.consumeAtBoot().catch((error) => {
+        // has already settled; unwritten banners simply retry next boot.
+        void this.interruptedTurns.consume().catch((error) => {
           this.options.logger.warn(
             'Interrupted-turn boundary consumption did not complete',
             { error: errorMessage(error) },
