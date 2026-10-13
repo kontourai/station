@@ -16,8 +16,10 @@ override; do not use fixture overrides as a production trust configuration.
 
 Signature and hash checks establish an authorized signer and named bytes, not
 freshness or safe behavior. Existing-install version checks refuse ordinary
-downgrades and same-version byte replacement within one layout unless an exact
-replacement is explicitly authorized. A same-version switch between source
+downgrades, same-version byte replacement within one layout, and any manifest
+older than the newest release the install root already accepted (recorded in
+`.station-release-accepted.json`, so a rollback does not reopen a replay),
+unless an exact replacement is explicitly authorized. A same-version switch between source
 and prebuilt layouts is accepted without that flag. A new installation can
 still receive an older signed manifest; no maximum manifest age is enforced. The
 public-manifest path is opt-in, not evidence of a live public distribution.

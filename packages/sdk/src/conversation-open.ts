@@ -155,13 +155,32 @@ function validExecution(
   const execution = value as Record<string, unknown>;
   const fields = [
     'sessionId',
+    'environment',
     'agentId',
+    'executionAgentId',
+    'expectedDefinitionFingerprint',
     'provider',
     'engineConnectionId',
     'model',
     'acceptedModel',
   ];
   if (Object.keys(execution).some((key) => !fields.includes(key))) return false;
+  if (execution.environment !== undefined) {
+    const environment = execution.environment;
+    if (
+      !environment ||
+      typeof environment !== 'object' ||
+      Array.isArray(environment)
+    )
+      return false;
+    const environmentFields = Object.keys(environment);
+    if (
+      environmentFields.length !== 1 ||
+      environmentFields[0] !== 'kind' ||
+      (environment as Record<string, unknown>).kind !== 'current'
+    )
+      return false;
+  }
   const boundedText = (text: unknown) =>
     typeof text === 'string' &&
     text.length > 0 &&
@@ -173,6 +192,10 @@ function validExecution(
   if (typeof execution.agentId !== 'string') return false;
   try {
     validateAgentId(execution.agentId);
+    if (execution.executionAgentId !== undefined) {
+      if (typeof execution.executionAgentId !== 'string') return false;
+      validateAgentId(execution.executionAgentId);
+    }
   } catch {
     return false;
   }
@@ -180,6 +203,11 @@ function validExecution(
     execution.sessionId === sessionId &&
     execution.agentId === agentId &&
     parseEngineId(execution.provider) !== undefined &&
+    (execution.expectedDefinitionFingerprint === undefined ||
+      (typeof execution.expectedDefinitionFingerprint === 'string' &&
+        /^sha256:[a-f0-9]{64}$/.test(
+          execution.expectedDefinitionFingerprint,
+        ))) &&
     (execution.engineConnectionId === undefined ||
       parseEngineConnectionId(execution.engineConnectionId) !== undefined) &&
     (execution.model === undefined || boundedText(execution.model)) &&

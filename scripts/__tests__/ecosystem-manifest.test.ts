@@ -872,6 +872,72 @@ describe('install.sh public manifest verification', () => {
     expect(installedTag(fixture)).toBe('v1.2.4');
   });
 
+  it('refuses a manifest older than a release the install already accepted, even after a rollback (#187)', {
+    timeout: 300_000,
+  }, () => {
+    const fixture = makeInstallFixture('station-pinned-accepted-');
+    const markPath = join(
+      fixture.dir,
+      'home',
+      '.station',
+      'installs',
+      'stable',
+      '.station-release-accepted.json',
+    );
+    const release = (version: string) =>
+      signManifest(fixture, version, buildArchive(fixture, version));
+    const v124 = release('1.2.4');
+    const installed = runInstaller(fixture, v124);
+    expect(installed.status, installed.stderr).toBe(0);
+    expect(readFileSync(markPath, 'utf8')).toBe(
+      `${JSON.stringify({ schemaVersion: 1, releaseChannel: 'stable', version: '1.2.4' })}\n`,
+    );
+    // A deliberate rollback is still possible, and does not lower the mark.
+    const rolledBack = runInstaller(fixture, release('1.2.2'), {
+      STATION_VERSION: 'v1.2.2',
+      STATION_INSTALL_ALLOW_ROLLBACK: '1',
+    });
+    expect(rolledBack.status, rolledBack.stderr).toBe(0);
+    expect(installedTag(fixture)).toBe('v1.2.2');
+    expect(JSON.parse(readFileSync(markPath, 'utf8')).version).toBe('1.2.4');
+
+    // A replayed 1.2.3 is newer than what runs, but older than 1.2.4: refused,
+    // by an install and by the stage-only run the service's update uses.
+    const v123 = release('1.2.3');
+    for (const env of <Record<string, string>[]>[
+      {},
+      { STATION_INSTALL_STAGE_ONLY: '1' },
+      { STATION_INSTALL_ALLOW_ROLLBACK: '1' },
+      { STATION_VERSION: 'v1.2.3' },
+    ]) {
+      const refused = runInstaller(fixture, v123, env);
+      expect(refused.stderr).toContain(
+        'refusing Station v1.2.3: this install already accepted the newer signed release v1.2.4, so this manifest is stale or replayed',
+      );
+      expect(refused.status).toBe(1);
+      expect(installedTag(fixture)).toBe('v1.2.2');
+    }
+
+    // A mark that cannot be read refuses too (fail closed), unless explicit.
+    writeFileSync(markPath, 'not json');
+    const unreadable = runInstaller(fixture, v124);
+    expect(unreadable.stderr).toContain(
+      'cannot read the newest release this install accepted',
+    );
+    expect(unreadable.status).toBe(1);
+    const explicit = runInstaller(fixture, v123, {
+      STATION_VERSION: 'v1.2.3',
+      STATION_INSTALL_ALLOW_ROLLBACK: '1',
+    });
+    expect(explicit.status, explicit.stderr).toBe(0);
+    expect(installedTag(fixture)).toBe('v1.2.3');
+
+    // Control: the accepted release itself still installs without a flag.
+    const forward = runInstaller(fixture, v124);
+    expect(forward.status, forward.stderr).toBe(0);
+    expect(installedTag(fixture)).toBe('v1.2.4');
+  });
+
   it('refuses the same version with different bytes unless explicitly requested', {
     timeout: 180_000,
   }, () => {
