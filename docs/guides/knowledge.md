@@ -615,6 +615,13 @@ every future Kit version.
 | Default file | `records/<id>.md`, plus `graph-index.json` and `alias-index.json` |
 | Obsidian | Person records under `people/`; concept/snapshot records under category paths; raw/compiled records under the category's sources directory; superseded records under `archive/`; graph, path, and alias indexes |
 
+The default file adapter rejects supplied record IDs that are not a safe single
+path segment, with `MISSING_EVIDENCE` before writing records or indexes. IDs must
+start with an ASCII letter or digit, contain only letters, digits, dots,
+underscores or hyphens, and contain no `..`. Omitted IDs receive a UUID.
+Category-scoped slug aliases can still contain `/`; they are lookup handles,
+not record filenames.
+
 Obsidian record bodies can contain arbitrary Markdown. A structural delimiter
 separates the body from generated Sources/People/Related sections. Preserve
 these rules when changing the adapter:

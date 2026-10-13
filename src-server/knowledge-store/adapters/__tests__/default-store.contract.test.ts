@@ -1,6 +1,7 @@
 import {
   existsSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -52,6 +53,48 @@ describe('KitDefaultStoreAdapter — on-disk fixture proof (store-contract.md §
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
   });
+
+  test.each([
+    '../escaped',
+    'nested/record',
+    'nested\\record',
+    '.',
+    '..',
+    '/absolute',
+    'bad\0id',
+  ])(
+    'rejects path-shaped record id %j without changing records or indexes',
+    async (id) => {
+      const input = {
+        type: 'raw' as const,
+        title: 'Record',
+        body: 'Body',
+        category: 'engineering',
+        provenance: { agent: 'test' },
+      };
+      const acceptedId = await adapter.create({ ...input, id: 'Record_01.v1' });
+      const before = readdirSync(dir, { recursive: true }).map((path) =>
+        String(path),
+      );
+      const graph = readFileSync(join(dir, 'graph-index.json'), 'utf8');
+      const aliases = readFileSync(join(dir, 'alias-index.json'), 'utf8');
+
+      await expect(adapter.create({ ...input, id })).rejects.toMatchObject({
+        code: 'MISSING_EVIDENCE',
+        message: 'create: record id must be a safe single path segment',
+      });
+
+      expect(
+        readdirSync(dir, { recursive: true }).map((path) => String(path)),
+      ).toEqual(before);
+      expect(readFileSync(join(dir, 'graph-index.json'), 'utf8')).toBe(graph);
+      expect(readFileSync(join(dir, 'alias-index.json'), 'utf8')).toBe(aliases);
+      expect((await adapter.get(acceptedId))?.id).toBe(acceptedId);
+      expect(
+        (await adapter.listByType('raw')).map((record) => record.id),
+      ).toEqual([acceptedId]);
+    },
+  );
 
   test('record files are literal YAML-frontmatter + markdown, parseable by a plain YAML reader', async () => {
     const id = await adapter.create({
