@@ -21,6 +21,7 @@ import {
   readReviewState,
   readReviewStateAt,
   recordFile,
+  serializeRecordFile,
 } from '../lib/review-ledger-store.mjs';
 import {
   check,
@@ -81,7 +82,7 @@ describe('scoped documentation freshness (#2923)', () => {
       f.write(path, 'Pending release declaration; no publication claim.\n');
     f.write(
       recordFile(path),
-      JSON.stringify({
+      serializeRecordFile({
         path,
         kind,
         state: 'classified',
@@ -140,8 +141,32 @@ describe('scoped documentation freshness (#2923)', () => {
       'Reviewed removal of the historical changesets:check entry; declaration is absent, publication is not established.';
     expect(record_(f.root, [f.path, '--note', note]).status).toBe(0);
     commit(f.root, 'record explicit classification review');
-    expect(check(f.root, scoped).status).toBe(0);
+    const refreshed = check(f.root, scoped);
+    expect(refreshed.status, JSON.stringify(refreshed)).toBe(0);
     expect(compiled(f.root, f.path).checks).toContain(note);
+  });
+
+  it('requires a review note when reclassifying a check on a declaration already absent at the PR base', () => {
+    const f = classifiedNote({ checks: ['npm run changesets:check'] });
+    git(f.root, ['switch', 'main']);
+    git(f.root, ['rm', f.path]);
+    commit(f.root, 'remove declaration on main');
+    git(f.root, ['switch', '-qc', 'reclassification']);
+    editRecord(f.root, f.path, (record) => {
+      record.checks = [];
+    });
+    commit(f.root, 'remove historical check claim');
+    expect(check(f.root, scoped).status).toBe(1);
+    expect(
+      record_(f.root, [
+        f.path,
+        '--note',
+        'Reviewed the historical check removal; absent declaration is not publication.',
+      ]).status,
+    ).toBe(0);
+    commit(f.root, 'record reclassification review');
+    const refreshed = check(f.root, scoped);
+    expect(refreshed.status, JSON.stringify(refreshed)).toBe(0);
   });
 
   it.each([
