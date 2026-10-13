@@ -433,17 +433,17 @@ describe('monument import boundary gate', () => {
       // leads out of the scratch tree; give it the link an install of the
       // scratch tree would make, or the route resolves outside the package.
       (dir) => {
-        const real = resolve('node_modules');
-        rmSync(join(dir, 'node_modules'));
-        mkdirSync(join(dir, 'node_modules/@kontourai'), { recursive: true });
+        const modules = join(dir, 'node_modules');
+        rmSync(modules);
+        mkdirSync(join(modules, '@kontourai'), { recursive: true });
         symlinkSync(
-          join(real, 'typescript-api'),
-          join(dir, 'node_modules/typescript-api'),
+          join(resolve('node_modules'), 'typescript-api'),
+          join(modules, 'typescript-api'),
           'dir',
         );
         symlinkSync(
-          '../../packages/monument',
-          join(dir, 'node_modules/@kontourai/monument'),
+          `../../${ROOT}`,
+          join(modules, '@kontourai', 'monument'),
           'dir',
         );
       },
