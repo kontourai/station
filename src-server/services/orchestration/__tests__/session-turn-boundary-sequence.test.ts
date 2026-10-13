@@ -75,6 +75,65 @@ describe('session-terminal boundary ordering', () => {
       db.close();
     }
   }
+  test('reconcile preserves a newer reused-ID boundary when an older turn terminal arrives late', () => {
+    const path = databasePath();
+    const store = open(path);
+    const authority = store.sessionTurnBoundaryAuthority();
+    const claimed = authority.claim('thread', '2026-10-13T02:00:00.000Z');
+    if (claimed.kind !== 'owner') throw new Error('Expected boundary owner');
+    expect(claimed.claim.beginInvocation('2026-10-13T02:01:00.000Z')).toEqual({
+      kind: 'applied',
+    });
+    expect(
+      claimed.claim.accepted('provider-reused', '2026-10-13T02:02:00.000Z'),
+    ).toEqual({ kind: 'applied' });
+    const oldTerminal: CanonicalRuntimeEvent = {
+      eventId: 'delayed-old-generation',
+      provider: 'claude',
+      threadId: 'thread',
+      turnId: 'provider-reused',
+      method: 'turn.completed',
+      createdAt: '2026-10-13T01:00:00.000Z',
+    };
+    store.appendEvent(oldTerminal);
+    expect(authority.hasPossibleEffect('thread')).toEqual({
+      kind: 'available',
+      active: true,
+    });
+    store.appendEvent({
+      ...oldTerminal,
+      eventId: 'current-generation-terminal',
+      createdAt: '2026-10-13T03:00:00.000Z',
+    });
+    expect(authority.hasPossibleEffect('thread')).toEqual({
+      kind: 'available',
+      active: false,
+    });
+  });
+  test('an unpersisted session terminal answers applied but keeps the fenced boundary', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-13T02:00:00.000Z'));
+    const path = databasePath();
+    const store = open(path);
+    invoking(store);
+    vi.setSystemTime(new Date('2026-10-13T03:00:00.000Z'));
+    const event = terminal('session.exited');
+    const authority = store.sessionTurnBoundaryAuthority();
+    expect(store.readGlobalSequence(event.eventId)).toBeUndefined();
+    expect(authority.observe(event)).toEqual({ kind: 'applied' });
+    expect(boundaries(path)).toEqual([{ thread_id: 'thread' }]);
+    expect(authority.hasPossibleEffect('thread')).toEqual({
+      kind: 'available',
+      active: true,
+    });
+    store.appendEvent(event);
+    expect(authority.observe(event)).toEqual({ kind: 'applied' });
+    expect(boundaries(path)).toEqual([]);
+    expect(authority.hasPossibleEffect('thread')).toEqual({
+      kind: 'available',
+      active: false,
+    });
+  });
   for (const method of ['session.exited', 'runtime.error'] as const) {
     test.each(['observe', 'read', 'restart'] as const)(
       `${method} after a backward clock step retires only the earlier boundary (%s)`,

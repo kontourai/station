@@ -11366,6 +11366,8 @@ export class EventStore {
       removeTerminal: (input) => {
         try {
           if (input.sessionTerminal) {
+            // NULL fences retain timestamp ordering.
+            // A missing terminal makes the subquery NULL and keeps fenced boundaries.
             this.db
               .prepare(
                 `DELETE FROM orchestration_turn_boundaries
