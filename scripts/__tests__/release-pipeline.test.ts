@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
+import { JSON_SCHEMA, load } from 'js-yaml';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { main as decideMain } from '../nightly-qualification-decide.mjs';
@@ -360,6 +361,35 @@ describe('qualification admission waits for capacity instead of failing (#3612)'
   it('pins the ceiling below the merge queue check timeout', () => {
     expect(ADMISSION_WAIT_CEILING_MS).toBe(20 * 60_000);
     expect(ADMISSION_OBSERVE_INTERVAL_MS).toBe(60_000);
+  });
+
+  it('gives the resolve job room to reach the ceiling and report it', () => {
+    type Step = { name?: string; run?: string; 'timeout-minutes'?: number };
+    const workflow = load(
+      readFileSync(
+        resolve(
+          import.meta.dirname,
+          '../../.github/workflows/full-regression.yml',
+        ),
+        'utf8',
+      ),
+      { schema: JSON_SCHEMA },
+    ) as {
+      jobs: { resolve: { 'timeout-minutes': number; steps: Step[] } };
+    };
+    const job = workflow.jobs.resolve;
+    const admission = job.steps.find((step) =>
+      step.run?.includes('node scripts/release-pipeline.mjs admission'),
+    );
+    const ceilingMinutes = 20;
+    // A backstop that fires first kills the step without the explicit
+    // timeout message, so both must outlast the ceiling.
+    expect(admission?.['timeout-minutes']).toBe(23);
+    expect(admission?.['timeout-minutes']).toBeGreaterThan(ceilingMinutes);
+    expect(job['timeout-minutes']).toBe(30);
+    expect(job['timeout-minutes']).toBeGreaterThan(
+      admission?.['timeout-minutes'] ?? Infinity,
+    );
   });
 
   it('admits on a later observation, writes the outputs and summarizes every observation', async () => {
