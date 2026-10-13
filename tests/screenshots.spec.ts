@@ -3280,4 +3280,26 @@ test('build gallery — capture key screens', async ({ page }) => {
   expect(ok, 'every selected gallery screen should render').toBe(
     selectedScreens.length,
   );
+  if (
+    selectedScreens.some(
+      (screen) => screen.name === 'overlay-dock-project-mismatch',
+    )
+  ) {
+    const diagnostic = shots.find(
+      (shot) => shot.screen.name === 'overlay-dock-project-mismatch',
+    )?.rasterDiagnostic;
+    expect(
+      diagnostic,
+      'settled status motion should be observed',
+    ).toBeDefined();
+    expect(
+      diagnostic?.retiredCount,
+      'completed status entry/morph effects must release their fill',
+    ).toBe(0);
+    const body = diagnostic?.before.ancestors.find(
+      (ancestor) => ancestor.className === 'chat-status-pill__body',
+    );
+    expect(body?.transform).toBe('none');
+    expect(body?.opacity).toBe('1');
+  }
 });
