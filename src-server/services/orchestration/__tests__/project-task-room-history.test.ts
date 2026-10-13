@@ -10,6 +10,7 @@ import {
   type ProjectTaskRoomGrant,
   type ProjectTaskRoomGrantKind,
 } from '@kontourai/station-contracts/project-task-room';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   captureOwnedProcessOutput,
@@ -2475,18 +2476,19 @@ it('an indeterminate bound provider invocation prevents source closure after res
       kind: 'available',
       active: true,
     });
-    // Feed the existing trusted terminal observer; elapsed time alone is no proof.
-    expect(
-      authority.observe({
-        eventId: 'exit-uncertain-session',
-        provider: 'claude',
-        threadId: binding.sessionId,
-        sessionId: binding.sessionId,
-        createdAt: '2026-09-05T00:00:03.000Z',
-        method: 'session.exited',
-        exitCode: 0,
-      }),
-    ).toEqual({ kind: 'applied' });
+    // Production feeds the trusted terminal observer after the append commits;
+    // elapsed time alone is no proof.
+    const exited: CanonicalRuntimeEvent = {
+      eventId: 'exit-uncertain-session',
+      provider: 'claude',
+      threadId: binding.sessionId,
+      sessionId: binding.sessionId,
+      createdAt: '2026-09-05T00:00:03.000Z',
+      method: 'session.exited',
+      exitCode: 0,
+    };
+    restarted.appendEvent(exited);
+    expect(authority.observe(exited)).toEqual({ kind: 'applied' });
     expect(
       await restoredRoom.sealSource({
         grant: grant('home-transfer'),
