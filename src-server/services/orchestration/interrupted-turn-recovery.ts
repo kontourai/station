@@ -301,7 +301,20 @@ function ownTurnEnding(
  * oversight to "fix".
  */
 export class InterruptedTurnRecovery {
+  /** Aborted by `stop()`: no further pass runs and a backoff ends early. */
+  private readonly stopSignal = new AbortController();
+
   constructor(private readonly deps: InterruptedTurnRecoveryDeps) {}
+
+  /**
+   * #3562: the service is shutting down. A pass already inside a record
+   * finishes that record; no further record or retry pass starts, and a
+   * backoff in progress ends now rather than after its delay. Unfinished rows
+   * stay for the next boot, which is the durable path.
+   */
+  stop(): void {
+    this.stopSignal.abort();
+  }
 
   /**
    * archive#4080: consumes this process's own boot-time findings
@@ -393,32 +406,51 @@ export class InterruptedTurnRecovery {
    * auto-resume) reading the durable event alone.
    */
   async consume(): Promise<string[]> {
-    const eventStore = this.deps.eventStore();
-    if (!eventStore) return [];
+    const drainedFrom = this.deps.eventStore();
+    if (!drainedFrom) return [];
     // Drained once: the retries below work from this list, never from a second
     // take, which would be empty.
-    const interrupted = eventStore.takeInterruptedTurnBoundaries();
-    let pending = await this.recoverPass(eventStore, interrupted, interrupted);
+    const interrupted = drainedFrom.takeInterruptedTurnBoundaries();
+    let pending = await this.recoverPass(drainedFrom, interrupted, interrupted);
     // #3562: a record that failed (a throw, or a declined publish) keeps its
     // row but was drained from the store's in-memory list, so nothing else
     // would look at it before the next boot. Retry just those records on a
     // bounded schedule, each pass re-deciding from the log (the writes are
     // idempotent by boundary-derived id, and `movedOn` is asked again, so a
     // turn that started during the wait is still honoured).
+    let abandoned: 'shutdown' | 'event-store-changed' | undefined;
     for (const delay of INTERRUPTED_TURN_RETRY_DELAYS_MS) {
       if (pending.length === 0) break;
-      await sleep(delay);
-      pending = await this.recoverPass(eventStore, interrupted, pending);
+      if (this.stopSignal.signal.aborted) {
+        abandoned = 'shutdown';
+        break;
+      }
+      await sleep(delay, this.stopSignal.signal);
+      // The store dep is lazy (it may be swapped after construction), so it
+      // is read again for every pass. The rows belong to the store they were
+      // drained from; a different one, or none, ends the retries.
+      const eventStore = this.deps.eventStore();
+      if (this.stopSignal.signal.aborted) abandoned = 'shutdown';
+      else if (eventStore !== drainedFrom) abandoned = 'event-store-changed';
+      if (abandoned !== undefined) break;
+      pending = await this.recoverPass(drainedFrom, interrupted, pending);
+    }
+    if (abandoned === undefined && this.stopSignal.signal.aborted) {
+      abandoned = 'shutdown';
     }
     const unrecovered = pending.map((record) => record.boundaryId);
     if (unrecovered.length > 0) {
       // The durable "recovery pending" state is the boundary row itself, which
       // a restart finds again; this is the one line saying so for this boot.
       this.deps.logger.warn(
-        'Interrupted-turn recovery gave up for this boot; the boundary rows stay for the next boot',
+        abandoned === undefined
+          ? 'Interrupted-turn recovery gave up for this boot; the boundary rows stay for the next boot'
+          : 'Interrupted-turn recovery stopped before it finished; the boundary rows stay for the next boot',
         {
           boundaryIds: unrecovered,
-          attempts: INTERRUPTED_TURN_RETRY_DELAYS_MS.length + 1,
+          ...(abandoned === undefined
+            ? { attempts: INTERRUPTED_TURN_RETRY_DELAYS_MS.length + 1 }
+            : { reason: abandoned }),
         },
       );
     }
@@ -437,6 +469,12 @@ export class InterruptedTurnRecovery {
   ): Promise<SessionTurnBoundaryRecord[]> {
     const failed: SessionTurnBoundaryRecord[] = [];
     for (const record of pending) {
+      if (this.stopSignal.signal.aborted) {
+        // Shutting down: leave this row, and every one after it, for the
+        // next boot rather than publish on a torn-down service.
+        failed.push(record);
+        continue;
+      }
       if (record.state !== 'accepted' && record.state !== 'indeterminate') {
         // Read-only defensive guard: `EventStore.takeInterruptedTurnBoundaries()`
         // only ever fills this list from those two states (see
@@ -494,8 +532,13 @@ export class InterruptedTurnRecovery {
           // if a NEWER turn is genuinely running by the time this runs (the
           // same window the moved-on check above exists for), that send's
           // banner still lands and forces needs_input over it — accepted
-          // because the alternative loses the user's message silently, and
-          // consume runs once, at boot, before live traffic normally arrives.
+          // because the alternative loses the user's message silently. The
+          // window is real and #3562's retries stretch it by up to the backoff
+          // schedule: a new owner can claim the thread (an `accepted` row does
+          // not block a claim) before its own `turn.started` is persisted, and
+          // a pass landing in between banners `needs_input`. It self-heals,
+          // because that start then folds the session back to running. It is
+          // the first pass's window, only longer.
           const ownTurnStarted =
             ownTurnId !== undefined &&
             eventStore

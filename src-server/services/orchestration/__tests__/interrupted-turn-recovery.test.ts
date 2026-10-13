@@ -77,11 +77,13 @@ const { resolveConversationTranscriptSource } = await import(
 // world while "time passes" (e.g. lift a quarantine).
 const sleepProbe = vi.hoisted(() => ({
   delays: [] as number[],
+  signals: [] as Array<AbortSignal | undefined>,
   hook: undefined as (() => void) | undefined,
 }));
 vi.mock('../../../utils/sleep.js', () => ({
-  sleep: vi.fn(async (ms: number) => {
+  sleep: vi.fn(async (ms: number, signal?: AbortSignal) => {
     sleepProbe.delays.push(ms);
+    sleepProbe.signals.push(signal);
     sleepProbe.hook?.();
   }),
 }));
@@ -3196,6 +3198,7 @@ describe('#3562: a per-record recovery failure is retried within the boot, then 
 
   beforeEach(() => {
     sleepProbe.delays.length = 0;
+    sleepProbe.signals.length = 0;
     sleepProbe.hook = undefined;
   });
 
@@ -3313,9 +3316,12 @@ describe('#3562: a per-record recovery failure is retried within the boot, then 
 
     expect(resolveSpy).toHaveBeenCalledTimes(2);
     expect(sleepProbe.delays).toEqual([250]);
-    // The retry re-derived its decision from the log (its own recovery abort
-    // now reads as an ended turn, so it banners without aborting again) and
-    // every write stayed idempotent by boundary-derived id.
+    // The retry re-ran the whole record. It does not abort twice because the
+    // abort's deterministic event id (`turn-interrupted-abort:<boundaryId>`)
+    // is found by `hasEventId`; likewise the banner event and the FileMemory
+    // marker. (`ownEnding === 'ended'` on the retry only skips request
+    // settlement, which finds nothing left open, so no assertion here can
+    // depend on it.)
     expect(methods(eventStore, threadId, 'turn.aborted')).toHaveLength(1);
     expect(methods(eventStore, threadId, 'session.state-changed')).toHaveLength(
       1,
@@ -3414,6 +3420,123 @@ describe('#3562: a per-record recovery failure is retried within the boot, then 
     }
     resolveSpy.mockRestore();
     expect(rowsLeftForNextBoot(path)).toEqual([]);
+  });
+
+  test('shutdown during the first backoff stops recovery: no further pass, nothing published after it, rows kept, and the log says stopped, not gave up', async () => {
+    const { path, threadId, eventStore } = crashedThread('accepted');
+    const adapter = occupied();
+    adapter.addMessage.mockImplementation(async () => {
+      throw new Error('simulated persistent FileMemory outage');
+    });
+    const warn = vi.fn();
+    const service = serviceFor(eventStore, adapter, warn);
+    const publish = vi.spyOn(service as any, 'projectAndPublishEvent');
+    const resolveSpy = vi.spyOn(eventStore, 'resolveInterruptedTurnBoundary');
+    let shutdown: Promise<void> | undefined;
+    let publishedBefore = -1;
+    sleepProbe.hook = () => {
+      publishedBefore = publish.mock.calls.length;
+      shutdown = service.shutdown();
+    };
+
+    const unrecovered = await (service as any).interruptedTurns.consume();
+    await shutdown;
+
+    // Exactly the first pass ran, and the backoff was handed the stop signal
+    // (the real sleep clears its timer when that aborts).
+    expect(adapter.addMessage).toHaveBeenCalledOnce();
+    expect(sleepProbe.delays).toEqual([250]);
+    expect(sleepProbe.signals[0]).toBeInstanceOf(AbortSignal);
+    expect(publishedBefore).toBeGreaterThan(0);
+    expect(publish.mock.calls.length).toBe(publishedBefore);
+    expect(resolveSpy).not.toHaveBeenCalled();
+    // Not a success: the row is reported, warned as stopped, and kept.
+    const left = rowsLeftForNextBoot(path);
+    expect(left).toHaveLength(1);
+    expect(unrecovered).toEqual([left[0]!.boundaryId]);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('stopped before it finished'),
+      { boundaryIds: unrecovered, reason: 'shutdown' },
+    );
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.stringContaining('gave up'),
+      expect.anything(),
+    );
+    expect(methods(eventStore, threadId, 'session.state-changed')).toHaveLength(
+      1,
+    );
+  });
+
+  test('shutdown inside a pass leaves the records it had not reached', async () => {
+    const path = databasePath();
+    const dying = new EventStore(path);
+    for (const threadId of ['thread-a', 'thread-b']) {
+      dying.appendEvent(
+        sessionStartedEvent({
+          threadId,
+          provider: 'station-agent',
+          agentSlug: 'demo-agent',
+        }),
+      );
+      const claimed = dying
+        .sessionTurnBoundaryAuthority()
+        .claim(threadId, '2026-08-16T00:00:00.800Z');
+      if (claimed.kind !== 'owner') throw new Error('expected boundary owner');
+      claimed.claim.beginInvocation('2026-08-16T00:00:00.900Z');
+    }
+    dying.close();
+    const eventStore = new EventStore(path);
+    stores.push(eventStore);
+    const service = serviceFor(eventStore, occupied());
+    // The first record's close is where shutdown lands.
+    const realResolve =
+      eventStore.resolveInterruptedTurnBoundary.bind(eventStore);
+    const resolveSpy = vi
+      .spyOn(eventStore, 'resolveInterruptedTurnBoundary')
+      .mockImplementation((record) => {
+        realResolve(record);
+        void service.shutdown();
+      });
+
+    const unrecovered = await (service as any).interruptedTurns.consume();
+
+    expect(resolveSpy).toHaveBeenCalledOnce();
+    expect(unrecovered).toHaveLength(1);
+    expect(sleepProbe.delays).toEqual([]);
+    const banners = ['thread-a', 'thread-b'].filter(
+      (threadId) =>
+        methods(eventStore, threadId, 'session.state-changed').length === 1,
+    );
+    expect(banners).toHaveLength(1);
+    resolveSpy.mockRestore();
+    expect(rowsLeftForNextBoot(path).map((row) => row.boundaryId)).toEqual(
+      unrecovered,
+    );
+  });
+
+  test('a swapped event store ends the retries: the drained rows are not replayed against another store', async () => {
+    const { path, eventStore } = crashedThread('accepted');
+    const adapter = occupied();
+    adapter.addMessage.mockImplementation(async () => {
+      throw new Error('simulated persistent FileMemory outage');
+    });
+    const warn = vi.fn();
+    const service = serviceFor(eventStore, adapter, warn);
+    const other = new EventStore(databasePath());
+    stores.push(other);
+    sleepProbe.hook = () => {
+      (service as any).options.eventStore = other;
+    };
+
+    const unrecovered = await (service as any).interruptedTurns.consume();
+
+    expect(adapter.addMessage).toHaveBeenCalledOnce();
+    expect(unrecovered).toHaveLength(1);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining('stopped before it finished'),
+      { boundaryIds: unrecovered, reason: 'event-store-changed' },
+    );
+    expect(rowsLeftForNextBoot(path)).toHaveLength(1);
   });
 
   test('initialize() reaches the retrying recovery: a record failing at boot is retried, then reported', async () => {
