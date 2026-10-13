@@ -12822,6 +12822,12 @@ export class EventStore {
             'DELETE FROM orchestration_turn_dedup WHERE substr(dedup_key, 1, ?) = ?',
           )
           .run(prefix.length, prefix);
+        // #3559: an evicted key's tombstone leaves with its thread.
+        this.db
+          .prepare(
+            'DELETE FROM orchestration_turn_dedup_expired WHERE substr(dedup_key, 1, ?) = ?',
+          )
+          .run(prefix.length, prefix);
       }
       this.db.exec('COMMIT');
     } catch (error) {
@@ -12865,21 +12871,32 @@ export class EventStore {
     });
   }
 
-  claimChatTurn(clientTurnId: string): {
-    claimed: boolean;
-    conversationId?: string;
-  } {
-    const claim = this.turnIdempotence.claim(chatTurnDedupKey(clientTurnId));
-    // #3559: `/chat` claims are untracked and an unmarked `chat:` row reads as
-    // untracked, so no chat claim can be indeterminate. Refuse rather than
-    // report it as contended if that ever stops holding.
-    if (!claim.claimed && claim.indeterminate)
-      throw new Error(
-        'A /chat turn claim cannot be indeterminate; it records no invocation.',
-      );
-    return claim.claimed
-      ? { claimed: true }
-      : { claimed: false, conversationId: claim.value };
+  /**
+   * #3581: a `/chat` claim is tracked like a thread claim. The route calls
+   * {@link beginChatTurnInvocation} before the agent call, so a dead owner's
+   * claim past that point answers `indeterminate` instead of being reclaimed.
+   * An unmarked legacy `chat:` row still reads as untracked (reclaimable).
+   */
+  claimChatTurn(
+    clientTurnId: string,
+  ):
+    | { claimed: true }
+    | { claimed: false; conversationId?: string }
+    | { claimed: false; outcome: 'indeterminate' | 'expired' } {
+    const claim = this.turnIdempotence.claim(
+      chatTurnDedupKey(clientTurnId),
+      Date.now(),
+      'tracked',
+    );
+    if (claim.claimed) return { claimed: true };
+    if (claim.indeterminate)
+      return { claimed: false, outcome: 'indeterminate' };
+    if (claim.expired) return { claimed: false, outcome: 'expired' };
+    return { claimed: false, conversationId: claim.value };
+  }
+  /** Durable before the agent call; do not call the agent if it throws. */
+  beginChatTurnInvocation(clientTurnId: string): void {
+    this.turnIdempotence.beginInvocation(chatTurnDedupKey(clientTurnId));
   }
   resolveChatTurn(clientTurnId: string, conversationId: string): void {
     this.turnIdempotence.resolve(

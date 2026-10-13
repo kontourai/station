@@ -330,7 +330,7 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
     });
   });
 
-  test('capacity evicts an oldest resolved claim but never unresolved claims', async () => {
+  test('capacity evicts an oldest resolved claim to an expired tombstone but never unresolved claims', async () => {
     // Eviction is a property of "more rows than the cap", not of the number
     // 2000. Inserting 2000 real SQLite rows made this test exceed its 5s
     // budget under host load and fail intermittently — a test that reds at
@@ -397,9 +397,22 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
       expect(keys).not.toContain('chat:12:old-resolved');
       expect(keys).toContain('chat:8:old-live');
       expect(keys).toContain('chat:8:old-dead');
+      // #3559: the evicted row leaves a tombstone outside the capped table.
+      expect(
+        after
+          .prepare(
+            'SELECT dedup_key FROM orchestration_turn_dedup_expired WHERE dedup_key = ?',
+          )
+          .get('chat:12:old-resolved'),
+      ).toEqual({ dedup_key: 'chat:12:old-resolved' });
     } finally {
       after.close();
     }
+    // #3559: an evicted key answers expired, never a fresh claim.
+    expect(store.claim('old-resolved')).toEqual({
+      claimed: false,
+      outcome: 'expired',
+    });
 
     expect(store.claim('old-live')).toEqual({
       claimed: false,
@@ -523,13 +536,16 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
       store.resolve(`turn-${index}`, `conversation-${index}`);
     }
 
-    // The oldest entries were evicted; the most recent ones remain claimable
-    // (i.e. still recognized — re-claiming them reports claimed:false since
-    // they're still present).
+    // The most recent entries still replay their conversation.
     expect(store.claim(`turn-${CHAT_TURN_DEDUP_MAX_ENTRIES}`)).toEqual({
       claimed: false,
       conversationId: `conversation-${CHAT_TURN_DEDUP_MAX_ENTRIES}`,
     });
-    expect(store.claim('turn-0')).toEqual({ claimed: true });
+    // #3559: inverted. The oldest entry was evicted, and an evicted key
+    // answers expired: a late retry of it must never run the agent again.
+    expect(store.claim('turn-0')).toEqual({
+      claimed: false,
+      outcome: 'expired',
+    });
   });
 });
