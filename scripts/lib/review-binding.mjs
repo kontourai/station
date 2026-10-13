@@ -12,6 +12,10 @@ import { isLearningSourcePath } from './learning-source-reader.mjs';
 const VALUE_BINDING = /^(.+?\.(?:json|ya?ml))#(\/.*)$/;
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+// History compares many citations against the same before/after blobs.
+// Key by bytes, never path or buffer identity, so source edits cannot reuse a parse.
+const parsedValues = new Map();
+const MAX_PARSED_VALUES = 4;
 
 /** @param {string} path a binding path */
 function splitBinding(path) {
@@ -83,14 +87,21 @@ export function bindingDigest(path, bytes) {
   let value;
   try {
     const text = typeof bytes === 'string' ? bytes : utf8.decode(bytes);
-    let parsed;
-    if (file.endsWith('.json')) parsed = JSON.parse(text);
-    else {
-      const document = parseDocument(text, { uniqueKeys: true });
-      if (document.errors.length || document.warnings.length) return undefined;
-      parsed = yamlJsonValue(
-        document.toJS({ maxAliasCount: 0, mapAsMap: true }),
-      );
+    const format = file.endsWith('.json') ? 'json' : 'yaml';
+    const key = `${format}:${sha256(bytes)}`;
+    let parsed = parsedValues.get(key);
+    if (!parsedValues.has(key)) {
+      if (format === 'json') parsed = JSON.parse(text);
+      else {
+        const document = parseDocument(text, { uniqueKeys: true });
+        if (document.errors.length || document.warnings.length) return undefined;
+        parsed = yamlJsonValue(
+          document.toJS({ maxAliasCount: 0, mapAsMap: true }),
+        );
+      }
+      if (parsedValues.size === MAX_PARSED_VALUES)
+        parsedValues.delete(parsedValues.keys().next().value);
+      parsedValues.set(key, parsed);
     }
     value = resolvePointer(parsed, pointer);
   } catch {
