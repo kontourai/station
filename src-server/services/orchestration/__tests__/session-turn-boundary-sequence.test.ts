@@ -54,15 +54,30 @@ describe('session-terminal boundary ordering', () => {
     event: CanonicalRuntimeEvent,
     mode: 'observe' | 'read' | 'restart',
   ) {
-    if (mode === 'observe')
+    if (mode === 'observe') {
       expect(store.sessionTurnBoundaryAuthority().observe(event)).toEqual({
         kind: 'applied',
       });
+    }
+    if (mode === 'read')
+      store.sessionTurnBoundaryAuthority().hasPossibleEffect('thread');
     if (mode === 'restart') {
       expect(store.close()).toEqual({ kind: 'closed' });
       return open(path);
     }
     return store;
+  }
+  function boundaries(path: string) {
+    const db = new DatabaseSync(path, { readOnly: true });
+    try {
+      return db
+        .prepare(
+          'SELECT thread_id FROM orchestration_turn_boundaries ORDER BY thread_id',
+        )
+        .all();
+    } finally {
+      db.close();
+    }
   }
   for (const method of ['session.exited', 'runtime.error'] as const) {
     test.each(['observe', 'read', 'restart'] as const)(
@@ -84,6 +99,7 @@ describe('session-terminal boundary ordering', () => {
         const event = terminal(method);
         store.appendEvent(event);
         const current = settle(store, path, event, mode);
+        expect(boundaries(path)).toEqual([{ thread_id: 'other-thread' }]);
         expect(
           current.sessionTurnBoundaryAuthority().hasPossibleEffect('thread'),
         ).toEqual({ kind: 'available', active: false });
@@ -106,12 +122,64 @@ describe('session-terminal boundary ordering', () => {
         vi.setSystemTime(new Date('2026-10-13T01:00:00.000Z'));
         invoking(store);
         const current = settle(store, path, event, mode);
+        expect(boundaries(path)).toEqual([{ thread_id: 'thread' }]);
         expect(
           current.sessionTurnBoundaryAuthority().hasPossibleEffect('thread'),
         ).toEqual({ kind: 'available', active: true });
       },
     );
   }
+  test('an engine-opened boundary captures the durable head inside its start append', () => {
+    const path = databasePath();
+    const store = open(path);
+    const prior = {
+      ...terminal('session.exited'),
+      threadId: 'deleted-thread',
+      sessionId: 'deleted-thread',
+    };
+    store.appendEvent(prior);
+    const head = store.headGlobalSequence();
+    store.deleteThread('deleted-thread');
+    const prepared = store
+      .sessionTurnBoundaryAuthority()
+      .prepareProviderTurn('thread', 'engine-turn', '2026-10-13T02:00:00.000Z');
+    store.appendEvent(
+      {
+        eventId: 'engine-start',
+        provider: 'claude',
+        threadId: 'thread',
+        method: 'turn.started',
+        turnId: 'engine-turn',
+        createdAt: '2026-10-13T02:00:00.000Z',
+      },
+      [],
+      () => {
+        expect(prepared.record()).toEqual({ kind: 'applied' });
+      },
+    );
+    const db = new DatabaseSync(path, { readOnly: true });
+    try {
+      expect(
+        db
+          .prepare(
+            'SELECT created_sequence FROM orchestration_turn_boundaries WHERE thread_id=?',
+          )
+          .get('thread'),
+      ).toEqual({ created_sequence: head });
+    } finally {
+      db.close();
+    }
+    const event = {
+      ...terminal('session.exited'),
+      eventId: 'engine-exit',
+      createdAt: '2026-10-13T01:00:00.000Z',
+    };
+    store.appendEvent(event);
+    expect(store.sessionTurnBoundaryAuthority().observe(event)).toEqual({
+      kind: 'applied',
+    });
+    expect(boundaries(path)).toEqual([]);
+  });
   test.each(['accepted', 'indeterminate'] as const)(
     'a legacy %s boundary retains timestamp retirement across boots',
     (state) => {
@@ -134,6 +202,7 @@ describe('session-terminal boundary ordering', () => {
         expect(store.sessionTurnBoundaryAuthority().observe(old)).toEqual({
           kind: 'applied',
         });
+        expect(boundaries(path)).toEqual([{ thread_id: 'thread' }]);
         expect(
           store.sessionTurnBoundaryAuthority().hasPossibleEffect('thread'),
         ).toEqual({ kind: 'available', active: true });
@@ -149,6 +218,7 @@ describe('session-terminal boundary ordering', () => {
       expect(store.sessionTurnBoundaryAuthority().observe(later)).toEqual({
         kind: 'applied',
       });
+      expect(boundaries(path)).toEqual([]);
       expect(
         store.sessionTurnBoundaryAuthority().hasPossibleEffect('thread'),
       ).toEqual({ kind: 'available', active: false });
