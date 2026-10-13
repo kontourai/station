@@ -1,24 +1,19 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   ORCHESTRATION_EVENT_STORE_MIGRATION,
   runOrchestrationEventMigration,
 } from '../migrations/003-orchestration-events.js';
 
 describe('turn-boundary sequence migration', () => {
-  const roots: string[] = [];
-  afterEach(() => {
-    for (const root of roots.splice(0))
-      rmSync(root, { recursive: true, force: true });
-  });
+  const makeTempDir = trackTempDirs();
   test.each(['fresh', 'legacy'] as const)(
     'startup adds a nullable fence idempotently without rewriting rows (%s)',
     (home) => {
-      const root = mkdtempSync(join(tmpdir(), 'boundary-migration-'));
-      roots.push(root);
+      const root = makeTempDir('boundary-migration-');
       mkdirSync(join(root, 'data'));
       const path = join(root, 'data', 'orchestration.sqlite');
       let before: unknown[] = [];

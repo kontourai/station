@@ -1,24 +1,20 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ORCHESTRATION_EVENT_STORE_MIGRATION } from '../../../domain/migrations/003-orchestration-events.js';
 import { EventStore } from '../event-store.js';
 
 describe('session-terminal boundary ordering', () => {
-  const roots: string[] = [];
+  const makeTempDir = trackTempDirs();
   const stores: EventStore[] = [];
   afterEach(() => {
     for (const store of stores.splice(0)) store.close();
     vi.useRealTimers();
-    for (const root of roots.splice(0))
-      rmSync(root, { recursive: true, force: true });
   });
   function databasePath() {
-    const root = mkdtempSync(join(tmpdir(), 'boundary-sequence-'));
-    roots.push(root);
+    const root = makeTempDir('boundary-sequence-');
     return join(root, 'orchestration.sqlite');
   }
   function open(path: string) {
