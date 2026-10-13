@@ -523,7 +523,7 @@ async function observeTornTail(path: string): Promise<TornTailRecovery | null> {
  * recovery travels beside them here and `readStoredMessages` hands it to
  * telemetry.
  */
-export async function readStoredMessagesWithRecovery({
+async function readStoredMessagesWithRecovery({
   paths,
   resolveResourceId,
   findConversationLocation,
