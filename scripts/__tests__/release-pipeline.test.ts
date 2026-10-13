@@ -397,27 +397,33 @@ describe('qualification admission waits for capacity instead of failing (#3612)'
     quiet();
     const env = workflowFiles();
     let clock = 0;
-    const slept: number[] = [];
-    const observe = vi.fn(async () => capacity(18, 5));
+    const wakes: number[] = [];
+    // Each observation takes 7 s of wall clock, which counts against the
+    // ceiling: 18 full one-minute sleeps, then a short one that lands on it.
+    const observe = vi.fn(async () => {
+      clock += 7_000;
+      return capacity(18, 5);
+    });
     await expect(
       pipelineMain(['admission'], {
         env,
         observe,
         now: () => clock,
         sleep: async (ms: number) => {
-          slept.push(ms);
           clock += ms;
+          wakes.push(clock);
         },
       }),
     ).rejects.toThrow(
-      /timed out after 20 minutes without repository capacity \(21 observations\); last observed at 2026-10-12T09:26:20\.800Z: occupied 18 \+ background 6 exceeds total 20, or macOS occupied 5 is not below 5/,
+      /timed out after 20 minutes without repository capacity \(19 observations\); last observed at 2026-10-12T09:26:20\.800Z: occupied 18 \+ background 6 exceeds total 20, or macOS occupied 5 is not below 5/,
     );
-    // One observation per minute from 0 through the ceiling, never past it.
-    expect(observe).toHaveBeenCalledTimes(21);
-    expect(slept.reduce((sum, ms) => sum + ms, 0)).toBe(20 * 60_000);
+    expect(observe).toHaveBeenCalledTimes(19);
+    // The last re-observation starts exactly at the ceiling, never past it.
+    expect(wakes).toHaveLength(18);
+    expect(Math.max(...wakes)).toBe(20 * 60_000);
     expect(readFileSync(env.GITHUB_OUTPUT, 'utf8')).toBe('');
     const summary = readFileSync(env.GITHUB_STEP_SUMMARY, 'utf8');
-    expect(summary.match(/waiting for capacity/g)).toHaveLength(21);
+    expect(summary.match(/waiting for capacity/g)).toHaveLength(19);
     expect(summary).toContain(
       'Qualification admission failed: qualification admission timed out',
     );
