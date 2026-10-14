@@ -153,11 +153,11 @@ refused with `400`; any other lookup answers `200` with `data.outcome`:
 | `outcome` | Meaning | Send the same key again? |
 | --- | --- | --- |
 | `not-received` | Nothing on this Station holds the key for you: no request carrying it is being handled, and no Session of the conversation holds a turn claim for it, except one whose owner died before it began invoking the engine (the next send of the key takes that claim over). | Yes — the same key can only ever make one turn. |
-| `received` | A request carrying the key is being handled now (its Session may still be starting), or a live owner holds its turn claim. A claim whose owner can be proven neither live nor dead reads `received` for at most 15 minutes, then `indeterminate`. | No — wait and ask again. |
+| `received` | A request carrying the key is being handled now (its Session may still be starting), or a live owner holds its turn claim. An unresolved claim reads `received` for at most 15 minutes, then `indeterminate` (an engine accepts a turn in seconds). | No — wait and ask again. |
 | `started` | The engine accepted the turn; `data.sessionId` and `data.turnId` name it. | No. |
 | `indeterminate` | The turn may have reached the engine and nothing can prove it either way (its owner died after it began invoking, or gave the claim up after a failed engine call). | No — inspect the conversation. |
 | `expired` | The turn was sent and retention evicted its record. | No. |
-| `unknown` | This Station forwards the conversation's turns to another Station or Environment, so it can prove nothing: the Project named by `projectSlug` defaults to another Environment, or this Station process forwarded a keyed send for the conversation. | No — treat it like `indeterminate`. |
+| `unknown` | Nothing here holds the key, and this Station forwards the conversation's sends to another Station or Environment, so it can prove nothing: the Project named by `projectSlug` defaults to another Environment, or this Station process forwarded a keyed send for the conversation (also when the conversation began here). | No — treat it like `indeterminate`. |
 
 A conversation you may not read answers like a key nothing holds, so the
 lookup reveals nothing about other callers' conversations. `received` comes
