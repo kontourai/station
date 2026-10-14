@@ -444,6 +444,46 @@ describe('a finger on the transcript', () => {
     expect(scroller.scrollTop).toBe(2_000);
   });
 
+  test('a fling that overshoots and settles back at the end stays pinned', () => {
+    const { scroller } = renderList();
+    vi.advanceTimersByTime(2_000);
+    fingerDown(scroller);
+    fireEvent.touchEnd(window);
+    // Rubber-band: past the end, then back to it, all inside the momentum.
+    for (const top of [1_612, 1_606, 1_600]) {
+      vi.advanceTimersByTime(16);
+      scroller.scrollTop = top;
+      fireEvent.scroll(scroller);
+    }
+    expect(scrollToBottomButton()).toBeNull();
+  });
+
+  test('a clamp to the end while the reader acts (viewport growing) stays pinned', () => {
+    const { scroller, geometry } = renderList();
+    vi.advanceTimersByTime(2_000);
+    fireEvent.pointerDown(scroller, { pointerType: 'mouse', button: 0 });
+    fireEvent.pointerUp(window, { pointerType: 'mouse' });
+    // The keyboard closes in sub-threshold steps; scrollTop clamps to the end.
+    for (let step = 1; step <= 3; step += 1) {
+      geometry.clientHeight = 400 + step * 2;
+      scroller.scrollTop = 2_000 - geometry.clientHeight;
+      fireEvent.scroll(scroller);
+    }
+    expect(scrollToBottomButton()).toBeNull();
+  });
+
+  for (const release of ['blur', 'contextmenu'] as const)
+    test(`a press whose release is lost to ${release} does not hold the transcript`, () => {
+      const { scroller } = renderList();
+      vi.advanceTimersByTime(2_000);
+      fireEvent.pointerDown(scroller, { pointerType: 'mouse', button: 0 });
+      window.dispatchEvent(new Event(release));
+      vi.advanceTimersByTime(1_500);
+      scroller.scrollTop = 1_579;
+      fireEvent.scroll(scroller);
+      expect(scroller.scrollTop).toBe(2_000);
+    });
+
   test('a slow drag up while an answer streams is not undone by the stream', () => {
     const { scroller, geometry, base, rerender } = renderList();
     vi.advanceTimersByTime(2_000);

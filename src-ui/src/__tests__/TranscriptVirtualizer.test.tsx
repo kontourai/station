@@ -192,6 +192,16 @@ describe('TranscriptVirtualizer (station#1238)', () => {
         scrollDirection: 'forward',
       }),
     ).toBe(true);
+    // Not while the reader scrolls backward (TanStack's "items jump while
+    // scrolling up" guard).
+    expect(
+      shouldAdjust!({ index: 2, start: 300, size: 100, key: 'message-2' }, 40, {
+        scrollOffset: 500,
+        scrollAdjustments: 0,
+        itemSizeCache: measured,
+        scrollDirection: 'backward',
+      }),
+    ).toBe(false);
     // Earlier measurements in the same batch already moved the fold.
     expect(
       shouldAdjust!({ index: 6, start: 600, size: 100, key: 'message-6' }, 40, {

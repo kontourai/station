@@ -940,8 +940,13 @@ function ChatMessageListComponent({
     // The tolerance absorbs layout transitions, not the reader: a reader who
     // is moving up has left the end however few pixels they have moved, or a
     // streaming pin would undo a slow drag on every token.
+    // Still at the end (a bounce settling back, a clamp as the viewport
+    // grows) is not leaving it, whichever way it moved.
     const readerMovingUp =
-      acting && previousTop !== null && target.scrollTop < previousTop - 0.5;
+      acting &&
+      shortBy > 1 &&
+      previousTop !== null &&
+      target.scrollTop < previousTop - 0.5;
     const isAtBottom = shortBy <= PINNED_TOLERANCE_PX && !readerMovingUp;
     isUserScrolledUpRef.current = !isAtBottom;
     setIsUserScrolledUp(!isAtBottom);
@@ -964,9 +969,17 @@ function ChatMessageListComponent({
         // can leave the document mid-drag, and its touchend then never
         // reaches the window: listen on the node itself as well.
         const origin = event.target as EventTarget;
-        const release = (end: Event) => releaseTouchRef.current(end);
-        origin.addEventListener('touchend', release, { once: true });
-        origin.addEventListener('touchcancel', release, { once: true });
+        const listening = new AbortController();
+        const release = (end: Event) => {
+          listening.abort();
+          releaseTouchRef.current(end);
+        };
+        origin.addEventListener('touchend', release, {
+          signal: listening.signal,
+        });
+        origin.addEventListener('touchcancel', release, {
+          signal: listening.signal,
+        });
       } else if (event.type === 'pointerdown') {
         // A touch is tracked by its touch events: the browser cancels the
         // pointer as soon as the finger starts panning.
