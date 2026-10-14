@@ -229,10 +229,14 @@ function queueFollowUp(world: World, key = 'follow-up-1') {
   });
 }
 
+/** Wait for `check`; a timeout fails the test rather than passing quietly. */
 async function eventuallyTrue(check: () => boolean, timeoutMs: number) {
   const started = Date.now();
-  while (!check() && Date.now() - started < timeoutMs)
+  while (!check()) {
+    if (Date.now() - started >= timeoutMs)
+      throw new Error(`condition not met within ${timeoutMs} ms`);
     await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 }
 
 /** Let a drive that a submit, an event or a re-check started finish. */
@@ -777,26 +781,35 @@ describe('thread inbox (#3568)', () => {
   test('a head met twice in one drive is looked at again later, not left waiting', async () => {
     let sabotage = true;
     // A store whose first settle puts the entry back in the queue, as if it
-    // never moved: the drive meets the same head twice.
-    const stuck = boot(path(), {}, (inner) => ({
-      ...inner,
-      settle: (...args: Parameters<typeof inner.settle>) => {
-        if (sabotage) {
-          sabotage = false;
-          return inner.release(args[0], false, Date.now());
-        }
-        return inner.settle(...args);
+    // never moved: the drive meets the same head twice, and no event follows.
+    const stuck = boot(
+      path(),
+      {
+        start: async () => {
+          throw Object.assign(new Error('The session has ended.'), {
+            code: 'session_ended',
+          });
+        },
       },
-    }));
+      (inner) => ({
+        ...inner,
+        settle: (...args: Parameters<typeof inner.settle>) => {
+          if (sabotage) {
+            sabotage = false;
+            return inner.release(args[0], false, Date.now());
+          }
+          return inner.settle(...args);
+        },
+      }),
+    );
     await runningFirstTurn(stuck);
     queueFollowUp(stuck);
     await emit(stuck, 'turn.completed', { turnId: 'turn-1' });
+    // Only the re-check the guard schedules can settle it now.
     await eventuallyTrue(
-      () => stuck.inbox.list(THREAD)[0]?.state === 'sent',
+      () => stuck.inbox.list(THREAD)[0]?.state === 'refused',
       3_000,
     );
-    // The engine took it once; the re-check answered from the ledger.
-    expect(followUpSends()).toEqual([FOLLOW_UP]);
   });
 
   test('a session id of the conversation names the same inbox as the conversation', async () => {
