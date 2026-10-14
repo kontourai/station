@@ -93,6 +93,10 @@ and preserves other handlers. Review and trust its exact definition in Codex.
 The dispatcher uses the shared Git directory, so it covers Station worktrees and
 stays silent in unrelated repositories. The required governance artifact rule
 rejects missing project files; `proof:repo-governance` checks their structure.
+It also refuses a package runner that names the bare `veritas` package in a
+tracked instruction, hook or script file: that npm name belongs to an unrelated
+third-party package, which a runner would fetch whenever the local bin is
+missing. Name `@kontourai/veritas`, or call the installed bin from an npm script.
 A Conduit receipt proves installed bytes, while a normal Codex edit proves host
 execution. Run readiness for edits outside the hook's coverage. The currently pinned
 Veritas 1.7.4 handles `apply_patch` Add File under routed content rules; the plan records the
