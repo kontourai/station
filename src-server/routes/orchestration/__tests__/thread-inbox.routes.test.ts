@@ -404,7 +404,9 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       retryDelaysMs: [20, 50, 100],
     });
     inbox.start();
-    cleanup.push(() => store.close());
+    cleanup.push(() => {
+      store.close();
+    });
     cleanup.push(() => service.shutdown());
     cleanup.push(async () => {
       inbox.stop();
@@ -423,7 +425,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         ...(options.inbox === false ? {} : { threadInbox: inbox }),
       }),
     );
-    const as = async <T>(who: string, run: () => Promise<T>) => {
+    const as = async <T>(who: string, run: () => T | Promise<T>) => {
       const previous = caller;
       caller = who;
       try {

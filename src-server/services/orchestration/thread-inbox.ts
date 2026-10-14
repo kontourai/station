@@ -82,7 +82,7 @@ import {
 import type { SqliteDatabase } from './sqlite-database.js';
 
 /** The inbox is the only machine this kernel storage keeps. */
-export const THREAD_INBOX_KERNEL_TABLES: SqliteKernelTables = {
+const THREAD_INBOX_KERNEL_TABLES: SqliteKernelTables = {
   turnDedup: 'unused',
   requestKeys: 'unused',
   turnBoundary: 'unused',
@@ -151,7 +151,7 @@ function canonicalJson(value: unknown): string {
  * changes what the engine receives. The client origin is not part of it: the
  * same message resent from another surface is the same submission.
  */
-export function threadInboxDigest(payload: ThreadInboxPayload): string {
+function threadInboxDigest(payload: ThreadInboxPayload): string {
   return createHash('sha256')
     .update(
       canonicalJson([
@@ -238,7 +238,7 @@ const PUBLIC_STATE: Record<
 };
 
 /** The public projection of one entry; `position` among those still waiting. */
-export function projectThreadInboxEntry(
+function projectThreadInboxEntry(
   entry: InboxEntryRecord,
   position?: number,
 ): ConversationInboxEntry {

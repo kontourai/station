@@ -34,7 +34,7 @@ const UNSETTLED: ReadonlySet<InboxEntryState> = new Set([
   'unconfirmed',
 ]);
 
-export function inboxEntryIsUnsettled(entry: InboxEntryRecord): boolean {
+function inboxEntryIsUnsettled(entry: InboxEntryRecord): boolean {
   return UNSETTLED.has(entry.state);
 }
 

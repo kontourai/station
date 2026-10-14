@@ -16,7 +16,6 @@ export {
   decideInboxRelease,
   decideInboxSettle,
   decideInboxSubmit,
-  inboxEntryIsUnsettled,
   inboxHead,
 } from './decisions/inbox.js';
 export {
