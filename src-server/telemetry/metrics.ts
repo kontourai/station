@@ -1997,7 +1997,7 @@ export const acpResumeSessions = meter.createCounter(
   'station.acp.resume_sessions',
   {
     description:
-      "ACP sessions resumed via session/load with Station tool servers re-delivered (#895; attrs: connectionId, outcome: 'loaded'|'load-unsupported')",
+      "ACP sessions reattached via session/resume or session/load with Station tool servers re-delivered (#895; attrs: connectionId, outcome: 'resumed'|'loaded'|'load-unsupported')",
   },
 );
 

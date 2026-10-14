@@ -242,6 +242,13 @@ export class TurnIdempotencyStore {
       if (oldest !== undefined) this.retained.delete(oldest);
     }
   }
+  /** Whether any row (pending or resolved) still holds the key. */
+  held(key: string): boolean {
+    return (
+      this.persistence.execute({ type: 'turnDedup.read', key }, this.liveness)
+        .kind === 'found'
+    );
+  }
   read(key: string): string | undefined {
     const result = this.persistence.execute(
       { type: 'turnDedup.read', key },
@@ -262,6 +269,9 @@ export async function awaitTurnResolution(
   while (Date.now() < deadline) {
     const resolved = store.read(key);
     if (resolved) return resolved;
+    // Released without a result (its owner refused before any effect):
+    // nothing will resolve it, so stop waiting rather than run out the clock.
+    if (!store.held(key)) return undefined;
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
   return store.read(key);

@@ -178,6 +178,8 @@ export interface InitializeRuntimeDeps {
     EnvironmentSecurityService,
     | 'verifyCredential'
     | 'resolveGrantedScope'
+    // #3586: the voice WebSocket refuses account-bound devices and tokens.
+    | 'identifyDevice'
     | 'canSharePersonalConversation'
     | 'personalConversationOwnerIds'
     | 'deviceHoldsFullAccess'

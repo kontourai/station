@@ -142,7 +142,9 @@ export interface OperatorCredentialUseRecord {
     | 'DELETE /api/pairing/devices/:deviceId'
     | 'POST /api/pairing/devices/:deviceId/scope'
     | 'DELETE /api/pairing/devices/:deviceId/record'
-    | 'PUT /api/pairing/people/:principalId/group';
+    | 'PUT /api/pairing/people/:principalId/group'
+    | 'POST /api/pairing/people/:principalId/tokens'
+    | 'DELETE /api/pairing/people/:principalId/tokens/:tokenId';
   readonly position: OperatorCredentialPosition;
   readonly hostLocal: boolean;
   /** Off-host uses this process has observed so far, this one included. */

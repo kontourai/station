@@ -240,6 +240,12 @@ export interface PairingScopeRouteRule {
    * {@link PAIRING_SCOPE_FAMILY_INHERITED_LEAVES}.
    */
   readonly origin: 'family' | 'explicit';
+  /**
+   * #3557: `'refused'` when a personal access token may never use this
+   * route whatever its scope: a leaked script credential must not, say,
+   * hand a Project to someone. The person uses a device instead.
+   */
+  readonly personalTokens?: 'refused';
 }
 
 /**
@@ -433,6 +439,33 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // #3557: a person's own personal access tokens. The handler also requires
+  // a device tied to a person and caps the minted scope by what it may use.
+  {
+    id: '/api/access/tokens:read',
+    method: 'GET',
+    prefix: '/api/access/tokens',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/access/tokens:mint',
+    method: 'POST',
+    prefix: '/api/access/tokens',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/access/tokens/:tokenId:revoke',
+    method: 'DELETE',
+    prefix: '/api/access/tokens/:tokenId',
+    exact: true,
+    // Revoking only ever reduces access: Read suffices.
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
   {
     id: '/api/operator/accounts:operator-read',
     method: 'GET',
@@ -456,6 +489,9 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     exact: true,
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
+    // #3586: who holds a Project, and its open invitations, are not a
+    // script's to read; the person uses a device.
+    personalTokens: 'refused',
   },
   ...[
     '/api/projects/:slug/access/enable',
@@ -471,6 +507,7 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       exact: true,
       scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
       origin: 'explicit',
+      personalTokens: 'refused',
     }),
   ),
   ...[
@@ -1632,6 +1669,35 @@ export interface PairingScopeCredentialResolver {
   resolveGrantedScope(
     credential: string,
   ): string | undefined | Promise<string | undefined>;
+  /** The paired device (or personal token) a credential identifies, if any. */
+  identifyDevice(credential: string):
+    | {
+        principalBinding?: { readonly kind?: string } | object;
+        credentialKind?: string;
+      }
+    | null
+    | undefined;
+}
+
+/**
+ * #3586: who may never open a terminal or voice WebSocket, whatever its
+ * scope. An account-bound device (or an account-tied token) is confined to
+ * the account-bound HTTP allowlist, which has no terminal or voice; and a
+ * personal access token is not a device, so it opens neither. A WebSocket
+ * session runs outside the HTTP gates (no account check, Project membership
+ * or Agent audience), so admitting either would bypass them.
+ */
+function refusedOnWebSocket(
+  device: ReturnType<PairingScopeCredentialResolver['identifyDevice']>,
+): boolean {
+  if (!device) return false;
+  if (device.credentialKind === 'personal-token') return true;
+  const binding = device.principalBinding;
+  return (
+    binding !== undefined &&
+    'kind' in binding &&
+    (binding as { kind?: string }).kind === 'account'
+  );
 }
 
 /**
@@ -1639,7 +1705,9 @@ export interface PairingScopeCredentialResolver {
  * (`runtime-service-bootstrap.ts`, `runtime-initialize.ts`): a credential
  * must both be valid AND carry `requiredScope` — an invalid credential is
  * rejected before `resolveGrantedScope` is even called (fail fast, and
- * never lets an unresolvable credential probe scope side channels).
+ * never lets an unresolvable credential probe scope side channels). An
+ * account-bound device, an account-tied token and any personal access token
+ * are refused whatever their scope (#3586, see `refusedOnWebSocket`).
  */
 export async function credentialAuthorizedForScope(
   resolver: PairingScopeCredentialResolver,
@@ -1647,6 +1715,7 @@ export async function credentialAuthorizedForScope(
   credential: string,
 ): Promise<boolean> {
   if (!(await resolver.verifyCredential(credential))) return false;
+  if (refusedOnWebSocket(resolver.identifyDevice(credential))) return false;
   const scope = await resolver.resolveGrantedScope(credential);
   return scope !== undefined && pairingScopeIncludes(scope, requiredScope);
 }

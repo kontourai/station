@@ -24,6 +24,7 @@ import {
   type PairingScope,
   parsePairingScope,
 } from './environment-security.js';
+import type { PersonalAccessToken } from './personal-tokens.js';
 
 export const STATION_GROUPS = ['admin', 'member'] as const;
 export type StationGroup = (typeof STATION_GROUPS)[number];
@@ -114,4 +115,12 @@ export interface StationPerson {
   /** False when the person sits in the default group by not being assigned. */
   assigned: boolean;
   devices: StationPersonDevice[];
+  /** #3557: their active personal access tokens (never secrets). */
+  tokens: PersonalAccessToken[];
+  /**
+   * #3557: whether a token can be made for them now: a live device ties
+   * them by a Tailscale identity (an account's devices need its session,
+   * which a script does not hold).
+   */
+  canHoldTokens: boolean;
 }

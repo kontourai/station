@@ -1241,6 +1241,162 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([]);
   });
 
+  test('a send refused because its session is still starting waits in the queue and is re-sent', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['sent during the reattach'],
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new ChatHttpError(
+        400,
+        'The session is still starting. Nothing was sent; try again in a moment.',
+        'provider_session_starting',
+      ),
+    );
+
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+
+    const waiting = activeChatsStore.getSnapshot()[threadId];
+    // Waiting, not failed and not dropped into the unsent record.
+    expect(waiting.status).not.toBe('error');
+    expect(waiting.error).toBeUndefined();
+    expect(waiting.queuedMessages).toEqual(['sent during the reattach']);
+    expect(waiting.unsentMessages ?? []).toEqual([]);
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2);
+    expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([]);
+  });
+
+  test('a session that stays starting past every automatic retry leaves the message queued with a Retry reason', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['sent during a long start'],
+    });
+    sendExecutionMessageMock.mockRejectedValue(
+      new ChatHttpError(
+        400,
+        'The session is still starting. Nothing was sent; try again in a moment.',
+        'provider_session_starting',
+      ),
+    );
+
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+    // Ten automatic re-sends, each about a second apart.
+    for (let attempt = 0; attempt < 10; attempt++) {
+      expect(
+        activeChatsStore.getSnapshot()[threadId].queuedMessageFailure,
+      ).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(100);
+      await vi.dynamicImportSettled();
+    }
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(11);
+
+    const exhausted = activeChatsStore.getSnapshot()[threadId];
+    expect(exhausted.queuedMessages).toEqual(['sent during a long start']);
+    expect(exhausted.unsentMessages ?? []).toEqual([]);
+    expect(exhausted.queuedMessageFailure).toMatchObject({
+      code: 'provider_session_starting',
+      message:
+        'The session is still starting. Your message is still queued; retry to send it.',
+    });
+    // Nothing else re-sends it on its own.
+    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.dynamicImportSettled();
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(11);
+    sendExecutionMessageMock.mockReset();
+  });
+
+  test('a send whose session failed to start stays queued at the head with its reason and Retry, and is not re-sent on its own', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['first queued', 'second queued'],
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new ChatHttpError(
+        400,
+        "The agent's session couldn't start: native session is gone",
+        'provider_session_start_failed',
+      ),
+    );
+
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+
+    const kept = activeChatsStore.getSnapshot()[threadId];
+    expect(kept.queuedMessages).toEqual(['first queued', 'second queued']);
+    expect(kept.unsentMessages ?? []).toEqual([]);
+    expect(kept.queuedMessageFailure).toMatchObject({
+      code: 'provider_session_start_failed',
+      message: expect.stringContaining("couldn't start"),
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.dynamicImportSettled();
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('a session the user stopped before it was ready drops the queued message but offers its text back', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['stopped before ready'],
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new ChatHttpError(
+        400,
+        "The agent's session ended before it was ready. Nothing was sent.",
+      ),
+    );
+
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+
+    const dropped = activeChatsStore.getSnapshot()[threadId];
+    expect(dropped.queuedMessages).toEqual([]);
+    expect(dropped.unsentMessages).toEqual([
+      expect.objectContaining({ content: 'stopped before ready' }),
+    ]);
+    expect(dropped.ephemeralMessages?.at(-1)?.content).toContain(
+      'Your message: stopped before ready',
+    );
+  });
+
+  test('a retry whose earlier attempt still held the same key waits in the queue and is re-sent', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['same key'],
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new ChatHttpError(
+        400,
+        'An earlier attempt of this message has not finished. Nothing new was sent; try again in a moment.',
+        'client_turn_in_flight',
+      ),
+    );
+
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+    const waiting = activeChatsStore.getSnapshot()[threadId];
+    expect(waiting.status).not.toBe('error');
+    expect(waiting.queuedMessages).toEqual(['same key']);
+    const firstKey = sendExecutionMessageMock.mock.calls[0]?.[1]?.clientTurnId;
+    expect(typeof firstKey).toBe('string');
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2);
+    // Re-sent with the same idempotency key.
+    expect(sendExecutionMessageMock.mock.calls[1]?.[1]?.clientTurnId).toBe(
+      firstKey,
+    );
+  });
+
   test('#2324 delta review: a pending provider-turn retry is dropped when the chat was removed before it fires', async () => {
     activeChatsStore.updateChat(threadId, {
       queuedMessages: ['after the reply'],

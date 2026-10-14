@@ -58,7 +58,10 @@ import {
   readEnvironmentSecurityRecord,
   readExistingEnvironmentSecurityRecord,
 } from '@kontourai/station-shared/environment-security-record';
-import { isPairingApprovalLeaf } from '../../security/pairing-route-scopes.js';
+import {
+  isPairingApprovalLeaf,
+  matchPairingScopeRule,
+} from '../../security/pairing-route-scopes.js';
 
 export { EnvironmentSecurityRecordError } from '@kontourai/station-shared/environment-security-record';
 
@@ -334,6 +337,9 @@ export class EnvironmentSecurityService {
         now: this.#now,
         capScope: this.#capScope,
       });
+      // #3557: personal access tokens go first, so a reset that cannot
+      // revoke them fails before changing anything.
+      await this.#devicePairingService.clearPersonalTokens();
       const reset = createRecord();
       const resetKeyPath = this.#revisionEvidenceKeyPath(reset.environmentId);
       this.#ensureRevisionEvidenceKey(reset.environmentId);
@@ -352,6 +358,9 @@ export class EnvironmentSecurityService {
       });
       this.#fsyncSecurityDirectory();
       this.#devicePairingService.resetEnvironment(reset.environmentId);
+      // Again, for a token minted while the reset ran. A mint finishing after
+      // this can still survive, but its person's devices are gone by then.
+      await this.#devicePairingService.clearPersonalTokens();
       return reset;
     });
   }
@@ -584,6 +593,12 @@ export class EnvironmentSecurityService {
     ) {
       return false;
     }
+    if (
+      matchPairingScopeRule(request.method, request.path)?.personalTokens ===
+        'refused' &&
+      this.identifyDevice(candidate)?.credentialKind === 'personal-token'
+    )
+      return false;
     if (request.path.startsWith('/api/pairing')) {
       // Native desktop credentials prove home possession at local-grant mint
       // time. They are the desktop operator's authority for this family,

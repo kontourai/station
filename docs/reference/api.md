@@ -3523,7 +3523,8 @@ operator credential or the desktop's own local grant); changing a group needs
 the operator credential itself, as changing a device's access does:
 
 - `GET /api/pairing/people` returns `{ people: StationPerson[] }`: everyone
-  with a group assignment or a live device tied to them, each with `group`,
+  with a group assignment, a live device tied to them, or a personal access
+  token (a token outlives its person's devices), each with `group`,
   `assigned`, and their tied devices' granted `scope` and `effectiveScope`
   (the scope capped by the group).
 - `PUT /api/pairing/people/:principalId/group` with `{ "group": "admin" |
@@ -3538,6 +3539,58 @@ live device: its granted `scope` capped by its person's group, equal to `scope`
 for a device tied to no person. See the
 [threat model](../security/remote-access-threat-model.md#scope-model)
 for what each group allows.
+
+## Personal access tokens
+
+A person manages their own tokens from a paired device tied to them (a
+verified Tailscale identity or an account). Anything else, including a token,
+the operator credential and a device tied to no one, is `403
+person_device_required`:
+
+- `GET /api/access/tokens` (`orchestration:read`) returns `{ tokens:
+  PersonalAccessToken[] }`, the caller's person's tokens, never a secret.
+- `POST /api/access/tokens` (`orchestration:operate`) with `{ "name":
+  string, "scope": "orchestration:read" | "orchestration:read
+  orchestration:operate", "expiresInDays"?: 1..365 }` returns `201 { token,
+  secret }`. The secret is shown only here. A scope the calling device may not
+  use now is `400 scope_exceeds_access`; a malformed body is `400
+  invalid_request`; a person already holding 20 active tokens gets `409
+  token_limit_reached`; a token record Station cannot trust is `503
+  tokens_unavailable`; a person tied by an account Station cannot vouch for
+  is `400 account_bound_person` (see below).
+- `DELETE /api/access/tokens/:tokenId` (`orchestration:read`: revoking only
+  reduces access) revokes one of the caller's person's tokens; anything else
+  is `404 not_found`, and an untrusted token record `503
+  tokens_unavailable`.
+
+Present the secret as `Authorization: Bearer stp_…`. The operator credential
+manages anyone's tokens: `GET /api/pairing/people` lists each person's
+`tokens` and whether a token can be made for them (`canHoldTokens`), `POST /api/pairing/people/:principalId/tokens` (same body; `404
+person_not_found` unless a live device is tied to the person) mints one, and
+`DELETE /api/pairing/people/:principalId/tokens/:tokenId` revokes one. An
+operator-minted token is bounded by the person's Station group rather than
+by their devices. The desktop's local grant lists them but cannot mint or
+revoke. A token is refused (`403`) on a Project's member-administration
+routes (`GET /api/projects/:slug/access` and `POST
+/api/projects/:slug/access/**`).
+
+A person tied by a Station local account can hold a token too (#3586). It
+acts as that account without an account session, is held to the account's
+Project membership, and works only while the account exists, is enabled and
+has not been signed out everywhere since the token was made; otherwise it is
+`401`. Deleting the account ends it too, and re-enabling a disabled account
+does not revive tokens made before it was disabled. It must be presented alone: beside an account cookie or session
+continuation, or an ingress identity, it is `401 { "error": { "code":
+"account_identity_conflict" } }`. It reaches only the account-bound device
+routes, minus the account routes, `/api/access/tokens` and every Project
+access route (`403 account_bound_device_route_forbidden` or `403
+insufficient_scope`). No personal access token, and no account-bound device,
+opens the terminal or voice WebSocket, whatever its scope. Minting for an account-tied person is `400
+account_bound_person` when the Station has no local accounts (any other
+deployment provider), the account belongs to another issuer, or it is not
+current. An account-bound device manages its own tokens through `GET`/`POST
+/api/access/tokens` and `DELETE /api/access/tokens/:tokenId` alongside its
+account session.
 
 ## Decide a pending paired-device request
 

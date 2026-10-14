@@ -249,37 +249,39 @@ describe('useSendMessage: durable before the request', () => {
     ).toBe('unconfirmed');
   });
 
-  it('refused because the engine is busy: moved into the local queue with its durable row kept, same key', async () => {
-    // Hold the drain's own settle timer so the held state can be read.
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    sendExecutionMessageMock.mockRejectedValueOnce(
-      new ChatHttpError(
-        409,
-        'The engine is replying on its own',
-        'provider_turn_in_progress',
-      ),
-    );
-    const { result } = renderHook(() => useSendMessage('http://api.test'));
-    await act(async () => {
-      await result.current(chat, 'codex', undefined, 'wait your turn');
-    });
-    const body = sendExecutionMessageMock.mock.calls[0]?.[1] as {
-      clientTurnId: string;
-    };
-    const held = activeChatsStore.getSnapshot()[chat];
-    // In the queue, or just popped by the drain that the turn's end allows.
-    expect([
-      ...(held?.queuedMessageMetadata ?? []).map((entry) => entry.id),
-      held?.pendingQueueDispatch?.metadata.id,
-    ]).toContain(body.clientTurnId);
-    expect(await outboundDispatch.snapshot()).toEqual([
-      expect.objectContaining({
-        clientTurnId: body.clientTurnId,
-        status: 'pending',
-        heldBy: expect.objectContaining({ bootId: expect.any(String) }),
-      }),
-    ]);
-  });
+  it.each([
+    ['the engine is busy', 'provider_turn_in_progress'],
+    ['its session is still starting', 'provider_session_starting'],
+  ])(
+    'refused because %s: moved into the local queue with its durable row kept, same key',
+    async (_why, code) => {
+      // Hold the drain's own settle timer so the held state can be read.
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      sendExecutionMessageMock.mockRejectedValueOnce(
+        new ChatHttpError(409, 'Not yet', code),
+      );
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(chat, 'codex', undefined, 'wait your turn');
+      });
+      const body = sendExecutionMessageMock.mock.calls[0]?.[1] as {
+        clientTurnId: string;
+      };
+      const held = activeChatsStore.getSnapshot()[chat];
+      // In the queue, or just popped by the drain that the turn's end allows.
+      expect([
+        ...(held?.queuedMessageMetadata ?? []).map((entry) => entry.id),
+        held?.pendingQueueDispatch?.metadata.id,
+      ]).toContain(body.clientTurnId);
+      expect(await outboundDispatch.snapshot()).toEqual([
+        expect.objectContaining({
+          clientTurnId: body.clientTurnId,
+          status: 'pending',
+          heldBy: expect.objectContaining({ bootId: expect.any(String) }),
+        }),
+      ]);
+    },
+  );
 
   it('a Station refusal lets the row go: the composer holds the text, never both', async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(

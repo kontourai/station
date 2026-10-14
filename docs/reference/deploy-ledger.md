@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-14T06:53:48Z | nightly-npm | 0.7.0-nightly.2478.38521861278 | `f72f8ad` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38521861278) |
 | 2026-10-14T05:18:06Z | nightly-npm | 0.7.0-nightly.2478.38510962155 | `0e6a18f` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38510962155) |
 | 2026-10-14T03:59:31Z | nightly-npm | 0.7.0-nightly.2478.38503738124 | `ebc8c32` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38503738124) |
 | 2026-10-14T03:00:48Z | nightly-npm | 0.7.0-nightly.2478.38498029379 | `6ea16e9` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38498029379) |
@@ -256,6 +257,21 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-14T06:53:48Z · nightly-npm · 0.7.0-nightly.2478.38521861278
+
+- Ship SHA: `f72f8adb36cad4468ddc571fcf5a63698796c7c9`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2478.38521861278 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `0e6a18f` ([full sha](https://github.com/kontourai/station/commit/0e6a18f1647a269284a614ce16cffd23604b2564)):
+
+**Features**
+
+- [#3649](https://github.com/kontourai/station/pull/3649) feat(chat): inline copy beside the phone ⋯, one copy icon, and a compact message sheet
 
 ## 2026-10-14T05:18:06Z · nightly-npm · 0.7.0-nightly.2478.38510962155
 

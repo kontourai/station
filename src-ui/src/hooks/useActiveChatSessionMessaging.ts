@@ -7,6 +7,7 @@ import type {
 import {
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   MODEL_NOT_ADVERTISED_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
@@ -99,6 +100,19 @@ type UserCancelableAbortController = AbortController & {
   /** Set only by the Stop path before it releases the foreground observer. */
   _userInitiated?: boolean;
 };
+
+/**
+ * Refusals that move a composer send into the queue under the same key (the
+ * engine is replying on its own, or the session is still starting). The
+ * outbox row and the queue must agree on this list: the row becomes the
+ * queued message's held copy, never a refusal that hands the text back.
+ */
+function isQueuedOnRefusalCode(code: unknown): boolean {
+  return (
+    code === PROVIDER_TURN_IN_PROGRESS_CODE ||
+    code === PROVIDER_SESSION_STARTING_CODE
+  );
+}
 
 function prepareSendTransaction(options: {
   state: ChatUIState | undefined;
@@ -1021,8 +1035,8 @@ export function useSendMessage(
             (abortController as UserCancelableAbortController)._userInitiated &&
             abortController.signal.aborted;
           const providerBusy =
-            (error as { code?: unknown })?.code ===
-              PROVIDER_TURN_IN_PROGRESS_CODE && stationAnswered(error);
+            isQueuedOnRefusalCode((error as { code?: unknown })?.code) &&
+            stationAnswered(error);
           if (foreground) {
             // Station said it may have started: keep the text as unconfirmed
             // evidence (never resent), and say so on the message.
@@ -1334,9 +1348,10 @@ export function useSendMessage(
         // refusal is retryable: move the message into the queue that drains
         // when that turn finishes, rather than calling it failed. A send with
         // attachments cannot ride the text queue, so it keeps the ordinary
-        // error and Retry below.
+        // error and Retry below. A send that outwaited its session's start
+        // (an ACP reattach) is queued the same way.
         if (
-          err.code === PROVIDER_TURN_IN_PROGRESS_CODE &&
+          isQueuedOnRefusalCode(err.code) &&
           !options?.dispatch &&
           !(attachments && attachments.length > 0)
         ) {
