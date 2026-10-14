@@ -777,6 +777,10 @@ describe('useSendMessage: durable before the request', () => {
     let first!: Promise<unknown>;
     await act(async () => {
       first = result.current(chat, 'codex', undefined, 'refusal lost');
+      // The request goes out after the outbox write and lazy imports.
+      await vi.waitFor(() =>
+        expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1),
+      );
       await vi.advanceTimersByTimeAsync(5_000);
     });
     const body = sendExecutionMessageMock.mock.calls[0]?.[1] as {
@@ -829,9 +833,10 @@ describe('useSendMessage: durable before the request', () => {
           dispatch: { indeterminate: async () => 'applied' as const },
         },
       );
-      await vi.advanceTimersByTimeAsync(0);
+      await vi.waitFor(() =>
+        expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2),
+      );
     });
-    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2);
     // The resend is on its way, not something Station already has.
     expect(
       activeChatsStore.getSnapshot()[chat]?.deliveryChecks?.[body.clientTurnId],
