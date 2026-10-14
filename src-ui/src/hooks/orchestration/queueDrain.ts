@@ -165,10 +165,29 @@ const providerTurnRedrainTimers = new Map<
  * Station is not where this message was headed — and a newer schedule for
  * the same chat replaces an older one.
  */
-function scheduleProviderTurnRedrain(apiBase: string, threadId: string): void {
+function scheduleProviderTurnRedrain(
+  apiBase: string,
+  threadId: string,
+  code: string,
+): void {
   const attempts = providerTurnRedrainAttempts.get(threadId) ?? 0;
   if (attempts >= PROVIDER_TURN_REDRAIN_MAX_ATTEMPTS) {
     providerTurnRedrainAttempts.delete(threadId);
+    // Out of automatic retries: nothing else would send this message, so
+    // say so beside it and offer Retry rather than leaving it silently
+    // queued. The message itself stays at the head of the queue.
+    if (activeChatsStore.getSnapshot()[threadId]?.queuedMessages?.length) {
+      activeChatsStore.updateChat(threadId, {
+        queuedMessageFailure: {
+          message:
+            code === PROVIDER_SESSION_STARTING_CODE
+              ? 'The session is still starting. Your message is still queued; retry to send it.'
+              : 'The agent is still replying. Your message is still queued; retry to send it.',
+          code,
+          at: Date.now(),
+        },
+      });
+    }
     return;
   }
   providerTurnRedrainAttempts.set(threadId, attempts + 1);
@@ -702,7 +721,7 @@ export function drainQueuedMessageOnTurnCompleted(
               ? { messages: messagesAfterRollback }
               : {}),
           });
-          scheduleProviderTurnRedrain(apiBase, threadId);
+          scheduleProviderTurnRedrain(apiBase, threadId, code);
           return;
         }
         // A permanent Station-side refusal of a QUEUED follow-up is not an

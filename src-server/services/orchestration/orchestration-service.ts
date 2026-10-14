@@ -7172,8 +7172,17 @@ export class OrchestrationService {
             try {
               throwIfAborted(turnInput.signal);
               this.assertAdapterCurrent(adapter);
-              const startTurn = async () =>
-                this.sessionExecutionCoordinator.runTurnStart(
+              const startTurn = async () => {
+                // An adapter whose session is visible before its engine start
+                // finishes (an ACP reattach) is waited on HERE, before the
+                // turn-start claim and workspace barrier are taken, so Stop,
+                // End and idle-park never queue behind a long start. The
+                // request's signal ends the wait; nothing reaches the engine.
+                await adapter.whenSessionReady?.(turnInput.threadId, {
+                  signal: turnInput.signal,
+                });
+                throwIfAborted(turnInput.signal);
+                return this.sessionExecutionCoordinator.runTurnStart(
                   turnInput.threadId,
                   async (boundary) => {
                     const current = await this.readSession(
@@ -7795,6 +7804,7 @@ export class OrchestrationService {
                       : identity.key;
                   })(),
                 );
+              };
               try {
                 result = await startTurn();
               } catch (error) {

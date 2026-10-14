@@ -1016,7 +1016,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     sendExecutionMessageMock.mockRejectedValueOnce(
       new ChatHttpError(
         400,
-        'The agent is still starting; your message will be sent when it is ready.',
+        'The session is still starting. Nothing was sent; try again in a moment.',
         'provider_session_starting',
       ),
     );
@@ -1038,6 +1038,47 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     await vi.dynamicImportSettled();
     expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2);
     expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([]);
+  });
+
+  test('a session that stays starting past every automatic retry leaves the message queued with a Retry reason', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['sent during a long start'],
+    });
+    sendExecutionMessageMock.mockRejectedValue(
+      new ChatHttpError(
+        400,
+        'The session is still starting. Nothing was sent; try again in a moment.',
+        'provider_session_starting',
+      ),
+    );
+
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+    // Ten automatic re-sends, each about a second apart.
+    for (let attempt = 0; attempt < 10; attempt++) {
+      expect(
+        activeChatsStore.getSnapshot()[threadId].queuedMessageFailure,
+      ).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(100);
+      await vi.dynamicImportSettled();
+    }
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(11);
+
+    const exhausted = activeChatsStore.getSnapshot()[threadId];
+    expect(exhausted.queuedMessages).toEqual(['sent during a long start']);
+    expect(exhausted.unsentMessages ?? []).toEqual([]);
+    expect(exhausted.queuedMessageFailure).toMatchObject({
+      code: 'provider_session_starting',
+      message:
+        'The session is still starting. Your message is still queued; retry to send it.',
+    });
+    // Nothing else re-sends it on its own.
+    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.dynamicImportSettled();
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(11);
+    sendExecutionMessageMock.mockReset();
   });
 
   test('#2324 delta review: a pending provider-turn retry is dropped when the chat was removed before it fires', async () => {

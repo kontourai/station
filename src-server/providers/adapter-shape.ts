@@ -136,7 +136,7 @@ export class ProviderSessionStartingError extends SendTurnRefusedError {
 
   constructor() {
     super(
-      'The agent is still starting; your message will be sent when it is ready.',
+      'The session is still starting. Nothing was sent; try again in a moment.',
     );
     this.name = 'ProviderSessionStartingError';
   }
@@ -334,6 +334,19 @@ export interface ProviderAdapterShape {
   discardSession?(
     threadId: string,
     recovery?: ProviderDiscardSessionRecovery,
+  ): Promise<void>;
+  /**
+   * Wait until the thread's session can take a turn, for an adapter whose
+   * session becomes visible before its engine start finishes. Orchestration
+   * awaits this BEFORE taking the thread's turn-start claim, so a long start
+   * never holds the lock Stop/End/park need. Resolves at once when nothing
+   * is pending; rejects with a `SendTurnRefusedError` (start failed, or
+   * {@link ProviderSessionStartingError} when still starting after the
+   * adapter's bound) or the signal's abort error. Nothing reaches the engine.
+   */
+  whenSessionReady?(
+    threadId: string,
+    options?: { signal?: AbortSignal },
   ): Promise<void>;
   sendTurn(input: ProviderSendTurnInput): Promise<ProviderTurnStartResult>;
   interruptTurn(

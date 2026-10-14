@@ -2358,7 +2358,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     sendExecutionMessageMock.mockRejectedValueOnce(
       new CodedOrchestrationError(
         400,
-        'The agent is still starting; your message will be sent when it is ready.',
+        'The session is still starting. Nothing was sent; try again in a moment.',
         'provider_session_starting',
       ),
     );

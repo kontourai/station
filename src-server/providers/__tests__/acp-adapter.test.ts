@@ -3080,31 +3080,32 @@ describe('AcpAdapter', () => {
       };
     };
 
-    test('a turn sent while the session is still reattaching waits, then starts and streams', async () => {
+    test('a send waits for a reattach in progress (as orchestration does), then starts and streams', async () => {
       const { adapter, processes, iterator, started, releaseLoad } =
         await startHeldReattach('thread-resume-race');
 
-      let settled = false;
-      const send = adapter
-        .sendTurn({ threadId: 'thread-resume-race', input: 'early message' })
-        .finally(() => {
-          settled = true;
+      let ready = false;
+      const waiting = adapter
+        .whenSessionReady('thread-resume-race')
+        .then(() => {
+          ready = true;
         });
       await new Promise((resolve) => setTimeout(resolve, 20));
-      // Held until the reattach finishes; nothing reached the engine yet.
-      expect(settled).toBe(false);
+      expect(ready).toBe(false);
       expect(processes[0].promptContents).toEqual([]);
 
       releaseLoad();
       await started;
-      const turn = await send;
+      await waiting;
+      const turn = await adapter.sendTurn({
+        threadId: 'thread-resume-race',
+        input: 'early message',
+      });
       expect(processes[0].promptContents).toHaveLength(1);
 
-      const seen: CanonicalRuntimeEvent[] = [];
       const readThrough = async (method: string) => {
         for (;;) {
           const event = await nextEvent(iterator, method);
-          seen.push(event);
           if (event.method === method) return event;
         }
       };
@@ -3126,52 +3127,110 @@ describe('AcpAdapter', () => {
       await readThrough('turn.completed');
     });
 
-    test('a turn waiting on a reattach that fails is refused with the start failure, not left hanging', async () => {
-      const { adapter, processes, started, failLoad } = await startHeldReattach(
-        'thread-resume-fails',
-      );
-      const send = adapter
-        .sendTurn({ threadId: 'thread-resume-fails', input: 'early message' })
+    test('a send that skips the wait during a start is refused retryably at once', async () => {
+      const { adapter, processes, started, releaseLoad } =
+        await startHeldReattach('thread-resume-direct');
+      const refusal = await adapter
+        .sendTurn({ threadId: 'thread-resume-direct', input: 'too early' })
         .then(
           () => undefined,
           (error: unknown) => error,
         );
-      failLoad(new Error('native session is gone'));
+      expect((refusal as { code?: unknown }).code).toBe(
+        'provider_session_starting',
+      );
+      expect(processes[0].promptContents).toEqual([]);
+      releaseLoad();
+      await started;
+    });
+
+    test('a wait on a reattach that fails is refused in plain words, not left hanging', async () => {
+      const { adapter, processes, started, failLoad } = await startHeldReattach(
+        'thread-resume-fails',
+      );
+      const waiting = adapter.whenSessionReady('thread-resume-fails').then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      failLoad(new Error('native session is gone\n    at engine internals'));
       await expect(started).rejects.toThrow('native session is gone');
 
-      const refusal = await send;
+      const refusal = await waiting;
       expect(refusal).toBeInstanceOf(SendTurnRefusedError);
-      expect((refusal as Error).message).toContain('failed to start');
-      expect((refusal as Error).message).toContain('native session is gone');
+      expect((refusal as Error).message).toBe(
+        "The agent's session couldn't start: native session is gone",
+      );
       expect(processes[0].promptContents).toEqual([]);
     });
 
-    test('a turn that outwaits a slow reattach is refused retryably, with a code', async () => {
+    test('a wait that outlasts a slow reattach is refused retryably, with a code and neutral copy', async () => {
       const { adapter, processes, started, releaseLoad } =
         await startHeldReattach('thread-resume-slow', {
           sendTurnStartWaitMs: 25,
         });
-      const refusal = await adapter
-        .sendTurn({ threadId: 'thread-resume-slow', input: 'early message' })
-        .then(
-          () => undefined,
-          (error: unknown) => error,
-        );
+      const refusal = await adapter.whenSessionReady('thread-resume-slow').then(
+        () => undefined,
+        (error: unknown) => error,
+      );
       expect(refusal).toBeInstanceOf(SendTurnRefusedError);
       // The literal, not the constant: the client's queue keys on this string.
       expect((refusal as { code?: unknown }).code).toBe(
         'provider_session_starting',
       );
+      expect((refusal as Error).message).toBe(
+        'The session is still starting. Nothing was sent; try again in a moment.',
+      );
       expect(processes[0].promptContents).toEqual([]);
 
       releaseLoad();
       await started;
-      const retry = await adapter.sendTurn({
+      await adapter.whenSessionReady('thread-resume-slow');
+      await adapter.sendTurn({
         threadId: 'thread-resume-slow',
         input: 'early message',
       });
-      expect(retry.threadId).toBe('thread-resume-slow');
       expect(processes[0].promptContents).toHaveLength(1);
+    });
+
+    test("an aborted send's wait ends at once and nothing reaches the engine", async () => {
+      const { adapter, processes, started, releaseLoad } =
+        await startHeldReattach('thread-resume-abort');
+      const controller = new AbortController();
+      const waiting = adapter
+        .whenSessionReady('thread-resume-abort', { signal: controller.signal })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      controller.abort(new Error('client went away'));
+      expect(await waiting).toMatchObject({ message: 'client went away' });
+      expect(processes[0].promptContents).toEqual([]);
+      releaseLoad();
+      await started;
+    });
+
+    test('a Stop during a waiting send refuses it at once, before the start unwinds', async () => {
+      const { adapter, processes, started, releaseLoad } =
+        await startHeldReattach('thread-resume-stop');
+      const waiting = adapter.whenSessionReady('thread-resume-stop').then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+      const startOutcome = started.then(
+        () => 'started',
+        () => 'ended',
+      );
+      const stopped = adapter.stopSession('thread-resume-stop');
+      // The send learns at once; the held load has not answered yet.
+      const refusal = await waiting;
+      expect(refusal).toBeInstanceOf(SendTurnRefusedError);
+      expect((refusal as Error).message).toBe(
+        "The agent's session ended before it was ready. Nothing was sent.",
+      );
+      expect(processes[0].promptContents).toEqual([]);
+      releaseLoad();
+      await stopped;
+      expect(await startOutcome).toBe('ended');
     });
 
     test('startSession with an ACP resume cursor fails closed with a named error when the CLI does not advertise loadSession (no silent fresh session)', async () => {

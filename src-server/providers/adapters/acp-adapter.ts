@@ -74,6 +74,7 @@ import {
   agentCapabilityUndelivered,
   sessionCwdResolution,
 } from '../../telemetry/metrics.js';
+import { raceWithSignal } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import {
@@ -559,13 +560,22 @@ export interface AcpSessionRecord {
   startSettled?: Promise<void>;
   /** Why this record's start failed, for a send that waited on it. */
   startFailure?: unknown;
+  /** Sends waiting in `whenSessionReady`, woken when a Stop begins. */
+  startWaiters?: Set<() => void>;
 }
 
 /**
  * How long a send waits for its session's engine start (for a restored ACP
- * session, the reattach) before refusing retryably.
+ * session, the reattach) before refusing retryably. Short: the client keeps
+ * the message queued and re-sends it.
  */
-const DEFAULT_SEND_TURN_START_WAIT_MS = 60_000;
+const DEFAULT_SEND_TURN_START_WAIT_MS = 15_000;
+
+/** The first line of an error, bounded, for a user-facing refusal. */
+function shortReason(error: unknown): string {
+  const line = errorMessage(error).split('\n')[0]?.trim() || 'unknown error';
+  return line.length > 160 ? `${line.slice(0, 157)}...` : line;
+}
 
 /**
  * How this engine can reattach to a stored session: `session/resume` (no
@@ -1673,47 +1683,72 @@ export class AcpAdapter implements ProviderAdapterShape {
    * registered before the engine answers, and a restored ACP session spends
    * that time reattaching) waits for the start rather than racing it: updates
    * during a reattach are treated as replayed history and dropped, so a turn
-   * opened then would lose its own output. Nothing reaches the engine before
-   * this returns, so every refusal here is a `SendTurnRefusedError`.
+   * opened then would lose its own output. Orchestration awaits this before
+   * taking the thread's turn-start claim, so Stop/End/park never queue
+   * behind it. Nothing reaches the engine here.
    */
-  private async awaitSessionStart(
+  async whenSessionReady(
     threadId: string,
-    record: AcpSessionRecord,
-  ): Promise<AcpSessionRecord> {
-    const pending = record.startSettled;
-    if (!pending) return record;
+    options: { signal?: AbortSignal } = {},
+  ): Promise<void> {
+    const record = this.sessions.get(threadId);
+    const pending = record?.startSettled;
+    if (!record || !pending) return;
     const waitMs =
       this.options.sendTurnStartWaitMs ?? DEFAULT_SEND_TURN_START_WAIT_MS;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const settled = await Promise.race([
-      pending.then(() => true),
-      new Promise<false>((resolve) => {
-        timer = setTimeout(() => resolve(false), waitMs);
-      }),
-    ]).finally(() => clearTimeout(timer));
+    let wake: (() => void) | undefined;
+    const outcome = await raceWithSignal(
+      Promise.race([
+        pending.then(() => 'settled' as const),
+        new Promise<'timeout'>((resolve) => {
+          timer = setTimeout(() => resolve('timeout'), waitMs);
+        }),
+        // A Stop does not wait for the start to unwind before this send
+        // learns it will never run.
+        new Promise<'stopping'>((resolve) => {
+          wake = () => resolve('stopping');
+          record.startWaiters ??= new Set();
+          record.startWaiters.add(wake);
+        }),
+      ]),
+      options.signal,
+    ).finally(() => {
+      clearTimeout(timer);
+      if (wake) record.startWaiters?.delete(wake);
+    });
     // Still starting: retryable, so the client keeps the message queued.
-    if (!settled) throw new ProviderSessionStartingError();
+    if (outcome === 'timeout') throw new ProviderSessionStartingError();
     if (record.startFailure !== undefined) {
+      // The engine's own words stay in the log; the refusal is user-facing.
+      (this.options.logger ?? console).warn?.(
+        { threadId, connectionId: record.connectionId },
+        'ACP send refused: the session it waited for failed to start',
+        record.startFailure,
+      );
       throw new SendTurnRefusedError(
-        `ACP session '${threadId}' failed to start: ${errorMessage(record.startFailure)}`,
+        `The agent's session couldn't start: ${shortReason(record.startFailure)}`,
       );
     }
-    const current = this.sessions.get(threadId);
-    if (current !== record || record.stopping) {
+    if (
+      outcome === 'stopping' ||
+      this.sessions.get(threadId) !== record ||
+      record.stopping
+    ) {
       throw new SendTurnRefusedError(
-        `ACP session '${threadId}' ended while it was starting.`,
+        "The agent's session ended before it was ready. Nothing was sent.",
       );
     }
-    return record;
   }
 
   async sendTurn(
     input: ProviderSendTurnInput,
   ): Promise<ProviderTurnStartResult> {
-    const record = await this.awaitSessionStart(
-      input.threadId,
-      this.requireSession(input.threadId),
-    );
+    const record = this.requireSession(input.threadId);
+    // Orchestration waits in `whenSessionReady` before claiming the turn; a
+    // caller that did not (or a start that began since) is refused
+    // retryably rather than racing the start.
+    if (record.startSettled) throw new ProviderSessionStartingError();
     // #2415: a send that races the session's active turn is refused here,
     // before any provider-visible effect, so it must be a
     // `SendTurnRefusedError`. A plain error is recorded by orchestration as
@@ -2133,6 +2168,7 @@ export class AcpAdapter implements ProviderAdapterShape {
   private prepareRecordForStop(record: AcpSessionRecord): void {
     const threadId = record.session.threadId;
     record.toolUpdateSupervisor.dispose();
+    for (const wake of record.startWaiters ?? []) wake();
     if (!record.stopping) {
       record.stopping = true;
       record.activeTurnId = undefined;

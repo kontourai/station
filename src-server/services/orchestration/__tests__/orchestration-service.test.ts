@@ -15764,6 +15764,119 @@ describe('OrchestrationService', () => {
     expect(claude.sendTurn).toHaveBeenCalledTimes(2);
   });
 
+  /** Settles to 'settled' or 'pending' after `ms`, for a liveness check. */
+  const settlesWithin = (promise: Promise<unknown>, ms: number) =>
+    Promise.race([
+      promise.then(
+        () => 'settled' as const,
+        () => 'settled' as const,
+      ),
+      new Promise<'pending'>((resolve) =>
+        setTimeout(() => resolve('pending'), ms),
+      ),
+    ]);
+
+  test('a send waiting for its session start holds no turn-start claim: Stop completes meanwhile', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-ready-stop',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    let rejectReady!: (error: Error) => void;
+    const whenSessionReady = vi.fn(
+      () =>
+        new Promise<void>((_, reject) => {
+          rejectReady = reject;
+        }),
+    );
+    (claude as ProviderAdapterShape).whenSessionReady = whenSessionReady;
+    const send = service
+      .dispatch({
+        type: 'sendTurn',
+        input: { threadId: 'thread-ready-stop', input: 'early message' },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    await vi.waitFor(() => expect(whenSessionReady).toHaveBeenCalledTimes(1));
+
+    const stop = service.dispatch({
+      type: 'stopSession',
+      threadId: 'thread-ready-stop',
+    });
+    expect(await settlesWithin(stop, 2_000)).toBe('settled');
+    await stop;
+    expect(claude.stopSession).toHaveBeenCalledWith('thread-ready-stop');
+
+    rejectReady(
+      new SendTurnRefusedError(
+        "The agent's session ended before it was ready. Nothing was sent.",
+      ),
+    );
+    expect(await send).toBeInstanceOf(OrchestrationCommandDispatchError);
+    expect(claude.sendTurn).not.toHaveBeenCalled();
+  });
+
+  test("a send's abort signal ends its wait for the session start, and the claim is released", async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-ready-abort',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    const whenSessionReady = vi.fn(
+      (_threadId: string, options?: { signal?: AbortSignal }) =>
+        new Promise<void>((_, reject) => {
+          options?.signal?.addEventListener('abort', () =>
+            reject(options.signal?.reason),
+          );
+        }),
+    );
+    (claude as ProviderAdapterShape).whenSessionReady = whenSessionReady;
+    const controller = new AbortController();
+    const send = service
+      .dispatch({
+        type: 'sendTurn',
+        input: {
+          threadId: 'thread-ready-abort',
+          input: 'early message',
+          clientTurnId: 'client-ready-abort',
+          signal: controller.signal,
+        },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    await vi.waitFor(() => expect(whenSessionReady).toHaveBeenCalledTimes(1));
+    controller.abort(new Error('client went away'));
+    expect(await settlesWithin(send, 2_000)).toBe('settled');
+    expect(await send).toMatchObject({ message: 'client went away' });
+    expect(claude.sendTurn).not.toHaveBeenCalled();
+
+    // Nothing reached the engine, so the same client turn can be sent again.
+    whenSessionReady.mockResolvedValueOnce(undefined);
+    await expect(
+      service.dispatch({
+        type: 'sendTurn',
+        input: {
+          threadId: 'thread-ready-abort',
+          input: 'early message',
+          clientTurnId: 'client-ready-abort',
+        },
+      }),
+    ).resolves.toMatchObject({ threadId: 'thread-ready-abort' });
+    expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+  });
+
   test('a send that outwaits its session start keeps its retryable code, and the retry dispatches', async () => {
     await service.dispatch({
       type: 'startSession',
