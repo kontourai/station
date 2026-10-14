@@ -141,8 +141,12 @@ describe('a Project stored as ~/…', () => {
 // Owner decision 2026-10-13 and its review: the caller's own Project for a
 // new Session that names no workspace, and the refusal of a Project the
 // owner cannot use, read from the real scope composition over Station-shaped
-// records. (No dispatch route lets an account member's request reach the
-// rule today: the Agent audience gate answers a member turn first, #3276.)
+// records. No dispatch route lets an account member's request reach the rule
+// today: the Agent audience gate answers a member turn first (#3276), until
+// #3277. When it does, a missing Project already reaches the rule on every
+// new-session route rather than failing earlier on its default Environment
+// (`newSessionFacts`; the route test 'a named Project that does not exist
+// reaches the scope rule…'), so the two answer alike there too.
 describe('the caller’s own Project, and a Project the owner cannot use', () => {
   const MEMBER = 'human:deployment:issuer:member';
   function scopeWith(options: {

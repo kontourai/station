@@ -294,7 +294,17 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
       // this Station unless the body names one.
       projectService: {
         listProjects: () => support.projectDirs,
-        getProject: (slug: string) => ({ slug }),
+        // As `ProjectService.getProject` does: a slug with no Project throws.
+        getProject: (slug: string) => {
+          if (
+            !['project-a-slug', 'project-b-slug', 'account-slug'].includes(
+              slug,
+            ) &&
+            !support.projectDirs.some((project) => project.slug === slug)
+          )
+            throw new Error(`Project '${slug}' not found`);
+          return { slug };
+        },
       },
       environmentSecurityService: deepStub({
         verifyCredential: (credential: string) =>
@@ -628,7 +638,14 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
             as('bound', caller)(),
             request.body,
           ),
-          'reached',
+          // The bound operator passes the rule; `/chat` then reads the named
+          // Project's default Environment, and a Project that does not exist
+          // fails there, as it does for the operator's own request.
+          route === 'POST /chat' &&
+          aim.kind === 'new' &&
+          aim.workspace === UNREADABLE
+            ? 'not reached (400 )'
+            : 'reached',
         ]);
       }
       for (const [label, channel, actual, expected] of rows)
@@ -1598,6 +1615,57 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
           ]).toEqual([label, route, undefined]);
         }
       }
+    });
+
+    // A missing Project must reach the scope rule, as a Project the owner may
+    // not use does: a route that failed earlier on the missing one (a 400
+    // from reading its default Environment) would tell the two apart.
+    test('a named Project that does not exist reaches the scope rule on every new-session route', async () => {
+      const { base } = await setup();
+      projects();
+      for (const route of ['POST /chat', 'POST /delegations']) {
+        for (const environment of [undefined, { kind: 'current' }]) {
+          const request = ROUTES[route]!({
+            kind: 'new',
+            workspace: { kind: 'project', projectSlug: 'ghost' },
+          })!;
+          const body = request.body as { target: Record<string, unknown> };
+          if (environment) body.target.environment = environment;
+          const refused = await refusalOf(
+            base,
+            request,
+            as('bearer-exposed', 'op-caller-a')(),
+          );
+          expect([
+            route,
+            environment?.kind,
+            refused.status,
+            refused.code,
+            refused.reason,
+          ]).toEqual([
+            route,
+            environment?.kind,
+            403,
+            'station_control_out_of_scope',
+            'target-unavailable',
+          ]);
+        }
+      }
+      // `/chat/background` shares the foreground route.
+      const background = ROUTES['POST /chat']!({
+        kind: 'new',
+        workspace: { kind: 'project', projectSlug: 'ghost' },
+      })!;
+      const refused = await refusalOf(
+        base,
+        { path: '/api/orchestration/chat/background', body: background.body },
+        as('bearer-exposed', 'op-caller-a')(),
+      );
+      expect([refused.status, refused.code, refused.reason]).toEqual([
+        403,
+        'station_control_out_of_scope',
+        'target-unavailable',
+      ]);
     });
 
     test('a caller whose Project Station cannot confirm gets no default: refused, saying why', async () => {

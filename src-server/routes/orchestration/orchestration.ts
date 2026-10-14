@@ -2111,22 +2111,33 @@ export function createOrchestrationRoutes(
       // #2377 slice C2a: a station-control caller stays in its scope. An
       // input reply names its thread, a known conversation is a follow-up,
       // anything else starts a session in the Project the body names.
+      const facts = newSessionFacts(target, deps.projectDefaultEnvironment);
       const scoped = scopeDispatch(
         c,
         deps.stationControlDispatchScope,
         (ownerId) =>
           foregroundDispatchTarget(deps.stationControlDispatchScope, {
             ownerId,
-            ...newSessionFacts(target, deps.projectDefaultEnvironment),
+            ...facts,
             ...conversation,
           }),
       );
       if ('refused' in scoped) return scoped.refused;
-      const resolvedTarget = normalizeExecutionTarget(
-        withCanonicalCwd(target, scoped.canonicalCwd),
+      const projectDefault =
         !target.environment && projectSlug
           ? deps.projectDefaultEnvironment?.(projectSlug)
-          : undefined,
+          : undefined;
+      // The scope decision read this default without failing on a missing
+      // Project (`newSessionFacts`). A default it could not read then that
+      // names another Station now was never decided: refuse it as the rule
+      // refuses another Station.
+      if (!facts.remote && namesAnotherStation(projectDefault)) {
+        const remoteRefused = refuseRemoteForStationControlCaller(c, true);
+        if (remoteRefused) return remoteRefused;
+      }
+      const resolvedTarget = normalizeExecutionTarget(
+        withCanonicalCwd(target, scoped.canonicalCwd),
+        projectDefault,
       );
       if (body.skillExperience && resolvedTarget.environment.kind !== 'current')
         return c.json(

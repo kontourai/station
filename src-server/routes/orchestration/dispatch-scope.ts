@@ -398,6 +398,29 @@ export function foregroundDispatchTarget(
 }
 
 /**
+ * The named Project's default Environment, read for the scope decision
+ * only. A slug with no Project (the lookup throws) has none: the request
+ * then reaches the scope rule, which answers a Project Station cannot
+ * confirm exactly as it answers one the owner may not use. Throwing here
+ * would answer a missing Project differently (a 400 before the rule) from
+ * one the caller is no member of (the rule's 403), telling the two apart.
+ * Nothing is dispatched on this reading: the route reads the default again
+ * after the rule admits the request, and fails there if it still cannot.
+ */
+function defaultEnvironmentOf(
+  projectSlug: string,
+  projectDefaultEnvironment:
+    | ((projectSlug: string) => { readonly kind: string } | undefined)
+    | undefined,
+): { readonly kind: string } | undefined {
+  try {
+    return projectDefaultEnvironment?.(projectSlug);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * What a dispatch body says about the session it would start: the Project
  * it names, the folder it names (a plain folder's, or a Project
  * workspace's `cwd`), and whether it lands on another Station (a saved
@@ -426,7 +449,7 @@ export function newSessionFacts(
       : undefined;
   const defaultEnvironment =
     !target.environment && projectSlug !== undefined
-      ? projectDefaultEnvironment?.(projectSlug)
+      ? defaultEnvironmentOf(projectSlug, projectDefaultEnvironment)
       : undefined;
   return {
     ...(projectSlug !== undefined ? { projectSlug } : {}),
