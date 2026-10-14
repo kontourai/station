@@ -390,7 +390,7 @@ An ACP send whose attachments the engine cannot take (images when its
 `initialize` handshake did not advertise `promptCapabilities.image`, or any
 non-image file) is refused before any engine effect with
 `ATTACHMENT_INPUT_UNSUPPORTED_CODE` (`attachment_input_unsupported`, from
-`provider`). Unlike the two codes above it is not retryable: the same send is
+`provider`). Unlike the retryable codes above it is not retryable: the same send is
 refused again. An ACP session whose requested model the engine's own fresh
 `session/new` options did not offer (`ACP model value unsupported`, or no model
 option at all) is refused by the adapter with `SessionStartRefusedError`,
