@@ -16,7 +16,10 @@ import {
 } from '../../utils/answerDelivery';
 import { settingsDeepLinkUrl } from '../../views/settings/settings-deep-link';
 import { ActionRow } from '../ActionRow';
-import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
+import {
+  ResponsiveDialogSurface,
+  ResponsiveSurfaceActions,
+} from '../ResponsiveDialogSurface';
 import { Toggle } from '../Toggle';
 import {
   ReplayCaptureControls,
@@ -390,7 +393,7 @@ export function ChatSettingsPanel({
         </button>
       </div>
 
-      <div className="chat-settings-modal__actions">
+      <ResponsiveSurfaceActions className="chat-settings-modal__actions">
         <button
           type="button"
           className="chat-settings-modal__done"
@@ -398,7 +401,7 @@ export function ChatSettingsPanel({
         >
           Done
         </button>
-      </div>
+      </ResponsiveSurfaceActions>
     </ResponsiveDialogSurface>
   );
 }

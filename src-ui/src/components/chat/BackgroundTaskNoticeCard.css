@@ -73,6 +73,7 @@
 }
 
 .task-notice__details > summary {
+  position: relative;
   display: inline-flex;
   align-items: center;
   color: var(--k-text-muted);
@@ -80,8 +81,14 @@
   cursor: pointer;
 }
 
-@media (pointer: coarse) {
-  .task-notice__details > summary {
-    min-height: 44px;
-  }
+/* The 44px touch target without a 44px row, the way ActionRow.css does it:
+   the hit area is a pseudo-element, so the card stays one line tall. */
+.task-notice__details > summary::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100%, 44px);
+  height: max(100%, 44px);
+  content: "";
+  transform: translate(-50%, -50%);
 }
