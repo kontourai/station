@@ -2130,7 +2130,7 @@ station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force
 | `--watch` | — | Development mode: server under `tsx watch`, UI as the Vite dev server proxying to it; loopback only, builds nothing. See [Development](../guides/development.md#running-a-second-station-in-development-mode) |
 | `--home=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | Runtime home for this instance — isolated **and** persistent. It never changes shared profiles; cannot be combined with `--temp-home` or `--base` |
 | `--base=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | The same runtime-only setting as `--home` |
-| `--temp-home` | — | Create and use a temporary home under the system temp directory |
+| `--temp-home` | — | Create and use a temporary home under the system temp directory. When `TMPDIR` points inside a Station root, as it does for agents Station spawns, the home is created under `/tmp` instead |
 | `--instance=<name>` | derived from `{cwd, base, ports}` | Stable instance name for targeted stop/restart flows |
 | `--features=<flags>` | — | Comma-separated feature flags (e.g. `strands-runtime`) |
 | `--log[=<path>]` | `/tmp/station-server.log` | Redirect server stdout/stderr to a log file |
@@ -2556,7 +2556,7 @@ station fresh [--force] [--allow-default-home-clean] [--home=<dir>] [--base=<dir
 | `--allow-default-home-clean` | Required together with `--force` to delete the selected channel's default runtime home; it never authorizes deleting `STATION_ROOT` |
 | `--home=<dir>` | Clean a specific home directory |
 | `--base=<dir>` | The same setting as `--home`, under the name it shipped with |
-| `--temp-home` | Create and clean a temporary home under the system temp directory |
+| `--temp-home` | Create and clean a temporary home under the system temp directory, or under `/tmp` when `TMPDIR` points inside a Station root |
 | `--instance=<name>` / `--port=<n>` / `--ui-port=<n>` | Match the instance identity used for shared-build safety checks |
 
 ```bash
