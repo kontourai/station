@@ -223,7 +223,7 @@ export function StartComposer({
   onStart: () => void;
   /** One quiet line under the bar: what Start will do when it is unusual. */
   note?: string;
-  /** Attach, paste and drop files for the first message. */
+  /** Attach and paste files for the first message. */
   files?: StartComposerFiles;
   voice?: StartComposerVoice;
   /** Feedback and setup that belong to this draft. */

@@ -67,6 +67,16 @@ function renderTwoComposers() {
 }
 
 describe('useSTT dictation ownership', () => {
+  // Ownership is module state for the app's life, so this runs first.
+  test('before anyone starts listening every composer reads the provider', () => {
+    const stt = new FakeSTT();
+    provider.current = stt;
+    stt.state = 'error';
+    const seen = renderTwoComposers();
+    expect(seen.start!.state).toBe('error');
+    expect(seen.chat!.state).toBe('error');
+  });
+
   test('the transcript goes only to the composer that started listening', () => {
     const stt = new FakeSTT();
     provider.current = stt;
@@ -87,12 +97,39 @@ describe('useSTT dictation ownership', () => {
     expect(seen.start!.transcript).toBe('');
   });
 
-  test('before anyone starts listening every composer reads the provider', () => {
+  test('a composer that closes takes its dictation with it', () => {
     const stt = new FakeSTT();
     provider.current = stt;
-    stt.state = 'error';
-    const seen = renderTwoComposers();
-    expect(seen.start!.state).toBe('error');
-    expect(seen.chat!.state).toBe('error');
+    const stop = vi.spyOn(stt, 'stopListening');
+    const seen: Record<'start' | 'chat', UseSTTResult | null> = {
+      start: null,
+      chat: null,
+    };
+    function Probe({ name }: { name: 'start' | 'chat' }) {
+      seen[name] = useSTT();
+      return null;
+    }
+    const view = render(
+      <>
+        <Probe key="start" name="start" />
+        <Probe key="chat" name="chat" />
+      </>,
+    );
+    // Dictated into the start composer, which then closes (Start pressed).
+    act(() => seen.start!.startListening());
+    act(() => stt.finish('fix the build'));
+    view.rerender(
+      <>
+        <Probe key="chat" name="chat" />
+      </>,
+    );
+    expect(seen.chat!.transcript).toBe('');
+    expect(seen.chat!.state).toBe('idle');
+
+    // One that closes mid-dictation stops the mic rather than leaving it
+    // running for whichever composer is still on screen.
+    act(() => seen.chat!.startListening());
+    view.rerender(<></>);
+    expect(stop).toHaveBeenCalledTimes(1);
   });
 });

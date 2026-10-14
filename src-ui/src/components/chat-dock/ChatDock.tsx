@@ -1104,8 +1104,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
         )
       )
         return;
-      // A file this engine refused, or that did not stage, stays in the
-      // composer with its reason; the message waits for the person.
+      // A file this engine refused is not added (the composer says why); one
+      // that did not stage stays with its retry. Either way the message
+      // waits in the composer for the person instead of going without it.
       if (
         chatInput.attachmentError ||
         chatInput.sendBlockedReason ||

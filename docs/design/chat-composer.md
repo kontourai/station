@@ -433,7 +433,8 @@ simple per-device preference rather than claiming to detect an attached keyboard
   chat's composer with the reason instead of going out without it. A task
   started on another Station takes text only, so Start with files attached
   refuses that and says why. Each composer owns its own dictation: a transcript goes only to
-  the composer whose mic started it.
+  the composer whose mic started it, and a composer that closes stops its
+  dictation and takes the transcript with it.
 - The composer decides image support before Send from the engine's declared
   and observed answers (`resolveComposerImageSupport`). When images cannot be
   sent, image chips say so and Send is disabled with the reason until the

@@ -63,10 +63,17 @@ function useSTTFor(activeSTT: ActiveSTT): UseSTTResult {
     }
   }, [activeSTT]);
 
-  // An owner that unmounts gives the provider back to everyone.
+  // An owner that closes keeps its ownership: the provider holds the last
+  // transcript until the next start, and handing it back to everyone would
+  // land that dictation in whichever composer is still open. A dictation
+  // still running is stopped, for the same reason.
+  const activeSTTRef = useRef(activeSTT);
+  activeSTTRef.current = activeSTT;
   useEffect(
     () => () => {
-      if (dictationOwner === owner) dictationOwner = null;
+      const provider = activeSTTRef.current;
+      if (dictationOwner === owner && provider?.state === 'listening')
+        provider.stopListening();
     },
     [owner],
   );
