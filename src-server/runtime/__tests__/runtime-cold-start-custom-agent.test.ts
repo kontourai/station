@@ -1241,6 +1241,89 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     expect(storeIntegrityVerification.stop).toHaveBeenCalled();
   });
 
+  // #3586 security review: through the real runtime composition, (1) the
+  // voice listener's credential check refuses account-bound devices and
+  // personal tokens, and (2) loading local accounts installs the account
+  // directory on device pairing, and shutdown removes it.
+  it('voice refuses account-bound devices and tokens; local accounts install and remove the account directory', async () => {
+    home = await createSchemaHome('station-coldstart-account-tokens-');
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      host: '127.0.0.1',
+      projectSharing: true,
+      localAccounts: { publicOrigin: `http://localhost:${TEST_PORT}` },
+    });
+    replaceTerminalListener(runtime);
+    vi.mocked(attachVoiceWebSocket).mockClear();
+    await expect(runtime.initialize()).resolves.toBeUndefined();
+
+    const security = (
+      runtime as unknown as {
+        environmentSecurityService: EnvironmentSecurityService;
+      }
+    ).environmentSecurityService;
+    const pairing = security.devicePairing;
+    const issuer = `urn:station:local-accounts:${
+      (await security.initialize()).environmentId
+    }`;
+    const accountBinding = {
+      kind: 'account',
+      issuer,
+      subject: 'nobody',
+      displayName: 'Nobody',
+      approvedAt: 1,
+      approvalId: 'approval-1',
+      approvedBy: 'human:local:operator',
+    } as const;
+    expect(pairing.canHoldPersonalToken(accountBinding)).toBe(true);
+
+    const pair = (account: boolean) => {
+      const offer = pairing.createOffer({
+        endpoint: 'https://station.example.test',
+        scope: 'orchestration:read orchestration:operate terminal:operate',
+      });
+      const request = pairing.requestPairing({
+        requesterPosition: 'off-box',
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName: account ? 'Account laptop' : 'Laptop',
+        source: 'same-origin',
+        ...(account
+          ? {
+              requireAccountBinding: true,
+              accountCandidate: {
+                issuer,
+                subject: 'dana',
+                displayName: 'Dana',
+              },
+              accountCandidateSessionId: 'candidate-proof',
+            }
+          : {}),
+      });
+      pairing.confirmRequest(
+        request.requestId,
+        { kind: 'presented-credential' },
+        account
+          ? { principalId: 'human:deployment:dana', kind: 'account' }
+          : undefined,
+      );
+      return pairing.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: request.requestId,
+      }).credential;
+    };
+    const voice = vi.mocked(attachVoiceWebSocket).mock.calls.at(-1)?.[3];
+    expect(voice).toBeDefined();
+    await expect(voice!.verifyCredential(pair(false))).resolves.toBe(true);
+    await expect(voice!.verifyCredential(pair(true))).resolves.toBe(false);
+
+    await runtime.shutdown();
+    runtime = undefined;
+    expect(pairing.canHoldPersonalToken(accountBinding)).toBe(false);
+  });
+
   it('hosted tenant isolation never binds the unauthorised terminal port', async () => {
     home = await createSchemaHome('station-coldstart-hosted-terminal-');
     const registryPath = join(home, 'hosted-tenants.json');

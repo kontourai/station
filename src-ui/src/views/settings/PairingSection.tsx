@@ -1,5 +1,4 @@
 import { Button } from '../../components/Button';
-import { PageRow } from '../../components/PageRow';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
@@ -8,6 +7,7 @@ import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { SettingsToggle } from './feature-toggle';
+import { OwnAccessTokensPanel } from './OwnAccessTokensPanel';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
 
@@ -20,7 +20,30 @@ export function PairingSection() {
   return (
     // A glyph already on `ui-glyph-coverage-allowlist.json` rather than a new
     // one: that list is recorded debt (#1704 is shrinking it).
-    <SettingsSection icon="▦" title="Pairing" id="section-pairing">
+    <SettingsSection
+      icon="▦"
+      title="Pairing"
+      id="section-pairing"
+      // #3557: the section's one action, compact on its header line. It
+      // carries the catalog row, so a deep link lands on (and focuses) it.
+      action={
+        <Button
+          {...settingsRow('mobile-pairing')}
+          // The catalog title ("Device pairing") is not this control's
+          // description; its name is its label.
+          title={undefined}
+          size="sm"
+          className="settings__header-action"
+          onClick={() =>
+            openConnectionsModal({
+              mode: canInviteDevice ? 'pair-host' : 'pair-device',
+            })
+          }
+        >
+          {canInviteDevice ? '+ Pair device' : 'Connect phone'}
+        </Button>
+      }
+    >
       {isMobile && (
         <div {...settingsRow('open-last-station')} tabIndex={-1}>
           <SettingsToggle
@@ -51,26 +74,14 @@ export function PairingSection() {
           </SettingsToggle>
         </div>
       )}
-      <PageRow
-        {...settingsRow('mobile-pairing')}
-        description={
-          canInviteDevice
-            ? 'Invite a phone or another device to the selected Station.'
-            : 'Scan a pairing code to connect this phone to another Station.'
-        }
-        control={
-          <Button
-            variant="secondary"
-            onClick={() =>
-              openConnectionsModal({
-                mode: canInviteDevice ? 'pair-host' : 'pair-device',
-              })
-            }
-          >
-            {canInviteDevice ? 'Pair another device' : 'Connect this phone'}
-          </Button>
-        }
-      />
+      <p className="settings__section-note">
+        {canInviteDevice
+          ? 'Invite a phone or another device to the selected Station.'
+          : 'Scan a pairing code to connect this phone to another Station.'}
+      </p>
+      {/* #3557: a person's own tokens, beside the device they act from. It
+          renders nothing unless this device is tied to a person. */}
+      <OwnAccessTokensPanel />
     </SettingsSection>
   );
 }

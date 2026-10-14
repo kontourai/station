@@ -98,9 +98,11 @@ use `coding:exec`, `approval:full-access`, `access:approve` and
 back to Admin restores it. Moving a person to Member re-authenticates their
 devices' live terminal and voice connections and takes back any full access
 they had given, as removing the scope does. The operator changes a group
-with `PUT /api/pairing/people/:principalId/group`; there is no CLI command or
-desktop control for it yet, and a full-access refusal's command (`--add
-approval:full-access`) does not lift a Member cap.
+on the People page (Settings, then Devices) or with
+`PUT /api/pairing/people/:principalId/group`; there is no CLI command for it
+yet. When a Member's device asks for full access, the refusal says the group
+is what stops it and points the operator at People, adding the device's own
+`--add approval:full-access` command only if its grant lacks it too.
 
 **Full access** (`approval:full-access`) is the scope that lets a device put a
 chat, or an Agent's default, at approval mode `never`: the agent runs with no
@@ -156,6 +158,40 @@ example an account session that holds the scope) now starts its new sessions
 confined. They run at full access only if a full-access decision is recorded
 for the conversation, and that decision's actor is recorded as unknown, not
 as a device, so revoking a device does not reset it.
+
+### People, groups and access tokens
+
+A device approved with a person's verified identity or account is tied to that
+person (#3557). **Settings → Devices → People**, shown only to the operator,
+lists everyone with a tied device, a group or a token, what each tied device
+may use, and their personal access tokens.
+
+A person's **group** caps every device tied to them. **Member**, the default,
+allows Read, Operate and Terminal. **Admin** also allows `coding:exec`, full
+access, approving other devices and deciding consent requests. A device keeps
+what it was granted; when its person's group removes part of it, People shows
+the device as **Limited by Member group**. Changing a group needs the operator
+credential: the desktop app's local grant can view People but its changes are
+refused.
+
+When a Member's device asks for full access, the refusal says the Member group
+stops it. The remedy has two steps, not two options: the operator makes the
+person Admin on People, then, if the device's own grant lacks
+`approval:full-access`, runs the host command the refusal prints.
+
+A **personal access token** (`stp_…`) lets a script or integration act as a
+person, with Read or Read & operate, expiring after 30 days, 90 days, a year, or
+never. It never exceeds what the person's group allows. The operator makes and
+revokes anyone's tokens on People; a person manages their own under **Settings
+→ Devices → Pairing → Your access tokens**, from a device tied to them (the
+panel does not appear on other devices). The secret is shown once, when the
+token is made. A person tied by a Station local account can hold tokens too
+(#3586): the token acts as the account without a browser session, sees only
+the Projects the account is a member of, and stops working when the account
+is disabled, signed out everywhere or deleted; re-enabling the account does
+not bring back tokens made before it was disabled. No token opens a terminal
+or voice session. With any other sign-in provider,
+account-tied people cannot hold tokens. See the [API reference](../reference/api.md#people-and-station-groups).
 
 ## Relationship table
 

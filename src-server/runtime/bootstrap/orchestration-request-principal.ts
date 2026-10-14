@@ -201,11 +201,11 @@ export function createOrchestrationRequestPrincipalResolver(
           ? ({ verifiedOperatorCredential: true } as const)
           : undefined;
     const ingressIdentity = identifyIngress(c);
-    const binding =
+    const device =
       runtimePrincipal?.authority === 'device-credential'
         ? environmentSecurityService.identifyDevice(runtimePrincipal.credential)
-            ?.principalBinding
         : undefined;
+    const binding = device?.principalBinding;
     if (
       binding &&
       (hostedTenantRegistry !== undefined ||
@@ -233,6 +233,16 @@ export function createOrchestrationRequestPrincipalResolver(
       verifiedPerson ? [verifiedPerson] : [],
     );
     if (account) return account;
+    // #3586: a personal access token tied to an account acts as that
+    // account without a session; the pairing service resolved it only
+    // because the account's standing is current.
+    if (
+      verifiedPerson &&
+      binding &&
+      isAccountDeviceBinding(binding) &&
+      device?.credentialKind === 'personal-token'
+    )
+      return verifiedPerson;
     return resolveStationPrincipal(
       (binding && !('kind' in binding)
         ? {

@@ -253,7 +253,55 @@ export interface ApprovalFullAccessRefusalDetails {
     readonly uiSteps: readonly string[];
     /** The operator command, run on the Station's own host. */
     readonly cli?: string;
+    /**
+     * #3557: the device is tied to a person whose Station group does not
+     * allow full access. The operator must make them Admin first (the
+     * `uiSteps`); `groupLimited.cli`, when present, is still needed AFTER
+     * that: both, not either.
+     *
+     * The command travels HERE, never as the top-level `cli`, so a client
+     * that predates this field (and renders `cli` as an alternative to
+     * `uiSteps`) cannot offer the two steps as options. For that client the
+     * last `uiSteps` entry is the command as a step
+     * ({@link groupLimitedCommandStep}); a client that reads this field
+     * shows that entry as the command instead ({@link groupLimitedPeopleSteps}).
+     */
+    readonly groupLimited?: {
+      readonly group: 'member';
+      readonly cli?: string;
+    };
   } | null;
+}
+
+/**
+ * #3557: the step a group-limited refusal appends to `uiSteps` for its host
+ * command, so a client that does not read `groupLimited` still lists the
+ * command after the People steps.
+ */
+export function groupLimitedCommandStep(cli: string): string {
+  return `Then, on the Station's host, run: ${cli}`;
+}
+
+/**
+ * The longest `groupLimited.cli` kept: its appended step must also fit the
+ * 256-character step bound, or the whole refusal would fail to parse.
+ */
+export const GROUP_LIMITED_CLI_MAX_LENGTH =
+  256 - groupLimitedCommandStep('').length;
+
+/**
+ * #3557: a group-limited refusal's People steps, without the appended
+ * command step (a client that reads `groupLimited.cli` shows that itself).
+ */
+export function groupLimitedPeopleSteps(
+  grant: NonNullable<ApprovalFullAccessRefusalDetails['grant']>,
+): readonly string[] {
+  const cli = grant.groupLimited?.cli;
+  // Indexed, not `.at()`: the contracts compile for older library targets.
+  const last = grant.uiSteps[grant.uiSteps.length - 1];
+  return cli !== undefined && last === groupLimitedCommandStep(cli)
+    ? grant.uiSteps.slice(0, -1)
+    : grant.uiSteps;
 }
 
 /** The longest device name a refusal carries, after sanitizing. */
@@ -292,6 +340,22 @@ export function sanitizeRefusalDeviceName(name: string): string {
 
 const isBoundedString = (value: unknown, max: number): value is string =>
   typeof value === 'string' && value.length > 0 && value.length <= max;
+
+/** Only the one known group; anything else is dropped, not trusted. */
+function parseGroupLimited(value: unknown): {
+  groupLimited?: { group: 'member'; cli?: string };
+} {
+  const raw = value as { group?: unknown; cli?: unknown } | undefined | null;
+  if (!raw || typeof raw !== 'object' || raw.group !== 'member') return {};
+  return {
+    groupLimited: {
+      group: 'member',
+      ...(isBoundedString(raw.cli, GROUP_LIMITED_CLI_MAX_LENGTH)
+        ? { cli: raw.cli }
+        : {}),
+    },
+  };
+}
 
 /**
  * Reads a refusal's `details` from an untrusted envelope, or `undefined` when
@@ -352,6 +416,7 @@ export function parseApprovalFullAccessRefusalDetails(
       scope: 'approval:full-access',
       uiSteps: [...(rawGrant.uiSteps as string[])],
       ...(typeof rawGrant.cli === 'string' ? { cli: rawGrant.cli } : {}),
+      ...parseGroupLimited(rawGrant.groupLimited),
     },
   };
 }

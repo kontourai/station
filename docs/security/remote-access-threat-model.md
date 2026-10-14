@@ -500,6 +500,57 @@ too. The operator, or the desktop's own local
 grant, lists people (`GET /api/pairing/people`, the pairing family's boundary);
 only the operator credential changes a group, as for a device's access.
 
+**Personal access tokens act as their person, never as more (#3557).** A
+person mints a token for a script from their own paired device tied to them
+(`/api/access/tokens`); it carries `orchestration:read`, optionally
+`orchestration:operate`, and never more than the minting device may use at
+that moment. The operator may mint or revoke one for anyone known by such a
+device; that token is bounded by the person's Station group, not by what
+their devices happen to hold. A token resolves as a headless device of its
+person, so request resolution, Project membership and the person's Station
+group apply to it as to their phone, and a token tied to a Tailscale
+identity is refused through any other tailnet identity, as their devices
+are. It is not a device: it cannot manage tokens, reach `/api/pairing/**`,
+decide a pairing request or consent, open a terminal or voice WebSocket
+(refused there whatever its scope), receive push notifications, or administer a Project's members (invite, change a role,
+transfer: the route table marks those leaves refused to tokens, so the
+boundary answers `403` whatever the token's scope), which the person does
+from a device. A token tied to a Station local account (#3586) needs no
+account session: the pairing service accepts it only while that account
+exists, is enabled, and has not been signed out everywhere since the token
+was made, so disabling the account, "sign out everywhere" or deleting the
+account ends its tokens on the next request. Re-enabling a disabled account
+does not revive tokens made before it was disabled (re-enabling advances the
+same sign-out time); an unreadable or closed account store accepts no
+account-tied token. Only Station's own local accounts have the account
+directory this check reads; with any other deployment provider an
+account-tied person still cannot hold a token (`account_bound_person`). Such
+a token resolves to the account principal and is held to that account's
+Project membership. It must arrive alone: an account cookie or session
+continuation (even the same account's) or an ingress identity beside it is
+`401 account_identity_conflict`. Over HTTP it is confined to the
+account-bound device allowlist, narrowed further: never the account surface, token management, or
+any Project access leaf, the administration read included (the route table
+marks that read refused to tokens too). It never takes the native Device
+receipt self-read shortcut. The terminal and voice WebSockets, which run
+outside these HTTP gates, refuse every account-bound device and every
+personal access token, account-tied or not. Secrets carry an `stp_` prefix, are shown once, and are stored only
+as a sha256 hash in `<home>/security/personal-tokens.json` (owner-only, apart
+from the device registry so an older Station that ignores the file loses only
+the tokens). Writes are made under a cross-process lock from a fresh read,
+and every lookup follows the file, so a revocation holds for every Station
+process on the home. A token may expire (at most a year) and is refused once
+revoked or expired; dead records are dropped, and each person holds at most
+20 active tokens. A token outlives its person's devices, so the people list
+keeps showing its owner for the operator to revoke. An unsafe (not
+owner-only, or a link) or unreadable token file authenticates no one, and
+Station refuses to mint or revoke over it (`503 tokens_unavailable`). The
+20-token limit is decided under the lock, so it holds across processes. An
+environment reset revokes every token first, and fails without changing
+anything if it cannot; it revokes them again once done, which catches a
+token minted while it ran (a mint completing after that second pass is not
+caught, though the person's devices are gone by then).
+
 The pairing UI offers two presets when creating an offer: **Read-only**
 (`orchestration:read` alone) and **Standard** (`orchestration:read
 orchestration:operate terminal:operate`), the default *radio selection* in
@@ -561,7 +612,10 @@ the change drops the device's live terminal and voice leases. One such scope,
 `never`. Its refusal (403 `approval-full-access-not-granted`) names the
 device, the refusing Station and the operator's grant command, derived from
 the request's verified credential; it discloses no credential and grants
-nothing. Removing the scope, or revoking the device, refuses the device's
+nothing. When the device's person is in the Member group (#3557), the refusal
+says so (`grant.groupLimited`) and names People as the first step, adding the
+grant command (as `grant.groupLimited.cli` and a final step, never as an
+alternative) only when the device's own grant also lacks the scope. Removing the scope, or revoking the device, refuses the device's
 next full-access request and resets the full access it had already granted:
 each conversation it put at full access gets a new Ask decision attributed to
 the operator. Attribution is exact, from the server-derived actor on the
@@ -590,7 +644,8 @@ methods require `orchestration:operate`; explicit family and leaf rules can
 require a different tier. All `/api/registry/sources` methods require
 `access:manage` plus a separate Station operator principal check in the handlers.
 The terminal WebSocket requires `terminal:operate`, and the voice WebSocket
-requires `orchestration:operate`. Pairing-family routes
+requires `orchestration:operate`; both refuse an account-bound device and any
+personal access token whatever its scope (#3586). Pairing-family routes
 have additional credential-kind and explicit approval-leaf rules described
 above; a generic operate grant cannot reach them. A
 route the table does not recognize fails closed — denied, with a loud server
@@ -1469,7 +1524,10 @@ than left to inspection.
 device-admin routes (`GET /api/pairing/devices`, scope change, revoke and
 record removal), and the Station group change
 (`PUT /api/pairing/people/:principalId/group`, #3557, recorded once the
-change is applied), record each raw operator-credential use with its host position.
+change is applied), and the operator's token mint and revoke for a person
+(`POST`/`DELETE /api/pairing/people/:principalId/tokens…`, recorded once the
+operator credential is confirmed), record each raw operator-credential use
+with its host position.
 A use that is visibly off-host (a non-loopback peer, a non-loopback `Host`, or
 any forwarding header, including Station's UI proxy reporting that its client
 sent one) is still allowed. It is logged at warn with the message `Operator
@@ -1554,7 +1612,8 @@ expiry—never a bearer credential. Manual entry uses the same flow with a
 host before exchange. An authenticated host may instead deny it; denial is
 final for that offer and returns only a fixed error code to the requester. An
 issued device credential can use ordinary HTTP, SSE, and WebSocket surfaces up
-to whatever scope its grant carries (see "Scope model" above). Ordinary
+to whatever scope its grant carries (see "Scope model" above), except that an
+account-bound device never opens the terminal or voice WebSocket (#3586). Ordinary
 presets do not admit pairing management. An explicit `access:approve` promotion
 opens only pending-request list/confirm/deny, while local-home minted credentials
 have their separate route-scoped exception. Neither exception follows merely
@@ -1683,7 +1742,8 @@ required without an interactive terminal.
 
 `./station environment reset` rotates both identity and credential. It does not
 print the credential; use the explicit credential show command afterward.
-Reset also clears every paired-device credential. Use it only for identity
+Reset also clears every paired-device credential and personal access token.
+Use it only for identity
 compromise or intentional re-provisioning: clients see a new environment and
 must be bootstrapped again. Keep local shell access until remote recovery
 succeeds to avoid lockout.

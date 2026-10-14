@@ -994,6 +994,11 @@ export interface PairedDevice {
    * migrates it in place the same way `scope` itself was migrated
    * (archive#1098 R4). Never absent on a value read out of the service.
    */
+  /**
+   * #3557: present only on a personal access token resolved as a headless
+   * device of its owner; never persisted in the device registry.
+   */
+  readonly credentialKind?: 'personal-token';
   kind: PairedDeviceKind;
   createdAt: number;
   /**
