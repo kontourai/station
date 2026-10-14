@@ -1,0 +1,7 @@
+{
+  "revision": "e9b1f026820279d2caf9c4161152576dee98650f",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed for this fix round (keyword sweep: retryable, refusal codes, queue/unsent, SendTurnRefused, starting/reattach, then read each hit): ACP sendTurn now waits up to 60s for its session's start; a failed start refuses definitively with its reason; an outwaited start refuses with the new retryable code provider_session_starting, which orchestration-service forwards as retryable and the UI queue/immediate-send paths keep queued and redrain; resume falls back to load only on method-not-found. This document makes no claim about these refusals, codes or the ACP start window; its statements remain accurate.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}
