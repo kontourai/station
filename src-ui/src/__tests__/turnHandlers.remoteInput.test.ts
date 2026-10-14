@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, test } from 'vitest';
+import { beginConversationHandoffUiState } from '../components/chat-dock/conversationHandoffUiState';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { handleOrchestrationEvent } from '../hooks/orchestration/eventHandlers';
 import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
@@ -180,4 +181,37 @@ test("another device's keyed turn is added as its own row, not pinned on this cl
   expect(
     activeChatsStore.getSnapshot()[id].messages?.[0]?.turnId,
   ).toBeUndefined();
+});
+test('a handoff turn whose start carries the dialog key binds the handoff bubble and closes its send window', () => {
+  activeChatsStore.initChat(id, {
+    agentSlug: 'codex',
+    agentName: 'Codex',
+    title: 'Shared',
+  });
+  activeChatsStore.updateChat(
+    id,
+    beginConversationHandoffUiState(activeChatsStore.getSnapshot()[id], {
+      message: 'continue on the other engine',
+      clientTurnId: 'handoff:dialog-key',
+      now: 1,
+    }),
+  );
+  handleTurnStartedEvent({
+    eventId: 'event-handoff',
+    method: 'turn.started',
+    provider: 'codex',
+    threadId: id,
+    turnId: 'turn-handoff',
+    createdAt: '2026-10-13T00:00:00Z',
+    prompt: 'continue on the other engine',
+    // What Station stamps for a handoff: the key the dialog sent it with.
+    clientTurnId: 'handoff:dialog-key',
+  });
+  const chat = activeChatsStore.getSnapshot()[id];
+  expect(chat.messages).toMatchObject([
+    { clientId: 'handoff:dialog-key', turnId: 'turn-handoff' },
+  ]);
+  expect(chat.messages).toHaveLength(1);
+  expect(chat.pendingClientTurnId).toBeUndefined();
+  expect(chat.sendAwaitingTurnStart).toBeUndefined();
 });

@@ -6930,10 +6930,13 @@ export class OrchestrationService {
             reviewIsolation: _untrustedReviewIsolation,
             confinement: _untrustedConfinement,
             expectedInputRequest: _expectedInputRequest,
+            // The client's own key for the turn.started stamp; Station's.
+            clientKey: stampedClientKey,
             ...publicTurnInput
           } = command.input as ProviderSendTurnInput & {
             expectedInputRequest?: AttentionRequestReference;
             ambientContext?: string;
+            clientKey?: string;
           };
           // archive#895 wave C: an engine with no native systemPrompt
           // channel gets its authored prompt delivered by prepending it
@@ -7312,7 +7315,7 @@ export class OrchestrationService {
                           context?.clientOrigin,
                           context?.principal,
                           experienceReference,
-                          turnInput.clientTurnId,
+                          stampedClientKey ?? turnInput.clientTurnId,
                         );
                         // The Station-agent adapter owns the canonical provider
                         // turn id for this engine, so mint it before crossing its
@@ -7564,7 +7567,7 @@ export class OrchestrationService {
                           context?.clientOrigin,
                           context?.principal,
                           experienceReference,
-                          turnInput.clientTurnId,
+                          stampedClientKey ?? turnInput.clientTurnId,
                         );
                         if (earlyOriginEvent) {
                           this.projectAndPublishEvent(earlyOriginEvent);

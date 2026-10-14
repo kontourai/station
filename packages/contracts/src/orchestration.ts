@@ -44,6 +44,13 @@ export interface OrchestrationSendTurnInput
   ambientContext?: string;
   /** Read-only constraint checked again at actual adapter invocation. */
   expectedInputRequest?: AttentionRequestReference;
+  /**
+   * The key the CLIENT named this send by, when Station deduplicates it under
+   * a key of its own (a handoff's `handoff:<digest>` `clientTurnId`). Station
+   * stamps this one on the turn's `turn.started`, so the client matches its
+   * message exactly. Server-composed only; never forwarded to an adapter.
+   */
+  clientKey?: string;
 }
 
 /**
