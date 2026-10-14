@@ -132,6 +132,9 @@ export const CI_FAST_STATIC_COMMANDS = Object.freeze([
     'npm',
     Object.freeze(['run', 'docs:public:contract-examples']),
   ]),
+  // The Corpus decision registry and the numbered-ADR freeze; see
+  // run-ci-fast.mjs.
+  Object.freeze(['npm', Object.freeze(['run', 'check:decisions'])]),
   // Generates the git-ignored Basis MCP app bundles the typecheck lanes
   // resolve; a precondition of the aggregate below, like `build:connect`.
   Object.freeze([

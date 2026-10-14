@@ -58,9 +58,10 @@ renders no page for it and this builder never publishes it. The manifest's
 - `docs/*.md`: the docs-root index, architecture overview, glossary, privacy
   policy working copy, and two historical design records.
 - `docs/adr/**`, `docs/architecture/**`, `docs/conformance/**`,
-  `docs/contexts/**`, `docs/design/**`, `docs/patterns/**`, `docs/plans/**`,
-  `docs/security/**`, `docs/strategy/**`, `docs/testing/**`: decisions, design,
-  plans, audits and internal engineering records.
+  `docs/contexts/**`, `docs/decisions/**`, `docs/design/**`,
+  `docs/patterns/**`, `docs/plans/**`, `docs/security/**`, `docs/strategy/**`,
+  `docs/testing/**`: decisions, design, plans, audits and internal engineering
+  records.
 - `docs/learn/**`, `docs/pages/**`, `docs/third-party/**`: the learning reader's
   sources, this directory, and third-party notices.
 - `docs/guides/!(...)`, `docs/reference/!(...)`: every guide and reference
