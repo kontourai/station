@@ -502,7 +502,8 @@ describe('MessageBubble phone copy and details actions', () => {
         turnId: 'turn-1',
       });
       const pin = document.querySelector('.message__task-input-action');
-      expect(pin?.closest('.message.user')).not.toBeNull();
+      expect(pin).not.toBeNull();
+      expect(pin!.closest('.message.user')).not.toBeNull();
     } finally {
       mobile.current = true;
     }
