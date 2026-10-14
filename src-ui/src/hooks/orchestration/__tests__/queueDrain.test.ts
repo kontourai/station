@@ -110,8 +110,11 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
       expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1),
     );
     expect(
-      (sendExecutionMessageMock.mock.calls[0]?.[1] as { clientTurnId: string })
-        .clientTurnId,
+      (
+        sendExecutionMessageMock.mock.calls[0]?.[1] as
+          | { clientTurnId: string }
+          | undefined
+      )?.clientTurnId,
     ).toBe('queue-key-1');
     expect(rowAtRequest).toMatchObject({
       clientTurnId: 'queue-key-1',

@@ -243,14 +243,12 @@ describe('client execution', () => {
       conversationId: 'conversation/a',
       clientTurnId: 'turn/key',
     };
-    const fetchMock = vi
-      .fn<typeof fetch>()
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ success: true, data }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        }),
-      );
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: true, data }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
     vi.stubGlobal('fetch', fetchMock);
     await expect(
       getTurnDelivery('http://station.test', 'conversation/a', 'turn/key'),

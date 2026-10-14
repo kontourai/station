@@ -61,9 +61,7 @@ interface TurnAttribution {
 }
 
 function hasAttribution(attribution: TurnAttribution): boolean {
-  return (
-    reservesTurn(attribution) || attribution.clientTurnId !== undefined
-  );
+  return reservesTurn(attribution) || attribution.clientTurnId !== undefined;
 }
 
 /**
