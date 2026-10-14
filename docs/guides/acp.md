@@ -424,7 +424,7 @@ ACP connections are configured in `<station-home>/config/acp.json`:
 | `command` | ✓ | Executable to spawn. Must be on PATH. |
 | `args` | | Arguments passed to the command. |
 | `icon` | | Emoji or string shown next to the agent name. Defaults to `🔌`. |
-| `cwd` | | Working directory for a Session that has no workspace of its own; a Session's own working directory takes precedence. A leading `~` is expanded and a relative path is resolved. When unset, Station prepares a private managed workspace instead of inheriting its own directory. A [station-control dispatch](self-configuring-agent.md#dispatch-authority) with no workspace is scoped by this directory. |
+| `cwd` | | Working directory for a Session that has no workspace of its own; a Session's own working directory takes precedence. A leading `~` is expanded and a relative path is resolved. When unset, Station prepares a private managed workspace instead of inheriting its own directory. A [station-control dispatch](self-configuring-agent.md#dispatch-authority) with no workspace from an Agent in the global space, or in a Project with no working directory, starts here and is scoped by this directory; an Agent in a Project with a working directory starts it in that Project instead. |
 | `enabled` | ✓ | Set to `false` to disable without removing the config. |
 
 ### Runtime API

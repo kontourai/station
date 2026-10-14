@@ -121,6 +121,11 @@
       "reason": "Assignment of the private relay's server-resolved Session cwd, not a read of the stored Project path. OrchestrationService resolves session creation through resolveStartSessionCwd using resolve(expandTilde(...)), including its admitted worktree binding, before passing Session cwd to createNativeForegroundRelay. Preserve that exact execution directory; the native worktree host-action integration executes real Bash in it."
     },
     {
+      "entry": "src-server/runtime/mcp/station-control-dispatch-scope.ts :: workingDirectory :: if (!project?.slug || !project.workingDirectory) return undefined;",
+      "category": 1,
+      "reason": "Presence check only: decides whether the caller's own Project can be the default workspace. The value is never used as a path here; the dispatch resolves the Project's working directory (tilde-expanded) where the session starts."
+    },
+    {
       "entry": "src-server/services/execution-target/execution-target-resolver.ts :: workingDirectory :: if (!project?.workingDirectory) {",
       "category": 1,
       "reason": "Existence check before throwing \"no working directory configured\". No filesystem access."
