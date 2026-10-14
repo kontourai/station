@@ -12,7 +12,7 @@ test.each([
   ['io.kontourai.station.beta', 'beta'],
   ['io.kontourai.station.nightly', 'nightly'],
 ])(
-  'regenerated %s stages its exact channel launch mark',
+  'configured %s stages its exact channel launch mark despite a preserved Stable project',
   (identifier, channel) => {
     const root = makeTempDir('station-ios-launch-');
     const apple = join(root, 'src-desktop/gen/apple');
@@ -31,7 +31,11 @@ test.each([
       );
     writeFileSync(
       join(apple, 'project.yml'),
-      `settingGroups:\n  app:\n    base:\n      PRODUCT_BUNDLE_IDENTIFIER: io.kontourai.station\ntargets:\n  station_iOS:\n    settings:\n      base:\n        PRODUCT_BUNDLE_IDENTIFIER: ${identifier}\n`,
+      'settingGroups:\n  app:\n    base:\n      PRODUCT_BUNDLE_IDENTIFIER: io.kontourai.station\n',
+    );
+    writeFileSync(
+      join(root, 'src-desktop/tauri.conf.json'),
+      JSON.stringify({ identifier }),
     );
     stageIosLaunchScreen(root);
     expect(
@@ -59,15 +63,15 @@ test.each([
   },
 );
 
-test('unknown generated app identity cannot silently ship Stable launch artwork', () => {
+test('unknown configured app identity cannot silently ship Stable launch artwork', () => {
   const root = makeTempDir('station-ios-launch-refusal-');
   const apple = join(root, 'src-desktop/gen/apple');
   mkdirSync(apple, { recursive: true });
   writeFileSync(
-    join(apple, 'project.yml'),
-    'settingGroups:\n  app:\n    base:\n      PRODUCT_BUNDLE_IDENTIFIER: io.example.other\n',
+    join(root, 'src-desktop/tauri.conf.json'),
+    JSON.stringify({ identifier: 'io.example.other' }),
   );
   expect(() => stageIosLaunchScreen(root)).toThrow(
-    'Unknown generated iOS Station identity',
+    'Unknown configured iOS Station identity',
   );
 });
