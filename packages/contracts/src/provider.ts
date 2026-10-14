@@ -839,6 +839,14 @@ export const MUSE_SERVE_STOP_UNCONFIRMED_CODE = 'muse-serve-stop-unconfirmed';
 export const PROVIDER_TURN_IN_PROGRESS_CODE = 'provider_turn_in_progress';
 
 /**
+ * Refusal code for a send that waited for its session's engine start (for
+ * an ACP session, reattaching to a stored native session) and the start had
+ * still not finished within the adapter's wait. Retryable: the same send
+ * succeeds once the session is ready, so clients keep it queued.
+ */
+export const PROVIDER_SESSION_STARTING_CODE = 'provider_session_starting';
+
+/**
  * A send refused before any engine effect because the bound engine cannot
  * take the attached input (an ACP engine whose `initialize` handshake did not
  * advertise `promptCapabilities.image`, or a file the engine only accepts as

@@ -22,6 +22,7 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import {
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 
@@ -122,6 +123,22 @@ export class ProviderTurnInProgressError extends SendTurnRefusedError {
       'The agent is replying on its own; your message will be sent when it finishes.',
     );
     this.name = 'ProviderTurnInProgressError';
+  }
+}
+
+/**
+ * A send that waited for its session's engine start and gave up before the
+ * start finished. Nothing reached the engine. Retryable: orchestration
+ * forwards the code and clients keep the message queued.
+ */
+export class ProviderSessionStartingError extends SendTurnRefusedError {
+  readonly code = PROVIDER_SESSION_STARTING_CODE;
+
+  constructor() {
+    super(
+      'The agent is still starting; your message will be sent when it is ready.',
+    );
+    this.name = 'ProviderSessionStartingError';
   }
 }
 

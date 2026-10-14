@@ -322,6 +322,7 @@ function createAdapter(
     loadSessionError?: unknown;
     onProcess?: (process: FakeAcpProcess, index: number) => void;
     resolvePreToolPolicy?: AcpAdapterOptions['resolvePreToolPolicy'];
+    sendTurnStartWaitMs?: number;
   } = {},
 ): {
   adapter: AcpAdapter;
@@ -340,6 +341,7 @@ function createAdapter(
     mintStationControlMcpAuth: options.mintStationControlMcpAuth,
     revokeStationControlMcpAuth: options.revokeStationControlMcpAuth,
     resolvePreToolPolicy: options.resolvePreToolPolicy,
+    sendTurnStartWaitMs: options.sendTurnStartWaitMs,
     managedWorkspaceHomeDir:
       options.managedWorkspaceHomeDir ?? managedWorkspaceHome,
     processFactory: (opts) => {
@@ -3038,19 +3040,27 @@ describe('AcpAdapter', () => {
       expect(processes[0].loadSessionCalls).toBe(0);
     });
 
-    test('a turn sent while the session is still reattaching is refused before any effect', async () => {
+    /** Start a resume whose `session/load` stays open until released. */
+    const startHeldReattach = async (
+      threadId: string,
+      options: { sendTurnStartWaitMs?: number } = {},
+    ) => {
       let releaseLoad!: () => void;
+      let failLoad!: (error: Error) => void;
       const { adapter, processes } = createAdapter({
         loadSessionCapability: true,
+        ...options,
         onProcess: (proc) => {
-          proc.loadSessionPromise = new Promise<void>((resolve) => {
+          proc.loadSessionPromise = new Promise<void>((resolve, reject) => {
             releaseLoad = resolve;
+            failLoad = reject;
           });
         },
       });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
       const started = adapter.startSession({
         provider: 'acp',
-        threadId: 'thread-resume-race',
+        threadId,
         cwd: '/tmp/project',
         metadata: { connectionId: 'kiro' },
         resumeCursor: {
@@ -3060,24 +3070,107 @@ describe('AcpAdapter', () => {
         },
       });
       await vi.waitFor(() => expect(processes[0]?.loadSessionCalls).toBe(1));
+      return {
+        adapter,
+        processes,
+        iterator,
+        started,
+        releaseLoad: () => releaseLoad(),
+        failLoad: (error: Error) => failLoad(error),
+      };
+    };
 
+    test('a turn sent while the session is still reattaching waits, then starts and streams', async () => {
+      const { adapter, processes, iterator, started, releaseLoad } =
+        await startHeldReattach('thread-resume-race');
+
+      let settled = false;
+      const send = adapter
+        .sendTurn({ threadId: 'thread-resume-race', input: 'early message' })
+        .finally(() => {
+          settled = true;
+        });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      // Held until the reattach finishes; nothing reached the engine yet.
+      expect(settled).toBe(false);
+      expect(processes[0].promptContents).toEqual([]);
+
+      releaseLoad();
+      await started;
+      const turn = await send;
+      expect(processes[0].promptContents).toHaveLength(1);
+
+      const seen: CanonicalRuntimeEvent[] = [];
+      const readThrough = async (method: string) => {
+        for (;;) {
+          const event = await nextEvent(iterator, method);
+          seen.push(event);
+          if (event.method === method) return event;
+        }
+      };
+      await readThrough('turn.started');
+      // The waiting send's own output is not mistaken for replayed history.
+      await processes[0].client.sessionUpdate({
+        sessionId: 'native-kiro-cli',
+        update: {
+          sessionUpdate: 'agent_message_chunk',
+          messageId: 'msg_new',
+          content: { type: 'text', text: 'answer to the early message' },
+        },
+      } as any);
+      expect(await readThrough('content.text-delta')).toMatchObject({
+        turnId: turn.turnId,
+        delta: 'answer to the early message',
+      });
+      processes[0].resolvePrompt('end_turn');
+      await readThrough('turn.completed');
+    });
+
+    test('a turn waiting on a reattach that fails is refused with the start failure, not left hanging', async () => {
+      const { adapter, processes, started, failLoad } = await startHeldReattach(
+        'thread-resume-fails',
+      );
+      const send = adapter
+        .sendTurn({ threadId: 'thread-resume-fails', input: 'early message' })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      failLoad(new Error('native session is gone'));
+      await expect(started).rejects.toThrow('native session is gone');
+
+      const refusal = await send;
+      expect(refusal).toBeInstanceOf(SendTurnRefusedError);
+      expect((refusal as Error).message).toContain('failed to start');
+      expect((refusal as Error).message).toContain('native session is gone');
+      expect(processes[0].promptContents).toEqual([]);
+    });
+
+    test('a turn that outwaits a slow reattach is refused retryably, with a code', async () => {
+      const { adapter, processes, started, releaseLoad } =
+        await startHeldReattach('thread-resume-slow', {
+          sendTurnStartWaitMs: 25,
+        });
       const refusal = await adapter
-        .sendTurn({ threadId: 'thread-resume-race', input: 'too early' })
+        .sendTurn({ threadId: 'thread-resume-slow', input: 'early message' })
         .then(
           () => undefined,
           (error: unknown) => error,
         );
       expect(refusal).toBeInstanceOf(SendTurnRefusedError);
-      expect((refusal as Error).message).toContain('still reattaching');
+      // The literal, not the constant: the client's queue keys on this string.
+      expect((refusal as { code?: unknown }).code).toBe(
+        'provider_session_starting',
+      );
       expect(processes[0].promptContents).toEqual([]);
 
       releaseLoad();
       await started;
-      const turn = await adapter.sendTurn({
-        threadId: 'thread-resume-race',
-        input: 'after the load',
+      const retry = await adapter.sendTurn({
+        threadId: 'thread-resume-slow',
+        input: 'early message',
       });
-      expect(turn.threadId).toBe('thread-resume-race');
+      expect(retry.threadId).toBe('thread-resume-slow');
       expect(processes[0].promptContents).toHaveLength(1);
     });
 

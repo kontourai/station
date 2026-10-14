@@ -75,6 +75,7 @@ import {
   MODEL_LAUNCH_REQUESTED_OVERRIDE_METADATA_KEY,
   MUSE_TURN_SLOT_RELEASING_CODE,
   PORTABLE_EXECUTION_CONSENT_METADATA_KEY,
+  PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
@@ -609,10 +610,13 @@ export class OrchestrationCommandDispatchError extends Error {
  *   still exiting.
  * - #2324: a send that arrived while the engine was running a turn it opened
  *   on its own; it succeeds once that turn closes.
+ * - A send that outwaited its session's engine start (an ACP reattach); it
+ *   succeeds once the session is ready.
  */
 const RETRYABLE_ADAPTER_REFUSAL_CODES: ReadonlySet<string> = new Set([
   MUSE_TURN_SLOT_RELEASING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
 ]);
 
 /**

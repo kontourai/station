@@ -6,6 +6,7 @@ import type {
 import {
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   MODEL_NOT_ADVERTISED_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
@@ -992,9 +993,11 @@ export function useSendMessage(
         // refusal is retryable: move the message into the queue that drains
         // when that turn finishes, rather than calling it failed. A send with
         // attachments cannot ride the text queue, so it keeps the ordinary
-        // error and Retry below.
+        // error and Retry below. A send that outwaited its session's start
+        // (an ACP reattach) is queued the same way.
         if (
-          err.code === PROVIDER_TURN_IN_PROGRESS_CODE &&
+          (err.code === PROVIDER_TURN_IN_PROGRESS_CODE ||
+            err.code === PROVIDER_SESSION_STARTING_CODE) &&
           !options?.dispatch &&
           !(attachments && attachments.length > 0)
         ) {

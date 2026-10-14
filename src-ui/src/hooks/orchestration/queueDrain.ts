@@ -1,5 +1,6 @@
 import {
   MUSE_TURN_SLOT_RELEASING_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
@@ -64,6 +65,9 @@ const RETRYABLE_REJECTION_CODES: ReadonlySet<string> = new Set([
   // #2324: a send that arrived while the engine was running a turn it opened
   // on its own. The same send succeeds once that turn ends.
   PROVIDER_TURN_IN_PROGRESS_CODE,
+  // A send that outwaited its session's engine start (an ACP reattach). The
+  // same send succeeds once the session is ready.
+  PROVIDER_SESSION_STARTING_CODE,
 ]);
 
 /**
@@ -679,8 +683,12 @@ export function drainQueuedMessageOnTurnCompleted(
         // turn is visibly open (it ended while this send was in flight, or
         // has not published its start yet) nothing else would drain it, so
         // the drain is retried after a short delay, a bounded number of
-        // times.
-        if (code === PROVIDER_TURN_IN_PROGRESS_CODE) {
+        // times. A send that outwaited its session's start (an ACP
+        // reattach) waits the same way.
+        if (
+          code === PROVIDER_TURN_IN_PROGRESS_CODE ||
+          code === PROVIDER_SESSION_STARTING_CODE
+        ) {
           activeChatsStore.updateChat(threadId, {
             status: 'idle',
             error: undefined,

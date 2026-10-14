@@ -63,6 +63,7 @@ import type {
 } from '../../../providers/adapter-shape.js';
 import {
   AttachmentInputUnsupportedError,
+  ProviderSessionStartingError,
   ProviderTurnEndedError,
   ProviderTurnInProgressError,
   SendTurnRefusedError,
@@ -15760,6 +15761,41 @@ describe('OrchestrationService', () => {
       input: { threadId: 'thread-provider-turn', input: 'during the reply' },
     });
     expect(retry).toMatchObject({ threadId: 'thread-provider-turn' });
+    expect(claude.sendTurn).toHaveBeenCalledTimes(2);
+  });
+
+  test('a send that outwaits its session start keeps its retryable code, and the retry dispatches', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-session-starting',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    claude.sendTurn.mockRejectedValueOnce(new ProviderSessionStartingError());
+    const failure = await service
+      .dispatchWithReceipt({
+        type: 'sendTurn',
+        input: { threadId: 'thread-session-starting', input: 'early message' },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(failure).toBeInstanceOf(OrchestrationCommandDispatchError);
+    const dispatchError = failure as OrchestrationCommandDispatchError;
+    // The literal, not the constant: the client's queue keys on this string.
+    expect(dispatchError.code).toBe('provider_session_starting');
+    expect(dispatchError.retryable).toBe(true);
+    expect(dispatchError.receipt.status).toBe('rejected');
+    expect(dispatchError.outcome).toBeUndefined();
+    const retry = await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'thread-session-starting', input: 'early message' },
+    });
+    expect(retry).toMatchObject({ threadId: 'thread-session-starting' });
     expect(claude.sendTurn).toHaveBeenCalledTimes(2);
   });
 

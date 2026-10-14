@@ -1009,6 +1009,37 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([]);
   });
 
+  test('a send refused because its session is still starting waits in the queue and is re-sent', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['sent during the reattach'],
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new ChatHttpError(
+        400,
+        'The agent is still starting; your message will be sent when it is ready.',
+        'provider_session_starting',
+      ),
+    );
+
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+
+    const waiting = activeChatsStore.getSnapshot()[threadId];
+    // Waiting, not failed and not dropped into the unsent record.
+    expect(waiting.status).not.toBe('error');
+    expect(waiting.error).toBeUndefined();
+    expect(waiting.queuedMessages).toEqual(['sent during the reattach']);
+    expect(waiting.unsentMessages ?? []).toEqual([]);
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2);
+    expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([]);
+  });
+
   test('#2324 delta review: a pending provider-turn retry is dropped when the chat was removed before it fires', async () => {
     activeChatsStore.updateChat(threadId, {
       queuedMessages: ['after the reply'],
