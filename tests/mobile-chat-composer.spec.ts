@@ -4773,38 +4773,43 @@ async function queueSendForRetry(
  * button merely existing says nothing; one counts when it is wholly on screen,
  * at least 44px each way and the topmost element at its own centre.
  */
-async function discardButtonReport(page: Page) {
+/** The queued notice's Discard…, in the transcript notice and the composer. */
+function noticeDiscards(page: Page) {
   return page
-    .getByRole('button', { name: 'Discard', exact: true })
-    .evaluateAll((buttons) =>
-      buttons.map((button, index) => {
-        const rect = button.getBoundingClientRect();
-        const hit = document.elementFromPoint(
-          rect.x + rect.width / 2,
-          rect.y + rect.height / 2,
-        );
-        const onScreen =
-          rect.width > 0 &&
-          rect.height > 0 &&
-          rect.left >= 0 &&
-          rect.top >= 0 &&
-          rect.right <= innerWidth &&
-          rect.bottom <= innerHeight;
-        return {
-          index,
-          inComposer: button.closest('.chat-input') !== null,
-          box: [rect.left, rect.top, rect.width, rect.height].map(Math.round),
-          viewport: [innerWidth, innerHeight],
-          onScreen,
-          touchTarget: rect.width >= 43.99 && rect.height >= 43.99,
-          topmost: Boolean(hit && button.contains(hit)),
-          coveredBy:
-            hit && !button.contains(hit)
-              ? `${hit.tagName.toLowerCase()}.${String(hit.className).slice(0, 60)}`
-              : null,
-        };
-      }),
-    );
+    .locator('.chat-input, .ephemeral-message')
+    .getByRole('button', { name: 'Discard…', exact: true });
+}
+
+async function discardButtonReport(page: Page) {
+  return noticeDiscards(page).evaluateAll((buttons) =>
+    buttons.map((button, index) => {
+      const rect = button.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        rect.x + rect.width / 2,
+        rect.y + rect.height / 2,
+      );
+      const onScreen =
+        rect.width > 0 &&
+        rect.height > 0 &&
+        rect.left >= 0 &&
+        rect.top >= 0 &&
+        rect.right <= innerWidth &&
+        rect.bottom <= innerHeight;
+      return {
+        index,
+        inComposer: button.closest('.chat-input') !== null,
+        box: [rect.left, rect.top, rect.width, rect.height].map(Math.round),
+        viewport: [innerWidth, innerHeight],
+        onScreen,
+        touchTarget: rect.width >= 43.99 && rect.height >= 43.99,
+        topmost: Boolean(hit && button.contains(hit)),
+        coveredBy:
+          hit && !button.contains(hit)
+            ? `${hit.tagName.toLowerCase()}.${String(hit.className).slice(0, 60)}`
+            : null,
+      };
+    }),
+  );
 }
 
 for (const [name, viewport, maximize] of [
@@ -4927,15 +4932,15 @@ for (const [name, viewport, maximize] of [
     const reachable = (await discardButtonReport(page)).find(
       (report) => report.onScreen && report.touchTarget && report.topmost,
     );
-    const discard = page
-      .getByRole('button', { name: 'Discard', exact: true })
-      .nth(reachable!.index);
+    const discard = noticeDiscards(page).nth(reachable!.index);
     await discard.focus();
     await expect(discard).toBeFocused();
     await page.keyboard.press('Enter');
-    await expect(
-      page.getByRole('button', { name: 'Discard', exact: true }),
-    ).toHaveCount(0);
+    // The message may already have reached Station: Discard asks first.
+    const confirm = page.getByRole('button', { name: 'I checked, discard it' });
+    await confirm.focus();
+    await page.keyboard.press('Enter');
+    await expect(noticeDiscards(page)).toHaveCount(0);
     await expect(
       page.getByText("Send wasn't confirmed — queued to retry automatically"),
     ).toHaveCount(0);
@@ -4967,7 +4972,5 @@ test('deleting the queued message from the queue panel clears its queued-retry n
       .getByText(/waiting for Station to confirm/i),
   ).toHaveCount(0);
   await expect(notice).toHaveCount(0);
-  await expect(
-    page.getByRole('button', { name: 'Discard', exact: true }),
-  ).toHaveCount(0);
+  await expect(noticeDiscards(page)).toHaveCount(0);
 });

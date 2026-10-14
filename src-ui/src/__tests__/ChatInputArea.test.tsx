@@ -1900,3 +1900,28 @@ describe('ChatInputArea send-failure notice', () => {
     expect(document.querySelector('.chat-input__send-failure')).toBeNull();
   });
 });
+
+describe('ChatInputArea queued-retry Discard', () => {
+  test('a Discard that may withdraw a message Station has asks first, with the risk stated', () => {
+    const onDiscard = vi.fn();
+    renderChatInputArea({
+      queuedRetryNotice: {
+        text: "Send wasn't confirmed — queued to retry automatically",
+        onDiscard,
+        confirm: true,
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Discard…' }));
+    const confirm = screen.getByRole('group', {
+      name: 'Discard this message?',
+    });
+    expect(confirm.textContent).toContain(
+      'It may already have reached the agent.',
+    );
+    expect(onDiscard).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'I checked, discard it' }),
+    );
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+  });
+});

@@ -250,7 +250,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     );
   });
 
-  it('projects a durable invocation claim as possible-effect evidence after reload', () => {
+  it("lists another window's claimed send as sending, never as uncertain or withdrawable", () => {
     render(
       <OutboundQueuedMessages
         sessionId="session-1"
@@ -267,12 +267,15 @@ describe('OutboundQueuedMessages (station#2522)', () => {
       />,
     );
 
-    expect(screen.getByText('May have reached the agent')).not.toBeNull();
+    expect(screen.getByText('1 sending')).not.toBeNull();
+    expect(screen.getByText('Sending')).not.toBeNull();
+    expect(screen.queryByText(/may have reached/i)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Discard…' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Edit message' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Delete message' })).toBeNull();
   });
 
-  it('separates waiting, accepted, and delivery-uncertain counts', () => {
+  it('separates waiting, accepted, and may-have-reached counts, in sentence case', () => {
     render(
       <OutboundQueuedMessages
         sessionId="session-1"
@@ -291,11 +294,12 @@ describe('OutboundQueuedMessages (station#2522)', () => {
       />,
     );
 
-    expect(
-      screen.getByText(
-        '1 message waiting to send · 1 accepted and waiting for completion · 1 delivery-uncertain; inspect this session',
-      ),
-    ).not.toBeNull();
+    const summary = screen.getByText(
+      '1 message waiting to send · 1 accepted and waiting for completion · 1 may have reached the agent',
+    );
+    expect(summary.classList.contains('queued-messages__label--summary')).toBe(
+      true,
+    );
   });
 
   it('counts failed drafts as action-required rather than waiting to send', () => {
@@ -397,9 +401,10 @@ describe('OutboundQueuedMessages (station#2522)', () => {
       />,
     );
     expect(screen.getByText('1 waiting for Station to confirm')).toBeTruthy();
+    // The same words its bubble uses.
     expect(
       screen.getByText(
-        'No answer yet; sent once Station confirms it never arrived',
+        'No answer yet · sends once Station confirms it never arrived',
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/delivery-uncertain/)).toBeNull();

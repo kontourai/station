@@ -2112,7 +2112,9 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
         const notice = chat?.ephemeralMessages?.at(-1);
         expect(notice?.content).toBe(testCase.expected);
         expect(notice?.content).not.toMatch(testCase.forbidden);
-        expect(notice?.action?.label).toBe('Discard');
+        // The message may already have reached Station: Discard asks first.
+        expect(notice?.action?.label).toBe('Discard…');
+        expect(notice?.action?.confirm).toBe('unconfirmed-discard');
         // The composer repeats this notice's Discard while a short dock hides
         // the transcript; it finds the notice by this flag, which a send
         // failure (the composer's other repeated line) must not carry.

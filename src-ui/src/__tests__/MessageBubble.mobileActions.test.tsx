@@ -389,7 +389,7 @@ describe('MessageBubble phone copy and details actions', () => {
     expect(copyPaths).toEqual(Array(5).fill(reference));
   });
 
-  it("puts a user message's Task pin and its ⋯ menu on the sheet's one row", async () => {
+  it("puts a user message's Task pin and its actions on the sheet's one row, with no second ⋯", async () => {
     mobile.current = true;
     renderRow(
       {
@@ -407,17 +407,64 @@ describe('MessageBubble phone copy and details actions', () => {
     );
     const sheet = screen.getByRole('dialog', { name: 'Your message actions' });
     const summary = sheet.querySelector('.message-details__summary');
-    const menu = await within(sheet).findByRole('button', {
-      name: 'More message actions',
+    // The sheet IS the menu's surface: its rows are listed in place.
+    const item = await within(sheet).findByRole('menuitem', {
+      name: 'New chat from this message',
     });
-    expect(menu.closest('.message-details__actions')?.parentElement).toBe(
+    expect(item.closest('.message-details__actions')?.parentElement).toBe(
       summary,
     );
+    expect(
+      within(sheet).queryByRole('button', { name: 'More message actions' }),
+    ).toBeNull();
     expect(
       sheet
         .querySelector('.message__task-input-action')
         ?.closest('.message-details__lead')?.parentElement,
     ).toBe(summary);
+  });
+
+  it("lists a not-sent message's Discard in the phone sheet itself, one level deep", async () => {
+    mobile.current = true;
+    const { activeChatsStore } = await import('../contexts/active-chats-store');
+    activeChatsStore.initChat('thread-1', {
+      agentSlug: 'agent',
+      agentName: 'Station',
+      title: 'Not sent',
+    });
+    activeChatsStore.updateChat('thread-1', {
+      outboundQueuedTurns: [
+        {
+          clientTurnId: 'refused-key',
+          content: 'Refused.',
+          createdAt: 1,
+          status: 'failed',
+        },
+      ],
+    });
+    try {
+      renderRow({
+        role: 'user',
+        content: 'Refused.',
+        clientId: 'refused-key',
+      } as ChatMessage);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Your message actions' }),
+      );
+      const sheet = screen.getByRole('dialog', {
+        name: 'Your message actions',
+      });
+      expect(
+        await within(sheet).findByRole('menuitem', {
+          name: 'Discard unsent message',
+        }),
+      ).toBeTruthy();
+      expect(
+        within(sheet).queryByRole('button', { name: 'More message actions' }),
+      ).toBeNull();
+    } finally {
+      activeChatsStore.removeChat('thread-1');
+    }
   });
 
   it('opens a user sheet whose only item is the Task pin', () => {

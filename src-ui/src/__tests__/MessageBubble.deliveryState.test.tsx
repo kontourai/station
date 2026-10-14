@@ -375,6 +375,25 @@ describe('MessageBubble delivery state', () => {
     expect(region?.textContent).toBe('Received · safe to close');
   });
 
+  it('a send with no answer reads as waiting for Station, in the words the list uses', () => {
+    setChat({
+      outboundQueuedTurns: [
+        {
+          clientTurnId: KEY,
+          content: TEXT,
+          createdAt: 1,
+          status: 'invoking',
+          awaitingLookup: true,
+        },
+      ],
+    });
+    const { bubble } = renderBubble();
+    expectOutlined(bubble, 'awaiting-confirmation');
+    expect(statusText(bubble)).toBe(
+      'No answer yet · sends once Station confirms it never arrived',
+    );
+  });
+
   it('waiting behind an earlier unsent message says so, not "sends when connected"', () => {
     setChat({
       outboundQueuedTurns: [

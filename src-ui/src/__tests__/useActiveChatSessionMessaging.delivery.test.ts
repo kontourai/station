@@ -164,7 +164,7 @@ describe('useSendMessage: durable before the request', () => {
     ).toBe('delivered');
   });
 
-  it("no answer: the notice states what Discard cannot undo, and its Discard withdraws the row awaiting Station's lookup", async () => {
+  it("no answer: the notice's Discard asks first, then withdraws the row awaiting Station's lookup", async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(
       new TypeError('Failed to fetch'),
     );
@@ -178,14 +178,14 @@ describe('useSendMessage: durable before the request', () => {
     const notice = activeChatsStore
       .getSnapshot()
       [chat]?.ephemeralMessages?.find(
-        (message) => message.action?.label === 'Discard',
+        (message) => message.action?.label === 'Discard…',
       );
     expect(notice?.content).toContain(
       "Send wasn't confirmed — queued to retry automatically",
     );
-    expect(notice?.content).toContain(
-      'cannot take it back if it already reached the agent',
-    );
+    // The message may already have reached Station: the shared confirmation
+    // states the risk before the handler runs.
+    expect(notice?.action?.confirm).toBe('unconfirmed-discard');
     await act(async () => {
       await notice!.action!.handler();
     });
