@@ -22,6 +22,8 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import {
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  CLIENT_TURN_IN_FLIGHT_CODE,
+  PROVIDER_SESSION_START_FAILED_CODE,
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
@@ -139,6 +141,35 @@ export class ProviderSessionStartingError extends SendTurnRefusedError {
       'The session is still starting. Nothing was sent; try again in a moment.',
     );
     this.name = 'ProviderSessionStartingError';
+  }
+}
+
+/**
+ * A send whose session's engine start failed while it waited. Nothing was
+ * sent; `reason` is short and user-facing (engine detail belongs in logs).
+ * Kept by clients with a Retry rather than dropped.
+ */
+export class ProviderSessionStartFailedError extends SendTurnRefusedError {
+  readonly code = PROVIDER_SESSION_START_FAILED_CODE;
+
+  constructor(reason: string) {
+    super(`The agent's session couldn't start: ${reason}`);
+    this.name = 'ProviderSessionStartFailedError';
+  }
+}
+
+/**
+ * A send whose `clientTurnId` another attempt still holds, or released
+ * without sending. Nothing new was sent; the same key may be sent again.
+ */
+export class ClientTurnInFlightError extends SendTurnRefusedError {
+  readonly code = CLIENT_TURN_IN_FLIGHT_CODE;
+
+  constructor() {
+    super(
+      'An earlier attempt of this message has not finished. Nothing new was sent; try again in a moment.',
+    );
+    this.name = 'ClientTurnInFlightError';
   }
 }
 

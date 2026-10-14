@@ -63,6 +63,7 @@ import type {
 } from '../../../providers/adapter-shape.js';
 import {
   AttachmentInputUnsupportedError,
+  ProviderSessionStartFailedError,
   ProviderSessionStartingError,
   ProviderTurnEndedError,
   ProviderTurnInProgressError,
@@ -15921,6 +15922,88 @@ describe('OrchestrationService', () => {
       }),
     ).resolves.toMatchObject({ threadId: 'thread-ready-abort' });
     expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+  });
+
+  test('a send whose session failed to start keeps its keep-it code and is not recorded as possibly started', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-start-failed',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    (claude as ProviderAdapterShape).whenSessionReady = vi.fn(async () => {
+      throw new ProviderSessionStartFailedError('native session is gone');
+    });
+    const failure = await service
+      .dispatchWithReceipt({
+        type: 'sendTurn',
+        input: { threadId: 'thread-start-failed', input: 'early message' },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    const dispatchError = failure as OrchestrationCommandDispatchError;
+    expect(dispatchError).toBeInstanceOf(OrchestrationCommandDispatchError);
+    // The literal, not the constant: the client's queue keys on this string.
+    expect(dispatchError.code).toBe('provider_session_start_failed');
+    expect(dispatchError.retryable).toBe(true);
+    expect(dispatchError.receipt.status).toBe('rejected');
+    expect(dispatchError.outcome).toBeUndefined();
+    expect(claude.sendTurn).not.toHaveBeenCalled();
+  });
+
+  test('a retry with the same key whose first attempt is released unsent is refused retryably, promptly', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-key-released',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    let rejectFirst!: (error: Error) => void;
+    const whenSessionReady = vi.fn(
+      () =>
+        new Promise<void>((_, reject) => {
+          rejectFirst = reject;
+        }),
+    );
+    (claude as ProviderAdapterShape).whenSessionReady = whenSessionReady;
+    const send = () =>
+      service
+        .dispatch({
+          type: 'sendTurn',
+          input: {
+            threadId: 'thread-key-released',
+            input: 'same message',
+            clientTurnId: 'client-key-released',
+          },
+        })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+    const first = send();
+    await vi.waitFor(() => expect(whenSessionReady).toHaveBeenCalledTimes(1));
+    // The retry finds the key held by the first attempt and waits on it.
+    const second = send();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    rejectFirst(new ProviderSessionStartingError());
+    expect(await first).toMatchObject({ code: 'provider_session_starting' });
+
+    expect(await settlesWithin(second, 2_000)).toBe('settled');
+    const retry = (await second) as OrchestrationCommandDispatchError;
+    expect(retry).toBeInstanceOf(OrchestrationCommandDispatchError);
+    expect(retry.code).toBe('client_turn_in_flight');
+    expect(retry.retryable).toBe(true);
+    expect(retry.receipt.status).toBe('rejected');
+    expect(claude.sendTurn).not.toHaveBeenCalled();
+    expect(whenSessionReady).toHaveBeenCalledTimes(1);
   });
 
   test('a send that outwaits its session start keeps its retryable code, and the retry dispatches', async () => {

@@ -83,6 +83,7 @@ import {
   type ProviderAdapterShape,
   type ProviderSendTurnInput,
   type ProviderSession,
+  ProviderSessionStartFailedError,
   type ProviderSessionStartInput,
   ProviderSessionStartingError,
   ProviderTurnEndedError,
@@ -1719,22 +1720,31 @@ export class AcpAdapter implements ProviderAdapterShape {
     });
     // Still starting: retryable, so the client keeps the message queued.
     if (outcome === 'timeout') throw new ProviderSessionStartingError();
-    if (record.startFailure !== undefined) {
-      // The engine's own words stay in the log; the refusal is user-facing.
-      (this.options.logger ?? console).warn?.(
-        { threadId, connectionId: record.connectionId },
-        'ACP send refused: the session it waited for failed to start',
-        record.startFailure,
-      );
-      throw new SendTurnRefusedError(
-        `The agent's session couldn't start: ${shortReason(record.startFailure)}`,
-      );
-    }
+    // A Stop ended the start: the user's decision, so definitive.
     if (
       outcome === 'stopping' ||
-      this.sessions.get(threadId) !== record ||
-      record.stopping
+      record.stopping ||
+      record.startFailure instanceof AcpSessionStartCancelledError
     ) {
+      throw new SendTurnRefusedError(
+        "The agent's session ended before it was ready. Nothing was sent.",
+      );
+    }
+    if (record.startFailure !== undefined) {
+      // The engine's own words stay in the log; the refusal is user-facing.
+      this.options.logger?.warn?.(
+        {
+          threadId,
+          connectionId: record.connectionId,
+          err: record.startFailure,
+        },
+        'ACP send refused: the session it waited for failed to start',
+      );
+      throw new ProviderSessionStartFailedError(
+        shortReason(record.startFailure),
+      );
+    }
+    if (this.sessions.get(threadId) !== record) {
       throw new SendTurnRefusedError(
         "The agent's session ended before it was ready. Nothing was sent.",
       );

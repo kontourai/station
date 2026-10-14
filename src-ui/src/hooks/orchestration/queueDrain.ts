@@ -1,5 +1,7 @@
 import {
+  CLIENT_TURN_IN_FLIGHT_CODE,
   MUSE_TURN_SLOT_RELEASING_CODE,
+  PROVIDER_SESSION_START_FAILED_CODE,
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
@@ -68,6 +70,13 @@ const RETRYABLE_REJECTION_CODES: ReadonlySet<string> = new Set([
   // A send that outwaited its session's engine start (an ACP reattach). The
   // same send succeeds once the session is ready.
   PROVIDER_SESSION_STARTING_CODE,
+  // A send whose session failed to start while it waited. Nothing was sent;
+  // it stays queued with the reason and Retry (no automatic re-send: the
+  // same failure would likely repeat).
+  PROVIDER_SESSION_START_FAILED_CODE,
+  // An earlier attempt of this same message still held its key or released
+  // it unsent. Re-sent with the same key.
+  CLIENT_TURN_IN_FLIGHT_CODE,
 ]);
 
 /**
@@ -182,7 +191,9 @@ function scheduleProviderTurnRedrain(
           message:
             code === PROVIDER_SESSION_STARTING_CODE
               ? 'The session is still starting. Your message is still queued; retry to send it.'
-              : 'The agent is still replying. Your message is still queued; retry to send it.',
+              : code === CLIENT_TURN_IN_FLIGHT_CODE
+                ? 'An earlier attempt of this message has not finished. It is still queued; retry to send it.'
+                : 'The agent is still replying. Your message is still queued; retry to send it.',
           code,
           at: Date.now(),
         },
@@ -706,7 +717,8 @@ export function drainQueuedMessageOnTurnCompleted(
         // reattach) waits the same way.
         if (
           code === PROVIDER_TURN_IN_PROGRESS_CODE ||
-          code === PROVIDER_SESSION_STARTING_CODE
+          code === PROVIDER_SESSION_STARTING_CODE ||
+          code === CLIENT_TURN_IN_FLIGHT_CODE
         ) {
           activeChatsStore.updateChat(threadId, {
             status: 'idle',

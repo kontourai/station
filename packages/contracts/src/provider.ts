@@ -847,6 +847,22 @@ export const PROVIDER_TURN_IN_PROGRESS_CODE = 'provider_turn_in_progress';
 export const PROVIDER_SESSION_STARTING_CODE = 'provider_session_starting';
 
 /**
+ * Refusal code for a send whose session's engine start failed while the send
+ * waited for it. Nothing was sent. Kept, not dropped: the client keeps the
+ * message queued with the reason and a Retry, and does not retry on its own.
+ */
+export const PROVIDER_SESSION_START_FAILED_CODE =
+  'provider_session_start_failed';
+
+/**
+ * Refusal code for a send whose idempotency key (`clientTurnId`) another
+ * in-flight attempt still holds, or released without sending. Nothing new
+ * was sent. Retryable with the same key: clients keep the message queued and
+ * re-send it.
+ */
+export const CLIENT_TURN_IN_FLIGHT_CODE = 'client_turn_in_flight';
+
+/**
  * A send refused before any engine effect because the bound engine cannot
  * take the attached input (an ACP engine whose `initialize` handshake did not
  * advertise `promptCapabilities.image`, or a file the engine only accepts as
@@ -1191,6 +1207,14 @@ export interface ProviderSendTurnInput {
    * HTTP/client schemas do not accept this field.
    */
   recoveryCorrelationId?: string;
+  /**
+   * Cancels this send before the engine has it (and interrupts a turn the
+   * engine accepted after it fired). Only an explicit, server-owned decision
+   * may supply it: a Stop/cancel, a server deadline, a shutdown. Never wire
+   * an HTTP request's or client connection's signal here: once Station has
+   * the message, the client may close or disconnect and the send must still
+   * go through.
+   */
   signal?: AbortSignal;
   /**
    * A client-generated per-turn idempotency

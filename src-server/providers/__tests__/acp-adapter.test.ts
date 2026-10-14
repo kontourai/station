@@ -3043,7 +3043,7 @@ describe('AcpAdapter', () => {
     /** Start a resume whose `session/load` stays open until released. */
     const startHeldReattach = async (
       threadId: string,
-      options: { sendTurnStartWaitMs?: number } = {},
+      options: { sendTurnStartWaitMs?: number; logger?: unknown } = {},
     ) => {
       let releaseLoad!: () => void;
       let failLoad!: (error: Error) => void;
@@ -3144,9 +3144,13 @@ describe('AcpAdapter', () => {
       await started;
     });
 
-    test('a wait on a reattach that fails is refused in plain words, not left hanging', async () => {
+    test('a wait on a reattach that fails is refused in plain words, with a keep-it code, not left hanging', async () => {
+      const warn = vi.fn();
       const { adapter, processes, started, failLoad } = await startHeldReattach(
         'thread-resume-fails',
+        {
+          logger: { debug: () => {}, warn, error: () => {} },
+        },
       );
       const waiting = adapter.whenSessionReady('thread-resume-fails').then(
         () => undefined,
@@ -3159,6 +3163,20 @@ describe('AcpAdapter', () => {
       expect(refusal).toBeInstanceOf(SendTurnRefusedError);
       expect((refusal as Error).message).toBe(
         "The agent's session couldn't start: native session is gone",
+      );
+      // The literal: the client keeps the message queued on this code.
+      expect((refusal as { code?: unknown }).code).toBe(
+        'provider_session_start_failed',
+      );
+      // The engine's full error goes to the Station log, not the user.
+      expect(warn).toHaveBeenCalledWith(
+        expect.objectContaining({
+          threadId: 'thread-resume-fails',
+          err: expect.objectContaining({
+            message: expect.stringContaining('engine internals'),
+          }),
+        }),
+        expect.any(String),
       );
       expect(processes[0].promptContents).toEqual([]);
     });
