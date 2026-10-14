@@ -2145,6 +2145,11 @@
   .app-toolbar__conn .app-toolbar__conn-state {
     display: none;
   }
+  /* "Answer details and actions" wraps to two lines on the narrowest phones
+     in the phone panel's large title size; one step down it keeps one line. */
+  .message-details__panel .responsive-dialog-header strong {
+    font-size: var(--k-text-md);
+  }
 }
 
 /* Mobile transcripts spend their width on the words. Secondary controls open
@@ -2288,13 +2293,6 @@
    default by specificity, not by which stylesheet loaded last. */
 .message-details__panel.responsive-surface-panel {
   --responsive-header-padding: var(--k-space-2) var(--k-space-3);
-}
-/* "Answer details and actions" wraps to two lines at 320px in the phone
-   panel's large title size; one step down it keeps one line. */
-@media (max-width: 359px) {
-  .message-details__panel .responsive-dialog-header strong {
-    font-size: var(--k-text-md);
-  }
 }
 /* One compact block. Its summary row puts the identity chips at the start and
    the actions at the end; the actions wrap to a row of their own only when the
