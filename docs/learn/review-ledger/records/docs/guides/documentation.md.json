@@ -40,7 +40,9 @@
 
     ".github/workflows/docs-kit.yml",
 
-    "corpus.json"
+    "corpus.json",
+
+    "scripts/corpus-decisions.mjs"
   ],
 
   "checks": [

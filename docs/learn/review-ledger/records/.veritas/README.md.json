@@ -104,7 +104,9 @@
 
     "package.json#/scripts/veritas:readiness:diff",
 
-    "package.json#/scripts/veritas:shadow"
+    "package.json#/scripts/veritas:shadow",
+
+    "scripts/proof-family-lane.mjs"
   ],
 
   "checks": [
