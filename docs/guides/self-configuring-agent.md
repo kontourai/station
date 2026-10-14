@@ -401,6 +401,9 @@ inputs: nothing names a Project, an owner, or a host.
   filter (it reads both `session.started` and `session.configured` start records,
   as the scope owner does) that never drops a row the scope check would admit;
   every row is still held to the scope rule, which narrowing never replaces.
+  The one exception is the caller's own conversation: its current Session is
+  listed and marked `self`, even when the caller's Project cannot be
+  read or that Session runs `host`, as `get_session_digest` reads it.
 - `get_session_digest` summarizes one Session from what the event store
   recorded. No model summarizes, and a fact that was not recorded is absent.
   The `session` has `title`, `projectSlug`, `engine`, `agent`, `status`, and

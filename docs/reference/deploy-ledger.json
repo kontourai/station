@@ -1,5 +1,42 @@
 [
   {
+    "timestampUtc": "2026-10-14T03:00:48Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2478.38498029379",
+    "sha": "6ea16e9f0d03ed3fd81a612d562dd9dd94f06e3e",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38498029379",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2478.38498029379 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "26a8add197eea235bb7b4f6fddcee3a381fa10d2",
+      "groups": {
+        "feat": [
+          "[#3624](https://github.com/kontourai/station/pull/3624) feat(brand): ship the River app icon, channel palettes and square-tile marks",
+          "[#3635](https://github.com/kontourai/station/pull/3635) feat(delegation): deliver a delegated task's result to its parent conversation, exactly once (#3158)",
+          "[#3584](https://github.com/kontourai/station/pull/3584) feat(access): Station groups cap what a person's devices may use (#3557)"
+        ],
+        "fix": [
+          "[#3644](https://github.com/kontourai/station/pull/3644) fix: order session-terminal retirement by event sequence",
+          "[#3643](https://github.com/kontourai/station/pull/3643) fix(docs): bind release reviews to relevant manifest and lock values",
+          "[#3641](https://github.com/kontourai/station/pull/3641) fix(orchestration): retry a failed interrupted-turn recovery within the boot and surface exhaustion"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#3642](https://github.com/kontourai/station/pull/3642) chore(docs): declare Corpus v2 purpose and building blocks"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
     "timestampUtc": "2026-10-13T20:47:53Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2477.38449708392",
