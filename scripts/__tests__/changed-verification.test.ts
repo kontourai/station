@@ -2617,6 +2617,7 @@ setInterval(() => {}, 1000);`,
     'missing-companion',
     'malformed-companion',
     'ambiguous-companion',
+    'retention-unavailable',
   ] as const)(
     'keeps a real Vitest failure truthful with %s diagnostic reports',
     async (mode) => {
@@ -2692,6 +2693,13 @@ describe('primary error fixture', () => {
           if (mode === 'missing') rmSync(temporaryReport);
           if (mode === 'oversized')
             appendFileSync(temporaryReport, ' '.repeat(16 * 1024 * 1024));
+          if (mode === 'retention-unavailable') {
+            mkdirSync(join(root, '.kontourai'), { recursive: true });
+            writeFileSync(
+              join(root, '.kontourai/verification-output'),
+              'blocked',
+            );
+          }
           const companionPath = `${temporaryReport}.errors.json`;
           if (existsSync(companionPath)) {
             if (mode === 'missing-companion') rmSync(companionPath);
@@ -2714,7 +2722,28 @@ describe('primary error fixture', () => {
       expect(officialMessages).not.toContain('fixture primary failure');
       expect(result.exitCode).toBe(1);
       expect(result.receipt.terminal.passed).toBe(false);
-      expect(existsSync(temporaryReport)).toBe(false);
+      expect(existsSync(temporaryReport)).toBe(
+        mode === 'retention-unavailable',
+      );
+      if (mode === 'retention-unavailable') {
+        expect(result.receipt.counts).toMatchObject({
+          executed: 1,
+          passed: 0,
+          failed: 1,
+          infrastructureErrors: 0,
+        });
+        expect(result.executed[0].failedTests[0].excerpt).toContain(
+          'fixture primary failure',
+        );
+        expect(result.executed[0].retainedReports).toEqual([]);
+        expect(result.executed[0].retentionFailure.reasons).toHaveLength(2);
+        expect(result.executed[0].retentionFailure.temporaryDirectory).toBe(
+          dirname(temporaryReport),
+        );
+        expect(existsSync(`${temporaryReport}.errors.json`)).toBe(true);
+        rmSync(dirname(temporaryReport), { recursive: true });
+        return;
+      }
       if (mode === 'retained' || mode === 'oversized') {
         expect(
           result.executed[0].failedTests[0].excerpt,

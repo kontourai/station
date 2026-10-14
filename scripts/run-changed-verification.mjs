@@ -1076,13 +1076,18 @@ function retainFailedReport(
       writeFileSync(target, contents);
     }
     return {
-      path: local,
+      path: local.split(sep).join('/'),
       sha256: createHash('sha256').update(contents).digest('hex'),
     };
   } catch (error) {
-    process.stderr.write(
-      `[fast-checks] could not retain the failing Vitest report: ${error instanceof Error ? error.message : String(error)}\n`,
+    const omitted = boundedRedactedText(
+      error instanceof Error ? error.message : String(error),
+      FAILURE_EXCERPT_LIMIT,
     );
+    process.stderr.write(
+      `[fast-checks] could not retain the failing Vitest report: ${omitted}\n`,
+    );
+    return { omitted };
   }
 }
 
@@ -1143,6 +1148,7 @@ async function runVitest(
   let preparation;
   const reportDirectory = mkdtempSync(join(tmpdir(), 'station-test-changed-'));
   let durable = false;
+  let reportsDurable = true;
   try {
     for (const [index, execution] of plannedExecutions.entries()) {
       if (selection.signal?.aborted) {
@@ -1238,7 +1244,7 @@ async function runVitest(
         execution.error
       ) {
         if (failedReportDir) {
-          execution.retainedReports = [
+          const retained = [
             retainFailedReport(
               reportPath,
               failedReportDir,
@@ -1254,13 +1260,26 @@ async function runVitest(
               root,
               '.errors',
             ),
-          ].filter(Boolean);
+          ];
+          execution.retainedReports = retained.filter(
+            (report) => 'path' in report,
+          );
+          const reasons = retained
+            .filter((report) => 'omitted' in report)
+            .map((report) => report.omitted);
+          if (reasons.length) {
+            reportsDurable = false;
+            execution.retentionFailure = {
+              reasons,
+              temporaryDirectory: reportDirectory,
+            };
+          }
         }
         break;
       }
     }
     beforeCleanup(executions, preparation);
-    durable = true;
+    durable = reportsDurable;
   } finally {
     // Preserve the raw reporter directory if durable diagnostic persistence
     // fails. Successful runs remove it only after the stable artifact exists.
@@ -1422,6 +1441,9 @@ function diagnosticsArtifact(result, counts, provenance) {
         : {}),
       ...(execution.retainedReports
         ? { retainedReports: execution.retainedReports }
+        : {}),
+      ...(execution.retentionFailure
+        ? { retentionFailure: execution.retentionFailure }
         : {}),
       ...(execution.empty ? { empty: true } : {}),
       ...(execution.emptyReason ? { emptyReason: execution.emptyReason } : {}),
@@ -2250,6 +2272,9 @@ export async function runChangedVerificationShard(
         : {}),
       ...(execution.retainedReports
         ? { retainedReports: execution.retainedReports }
+        : {}),
+      ...(execution.retentionFailure
+        ? { retentionFailure: execution.retentionFailure }
         : {}),
     })),
   };
