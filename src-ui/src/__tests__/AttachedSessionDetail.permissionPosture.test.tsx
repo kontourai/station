@@ -210,7 +210,11 @@ test('reply intent offers continuation in the normal composer without changing t
   expect(composer.disabled).toBe(false);
   expect(composer.readOnly).toBe(false);
   expect(screen.getByText('Sure.')).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Copy message' })).toBeTruthy();
+  // One copy icon per message: the user's prompt and the answer.
+  expect(
+    screen.getByRole('button', { name: 'Copy your message' }),
+  ).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Copy answer' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Continue here' })).toBeNull();
   fireEvent.focus(composer);
   expect(screen.queryByRole('dialog')).toBeNull();
@@ -463,7 +467,11 @@ describe('AttachedSessionDetail permission-posture row badge (station#1424)', ()
     // posture badges.
     expect(screen.getByText('Sure.')).toBeTruthy();
     expect(screen.getAllByText(/Read only/)).toHaveLength(1);
-    expect(screen.getByRole('button', { name: 'Copy message' })).toBeTruthy();
+    // One copy icon per message: the user's prompt and the answer.
+    expect(
+      screen.getByRole('button', { name: 'Copy your message' }),
+    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Copy answer' })).toBeTruthy();
   });
 
   test('a stream that has not opened yet is connecting, not unresponsive', () => {
