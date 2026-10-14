@@ -144,7 +144,7 @@ export class TurnIdempotencyStore {
         // unresolved in the row, so the kernel calls it contended, but no
         // owner will ever resolve it. Answer it as {@link inspect} does, so a
         // same-key resend is refused at once instead of waiting it out.
-        if (this.givenUp(key, now)) {
+        if (this.givenUp(key)) {
           turnDedupClaims.add(1, { outcome: 'indeterminate' });
           return { claimed: false, indeterminate: true };
         }
@@ -256,13 +256,24 @@ export class TurnIdempotencyStore {
   }
   /**
    * Whether this owner retained its still-unresolved claim of `key` after a
-   * possible effect, so no owner will ever resolve it. The marker is checked
-   * first: {@link inspect} is reached only for a retained key, where it
-   * answers from this owner's own record without probing any process.
+   * possible effect, so no owner will ever resolve it: the row is unresolved,
+   * owned by this owner, and marked retained. Never true for another owner's
+   * claim, however old, and it probes no process.
    */
-  givenUp(key: string, now = Date.now()): boolean {
+  givenUp(key: string): boolean {
+    if (!this.retained.has(key)) return false;
+    const result = this.persistence.execute(
+      { type: 'turnDedup.read', key },
+      this.liveness,
+    );
+    if (result.kind === 'refused')
+      throw new Error(
+        `Turn claim read refused by ${result.participant}: ${result.reason}`,
+      );
     return (
-      this.retained.has(key) && this.inspect(key, now).state === 'indeterminate'
+      result.kind === 'found' &&
+      result.record.value === null &&
+      result.record.owner?.id === this.owner.id
     );
   }
   /** Whether any row (pending or resolved) still holds the key. */
@@ -296,7 +307,7 @@ export async function awaitTurnResolution(
     // nothing will resolve it, so stop waiting rather than run out the clock.
     if (!store.held(key)) return undefined;
     // Given up by its owner in this process after a possible effect: it will
-    // never resolve either. The caller tells this apart with `inspect`.
+    // never resolve either. The caller tells this apart with `givenUp`.
     if (store.givenUp(key)) return undefined;
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }

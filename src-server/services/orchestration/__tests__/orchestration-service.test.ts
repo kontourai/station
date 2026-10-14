@@ -17085,6 +17085,54 @@ describe('OrchestrationService', () => {
       }
     });
 
+    test('a resend whose given-up check cannot be read stays retryable and sends nothing', async () => {
+      const ledger = eventStore.createTurnDeduplicator();
+      const faultyService = new OrchestrationService({
+        adapterRegistry: createRegistry([claude]),
+        eventBus: new EventBus(),
+        eventStore,
+        turnDeduplicator: {
+          ...ledger,
+          awaitResolution: (input) =>
+            ledger.awaitResolution({ ...input, timeoutMs: 50, intervalMs: 10 }),
+          givenUp: () => {
+            throw new Error('injected read fault');
+          },
+        },
+        listProjects: () => [],
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      await faultyService.dispatch({
+        type: 'startSession',
+        input: { threadId: 'thread-givenup-fault', provider: 'claude' },
+      });
+      claude.sendTurn.mockClear();
+      // A live owner holds the key, so the resend waits and stays unresolved.
+      const owner = ledger.claim({
+        threadId: 'thread-givenup-fault',
+        clientTurnId: 'client-givenup-fault',
+      });
+      if (owner.kind !== 'owner') throw new Error('expected owner');
+      const refusal = await faultyService
+        .dispatch({
+          type: 'sendTurn',
+          input: {
+            threadId: 'thread-givenup-fault',
+            input: 'hello',
+            clientTurnId: 'client-givenup-fault',
+          },
+        })
+        .then(
+          () => undefined,
+          (error: unknown) => error as OrchestrationCommandDispatchError,
+        );
+      expect(refusal).toBeInstanceOf(OrchestrationCommandDispatchError);
+      expect(refusal?.code).toBe('client_turn_in_flight');
+      expect(refusal?.retryable).toBe(true);
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+      await faultyService.shutdown();
+    });
+
     test('station#1224 CRITICAL fix — the missing test: a still-running turn resolves AFTER a concurrent replay has already started polling, and the adapter executes EXACTLY ONCE', async () => {
       await service.dispatch({
         type: 'startSession',
