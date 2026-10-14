@@ -62,7 +62,7 @@ export interface TurnDeduplicator {
   /**
    * Waits (bounded) for the pair's turn id. Returns nothing early when the
    * claim is released, or when its owner in this process retained it after a
-   * possible effect; {@link inspect} tells the two apart.
+   * possible effect; {@link givenUp} tells the two apart.
    */
   awaitResolution(input: {
     threadId: string;
@@ -70,6 +70,12 @@ export interface TurnDeduplicator {
     timeoutMs?: number;
     intervalMs?: number;
   }): Promise<string | undefined>;
+  /**
+   * Whether this process's own owner retained the pair's unresolved claim
+   * after a possible effect, so nothing will ever resolve it. False for any
+   * other process's claim, however old.
+   */
+  givenUp(input: { threadId: string; clientTurnId: string }): boolean;
   /**
    * Read-only: what {@link claim} would meet for this pair, without claiming,
    * reclaiming or touching retention. For the delivery lookup a client uses
@@ -143,6 +149,8 @@ export function createTurnDeduplicator(options: {
         },
       };
     },
+    givenUp: ({ threadId, clientTurnId }) =>
+      options.store.givenUp(options.keyFor(threadId, clientTurnId)),
     inspect: ({ threadId, clientTurnId }) =>
       options.store.inspect(options.keyFor(threadId, clientTurnId)),
     awaitResolution: ({ threadId, clientTurnId, timeoutMs, intervalMs }) =>

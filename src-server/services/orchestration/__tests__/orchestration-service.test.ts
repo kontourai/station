@@ -17023,6 +17023,68 @@ describe('OrchestrationService', () => {
       await waitingService.shutdown();
     });
 
+    test('a resend that outwaits a live owner\'s claim older than 15 minutes stays retryable, never indeterminate', async () => {
+      const ledger = eventStore.createTurnDeduplicator();
+      const slowService = new OrchestrationService({
+        adapterRegistry: createRegistry([claude]),
+        eventBus: new EventBus(),
+        eventStore,
+        // The real wait, shortened: the claim stays unresolved throughout.
+        turnDeduplicator: {
+          ...ledger,
+          awaitResolution: (input) =>
+            ledger.awaitResolution({ ...input, timeoutMs: 50, intervalMs: 10 }),
+        },
+        listProjects: () => [],
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      await slowService.dispatch({
+        type: 'startSession',
+        input: { threadId: 'thread-slow-owner', provider: 'claude' },
+      });
+      claude.sendTurn.mockClear();
+      const realNow = Date.now.bind(Date);
+      const clock = vi.spyOn(Date, 'now');
+      try {
+        // A live owner (this process) holds the key and never retained it.
+        const owner = ledger.claim({
+          threadId: 'thread-slow-owner',
+          clientTurnId: 'client-slow-owner',
+        });
+        if (owner.kind !== 'owner') throw new Error('expected owner');
+        owner.claim.beginInvocation();
+        // Sixteen minutes on, with the clock still running for the wait.
+        clock.mockImplementation(() => realNow() + 16 * 60_000);
+        // The lookup calls a claim this old indeterminate; the send must not.
+        expect(
+          ledger.inspect({
+            threadId: 'thread-slow-owner',
+            clientTurnId: 'client-slow-owner',
+          }),
+        ).toEqual({ state: 'indeterminate' });
+        const refusal = await slowService
+          .dispatch({
+            type: 'sendTurn',
+            input: {
+              threadId: 'thread-slow-owner',
+              input: 'hello',
+              clientTurnId: 'client-slow-owner',
+            },
+          })
+          .then(
+            () => undefined,
+            (error: unknown) => error as OrchestrationCommandDispatchError,
+          );
+        expect(refusal).toBeInstanceOf(OrchestrationCommandDispatchError);
+        expect(refusal?.code).toBe('client_turn_in_flight');
+        expect(refusal?.retryable).toBe(true);
+        expect(claude.sendTurn).not.toHaveBeenCalled();
+      } finally {
+        clock.mockRestore();
+        await slowService.shutdown();
+      }
+    });
+
     test('station#1224 CRITICAL fix — the missing test: a still-running turn resolves AFTER a concurrent replay has already started polling, and the adapter executes EXACTLY ONCE', async () => {
       await service.dispatch({
         type: 'startSession',

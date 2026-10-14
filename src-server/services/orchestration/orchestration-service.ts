@@ -7142,15 +7142,23 @@ export class OrchestrationService {
                   ).catch(() => undefined));
                 if (!existingTurnId) {
                   throwIfAborted(turnInput.signal);
-                  // The other attempt gave the key up after it may have
-                  // reached the engine: the possible-effect refusal the
-                  // delivery lookup also gives, never a resend.
-                  if (
-                    turnDeduplicator!.inspect({
+                  // The other attempt, in this process, gave the key up after
+                  // it may have reached the engine: the possible-effect
+                  // refusal the delivery lookup also gives, never a resend.
+                  // Only that: a live owner's claim, however old, may still
+                  // deliver, so its resend must stay free to join the turn.
+                  // A read fault here falls through to the retryable refusal,
+                  // which is safe because a resend meets the same held claim.
+                  let givenUp = false;
+                  try {
+                    givenUp = turnDeduplicator!.givenUp({
                       threadId: turnInput.threadId,
                       clientTurnId,
-                    }).state === 'indeterminate'
-                  ) {
+                    });
+                  } catch {
+                    givenUp = false;
+                  }
+                  if (givenUp) {
                     orchestrationTurnDedup.add(1, {
                       provider: adapter.provider,
                       outcome: 'indeterminate',
