@@ -49,6 +49,7 @@ describe('deriveChatStatus — one status, by priority', () => {
       turnLive: true,
       sendAwaitingTurnStart: true,
       stationHasSend: true,
+      stationOutlivesApp: true,
     });
     expect(received?.label).toBe('Sending');
     expect(received?.details).toEqual([
@@ -56,6 +57,21 @@ describe('deriveChatStatus — one status, by priority', () => {
         text: 'Station has your message and is starting the agent. It is safe to close the app.',
       },
     ]);
+    // A Station that stops with this app (the desktop's own), or one not yet
+    // reported, never gets the safe-to-close promise.
+    for (const stationOutlivesApp of [false, undefined]) {
+      expect(
+        deriveChatStatus({
+          ...base,
+          turnLive: true,
+          sendAwaitingTurnStart: true,
+          stationHasSend: true,
+          stationOutlivesApp,
+        })?.details,
+      ).toEqual([
+        { text: 'Station has your message and is starting the agent.' },
+      ]);
+    }
     // Once the server shows the turn open, it is the turn's status.
     expect(
       deriveChatStatus({

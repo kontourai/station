@@ -52,6 +52,11 @@ export interface ChatStatusInput {
   sendAwaitingTurnStart?: boolean;
   /** Station's delivery lookup said it has that send (`received`). */
   stationHasSend?: boolean;
+  /**
+   * The Station keeps running when this app closes (`useStationOutlivesApp`).
+   * Only `true` lets the pill say closing the app is safe.
+   */
+  stationOutlivesApp?: boolean;
 }
 
 const STREAM_DETAIL =
@@ -158,7 +163,10 @@ export function deriveChatStatus(
       details: input.stationHasSend
         ? [
             {
-              text: 'Station has your message and is starting the agent. It is safe to close the app.',
+              text:
+                input.stationOutlivesApp === true
+                  ? 'Station has your message and is starting the agent. It is safe to close the app.'
+                  : 'Station has your message and is starting the agent.',
             },
           ]
         : [],
