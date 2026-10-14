@@ -1,5 +1,36 @@
 [
   {
+    "timestampUtc": "2026-10-14T08:49:57Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2478.38529818593",
+    "sha": "59ff630e0e832be3e5c6400776411a9dae06a6b9",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38529818593",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2478.38529818593 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "bbc2538b7a1fe77f6e355bf10ded22c4995c4bf9",
+      "groups": {
+        "feat": [
+          "[#3585](https://github.com/kontourai/station/pull/3585) feat(access): personal access tokens act as their person, never as more (#3557)"
+        ],
+        "fix": [
+          "[#3650](https://github.com/kontourai/station/pull/3650) fix(acp): keep a resumed session's replay out of the transcript; sends wait for a starting session"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
     "timestampUtc": "2026-10-14T07:48:13Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2478.38522577676",
