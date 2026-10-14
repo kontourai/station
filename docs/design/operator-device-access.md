@@ -10,6 +10,15 @@
 > step-up. Those remain design work. The dated body below retains the original
 > design assumptions and line citations; it is not a complete current-state inventory.
 
+A separate scoped administration path now accepts an explicitly promoted
+`access:devices` Device for existing-device list/scope/revoke/remove operations,
+including remote CLI and UI requests. It grants no operator identity and uses
+no passkey step-up. Only the operator can grant or remove that permission.
+The [current threat model](../security/remote-access-threat-model.md) and
+[CLI reference](../reference/cli.md#environment) own its behavior and limits.
+The dated passkey proposal below remains the separate operator-session design;
+its former blanket ordinary-device refusals are historical assumptions.
+
 The body was read at `origin/main` 1aecbf3555 (2026-10-03). The S1 sections
 and every `runtime-routes.ts` line citation were re-read after merging
 `origin/main` 91ec8af5d4; citations into other files are as first read. Line
@@ -836,3 +845,4 @@ Scope: this record and S1. S2a, S2b, S3, S4 (and S1b) are follow-ups.
 | # | Decision |
 |---|---|
 | D12 | People sit in a Station group, Admin or Member (the default). A group caps what any device tied to the person may use; it never grants `access:manage`, so a paired device still never becomes an administrator. Devices tied to no person, peer Station delegations and home-possession credentials are not capped. Only the operator changes a group (`PUT /api/pairing/people/:principalId/group`). That route's raw operator-credential use is observed like the four device-admin routes (S1); S1b and S4 list only those four, so they must add it when they land. |
+| D13 | Anyone may mint personal access tokens for themselves, within their own access, from a device tied to them; the operator may mint and revoke them for anyone. v1 tokens carry Read and optionally Operate only. The operator's token routes (`POST`/`DELETE /api/pairing/people/:principalId/tokens…`) are observed like D12's route, and S1b and S4 must add them too. |

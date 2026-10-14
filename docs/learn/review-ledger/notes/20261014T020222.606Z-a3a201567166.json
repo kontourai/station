@@ -1,0 +1,7 @@
+{
+  "revision": "988949305e1df68541059efcb1e81d3e5f8ea739",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Changed input docs/guides/development.md: added a UI transcript-tracing subsection under Observability. src-server/AGENTS.md links the guide for server lifecycle and security conventions, which this change does not touch. No prose change.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

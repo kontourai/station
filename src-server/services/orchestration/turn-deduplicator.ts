@@ -1,5 +1,6 @@
 import {
   awaitTurnResolution,
+  type TurnClaimInspection,
   type TurnIdempotencyStore,
 } from '../turn-idempotency.js';
 
@@ -35,6 +36,12 @@ export interface TurnClaim {
    * settlement, both transition methods reject.
    */
   release(): void;
+  /**
+   * Gives up an owned claim that may have reached the provider: it stays
+   * unresolved and is never released, and the delivery lookup answers it
+   * `indeterminate` rather than in flight. Settles the handle.
+   */
+  retain(): void;
 }
 
 export interface TurnDeduplicator {
@@ -54,6 +61,15 @@ export interface TurnDeduplicator {
     timeoutMs?: number;
     intervalMs?: number;
   }): Promise<string | undefined>;
+  /**
+   * Read-only: what {@link claim} would meet for this pair, without claiming,
+   * reclaiming or touching retention. For the delivery lookup a client uses
+   * to decide whether resending the same key is safe.
+   */
+  inspect(input: {
+    threadId: string;
+    clientTurnId: string;
+  }): TurnClaimInspection;
 }
 
 export function createTurnDeduplicator(options: {
@@ -110,9 +126,16 @@ export function createTurnDeduplicator(options: {
             ),
           release: () =>
             settle({ kind: 'release' }, () => options.store.release(key)),
+          retain: () => {
+            if (settled) throw new Error('Turn claim has already settled.');
+            settled = true;
+            options.store.retain(key);
+          },
         },
       };
     },
+    inspect: ({ threadId, clientTurnId }) =>
+      options.store.inspect(options.keyFor(threadId, clientTurnId)),
     awaitResolution: ({ threadId, clientTurnId, timeoutMs, intervalMs }) =>
       awaitTurnResolution(
         options.store,

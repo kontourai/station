@@ -15,6 +15,7 @@
 
 import { memo, useEffect, useRef, useState } from 'react';
 import { CodeBlockFrame } from './CodeBlockFrame';
+import { markTranscriptPhase } from './transcriptLayoutTrace';
 
 const LANG_REGEX = /language-(\S+)/;
 
@@ -82,6 +83,7 @@ function useHighlightedHtml(code: string, lang?: string): string | null {
             }
             tracking.inFlight = false;
             setHtml(result);
+            markTranscriptPhase('highlight-applied', { lang });
             const next = tracking.pending;
             tracking.pending = null;
             if (next !== null && next !== text) request(next);

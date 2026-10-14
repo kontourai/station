@@ -28,7 +28,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
 | `@kontourai/station-contracts/skill-experience` | Inert v1 Skill definitions and explicit stage/rich-pane declarations, host-observed inventory identity, canonical start inputs and retained Session invocation views; see [experience contract](skill-experiences.md) |
 | `@kontourai/station-contracts/attention` | Attention projections and exact approval/permission request references and inspection states |
-| `@kontourai/station-contracts/environment-security` | Public handshake and compatibility declarations, scoped Device/Station pairing, receiver-owned additive grant kind, and secret-free `PeerEnrollmentInput`/`PeerEnrollment` metadata. A missing legacy kind denotes Device access; these declarations grant no Project membership or execution consent. See [peer enrollment](sdk.md#station-peer-enrollment). |
+| `@kontourai/station-contracts/environment-security` | Public handshake and compatibility declarations, scoped Device/Station pairing, receiver-owned additive grant kind, and secret-free `PeerEnrollmentInput`/`PeerEnrollment` metadata; explicit `access:devices` administration scope and `device-access` revocation provenance. A missing legacy kind denotes Device access; these declarations grant no Project membership or execution consent. See [peer enrollment](sdk.md#station-peer-enrollment). |
 | `@kontourai/station-contracts/station-groups` | Station groups for people (#3557): the Admin/Member vocabulary and default, the governed permissions and each group's ceiling, the pure `capScopeToGroup`, and the `StationPerson`/`StationGroupAssignment` shapes `GET /api/pairing/people` returns. Groups only cap a person-tied Device's governed permissions; they grant nothing, never include `access:manage`, and are not Project roles |
 | `@kontourai/station-contracts/auth` | Auth status, renew results, user identity/detail models |
 | `@kontourai/station-contracts/authority-observation` | Closed credential-bound authority observation: current home identity, resolved principal echo (kind+id only), and verified grant tier; authorization-neutral, grants nothing |
@@ -364,6 +364,23 @@ the session lifecycle like any turn (reasons `provider_turn_started` /
 `provider_turn_completed`), and notifies "Your agent replied" when the owner
 is offline. A send while it runs is refused with the retryable code
 `provider_turn_in_progress`, and the client queues the message until it ends.
+A send to an ACP session that is still starting (for a restored session,
+reattaching to the engine's stored session) waits for the start, up to 15
+seconds, through the optional adapter method `whenSessionReady`. Orchestration
+awaits it before taking the thread's turn-start claim, so Stop and End are not
+held behind a slow start. The send's cancellation signal ends the wait; that
+signal comes only from an explicit Stop or cancel or a server deadline, never
+from the client's connection, so a client may close once Station has the
+message. If the session is stopped before it is ready, the send is refused
+definitively and the client offers the text back. If the start fails, the
+send is refused with `provider_session_start_failed`, and the client keeps the
+message queued with the reason and Retry without re-sending it on its own. If
+it is still starting after the wait, the send is refused with the retryable
+code `provider_session_starting`, and the client queues the message and
+re-sends it. A retry whose idempotency key an earlier attempt still holds, or
+released without sending, is refused with the retryable code
+`client_turn_in_flight` and re-sent with the same key. When the client's
+automatic re-sends run out, the message stays queued with a reason and Retry.
 A Claude send's own `turn.started` is published when the engine starts
 running it, so a send queued behind such a turn starts after it ends. That
 ordering relies on the CLI's per-message lifecycle frames (`msg_lifecycle_v1`,
@@ -385,7 +402,7 @@ An ACP send whose attachments the engine cannot take (images when its
 `initialize` handshake did not advertise `promptCapabilities.image`, or any
 non-image file) is refused before any engine effect with
 `ATTACHMENT_INPUT_UNSUPPORTED_CODE` (`attachment_input_unsupported`, from
-`provider`). Unlike the two codes above it is not retryable: the same send is
+`provider`). Unlike the retryable codes above it is not retryable: the same send is
 refused again. An ACP session whose requested model the engine's own fresh
 `session/new` options did not offer (`ACP model value unsupported`, or no model
 option at all) is refused by the adapter with `SessionStartRefusedError`,

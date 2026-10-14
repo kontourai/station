@@ -13,6 +13,10 @@ interface OutboundQueuedTurn {
   status: 'pending' | 'invoking' | 'accepted' | 'failed' | 'may-have-started';
   lastError?: string;
   mergedTurns?: readonly { content: string }[];
+  /** Written for another Station (its address): waits for that Station. */
+  waitingForStation?: string;
+  /** Held by another window or a closed one; sent only on Send. */
+  heldElsewhere?: true;
 }
 
 interface OutboundQueuedMessagesProps {
@@ -125,8 +129,12 @@ export function OutboundQueuedMessages({
                 message.timestamp > refusedAt,
             );
           const nextTurn = turns[index + 1];
+          // A held copy is only sent or discarded here (see `heldCopyRefusal`).
           const canMergeWithNext =
-            turn.status === 'pending' && nextTurn?.status === 'pending';
+            turn.status === 'pending' &&
+            nextTurn?.status === 'pending' &&
+            !turn.heldElsewhere &&
+            !nextTurn.heldElsewhere;
           const showingMergePreview =
             mergePreviewId === turn.clientTurnId && canMergeWithNext;
           return (
@@ -185,10 +193,18 @@ export function OutboundQueuedMessages({
                   </button>
                 </div>
               ) : null}
+              <StationWaitNote waitingForStation={turn.waitingForStation} />
+              <HeldCopyNotice turn={turn} onError={onError} />
               {turn.status === 'may-have-started' ||
               turn.status === 'invoking' ? (
                 <span className="queued-messages__label">
-                  May have started; inspect this session before sending again
+                  May have started; inspect this session before sending again{' '}
+                  {turn.waitingForStation ? null : (
+                    <RecheckDeliveryButton
+                      clientTurnId={turn.clientTurnId}
+                      onError={onError}
+                    />
+                  )}
                 </span>
               ) : turn.status === 'failed' ? (
                 <span className="queued-messages__label">
@@ -248,7 +264,7 @@ export function OutboundQueuedMessages({
               turn.status !== 'may-have-started' &&
               editingId !== turn.clientTurnId ? (
                 <>
-                  {turn.status === 'pending' ? (
+                  {turn.status === 'pending' && !turn.heldElsewhere ? (
                     <>
                       <button
                         type="button"
@@ -322,18 +338,20 @@ export function OutboundQueuedMessages({
                       Undo merge
                     </button>
                   ) : null}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingId(turn.clientTurnId);
-                      setEditValue(turn.content);
-                    }}
-                    className="queued-message__btn"
-                    title="Edit"
-                    aria-label="Edit message"
-                  >
-                    <EditGlyph />
-                  </button>
+                  {turn.heldElsewhere ? null : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingId(turn.clientTurnId);
+                        setEditValue(turn.content);
+                      }}
+                      className="queued-message__btn"
+                      title="Edit"
+                      aria-label="Edit message"
+                    >
+                      <EditGlyph />
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() =>
@@ -362,5 +380,82 @@ export function OutboundQueuedMessages({
       </div>
       <span className="sr-only">Offline queue for session {sessionId}</span>
     </div>
+  );
+}
+
+/**
+ * A copy held for after a reply by another window, or by one that closed: it
+ * is sent only when the user says so (`sendHeld`), with its own key.
+ */
+function HeldCopyNotice({
+  turn,
+  onError,
+}: {
+  turn: { clientTurnId: string; heldElsewhere?: true };
+  onError: (message: string) => void;
+}) {
+  if (!turn.heldElsewhere) return null;
+  const { clientTurnId } = turn;
+  return (
+    <span className="queued-messages__label">
+      Held for after a reply, in another window or one that closed. Not sent
+      yet; messages after it are not held back by it.{' '}
+      <button
+        type="button"
+        onClick={() =>
+          void import('../../lib/outboundQueue')
+            .then(({ outboundDispatch }) =>
+              outboundDispatch.sendHeld(clientTurnId),
+            )
+            .catch((error: unknown) =>
+              onError(
+                `Could not send this message: ${error instanceof Error ? error.message : String(error)}`,
+              ),
+            )
+        }
+      >
+        Send
+      </button>
+    </span>
+  );
+}
+
+/** Asks Station again what became of a possibly-started message; never resends. */
+function RecheckDeliveryButton({
+  clientTurnId,
+  onError,
+}: {
+  clientTurnId: string;
+  onError: (message: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        void import('../../lib/deliveryLookup')
+          .then(({ recheckOutboundTurn }) => recheckOutboundTurn(clientTurnId))
+          .catch((error: unknown) =>
+            onError(
+              `Could not check this message: ${error instanceof Error ? error.message : String(error)}`,
+            ),
+          )
+      }
+    >
+      Check
+    </button>
+  );
+}
+
+/** A row written for another Station waits for that one; it is never sent elsewhere. */
+function StationWaitNote({
+  waitingForStation,
+}: {
+  waitingForStation?: string;
+}) {
+  if (!waitingForStation) return null;
+  return (
+    <span className="queued-messages__label">
+      Waiting for {waitingForStation}; it is only sent there
+    </span>
   );
 }

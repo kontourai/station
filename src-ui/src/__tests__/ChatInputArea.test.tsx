@@ -215,6 +215,12 @@ describe('ChatInputArea', () => {
     },
   );
 
+  test('names a conversation that is still opening in its placeholder', () => {
+    renderChatInputArea({ disabled: true, loadingConversation: true });
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
+    expect(textarea.placeholder).toBe('Loading chat…');
+  });
+
   test('keeps a busy continuation draft focusable without sending or queueing it', () => {
     const onInputChange = vi.fn();
     const onSend = vi.fn(async () => {});

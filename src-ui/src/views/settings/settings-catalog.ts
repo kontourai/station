@@ -17,6 +17,8 @@ export type SettingsSectionId =
   | 'plugin-visibility'
   // #1973: machines this Station runs simulators and emulators on over SSH.
   | 'device-hosts'
+  // #3557: people with devices tied to them, their Station group and tokens.
+  | 'people'
   | 'host-runtime'
   | 'sources'
   | 'telemetry'
@@ -101,6 +103,9 @@ export const SETTINGS_SECTIONS = [
   // #1973: operator-only, like plugin visibility: the hosts are machines
   // Station reaches with the operator's own ssh keys.
   { id: 'device-hosts', title: 'Device hosts', group: 'this-station' },
+  // #3557: operator-only, like device hosts: the groups and every person's
+  // tokens live on this Station, and only its operator changes them.
+  { id: 'people', title: 'People', group: 'this-station' },
   { id: 'host-runtime', title: 'Station host', group: 'this-station' },
   // #2182: where this Station gets agents, skills, plugins and layouts from.
   { id: 'sources', title: 'Sources', group: 'this-station' },
@@ -221,6 +226,13 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Device hosts',
     section: 'device-hosts',
     keywords: ['ssh remote simulator emulator'],
+    conditional: 'operator',
+  },
+  {
+    id: 'people',
+    title: 'People',
+    section: 'people',
+    keywords: ['groups admin member tokens access people personal'],
     conditional: 'operator',
   },
   {
@@ -571,6 +583,8 @@ const SETTINGS_CATALOG_SOURCE = [
     id: 'mobile-pairing',
     title: 'Device pairing',
     section: 'pairing',
+    // #3557: a person's own access tokens render in this section.
+    searchKeywords: ['access tokens', 'personal access tokens'],
     configKeys: [],
   },
   {

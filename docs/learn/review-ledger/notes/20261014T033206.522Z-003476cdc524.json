@@ -1,0 +1,7 @@
+{
+  "revision": "fcead677c6ea2ffe9601b9f72f4fd678faf8d183",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Final round: documented provider_session_start_failed (kept with Retry), client_turn_in_flight (same-key re-send), the stopped-before-ready definitive refusal with text offered back, and that the send cancellation signal is server-owned only. Checked against adapter-shape.ts, acp-adapter.ts whenSessionReady, orchestration-service.ts and queueDrain.ts.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

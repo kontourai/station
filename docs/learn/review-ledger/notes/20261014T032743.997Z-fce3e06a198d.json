@@ -1,0 +1,7 @@
+{
+  "revision": "fcead677c6ea2ffe9601b9f72f4fd678faf8d183",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Turn deduplicator section updated: a contended wait ends when the owner releases without a result, refused with retryable client_turn_in_flight (orchestration-service.ts contended branch, turn-idempotency.ts awaitTurnResolution held() check). Rest of the file swept for the fix round's other changes; no contradicted claim.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/orchestration-service.ts","src-server/services/turn-idempotency.ts","src-ui/src/hooks/orchestration/queueDrain.ts"]}
+  ]
+}

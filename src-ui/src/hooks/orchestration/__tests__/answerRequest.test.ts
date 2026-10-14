@@ -134,6 +134,24 @@ describe('answerOrchestrationRequest', () => {
       expect(resolveOrchestrationRequest).toHaveBeenCalledTimes(2);
     },
   );
+  test('confirmed receipts cannot exhaust approval capacity after missed resolution events', async () => {
+    vi.mocked(resolveOrchestrationRequest).mockResolvedValue(undefined);
+    const requests = Array.from({ length: 257 }, (_, index) => ({
+      ...request,
+      requestId: `capacity-${index}`,
+    }));
+    try {
+      for (const reference of requests)
+        expect(await answerOrchestrationRequest('http://api', reference)).toBe(
+          'answered',
+        );
+      expect(resolveOrchestrationRequest).toHaveBeenCalledTimes(257);
+    } finally {
+      for (const reference of requests)
+        forgetApprovalAnswer(reference.threadId, reference.requestId);
+    }
+  });
+
   test('a verified Station refusal remains a refusal when inspection is unavailable', async () => {
     const refused = new ChatHttpError(
       403,

@@ -223,11 +223,15 @@ owning Project. Absent means operator only, so every existing Agent stays hidden
 from members.
 
 **Who is a member caller.** A member caller is a request that resolves to a
-deployment account: an account session on a credential that is not
-account-bound, or a station-control tool call whose session that account owns
-(#2377 slice B). This uses the same rule as the Project routes'
-`authenticatedProjectMember`. A station-control call that resolves to no
-principal is admitted to no Agent. The operator, personal and peer Devices, and
+deployment account: an authenticated account session, a personal access token
+tied to an account whose standing is current (#3586), or a station-control
+tool call whose session that account owns (#2377 slice B). One rule,
+[`accountMemberCaller`](../../src-server/runtime/bootstrap/account-member-caller.ts),
+decides this for the Project routes, the Project catalogue, `/events` Project
+frames and the Agent audience gate. An account credential that does not
+authenticate, a token that no longer resolves, and a station-control call that
+resolves to no principal are no caller at all: they read no Project and are
+admitted to no Agent. The operator, personal and peer Devices, and
 Tailnet persons keep the operator's rules. Device and Station identities are
 not Project members. Account-bound collaborator Devices are refused every Agent
 path by their own gate before audience is consulted.

@@ -63,6 +63,8 @@ import type {
 } from '../../../providers/adapter-shape.js';
 import {
   AttachmentInputUnsupportedError,
+  ProviderSessionStartFailedError,
+  ProviderSessionStartingError,
   ProviderTurnEndedError,
   ProviderTurnInProgressError,
   SendTurnRefusedError,
@@ -1248,6 +1250,53 @@ describe('OrchestrationService', () => {
       await restoring;
       await turn;
       expect(bedrock.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('a send waiting for its session start holds no workspace turn-start reservation', async () => {
+      const cwd = join(tmp, 'waiting-start');
+      mkdirSync(cwd);
+      await service.dispatch({
+        type: 'startSession',
+        input: { threadId: 'waiting-start', provider: 'bedrock', cwd },
+      });
+      bedrock.sendTurn.mockClear();
+      let rejectReady!: (error: Error) => void;
+      const whenSessionReady = vi.fn(
+        () =>
+          new Promise<void>((_, reject) => {
+            rejectReady = reject;
+          }),
+      );
+      (bedrock as ProviderAdapterShape).whenSessionReady = whenSessionReady;
+      const send = service
+        .dispatch({
+          type: 'sendTurn',
+          input: { threadId: 'waiting-start', input: 'early message' },
+        })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      await vi.waitFor(() =>
+        expect(whenSessionReady).toHaveBeenCalledTimes(1),
+      );
+
+      // The wait runs before the turn-start claim, so an exclusive workspace
+      // operation is not refused as busy because of it.
+      await expect(
+        service.runWorkspaceRestore(
+          await workspaceKey(cwd),
+          async () => 'restored',
+        ),
+      ).resolves.toBe('restored');
+
+      rejectReady(
+        new SendTurnRefusedError(
+          "The agent's session ended before it was ready. Nothing was sent.",
+        ),
+      );
+      expect(await send).toBeInstanceOf(OrchestrationCommandDispatchError);
+      expect(bedrock.sendTurn).not.toHaveBeenCalled();
     });
 
     test('a restarted service refuses restore from the durable possible-effect boundary', async () => {
@@ -15760,6 +15809,236 @@ describe('OrchestrationService', () => {
       input: { threadId: 'thread-provider-turn', input: 'during the reply' },
     });
     expect(retry).toMatchObject({ threadId: 'thread-provider-turn' });
+    expect(claude.sendTurn).toHaveBeenCalledTimes(2);
+  });
+
+  /** Settles to 'settled' or 'pending' after `ms`, for a liveness check. */
+  const settlesWithin = (promise: Promise<unknown>, ms: number) =>
+    Promise.race([
+      promise.then(
+        () => 'settled' as const,
+        () => 'settled' as const,
+      ),
+      new Promise<'pending'>((resolve) =>
+        setTimeout(() => resolve('pending'), ms),
+      ),
+    ]);
+
+  test('Stop completes while a send waits for its session start, and the send never reaches the engine', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-ready-stop',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    let rejectReady!: (error: Error) => void;
+    const whenSessionReady = vi.fn(
+      () =>
+        new Promise<void>((_, reject) => {
+          rejectReady = reject;
+        }),
+    );
+    (claude as ProviderAdapterShape).whenSessionReady = whenSessionReady;
+    const send = service
+      .dispatch({
+        type: 'sendTurn',
+        input: { threadId: 'thread-ready-stop', input: 'early message' },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    await vi.waitFor(() => expect(whenSessionReady).toHaveBeenCalledTimes(1));
+
+    const stop = service.dispatch({
+      type: 'stopSession',
+      threadId: 'thread-ready-stop',
+    });
+    expect(await settlesWithin(stop, 2_000)).toBe('settled');
+    await stop;
+    expect(claude.stopSession).toHaveBeenCalledWith('thread-ready-stop');
+
+    rejectReady(
+      new SendTurnRefusedError(
+        "The agent's session ended before it was ready. Nothing was sent.",
+      ),
+    );
+    expect(await send).toBeInstanceOf(OrchestrationCommandDispatchError);
+    expect(claude.sendTurn).not.toHaveBeenCalled();
+  });
+
+  test("a send's abort signal ends its wait for the session start, and the claim is released", async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-ready-abort',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    const whenSessionReady = vi.fn(
+      (_threadId: string, options?: { signal?: AbortSignal }) =>
+        new Promise<void>((_, reject) => {
+          options?.signal?.addEventListener('abort', () =>
+            reject(options.signal?.reason),
+          );
+        }),
+    );
+    (claude as ProviderAdapterShape).whenSessionReady = whenSessionReady;
+    const controller = new AbortController();
+    const send = service
+      .dispatch({
+        type: 'sendTurn',
+        input: {
+          threadId: 'thread-ready-abort',
+          input: 'early message',
+          clientTurnId: 'client-ready-abort',
+          signal: controller.signal,
+        },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    await vi.waitFor(() => expect(whenSessionReady).toHaveBeenCalledTimes(1));
+    controller.abort(new Error('client went away'));
+    expect(await settlesWithin(send, 2_000)).toBe('settled');
+    expect(await send).toMatchObject({ message: 'client went away' });
+    expect(claude.sendTurn).not.toHaveBeenCalled();
+
+    // Nothing reached the engine, so the same client turn can be sent again.
+    whenSessionReady.mockResolvedValueOnce(undefined);
+    await expect(
+      service.dispatch({
+        type: 'sendTurn',
+        input: {
+          threadId: 'thread-ready-abort',
+          input: 'early message',
+          clientTurnId: 'client-ready-abort',
+        },
+      }),
+    ).resolves.toMatchObject({ threadId: 'thread-ready-abort' });
+    expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+  });
+
+  test('a send whose session failed to start keeps its keep-it code and is not recorded as possibly started', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-start-failed',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    (claude as ProviderAdapterShape).whenSessionReady = vi.fn(async () => {
+      throw new ProviderSessionStartFailedError('native session is gone');
+    });
+    const failure = await service
+      .dispatchWithReceipt({
+        type: 'sendTurn',
+        input: { threadId: 'thread-start-failed', input: 'early message' },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    const dispatchError = failure as OrchestrationCommandDispatchError;
+    expect(dispatchError).toBeInstanceOf(OrchestrationCommandDispatchError);
+    // The literal, not the constant: the client's queue keys on this string.
+    expect(dispatchError.code).toBe('provider_session_start_failed');
+    expect(dispatchError.retryable).toBe(true);
+    expect(dispatchError.receipt.status).toBe('rejected');
+    expect(dispatchError.outcome).toBeUndefined();
+    expect(claude.sendTurn).not.toHaveBeenCalled();
+  });
+
+  test('a retry with the same key whose first attempt is released unsent is refused retryably, promptly', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-key-released',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    let rejectFirst!: (error: Error) => void;
+    const whenSessionReady = vi.fn(
+      () =>
+        new Promise<void>((_, reject) => {
+          rejectFirst = reject;
+        }),
+    );
+    (claude as ProviderAdapterShape).whenSessionReady = whenSessionReady;
+    const send = () =>
+      service
+        .dispatch({
+          type: 'sendTurn',
+          input: {
+            threadId: 'thread-key-released',
+            input: 'same message',
+            clientTurnId: 'client-key-released',
+          },
+        })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+    const first = send();
+    await vi.waitFor(() => expect(whenSessionReady).toHaveBeenCalledTimes(1));
+    // The retry finds the key held by the first attempt and waits on it.
+    const second = send();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    rejectFirst(new ProviderSessionStartingError());
+    expect(await first).toMatchObject({ code: 'provider_session_starting' });
+
+    expect(await settlesWithin(second, 2_000)).toBe('settled');
+    const retry = (await second) as OrchestrationCommandDispatchError;
+    expect(retry).toBeInstanceOf(OrchestrationCommandDispatchError);
+    expect(retry.code).toBe('client_turn_in_flight');
+    expect(retry.retryable).toBe(true);
+    expect(retry.receipt.status).toBe('rejected');
+    expect(claude.sendTurn).not.toHaveBeenCalled();
+    expect(whenSessionReady).toHaveBeenCalledTimes(1);
+  });
+
+  test('a send that outwaits its session start keeps its retryable code, and the retry dispatches', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'thread-session-starting',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    claude.sendTurn.mockClear();
+    claude.sendTurn.mockRejectedValueOnce(new ProviderSessionStartingError());
+    const failure = await service
+      .dispatchWithReceipt({
+        type: 'sendTurn',
+        input: { threadId: 'thread-session-starting', input: 'early message' },
+      })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(failure).toBeInstanceOf(OrchestrationCommandDispatchError);
+    const dispatchError = failure as OrchestrationCommandDispatchError;
+    // The literal, not the constant: the client's queue keys on this string.
+    expect(dispatchError.code).toBe('provider_session_starting');
+    expect(dispatchError.retryable).toBe(true);
+    expect(dispatchError.receipt.status).toBe('rejected');
+    expect(dispatchError.outcome).toBeUndefined();
+    const retry = await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'thread-session-starting', input: 'early message' },
+    });
+    expect(retry).toMatchObject({ threadId: 'thread-session-starting' });
     expect(claude.sendTurn).toHaveBeenCalledTimes(2);
   });
 

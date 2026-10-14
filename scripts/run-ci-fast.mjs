@@ -198,6 +198,12 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
     'npm',
     Object.freeze(['run', 'docs:public:contract-examples']),
   ]),
+  // Numbered ADRs in docs/adr are frozen; decisions are records in
+  // docs/decisions, checked by Corpus. This is the required lane for both:
+  // the shared Docs kit gate also runs them but is advisory. The check reads
+  // the same base as this lane, so a new ADR file fails here, and an invalid
+  // record or stale index fails with or without a base.
+  Object.freeze(['npm', Object.freeze(['run', 'check:decisions'])]),
   // PRECONDITION for the typecheck aggregate below, same shape as
   // `build:connect`: the Basis MCP app bundles are git-ignored build output
   // that `typecheck:basis-pane`, `typecheck:server-tests`, and `typecheck:ui`

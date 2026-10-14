@@ -198,6 +198,14 @@ keep their own motion. The global reduced-motion reset still applies. Source
 rules describe the treatment; browser checks at narrow widths, both themes,
 long content and short heights establish whether controls remain reachable.
 
+The status pill's entry, body morph and details entrance use backwards fill in
+[their stylesheet](../../src-ui/src/components/status/live-status.css). Their
+final frame matches the resting opacity and transform, so completed effects
+release instead of retaining an animated stacking context. Exit and celebration
+effects retain their terminal frames; running status loops keep their existing
+lifetime. The Gallery regression observes the rendered pill through the Web
+Animations API and checks its resting styles after completion.
+
 ### Action rows
 
 A header, toolbar or action row shows at most two labelled actions. Further

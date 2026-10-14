@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import type { ChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
+import { useStationOutlivesApp } from '../../hooks/useStationOutlivesApp';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import type { ChatSession } from '../../types';
 import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
@@ -86,6 +87,7 @@ export function useChatStatusPill({
     ],
   );
   const approvalCount = pendingApprovals.length;
+  const stationOutlivesApp = useStationOutlivesApp();
   const input: ChatStatusInput = {
     observationUnavailable,
     approvalCount,
@@ -99,6 +101,9 @@ export function useChatStatusPill({
     activity: activeSession.conversationActivity,
     activityHint: activeSession.activityHint,
     turnStartedAt: activeSession.openTurnStartedAt,
+    sendAwaitingTurnStart: activeSession.sendAwaitingTurnStart,
+    stationHasSend: activeSession.pendingSendStationHasIt,
+    stationOutlivesApp,
   };
   useEffect(() => {
     if (enabled) void loadChatStatusPillView().catch(() => undefined);
