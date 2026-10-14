@@ -541,11 +541,26 @@ export interface AcpSessionRecord {
   /** Bounded per-session owner for ACP's redraw-style tool updates. */
   toolUpdateSupervisor: AcpToolUpdateSupervisor;
   /**
-   * True while `session/load` is replaying the conversation. Replayed
-   * content is history Station already stored, so it is not published;
-   * session-state updates (commands, mode, config, usage) still apply.
+   * True while `session/resume` or `session/load` reattaches this record to
+   * its native session. Replayed content is history Station already stored,
+   * so it is not published; session-state updates (commands, mode, config,
+   * usage) still apply. `sendTurn` refuses while it is set.
    */
-  loadingHistory?: boolean;
+  reattaching?: boolean;
+}
+
+/**
+ * How this engine can reattach to a stored session: `session/resume` (no
+ * history replay) when advertised, else `session/load`. Omitted and `null`
+ * both mean `resume` is not advertised (an unstable ACP capability).
+ */
+function acpReattachMethod(
+  initResult: ACPProcess['initResult'],
+): 'resume' | 'load' | undefined {
+  const capabilities = initResult?.agentCapabilities;
+  if (capabilities?.sessionCapabilities?.resume != null) return 'resume';
+  if (capabilities?.loadSession === true) return 'load';
+  return undefined;
 }
 
 /**
@@ -1307,38 +1322,69 @@ export class AcpAdapter implements ProviderAdapterShape {
       // for recovery (session closed) with a truthful reason.
       this.requireCurrentGeneration(input.threadId, record.generation);
       if (isAcpResumeCursor(input.resumeCursor)) {
-        if (acpProcess.initResult?.agentCapabilities?.loadSession !== true) {
+        const reattach = acpReattachMethod(acpProcess.initResult);
+        if (!reattach) {
           acpResumeSessions.add(1, {
             connectionId: config.id,
             outcome: 'load-unsupported',
           });
           throw new Error(
-            "This engine's CLI does not advertise session loading (ACP loadSession); the previous conversation cannot be resumed.",
+            "This engine's CLI does not advertise session loading (ACP session/resume or loadSession); the previous conversation cannot be resumed.",
           );
         }
+        const acpSessionId = input.resumeCursor.acpSessionId;
+        // A turn sent while the engine reattaches would race the history
+        // suppression below, so `sendTurn` refuses until this clears.
         // `session/load` makes the engine replay the whole conversation as
-        // `session/update` notifications before it answers. Station already
-        // holds that history, so the replay is not published: persisting it
-        // stored a second, turn-less copy of every earlier answer.
-        record.loadingHistory = true;
+        // `session/update` notifications before it answers; `session/resume`
+        // does not. Station already holds that history, so a replay is not
+        // published: persisting it stored a second, turn-less copy of every
+        // earlier answer.
+        record.reattaching = true;
         try {
-          await acpProcess.loadSession(
-            input.resumeCursor.acpSessionId,
-            cwd,
-            passthroughMcpServers,
-          );
+          let outcome: 'resumed' | 'loaded';
+          if (reattach === 'resume') {
+            try {
+              await acpProcess.resumeSession(
+                acpSessionId,
+                cwd,
+                passthroughMcpServers,
+              );
+              outcome = 'resumed';
+            } catch (error) {
+              // `sessionCapabilities.resume` is still marked unstable: an
+              // engine that advertises it but answers "method not found" is
+              // loaded instead. Any other failure is real and propagates.
+              if (
+                !isAcpMethodNotFound(error) ||
+                acpProcess.initResult?.agentCapabilities?.loadSession !== true
+              ) {
+                throw error;
+              }
+              await acpProcess.loadSession(
+                acpSessionId,
+                cwd,
+                passthroughMcpServers,
+              );
+              outcome = 'loaded';
+            }
+          } else {
+            await acpProcess.loadSession(
+              acpSessionId,
+              cwd,
+              passthroughMcpServers,
+            );
+            outcome = 'loaded';
+          }
           // The SDK dispatches each notification without awaiting it before
           // reading the next message, so the last replayed updates can still
           // be in flight (as microtasks) when the response resolves. Yield a
           // macrotask so they land while the replay is still suppressed.
           await new Promise<void>((resolve) => setImmediate(resolve));
+          acpResumeSessions.add(1, { connectionId: config.id, outcome });
         } finally {
-          record.loadingHistory = false;
+          record.reattaching = false;
         }
-        acpResumeSessions.add(1, {
-          connectionId: config.id,
-          outcome: 'loaded',
-        });
       } else {
         const sessionResult = await acpProcess.newSession(
           cwd,
@@ -1610,6 +1656,13 @@ export class AcpAdapter implements ProviderAdapterShape {
     if (record.activeTurnId) {
       throw new SendTurnRefusedError(
         `ACP session '${input.threadId}' already has an active turn.`,
+      );
+    }
+    // Updates arriving while the session reattaches are treated as history
+    // and dropped, so a turn started now would lose its own output.
+    if (record.reattaching) {
+      throw new SendTurnRefusedError(
+        `ACP session '${input.threadId}' is still reattaching to its engine session.`,
       );
     }
     const turnId = crypto.randomUUID();
@@ -2311,7 +2364,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     // makes AcpSessionRecord the live backing store the mapper mutates
     // directly, so this method is pure wiring.
     if (
-      record.loadingHistory &&
+      record.reattaching &&
       ACP_HISTORY_REPLAY_UPDATES.has(update.sessionUpdate)
     ) {
       return;
@@ -2429,7 +2482,8 @@ export class AcpAdapter implements ProviderAdapterShape {
   /**
    * Re-establish exactly once from an already-validated resume cursor. A
    * fresh `session/new` would silently abandon the native conversation, so an
-   * unavailable cursor or `loadSession` capability is a diagnostic-only
+   * unavailable cursor or reattach (`session/resume` / `loadSession`)
+   * capability is a diagnostic-only
    * outcome rather than a new child process.
    */
   private async recoverCredentialRefusal(
@@ -2440,7 +2494,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     if (
       !isAcpResumeCursor(resumeCursor) ||
       !resumeCursor.connectionFingerprint ||
-      record.process.initResult?.agentCapabilities?.loadSession !== true
+      !acpReattachMethod(record.process.initResult)
     ) {
       throw new Error(
         'The ACP session cannot be re-established safely after the engine refused its credential callback.',

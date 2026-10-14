@@ -90,6 +90,7 @@ class FakeAcpProcess {
           promptCapabilities: { image: boolean };
           loadSession?: boolean;
           mcpCapabilities?: { http?: boolean; sse?: boolean };
+          sessionCapabilities?: { resume?: Record<string, never> | null };
         };
       }
     | undefined = {
@@ -192,6 +193,25 @@ class FakeAcpProcess {
   }
   loadSessionReplay?: (client: Client) => void;
 
+  resumeSessionArgs?: {
+    sessionId: string;
+    cwd: string;
+    mcpServers?: unknown[];
+  };
+  resumeSessionCalls = 0;
+  resumeSessionError?: unknown;
+
+  async resumeSession(
+    sessionId: string,
+    cwd: string,
+    mcpServers?: unknown[],
+  ): Promise<void> {
+    this.resumeSessionCalls += 1;
+    this.resumeSessionArgs = { sessionId, cwd, mcpServers };
+    if (this.resumeSessionError) throw this.resumeSessionError;
+    this.sessionId = sessionId;
+  }
+
   readonly setConfigOptionCalls: Array<{ configId: string; value: string }> =
     [];
   setConfigOptionResponse?: unknown;
@@ -277,6 +297,8 @@ function createAdapter(
   options: {
     imageCapability?: boolean;
     loadSessionCapability?: boolean;
+    /** Advertise `sessionCapabilities.resume` (`{}`) at initialize. */
+    resumeSessionCapability?: boolean;
     connectionOverrides?: Partial<ACPConnectionConfig>[];
     resolveToolServer?: (id: string) => Promise<any>;
     logger?: any;
@@ -328,6 +350,9 @@ function createAdapter(
         const capabilities = proc.initResult!.agentCapabilities;
         capabilities.promptCapabilities.image = options.imageCapability ?? true;
         capabilities.loadSession = options.loadSessionCapability;
+        if (options.resumeSessionCapability) {
+          capabilities.sessionCapabilities = { resume: {} };
+        }
         if (options.mcpHttpCapability !== undefined) {
           capabilities.mcpCapabilities = { http: options.mcpHttpCapability };
         }
@@ -2788,74 +2813,78 @@ describe('AcpAdapter', () => {
       });
     });
 
-    test('the history a session/load replays is not published, and the next turn still streams', async () => {
-      const replayed = (update: Record<string, unknown>) => ({
-        sessionId: 'native-kiro-cli',
-        update,
-      });
-      const { adapter, processes } = createAdapter({
-        loadSessionCapability: true,
-        onProcess: (proc) => {
-          proc.loadSessionReplay = (client) => {
-            void client.sessionUpdate(
-              replayed({
-                sessionUpdate: 'user_message_chunk',
-                content: { type: 'text', text: 'earlier question' },
-              }) as any,
-            );
-            void client.sessionUpdate(
-              replayed({
-                sessionUpdate: 'agent_thought_chunk',
-                messageId: 'msg_old',
-                content: { type: 'text', text: 'earlier thinking' },
-              }) as any,
-            );
-            void client.sessionUpdate(
-              replayed({
-                sessionUpdate: 'tool_call',
-                toolCallId: 'call_old',
-                title: 'list_projects',
-                kind: 'other',
-                status: 'completed',
-                rawInput: {},
-              }) as any,
-            );
-            void client.sessionUpdate(
-              replayed({
-                sessionUpdate: 'agent_message_chunk',
-                messageId: 'msg_old',
-                content: { type: 'text', text: 'earlier answer' },
-              }) as any,
-            );
-            // Session state rides the same channel and still applies.
-            void client.sessionUpdate(
-              replayed({
-                sessionUpdate: 'available_commands_update',
-                availableCommands: [{ name: 'deploy', description: 'Deploy' }],
-              }) as any,
-            );
-            // The SDK dispatches a notification without awaiting it, so the
-            // last replayed update can still be in flight when the load's
-            // response resolves.
-            let late = Promise.resolve();
-            for (let hop = 0; hop < 20; hop++) late = late.then(() => {});
-            void late.then(() =>
-              client.sessionUpdate(
-                replayed({
-                  sessionUpdate: 'agent_message_chunk',
-                  messageId: 'msg_old',
-                  content: { type: 'text', text: 'earlier answer, tail' },
-                }) as any,
-              ),
-            );
-          };
-        },
-      });
-      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    /**
+     * ACP: on `session/load` the agent streams the conversation history as
+     * `session/update` notifications before it answers. The fake emits the
+     * stored history inside `loadSession`, plus one update still in flight
+     * after the response (the SDK dispatches without awaiting).
+     */
+    const emitStoredHistory = (client: Client) => {
+      const replayed = (update: Record<string, unknown>) =>
+        ({ sessionId: 'native-kiro-cli', update }) as any;
+      void client.sessionUpdate(
+        replayed({
+          sessionUpdate: 'user_message_chunk',
+          content: { type: 'text', text: 'earlier question' },
+        }),
+      );
+      void client.sessionUpdate(
+        replayed({
+          sessionUpdate: 'agent_thought_chunk',
+          messageId: 'msg_old',
+          content: { type: 'text', text: 'earlier thinking' },
+        }),
+      );
+      void client.sessionUpdate(
+        replayed({
+          sessionUpdate: 'tool_call',
+          toolCallId: 'call_old',
+          title: 'list_projects',
+          kind: 'other',
+          status: 'completed',
+          rawInput: {},
+        }),
+      );
+      void client.sessionUpdate(
+        replayed({
+          sessionUpdate: 'agent_message_chunk',
+          messageId: 'msg_old',
+          content: { type: 'text', text: 'earlier answer' },
+        }),
+      );
+      // Session state rides the same channel and still applies.
+      void client.sessionUpdate(
+        replayed({
+          sessionUpdate: 'available_commands_update',
+          availableCommands: [{ name: 'deploy', description: 'Deploy' }],
+        }),
+      );
+      let late = Promise.resolve();
+      for (let hop = 0; hop < 20; hop++) late = late.then(() => {});
+      void late.then(() =>
+        client.sessionUpdate(
+          replayed({
+            sessionUpdate: 'agent_message_chunk',
+            messageId: 'msg_old',
+            content: { type: 'text', text: 'earlier answer, tail' },
+          }),
+        ),
+      );
+    };
 
+    /**
+     * Resume `threadId` from a cursor, run one turn that streams one chunk,
+     * and return every event published through that turn's terminal.
+     */
+    const resumeThenTurn = async (
+      adapter: AcpAdapter,
+      processes: FakeAcpProcess[],
+      threadId: string,
+    ) => {
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
       await adapter.startSession({
         provider: 'acp',
-        threadId: 'thread-resume-replay',
+        threadId,
         cwd: '/tmp/project',
         metadata: { connectionId: 'kiro' },
         resumeCursor: {
@@ -2864,9 +2893,6 @@ describe('AcpAdapter', () => {
           connectionFingerprint: kiroFingerprint(),
         },
       });
-      expect(processes[0].loadSessionCalls).toBe(1);
-
-      // Read every published event through the next turn's terminal.
       const seen: CanonicalRuntimeEvent[] = [];
       const readThrough = async (method: string) => {
         for (;;) {
@@ -2876,14 +2902,7 @@ describe('AcpAdapter', () => {
         }
       };
       await readThrough('session.configured');
-      expect((await adapter.getCommands()).map((c) => c.name)).toEqual([
-        'deploy',
-      ]);
-
-      const turn = await adapter.sendTurn({
-        threadId: 'thread-resume-replay',
-        input: 'new question',
-      });
+      const turn = await adapter.sendTurn({ threadId, input: 'new question' });
       await readThrough('turn.started');
       await processes[0].client.sessionUpdate({
         sessionId: 'native-kiro-cli',
@@ -2896,9 +2915,14 @@ describe('AcpAdapter', () => {
       await readThrough('content.text-delta');
       processes[0].resolvePrompt('end_turn');
       await readThrough('turn.completed');
+      return { seen, turnId: turn.turnId };
+    };
 
-      // No replayed content was published, before or after the load
-      // answered; the new turn's own chunk streamed with its turn id.
+    /** No replayed content was published; only the new turn's chunk was. */
+    const expectOnlyTheNewTurnStreamed = (
+      seen: CanonicalRuntimeEvent[],
+      turnId: string,
+    ) => {
       const content = seen.filter(
         (event) =>
           event.method.startsWith('content.') ||
@@ -2912,11 +2936,7 @@ describe('AcpAdapter', () => {
           delta: (event as { delta?: string }).delta,
         })),
       ).toEqual([
-        {
-          method: 'content.text-delta',
-          turnId: turn.turnId,
-          delta: 'new answer',
-        },
+        { method: 'content.text-delta', turnId, delta: 'new answer' },
       ]);
       expect(seen.map((event) => event.method)).toEqual([
         'session.started',
@@ -2925,6 +2945,140 @@ describe('AcpAdapter', () => {
         'content.text-delta',
         'turn.completed',
       ]);
+    };
+
+    test('the history a session/load replays is not published, and the next turn still streams', async () => {
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          proc.loadSessionReplay = emitStoredHistory;
+        },
+      });
+      const { seen, turnId } = await resumeThenTurn(
+        adapter,
+        processes,
+        'thread-resume-replay',
+      );
+      expect(processes[0].resumeSessionCalls).toBe(0);
+      expect(processes[0].loadSessionCalls).toBe(1);
+      expect((await adapter.getCommands()).map((c) => c.name)).toEqual([
+        'deploy',
+      ]);
+      expectOnlyTheNewTurnStreamed(seen, turnId);
+    });
+
+    test('an engine advertising session/resume is resumed, not loaded, and the next turn streams', async () => {
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        resumeSessionCapability: true,
+        onProcess: (proc) => {
+          // Were the adapter to load instead, this history would be replayed.
+          proc.loadSessionReplay = emitStoredHistory;
+        },
+      });
+      const { seen, turnId } = await resumeThenTurn(
+        adapter,
+        processes,
+        'thread-resume-native',
+      );
+      expect(processes[0].resumeSessionCalls).toBe(1);
+      expect(processes[0].resumeSessionArgs).toMatchObject({
+        sessionId: 'native-kiro-cli',
+        cwd: '/tmp/project',
+      });
+      expect(processes[0].loadSessionCalls).toBe(0);
+      expectOnlyTheNewTurnStreamed(seen, turnId);
+    });
+
+    test('a session/resume the engine answers with method-not-found falls back to session/load', async () => {
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        resumeSessionCapability: true,
+        onProcess: (proc) => {
+          proc.resumeSessionError =
+            RequestError.methodNotFound('session/resume');
+          proc.loadSessionReplay = emitStoredHistory;
+        },
+      });
+      const { seen, turnId } = await resumeThenTurn(
+        adapter,
+        processes,
+        'thread-resume-fallback',
+      );
+      expect(processes[0].resumeSessionCalls).toBe(1);
+      expect(processes[0].loadSessionCalls).toBe(1);
+      expectOnlyTheNewTurnStreamed(seen, turnId);
+    });
+
+    test('any other session/resume failure fails the start rather than loading', async () => {
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        resumeSessionCapability: true,
+        onProcess: (proc) => {
+          proc.resumeSessionError = new RequestError(
+            -32002,
+            'Resource not found: session native-kiro-cli',
+          );
+        },
+      });
+      await expect(
+        adapter.startSession({
+          provider: 'acp',
+          threadId: 'thread-resume-real-failure',
+          cwd: '/tmp/project',
+          metadata: { connectionId: 'kiro' },
+          resumeCursor: {
+            acpSessionId: 'native-kiro-cli',
+            connectionId: 'kiro',
+            connectionFingerprint: kiroFingerprint(),
+          },
+        }),
+      ).rejects.toThrow('Resource not found: session native-kiro-cli');
+      expect(processes[0].resumeSessionCalls).toBe(1);
+      expect(processes[0].loadSessionCalls).toBe(0);
+    });
+
+    test('a turn sent while the session is still reattaching is refused before any effect', async () => {
+      let releaseLoad!: () => void;
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          proc.loadSessionPromise = new Promise<void>((resolve) => {
+            releaseLoad = resolve;
+          });
+        },
+      });
+      const started = adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-resume-race',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        resumeCursor: {
+          acpSessionId: 'native-kiro-cli',
+          connectionId: 'kiro',
+          connectionFingerprint: kiroFingerprint(),
+        },
+      });
+      await vi.waitFor(() => expect(processes[0]?.loadSessionCalls).toBe(1));
+
+      const refusal = await adapter
+        .sendTurn({ threadId: 'thread-resume-race', input: 'too early' })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      expect(refusal).toBeInstanceOf(SendTurnRefusedError);
+      expect((refusal as Error).message).toContain('still reattaching');
+      expect(processes[0].promptContents).toEqual([]);
+
+      releaseLoad();
+      await started;
+      const turn = await adapter.sendTurn({
+        threadId: 'thread-resume-race',
+        input: 'after the load',
+      });
+      expect(turn.threadId).toBe('thread-resume-race');
+      expect(processes[0].promptContents).toHaveLength(1);
     });
 
     test('startSession with an ACP resume cursor fails closed with a named error when the CLI does not advertise loadSession (no silent fresh session)', async () => {
