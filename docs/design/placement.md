@@ -818,6 +818,16 @@ current cell is wired to `provider-task-stop`, so
 its running child work now uses that control. The legacy `TaskRow` bridge
 remains for an engine whose control cell is not wired.
 
+**Amended 2026-10-14.** A subagent whose engine names the tool call that
+spawned it (`parent.toolCallId`) is also drawn as a card in the chat
+transcript, right after that call
+(`components/chat/SubagentTranscriptCard.tsx`). The card is folded from the
+transcript window's own `child-work.updated` events, so it is not a third
+registry and binds nothing new to the dock. The Agents pane stays the place
+to see every child, stop one, or read a child no tool call names; the card
+and the pane's row share their status words and time format
+(`utils/child-work-display.ts`).
+
 **Implemented by #1969 (the Device pane), 2026-09-14.** A captured
 simulator or emulator screen as a dock tab (`device`, `exposure: 'catalog'`,
 no chord, dock regions only, `right` by default because a device screen is

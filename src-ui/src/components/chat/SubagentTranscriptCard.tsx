@@ -74,6 +74,10 @@ function StatusGlyph({
     return <span className="subagent-card__spinner" aria-hidden="true" />;
   if (status === 'completed') return <CheckGlyph />;
   if (status === 'failed') return <CloseGlyph />;
+  // A stop someone made is an outcome; the dashed ring is kept for the two
+  // observations of an absence (no result, an unconfirmed stop).
+  if (status === 'cancelled')
+    return <span className="subagent-card__stopped" aria-hidden="true" />;
   return <span className="subagent-card__hollow" aria-hidden="true" />;
 }
 

@@ -101,6 +101,14 @@
   border-radius: 50%;
 }
 
+.subagent-card__stopped {
+  display: inline-block;
+  width: 0.6em;
+  height: 0.6em;
+  border-radius: 1px;
+  background: currentColor;
+}
+
 /* Observations of an absence (no outcome, an unconfirmed stop): dashed. */
 .subagent-card__hollow {
   border-style: dashed;
