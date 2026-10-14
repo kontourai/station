@@ -87,6 +87,11 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
    its persisted resume cursor only after validating the connection identity,
    execution fingerprint and live `agentCapabilities.loadSession` capability;
    then the adapter calls `connection.loadSession()` for that native session.
+   ACP has the agent replay the whole conversation as `session/update`
+   notifications before it answers the load. Station already stored that
+   history, so the adapter does not publish the replayed message, thought,
+   tool and plan updates; commands, mode, config and usage updates still
+   apply.
 
 `OrchestrationService` reconstructs the start input with `existing.resumeCursor`
 when it must re-establish an adapter Session. A malformed cursor, changed
