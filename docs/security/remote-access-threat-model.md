@@ -476,8 +476,8 @@ every token.
 bound to a person (a verified Tailscale identity or an account) may use only
 what that person's Station group allows: **Member** (the default) keeps
 Standard, and **Admin** may also keep `access:approve`, `consent:decide`,
-`coding:exec` and `approval:full-access`. The cap applies to those seven
-governed tokens only; every other token passes through, and no group ever
+`coding:exec`, `approval:full-access` and `access:devices`. The cap applies to
+those eight governed tokens only; every other token passes through, and no group ever
 includes `access:manage`. It is computed per read in
 `EnvironmentSecurityService.resolveGrantedScope` and every reader that does
 not go through it (pairing approval, consent decisions, full-access grantor
@@ -711,7 +711,7 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   gains it on upgrade, and older peers keep parsing every scope string they
   are issued. The operator grants it once, per device, with the device access
   editor's **Run commands** switch (`POST /api/pairing/devices/:id/scope`,
-  operator-only), and revokes it by turning the switch off; the grant is
+  operator or explicitly granted device administrator), and revokes it by turning the switch off; the grant is
   stored on the device's record in the pairing registry, like every other
   promoted token. The operator in person never needs it: the operator
   credential, and credentials minted by proving possession of this Station's
@@ -1084,11 +1084,11 @@ What this does not close, stated so nobody assumes it does:
 - Confinement binds a request to the Project it names. A device allowed to
   run commands may point a Project's folder anywhere, and the containment
   follows; that device could already reach anywhere through `/exec`.
-- Changes to a device's scope are recorded only as the device record's
-  current scope; there is no separate history of who granted or revoked what.
-  The grantor recorded beside a session's `host` start stamp and the Ask
-  decisions a full-access revocation records are per-conversation
-  attribution, not a scope-change log.
+- The registry stores the current scope, not a durable scope-change history.
+  Successful access mutations also emit `station.device_access.changed` through
+  the runtime logger, with actor/target attribution and no credentials. A
+  dropped observation cannot undo a committed decision. Session `host` stamps
+  and full-access resets remain separate per-conversation attribution.
 
 ### Cross-station reads
 
