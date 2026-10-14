@@ -540,7 +540,27 @@ export interface AcpSessionRecord {
   turnErrorNotificationsSuppressed?: boolean;
   /** Bounded per-session owner for ACP's redraw-style tool updates. */
   toolUpdateSupervisor: AcpToolUpdateSupervisor;
+  /**
+   * True while `session/load` is replaying the conversation. Replayed
+   * content is history Station already stored, so it is not published;
+   * session-state updates (commands, mode, config, usage) still apply.
+   */
+  loadingHistory?: boolean;
 }
+
+/**
+ * The `session/update` kinds an ACP `session/load` replays as history
+ * (ACP: the agent streams the entire conversation back before it answers
+ * the load request).
+ */
+const ACP_HISTORY_REPLAY_UPDATES: ReadonlySet<string> = new Set([
+  'user_message_chunk',
+  'agent_message_chunk',
+  'agent_thought_chunk',
+  'tool_call',
+  'tool_call_update',
+  'plan',
+]);
 
 /**
  * The ACP engine's declared capabilities, exported because
@@ -1296,11 +1316,25 @@ export class AcpAdapter implements ProviderAdapterShape {
             "This engine's CLI does not advertise session loading (ACP loadSession); the previous conversation cannot be resumed.",
           );
         }
-        await acpProcess.loadSession(
-          input.resumeCursor.acpSessionId,
-          cwd,
-          passthroughMcpServers,
-        );
+        // `session/load` makes the engine replay the whole conversation as
+        // `session/update` notifications before it answers. Station already
+        // holds that history, so the replay is not published: persisting it
+        // stored a second, turn-less copy of every earlier answer.
+        record.loadingHistory = true;
+        try {
+          await acpProcess.loadSession(
+            input.resumeCursor.acpSessionId,
+            cwd,
+            passthroughMcpServers,
+          );
+          // The SDK dispatches each notification without awaiting it before
+          // reading the next message, so the last replayed updates can still
+          // be in flight (as microtasks) when the response resolves. Yield a
+          // macrotask so they land while the replay is still suppressed.
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        } finally {
+          record.loadingHistory = false;
+        }
         acpResumeSessions.add(1, {
           connectionId: config.id,
           outcome: 'loaded',
@@ -2276,6 +2310,12 @@ export class AcpAdapter implements ProviderAdapterShape {
     // entirely in the mapper's AcpMapperState branches now — `state: record`
     // makes AcpSessionRecord the live backing store the mapper mutates
     // directly, so this method is pure wiring.
+    if (
+      record.loadingHistory &&
+      ACP_HISTORY_REPLAY_UPDATES.has(update.sessionUpdate)
+    ) {
+      return;
+    }
     const ctx: AcpMapperContext = {
       provider: this.provider,
       session: record.session,

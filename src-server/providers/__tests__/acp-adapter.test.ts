@@ -185,8 +185,12 @@ class FakeAcpProcess {
     this.loadSessionArgs = { sessionId, cwd, mcpServers };
     if (this.loadSessionError) throw this.loadSessionError;
     this.sessionId = sessionId;
+    // ACP: the agent streams the conversation history as `session/update`
+    // notifications before it answers `session/load`.
+    this.loadSessionReplay?.(this.client);
     await this.loadSessionPromise;
   }
+  loadSessionReplay?: (client: Client) => void;
 
   readonly setConfigOptionCalls: Array<{ configId: string; value: string }> =
     [];
@@ -2782,6 +2786,145 @@ describe('AcpAdapter', () => {
           },
         ],
       });
+    });
+
+    test('the history a session/load replays is not published, and the next turn still streams', async () => {
+      const replayed = (update: Record<string, unknown>) => ({
+        sessionId: 'native-kiro-cli',
+        update,
+      });
+      const { adapter, processes } = createAdapter({
+        loadSessionCapability: true,
+        onProcess: (proc) => {
+          proc.loadSessionReplay = (client) => {
+            void client.sessionUpdate(
+              replayed({
+                sessionUpdate: 'user_message_chunk',
+                content: { type: 'text', text: 'earlier question' },
+              }) as any,
+            );
+            void client.sessionUpdate(
+              replayed({
+                sessionUpdate: 'agent_thought_chunk',
+                messageId: 'msg_old',
+                content: { type: 'text', text: 'earlier thinking' },
+              }) as any,
+            );
+            void client.sessionUpdate(
+              replayed({
+                sessionUpdate: 'tool_call',
+                toolCallId: 'call_old',
+                title: 'list_projects',
+                kind: 'other',
+                status: 'completed',
+                rawInput: {},
+              }) as any,
+            );
+            void client.sessionUpdate(
+              replayed({
+                sessionUpdate: 'agent_message_chunk',
+                messageId: 'msg_old',
+                content: { type: 'text', text: 'earlier answer' },
+              }) as any,
+            );
+            // Session state rides the same channel and still applies.
+            void client.sessionUpdate(
+              replayed({
+                sessionUpdate: 'available_commands_update',
+                availableCommands: [{ name: 'deploy', description: 'Deploy' }],
+              }) as any,
+            );
+            // The SDK dispatches a notification without awaiting it, so the
+            // last replayed update can still be in flight when the load's
+            // response resolves.
+            let late = Promise.resolve();
+            for (let hop = 0; hop < 20; hop++) late = late.then(() => {});
+            void late.then(() =>
+              client.sessionUpdate(
+                replayed({
+                  sessionUpdate: 'agent_message_chunk',
+                  messageId: 'msg_old',
+                  content: { type: 'text', text: 'earlier answer, tail' },
+                }) as any,
+              ),
+            );
+          };
+        },
+      });
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+      await adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-resume-replay',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+        resumeCursor: {
+          acpSessionId: 'native-kiro-cli',
+          connectionId: 'kiro',
+          connectionFingerprint: kiroFingerprint(),
+        },
+      });
+      expect(processes[0].loadSessionCalls).toBe(1);
+
+      // Read every published event through the next turn's terminal.
+      const seen: CanonicalRuntimeEvent[] = [];
+      const readThrough = async (method: string) => {
+        for (;;) {
+          const event = await nextEvent(iterator, method);
+          seen.push(event);
+          if (event.method === method) return event;
+        }
+      };
+      await readThrough('session.configured');
+      expect((await adapter.getCommands()).map((c) => c.name)).toEqual([
+        'deploy',
+      ]);
+
+      const turn = await adapter.sendTurn({
+        threadId: 'thread-resume-replay',
+        input: 'new question',
+      });
+      await readThrough('turn.started');
+      await processes[0].client.sessionUpdate({
+        sessionId: 'native-kiro-cli',
+        update: {
+          sessionUpdate: 'agent_message_chunk',
+          messageId: 'msg_new',
+          content: { type: 'text', text: 'new answer' },
+        },
+      } as any);
+      await readThrough('content.text-delta');
+      processes[0].resolvePrompt('end_turn');
+      await readThrough('turn.completed');
+
+      // No replayed content was published, before or after the load
+      // answered; the new turn's own chunk streamed with its turn id.
+      const content = seen.filter(
+        (event) =>
+          event.method.startsWith('content.') ||
+          event.method.startsWith('tool.') ||
+          event.method === 'plan.updated',
+      );
+      expect(
+        content.map((event) => ({
+          method: event.method,
+          turnId: event.turnId,
+          delta: (event as { delta?: string }).delta,
+        })),
+      ).toEqual([
+        {
+          method: 'content.text-delta',
+          turnId: turn.turnId,
+          delta: 'new answer',
+        },
+      ]);
+      expect(seen.map((event) => event.method)).toEqual([
+        'session.started',
+        'session.configured',
+        'turn.started',
+        'content.text-delta',
+        'turn.completed',
+      ]);
     });
 
     test('startSession with an ACP resume cursor fails closed with a named error when the CLI does not advertise loadSession (no silent fresh session)', async () => {
