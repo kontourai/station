@@ -375,7 +375,12 @@ export function latestQueuedRetryNotice<
     content: string;
     ephemeral?: boolean;
     queuedRetry?: boolean;
-    action?: { label: string; handler: () => void };
+    action?: {
+      label: string;
+      handler: () => void;
+      /** Ask first with the shared unconfirmed-message discard. */
+      confirm?: 'unconfirmed-discard';
+    };
   },
 >(messages: readonly Message[], queued: boolean) {
   if (!queued) return undefined;
@@ -917,6 +922,7 @@ export function ChatDockBody({
   const queuedRetryNotice = queuedRetry
     ? {
         text: queuedRetry.line,
+        confirm: queuedRetry.action.confirm === 'unconfirmed-discard',
         // What the transcript's own action does: run it, then drop the notice.
         onDiscard: () => {
           queuedRetry.action.handler();

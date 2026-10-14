@@ -3,6 +3,10 @@ import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
 import type { FileAttachment } from '../../types';
 import { EditGlyph } from '../icons/Glyph';
+import {
+  AWAITING_CONFIRMATION_LABEL,
+  MAY_HAVE_REACHED_LABEL,
+} from './deliveryLabels';
 import { UnconfirmedDiscardConfirm } from './UnconfirmedDiscardConfirm';
 import './QueuedMessages.css';
 
@@ -76,10 +80,13 @@ export function OutboundQueuedMessages({
     (turn) => turn.status === 'accepted',
   ).length;
   const awaitingCount = turns.filter((turn) => turn.awaitingLookup).length;
+  // A send another window holds a claim on is under way there, not
+  // uncertain.
+  const sendingCount = turns.filter(
+    (turn) => turn.status === 'invoking' && !turn.awaitingLookup,
+  ).length;
   const uncertainCount = turns.filter(
-    (turn) =>
-      (turn.status === 'invoking' && !turn.awaitingLookup) ||
-      turn.status === 'may-have-started',
+    (turn) => turn.status === 'may-have-started',
   ).length;
   const summary = [
     waitingCount
@@ -91,12 +98,11 @@ export function OutboundQueuedMessages({
     awaitingCount
       ? `${awaitingCount} waiting for Station to confirm`
       : undefined,
+    sendingCount ? `${sendingCount} sending` : undefined,
     acceptedCount
       ? `${acceptedCount} accepted and waiting for completion`
       : undefined,
-    uncertainCount
-      ? `${uncertainCount} delivery-uncertain; inspect this session`
-      : undefined,
+    uncertainCount ? `${uncertainCount} may have reached the agent` : undefined,
   ]
     .filter(Boolean)
     .join(' · ');
@@ -119,7 +125,9 @@ export function OutboundQueuedMessages({
 
   return (
     <div className="queued-messages" aria-live="polite">
-      <div className="queued-messages__label">{summary}</div>
+      <div className="queued-messages__label queued-messages__label--summary">
+        {summary}
+      </div>
       <div className="queued-messages__list">
         {turns.map((turn, index) => {
           const workspaceRefused = isWorkspaceRefusedTurn(turn);
@@ -208,14 +216,10 @@ export function OutboundQueuedMessages({
               turn.status === 'invoking' ? (
                 <span className="queued-messages__label queued-messages__label--unconfirmed">
                   {turn.awaitingLookup
-                    ? 'No answer yet; sent once Station confirms it never arrived'
-                    : 'May have reached the agent'}{' '}
-                  {turn.waitingForStation ? null : (
-                    <RecheckDeliveryButton
-                      clientTurnId={turn.clientTurnId}
-                      onError={onError}
-                    />
-                  )}
+                    ? AWAITING_CONFIRMATION_LABEL
+                    : turn.status === 'invoking'
+                      ? 'Sending'
+                      : MAY_HAVE_REACHED_LABEL}
                 </span>
               ) : turn.status === 'failed' ? (
                 <span className="queued-messages__label">
@@ -270,7 +274,7 @@ export function OutboundQueuedMessages({
                   Accepted; waiting for completion
                 </span>
               ) : null}
-              <DiscardUnconfirmed
+              <UnconfirmedRowActions
                 sessionId={sessionId}
                 turn={turn}
                 onDiscarded={() => onDiscarded?.(turns.length - 1)}
@@ -468,7 +472,7 @@ function RecheckDeliveryButton({
  * (#3596): never automatic, and only after the risk is stated. A row still
  * `invoking` has no such action: its send may still be under way.
  */
-function DiscardUnconfirmed({
+function UnconfirmedRowActions({
   sessionId,
   turn,
   onDiscarded,
@@ -479,42 +483,56 @@ function DiscardUnconfirmed({
     clientTurnId: string;
     status: OutboundQueuedTurn['status'];
     awaitingLookup?: true;
+    waitingForStation?: string;
   };
   onDiscarded: () => void;
   onError: (message: string) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
-  if (turn.status !== 'may-have-started' && !turn.awaitingLookup) return null;
+  if (turn.status !== 'may-have-started' && turn.status !== 'invoking')
+    return null;
   const { clientTurnId } = turn;
-  if (!confirming)
-    return (
-      <button
-        type="button"
-        className="queued-message__unconfirmed-discard"
-        aria-expanded={false}
-        onClick={() => setConfirming(true)}
-      >
-        Discard…
-      </button>
-    );
+  const discardable =
+    turn.status === 'may-have-started' || turn.awaitingLookup === true;
   return (
-    <span className="queued-message__confirm">
-      <UnconfirmedDiscardConfirm
-        onKeep={() => setConfirming(false)}
-        onConfirm={() =>
-          void import('../../lib/messageDeliveryActions')
-            .then(({ discardMessage }) =>
-              discardMessage(sessionId, clientTurnId, 'unconfirmed'),
-            )
-            .then(onDiscarded)
-            .catch((error: unknown) =>
-              onError(
-                `Could not discard this message: ${error instanceof Error ? error.message : String(error)}`,
-              ),
-            )
-        }
-      />
-    </span>
+    <>
+      <span className="queued-message__actions">
+        {turn.waitingForStation ? null : (
+          <RecheckDeliveryButton
+            clientTurnId={clientTurnId}
+            onError={onError}
+          />
+        )}
+        {discardable && !confirming ? (
+          <button
+            type="button"
+            aria-expanded={false}
+            onClick={() => setConfirming(true)}
+          >
+            Discard…
+          </button>
+        ) : null}
+      </span>
+      {discardable && confirming ? (
+        <span className="queued-message__confirm">
+          <UnconfirmedDiscardConfirm
+            onKeep={() => setConfirming(false)}
+            onConfirm={() =>
+              void import('../../lib/messageDeliveryActions')
+                .then(({ discardMessage }) =>
+                  discardMessage(sessionId, clientTurnId, 'unconfirmed'),
+                )
+                .then(onDiscarded)
+                .catch((error: unknown) =>
+                  onError(
+                    `Could not discard this message: ${error instanceof Error ? error.message : String(error)}`,
+                  ),
+                )
+            }
+          />
+        </span>
+      ) : null}
+    </>
   );
 }
 

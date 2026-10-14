@@ -194,7 +194,12 @@ export type ChatMessage = {
 };
 
 export type EphemeralMessage = ChatMessage & {
-  action?: { label: string; handler: () => void };
+  action?: {
+    label: string;
+    handler: () => void;
+    /** Ask first with the shared unconfirmed-message discard. */
+    confirm?: 'unconfirmed-discard';
+  };
   terminalSession?: boolean;
   /** #1796: rendered by `FullAccessRefusalCard`, never as Markdown. */
   fullAccessRefusal?: FullAccessRefusalNotice;
@@ -408,13 +413,6 @@ export type ChatUIState = {
    */
   pendingClientTurnId?: string;
   /**
-   * What Station said about this chat's own sends, by send key: the delivery
-   * lookup's answer while a request is slow, and `started` once Station
-   * answered with the turn. Read by `messageDeliveryStateFor`. Observations,
-   * not state to restore: session-scoped and not persisted (a send outliving
-   * its page is the outbox's, which keeps its own answer).
-   */
-  /**
    * Keys this window sent in this session whose turn Station has not started
    * (as far as this window knows), newest last and bounded. A bubble whose key
    * is here but which has no other delivery fact reads "Not confirmed" rather
@@ -428,6 +426,13 @@ export type ChatUIState = {
    * too slow.
    */
   durableClientTurnId?: string;
+  /**
+   * What Station said about this chat's own sends, by send key: the delivery
+   * lookup's answer while a request is slow, and `started` once Station
+   * answered with the turn. Read by `messageDeliveryStateFor`. Observations,
+   * not state to restore: session-scoped and not persisted (a send outliving
+   * its page is the outbox's, which keeps its own answer).
+   */
   deliveryChecks?: Readonly<
     Record<
       string,
@@ -1692,7 +1697,12 @@ export function createEphemeralMessageState(
     role: ChatRole;
     content: string;
     attachments?: any[];
-    action?: { label: string; handler: () => void };
+    action?: {
+      label: string;
+      handler: () => void;
+      /** Ask first with the shared unconfirmed-message discard. */
+      confirm?: 'unconfirmed-discard';
+    };
     sendFailure?: boolean;
     queuedRetry?: boolean;
   },

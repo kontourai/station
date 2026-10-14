@@ -78,18 +78,19 @@
 /* A message that may have reached the agent keeps its text on a line of its
    own, with its note, Check and Discard… wrapping below; an open
    confirmation takes a row of its own under them. */
-.queued-message:has(
-  > :is(.queued-message__unconfirmed-discard, .queued-message__confirm)
-) {
+.queued-message:has(> :is(.queued-message__actions, .queued-message__confirm)) {
   flex-wrap: wrap;
 }
-.queued-message:has(
-    > :is(.queued-message__unconfirmed-discard, .queued-message__confirm)
-  )
+.queued-message:has(> :is(.queued-message__actions, .queued-message__confirm))
   > .queued-message__text {
   flex-basis: calc(100% - 16px - 6px);
 }
-.queued-message__unconfirmed-discard {
+/* An unconfirmed row's Check and Discard…: one group, one size. */
+.queued-message__actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1);
   font-size: var(--text-sm);
 }
 .queued-message__confirm {
@@ -102,12 +103,18 @@
    enough to give the composer priority: there the composer carries the
    notice and its Discard, and the list keeps its window. */
 .queued-messages__list:has(
-  :is(.queued-message__unconfirmed-discard, .queued-message__confirm)
+  :is(.queued-message__actions, .queued-message__confirm)
 ):not(:where([data-composer-priority] *)) {
   max-height: none;
 }
 /* Calm sentence case for this one note, unlike the list's other labels: it
    says what may have happened, not an instruction to send again. */
+/* The outbox list's own summary reads as a sentence, not a caption. */
+.queued-messages__label.queued-messages__label--summary {
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
 .queued-messages__label.queued-messages__label--unconfirmed {
   color: var(--k-caution);
   font-weight: 500;
@@ -310,6 +317,10 @@
     align-items: center;
     justify-content: center;
     min-width: 44px;
+    min-height: 44px;
+  }
+
+  .queued-message__actions > button {
     min-height: 44px;
   }
 

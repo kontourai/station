@@ -470,6 +470,9 @@ function MessageBubbleComponent({
             ? () => onNewChatFromMessage(textContent)
             : undefined,
           onDiscardUnsent: discardUnsent,
+          // The phone already opens a sheet for the row: its actions are
+          // listed there, not behind a second ⋯ inside it.
+          inline: isMobile,
         }}
         pending={null}
         // In the phone sheet a failed load must not leave an empty sheet

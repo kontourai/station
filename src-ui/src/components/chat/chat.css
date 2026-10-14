@@ -894,7 +894,9 @@
 .message.user.message--delivery-not-sent {
   outline: 1px solid var(--k-negative);
 }
-.message.user.message--delivery-unconfirmed {
+.message.user.message--delivery-unconfirmed,
+.message.user.message--delivery-unanswered,
+.message.user.message--delivery-awaiting-confirmation {
   outline-color: var(--k-caution);
 }
 .message-delivery {
@@ -913,7 +915,10 @@
 }
 /* The two states that need the user name themselves in their tone as well as
    in words (AA on the page background in both themes). */
-.message-delivery[data-delivery-state="unconfirmed"] .message-delivery__label {
+.message-delivery[data-delivery-state="unconfirmed"] .message-delivery__label,
+.message-delivery[data-delivery-state="unanswered"] .message-delivery__label,
+.message-delivery[data-delivery-state="awaiting-confirmation"]
+  .message-delivery__label {
   color: var(--k-caution);
   font-weight: 500;
 }
@@ -3232,4 +3237,32 @@
   transform: none;
   box-shadow: none;
   background: var(--k-panel-raised);
+}
+
+/* The queued notice's Discard confirmation, in the composer and in the
+   transcript notice: a row of its own above the controls. */
+.chat-input__queued-retry-confirm,
+.ephemeral-message__confirm {
+  margin-top: var(--k-space-2);
+}
+
+/* The phone sheet lists a user message's actions directly. */
+.message-details__menu {
+  display: grid;
+  gap: var(--k-space-1);
+  min-width: 0;
+}
+.message-details__menu > [role="menuitem"] {
+  min-height: 44px;
+  padding: 0 var(--k-space-3);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--k-radius-control);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.message-details__menu > .turn-footer__overflow-item--danger {
+  color: var(--error-text, var(--k-negative));
 }

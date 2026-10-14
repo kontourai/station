@@ -3,6 +3,10 @@ import { activeChatsStore } from '../../../contexts/active-chats-store';
 import { useRecheckMessageDelivery } from '../../../hooks/useMessageDeliveryState';
 import { useStationOutlivesApp } from '../../../hooks/useStationOutlivesApp';
 import type { MessageDeliveryState } from '../../../utils/messageDeliveryState';
+import {
+  AWAITING_CONFIRMATION_LABEL,
+  MAY_HAVE_REACHED_LABEL,
+} from '../deliveryLabels';
 import { UnconfirmedDiscardConfirm } from '../UnconfirmedDiscardConfirm';
 
 /** An action's result on the delivery line: an error is an alert. */
@@ -30,7 +34,7 @@ const LABELS: Record<
       'Station has not seen this yet. It stays on this device and is sent when Station can be reached, including after you reopen the app.',
   },
   'awaiting-confirmation': {
-    text: 'Saved on this device · waiting for Station to confirm',
+    text: AWAITING_CONFIRMATION_LABEL,
     title:
       'No answer came back. When Station can be reached it is asked about this message, and the message is sent once, with the same key, only if it never arrived.',
   },
@@ -55,7 +59,7 @@ const LABELS: Record<
       'Station did not take this message. Retry sends it again as the same message, so it can never arrive twice.',
   },
   unconfirmed: {
-    text: 'May have reached the agent',
+    text: MAY_HAVE_REACHED_LABEL,
     title:
       'Station cannot confirm whether the agent got this message, so it is not sent again. Check asks Station again.',
   },

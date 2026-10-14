@@ -271,7 +271,26 @@ export function useOutboundQueueFlush(apiBase: string): void {
           if (status === 'connected') queueMicrotask(triggerFlush);
         };
         refreshProjection();
-        unsubscribe = outboundDispatch.subscribe(handleQueueChanged);
+        const stops = [
+          outboundDispatch.subscribe(handleQueueChanged),
+          // Another window's change (a Discard there, a send it settled)
+          // reaches this one only through the queue's cross-window channel.
+          outboundDispatch.subscribeRemoteChange(handleQueueChanged),
+        ];
+        if (typeof document !== 'undefined') {
+          // A hidden window can miss a message on that channel; coming back
+          // into view is when its bubbles are about to be read again.
+          const onVisibility = () => {
+            if (document.visibilityState === 'visible') refreshProjection();
+          };
+          document.addEventListener('visibilitychange', onVisibility);
+          stops.push(() =>
+            document.removeEventListener('visibilitychange', onVisibility),
+          );
+        }
+        unsubscribe = () => {
+          for (const stop of stops) stop();
+        };
       },
     );
     return () => {

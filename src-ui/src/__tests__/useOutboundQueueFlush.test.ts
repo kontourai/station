@@ -6,6 +6,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import {
+  _resetOutboundQueueChangeChannel,
   _resetOutboundQueueStorage,
   _setOutboundQueueStorage,
   outboundDispatch,
@@ -100,6 +101,138 @@ describe('useOutboundQueueFlush', () => {
     await waitFor(() =>
       expect(activeChatsStore.getSnapshot()['session-1']?.messages).toEqual([]),
     );
+  });
+
+  it('drops the bubble when another window discards the message after this one opened', async () => {
+    // Two windows share one channel name; a channel never hears its own post.
+    const channels: Array<{
+      name: string;
+      listeners: Set<(event: { data: unknown }) => void>;
+    }> = [];
+    class FakeChannel {
+      readonly listeners = new Set<(event: { data: unknown }) => void>();
+      constructor(readonly name: string) {
+        channels.push(this);
+      }
+      addEventListener(_t: string, l: (event: { data: unknown }) => void) {
+        this.listeners.add(l);
+      }
+      removeEventListener(_t: string, l: (event: { data: unknown }) => void) {
+        this.listeners.delete(l);
+      }
+      postMessage(data: unknown) {
+        for (const channel of channels)
+          if (channel !== this && channel.name === this.name)
+            for (const listener of channel.listeners) listener({ data });
+      }
+      close() {}
+    }
+    vi.stubGlobal('BroadcastChannel', FakeChannel);
+    let stored: unknown;
+    let retired: unknown[] = [];
+    _setOutboundQueueStorage(
+      {
+        getItem: async () => stored,
+        setItem: async (_key, value) => {
+          stored = value;
+        },
+        updateItem: async (_key, updater) => {
+          stored = updater(stored);
+        },
+      },
+      {
+        get: async () => retired,
+        set: async (next) => {
+          retired = next as unknown[];
+        },
+      },
+    );
+    activeChatsStore.updateChat('session-1', {
+      messages: [
+        {
+          id: 'discarded-later',
+          clientId: 'discarded-later',
+          role: 'user',
+          content: 'thrown away in the other window',
+          timestamp: 1,
+        },
+      ] as never,
+    });
+    try {
+      renderHook(() => useOutboundQueueFlush('http://api.test'));
+      // This window has read the queue and still shows the bubble.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(
+        activeChatsStore.getSnapshot()['session-1']?.messages,
+      ).toHaveLength(1);
+      // The other window discards it and announces the change.
+      retired = [
+        { clientTurnId: 'discarded-later', reason: 'discarded', at: 2 },
+      ];
+      const otherWindow = new FakeChannel('station-outbound-queue');
+      otherWindow.postMessage('changed');
+      await waitFor(() =>
+        expect(activeChatsStore.getSnapshot()['session-1']?.messages).toEqual(
+          [],
+        ),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+      _resetOutboundQueueChangeChannel();
+    }
+  });
+
+  it('re-reads finished keys when the window comes back into view', async () => {
+    // No channel at all: only the visibility change can carry the news.
+    vi.stubGlobal('BroadcastChannel', undefined);
+    let stored: unknown;
+    let retired: unknown[] = [];
+    _setOutboundQueueStorage(
+      {
+        getItem: async () => stored,
+        setItem: async (_key, value) => {
+          stored = value;
+        },
+        updateItem: async (_key, updater) => {
+          stored = updater(stored);
+        },
+      },
+      {
+        get: async () => retired,
+        set: async (next) => {
+          retired = next as unknown[];
+        },
+      },
+    );
+    activeChatsStore.updateChat('session-1', {
+      messages: [
+        {
+          id: 'discarded-while-hidden',
+          clientId: 'discarded-while-hidden',
+          role: 'user',
+          content: 'thrown away while this window was hidden',
+          timestamp: 1,
+        },
+      ] as never,
+    });
+    try {
+      renderHook(() => useOutboundQueueFlush('http://api.test'));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(
+        activeChatsStore.getSnapshot()['session-1']?.messages,
+      ).toHaveLength(1);
+      retired = [
+        { clientTurnId: 'discarded-while-hidden', reason: 'discarded', at: 2 },
+      ];
+      document.dispatchEvent(new Event('visibilitychange'));
+      await waitFor(() =>
+        expect(activeChatsStore.getSnapshot()['session-1']?.messages).toEqual(
+          [],
+        ),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('replays the model and provider options captured when the turn was queued', async () => {

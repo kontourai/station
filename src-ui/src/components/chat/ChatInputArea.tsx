@@ -61,6 +61,7 @@ import {
   draggedConversationReference,
   endConversationReferenceDrag,
 } from './conversationReferenceDrag';
+import { UnconfirmedDiscardConfirm } from './UnconfirmedDiscardConfirm';
 import './chat.css';
 import { SkeletonBlock, SkeletonList } from '../state';
 
@@ -270,7 +271,12 @@ interface ChatInputAreaProps {
    * the notice's words are its description. A queued send is not a failure, so
    * this is not the send-failure line.
    */
-  queuedRetryNotice?: { text: string; onDiscard: () => void };
+  queuedRetryNotice?: {
+    text: string;
+    onDiscard: () => void;
+    /** Ask first with the shared unconfirmed-message discard. */
+    confirm?: boolean;
+  };
   onRetryAttachmentStage?: (id: string) => void | Promise<void>;
   onCancelAttachmentStage?: (id: string) => void | Promise<void>;
   onReplaceAttachmentFile?: (id: string, files: File[]) => void | Promise<void>;
@@ -662,6 +668,11 @@ export function ChatInputArea({
   );
 
   const queuedRetryText = queuedRetryNotice?.text;
+  // The queued notice's Discard opens the shared confirmation first; it
+  // closes again whenever the notice goes.
+  const [confirmingQueuedDiscard, setConfirmingQueuedDiscard] = useState(false);
+  if (!queuedRetryText && confirmingQueuedDiscard)
+    setConfirmingQueuedDiscard(false);
   const queuedRetryDescriptionId = React.useId();
   const composerRootRef = useRef<HTMLDivElement | null>(null);
   // The draft's two-line floor, written by the per-keystroke sizing below and
@@ -1082,6 +1093,17 @@ export function ChatInputArea({
           {sendFailureNotice && (
             <div className="chat-input__send-failure" role="status">
               {sendFailureNotice}
+            </div>
+          )}
+          {queuedRetryNotice?.confirm && confirmingQueuedDiscard && (
+            <div className="chat-input__queued-retry-confirm">
+              <UnconfirmedDiscardConfirm
+                onKeep={() => setConfirmingQueuedDiscard(false)}
+                onConfirm={() => {
+                  setConfirmingQueuedDiscard(false);
+                  queuedRetryNotice.onDiscard();
+                }}
+              />
             </div>
           )}
           {composerTokens.length > 0 && (
@@ -1516,9 +1538,18 @@ export function ChatInputArea({
               <button
                 type="button"
                 aria-describedby={queuedRetryDescriptionId}
-                onClick={queuedRetryNotice.onDiscard}
+                aria-expanded={
+                  queuedRetryNotice.confirm
+                    ? confirmingQueuedDiscard
+                    : undefined
+                }
+                onClick={
+                  queuedRetryNotice.confirm
+                    ? () => setConfirmingQueuedDiscard((open) => !open)
+                    : queuedRetryNotice.onDiscard
+                }
               >
-                Discard
+                {queuedRetryNotice.confirm ? 'Discard…' : 'Discard'}
               </button>
               <span id={queuedRetryDescriptionId} className="sr-only">
                 {queuedRetryNotice.text}

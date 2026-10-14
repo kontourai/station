@@ -1254,15 +1254,14 @@ export function useSendMessage(
           };
         const latestState = activeChatsStore.getSnapshot()[sessionId];
 
-        // archive#1224 (offline): a genuinely offline send (the
-        // browser already knows it has no network) or a network-level fetch
-        // failure (the request never reached the server at all — a real
-        // HTTP error response, which DOES reach the server, is deliberately
-        // excluded; see `isNetworkLevelSendError`'s doc comment) is queued
-        // for automatic replay instead of surfacing as a dead-end error.
-        // The optimistic user message (already rendered above) is kept
-        // as-is — never rolled back — so it visibly sits in the
-        // conversation with a pending affordance until it sends for real.
+        // archive#1224 (offline), as #3652 refined it: a send that produced
+        // no answer from Station (a thrown fetch, a proxy's or tunnel's
+        // response, or a browser that reports no network) is not a refusal.
+        // `classifyUndeliverableSend` names which; none proves the request
+        // never arrived. A live send's row is released for Station's
+        // delivery lookup (sent once only if Station never received it); any
+        // other send is queued under its key. The optimistic bubble is kept,
+        // never rolled back, and reads as waiting for Station until it goes.
         // A queue chunk outage is itself an unavailable durable path. Keep
         // the foreground error total rather than stranding the composer in
         // `sending` because its error classifier could not load.
@@ -1373,19 +1372,16 @@ export function useSendMessage(
             // that reason), and "sends when it's back" misdescribes the retry
             // trigger too — the queue flushes as soon as health reports
             // connected, which may be immediately.
-            content: `${
+            content:
               undeliverableCause === 'browser-reports-offline'
                 ? 'Your browser reports no network — queued to retry automatically'
-                : "Send wasn't confirmed — queued to retry automatically"
-            }${
-              // A live send's row waits for Station's lookup: it may already
-              // have arrived, so Discard says what it can and cannot undo.
-              live
-                ? '. It is sent once Station confirms it never arrived; Discard keeps it from being sent, but cannot take it back if it already reached the agent.'
-                : ''
-            }`,
+                : "Send wasn't confirmed — queued to retry automatically",
             action: {
-              label: 'Discard',
+              // No answer came back, so the message may already have
+              // reached Station: Discard asks first, with the risk stated
+              // (`UnconfirmedDiscardConfirm`).
+              label: 'Discard…',
+              confirm: 'unconfirmed-discard',
               handler: async () => {
                 try {
                   const { discardMessage } = await import(

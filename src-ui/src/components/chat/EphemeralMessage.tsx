@@ -1,8 +1,9 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import type { FullAccessRefusalNotice } from '../../utils/approvalMode';
 import { Skeleton } from '../state';
 import { FullAccessRefusalCard } from './FullAccessRefusalCard';
 import { LazyMarkdown } from './LazyMarkdown';
+import { UnconfirmedDiscardConfirm } from './UnconfirmedDiscardConfirm';
 
 // DOMPurify is ~118 KB of source and only the rare `contentType: 'html'`
 // ephemeral message needs it, so the sanitizing renderer loads on demand.
@@ -13,6 +14,8 @@ const SanitizedHtml = lazy(() =>
 interface EphemeralAction {
   label: string;
   handler: () => void;
+  /** Ask first, with the risk stated (`UnconfirmedDiscardConfirm`). */
+  confirm?: 'unconfirmed-discard';
 }
 
 interface EphemeralMsg {
@@ -152,7 +155,10 @@ export function EphemeralMessage({
           {textContent}
         </LazyMarkdown>
       )}
-      {msg.action && onAction && (
+      {msg.action && onAction && msg.action.confirm ? (
+        <ConfirmedAction label={msg.action.label} onConfirm={onAction} />
+      ) : null}
+      {msg.action && onAction && !msg.action.confirm && (
         <button
           type="button"
           className="ephemeral-message__action"
@@ -173,5 +179,46 @@ export function EphemeralMessage({
         </button>
       )}
     </div>
+  );
+}
+
+/** An action that runs only after the shared confirmation (#3596). */
+function ConfirmedAction({
+  label,
+  onConfirm,
+}: {
+  label: string;
+  onConfirm: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  if (confirming)
+    return (
+      <div className="ephemeral-message__confirm">
+        <UnconfirmedDiscardConfirm
+          onKeep={() => setConfirming(false)}
+          onConfirm={onConfirm}
+        />
+      </div>
+    );
+  return (
+    <button
+      type="button"
+      className="ephemeral-message__action"
+      aria-expanded={false}
+      onClick={() => setConfirming(true)}
+      style={{
+        marginTop: '12px',
+        padding: '8px 16px',
+        borderRadius: '6px',
+        border: 'none',
+        background: 'var(--color-primary)',
+        color: 'white',
+        cursor: 'pointer',
+        fontSize: '13px',
+        fontWeight: 500,
+      }}
+    >
+      {label}
+    </button>
   );
 }
