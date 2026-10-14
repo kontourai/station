@@ -88,7 +88,7 @@ Codex loads only this root automatically; read the routed scope explicitly. Clau
 
 | Touched path | Read |
 | --- | --- |
-| Documentation, decisions (`docs/adr/` is frozen) | [docs/guides/documentation.md](docs/guides/documentation.md) |
+| Documentation, decisions | [docs/guides/documentation.md](docs/guides/documentation.md) |
 | `src-server/**` | [src-server/AGENTS.md](src-server/AGENTS.md) |
 | `src-ui/**` | [src-ui/AGENTS.md](src-ui/AGENTS.md) |
 | `scripts/**`, `.github/**`, root configuration, package scripts | [scripts/AGENTS.md](scripts/AGENTS.md) |

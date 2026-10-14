@@ -10,6 +10,16 @@ import { FAST_BASE_ENV } from '../run-ci-fast.mjs';
 const CORPUS_PACKAGE = `--package=https://codeload.github.com/kontourai/corpus/tar.gz/${CORPUS_PIN}`;
 
 describe('Corpus decisions wrapper', () => {
+  it('declares the registry with the numbered-ADR freeze in corpus.json', () => {
+    // Without `adr`, Corpus never runs the freeze, and regenerating the index
+    // hides the removal, so nothing else fails when this declaration goes.
+    const manifest = JSON.parse(readFileSync('corpus.json', 'utf8'));
+    expect(manifest.decisions).toEqual({ adr: { dir: 'docs/adr' } });
+    expect(readFileSync('docs/decisions/index.md', 'utf8')).toContain(
+      'Numbered ADRs under `docs/adr/` are frozen history',
+    );
+  });
+
   it('pins the Corpus commit docs-kit.yml and pages.yml use', () => {
     expect(CORPUS_PIN).toBe('08c62ccd72880ff4bd4c378ae252ad437b4b4fb5');
     const docsKit = readFileSync('.github/workflows/docs-kit.yml', 'utf8');
