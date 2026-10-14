@@ -1,0 +1,7 @@
+{
+  "revision": "8a09b8296f39ea32392fd23093ae32cf28727575",
+
+  "notes": [
+    {"path":"docs/user/workspace-checkpoints.md","note":"MessageBubble keeps changed-files details and Restore workspace to here… in the phone answer sheet (after the summary row) and inline on desktop; conversation-timeline.spec.ts restore journey covers it. No prose change.","inputs":["docs/user/workspace-checkpoints.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

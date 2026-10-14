@@ -59,7 +59,11 @@ describe('MessageBubble user-turn recovery (#2216)', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: 'More message actions' }),
     );
-    expect(screen.queryByRole('menuitem', { name: 'Copy' })).toBeTruthy();
+    // Copy is the bubble's own icon button, never repeated in this menu.
+    expect(screen.queryByRole('menuitem', { name: /Copy/ })).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Copy your message' }),
+    ).toBeTruthy();
     expect(
       screen.queryByRole('menuitem', { name: /Fork from here/ }),
     ).toBeNull();
