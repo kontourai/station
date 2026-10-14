@@ -649,6 +649,8 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
       'g-caller': A,
       'u-caller': A,
       'a-host': A,
+      'p-old': A,
+      'u-old': A,
       'carol-p1': CAROL,
     };
     /** A station-control tool call, as the engine's MCP client makes it. */
@@ -721,6 +723,9 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
       rawRequest,
       routeRequests,
       appendTurn: writeTurn,
+      startSession,
+      at,
+      p1,
     };
   }
 
@@ -796,6 +801,52 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
         expect([caller.channel, own.map((row: any) => row.sessionId)]).toEqual(
           [caller.channel, ['a-host']],
         );
+      }
+    });
+
+    test('a caller its conversation has moved past lists the conversation’s current Session as self, even when it runs host', async () => {
+      const { tool, store, startSession, at, p1 } = await setup();
+      // `p-old` is in Project 1; `u-old`'s scope cannot be read. Each
+      // conversation continued in a successor that runs unconfined.
+      for (const [root, project, metadata] of [
+        ['p-old', p1, undefined],
+        ['u-old', undefined, { projectSlug: 'project-1' }],
+      ] as const) {
+        startSession(root, A, project, metadata ? { metadata } : {});
+        store.reserveConversationHandoff({
+          conversationId: root,
+          predecessorSessionId: root,
+          sessionId: `${root}-next`,
+          idempotencyKey: `${root}-switch`,
+          messageDigest: `${root}-digest`,
+          targetAgentId: 'codex-agent',
+          targetEnvironmentId: 'this-station',
+          createdAt: at(),
+        });
+        startSession(`${root}-next`, A, project, {
+          metadata: { ...metadata, stationConfinement: 'host' },
+        });
+      }
+      for (const caller of [bearer('p-old'), delegated('p-old')]) {
+        const listed = await tool(caller, 'list_project_activity', {});
+        const own = listed.body.data.sessions.filter(
+          (row: any) => row.self === true,
+        );
+        expect([caller.channel, own.map((row: any) => row.sessionId)]).toEqual(
+          [caller.channel, ['p-old-next']],
+        );
+        // Another unconfined Session of the Project is still not its to see.
+        expect([caller.channel, ids(listed.body).includes('a-host')]).toEqual([
+          caller.channel,
+          false,
+        ]);
+      }
+      for (const caller of [bearer('u-old'), delegated('u-old')]) {
+        const listed = await tool(caller, 'list_project_activity', {});
+        expect([caller.channel, ids(listed.body)]).toEqual([
+          caller.channel,
+          ['u-old-next'],
+        ]);
       }
     });
 

@@ -20,8 +20,8 @@
  *   operator's reach for a digest, as for `read_conversation`;
  * - `list_project_activity` lists the caller's own Project (or the global
  *   space) for every caller, bound or not: it answers "who is active HERE".
- *   The caller's own conversation is always in it, as its digest always reads,
- *   even when its own Session runs `host`;
+ *   The caller's own conversation (its current Session) is always in it, as
+ *   its digest always reads, even when that Session runs `host`;
  * - a Session outside that reads exactly like one that does not exist
  *   (`session_not_found`), never refused with detail, in a list or a digest.
  *   No remote host or other Station is ever returned: a delegated Session on a
@@ -292,7 +292,8 @@ export function createSessionProjectActivityRoutes(
    * caller's Project selected BEFORE the fold (`listThreadIdsStartedIn`), so a
    * call costs its own Project's Sessions (plus those that name none), not the
    * Station's. That narrowing is an optimization and never the check: every
-   * row still passes `visibleToCaller` and the caller's own scope here. Every
+   * row still passes `visibleToCaller` and the caller's own scope here, except
+   * the caller's own conversation, which is its own whatever its scope. Every
    * caller, bound or not, sees only its own Project (or the global space).
    */
   const visibleRowsPage = (
@@ -377,11 +378,19 @@ export function createSessionProjectActivityRoutes(
       );
 
     // A caller whose own scope cannot be read matches no other Session (the
-    // rule refuses it); its own Session is a candidate whatever its scope.
+    // rule refuses it); its own conversation's current Session, and its own,
+    // are candidates whatever its scope.
     const callerScope = stationControlSessionScope(caller);
     const candidates = [
       ...new Set([
         caller.sessionId,
+        ...(caller.conversationId !== undefined
+          ? [
+              deps.orchestrationService.currentConversationSessionId(
+                caller.conversationId,
+              ),
+            ]
+          : []),
         ...(callerScope.kind === 'unreadable'
           ? []
           : deps.eventStore.listThreadIdsStartedIn(

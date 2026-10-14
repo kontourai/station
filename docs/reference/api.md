@@ -3086,7 +3086,8 @@ Project (or the global space), newest activity first, one per conversation, each
 turnRunning, lastActivityAt, workingDirectory?, worktree?, self?}`. `status` is
 the status ladder's word. `limit` is 1 to 50 (default 25); anything else is
 `project_activity_limit_out_of_range`, and a `cursor` the list did not return is
-`project_activity_cursor_invalid`.
+`project_activity_cursor_invalid`. The caller's own conversation (its current
+Session, marked `self`) is listed whatever its scope, as its digest is read.
 
 The digest returns `{session, turns, page, nextCursor, delegatedChildrenIncomplete?}`,
 folded from recorded events only: `session` is `{sessionId, conversationId, title?,
