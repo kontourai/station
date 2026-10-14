@@ -79,20 +79,21 @@ import { useIsRestoring, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 
 /**
- * Only an authentication failure (`classifyConnectionFailure`'s one terminal
- * reason) re-keys the switch. The other non-transient reasons
- * (`identity-mismatch`, `access-method-mismatch`) are left out on purpose:
- * the profile, credential and environment identity already in the key
- * change when the Station actually changes, and reads against a mismatched
- * Station fail rather than cache its data. A transient reachability reason
- * (timeout, unreachable, busy, …) says nothing about identity, and it flaps: the health probe records `timeout` when a
- * slow Station misses its deadline and the next accepted request clears it.
- * Keying the switch on those reasons turned every flap into two blanket
- * `invalidateQueries()` calls, each refetching every mounted query against
- * the Station that was already too slow to answer — the native request queue
- * then filled with duplicate reads (64/64 waiting) and session history,
- * status, and the inbox were refused. Queries that errored during a real
- * outage are recovered by `useQueryCacheReconnectSync`, not by this key.
+ * Only `authentication-failed`, the one terminal reason in
+ * `classifyConnectionFailure`, re-keys the switch: losing or regaining a
+ * credential changes whose data the cache holds. Other reasons that need a
+ * decision (`identity-mismatch`, `access-method-mismatch`, …) are left out on
+ * purpose; the profile, credential and environment identity already in the
+ * key change when the Station itself changes. Transient reachability reasons
+ * (timeout, unreachable, busy, …) say nothing about identity, and they flap:
+ * the health probe records `timeout` when a slow Station misses its deadline
+ * and the next accepted request clears it. Keying the switch on those
+ * reasons turned every flap into two blanket `invalidateQueries()` calls,
+ * each refetching every mounted query against the Station that was already
+ * too slow to answer — the native request queue then filled with duplicate
+ * reads (64/64 waiting) and session history, status, and the inbox were
+ * refused. Queries that errored during a real outage are recovered by
+ * `useQueryCacheReconnectSync`, not by this key.
  */
 function authorityFailureReason(
   reason: ConnectionFailureReason | undefined,
