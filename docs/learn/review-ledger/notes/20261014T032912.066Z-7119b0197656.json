@@ -1,0 +1,7 @@
+{
+  "revision": "bd9dc6793769a24998dc09884bb1400cfe04aae4",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Re-reviewed after a comment-only change in station-control-dispatch-scope.ts (a two-line comment noting the own-Project default only checks that the Project has a working directory and never reads it as a path). No behaviour, refusal code, reason or route changed, so this document's claims are unaffected.","inputs":["docs/reference/session-api.md","src-server/runtime/mcp/station-control-dispatch-scope.ts"]}
+  ]
+}
