@@ -15,6 +15,7 @@ import {
   resolveStationRuntimeContext,
   runtimeChannelFromEnvironment,
   StationRuntimeHomeAdmissionError,
+  stationTreeContaining,
 } from '@kontourai/station-shared/runtime-path-resolver';
 import {
   createStationTempDirSync,
@@ -121,12 +122,21 @@ export function normalizeHomePath(
   return normalized;
 }
 
+const SYSTEM_TEMP_HOME_ROOT = join('/tmp', STATION_TEMP_ROOT_NAME);
+
 function mintAdmittedTemporaryHome(
   env: NodeJS.ProcessEnv,
   root?: string,
 ): string {
   const candidate = realpathSync(createStationTempDirSync('dev-home', root));
   try {
+    const owner = stationTreeContaining(candidate, env);
+    if (owner) {
+      throw new StationRuntimeHomeAdmissionError(
+        candidate,
+        `a temporary home must not live inside the Station tree at ${owner}`,
+      );
+    }
     return normalizeHomePath(candidate, env);
   } catch (error) {
     rmSync(candidate, { recursive: true, force: true });
@@ -136,14 +146,16 @@ function mintAdmittedTemporaryHome(
 
 /**
  * A `--temp-home` lives under the Station temp root, which follows the ambient
- * `TMPDIR`. Station points every agent it spawns at
- * `<instance>/tmp/engine-spawn` (see `engine-spawn-tmpdir.ts`), so an agent
- * running `./station start --temp-home` would mint its home inside a Station
- * instance tree, which the runtime-home guard correctly refuses (and the
- * engine-spawn reaper would delete on age). Rather than widen the guard, a
- * rejected candidate is retried once under the system `/tmp`. Windows agents
- * do not get this redirect (`os.tmpdir()` reads TEMP/TMP there), so the
- * original rejection stands.
+ * `TMPDIR`. Station points every agent it spawns at `<home>/tmp/engine-spawn`
+ * (see `engine-spawn-tmpdir.ts`), so an agent running
+ * `./station start --temp-home` would mint its home inside its parent's
+ * Station tree. Under `instances/` the runtime-home guard refuses it; under a
+ * self-rooted parent home (`--home`, `--temp-home`) the guard admits it, and
+ * the parent's engine-spawn reaper then deletes it by age while it may still
+ * be in use. So a candidate inside the resolved Station root or `STATION_HOME`
+ * is refused here too, and any refused candidate is retried once under the
+ * system `/tmp`. Windows agents do not get this redirect (`os.tmpdir()` reads
+ * TEMP/TMP there), so the original refusal stands.
  */
 function createTemporaryRuntimeHome(env: NodeJS.ProcessEnv): string {
   try {
@@ -156,12 +168,14 @@ function createTemporaryRuntimeHome(env: NodeJS.ProcessEnv): string {
       throw error;
     }
     try {
-      return mintAdmittedTemporaryHome(
-        env,
-        join('/tmp', STATION_TEMP_ROOT_NAME),
+      return mintAdmittedTemporaryHome(env, SYSTEM_TEMP_HOME_ROOT);
+    } catch (retryError) {
+      throw new StationRuntimeHomeAdmissionError(
+        error.homeDir,
+        `${error.detail}; retrying under ${SYSTEM_TEMP_HOME_ROOT} was also refused: ${
+          retryError instanceof Error ? retryError.message : String(retryError)
+        }`,
       );
-    } catch {
-      throw error;
     }
   }
 }

@@ -187,6 +187,82 @@ describe('channel lifecycle homes', () => {
     },
   );
 
+  // A parent Station on a self-rooted home (`--home`, `--temp-home`) hands its
+  // agents STATION_HOME=<home> and TMPDIR=<home>/tmp/engine-spawn. A temp
+  // home minted there passes admission (no protected container), but the
+  // parent's engine-spawn reaper deletes it by age while it may be in use.
+  it.skipIf(process.platform === 'win32')(
+    'mints the temporary home outside a self-rooted parent home whose engine-spawn TMPDIR it inherits',
+    () => {
+      const parentHome = realpathSync(
+        mkdtempSync(join(tmpdir(), 'station-cli-self-rooted-parent-')),
+      );
+      const engineSpawnTmp = join(parentHome, 'tmp', 'engine-spawn');
+      mkdirSync(engineSpawnTmp, { recursive: true });
+      vi.stubEnv('STATION_ROOT', undefined);
+      vi.stubEnv('STATION_HOME', parentHome);
+      vi.stubEnv('STATION_TEMP_ROOT', undefined);
+      vi.stubEnv('TMPDIR', engineSpawnTmp);
+      let projectHome: string | undefined;
+      try {
+        expect(tmpdir()).toBe(engineSpawnTmp);
+        projectHome = resolveLifecycleHomeTarget({
+          tempHome: true,
+          env: process.env,
+        }).projectHome;
+        expect(projectHome.startsWith(`${parentHome}/`)).toBe(false);
+        expect(projectHome.startsWith(realpathSync('/tmp'))).toBe(true);
+        expect(
+          existsSync(join(engineSpawnTmp, 'station'))
+            ? readdirSync(join(engineSpawnTmp, 'station'))
+            : [],
+        ).toEqual([]);
+      } finally {
+        vi.unstubAllEnvs();
+        if (projectHome) rmSync(projectHome, { recursive: true, force: true });
+        rmSync(parentHome, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'reports the refused /tmp retry alongside the original temp-home refusal',
+    () => {
+      // A Station root at the system /tmp contains both the ambient candidate
+      // and the /tmp/station fallback, so both attempts must be refused.
+      const systemTmp = realpathSync('/tmp');
+      const fixture = mkdtempSync(
+        join(systemTmp, 'station-cli-retry-refused-'),
+      );
+      vi.stubEnv('STATION_ROOT', systemTmp);
+      vi.stubEnv('STATION_HOME', undefined);
+      vi.stubEnv('STATION_TEMP_ROOT', undefined);
+      vi.stubEnv('TMPDIR', fixture);
+      try {
+        let thrown: unknown;
+        try {
+          const home = resolveLifecycleHomeTarget({
+            tempHome: true,
+            env: process.env,
+          }).projectHome;
+          rmSync(home, { recursive: true, force: true });
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown).toBeInstanceOf(Error);
+        const message = (thrown as Error).message;
+        expect(message).toContain(`${fixture}/station/dev-home-`);
+        expect(message).toMatch(
+          /retrying under \/tmp\/station was also refused: .*\/tmp\/station\/dev-home-/,
+        );
+        expect(readdirSync(join(fixture, 'station'))).toEqual([]);
+      } finally {
+        vi.unstubAllEnvs();
+        rmSync(fixture, { recursive: true, force: true });
+      }
+    },
+  );
+
   it('rejects shared-root and container selections before CLI lifecycle work', () => {
     const sharedRoot = mkdtempSync(join(tmpdir(), 'station-cli-shared-root-'));
     try {

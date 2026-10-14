@@ -161,6 +161,26 @@ export function sameRuntimePath(left: string, right: string): boolean {
 }
 
 /**
+ * The canonical Station root or explicit `STATION_HOME` whose tree contains
+ * `path`, or `undefined` when `path` is outside both. Admission alone cannot
+ * answer this: a directory under a self-rooted home's `tmp/` sits in no
+ * protected container and is admitted, yet it belongs to that home.
+ */
+export function stationTreeContaining(
+  path: string,
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  const target = canonicalPathThroughExistingAncestor(path);
+  const owners = [resolveStationRoot(env), env.STATION_HOME?.trim()];
+  for (const owner of owners) {
+    if (!owner) continue;
+    const canonicalOwner = canonicalPathThroughExistingAncestor(owner);
+    if (equalOrDescendant(target, canonicalOwner)) return canonicalOwner;
+  }
+  return undefined;
+}
+
+/**
  * Admit only a runtime leaf, never the shared Station control root or one of
  * its containers.  The comparison follows every existing ancestor first, so
  * a lexical alias cannot turn `config/` (or an ancestor of the root) into a
