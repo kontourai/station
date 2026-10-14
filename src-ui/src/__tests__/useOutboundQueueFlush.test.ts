@@ -159,8 +159,10 @@ describe('useOutboundQueueFlush', () => {
       ] as never,
     });
     try {
+      const reads = vi.spyOn(outboundDispatch, 'retiredKeys');
       renderHook(() => useOutboundQueueFlush('http://api.test'));
-      // This window has read the queue and still shows the bubble.
+      // This window has read the queue once and still shows the bubble.
+      await waitFor(() => expect(reads).toHaveBeenCalled());
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(
         activeChatsStore.getSnapshot()['session-1']?.messages,
@@ -169,6 +171,11 @@ describe('useOutboundQueueFlush', () => {
       retired = [
         { clientTurnId: 'discarded-later', reason: 'discarded', at: 2 },
       ];
+      // Nothing in this window re-reads the queue by itself.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(
+        activeChatsStore.getSnapshot()['session-1']?.messages,
+      ).toHaveLength(1);
       const otherWindow = new FakeChannel('station-outbound-queue');
       otherWindow.postMessage('changed');
       await waitFor(() =>
@@ -177,6 +184,7 @@ describe('useOutboundQueueFlush', () => {
         ),
       );
     } finally {
+      vi.restoreAllMocks();
       vi.unstubAllGlobals();
       _resetOutboundQueueChangeChannel();
     }
@@ -216,7 +224,9 @@ describe('useOutboundQueueFlush', () => {
       ] as never,
     });
     try {
+      const reads = vi.spyOn(outboundDispatch, 'retiredKeys');
       renderHook(() => useOutboundQueueFlush('http://api.test'));
+      await waitFor(() => expect(reads).toHaveBeenCalled());
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(
         activeChatsStore.getSnapshot()['session-1']?.messages,
@@ -224,6 +234,10 @@ describe('useOutboundQueueFlush', () => {
       retired = [
         { clientTurnId: 'discarded-while-hidden', reason: 'discarded', at: 2 },
       ];
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(
+        activeChatsStore.getSnapshot()['session-1']?.messages,
+      ).toHaveLength(1);
       document.dispatchEvent(new Event('visibilitychange'));
       await waitFor(() =>
         expect(activeChatsStore.getSnapshot()['session-1']?.messages).toEqual(
@@ -231,6 +245,7 @@ describe('useOutboundQueueFlush', () => {
         ),
       );
     } finally {
+      vi.restoreAllMocks();
       vi.unstubAllGlobals();
     }
   });
