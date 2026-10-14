@@ -84,6 +84,35 @@ async function turnPrompts(
     .map((event) => event.prompt);
 }
 
+/** How many rows this browser's durable outbox still holds. */
+async function outboxRows(page: Page): Promise<number> {
+  return page.evaluate(
+    () =>
+      new Promise<number>((resolve, reject) => {
+        const open = indexedDB.open('station-outbound-queue');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const database = open.result;
+          if (!database.objectStoreNames.contains('queue')) {
+            database.close();
+            resolve(0);
+            return;
+          }
+          const read = database
+            .transaction('queue', 'readonly')
+            .objectStore('queue')
+            .get('station-outbound-queue-v1');
+          read.onerror = () => reject(read.error);
+          read.onsuccess = () => {
+            database.close();
+            const state = read.result as { turns?: unknown[] } | undefined;
+            resolve(state?.turns?.length ?? 0);
+          };
+        };
+      }),
+  );
+}
+
 /** The chat send's request, intercepted; returns what it carried. */
 async function sendHeldOpen(
   page: Page,
@@ -282,8 +311,9 @@ test.describe('A send whose app closed before Station answered', () => {
           timeout: 90_000,
         })
         .toEqual([FIRST_MESSAGE, text]);
-      // Settled, not merely not-yet-duplicated: once the reply shows, the
-      // outbox has nothing left to send; count again.
+      // Settled, not merely not-yet-duplicated: the outbox is empty (nothing
+      // left that could still be sent) before the final count.
+      await expect.poll(() => outboxRows(page), { timeout: 60_000 }).toBe(0);
       await expect(
         page
           .getByRole('log', { name: 'Conversation transcript' })
