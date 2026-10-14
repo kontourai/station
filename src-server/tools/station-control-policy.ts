@@ -640,10 +640,11 @@ export const STATION_CONTROL_TOOL_POLICY = {
 
   // ── operations: Project activity (#3413) ───────────────────────────────
   // Owner-scoped reads (decision 2): each answers with what the caller's owner
-  // may read. The routes then hold every Session to the one scope rule
+  // may read. The routes then hold every other Session to the one scope rule
   // (`stationControlScopeRefusal`, Project `view`): a caller that is not bound
   // stays in its own Project or the global space, and another Project's
-  // Sessions read as absent. Each owns its leaf and shares none.
+  // Sessions read as absent. The caller's own conversation is its own whatever
+  // its scope. Each owns its leaf and shares none.
   list_project_activity: {
     ...SELF_READ,
     routes: [get('/api/orchestration/session-activity')],

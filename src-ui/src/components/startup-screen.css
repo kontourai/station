@@ -29,6 +29,19 @@
   transform: translate(-50%, -50%);
 }
 
+/* The channel's mark, chosen before first paint by startup-theme.js. */
+:root[data-startup-mark="dev"] .station-startup__logo {
+  content: url("/favicon-dev.png");
+}
+
+:root[data-startup-mark="beta"] .station-startup__logo {
+  content: url("/favicon-beta.png");
+}
+
+:root[data-startup-mark="nightly"] .station-startup__logo {
+  content: url("/favicon-nightly.png");
+}
+
 .station-startup__canvas[data-ready="true"] + .station-startup__logo {
   display: none;
 }
