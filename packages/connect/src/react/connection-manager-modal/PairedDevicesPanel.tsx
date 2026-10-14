@@ -198,7 +198,7 @@ export function PairedDevicesPanel({
                     'scope <device> --add|--remove|--set',
                   )
               : response.status === 403
-                ? 'Device changes require Manage device access. Only the Station operator can grant or remove that administrative permission.'
+                ? 'Device changes require Manage device access and a principal allowed by this Station’s account policy. Only the Station operator can grant or remove that administrative permission.'
                 : response.status === 409
                   ? `“${device.name}” was changed somewhere else while this was open. Nothing was applied — reopen it to see its current access.`
                   : `This Station refused the access change (HTTP ${response.status}). The device keeps its current access.`,
