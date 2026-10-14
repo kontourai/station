@@ -568,6 +568,22 @@ describe('thread inbox (#3568)', () => {
     ).toBeUndefined();
   });
 
+  test("a store that never opened its inbox still forgets a deleted conversation's entries", async () => {
+    const file = path();
+    const first = boot(file);
+    await runningFirstTurn(first);
+    queueFollowUp(first);
+    await crash(first);
+    // A new process deletes the conversation before anything opened the inbox.
+    const fresh = new EventStore(file, TURN_DEDUP_MAX_ENTRIES);
+    try {
+      fresh.deleteThread(THREAD);
+      expect(fresh.threadInboxStore().list(THREAD)).toEqual([]);
+    } finally {
+      fresh.close();
+    }
+  });
+
   test('a deleted conversation takes its queued follow-ups with it', async () => {
     const world = boot(path());
     await runningFirstTurn(world);

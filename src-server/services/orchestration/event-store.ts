@@ -12895,6 +12895,9 @@ export class EventStore {
         )
         .all(threadId) as Array<{ blob_ref: string }>
     ).map((row) => row.blob_ref);
+    // #3568: opened before the transaction, because opening it migrates the
+    // inbox's tables in a transaction of its own.
+    const threadInbox = this.threadInboxStore();
     this.db.exec('BEGIN IMMEDIATE');
     try {
       this.createSkillExperienceSnapshots().deleteThread(threadId);
@@ -13007,7 +13010,7 @@ export class EventStore {
       // #3568: a deleted conversation's queued follow-ups go with it. A
       // conversation is keyed by its root Session, so only that deletion
       // names any entries.
-      this.threadInboxStore().forget(threadId);
+      threadInbox.forget(threadId);
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');
