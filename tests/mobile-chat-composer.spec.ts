@@ -17,6 +17,7 @@ import {
   installJourneyProfile,
   profileJourney,
 } from './helpers/journey-profile';
+import { mockLongTranscriptConversation } from './helpers/long-transcript-conversation';
 import {
   dismissSetupLauncher,
   emitMockOrchestrationEvent,
@@ -736,63 +737,12 @@ test('virtualizes a long real transcript while preserving reader controls on mob
   ];
   let liveTurnPersisted = false;
   const requestedWindows: string[] = [];
-  let messagesRequested = false;
-  await mockRuntimeConversation(page, {
-    id: threadId,
-    agentSlug: 'station',
+  const conversation = await mockLongTranscriptConversation(page, {
+    threadId,
     title: 'Long transcript',
-    provider: 'bedrock',
-    model: 'model-selected',
-    projectSlug: 'default',
-    canContinue: true,
     turns: () => (liveTurnPersisted ? [...turns, persistedLiveTurn] : turns),
     onWindow: (url) => requestedWindows.push(url),
   });
-  await page.route('**/api/orchestration/chat', (route) =>
-    route.fulfill(
-      json(
-        foregroundMessageReceiptEnvelope({
-          conversationId: threadId,
-          agent: 'agent:station',
-        }),
-      ),
-    ),
-  );
-  await page.route(
-    `**/agents/station/conversations/${threadId}/messages`,
-    (route) => {
-      messagesRequested = true;
-      return route.abort();
-    },
-  );
-  await page.route(/\/agents\/station\/conversations(?:\?.*)?$/, (route) =>
-    route.fulfill(
-      json({
-        success: true,
-        data: [
-          {
-            id: threadId,
-            title: 'Long transcript',
-            agentSlug: 'station',
-            updatedAt: '2026-07-19T10:00:00Z',
-          },
-        ],
-      }),
-    ),
-  );
-  await seedActiveChats(page, [
-    {
-      sessionId: threadId,
-      conversationId: threadId,
-      agentSlug: 'station',
-      projectSlug: 'default',
-      projectName: 'Default',
-      model: 'model-selected',
-      title: 'Long transcript',
-      provider: 'bedrock',
-      orchestrationSessionStarted: true,
-    },
-  ]);
 
   await page.goto(`/?dock=open&maximize=true&chat=${threadId}`);
   await dismissSetupLauncher(page);
@@ -804,7 +754,7 @@ test('virtualizes a long real transcript while preserving reader controls on mob
     'aria-label',
     'Conversation transcript',
   );
-  expect(messagesRequested).toBe(false);
+  expect(conversation.messagesRequested()).toBe(false);
   expect(requestedWindows).toHaveLength(1);
   expect(new URL(requestedWindows[0]).searchParams.get('turnLimit')).toBe('10');
   await page.waitForFunction(
