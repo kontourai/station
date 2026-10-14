@@ -377,17 +377,20 @@ send is refused with `provider_session_start_failed`, and the client keeps the
 message queued with the reason and Retry without re-sending it on its own. If
 it is still starting after the wait, the send is refused with the retryable
 code `provider_session_starting`, and the client queues the message and
-re-sends it. A retry whose idempotency key an earlier attempt still holds, or
-released without sending, is refused with the retryable code
-`client_turn_in_flight` and re-sent with the same key. A retry whose earlier
-attempt may already have reached the engine is refused with the non-retryable
-`foreground_message_indeterminate` instead, and nothing is sent again: at once
-when that attempt's owner died after it began invoking, and, when its engine
-call failed after it began, at once (or as soon as the failure happens, for a
-retry already waiting on it) provided the retry reaches the same Station
-process. Another Station process sharing the store cannot see that the
-attempt gave up, so there a retry waits and is refused with
-`client_turn_in_flight` as for a held key. When the client's
+re-sends it. A retry whose idempotency key an earlier attempt still holds
+waits for that attempt's turn (up to five minutes). If none arrives, or the
+attempt released the key without sending, the retry is refused with the
+retryable code `client_turn_in_flight` and re-sent with the same key; that
+holds however long the attempt has held the key, because its turn may still
+be delivered. A retry whose earlier attempt may already have reached the
+engine and will never resolve is refused with the non-retryable
+`foreground_message_indeterminate` instead, and nothing is sent again. That
+happens at once when the attempt's owner died after it began invoking. When
+the attempt's engine call failed after it began, it happens only in the
+Station process that made the attempt: at once for a new retry, and at the
+next poll of the wait for a retry already waiting. Another Station process
+sharing the store cannot see that the attempt gave up, so there the retry is
+treated as for a held key. When the client's
 automatic re-sends run out, the message stays queued with a reason and Retry.
 A Claude send's own `turn.started` is published when the engine starts
 running it, so a send queued behind such a turn starts after it ends. That
