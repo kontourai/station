@@ -1,6 +1,10 @@
 import { copyFileSync, mkdirSync } from 'node:fs';
 import { copyFile, mkdir } from 'node:fs/promises';
 import { basename, join } from 'node:path';
+import {
+  STATION_ENVELOPE_HEADER,
+  STATION_ENVELOPE_HEADER_VALUE,
+} from '@kontourai/station-contracts/http';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { expect, type Locator, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
@@ -4307,6 +4311,9 @@ test('a refused send keeps a two-line draft clear of every row in a 375x667 half
   await page.route('**/api/orchestration/chat', (route) =>
     route.fulfill({
       status: 400,
+      // Station marks every JSON body it writes; an unmarked one from an
+      // origin that has marked others is a proxy's, not Station's refusal.
+      headers: { [STATION_ENVELOPE_HEADER]: STATION_ENVELOPE_HEADER_VALUE },
       contentType: 'application/json',
       body: JSON.stringify({
         success: false,
@@ -4748,9 +4755,14 @@ async function queueSendForRetry(
       .locator('.chat-messages')
       .getByText("Send wasn't confirmed — queued to retry automatically"),
   ).toHaveCount(1);
-  // Measure the settled state: the queue has listed the waiting message and
-  // the send's "Working" pill has left.
-  await expect(page.getByText(/waiting to send/i)).toBeVisible();
+  // Measure the settled state: the queue has listed the message (a send with
+  // no answer waits for Station to confirm it never arrived before it is
+  // sent again, #3652) and the send's "Working" pill has left.
+  await expect(
+    page
+      .locator('.queued-messages')
+      .getByText(/waiting for Station to confirm/i),
+  ).toBeVisible();
   await expect(page.locator('.chat-status-pill')).toHaveCount(0);
   return { textarea };
 }
@@ -4930,9 +4942,9 @@ for (const [name, viewport, maximize] of [
   });
 }
 
-// The queue panel's "x" ("Delete message") discards the same queued turn as the
-// notice's Discard. It must leave the same state: no stale "queued to retry"
-// notice, and no Discard for a turn that is gone.
+// The queue panel's Discard… (confirmed with "I checked, discard it") discards
+// the same turn as the notice's Discard. It must leave the same state: no stale
+// "queued to retry" notice, and no Discard for a turn that is gone.
 test('deleting the queued message from the queue panel clears its queued-retry notice', async ({
   page,
 }) => {
@@ -4942,8 +4954,18 @@ test('deleting the queued message from the queue panel clears its queued-retry n
     .locator('.chat-messages')
     .getByText("Send wasn't confirmed — queued to retry automatically");
   await expect(notice).toHaveCount(1);
-  await page.getByRole('button', { name: 'Delete message' }).click();
-  await expect(page.getByText(/waiting to send/i)).toHaveCount(0);
+  // The message may already have reached Station (no answer came back), so
+  // the panel withdraws it only through the explicit, risk-stated discard.
+  await page
+    .locator('.queued-messages')
+    .getByRole('button', { name: 'Discard…' })
+    .click();
+  await page.getByRole('button', { name: 'I checked, discard it' }).click();
+  await expect(
+    page
+      .locator('.queued-messages')
+      .getByText(/waiting for Station to confirm/i),
+  ).toHaveCount(0);
   await expect(notice).toHaveCount(0);
   await expect(
     page.getByRole('button', { name: 'Discard', exact: true }),

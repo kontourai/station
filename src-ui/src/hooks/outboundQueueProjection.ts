@@ -26,6 +26,8 @@ export interface OutboundQueuedTurnProjection {
   heldElsewhere?: true;
   /** Pending behind an earlier not-sent row of its chat (see `claimNext`). */
   behindUnsent?: true;
+  /** No answer came back; Station's delivery lookup decides it. */
+  awaitingLookup?: true;
 }
 
 /**
@@ -135,6 +137,7 @@ export function projectOutboundQueueEntries(
           deliveryCheck,
           station,
           heldBy,
+          awaitingLookup,
         }) => ({
           clientTurnId,
           content,
@@ -145,6 +148,7 @@ export function projectOutboundQueueEntries(
           mergedTurns,
           ...(deliveryCheck ? { deliveryCheck } : {}),
           ...(heldBy ? { heldElsewhere: true as const } : {}),
+          ...(awaitingLookup ? { awaitingLookup: true as const } : {}),
           ...(behindUnsent.has(clientTurnId)
             ? { behindUnsent: true as const }
             : {}),

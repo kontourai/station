@@ -355,6 +355,8 @@ export type ChatUIState = {
      * discarded.
      */
     behindUnsent?: true;
+    /** No answer came back; Station's delivery lookup decides it. */
+    awaitingLookup?: true;
   }>;
   inputHistory: string[];
   historyIndex?: number;

@@ -164,6 +164,42 @@ describe('useSendMessage: durable before the request', () => {
     ).toBe('delivered');
   });
 
+  it("no answer: the notice states what Discard cannot undo, and its Discard withdraws the row awaiting Station's lookup", async () => {
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new TypeError('Failed to fetch'),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(chat, 'codex', undefined, 'no answer came back');
+    });
+    const body = sendExecutionMessageMock.mock.calls[0]?.[1] as {
+      clientTurnId: string;
+    };
+    const notice = activeChatsStore
+      .getSnapshot()
+      [chat]?.ephemeralMessages?.find(
+        (message) => message.action?.label === 'Discard',
+      );
+    expect(notice?.content).toContain(
+      "Send wasn't confirmed — queued to retry automatically",
+    );
+    expect(notice?.content).toContain(
+      'cannot take it back if it already reached the agent',
+    );
+    await act(async () => {
+      await notice!.action!.handler();
+    });
+    expect(activeChatsStore.getSnapshot()[chat]?.error).toBeUndefined();
+    expect(await outboundDispatch.snapshot()).toEqual([]);
+    expect(
+      activeChatsStore
+        .getSnapshot()
+        [chat]?.messages?.some(
+          (message) => message.clientId === body.clientTurnId,
+        ),
+    ).toBe(false);
+  });
+
   it("no answer at all: the row is released for Station's lookup under the SAME key, never resent blind", async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(
       new TypeError('Failed to fetch'),

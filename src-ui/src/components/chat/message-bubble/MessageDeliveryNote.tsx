@@ -29,6 +29,11 @@ const LABELS: Record<
     title:
       'Station has not seen this yet. It stays on this device and is sent when Station can be reached, including after you reopen the app.',
   },
+  'awaiting-confirmation': {
+    text: 'Saved on this device · waiting for Station to confirm',
+    title:
+      'No answer came back. When Station can be reached it is asked about this message, and the message is sent once, with the same key, only if it never arrived.',
+  },
   'waiting-behind-unsent': {
     text: 'Waiting behind an unsent message',
     title:

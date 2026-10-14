@@ -1373,18 +1373,31 @@ export function useSendMessage(
             // that reason), and "sends when it's back" misdescribes the retry
             // trigger too — the queue flushes as soon as health reports
             // connected, which may be immediately.
-            content:
+            content: `${
               undeliverableCause === 'browser-reports-offline'
                 ? 'Your browser reports no network — queued to retry automatically'
-                : "Send wasn't confirmed — queued to retry automatically",
+                : "Send wasn't confirmed — queued to retry automatically"
+            }${
+              // A live send's row waits for Station's lookup: it may already
+              // have arrived, so Discard says what it can and cannot undo.
+              live
+                ? '. It is sent once Station confirms it never arrived; Discard keeps it from being sent, but cannot take it back if it already reached the agent.'
+                : ''
+            }`,
             action: {
               label: 'Discard',
               handler: async () => {
                 try {
-                  const { outboundDispatch } = await import(
-                    '../lib/outboundQueue'
+                  const { discardMessage } = await import(
+                    '../lib/messageDeliveryActions'
                   );
-                  await outboundDispatch.discard(resolvedTurnId);
+                  // A live send's row awaits the lookup and is only ever
+                  // withdrawn explicitly; a queued one is a plain discard.
+                  await discardMessage(
+                    sessionId,
+                    resolvedTurnId,
+                    live ? 'unconfirmed' : 'not-sent',
+                  );
                   updateChat(sessionId, { status: 'idle' });
                 } catch (discardError) {
                   updateChat(sessionId, {

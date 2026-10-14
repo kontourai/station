@@ -12,6 +12,9 @@ import type { TurnDeliveryOutcome } from '@kontourai/station-contracts/orchestra
  *   the delivery lookup said `started`, or the turn's start was seen).
  * - `waiting-to-send`: kept on this device and sent automatically when
  *   Station can be reached. Station has not seen it.
+ * - `awaiting-confirmation`: kept on this device after a send that got no
+ *   answer. When Station can be reached it is asked about the message, which
+ *   is then sent once with the same key only if it never arrived.
  * - `waiting-behind-unsent`: kept on this device, but an earlier message of
  *   the same chat was not sent and holds it back (the outbox keeps a chat's
  *   order). It goes once that one is retried or discarded.
@@ -37,6 +40,7 @@ export type MessageDeliveryState =
   | 'received'
   | 'delivered'
   | 'waiting-to-send'
+  | 'awaiting-confirmation'
   | 'waiting-behind-unsent'
   | 'waiting-for-station'
   | 'held-on-device'
@@ -102,8 +106,10 @@ export function deriveMessageDeliveryState(
   if (signals.refused || signals.outbox === 'failed') return 'not-sent';
   if (signals.heldBehindTurn) return 'held-on-device';
   if (signals.lookup === 'received') return 'received';
-  if (signals.requestInFlight || signals.outbox === 'invoking')
-    return 'sending';
+  if (signals.requestInFlight) return 'sending';
+  // A row still `invoking` with no request of this window out: its send got
+  // no answer (or its window closed), and Station's lookup decides it.
+  if (signals.outbox === 'invoking') return 'awaiting-confirmation';
   if (signals.outbox === 'pending')
     return signals.outboxWaitsForStation
       ? 'waiting-for-station'

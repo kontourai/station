@@ -379,6 +379,33 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     await waitFor(() => expect(onDiscarded).toHaveBeenCalledWith(1));
   });
 
+  it('a send with no answer says it waits for Station to confirm, and offers the explicit discard', () => {
+    render(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={[
+          {
+            clientTurnId: 'turn-1',
+            content: 'no answer came back',
+            status: 'invoking',
+            awaitingLookup: true,
+          },
+        ]}
+        onError={vi.fn()}
+        onRetry={vi.fn()}
+        onStartNewChat={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('1 waiting for Station to confirm')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'No answer yet; sent once Station confirms it never arrived',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/delivery-uncertain/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Discard…' })).toBeTruthy();
+  });
+
   it('#3596: a row still invoking offers no discard; its send may be under way', () => {
     render(
       <OutboundQueuedMessages

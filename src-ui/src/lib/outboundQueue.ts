@@ -123,6 +123,12 @@ export type OutboundDispatchTurn = Omit<
    * Send.
    */
   heldHere?: true;
+  /**
+   * A send that got no answer, released by its own renderer for Station's
+   * delivery lookup (`unanswered`): nothing sends it until the lookup says
+   * Station never received it, then it goes once with its key.
+   */
+  awaitingLookup?: true;
 };
 
 export interface OutboundDispatchIntent
@@ -212,8 +218,9 @@ export interface OutboundDispatchModule {
   discard(clientTurnId: string): Promise<void>;
   /**
    * The user's explicit "I checked, discard it" for a row that may have
-   * reached the agent (`may-have-started`). Never automatic: `discard`
-   * refuses such a row, and nothing else removes it. The row goes and its
+   * reached the agent: `may-have-started`, or a send that got no answer and
+   * waits for the delivery lookup (`awaitingLookup`). Never automatic:
+   * `discard` refuses such a row, and nothing else removes it. The row goes and its
    * key is retired in one write, so no window can send it again. Refuses
    * every other status (a send still in flight, an accepted one, or a row
    * whose dispatch state this renderer could not record).
@@ -928,7 +935,17 @@ function publicTurn(entry: QueuedOutboundTurn): OutboundDispatchTurn {
     ...(entry.heldBy && entry.heldBy.bootId === knownBootId
       ? { heldHere: true as const }
       : {}),
+    ...(awaitingLookup(entry) ? { awaitingLookup: true as const } : {}),
   });
+}
+
+/** An `invoking` row no renderer holds a claim on: released for the lookup. */
+function awaitingLookup(entry: QueuedOutboundTurn): boolean {
+  return (
+    entry.status === 'invoking' &&
+    entry.dispatchBootId === undefined &&
+    !liveOwned.has(entry.clientTurnId)
+  );
 }
 
 function mergedContent(entries: readonly QueuedOutboundTurn[]): string {
@@ -1579,7 +1596,7 @@ async function dismissUnconfirmed(clientTurnId: string): Promise<void> {
     );
     if (!entry) return { state, result: undefined, changed: false };
     if (
-      entry.status !== 'may-have-started' ||
+      (entry.status !== 'may-have-started' && !awaitingLookup(entry)) ||
       unavailableClaims.has(clientTurnId)
     ) {
       throw new Error(

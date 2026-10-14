@@ -18,6 +18,8 @@ interface OutboundQueuedTurn {
   waitingForStation?: string;
   /** Held by another window or a closed one; sent only on Send. */
   heldElsewhere?: true;
+  /** No answer came back; Station's delivery lookup decides it. */
+  awaitingLookup?: true;
 }
 
 interface OutboundQueuedMessagesProps {
@@ -73,8 +75,11 @@ export function OutboundQueuedMessages({
   const acceptedCount = turns.filter(
     (turn) => turn.status === 'accepted',
   ).length;
+  const awaitingCount = turns.filter((turn) => turn.awaitingLookup).length;
   const uncertainCount = turns.filter(
-    (turn) => turn.status === 'invoking' || turn.status === 'may-have-started',
+    (turn) =>
+      (turn.status === 'invoking' && !turn.awaitingLookup) ||
+      turn.status === 'may-have-started',
   ).length;
   const summary = [
     waitingCount
@@ -82,6 +87,9 @@ export function OutboundQueuedMessages({
       : undefined,
     failedCount
       ? `${failedCount} message${failedCount === 1 ? '' : 's'} need action`
+      : undefined,
+    awaitingCount
+      ? `${awaitingCount} waiting for Station to confirm`
       : undefined,
     acceptedCount
       ? `${acceptedCount} accepted and waiting for completion`
@@ -199,7 +207,9 @@ export function OutboundQueuedMessages({
               {turn.status === 'may-have-started' ||
               turn.status === 'invoking' ? (
                 <span className="queued-messages__label queued-messages__label--unconfirmed">
-                  May have reached the agent{' '}
+                  {turn.awaitingLookup
+                    ? 'No answer yet; sent once Station confirms it never arrived'
+                    : 'May have reached the agent'}{' '}
                   {turn.waitingForStation ? null : (
                     <RecheckDeliveryButton
                       clientTurnId={turn.clientTurnId}
@@ -465,12 +475,16 @@ function DiscardUnconfirmed({
   onError,
 }: {
   sessionId: string;
-  turn: { clientTurnId: string; status: OutboundQueuedTurn['status'] };
+  turn: {
+    clientTurnId: string;
+    status: OutboundQueuedTurn['status'];
+    awaitingLookup?: true;
+  };
   onDiscarded: () => void;
   onError: (message: string) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
-  if (turn.status !== 'may-have-started') return null;
+  if (turn.status !== 'may-have-started' && !turn.awaitingLookup) return null;
   const { clientTurnId } = turn;
   if (!confirming)
     return (

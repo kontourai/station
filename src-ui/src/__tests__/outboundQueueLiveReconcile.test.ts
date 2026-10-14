@@ -452,6 +452,32 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     ).rejects.toMatchObject({ name: 'OutboundKeyRetiredError' });
   });
 
+  it('a send that got no answer awaits the lookup, and only an explicit dismissal withdraws it', async () => {
+    const queue = await freshRenderer();
+    const live = await queue.outboundDispatch.beginLive({
+      ...intent,
+      clientTurnId: 'no-answer',
+    });
+    expect((await queue.outboundDispatch.snapshot())[0]?.awaitingLookup).toBe(
+      undefined,
+    );
+    await live.unanswered();
+    const [row] = await queue.outboundDispatch.snapshot();
+    expect(row).toMatchObject({
+      clientTurnId: 'no-answer',
+      status: 'invoking',
+      awaitingLookup: true,
+    });
+    await expect(queue.outboundDispatch.discard('no-answer')).rejects.toThrow(
+      'may have started',
+    );
+    await queue.outboundDispatch.dismissUnconfirmed('no-answer');
+    expect(await queue.outboundDispatch.snapshot()).toEqual([]);
+    await expect(queue.outboundDispatch.retiredKeys()).resolves.toMatchObject({
+      discarded: ['no-answer'],
+    });
+  });
+
   it('#3596: the explicit dismissal refuses any row that is not unconfirmed, and changes nothing', async () => {
     const queue = await freshRenderer();
     await queue.outboundDispatch.beginLive({

@@ -87,11 +87,13 @@
   min-width: 0;
 }
 /* The list's three-row window would hide an unconfirmed row's Discard… (or
-   the risk its confirmation states) below the fold on a phone. Such rows are
-   few and bounded by the outbox, so the list shows them whole. */
+   the risk its confirmation states) below the fold. Such rows are few and
+   bounded by the outbox, so the list shows them whole, except in a dock short
+   enough to give the composer priority: there the composer carries the
+   notice and its Discard, and the list keeps its window. */
 .queued-messages__list:has(
   :is(.queued-message__unconfirmed-discard, .queued-message__confirm)
-) {
+):not(:where([data-composer-priority] *)) {
   max-height: none;
 }
 /* Calm sentence case for this one note, unlike the list's other labels: it
