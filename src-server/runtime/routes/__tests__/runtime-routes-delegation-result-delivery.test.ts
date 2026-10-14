@@ -558,6 +558,30 @@ describe('configureRuntimeRoutes: conversation inbox wiring (#3568)', () => {
     expect(support.continued).toHaveLength(0);
   });
 
+  test('a reader the personal Station lets continue the conversation has a held follow-up delivered', async () => {
+    // The conversation's recorded owner is the operator; this sender is not,
+    // but may read (and so, by the live rule, continue) it.
+    const { store } = await compose((store) =>
+      store.threadInboxStore().submit({
+        conversationId: PARENT,
+        clientTurnId: 'k4',
+        payload: {
+          message: 'from the reader',
+          actor: { userId: 'human:local:reader' },
+        },
+        now: Date.now(),
+      }),
+    );
+    await vi.waitFor(() => expect(support.continued).toHaveLength(1));
+    expect(support.continued[0]).toMatchObject({
+      userId: 'human:local:reader',
+      message: 'from the reader',
+    });
+    await vi.waitFor(() =>
+      expect(store.threadInboxStore().list(PARENT)[0]?.state).toBe('placed'),
+    );
+  });
+
   test('a follow-up from a device that lost the scope to send is refused, never sent', async () => {
     const { store } = await compose((store) =>
       held(store, 'k3', {
