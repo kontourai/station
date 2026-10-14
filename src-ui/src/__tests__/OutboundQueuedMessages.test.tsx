@@ -267,11 +267,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
       />,
     );
 
-    expect(
-      screen.getByText(
-        'May have reached the agent',
-      ),
-    ).not.toBeNull();
+    expect(screen.getByText('May have reached the agent')).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Edit message' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Delete message' })).toBeNull();
   });
@@ -339,11 +335,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
       />,
     );
 
-    expect(
-      screen.getByText(
-        'May have reached the agent',
-      ),
-    ).not.toBeNull();
+    expect(screen.getByText('May have reached the agent')).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Edit message' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Delete message' })).toBeNull();
