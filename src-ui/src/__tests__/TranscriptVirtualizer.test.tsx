@@ -119,7 +119,7 @@ describe('TranscriptVirtualizer (station#1238)', () => {
     });
   });
 
-  // @tanstack/virtual-core 3.x reads this hook from the INSTANCE; passed among
+  // @tanstack/virtual-core (3.17.11) reads this hook from the INSTANCE; passed among
   // the options it is never called and TanStack's default compensation runs.
   test('installs keyed size compensation on the virtualizer instance', () => {
     instances.length = 0;
@@ -143,18 +143,31 @@ describe('TranscriptVirtualizer (station#1238)', () => {
       | ((
           item: { index: number; start: number },
           delta: number,
-          instance: { scrollOffset: number },
+          instance: { scrollOffset: number; scrollAdjustments: number },
         ) => boolean)
       | undefined;
     expect(shouldAdjust, 'an instance hook').toBeTypeOf('function');
     // Following the tail, a row that starts above the viewport is compensated
     // and one below it is not.
     expect(
-      shouldAdjust!({ index: 3, start: 200 }, 40, { scrollOffset: 500 }),
+      shouldAdjust!({ index: 3, start: 200 }, 40, {
+        scrollOffset: 500,
+        scrollAdjustments: 0,
+      }),
     ).toBe(true);
     expect(
-      shouldAdjust!({ index: 9, start: 900 }, 40, { scrollOffset: 500 }),
+      shouldAdjust!({ index: 9, start: 900 }, 40, {
+        scrollOffset: 500,
+        scrollAdjustments: 0,
+      }),
     ).toBe(false);
+    // Earlier measurements in the same batch already moved the fold.
+    expect(
+      shouldAdjust!({ index: 6, start: 600 }, 40, {
+        scrollOffset: 500,
+        scrollAdjustments: 150,
+      }),
+    ).toBe(true);
   });
 
   test("mounting under a reader starts its first range at the reader's row", () => {

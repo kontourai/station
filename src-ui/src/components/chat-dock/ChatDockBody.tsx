@@ -84,6 +84,7 @@ import { ComposerStopButton } from '../chat/ComposerStopButton';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { EphemeralMessage } from '../chat/EphemeralMessage';
 import type { ForkTurnSource } from '../chat/fork-turn-source';
+import { preloadMarkdownRenderer } from '../chat/LazyMarkdown';
 import { SystemEventMessage } from '../chat/SystemEventMessage';
 import { markTranscriptPhase } from '../chat/transcriptLayoutTrace';
 import { ConversationStats } from '../conversation-stats/ConversationStats';
@@ -91,7 +92,7 @@ import ProgressSilenceObservation from '../home/ProgressSilenceObservation';
 import { LazyBoundary } from '../LazyBoundary';
 import { resolveNewChatAgentEnable } from '../modals/new-chat-agent-enable';
 import { SessionFailureAlert } from '../session-failure/SessionFailureAlert';
-import { ErrorState, SkeletonBlock, SkeletonList } from '../state';
+import { ErrorState, SkeletonList } from '../state';
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
 import {
   type RetryAttachment,
@@ -161,7 +162,7 @@ const loadChatMessageList = () =>
  * tests/transcript-load-stability.spec.ts).
  */
 const CHAT_MESSAGE_LIST_PENDING = (
-  <div className="chat-messages chat-messages--empty" role="status">
+  <div className="chat-messages chat-messages--empty">
     <SkeletonList count={4} label="Loading chat" />
   </div>
 );
@@ -601,6 +602,13 @@ export function ChatDockBody({
   const conversationLoading =
     resolvingOpen || (transcriptPending && !transcriptLoaded);
   const transcriptDisplayed = displayedTranscriptMessages.length > 0;
+  // Fetch the Markdown renderer alongside the transcript read rather than
+  // after the rows render: rows painted from their source and then grew when
+  // the renderer arrived.
+  const hasConversation = Boolean(activeSession.conversationId);
+  useEffect(() => {
+    if (hasConversation) preloadMarkdownRenderer();
+  }, [hasConversation]);
   // Loading-phase boundaries for the opt-in transcript layout tracer.
   useEffect(() => {
     markTranscriptPhase('dock-loading', {
@@ -1270,7 +1278,14 @@ export function ChatDockBody({
          * and read "No messages yet" instead — a true sentence that is not
          * the reason nothing can be sent.
          */
-        <div className="chat-messages chat-messages--empty" role="status">
+        <div
+          className="chat-messages chat-messages--empty"
+          // The skeleton is its own status region; the filler only announces
+          // what it says once loading is over.
+          role={
+            conversationLoading && !historyFailureNotice ? undefined : 'status'
+          }
+        >
           {historyElisionNotice}
           {historyFailureNotice ??
             (conversationLoading ? (
@@ -1830,27 +1845,23 @@ export function ChatDockBody({
           </div>
         )}
       {/*
-        The transitional state, in the repo's one loading vocabulary
-        (`state-primitives-ratchet`: name the wait in a skeleton's `label`,
-        never a new sentence). It replaces the red "is read-only" alert this
+        The transitional state. It replaces the red "is read-only" alert this
         phase used to paint: nothing has gone wrong — `hydrateActiveChats`
         seeds the pending phase on every reload of a chat with a conversation
         id, so this is the ordinary path (#1582 E3/B6).
 
-        It renders only when the transcript already has messages: with an empty
-        transcript the filler above carries the same wait, and two skeletons
-        for one wait is the multiplicity this change exists to remove.
+        With messages on screen the wait is shown by the disabled composer,
+        whose placeholder reads "Loading chat…" (`loadingConversation`), and
+        announced here as text, in the same words the skeletons use. An
+        in-flow block under the newest message used to shrink the transcript
+        while the open read was pending and hand the space back when it landed
+        ("space appears below while the conversation loads"). With an empty
+        transcript the filler above carries the same wait.
       */}
       {conversationLoading && displayedTranscriptMessages.length > 0 ? (
-        /*
-         * Announced, not drawn. The transcript above is already on screen; an
-         * in-flow block here was an empty panel under the newest message that
-         * shrank the transcript while the open read was pending and handed the
-         * space back when it landed — "space appears below while the
-         * conversation loads". The disabled composer is the visible state; the
-         * long-wait escape below stays visible.
-         */
-        <SkeletonBlock count={1} label="Loading chat" className="sr-only" />
+        <p className="sr-only" role="status">
+          Loading chat
+        </p>
       ) : null}
       {/*
         The one way out of the wait. `.session-history-controls` is this pane's
@@ -2193,6 +2204,7 @@ export function ChatDockBody({
             onVoiceStart={() => stt.startListening()}
             onVoiceStop={() => stt.stopListening()}
             workspaceRefused={workspaceRefused}
+            loadingConversation={resolvingOpen}
             onStartNewChat={onNewChat}
           />
         </>

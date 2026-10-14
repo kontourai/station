@@ -6,18 +6,16 @@
  * returns after two flag checks, and the observers in
  * `transcriptLayoutTracer.ts` (which ships in the lazily loaded transcript
  * chunk, not the entry bundle) attach only when tracing is requested. Turn it
- * on with either
+ * on with
  *
  *   localStorage.debug = 'app:transcript-layout'   (the `debug` logger;
  *                                                   also prints each record)
- *   the "Developer tools" device setting           (records silently)
  *
  * and reload. Then `window.__stationTranscriptTrace.dump()` returns the
  * bounded record buffer; see "Transcript layout tracing" in
  * docs/guides/development.md.
  */
 import debug from 'debug';
-import { deviceSettingsStore } from '../../lib/device-settings-store';
 
 export const TRANSCRIPT_LAYOUT_TRACE_NAMESPACE = 'app:transcript-layout';
 
@@ -51,20 +49,29 @@ function readRequested(): boolean {
     // An explicit `localStorage.debug` only: a development build enables
     // `app:*` implicitly when it is unset (utils/logger.ts), and that must not
     // turn the observers on for every developer.
-    if (
+    return Boolean(
       typeof localStorage !== 'undefined' &&
-      localStorage.getItem('debug') &&
-      debug.enabled(TRANSCRIPT_LAYOUT_TRACE_NAMESPACE)
-    )
-      return true;
+        localStorage.getItem('debug') &&
+        debug.enabled(TRANSCRIPT_LAYOUT_TRACE_NAMESPACE),
+    );
   } catch {
-    // Storage can be unavailable (privacy mode); fall through to the setting.
-  }
-  try {
-    return deviceSettingsStore.get('developerToolsEnabled') === true;
-  } catch {
+    // Storage can be unavailable (privacy mode).
     return false;
   }
+}
+
+/**
+ * A transcript row key can embed message text (its last-resort identity is
+ * content-derived), so the tracer records a short one-way hash of it. The
+ * same key always hashes the same, so records still correlate.
+ */
+export function traceKey(key: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < key.length; index += 1) {
+    hash ^= key.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
 }
 
 let requested = readRequested();

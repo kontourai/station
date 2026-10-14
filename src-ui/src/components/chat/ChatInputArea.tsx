@@ -318,6 +318,12 @@ interface ChatInputAreaProps {
   agentHandoffDisabled?: boolean;
   agentHandoffDisabledReason?: string;
   workspaceRefused?: boolean;
+  /**
+   * The conversation's open read is still in flight: the composer is disabled
+   * and its placeholder names the wait. It occupies no new space, so the
+   * transcript above keeps its height.
+   */
+  loadingConversation?: boolean;
   onStartNewChat?: (
     initialMessage?: string,
     attachments?: FileAttachment[],
@@ -458,6 +464,7 @@ export function ChatInputArea({
   agentHandoffDisabled = false,
   agentHandoffDisabledReason,
   workspaceRefused = false,
+  loadingConversation = false,
   onStartNewChat,
 }: ChatInputAreaProps) {
   const isMobile = useIsMobile();
@@ -606,19 +613,21 @@ export function ChatInputArea({
       : null;
   const placeholder = workspaceRefused
     ? 'This conversation continues from its original workspace — start a new chat to work here'
-    : allowDraftWhileDisabled
-      ? turnInFlight
-        ? 'Draft a follow-up while this turn finishes…'
-        : 'Waiting on this chat — check again above to send…'
-      : turnInFlight
-        ? sendMode === 'steer' && busyFollowUp === 'steer'
-          ? busySteeringKind === 'native'
-            ? 'Steer this turn…'
-            : 'Send at a safe boundary…'
-          : 'Queue a follow-up…'
-        : mentionLocation && mentionRequestScope
-          ? 'Type a message — @ files, / for commands…'
-          : 'Type a message — / for commands…';
+    : loadingConversation
+      ? 'Loading chat…'
+      : allowDraftWhileDisabled
+        ? turnInFlight
+          ? 'Draft a follow-up while this turn finishes…'
+          : 'Waiting on this chat — check again above to send…'
+        : turnInFlight
+          ? sendMode === 'steer' && busyFollowUp === 'steer'
+            ? busySteeringKind === 'native'
+              ? 'Steer this turn…'
+              : 'Send at a safe boundary…'
+            : 'Queue a follow-up…'
+          : mentionLocation && mentionRequestScope
+            ? 'Type a message — @ files, / for commands…'
+            : 'Type a message — / for commands…';
   const composerTokens = parseComposerTokens(input);
   const displayInput = composerDisplayValue(input, composerTokens);
 

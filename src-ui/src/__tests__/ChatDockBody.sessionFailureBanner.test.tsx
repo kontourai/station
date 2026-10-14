@@ -1106,6 +1106,41 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(screen.queryByText(/is read-only/)).toBeNull();
   });
 
+  // A reload with the transcript already read: the open read's wait is shown
+  // by the composer and announced as text, with no panel under the rows.
+  test('a resolving reload over a displayed transcript says so without drawing a panel', async () => {
+    transcriptMock.messages = [
+      { role: 'user', content: 'earlier question', timestamp: 1 },
+      { role: 'assistant', content: 'earlier answer', timestamp: 2 },
+    ];
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenPending: true,
+      }),
+    });
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.loadingConversation).toBe(true),
+    );
+    // The skeleton's own label is hidden text; this region's text is not.
+    const announcement = screen
+      .getAllByRole('status')
+      .find(
+        (node) =>
+          node.classList.contains('sr-only') &&
+          node.textContent?.trim() === 'Loading chat',
+      );
+    expect(announcement, 'a status region whose text is the wait').toBeTruthy();
+    expect(document.querySelector('.skeleton-block')).toBeNull();
+    // No status region nests another.
+    for (const region of screen.getAllByRole('status'))
+      expect(region.querySelector('[role="status"]')).toBeNull();
+  });
+
   // The three simultaneous claims E3 recorded, each asserted absent by the
   // words the user actually saw.
   test('#1582 E3 a resolving reload shows one state, not three', async () => {

@@ -11,6 +11,7 @@ import { type RefObject, useLayoutEffect, useRef } from 'react';
 import {
   installTranscriptTraceSink,
   type TranscriptTraceState,
+  traceKey,
   transcriptLayoutTraceRequested,
   transcriptTraceLogger,
 } from './transcriptLayoutTrace';
@@ -104,6 +105,9 @@ class TraceBuffer {
 
 /** One buffer per page, so a chat switch keeps the previous chat's records. */
 let buffer: TraceBuffer | null = null;
+// A re-attach (chat switch) replays the browser's buffered layout shifts;
+// those already recorded are skipped.
+let lastShiftAt = Number.NEGATIVE_INFINITY;
 let overlayEnabled = false;
 let overlayElement: HTMLElement | null = null;
 
@@ -121,24 +125,31 @@ declare global {
 }
 
 /**
- * Describes a node by its transcript row key, else its test id, else its tag,
- * classes and nearest accessible label.
+ * Describes a node without user content: a transcript row by its role and a
+ * hash of its key (`traceKey`), anything else by its test id, else its tag,
+ * classes and ARIA role. Accessible labels are never read: they can carry
+ * file names and message text.
  */
 export function describeTraceNode(node: Node | null | undefined): string {
   if (!(node instanceof Element)) return 'unknown';
-  const row = node.closest<HTMLElement>('[data-chat-message-key]');
-  if (row?.dataset.chatMessageKey) return `row:${row.dataset.chatMessageKey}`;
-  const virtualRow = node.closest<HTMLElement>('[data-transcript-row]');
-  if (virtualRow?.dataset.transcriptRow)
-    return `row:${virtualRow.dataset.transcriptRow}`;
+  const row = node.closest<HTMLElement>(
+    '.chat-message-anchor[data-chat-message-key], [data-transcript-row]',
+  );
+  const rowKey = row?.dataset.chatMessageKey ?? row?.dataset.transcriptRow;
+  if (row && rowKey) {
+    const role =
+      row.dataset.chatRole ??
+      row.querySelector<HTMLElement>('[data-chat-role]')?.dataset.chatRole;
+    return `row:${role ?? 'row'}#${traceKey(rowKey)}`;
+  }
   const testId = node.getAttribute('data-testid');
   if (testId) return `${node.tagName.toLowerCase()}#${testId}`;
-  const labelled = node.closest('[aria-label]')?.getAttribute('aria-label');
   const classes =
     typeof node.className === 'string'
       ? node.className.split(/\s+/).filter(Boolean).slice(0, 2)
       : [];
-  return `${node.tagName.toLowerCase()}${classes.map((name) => `.${name}`).join('')}${labelled ? `[${labelled}]` : ''}`;
+  const ariaRole = node.getAttribute('role');
+  return `${node.tagName.toLowerCase()}${classes.map((name) => `.${name}`).join('')}${ariaRole ? `[role=${ariaRole}]` : ''}`;
 }
 
 function readOverlayPreference() {
@@ -380,6 +391,8 @@ export function attachTranscriptLayoutTracer(
           sources?: Array<{ node?: Node | null }>;
         }
       >) {
+        if (entry.startTime <= lastShiftAt) continue;
+        lastShiftAt = entry.startTime;
         const sources = (entry.sources ?? []).map((source) =>
           describeTraceNode(source.node),
         );
@@ -409,6 +422,8 @@ export function attachTranscriptLayoutTracer(
     siblingObserver?.disconnect();
     shiftObserver?.disconnect();
     if (overlayFrame !== undefined) cancelAnimationFrame(overlayFrame);
+    overlayElement?.remove();
+    overlayElement = null;
   };
 }
 

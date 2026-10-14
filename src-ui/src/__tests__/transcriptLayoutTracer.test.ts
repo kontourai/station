@@ -10,8 +10,10 @@ import {
 } from '../components/chat/transcriptLayoutTrace';
 import {
   attachTranscriptLayoutTracer,
+  describeTraceNode,
   TRANSCRIPT_TRACE_CAPACITY,
 } from '../components/chat/transcriptLayoutTracer';
+import { deviceSettingsStore } from '../lib/device-settings-store';
 
 describe('transcript layout tracer', () => {
   // The `debug` package reads `localStorage.debug` when the page loads; the
@@ -100,5 +102,58 @@ describe('transcript layout tracer', () => {
     expect(dump.records[0]?.label).toBe('mark-25');
     expect(TRANSCRIPT_TRACE_CAPACITY).toBe(2_000);
     detach();
+  });
+
+  test('the Developer tools setting alone does not start tracing', () => {
+    deviceSettingsStore.set('developerToolsEnabled', true);
+    try {
+      expect(transcriptLayoutTraceRequested()).toBe(false);
+    } finally {
+      deviceSettingsStore.set('developerToolsEnabled', false);
+    }
+  });
+
+  test('describes nodes without labels or message text', () => {
+    document.body.innerHTML = `
+      <div class="chat-message-anchor" data-chat-role="user"
+        data-chat-message-key="s1:message:untimed:user:my secret plan.pdf">
+        <button aria-label="Open my secret plan.pdf" class="file-chip">x</button>
+      </div>
+      <div class="skeleton-block" role="status" aria-label="Loading chat"></div>`;
+    const chip = document.querySelector('button')!;
+    const described = describeTraceNode(chip);
+    expect(described).toMatch(/^row:user#[0-9a-z]+$/);
+    expect(described).not.toContain('secret');
+    const skeleton = describeTraceNode(
+      document.querySelector('.skeleton-block'),
+    );
+    expect(skeleton).toBe('div.skeleton-block[role=status]');
+    document.body.innerHTML = '';
+  });
+
+  test('removes its overlay when it detaches', async () => {
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const scroller = document.createElement('div');
+    const detach = attachTranscriptLayoutTracer(scroller, {
+      sessionId: 's1',
+      readState: () => ({ isUserScrolledUp: false }),
+    });
+    window.__stationTranscriptTrace!.overlay(true);
+    markTranscriptPhase('pin-layout');
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(
+      document.querySelector('[data-transcript-trace-overlay]'),
+    ).not.toBeNull();
+    detach();
+    expect(
+      document.querySelector('[data-transcript-trace-overlay]'),
+    ).toBeNull();
+    window.__stationTranscriptTrace!.overlay(false);
   });
 });

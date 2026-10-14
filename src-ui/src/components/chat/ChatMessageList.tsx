@@ -61,6 +61,7 @@ import { TranscriptVirtualizer } from './TranscriptVirtualizer';
 import {
   markTranscriptPhase,
   noteTranscriptProgrammaticScroll,
+  traceKey,
 } from './transcriptLayoutTrace';
 import { useTranscriptLayoutTrace } from './transcriptLayoutTracer';
 import {
@@ -718,7 +719,7 @@ function ChatMessageListComponent({
       const anchor = visibleAnchorRef.current;
       if (anchor && restoreChatScrollAnchor(el, anchor)) {
         noteProgrammaticScroll(el);
-        markTranscriptPhase('content-reanchor', { key: anchor.key });
+        markTranscriptPhase('content-reanchor', { key: traceKey(anchor.key) });
       }
       visibleAnchorRef.current = captureChatScrollAnchor(el);
     });

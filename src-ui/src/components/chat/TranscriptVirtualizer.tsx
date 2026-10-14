@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { markTranscriptPhase } from './transcriptLayoutTrace';
+import { markTranscriptPhase, traceKey } from './transcriptLayoutTrace';
 
 interface VirtualTranscriptRow {
   readonly id: string;
@@ -175,18 +175,24 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
   // expanded tool details, fonts). Keep compensating every changed row
   // strictly before the retained keyed anchor; a fixed number of rAF
   // corrections cannot prove that the final ResizeObserver has fired.
-  // An INSTANCE property in @tanstack/virtual-core 3.x, not an option: passed
-  // among the options it was never read, and TanStack's default (compensate
-  // every first-measured row above the fold) ran instead.
+  // An INSTANCE property in @tanstack/virtual-core (3.17.11 installed), not an
+  // option: passed among the options it was never read, and TanStack's
+  // default (compensate every first-measured row above the fold) ran instead.
   virtualizer.shouldAdjustScrollPositionOnItemSizeChange = (
     item,
     _delta,
     instance,
   ) => {
     const anchor = virtualAnchorRef.current;
-    if (followTail) return item.start < (instance.scrollOffset ?? 0);
+    // TanStack's own fold: the cached offset plus adjustments already queued
+    // in this batch of measurements.
+    if (followTail)
+      return (
+        item.start < (instance.scrollOffset ?? 0) + instance.scrollAdjustments
+      );
     return anchor ? item.index < anchor.index : false;
   };
+
   const virtualizerRef = useRef(virtualizer);
   virtualizerRef.current = virtualizer;
   const rowsRef = useRef(rows);
@@ -198,7 +204,7 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
   useLayoutEffect(() => {
     if (mountAnchor)
       markTranscriptPhase('virtualizer-mount-anchor', {
-        key: mountAnchor.id,
+        key: traceKey(mountAnchor.id),
         index: mountAnchor.index,
       });
   }, [mountAnchor]);
