@@ -104,6 +104,7 @@ import {
   ensureConversationContextBoundaryColumns,
 } from '../../domain/migrations/012-conversation-context-boundaries.js';
 import { SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION } from '../../domain/migrations/013-session-work-items.js';
+import { ensureTurnBoundarySequenceFence } from '../../domain/migrations/014-turn-boundary-sequence-fence.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -197,6 +198,11 @@ import {
   type CredentialApplicationHandle,
   createCredentialApplicationFactory,
 } from './credential-application-ledger.js';
+import {
+  createSqliteDelegationResultStore,
+  type DelegationResultStore,
+  migrateDelegationResultSchema,
+} from './delegation-result-delivery.js';
 import {
   createNativeInvocationRuns,
   type NativeInvocationRunReader,
@@ -1955,6 +1961,7 @@ export class EventStore {
   private skillExperienceSnapshots?: SkillExperienceSnapshots;
   private registryTrustPolicyDecisions?: RegistryTrustPolicyDecisions;
   private sessionControlKeys?: SessionControlRequestKeys;
+  private delegationResults?: DelegationResultStore;
 
   constructor(
     dbPath: string,
@@ -2105,6 +2112,9 @@ export class EventStore {
       )`);
       // #3160: the request keys behind `send_to_session` / `interrupt_session`.
       this.db.exec(SESSION_CONTROL_REQUEST_KEY_SCHEMA);
+      // #3158: delegated-result ownership and its one consumption record,
+      // migrated from any earlier version of the schema.
+      migrateDelegationResultSchema(this.db);
       this.db.exec(PACKAGE_MCP_ADMISSION_SCHEMA);
       this.db.exec(REGISTRY_TRUST_POLICY_SCHEMA);
       this.db
@@ -2170,6 +2180,7 @@ export class EventStore {
       // still in flight, and set once it resolves.
       ensureOrchestrationTurnDedupColumns(this.db);
       ensureOrchestrationBoundaryPurpose(this.db);
+      ensureTurnBoundarySequenceFence(this.db);
       this.turnDedupPersistence = createSqliteTurnDedupPersistence({
         db: this.db,
         maxEntries: this.turnDedupMaxEntries,
@@ -7003,6 +7014,39 @@ export class EventStore {
     ).map((row: any) => this.mapEventRow(row));
   }
 
+  /**
+   * #3158: one turn's events of a finite method set, oldest first, at most
+   * `limit` rows, through the `(thread_id, turn_id, sequence)` index, so
+   * reading a settled turn's output never scans the rest of a long Session or
+   * an unbounded turn. A caller that must know whether the turn had more asks
+   * for one row past its bound.
+   */
+  listTurnEventsByMethods(
+    threadId: string,
+    turnId: string,
+    methods: readonly string[],
+    limit: number,
+  ): PersistedRuntimeEvent[] {
+    if (methods.length === 0) {
+      throw new Error('An event-method query requires at least one method');
+    }
+    if (!Number.isInteger(limit) || limit < 1 || limit > 5_000) {
+      throw new Error('A turn event read limit must be between 1 and 5000');
+    }
+    const placeholders = methods.map(() => '?').join(', ');
+    return (
+      this.db
+        .prepare(
+          `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+           FROM orchestration_events
+           WHERE thread_id = ? AND turn_id = ? AND method IN (${placeholders})
+           ORDER BY sequence ASC
+           LIMIT ?`,
+        )
+        .all(threadId, turnId, ...methods, limit) as Record<string, unknown>[]
+    ).map((row) => this.mapEventRow(row));
+  }
+
   listEventsByMethodsAfterSequence(
     threadId: string,
     methods: readonly string[],
@@ -11095,8 +11139,8 @@ export class EventStore {
         .prepare(
           `INSERT INTO orchestration_turn_boundaries
             (boundary_id, thread_id, state, provider_turn_id, owner_id,
-             owner_pid, owner_birth, owner_identity_kind, created_at, updated_at, purpose)
-           VALUES (?, ?, 'accepted', ?, ?, ?, ?, ?, ?, ?, 'turn')`,
+             owner_pid, owner_birth, owner_identity_kind, created_at, updated_at, purpose, created_sequence)
+           VALUES (?, ?, 'accepted', ?, ?, ?, ?, ?, ?, ?, 'turn', ?)`,
         )
         .run(
           record.boundaryId,
@@ -11108,6 +11152,7 @@ export class EventStore {
           record.ownerIdentityKind,
           record.createdAt,
           record.updatedAt,
+          this.headGlobalSequence(),
         );
     const exact = (input: {
       boundaryId: string;
@@ -11179,8 +11224,8 @@ export class EventStore {
             .prepare(
               `INSERT INTO orchestration_turn_boundaries
                 (boundary_id, thread_id, state, provider_turn_id, owner_id,
-                 owner_pid, owner_birth, owner_identity_kind, created_at, updated_at, purpose)
-               VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
+                 owner_pid, owner_birth, owner_identity_kind, created_at, updated_at, purpose, created_sequence)
+               VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
             )
             .run(
               record.boundaryId,
@@ -11193,6 +11238,7 @@ export class EventStore {
               record.createdAt,
               record.updatedAt,
               record.purpose ?? 'turn',
+              this.headGlobalSequence(),
             );
           this.db.exec('COMMIT');
           return { kind: 'applied' };
@@ -11362,13 +11408,25 @@ export class EventStore {
       removeTerminal: (input) => {
         try {
           if (input.sessionTerminal) {
+            // NULL fences retain timestamp ordering.
+            // A missing terminal makes the subquery NULL and keeps fenced boundaries.
             this.db
               .prepare(
                 `DELETE FROM orchestration_turn_boundaries
                   WHERE thread_id = ? AND state != 'lifecycle' AND purpose != 'task-dispatch'
-                    AND created_at <= ?`,
+                    AND (
+                      (created_sequence IS NULL AND created_at <= ?)
+                      OR created_sequence < (
+                        SELECT global_sequence FROM orchestration_events WHERE id = ?
+                          AND thread_id = orchestration_turn_boundaries.thread_id
+                      )
+                    )`,
               )
-              .run(input.threadId, input.terminalCreatedAt);
+              .run(
+                input.threadId,
+                input.terminalCreatedAt,
+                input.terminalEventId ?? null,
+              );
           } else if (input.providerTurnId) {
             this.db
               .prepare(
@@ -11396,6 +11454,7 @@ export class EventStore {
         if (this.db.isTransaction) {
           this.db.exec('SAVEPOINT record_accepted_turn_boundary');
           try {
+            this.reserveEventAppendWriter();
             const { rows } = this.db
               .prepare(
                 `SELECT COUNT(*) AS rows FROM orchestration_turn_boundaries
@@ -11598,8 +11657,8 @@ export class EventStore {
 
   /**
    * Join a boundary with terminal facts already durably appended before a
-   * crash or transient boundary-delete fault. Boundary creation time prevents
-   * an older provider turn-id reuse from settling a newer invocation.
+   * crash or transient boundary-delete fault. Session terminals use the
+   * creation fence; legacy rows and turn-id generation checks retain timestamps.
    */
   private reconcileSessionTurnTerminalsFromEvents(threadId?: string): void {
     this.db
@@ -11610,13 +11669,20 @@ export class EventStore {
             AND EXISTS (
               SELECT 1 FROM orchestration_events AS event
                WHERE event.thread_id = orchestration_turn_boundaries.thread_id
-                 AND event.created_at >= orchestration_turn_boundaries.created_at
                  AND (
-                   event.method = 'session.exited'
-                   OR (event.method = 'runtime.error' AND event.turn_id IS NULL
-                       AND COALESCE(json_extract(event.payload, '$.code'), '') != ?)
+                   (
+                     (event.method = 'session.exited'
+                      OR (event.method = 'runtime.error' AND event.turn_id IS NULL
+                          AND COALESCE(json_extract(event.payload, '$.code'), '') != ?))
+                     AND (
+                       (orchestration_turn_boundaries.created_sequence IS NULL
+                        AND event.created_at >= orchestration_turn_boundaries.created_at)
+                       OR event.global_sequence > orchestration_turn_boundaries.created_sequence
+                     )
+                   )
                    OR (
                      orchestration_turn_boundaries.state = 'accepted'
+                     AND event.created_at >= orchestration_turn_boundaries.created_at
                      AND event.turn_id = orchestration_turn_boundaries.provider_turn_id
                      AND event.method IN ('turn.completed', 'turn.aborted', 'runtime.error')
                      -- station#2235: a recovery-synthesized abort
@@ -12089,6 +12155,12 @@ export class EventStore {
   sessionControlRequestKeys(): SessionControlRequestKeys {
     this.sessionControlKeys ??= createSqliteSessionControlRequestKeys(this.db);
     return this.sessionControlKeys;
+  }
+
+  /** #3158: who receives a delegated child's results, and what was sent. */
+  delegationResultStore(): DelegationResultStore {
+    this.delegationResults ??= createSqliteDelegationResultStore(this.db);
+    return this.delegationResults;
   }
 
   /** A pending steer claim is never reclaimed: its engine may have accepted it. */

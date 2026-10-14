@@ -1264,7 +1264,7 @@ An agent that messages another Session must not deliver twice when it retries,
 and must not start a second turn on a Session that is already running one.
 [SessionMessageDelivery](../../src-server/services/orchestration/session-message-delivery.ts)
 is the one place that decides which of those a message becomes, for Station
-Control's `send_to_session` and later for delegation result delivery.
+Control's `send_to_session` and for delegated task result delivery.
 
 **Interface.** `deliverSessionMessage(ports, { threadId, text, mode, deliveryId,
 decided?, recordDecision? })` returns `started`, `steered`, `session_busy`,
@@ -1297,6 +1297,46 @@ and the [mounted boundary matrix](../../src-server/runtime/routes/__tests__/runt
 Their presence is not an executed receipt against a real engine. See
 [agent configuration](../guides/self-configuring-agent.md#session-control) for the
 tool-level behavior.
+
+**Delegated task results (#3158).**
+[DelegationResultDelivery](../../src-server/services/orchestration/delegation-result-delivery.ts)
+delivers a local child's result to the conversation that delegated it through
+this module in `auto` mode. The `POST /delegations` route records ownership
+only from a `caller-derived` delegation context, so the parent is the calling
+Station Control session's own conversation, never an id the request names.
+`caller-derived` covers every caller channel, including a copied or app-held
+token. The route therefore also records the owner attribution the dispatch
+carried: `verified-bound` only for a bound caller acting for an authenticated
+owner, otherwise `unattributed-agent`. Delivery replays exactly that attribution
+and principal, which is no more than `send_to_session` allows the same caller.
+A child transition (today `settled`) is read from the persisted lifecycle fold
+after the event bus publishes it, and again at startup. Each transition is one
+durable row in `EventStore`, holding the text composed from the child's stored
+output. That row is the consumption record shared with `get_task`: the recorded
+parent's read of its own child at rest consumes it. `interrupt_task` from the
+recorded parent, or from the delegating owner in person, cancels it and
+suppresses the one turn it stops. An interrupt that names a turn suppresses only
+that turn, whether or not the log shows it yet, and it is suppressed even
+if it completed normally. A turn not yet in the log when the interrupt arrived
+is matched as the service matches its one pending interrupt (the next turn to
+start, until a completion, abort or Session exit on the child's Session, or the
+pending-interrupt TTL), and is suppressed only
+if it did not complete normally. A transition found after a restart, rather
+than as its terminal landed, never takes a suppression made since, and a turn
+that runs after a restart never takes one made before it. A refused
+interrupt, or one the orchestration service reports stopped nothing
+(`no-active-turn`, for example a `turnId` that is not the running turn), undoes
+only its own records: a row a read consumed or another interrupt also cancelled
+stays closed. An engine without mid-turn steer leaves the row pending
+until the parent's turn ends. A start is re-driven only into the Session it
+named, and a row that keeps failing or stays unconfirmed is settled
+`undeliverable` after five attempts. Remote and SSH children, hosted Stations,
+and `needs_input`/`blocked` transitions are not delivered. The
+[route-level integration test](../../src-server/routes/orchestration/__tests__/delegation-result-delivery.integration.test.ts)
+and the [runtime composition test](../../src-server/runtime/routes/__tests__/runtime-routes-delegation-result-delivery.test.ts)
+use recorded start and steer effects, not a real engine; the integration test
+runs its interrupt-outcome cases through the real orchestration service with a
+test adapter.
 
 ## SessionDigest
 
@@ -1484,7 +1524,9 @@ This owner records when a provider call may have crossed into an external effect
 
 **Behavior.** The SQLite authority serializes cross-process claims with a transaction. Independent accepted turns may coexist up to a bounded protected per-thread capacity; the Module rejects further work at capacity and never prunes unresolved facts. A provider response that reuses any turn id already present in canonical terminal history becomes `indeterminate`, so a delayed or duplicate old callback cannot settle the newer effect. A lifecycle claim conflicts with every retained provider boundary, while a new provider invocation conflicts with lifecycle, another invocation, or indeterminate work. An Adapter error after `beginInvocation` is possible effect and never releases client idempotency for replay. The single exception is a Session-start claim whose Adapter throws `SessionStartRefusedError`: that type is the Adapter's assertion that the engine definitively refused and what it spawned is torn down, with a `runtime.error` and `session.exited` published for the `session.started` it had already sent (the ACP adapter throws it for a model its fresh `session/new` options did not offer), so `refused()` removes the `invoking` boundary and the receipt is `rejected`. A claim without `refused` (the nested Task-dispatch start claim) records the usual indeterminate start, and an unconfirmed release falls back to it. Ambiguous boundary writes retain their exact opaque intent and retry it before later work without reinvoking the Adapter. A dead `prepared` owner is definitely uninvoked and removed; a dead `invoking` owner becomes durable `indeterminate`, including when an already-open peer discovers the dead owner during contention. Exact provider terminal identity removes matching accepted evidence; a session-wide terminal can clear older identity-less turn/start ambiguity. Task-dispatch records are excluded from provider terminal cleanup because provider exit alone does not settle graph and publication work. An interrupt acknowledgement is not terminal evidence: acceptance and the client-turn claim remain until an exact canonical terminal arrives. Post-accept observers cannot replace the known turn result; if command-receipt persistence is not known durable, service, HTTP, and SDK retain the accepted turn and add `receiptStatus: unavailable`.
 
-**Code and evidence.** `EventStore` owns SQLite and process identity, then exposes one private `SessionTurnBoundaryAuthority` to `OrchestrationService`. The in-memory Adapter exists only for embedded/test composition and preserves the same capability shape without claiming restart durability. Real two-EventStore, restart, exact-terminal, adapter-throw, route no-retry, and lifecycle race evidence lives in `session-turn-boundary.test.ts`, `orchestration-service.test.ts`, and orchestration route tests. **Do not reintroduce:** generic ledger access, caller-owned state strings, release-after-invocation (other than a Session-start claim's `refused()` for an Adapter-asserted `SessionStartRefusedError`), session-id inference for turn settlement, a thread-global terminal tombstone shared by concurrent starts, or lifecycle checks that ignore the durable boundary.
+Session-scoped terminal retirement uses event order in SQLite (#3563). Migration 014 adds nullable `created_sequence` without backfilling existing rows. New boundaries capture the durable global high-water mark under the writer lock; a persisted `session.exited` or turn-less `runtime.error` retires a boundary only when its sequence is greater than that fence. Live observation, runtime reads and boot reconciliation use this rule. NULL-fence rows retain timestamp ordering and can remain accepted or indeterminate across boots. Turn-scoped terminals also retain their timestamp generation check: a backward clock step can still misorder them because provider turn IDs can be reused and terminal events carry no invocation-generation identity. Repairing that requires a Station-assigned invocation ID carried across adapter and event contracts (#3566 or #3575). The in-memory Adapter retains timestamp ordering because it has no durable event sequence.
+
+**Code and evidence.** `EventStore` owns SQLite and process identity, then exposes one private `SessionTurnBoundaryAuthority` to `OrchestrationService`. The in-memory Adapter exists only for embedded/test composition and preserves the same capability shape without claiming restart durability. Real two-EventStore, restart, exact-terminal, adapter-throw, route no-retry, and lifecycle race evidence lives in `session-turn-boundary.test.ts`, `orchestration-service.test.ts`, and orchestration route tests. `session-turn-boundary-sequence.test.ts` covers backward-clock session retirement, old-terminal replay, legacy rows across boots and engine-opened boundaries; `turn-boundary-sequence-migration.test.ts` checks fresh and existing homes through startup migration. **Do not reintroduce:** generic ledger access, caller-owned state strings, release-after-invocation (other than a Session-start claim's `refused()` for an Adapter-asserted `SessionStartRefusedError`), session-id inference for turn settlement, a thread-global terminal tombstone shared by concurrent starts, or lifecycle checks that ignore the durable boundary.
 
 ## TurnDeduplicator
 

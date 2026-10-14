@@ -1,0 +1,7 @@
+{
+  "revision": "3e1e8a94bd2f66cb6b04e2bf1ad3ecd084287bd5",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Reviewed the Corpus v2 manifest, pinned org callee, head repository/SHA inputs, isolated npm execution, Pages publishing, and focused admission tests. Updated the manifest and CLI names; existing audit and publication guidance remains accurate. Corpus check and 338 focused tests passed; hosted CI remains separate.","inputs":["docs/guides/documentation.md",".github/workflows/docs-kit.yml","docs-kit.json","corpus.json"]}
+  ]
+}
