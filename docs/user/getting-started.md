@@ -442,15 +442,28 @@ never sent twice. A message with attachments or a visual skill keeps its draft
 until Station answers instead.
 
 Until the agent has a message, its bubble is outlined rather than filled, with a
-short label: **Sending…**; **Received**, which adds **safe to close** when
-Station keeps running without the app, or **keep the app open** when the app's
-own Station stops with it; **Saved on this device · sends when connected**; **Not
-sent**, with **Retry** (the same message again, never a second copy), **Edit**
-(the text goes back to the composer) and **Discard**; or **May have reached the
-agent**, with **Check**, which asks Station again and never resends. A message
-that may have reached the agent is never discarded automatically: **Discard…**
-states the risk and removes it only after **I checked, discard it**. Messages
-written after it still send.
+short label:
+
+- **Sending…**
+- **Received**, which adds **safe to close** when Station keeps running without
+  the app, or **keep the app open** when the app's own Station stops with it
+- **Saved on this device · sends when connected**
+- **Waiting behind an unsent message**: messages in a chat go in order, so a
+  message waits until an earlier one that was not sent is retried or discarded
+- **Saved on this device · waits for its Station**, for a message written for
+  another Station
+- **Not sent**, with **Retry** (the same message again, never a second copy) and
+  **Edit** (the text goes back to the composer); **Discard unsent message** is in
+  the message's **⋯** menu
+- **May have reached the agent**, with **Check**, which asks Station again and
+  never resends
+- **Not confirmed**, for a message this device sent with no answer from Station
+  (for example a send that was stopped)
+
+A message that may have reached the agent is never discarded automatically:
+**Discard…** states the risk and removes it only after **I checked, discard
+it**, in every open window. It does not hold back the messages written after
+it.
 
 Quiet turns show elapsed silence without guessing that an engine retried. Retry
 status appears only when the engine reports it. The Drafts icon saves and restores

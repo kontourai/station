@@ -252,7 +252,12 @@ export function useOutboundQueueFlush(apiBase: string): void {
           projection = projection.then(async () => {
             try {
               const entries = await outboundDispatch.open();
-              if (active) projectOutboundQueueEntries(entries);
+              // Keys finished with in any window: a discarded message's
+              // bubble goes here too, a started one stops reading unanswered.
+              const retired = await outboundDispatch
+                .retiredKeys()
+                .catch(() => undefined);
+              if (active) projectOutboundQueueEntries(entries, retired);
             } catch (error) {
               if (!active) return;
               reporter.reportOutboundQueueUnavailable(

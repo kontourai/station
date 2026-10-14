@@ -379,6 +379,44 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     ).toBe(false);
   });
 
+  it('a live send that went undeliverable forgets the lookup answer about the attempt that ended', async () => {
+    const queue = await freshRenderer();
+    const live = await queue.outboundDispatch.beginLive({
+      ...intent,
+      clientTurnId: 'offline-after-received',
+    });
+    await live.observed('received');
+    expect((await queue.outboundDispatch.snapshot())[0]).toMatchObject({
+      deliveryCheck: { outcome: 'received' },
+    });
+    await live.undeliverable(new TypeError('Failed to fetch'));
+    const [row] = await queue.outboundDispatch.snapshot();
+    expect(row).toMatchObject({
+      clientTurnId: 'offline-after-received',
+      status: 'pending',
+    });
+    expect(row?.deliveryCheck).toBeUndefined();
+  });
+
+  it('lists the keys finished with, by reason, for every window', async () => {
+    const queue = await freshRenderer();
+    await queue.outboundDispatch.enqueue({
+      ...intent,
+      clientTurnId: 'thrown-away',
+    });
+    await queue.outboundDispatch.discard('thrown-away');
+    const live = await queue.outboundDispatch.beginLive({
+      ...intent,
+      clientTurnId: 'went-through',
+    });
+    await live.accepted();
+    const later = await freshRenderer();
+    await expect(later.outboundDispatch.retiredKeys()).resolves.toEqual({
+      discarded: ['thrown-away'],
+      accepted: ['went-through'],
+    });
+  });
+
   it('#3596: an unconfirmed row is never discarded by the ordinary Discard; only an explicit dismissal removes it', async () => {
     const queue = await freshRenderer();
     const live = await queue.outboundDispatch.beginLive({
@@ -438,6 +476,40 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
       ['still-sending', 'invoking'],
       ['waiting', 'pending'],
     ]);
+    // A not-sent row and an accepted one are not unconfirmed either.
+    const refused = await queue.outboundDispatch.beginLive({
+      ...intent,
+      clientTurnId: 'refused-row',
+    });
+    await refused.notSent('Station refused it.');
+    await queue.outboundDispatch.enqueue({
+      ...intent,
+      clientTurnId: 'accepted-row',
+      sessionId: 'chat-accepted',
+    });
+    await queue.outboundDispatch.flush(async (turn) =>
+      turn.clientTurnId === 'accepted-row'
+        ? { kind: 'accepted' as const, providerTurnId: 'p-accepted' }
+        : { kind: 'deferred' as const, reason: 'not this one' },
+    );
+    const statuses = Object.fromEntries(
+      (await queue.outboundDispatch.snapshot()).map((row) => [
+        row.clientTurnId,
+        row.status,
+      ]),
+    );
+    expect(statuses).toMatchObject({
+      'refused-row': 'failed',
+      'accepted-row': 'accepted',
+    });
+    for (const key of ['refused-row', 'accepted-row']) {
+      await expect(
+        queue.outboundDispatch.dismissUnconfirmed(key),
+      ).rejects.toThrow('Only a message that may have reached the agent');
+    }
+    expect(
+      (await queue.outboundDispatch.snapshot()).map((row) => row.clientTurnId),
+    ).toEqual(expect.arrayContaining(['refused-row', 'accepted-row']));
     // A key with no row is nothing to dismiss.
     await expect(
       queue.outboundDispatch.dismissUnconfirmed('no-such-key'),

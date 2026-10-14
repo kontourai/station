@@ -313,13 +313,42 @@ function withDeliveryCheck(
   chat: ChatUIState | undefined,
   clientTurnId: string,
   outcome: TurnDeliveryOutcome,
-): Pick<ChatUIState, 'deliveryChecks'> {
+): Pick<ChatUIState, 'deliveryChecks' | 'localSendKeys'> {
   const kept = Object.entries(chat?.deliveryChecks ?? {})
     .filter(([key]) => key !== clientTurnId)
     .slice(-(DELIVERY_CHECKS_MAX - 1));
   return {
     deliveryChecks: Object.fromEntries([...kept, [clientTurnId, outcome]]),
+    // Started: delivered for good, so the bubble never falls back to
+    // "Not confirmed" once this answer ages out of the bounded record.
+    ...(outcome === 'started'
+      ? {
+          localSendKeys: withoutLocalSendKey(chat?.localSendKeys, clientTurnId),
+        }
+      : {}),
   };
+}
+
+/** Bound on the keys a chat remembers sending in this session. */
+const LOCAL_SEND_KEYS_MAX = 32;
+
+function withLocalSendKey(
+  keys: ChatUIState['localSendKeys'],
+  clientTurnId: string,
+): ChatUIState['localSendKeys'] {
+  return [
+    ...(keys ?? []).filter((key) => key !== clientTurnId),
+    clientTurnId,
+  ].slice(-LOCAL_SEND_KEYS_MAX);
+}
+
+function withoutLocalSendKey(
+  keys: ChatUIState['localSendKeys'],
+  clientTurnId: string,
+): ChatUIState['localSendKeys'] {
+  return keys?.includes(clientTurnId)
+    ? keys.filter((key) => key !== clientTurnId)
+    : keys;
 }
 
 function withoutDeliveryCheck(
@@ -728,6 +757,13 @@ export function useSendMessage(
           activeChatsStore.getSnapshot()[sessionId]?.deliveryChecks,
           resolvedTurnId,
         ),
+        // This window's own message: without any later fact it reads "Not
+        // confirmed", never delivered.
+        localSendKeys: withLocalSendKey(
+          activeChatsStore.getSnapshot()[sessionId]?.localSendKeys,
+          resolvedTurnId,
+        ),
+        durableClientTurnId: undefined,
       });
 
       // Durable BEFORE the request: from here until Station answers, the
@@ -846,6 +882,7 @@ export function useSendMessage(
           live = undefined;
         }
         if (live) {
+          updateChat(sessionId, { durableClientTurnId: resolvedTurnId });
           try {
             options?.onDurable?.();
           } catch {

@@ -1,5 +1,5 @@
 import { isSupportedTurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
-import { Fragment, memo, type ReactNode, useCallback } from 'react';
+import { Fragment, memo, type ReactNode, useCallback, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { isReplayThread } from '../../hooks/orchestration/replay/replay-registry';
@@ -22,7 +22,10 @@ import { type ForkTurnSource, forkTurnSource } from './fork-turn-source';
 import { MessageDetails } from './MessageDetails';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { MessageContent } from './message-bubble/MessageContent';
-import { MessageDeliveryNote } from './message-bubble/MessageDeliveryNote';
+import {
+  type DeliveryNotice,
+  MessageDeliveryNote,
+} from './message-bubble/MessageDeliveryNote';
 import { MessageRating } from './message-bubble/MessageRating';
 import {
   resolveTurnEngine,
@@ -191,6 +194,32 @@ function MessageBubbleComponent({
     deliveryState !== undefined &&
     deliveryState !== 'delivered'
       ? deliveryState
+      : undefined;
+  // Discard of a not-sent message runs from the bubble's ⋯ menu; its result
+  // is reported on the bubble's delivery line.
+  const [deliveryNotice, setDeliveryNotice] = useState<DeliveryNotice | null>(
+    null,
+  );
+  const discardUnsent =
+    undelivered === 'not-sent' && msg.clientId
+      ? () => {
+          const key = msg.clientId!;
+          setDeliveryNotice(null);
+          void import('../../lib/messageDeliveryActions')
+            .then(async ({ discardMessage, ALREADY_DELIVERED }) => {
+              if (
+                (await discardMessage(activeSession.id, key, 'not-sent')) ===
+                'delivered'
+              )
+                setDeliveryNotice({ text: ALREADY_DELIVERED, error: false });
+            })
+            .catch((error: unknown) =>
+              setDeliveryNotice({
+                text: `That didn't work: ${error instanceof Error ? error.message : String(error)}`,
+                error: true,
+              }),
+            );
+        }
       : undefined;
 
   // Hoisted above the flowPart early-return (hooks can't be called
@@ -429,7 +458,9 @@ function MessageBubbleComponent({
   const userMessageMenu =
     msg.role === 'user' &&
     textContent &&
-    ((userForkSource && onForkFromTurn) || onNewChatFromMessage) ? (
+    ((userForkSource && onForkFromTurn) ||
+      onNewChatFromMessage ||
+      discardUnsent) ? (
       <LazyBoundary
         load={loadUserMessageActionsMenu}
         componentProps={{
@@ -438,6 +469,7 @@ function MessageBubbleComponent({
           onNewChatFromMessage: onNewChatFromMessage
             ? () => onNewChatFromMessage(textContent)
             : undefined,
+          onDiscardUnsent: discardUnsent,
         }}
         pending={null}
         // In the phone sheet a failed load must not leave an empty sheet
@@ -916,6 +948,7 @@ function MessageBubbleComponent({
             clientTurnId={msg.clientId}
             state={undelivered}
             text={textContent}
+            notice={deliveryNotice}
           />
         ) : null}
 

@@ -66,7 +66,7 @@
 }
 
 /* A message that may have reached the agent keeps its text on a line of its
-   own, with its notice, Check and Discard… wrapping below; an open
+   own, with its note, Check and Discard… wrapping below; an open
    confirmation takes a row of its own under them. */
 .queued-message:has(
   > :is(.queued-message__unconfirmed-discard, .queued-message__confirm)
@@ -79,21 +79,28 @@
   > .queued-message__text {
   flex-basis: calc(100% - 16px - 6px);
 }
-/* Discard… reads at the size of the Check beside it. */
 .queued-message__unconfirmed-discard {
   font-size: var(--text-sm);
 }
-/* The list's three-row window would clip the risk it must state. */
-.queued-messages__list:has(.queued-message__confirm) {
+.queued-message__confirm {
+  flex-basis: 100%;
+  min-width: 0;
+}
+/* The list's three-row window would hide an unconfirmed row's Discard… (or
+   the risk its confirmation states) below the fold on a phone. Such rows are
+   few and bounded by the outbox, so the list shows them whole. */
+.queued-messages__list:has(
+  :is(.queued-message__unconfirmed-discard, .queued-message__confirm)
+) {
   max-height: none;
 }
-
-.queued-message__confirm {
-  min-width: 0;
-  margin: 0;
-}
-.queued-message__confirm > button {
-  justify-self: start;
+/* Calm sentence case for this one note, unlike the list's other labels: it
+   says what may have happened, not an instruction to send again. */
+.queued-messages__label.queued-messages__label--unconfirmed {
+  color: var(--k-caution);
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .queued-message__merge-preview pre {

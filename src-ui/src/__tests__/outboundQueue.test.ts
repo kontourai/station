@@ -655,6 +655,57 @@ describe('OutboundDispatchModule', () => {
     );
   });
 
+  it('#3596: the explicit dismissal refuses a row whose dispatch state this renderer could not record, even once it reads unconfirmed', async () => {
+    const now = Date.now();
+    let state: unknown = {
+      version: 2,
+      turns: [
+        {
+          ...turn('fenced-unconfirmed'),
+          createdAt: now,
+          attempts: 1,
+          status: 'pending',
+        },
+      ],
+      terminalEvidence: [],
+      completedTerminals: [],
+    };
+    let updateCount = 0;
+    _setOutboundQueueStorage({
+      getItem: async () => state,
+      setItem: async (_key, next) => {
+        state = next;
+      },
+      updateItem: async (_key, updater) => {
+        updateCount += 1;
+        if (updateCount === 2)
+          throw new Error('accepted transition unavailable');
+        state = updater(state);
+      },
+    });
+    await expect(outboundDispatch.flush(async () => accepted())).resolves.toBe(
+      'unavailable',
+    );
+    // Another window records the row as unconfirmed meanwhile; this renderer
+    // still holds the in-memory fence for it.
+    const stored = state as { turns: Array<Record<string, unknown>> };
+    state = {
+      ...stored,
+      turns: stored.turns.map((row) => ({
+        ...row,
+        status: 'may-have-started',
+      })),
+    };
+    await expect(
+      outboundDispatch.dismissUnconfirmed('fenced-unconfirmed'),
+    ).rejects.toThrow('Only a message that may have reached the agent');
+    expect(
+      ((state as { turns: Array<{ clientTurnId: string }> }).turns ?? []).map(
+        (row) => row.clientTurnId,
+      ),
+    ).toEqual(['fenced-unconfirmed']);
+  });
+
   it('reports a definite pre-invocation rejection instead of claiming a merge target started', async () => {
     const now = Date.now();
     _setOutboundQueueStorage(

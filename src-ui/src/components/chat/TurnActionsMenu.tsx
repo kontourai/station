@@ -327,6 +327,11 @@ export interface UserMessageActionsMenuProps {
   forkSource?: ForkTurnSource | null;
   onForkFromTurn?: (source: ForkTurnSource) => void;
   onNewChatFromMessage?: () => void;
+  /**
+   * The message was not sent: its Discard lives here, beside the bubble's
+   * other actions, rather than in a second overflow on the bubble.
+   */
+  onDiscardUnsent?: () => void;
 }
 
 /** Overflow for a user bubble: fork or a new-chat seed (#2216). Copy is the
@@ -335,13 +340,15 @@ export function UserMessageActionsMenu({
   forkSource,
   onForkFromTurn,
   onNewChatFromMessage,
+  onDiscardUnsent,
 }: UserMessageActionsMenuProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const close = () => setOpen(false);
   const menuRef = useMenuFocus<HTMLDivElement>(open, close);
   const canFork = Boolean(forkSource && onForkFromTurn);
-  const rowCount = canFork ? 1 : onNewChatFromMessage ? 1 : 0;
+  const rowCount =
+    (canFork ? 1 : onNewChatFromMessage ? 1 : 0) + (onDiscardUnsent ? 1 : 0);
   const { position, place } = useFixedMenuPlacement(triggerRef, open, rowCount);
   const triggerProps = useMenuTriggerToggle(
     open,
@@ -404,6 +411,19 @@ export function UserMessageActionsMenu({
                 }}
               >
                 New chat from this message
+              </button>
+            )}
+            {onDiscardUnsent && (
+              <button
+                type="button"
+                role="menuitem"
+                className="turn-footer__overflow-item--danger"
+                onClick={() => {
+                  close();
+                  onDiscardUnsent();
+                }}
+              >
+                Discard unsent message
               </button>
             )}
           </div>,

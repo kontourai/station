@@ -219,6 +219,14 @@ export interface OutboundDispatchModule {
    * whose dispatch state this renderer could not record).
    */
   dismissUnconfirmed(clientTurnId: string): Promise<void>;
+  /** The status of this key's row, if the outbox holds one. */
+  rowStatus(clientTurnId: string): Promise<OutboundDispatchStatus | undefined>;
+  /**
+   * Keys finished with in any window: discarded by the user, or accepted by
+   * Station (its answer, or the delivery lookup's `started`). Bounded, as the
+   * retired list is.
+   */
+  retiredKeys(): Promise<{ discarded: string[]; accepted: string[] }>;
   /**
    * Records a live send `invoking` before its request is made, so its text is
    * durable while it is in flight. Rejects when storage is unavailable; the
@@ -2077,7 +2085,9 @@ async function beginLive(
     },
     undeliverable: async (error) => {
       releaseLive();
-      await transition((entry) => ({
+      // Back to waiting for the connection: whatever Station said about the
+      // attempt that just ended describes nothing pending now (as `hold`).
+      await transition(({ deliveryCheck: _stale, ...entry }) => ({
         ...entry,
         status: 'pending',
         lastError: error instanceof Error ? error.message : undefined,
@@ -2431,6 +2441,20 @@ export const outboundDispatch: OutboundDispatchModule = {
   completeAcceptedTurn,
   discard,
   dismissUnconfirmed,
+  rowStatus: async (clientTurnId) =>
+    (await readStored()).find((entry) => entry.clientTurnId === clientTurnId)
+      ?.status,
+  retiredKeys: async () => {
+    const retired = parseRetired(await retiredStorage.get());
+    return {
+      discarded: retired
+        .filter((entry) => entry.reason === 'discarded')
+        .map((entry) => entry.clientTurnId),
+      accepted: retired
+        .filter((entry) => entry.reason !== 'discarded')
+        .map((entry) => entry.clientTurnId),
+    };
+  },
   beginLive,
   reconcile,
   syncHeld,

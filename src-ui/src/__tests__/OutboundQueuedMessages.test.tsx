@@ -28,6 +28,7 @@ vi.mock('../lib/outboundQueue', () => ({
     unmerge: (...args: unknown[]) => unmergeOutboundTurnMock(...args),
     sendHeld: (...args: unknown[]) => sendHeldMock(...args),
     dismissUnconfirmed: (...args: unknown[]) => dismissUnconfirmedMock(...args),
+    retiredKeys: async () => ({ discarded: [], accepted: [] }),
   },
 }));
 
@@ -268,7 +269,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
 
     expect(
       screen.getByText(
-        'May have started; inspect this session before sending again',
+        'May have reached the agent',
       ),
     ).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Edit message' })).toBeNull();
@@ -340,7 +341,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
 
     expect(
       screen.getByText(
-        'May have started; inspect this session before sending again',
+        'May have reached the agent',
       ),
     ).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();

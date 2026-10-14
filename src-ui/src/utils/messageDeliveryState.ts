@@ -12,6 +12,11 @@ import type { TurnDeliveryOutcome } from '@kontourai/station-contracts/orchestra
  *   the delivery lookup said `started`, or the turn's start was seen).
  * - `waiting-to-send`: kept on this device and sent automatically when
  *   Station can be reached. Station has not seen it.
+ * - `waiting-behind-unsent`: kept on this device, but an earlier message of
+ *   the same chat was not sent and holds it back (the outbox keeps a chat's
+ *   order). It goes once that one is retried or discarded.
+ * - `waiting-for-station`: kept on this device for the Station it was written
+ *   for; it is never sent to any other.
  * - `held-on-device`: kept on this device behind a running turn; it is sent
  *   when that turn ends. Station has not seen it, and it lives only as long
  *   as this app's session storage.
@@ -19,6 +24,9 @@ import type { TurnDeliveryOutcome } from '@kontourai/station-contracts/orchestra
  *   reuses the same key, so a retry can never make a second turn.
  * - `unconfirmed`: it may have reached the agent and nothing can prove which
  *   way. Never resent automatically; a check asks Station again.
+ * - `unanswered`: this device sent it in this session and holds no answer
+ *   about it (a stopped send, an attachment send that ended without a turn);
+ *   no outbox row keeps it either.
  *
  * Extension point: a state for "accepted by Station and waiting behind a
  * turn" belongs here once something computes it (a Station-held queue); it
@@ -29,9 +37,12 @@ export type MessageDeliveryState =
   | 'received'
   | 'delivered'
   | 'waiting-to-send'
+  | 'waiting-behind-unsent'
+  | 'waiting-for-station'
   | 'held-on-device'
   | 'not-sent'
-  | 'unconfirmed';
+  | 'unconfirmed'
+  | 'unanswered';
 
 /** The durable outbox row's status (`lib/outboundQueue.ts`). */
 export type OutboxDeliveryStatus =
@@ -56,6 +67,12 @@ export interface MessageDeliverySignals {
   refused?: boolean;
   /** The newest delivery-lookup answer for this message's key. */
   lookup?: TurnDeliveryOutcome;
+  /** The outbox row waits for the Station it was written for. */
+  outboxWaitsForStation?: boolean;
+  /** The outbox row is held back by an earlier not-sent row of its chat. */
+  outboxBehindUnsent?: boolean;
+  /** This device sent it in this session (its own optimistic bubble). */
+  sentHere?: boolean;
 }
 
 /**
@@ -87,10 +104,18 @@ export function deriveMessageDeliveryState(
   if (signals.lookup === 'received') return 'received';
   if (signals.requestInFlight || signals.outbox === 'invoking')
     return 'sending';
-  if (signals.outbox === 'pending') return 'waiting-to-send';
+  if (signals.outbox === 'pending')
+    return signals.outboxWaitsForStation
+      ? 'waiting-for-station'
+      : signals.outboxBehindUnsent
+        ? 'waiting-behind-unsent'
+        : 'waiting-to-send';
   // A lookup that found nothing, with no request out and no row kept: the
   // message never reached Station and nothing here will send it.
   if (signals.lookup === 'not-received') return 'not-sent';
+  // No fact at all, yet this device sent it: say so rather than let it read
+  // as delivered. Another device's message (or history) never gets here.
+  if (signals.sentHere) return 'unanswered';
   return undefined;
 }
 
@@ -99,10 +124,14 @@ export interface MessageDeliveryChatFacts {
   pendingClientTurnId?: string;
   sendAwaitingTurnStart?: boolean;
   deliveryChecks?: Readonly<Record<string, TurnDeliveryOutcome>>;
+  /** Keys this device sent in this session that Station has not started. */
+  localSendKeys?: readonly string[];
   outboundQueuedTurns?: ReadonlyArray<{
     clientTurnId: string;
     status: OutboxDeliveryStatus;
     deliveryCheck?: { outcome: TurnDeliveryOutcome };
+    waitingForStation?: string;
+    behindUnsent?: true;
   }>;
 }
 
@@ -128,6 +157,9 @@ export function messageDeliveryStateFor(
       chat.pendingClientTurnId === key,
     outbox: row?.status,
     lookup: (key && chat?.deliveryChecks?.[key]) || row?.deliveryCheck?.outcome,
+    outboxWaitsForStation: row?.waitingForStation !== undefined,
+    outboxBehindUnsent: row?.behindUnsent === true,
+    sentHere: key !== undefined && chat?.localSendKeys?.includes(key) === true,
   });
 }
 
@@ -137,10 +169,14 @@ export function outboxTurnDeliveryState(row: {
   deliveryCheck?: { outcome: TurnDeliveryOutcome };
   /** A held copy listed here: kept on a device, sent only on Send. */
   heldElsewhere?: true;
+  waitingForStation?: string;
+  behindUnsent?: true;
 }): MessageDeliveryState | undefined {
   return deriveMessageDeliveryState({
     outbox: row.status,
     heldBehindTurn: row.heldElsewhere === true,
     lookup: row.deliveryCheck?.outcome,
+    outboxWaitsForStation: row.waitingForStation !== undefined,
+    outboxBehindUnsent: row.behindUnsent === true,
   });
 }

@@ -3,6 +3,7 @@ import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import { isWorkspaceRefusedTurn } from '../../lib/workspaceRefusal';
 import type { FileAttachment } from '../../types';
 import { EditGlyph } from '../icons/Glyph';
+import { UnconfirmedDiscardConfirm } from './UnconfirmedDiscardConfirm';
 import './QueuedMessages.css';
 
 interface OutboundQueuedTurn {
@@ -197,8 +198,8 @@ export function OutboundQueuedMessages({
               <HeldCopyNotice turn={turn} onError={onError} />
               {turn.status === 'may-have-started' ||
               turn.status === 'invoking' ? (
-                <span className="queued-messages__label">
-                  May have started; inspect this session before sending again{' '}
+                <span className="queued-messages__label queued-messages__label--unconfirmed">
+                  May have reached the agent{' '}
                   {turn.waitingForStation ? null : (
                     <RecheckDeliveryButton
                       clientTurnId={turn.clientTurnId}
@@ -483,21 +484,10 @@ function DiscardUnconfirmed({
       </button>
     );
   return (
-    <fieldset
-      className="queued-message__merge-preview queued-message__confirm"
-      aria-label="Discard this message?"
-    >
-      <span>
-        It may already have reached the agent. Discarding removes it from this
-        device only: it does not stop anything the agent started, and it is
-        never sent again.
-      </span>
-      <button type="button" onClick={() => setConfirming(false)}>
-        Keep it
-      </button>
-      <button
-        type="button"
-        onClick={() =>
+    <span className="queued-message__confirm">
+      <UnconfirmedDiscardConfirm
+        onKeep={() => setConfirming(false)}
+        onConfirm={() =>
           void import('../../lib/messageDeliveryActions')
             .then(({ discardMessage }) =>
               discardMessage(sessionId, clientTurnId, 'unconfirmed'),
@@ -509,10 +499,8 @@ function DiscardUnconfirmed({
               ),
             )
         }
-      >
-        I checked, discard it
-      </button>
-    </fieldset>
+      />
+    </span>
   );
 }
 

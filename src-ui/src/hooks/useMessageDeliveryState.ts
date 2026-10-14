@@ -52,6 +52,13 @@ export function useRecheckMessageDelivery(
             ...(chat?.deliveryChecks ?? {}),
             [clientTurnId]: outcome,
           },
+          ...(outcome === 'started'
+            ? {
+                localSendKeys: chat?.localSendKeys?.filter(
+                  (key) => key !== clientTurnId,
+                ),
+              }
+            : {}),
         });
       }
       return outcome;

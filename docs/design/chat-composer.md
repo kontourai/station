@@ -206,8 +206,10 @@ it stops with the app, nor while the desktop has not reported it). The user's
 own bubble carries the same state until the agent has the message
 (`MessageDeliveryNote`): outlined rather than filled (dashed while on its way,
 solid when not sent), with a short label that says whether it goes if the app
-closes, plus Retry, Edit and Discard when not sent and Check and Discard… when it
-may have reached the agent. State changes animate its width with
+closes (including waiting behind an unsent message, waiting for its own
+Station, and "Not confirmed" for this window's send with no answer), plus Retry
+and Edit when not sent (Discard is in the bubble's ⋯ menu) and Check and
+Discard… when it may have reached the agent. State changes animate its width with
 the shared motion token, while the clock reserves a stable text column. Running
 tool rows and batches show a subtle reflection sweeping left to right; settled
 calls and approval requests stay still. Reduced motion disables the reflection

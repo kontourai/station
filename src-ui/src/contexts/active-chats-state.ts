@@ -349,6 +349,12 @@ export type ChatUIState = {
     waitingForStation?: string;
     /** Held by another window or a closed one; sent only by the user. */
     heldElsewhere?: true;
+    /**
+     * Pending, but an earlier row of the same chat was not sent: the outbox
+     * keeps a chat's order, so this one waits until that one is retried or
+     * discarded.
+     */
+    behindUnsent?: true;
   }>;
   inputHistory: string[];
   historyIndex?: number;
@@ -406,6 +412,20 @@ export type ChatUIState = {
    * not state to restore: session-scoped and not persisted (a send outliving
    * its page is the outbox's, which keeps its own answer).
    */
+  /**
+   * Keys this window sent in this session whose turn Station has not started
+   * (as far as this window knows), newest last and bounded. A bubble whose key
+   * is here but which has no other delivery fact reads "Not confirmed" rather
+   * than delivered. Session-scoped and not persisted, like `deliveryChecks`.
+   */
+  localSendKeys?: readonly string[];
+  /**
+   * The pending send's key when its outbox row was written before the
+   * request (the send survives the app closing). Absent when the send went
+   * without one: attachments, a visual skill, or storage that failed or was
+   * too slow.
+   */
+  durableClientTurnId?: string;
   deliveryChecks?: Readonly<
     Record<
       string,

@@ -27,6 +27,14 @@ const outbox = vi.hoisted(() => ({
   discard: vi.fn(async (_key: string) => undefined),
   dismissUnconfirmed: vi.fn(async (_key: string) => undefined),
   enqueue: vi.fn(),
+  rowStatus: vi.fn(
+    async (_key: string): Promise<string | undefined> => undefined,
+  ),
+  subscribe: vi.fn((_listener: () => void) => () => undefined),
+  retiredKeys: vi.fn(async () => ({
+    discarded: [] as string[],
+    accepted: [] as string[],
+  })),
 }));
 const recheckOutboundTurn = vi.hoisted(() =>
   vi.fn(async (_key: string) => 'indeterminate' as const),
@@ -93,6 +101,13 @@ function renderBubble(message = bubbleMessage()) {
   return { bubble };
 }
 
+/** The delivery line's one status region (its label, once past Sending). */
+function statusText(bubble: HTMLElement): string | null | undefined {
+  const region = bubble.querySelector('.message-delivery__status');
+  expect(region?.getAttribute('role')).toBe('status');
+  return region?.textContent;
+}
+
 function expectOutlined(bubble: HTMLElement, state: string) {
   expect(bubble.classList.contains('message--undelivered')).toBe(true);
   expect(bubble.classList.contains(`message--delivery-${state}`)).toBe(true);
@@ -139,22 +154,17 @@ describe('MessageBubble delivery state', () => {
     });
     const first = renderBubble();
     expectOutlined(first.bubble, 'received');
-    const status = within(first.bubble).getByRole('status');
-    expect(status.textContent).toBe('Received · safe to close');
+    expect(statusText(first.bubble)).toBe('Received · safe to close');
     cleanup();
 
     platform.outlives = false;
     const second = renderBubble();
-    expect(within(second.bubble).getByRole('status').textContent).toBe(
-      'Received · keep the app open',
-    );
+    expect(statusText(second.bubble)).toBe('Received · keep the app open');
     cleanup();
 
     platform.outlives = undefined;
     const third = renderBubble();
-    expect(within(third.bubble).getByRole('status').textContent).toBe(
-      'Received',
-    );
+    expect(statusText(third.bubble)).toBe('Received');
   });
 
   it('waiting-to-send: saved on this device and sent when connected', () => {
@@ -165,7 +175,7 @@ describe('MessageBubble delivery state', () => {
     });
     const { bubble } = renderBubble();
     expectOutlined(bubble, 'waiting-to-send');
-    expect(within(bubble).getByRole('status').textContent).toBe(
+    expect(statusText(bubble)).toBe(
       'Saved on this device · sends when connected',
     );
   });
@@ -178,7 +188,7 @@ describe('MessageBubble delivery state', () => {
     });
     const { bubble } = renderBubble();
     expectOutlined(bubble, 'not-sent');
-    expect(within(bubble).getByRole('status').textContent).toBe('Not sent');
+    expect(statusText(bubble)).toBe('Not sent');
     expect(within(bubble).queryByRole('button', { name: 'Check' })).toBeNull();
     fireEvent.click(within(bubble).getByRole('button', { name: 'Retry' }));
     await waitFor(() => expect(outbox.retry).toHaveBeenCalledWith(KEY));
@@ -225,12 +235,15 @@ describe('MessageBubble delivery state', () => {
       ],
     });
     const { bubble } = renderBubble();
+    // Discard sits in the bubble's own ⋯ menu, not a second overflow.
     fireEvent.click(
-      within(bubble).getByRole('button', {
-        name: 'More actions for this unsent message',
+      await within(bubble).findByRole('button', {
+        name: 'More message actions',
       }),
     );
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Discard' }));
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Discard unsent message' }),
+    );
     await waitFor(() =>
       expect(
         activeChatsStore
@@ -251,12 +264,15 @@ describe('MessageBubble delivery state', () => {
     });
     const { bubble } = renderBubble();
     // Discard is the row's third action, behind its overflow menu.
+    // Discard sits in the bubble's own ⋯ menu, not a second overflow.
     fireEvent.click(
-      within(bubble).getByRole('button', {
-        name: 'More actions for this unsent message',
+      await within(bubble).findByRole('button', {
+        name: 'More message actions',
       }),
     );
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Discard' }));
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Discard unsent message' }),
+    );
     await waitFor(() => expect(outbox.discard).toHaveBeenCalledWith(KEY));
     expect((await within(bubble).findByRole('alert')).textContent).toContain(
       'storage is unavailable',
@@ -272,15 +288,16 @@ describe('MessageBubble delivery state', () => {
     setChat({ deliveryChecks: { [KEY]: 'indeterminate' } });
     const { bubble } = renderBubble();
     expectOutlined(bubble, 'unconfirmed');
-    expect(within(bubble).getByRole('status').textContent).toBe(
-      'May have reached the agent',
-    );
+    expect(statusText(bubble)).toBe('May have reached the agent');
     expect(within(bubble).queryByRole('button', { name: 'Retry' })).toBeNull();
     fireEvent.click(within(bubble).getByRole('button', { name: 'Check' }));
     await waitFor(() => expect(recheckOutboundTurn).toHaveBeenCalledWith(KEY));
-    expect((await within(bubble).findByRole('alert')).textContent).toBe(
+    // An informational result is polite, never an alert.
+    const result = await within(bubble).findByText(
       'Station still can’t confirm it.',
     );
+    expect(result.getAttribute('role')).toBe('status');
+    expect(within(bubble).queryByRole('alert')).toBeNull();
     expect(outbox.retry).not.toHaveBeenCalled();
     expect(outbox.enqueue).not.toHaveBeenCalled();
   });
@@ -288,7 +305,9 @@ describe('MessageBubble delivery state', () => {
   it('unconfirmed: discarding states the risk first, and only the explicit confirmation dismisses it (#3596)', async () => {
     setChat({ deliveryChecks: { [KEY]: 'indeterminate' } });
     const { bubble } = renderBubble();
-    fireEvent.click(within(bubble).getByRole('button', { name: 'Discard…' }));
+    fireEvent.click(
+      await within(bubble).findByRole('button', { name: 'Discard…' }),
+    );
     const confirm = within(bubble).getByRole('group', {
       name: 'Discard this message?',
     });
@@ -313,6 +332,138 @@ describe('MessageBubble delivery state', () => {
         activeChatsStore.getSnapshot()[CHAT]?.deliveryChecks?.[KEY],
       ).toBeUndefined(),
     );
+  });
+
+  it('sending: promises the device keeps it only when its outbox row was written', () => {
+    setChat({
+      status: 'sending',
+      pendingClientTurnId: KEY,
+      sendAwaitingTurnStart: true,
+      durableClientTurnId: KEY,
+    });
+    const saved = renderBubble();
+    expect(
+      within(saved.bubble).getByText('Sending…').getAttribute('title'),
+    ).toBe(
+      'Saved on this device. If the app closes before Station answers, it is checked and sent when you reopen it.',
+    );
+    cleanup();
+    // Attachments, a visual skill, or storage that failed: no row was written.
+    activeChatsStore.updateChat(CHAT, { durableClientTurnId: undefined });
+    const unsaved = renderBubble();
+    expect(
+      within(unsaved.bubble).getByText('Sending…').getAttribute('title'),
+    ).toBe('Waiting for Station to answer.');
+  });
+
+  it('one status region stays mounted, and only its text changes when Sending becomes Received', () => {
+    setChat({
+      status: 'sending',
+      pendingClientTurnId: KEY,
+      sendAwaitingTurnStart: true,
+    });
+    const { bubble } = renderBubble();
+    const region = bubble.querySelector('.message-delivery__status');
+    expect(region?.getAttribute('role')).toBe('status');
+    expect(region?.textContent).toBe('');
+    act(() => {
+      activeChatsStore.updateChat(CHAT, {
+        deliveryChecks: { [KEY]: 'received' },
+      });
+    });
+    expect(bubble.querySelector('.message-delivery__status')).toBe(region);
+    expect(region?.textContent).toBe('Received · safe to close');
+  });
+
+  it('waiting behind an earlier unsent message says so, not "sends when connected"', () => {
+    setChat({
+      outboundQueuedTurns: [
+        {
+          clientTurnId: KEY,
+          content: TEXT,
+          createdAt: 1,
+          status: 'pending',
+          behindUnsent: true,
+        },
+      ],
+    });
+    const { bubble } = renderBubble();
+    expectOutlined(bubble, 'waiting-behind-unsent');
+    expect(statusText(bubble)).toBe('Waiting behind an unsent message');
+  });
+
+  it('a message written for another Station says it waits for that Station', () => {
+    setChat({
+      outboundQueuedTurns: [
+        {
+          clientTurnId: KEY,
+          content: TEXT,
+          createdAt: 1,
+          status: 'pending',
+          waitingForStation: 'http://other.test',
+        },
+      ],
+    });
+    const { bubble } = renderBubble();
+    expectOutlined(bubble, 'waiting-for-station');
+    expect(statusText(bubble)).toBe(
+      'Saved on this device · waits for its Station',
+    );
+  });
+
+  it("this device's own message with no answer reads Not confirmed; another device's never does", () => {
+    setChat({ localSendKeys: [KEY] });
+    const own = renderBubble();
+    expectOutlined(own.bubble, 'unanswered');
+    expect(statusText(own.bubble)).toBe('Not confirmed');
+    cleanup();
+    activeChatsStore.updateChat(CHAT, { localSendKeys: [] });
+    const other = renderBubble();
+    expect(other.bubble.classList.contains('message--undelivered')).toBe(false);
+    expect(other.bubble.querySelector('.message-delivery')).toBeNull();
+  });
+
+  it('unconfirmed: no Discard… while its outbox row is still a send under way', async () => {
+    outbox.rowStatus.mockResolvedValue('invoking');
+    setChat({ deliveryChecks: { [KEY]: 'indeterminate' } });
+    const { bubble } = renderBubble();
+    await waitFor(() => expect(outbox.rowStatus).toHaveBeenCalledWith(KEY));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(within(bubble).getByRole('button', { name: 'Check' })).toBeTruthy();
+    expect(
+      within(bubble).queryByRole('button', { name: 'Discard…' }),
+    ).toBeNull();
+    outbox.rowStatus.mockResolvedValue(undefined);
+  });
+
+  it('a discard that finds Station already started the message keeps the bubble as delivered', async () => {
+    outbox.retiredKeys.mockResolvedValueOnce({
+      discarded: [],
+      accepted: [KEY],
+    });
+    setChat({
+      deliveryChecks: { [KEY]: 'indeterminate' },
+      localSendKeys: [KEY],
+    });
+    const { bubble } = renderBubble();
+    fireEvent.click(
+      await within(bubble).findByRole('button', { name: 'Discard…' }),
+    );
+    fireEvent.click(
+      within(bubble).getByRole('button', { name: 'I checked, discard it' }),
+    );
+    await waitFor(() =>
+      expect(activeChatsStore.getSnapshot()[CHAT]?.deliveryChecks?.[KEY]).toBe(
+        'started',
+      ),
+    );
+    const chat = activeChatsStore.getSnapshot()[CHAT];
+    expect(chat?.messages?.some((message) => message.clientId === KEY)).toBe(
+      true,
+    );
+    expect(chat?.localSendKeys).toEqual([]);
   });
 
   it('delivered: a normal filled bubble with no label', () => {
@@ -366,8 +517,8 @@ describe('MessageDeliveryNote held-on-device', () => {
         text={TEXT}
       />,
     );
-    expect(screen.getByRole('status').textContent).toBe(
-      'Queued on this device',
-    );
+    expect(
+      document.querySelector('.message-delivery__status')?.textContent,
+    ).toBe('Queued on this device');
   });
 });

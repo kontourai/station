@@ -911,6 +911,26 @@
   align-items: center;
   gap: var(--k-space-1) var(--k-space-2);
 }
+/* The two states that need the user name themselves in their tone as well as
+   in words (AA on the page background in both themes). */
+.message-delivery[data-delivery-state="unconfirmed"] .message-delivery__label {
+  color: var(--k-caution);
+  font-weight: 500;
+}
+.message-delivery[data-delivery-state="not-sent"] .message-delivery__label {
+  color: var(--error-text, var(--k-negative));
+  font-weight: 500;
+}
+/* The status regions stay in the accessibility tree while empty (so their
+   first text is announced), but take no space in the line or the grid. */
+.message-delivery__status:empty,
+.message-delivery__notice:empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
 .message-delivery__actions {
   display: inline-flex;
   flex-wrap: wrap;
@@ -935,17 +955,6 @@
 .message-delivery__action--danger {
   border-color: var(--k-negative);
   color: var(--error-text, var(--k-negative));
-}
-.message-delivery__confirm {
-  display: grid;
-  gap: var(--k-space-1);
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-}
-.message-delivery__confirm p {
-  margin: 0;
 }
 .message-delivery__notice {
   color: var(--text-primary);
