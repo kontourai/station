@@ -322,6 +322,15 @@ function withDeliveryCheck(
   };
 }
 
+function withoutDeliveryCheck(
+  checks: ChatUIState['deliveryChecks'],
+  clientTurnId: string,
+): ChatUIState['deliveryChecks'] {
+  if (!checks || !(clientTurnId in checks)) return checks;
+  const { [clientTurnId]: _stale, ...rest } = checks;
+  return rest;
+}
+
 export function useSendMessage(
   apiBase: string,
   onActiveSessionChange?: (newSessionId: string) => void,
@@ -1367,6 +1376,12 @@ export function useSendMessage(
             pendingClientTurnId: undefined,
             sendAwaitingTurnStart: undefined,
             queuedMessages: [...(latestState?.queuedMessages ?? []), content],
+            // A lookup answer about the refused attempt (a `received` while
+            // it waited on a starting session) must not label the resend.
+            deliveryChecks: withoutDeliveryCheck(
+              latestState?.deliveryChecks,
+              resolvedTurnId,
+            ),
             // The same key the send carried: its durable held row and the
             // drain's eventual send are one message.
             queuedMessageMetadata: [

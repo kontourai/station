@@ -709,4 +709,51 @@ describe('useSendMessage: durable before the request', () => {
       messageDeliveryStateFor(activeChatsStore.getSnapshot()[chat], bubble()),
     ).toBe('delivered');
   });
+
+  it('a send that waited on a starting session and went back to the queue loses its earlier "received"', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let refuse!: (error: unknown) => void;
+    sendExecutionMessageMock.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          refuse = reject;
+        }),
+    );
+    getTurnDeliveryMock.mockImplementation(
+      async (_apiBase, conversationId, clientTurnId) => ({
+        outcome: 'received',
+        conversationId,
+        clientTurnId,
+      }),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    let pending!: Promise<unknown>;
+    await act(async () => {
+      pending = result.current(chat, 'codex', undefined, 'slow session');
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    const body = sendExecutionMessageMock.mock.calls[0]?.[1] as {
+      clientTurnId: string;
+    };
+    // Station held the claim while the session started: it read received.
+    expect(activeChatsStore.getSnapshot()[chat]?.deliveryChecks).toMatchObject({
+      [body.clientTurnId]: 'received',
+    });
+    await act(async () => {
+      refuse(
+        new ChatHttpError(409, 'Still starting', 'provider_session_starting'),
+      );
+      await pending;
+    });
+    // Queued to be sent again: nothing may still say Station has it.
+    expect(
+      activeChatsStore.getSnapshot()[chat]?.deliveryChecks?.[body.clientTurnId],
+    ).toBeUndefined();
+    const [row] = await outboundDispatch.snapshot();
+    expect(row).toMatchObject({
+      clientTurnId: body.clientTurnId,
+      status: 'pending',
+    });
+    expect(row?.deliveryCheck).toBeUndefined();
+  });
 });

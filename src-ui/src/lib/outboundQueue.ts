@@ -2076,7 +2076,10 @@ async function beginLive(
     },
     hold: async () => {
       releaseLive();
-      await transition((entry) => ({
+      // Back in the queue, to be sent again: whatever Station said about the
+      // attempt that just ended (a `received` while it waited on a starting
+      // session) describes nothing pending now.
+      await transition(({ deliveryCheck: _stale, ...entry }) => ({
         ...entry,
         status: 'pending',
         heldBy: { bootId: claimed.dispatchBootId!, heldAt: Date.now() },
