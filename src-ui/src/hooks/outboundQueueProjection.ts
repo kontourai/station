@@ -1,5 +1,9 @@
 import { activeChatsStore } from '../contexts/active-chats-store';
-import type { OutboundDispatchTurn } from '../lib/outboundQueue';
+import {
+  currentOutboundStation,
+  type OutboundDispatchTurn,
+  rowBelongsToStation,
+} from '../lib/outboundQueue';
 
 export interface OutboundQueuedTurnProjection {
   clientTurnId: string;
@@ -10,6 +14,11 @@ export interface OutboundQueuedTurnProjection {
   lastError?: string;
   /** Station's newest delivery-lookup answer for this row's key. */
   deliveryCheck?: OutboundDispatchTurn['deliveryCheck'];
+  /**
+   * The row was written for another Station (its API base): it waits for
+   * that Station and is never sent anywhere else.
+   */
+  waitingForStation?: string;
 }
 
 export function projectOutboundQueueEntries(
@@ -21,6 +30,9 @@ export function projectOutboundQueueEntries(
     // its own bubble, with the chat saying "Sending"; listing it here too
     // would show the message twice and call the chat queued.
     if (entry.liveInFlight) continue;
+    // A follow-up held in a live chat's own queue is listed there; its row is
+    // only the durable copy.
+    if (entry.heldBy) continue;
     const group = groups.get(entry.sessionId) ?? [];
     group.push(entry);
     groups.set(entry.sessionId, group);
@@ -59,6 +71,7 @@ export function projectOutboundQueueEntries(
           lastError,
           mergedTurns,
           deliveryCheck,
+          station,
         }) => ({
           clientTurnId,
           content,
@@ -68,6 +81,10 @@ export function projectOutboundQueueEntries(
           lastError,
           mergedTurns,
           ...(deliveryCheck ? { deliveryCheck } : {}),
+          ...(station &&
+          !rowBelongsToStation({ station }, currentOutboundStation())
+            ? { waitingForStation: station.apiBase }
+            : {}),
         }),
       ),
     });

@@ -198,6 +198,7 @@ describe('useOutboundQueueFlush', () => {
         'http://api.test',
         'session-1',
         'key-orphan',
+        undefined,
       );
       expect(sendMessage.mock.calls[0]?.[6]).toBe('key-orphan');
       expect(sendMessage.mock.calls[0]?.[3]).toBe('sent as the app closed');

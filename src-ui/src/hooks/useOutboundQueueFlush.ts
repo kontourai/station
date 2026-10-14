@@ -13,10 +13,61 @@
  */
 import { useConnectionStatus } from '@kontourai/station-connect';
 import { useCallback, useEffect, useRef } from 'react';
+import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
+import type { ChatUIState } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { conversationCanMutate } from '../contexts/conversation-open-policy';
+import type {
+  HeldOutboundIntent,
+  OutboundStationIdentity,
+} from '../lib/outboundQueue';
 import { checkServerHealth, probeServerConnection } from '../lib/serverHealth';
 import { useSendMessage } from './useActiveChatSessions';
+
+/**
+ * The follow-ups each chat holds in its local queue behind a running turn,
+ * as durable outbox intents keyed by their queue ids (the key the drain will
+ * send them under). A steer already handed to the engine is not held.
+ */
+export function heldOutboundIntents(
+  chats: Readonly<Record<string, ChatUIState>>,
+): HeldOutboundIntent[] {
+  const intents: HeldOutboundIntent[] = [];
+  for (const [chatKey, chat] of Object.entries(chats)) {
+    if (!chat.agentSlug) continue;
+    const base = {
+      sessionId: chatKey,
+      agentSlug: chat.agentSlug,
+      conversationId: chat.conversationId ?? chatKey,
+      ...(chat.projectSlug ? { projectSlug: chat.projectSlug } : {}),
+      ...(chat.executionAgentId
+        ? { executionAgentId: chat.executionAgentId }
+        : {}),
+      ...(chat.executionOnCurrentStation !== undefined
+        ? { executionOnCurrentStation: chat.executionOnCurrentStation }
+        : {}),
+      ...(chat.expectedDefinitionFingerprint
+        ? { expectedDefinitionFingerprint: chat.expectedDefinitionFingerprint }
+        : {}),
+    };
+    const held: Array<
+      readonly [string, { id: string; delivery?: string } | undefined]
+    > = chat.queuedMessages.map(
+      (content, index) =>
+        [content, chat.queuedMessageMetadata?.[index]] as const,
+    );
+    if (chat.pendingQueueDispatch)
+      held.push([
+        chat.pendingQueueDispatch.content,
+        chat.pendingQueueDispatch.metadata,
+      ]);
+    for (const [content, metadata] of held) {
+      if (!metadata || metadata.delivery) continue;
+      intents.push({ ...base, clientTurnId: metadata.id, content });
+    }
+  }
+  return intents;
+}
 
 // Module-level (not a `useRef`) so mounting this hook twice — StrictMode's
 // double-invoked effects, or a fast remount — can never run two overlapping
@@ -39,6 +90,13 @@ let reconcileRetryDelayMs = 0;
 
 export function useOutboundQueueFlush(apiBase: string): void {
   const sendMessage = useSendMessage(apiBase);
+  const { observation } = useAuthorityPersistence();
+  const environmentId = observation?.environmentId;
+  const stationRef = useRef<OutboundStationIdentity>({ apiBase });
+  stationRef.current = {
+    apiBase,
+    ...(environmentId ? { environmentId } : {}),
+  };
   const { status } = useConnectionStatus({
     checkHealth: checkServerHealth,
     probeEndpoint: probeServerConnection,
@@ -66,6 +124,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
           // become pending and go out below, with their original key.
           const { received } = await outboundDispatch.reconcile(
             delivery.lookupTurnDelivery(apiBase),
+            { station: stationRef.current },
           );
           if (reconcileRetryTimer) clearTimeout(reconcileRetryTimer);
           reconcileRetryTimer = undefined;
@@ -136,7 +195,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
                 reason: 'The send gate did not invoke the provider.',
               };
             },
-            { blockedSessionIds },
+            { blockedSessionIds, station: stationRef.current },
           );
           if (outcome === 'unavailable') {
             const { reportOutboundQueueUnavailable } = await import(
@@ -243,6 +302,69 @@ export function useOutboundQueueFlush(apiBase: string): void {
       unsubscribe();
     };
   }, [status, triggerFlush]);
+
+  // Rows are written for, and only ever sent to, the Station this renderer
+  // talks to now.
+  useEffect(() => {
+    void import('../lib/outboundQueue').then(({ noteCurrentStation }) =>
+      noteCurrentStation({
+        apiBase,
+        ...(environmentId ? { environmentId } : {}),
+      }),
+    );
+  }, [apiBase, environmentId]);
+
+  // Held follow-ups live in the tab's session storage; their durable copy is
+  // kept in the outbox, so closing the app does not lose them. One write at a
+  // time, and only when the held set changed.
+  useEffect(() => {
+    let disposed = false;
+    let written = '';
+    let writing = false;
+    let again = false;
+    const sync = () => {
+      if (disposed) return;
+      const intents = heldOutboundIntents(activeChatsStore.getSnapshot());
+      const signature = JSON.stringify(
+        intents.map((intent) => [intent.clientTurnId, intent.content]),
+      );
+      if (signature === written) return;
+      if (writing) {
+        again = true;
+        return;
+      }
+      writing = true;
+      void import('../lib/outboundQueue')
+        .then(({ outboundDispatch }) =>
+          outboundDispatch.syncHeld(
+            intents.map((intent) => ({
+              ...intent,
+              station: stationRef.current,
+            })),
+          ),
+        )
+        .then(() => {
+          written = signature;
+        })
+        .catch(() => {
+          // Storage unavailable: the follow-ups stay in session storage only,
+          // as before this durability existed.
+        })
+        .finally(() => {
+          writing = false;
+          if (again) {
+            again = false;
+            sync();
+          }
+        });
+    };
+    sync();
+    const unsubscribe = activeChatsStore.subscribe(sync);
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
+  }, []);
 
   const hasFlushedOnMountRef = useRef(false);
   useEffect(() => {

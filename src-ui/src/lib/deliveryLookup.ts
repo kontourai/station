@@ -78,3 +78,23 @@ export function watchInFlightDelivery(input: {
     if (timer) clearTimeout(timer);
   };
 }
+
+/**
+ * The user's re-check of one unconfirmed message: asks the Station this
+ * renderer is connected to about the message's own key and applies the
+ * answer (`outboundDispatch.check`). Never resends: a row that proves never
+ * received becomes not sent, for the user to retry with the same key.
+ */
+export async function recheckOutboundTurn(
+  clientTurnId: string,
+): Promise<TurnDeliveryOutcome | undefined> {
+  const { outboundDispatch, currentOutboundStation } = await import(
+    './outboundQueue'
+  );
+  const station = currentOutboundStation();
+  if (!station) throw new Error('Reconnect before checking this message.');
+  return outboundDispatch.check(
+    clientTurnId,
+    lookupTurnDelivery(station.apiBase),
+  );
+}

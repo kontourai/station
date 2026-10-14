@@ -345,6 +345,8 @@ export type ChatUIState = {
       outcome: import('@kontourai/station-contracts/orchestration').TurnDeliveryOutcome;
       checkedAt: number;
     };
+    /** Written for another Station (its API base); waits for it. */
+    waitingForStation?: string;
   }>;
   inputHistory: string[];
   historyIndex?: number;

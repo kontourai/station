@@ -251,4 +251,103 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     expect(row).toMatchObject({ clientTurnId: 'key-lost', status: 'pending' });
     expect(row?.liveInFlight).toBeUndefined();
   });
+
+  it('a held follow-up is never flushed while its renderer lives, and is sent once with its key after the app was closed', async () => {
+    const first = await freshRenderer();
+    await first.outboundDispatch.syncHeld([
+      { ...intent, clientTurnId: 'held-1', content: 'after this turn' },
+    ]);
+    const transport = vi.fn(async (turn: Readonly<OutboundDispatchTurn>) => ({
+      kind: 'accepted' as const,
+      providerTurnId: `turn-for-${turn.clientTurnId}`,
+    }));
+    await first.outboundDispatch.flush(transport);
+    expect(transport).not.toHaveBeenCalled();
+    // Removing it from the chat's queue removes its durable copy.
+    await first.outboundDispatch.syncHeld([]);
+    expect(await first.outboundDispatch.snapshot()).toEqual([]);
+    await first.outboundDispatch.syncHeld([
+      { ...intent, clientTurnId: 'held-2', content: 'still waiting' },
+    ]);
+    kill();
+    const second = await freshRenderer();
+    await second.outboundDispatch.reconcile(lookupAnswering('not-received'));
+    await second.outboundDispatch.flush(transport);
+    expect(transport).toHaveBeenCalledTimes(1);
+    expect(transport.mock.calls[0]?.[0]).toMatchObject({
+      clientTurnId: 'held-2',
+      content: 'still waiting',
+    });
+  });
+
+  it('a row written for one Station is never sent to, or settled by, another', async () => {
+    const queue = await freshRenderer();
+    const stationA = { apiBase: 'http://a.test', environmentId: 'env-a' };
+    const stationB = { apiBase: 'http://b.test', environmentId: 'env-b' };
+    await queue.outboundDispatch.beginLive({
+      ...intent,
+      clientTurnId: 'for-a',
+      station: stationA,
+    });
+    kill();
+    const later = await freshRenderer();
+    const lookup = lookupAnswering('not-received');
+    await later.outboundDispatch.reconcile(lookup, { station: stationB });
+    expect(lookup).not.toHaveBeenCalled();
+    await later.outboundDispatch.reconcile(lookup, { station: stationA });
+    expect(lookup).toHaveBeenCalledTimes(1);
+    const transport = vi.fn(async () => ({
+      kind: 'accepted' as const,
+      providerTurnId: 'p',
+    }));
+    await later.outboundDispatch.flush(transport, { station: stationB });
+    expect(transport).not.toHaveBeenCalled();
+    // Same address, a different Station behind it: still not sent.
+    await later.outboundDispatch.flush(transport, {
+      station: { apiBase: 'http://a.test', environmentId: 'env-other' },
+    });
+    expect(transport).not.toHaveBeenCalled();
+    await later.outboundDispatch.flush(transport, { station: stationA });
+    expect(transport).toHaveBeenCalledTimes(1);
+  });
+
+  it('an unconfirmed row does not hold back the messages written after it', async () => {
+    const queue = await freshRenderer();
+    const live = await queue.outboundDispatch.beginLive({
+      ...intent,
+      clientTurnId: 'unconfirmed-1',
+    });
+    await live.indeterminate('Station could not confirm the start.');
+    await queue.outboundDispatch.enqueue({
+      ...intent,
+      clientTurnId: 'later-1',
+      content: 'written afterwards',
+    });
+    const transport = vi.fn(async (_turn: Readonly<OutboundDispatchTurn>) => ({
+      kind: 'accepted' as const,
+      providerTurnId: 'p-later',
+    }));
+    await queue.outboundDispatch.flush(transport);
+    expect(transport).toHaveBeenCalledTimes(1);
+    expect(transport.mock.calls[0]?.[0]).toMatchObject({
+      clientTurnId: 'later-1',
+    });
+    // The unconfirmed text is kept, and its own renderer can re-check it.
+    expect(
+      (await queue.outboundDispatch.snapshot()).find(
+        (row) => row.clientTurnId === 'unconfirmed-1',
+      ),
+    ).toMatchObject({ status: 'may-have-started', content: intent.content });
+    expect(
+      await queue.outboundDispatch.check(
+        'unconfirmed-1',
+        lookupAnswering('started'),
+      ),
+    ).toBe('started');
+    expect(
+      (await queue.outboundDispatch.snapshot()).some(
+        (row) => row.clientTurnId === 'unconfirmed-1',
+      ),
+    ).toBe(false);
+  });
 });

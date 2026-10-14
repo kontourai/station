@@ -13,6 +13,8 @@ interface OutboundQueuedTurn {
   status: 'pending' | 'invoking' | 'accepted' | 'failed' | 'may-have-started';
   lastError?: string;
   mergedTurns?: readonly { content: string }[];
+  /** Written for another Station (its address): waits for that Station. */
+  waitingForStation?: string;
 }
 
 interface OutboundQueuedMessagesProps {
@@ -185,10 +187,31 @@ export function OutboundQueuedMessages({
                   </button>
                 </div>
               ) : null}
+              {turn.waitingForStation ? (
+                <span className="queued-messages__label">
+                  Waiting for {turn.waitingForStation}; it is only sent there
+                </span>
+              ) : null}
               {turn.status === 'may-have-started' ||
               turn.status === 'invoking' ? (
                 <span className="queued-messages__label">
-                  May have started; inspect this session before sending again
+                  May have started; inspect this session before sending again{' '}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void import('../../lib/deliveryLookup')
+                        .then(({ recheckOutboundTurn }) =>
+                          recheckOutboundTurn(turn.clientTurnId),
+                        )
+                        .catch((error: unknown) =>
+                          onError(
+                            `Could not check this message: ${error instanceof Error ? error.message : String(error)}`,
+                          ),
+                        )
+                    }
+                  >
+                    Check
+                  </button>
                 </span>
               ) : turn.status === 'failed' ? (
                 <span className="queued-messages__label">

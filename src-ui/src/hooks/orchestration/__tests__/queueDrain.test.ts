@@ -75,6 +75,54 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     vi.useRealTimers();
   });
 
+  test('a drained follow-up is durable as invoking under its queue key before its request, and let go once Station has it', async () => {
+    const queue = await import('../../../lib/outboundQueue');
+    let stored: unknown;
+    queue._setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, next) => {
+        stored = next;
+      },
+      updateItem: async (_key, updater) => {
+        stored = updater(stored);
+      },
+    });
+    let rowAtRequest: unknown;
+    sendExecutionMessageMock.mockImplementationOnce(async (_base, body) => {
+      rowAtRequest = (await queue.outboundDispatch.snapshot()).find(
+        (row) => row.clientTurnId === body.clientTurnId,
+      );
+      return {
+        conversationId: threadId,
+        sessionId: threadId,
+        providerTurnId: 'provider-drained',
+        target: { kind: 'agent', id: 'claude' },
+        resolution: {},
+      };
+    });
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['held follow-up'],
+      queuedMessageMetadata: [{ id: 'queue-key-1', mode: 'queue' }],
+    });
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.waitFor(() =>
+      expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1),
+    );
+    expect(
+      (sendExecutionMessageMock.mock.calls[0]?.[1] as { clientTurnId: string })
+        .clientTurnId,
+    ).toBe('queue-key-1');
+    expect(rowAtRequest).toMatchObject({
+      clientTurnId: 'queue-key-1',
+      status: 'invoking',
+      content: 'held follow-up',
+    });
+    await vi.waitFor(async () =>
+      expect(await queue.outboundDispatch.snapshot()).toEqual([]),
+    );
+  });
+
   test('Send now coalesces repeated clicks, stops once, and preserves remaining FIFO messages', async () => {
     let settle!: (value: unknown) => void;
     interruptMock.mockImplementationOnce(

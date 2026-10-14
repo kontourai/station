@@ -561,6 +561,15 @@ export function useChatInput({
         addToInputHistory(sessionId, text.trim());
         setHistoryIndex((prev) => new Map(prev).set(sessionId, -1));
       }
+      // The composer's text is saved before the send clears it: a debounced
+      // keystroke still pending would otherwise exist only in memory until
+      // the outbox row is written.
+      if (overrideText === undefined && input) {
+        pendingDraftRef.current = null;
+        if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+        draftTimerRef.current = null;
+        setDraft(sessionId, input);
+      }
       // The saved draft is let go the moment the outbox holds the message
       // durably — before its request — so the text is never in both places
       // after a crash (a relaunch would otherwise offer it for a second send

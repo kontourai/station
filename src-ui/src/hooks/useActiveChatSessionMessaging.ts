@@ -250,6 +250,30 @@ async function observeSendAdmission<T>(
   }
 }
 
+/**
+ * How long a send waits for its durable outbox row before going without one
+ * (the composer then keeps its saved draft until Station answers).
+ */
+export const LIVE_DURABILITY_TIMEOUT_MS = 3_000;
+
+/**
+ * Station itself answered (its envelope, any status). A proxy's or tunnel's
+ * 502/503/504, or any body without Station's shape, is not Station's answer
+ * and proves nothing about the send.
+ */
+function stationAnswered(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const { status, stationEnvelope } = error as {
+    status?: unknown;
+    stationEnvelope?: unknown;
+  };
+  return (
+    typeof status === 'number' &&
+    Number.isFinite(status) &&
+    stationEnvelope !== false
+  );
+}
+
 /** Newest-first bound on a chat's remembered delivery answers. */
 const DELIVERY_CHECKS_MAX = 32;
 
@@ -290,8 +314,12 @@ export function useSendMessage(
   };
   const invalidate = useInvalidateQuery();
   const queryClient = useQueryClient();
-  const { namespace: experienceNamespace, status: experienceAuthorityStatus } =
-    useAuthorityPersistence();
+  const {
+    namespace: experienceNamespace,
+    status: experienceAuthorityStatus,
+    observation: authorityObservation,
+  } = useAuthorityPersistence();
+  const stationEnvironmentId = authorityObservation?.environmentId;
   const sendMessage = useCallback(
     async (
       sessionId: string,
@@ -630,8 +658,13 @@ export function useSendMessage(
         clientTurnId: resolvedTurnId,
       });
       // The conversation this send names; the delivery lookup asks by it.
+      // A replay sends (and is looked up) under the conversation its row
+      // recorded, never one the chat learned since.
       const sentConversationId =
-        currentState?.conversationId ?? conversationId ?? sessionId;
+        (options?.dispatch ? conversationId : undefined) ??
+        currentState?.conversationId ??
+        conversationId ??
+        sessionId;
 
       const abortController = new AbortController();
 
@@ -663,8 +696,14 @@ export function useSendMessage(
       ) {
         try {
           const { outboundDispatch } = await import('../lib/outboundQueue');
-          live = await outboundDispatch.beginLive({
+          const durable = outboundDispatch.beginLive({
             clientTurnId: resolvedTurnId,
+            station: {
+              apiBase,
+              ...(stationEnvironmentId
+                ? { environmentId: stationEnvironmentId }
+                : {}),
+            },
             sessionId,
             agentSlug,
             executionAgentId: currentState?.executionAgentId,
@@ -680,6 +719,22 @@ export function useSendMessage(
             model: currentState?.model,
             providerOptions: currentState?.providerOptions,
           });
+          // Bounded: a stuck lock or storage must not hold the send. Past the
+          // bound the send goes without the durable row (the composer keeps
+          // its saved draft until Station answers), and a row that lands late
+          // is let go, since nothing here will settle it.
+          let timedOut = false;
+          live = await Promise.race([
+            durable,
+            new Promise<undefined>((resolve) =>
+              setTimeout(() => {
+                timedOut = true;
+                resolve(undefined);
+              }, LIVE_DURABILITY_TIMEOUT_MS),
+            ),
+          ]);
+          if (!live && timedOut)
+            void durable.then((late) => late.refused()).catch(() => undefined);
         } catch {
           // Storage unavailable: send as before, and the composer keeps its
           // saved draft until Station answers.
@@ -886,22 +941,40 @@ export function useSendMessage(
         // below). No response and not a transport failure: kept as
         // evidence, never resent.
         if (live) {
-          const answered =
-            typeof (error as { status?: unknown })?.status === 'number';
-          const undeliverable =
-            !answered &&
-            (await import('../lib/outboundQueue')
-              .then((queue) => queue.classifyUndeliverableSend(error))
-              .catch(() => null));
+          const foreground = await import('../lib/outboundQueue')
+            .then((queue) => queue.readForeground(error))
+            .catch(() => undefined);
           const userStopped =
             (abortController as UserCancelableAbortController)._userInitiated &&
             abortController.signal.aborted;
-          if (answered || userStopped) await live.refused();
-          else if (undeliverable) await live.undeliverable(error);
-          else
-            await live.indeterminate(
-              error instanceof Error ? error.message : 'no answer',
+          const providerBusy =
+            (error as { code?: unknown })?.code ===
+              PROVIDER_TURN_IN_PROGRESS_CODE && stationAnswered(error);
+          if (foreground) {
+            // Station said it may have started: keep the text as unconfirmed
+            // evidence (never resent), and say so on the message.
+            await live.indeterminate('Station could not confirm the start.');
+            updateChat(
+              sessionId,
+              withDeliveryCheck(
+                activeChatsStore.getSnapshot()[sessionId],
+                resolvedTurnId,
+                'indeterminate',
+              ),
             );
+          } else if (providerBusy) {
+            // Moved into the local queue below, under the same key: its row
+            // stays durable as a held follow-up.
+            await live.hold();
+          } else if (stationAnswered(error) || userStopped) {
+            // Station refused it (nothing started): the composer gets the
+            // text back below.
+            await live.refused();
+          } else {
+            // No answer from Station: only its delivery lookup can say what
+            // happened, so the row is released for that, never resent blind.
+            await live.unanswered();
+          }
         }
         if (sourceStart) {
           const latest = activeChatsStore.getSnapshot()[sessionId];
@@ -1163,6 +1236,16 @@ export function useSendMessage(
             pendingClientTurnId: undefined,
             sendAwaitingTurnStart: undefined,
             queuedMessages: [...(latestState?.queuedMessages ?? []), content],
+            // The same key the send carried: its durable held row and the
+            // drain's eventual send are one message.
+            queuedMessageMetadata: [
+              ...(latestState?.queuedMessageMetadata ??
+                (latestState?.queuedMessages ?? []).map(() => ({
+                  id: randomCorrelationId(),
+                  mode: 'queue' as const,
+                }))),
+              { id: resolvedTurnId, mode: 'queue' as const },
+            ],
           });
           // The turn it waited on may already have ended while this refusal
           // was in flight; its end was the queue's only trigger.
@@ -1380,6 +1463,7 @@ export function useSendMessage(
       onActiveSessionChange,
       onError,
       updateChat,
+      stationEnvironmentId,
     ],
   );
 

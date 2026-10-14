@@ -153,3 +153,14 @@ export function heldMessageDeliveryState(metadata?: {
   if (metadata?.delivery === 'indeterminate') return 'unconfirmed';
   return 'held-on-device';
 }
+
+/**
+ * Whether a message in this state has a re-check to offer
+ * (`useRecheckMessageDelivery`): only an unconfirmed one, whose fate only
+ * Station can tell.
+ */
+export function deliveryCanRecheck(
+  state: MessageDeliveryState | undefined,
+): boolean {
+  return state === 'unconfirmed';
+}

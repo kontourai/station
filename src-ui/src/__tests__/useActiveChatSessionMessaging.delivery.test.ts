@@ -164,7 +164,7 @@ describe('useSendMessage: durable before the request', () => {
     ).toBe('delivered');
   });
 
-  it('no answer at all: the row goes back to pending with the SAME key, and the chat is not given a second copy', async () => {
+  it("no answer at all: the row is released for Station's lookup under the SAME key, never resent blind", async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(
       new TypeError('Failed to fetch'),
     );
@@ -175,12 +175,108 @@ describe('useSendMessage: durable before the request', () => {
     const body = sendExecutionMessageMock.mock.calls[0]?.[1] as {
       clientTurnId: string;
     };
-    const rows = await outboundDispatch.snapshot();
-    expect(rows).toEqual([
+    const [row] = await outboundDispatch.snapshot();
+    expect(row).toMatchObject({
+      clientTurnId: body.clientTurnId,
+      status: 'invoking',
+      content: 'lost in transit',
+    });
+    expect(row?.liveInFlight).toBeUndefined();
+    // Station says it never got it: only now is it pending, same key.
+    await outboundDispatch.reconcile(
+      async (turn) => ({
+        outcome: 'not-received',
+        conversationId: turn.conversationId!,
+        clientTurnId: turn.clientTurnId,
+      }),
+      { station: { apiBase: 'http://api.test' } },
+    );
+    expect(await outboundDispatch.snapshot()).toEqual([
       expect.objectContaining({
         clientTurnId: body.clientTurnId,
         status: 'pending',
-        content: 'lost in transit',
+      }),
+    ]);
+  });
+
+  it('a proxy 502 is not Station refusing: the row is kept for the lookup and the composer is not handed a second copy', async () => {
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new ChatHttpError(
+        { status: 502, message: '<html>Bad gateway</html>' } as never,
+        false,
+      ),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(chat, 'codex', undefined, 'through a proxy');
+    });
+    expect(await outboundDispatch.snapshot()).toEqual([
+      expect.objectContaining({
+        content: 'through a proxy',
+        status: 'invoking',
+      }),
+    ]);
+    expect(activeChatsStore.getSnapshot()[chat]?.input).toBe('');
+  });
+
+  it("Station's may-have-started answer keeps the text as unconfirmed, never deletes it", async () => {
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      Object.assign(
+        new ChatHttpError(
+          { status: 409, message: 'may have started' } as never,
+          true,
+        ),
+        { code: 'foreground_message_indeterminate', outcome: 'indeterminate' },
+      ),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      // A may-have-started answer is rethrown to the caller by design.
+      await result
+        .current(chat, 'codex', undefined, 'maybe started')
+        .catch(() => undefined);
+    });
+    const [row] = await outboundDispatch.snapshot();
+    expect(row).toMatchObject({
+      content: 'maybe started',
+      status: 'may-have-started',
+    });
+    const bubble = activeChatsStore
+      .getSnapshot()
+      [chat]?.messages?.find((message) => message.role === 'user');
+    expect(
+      messageDeliveryStateFor(activeChatsStore.getSnapshot()[chat], bubble!),
+    ).toBe('unconfirmed');
+  });
+
+  it('refused because the engine is busy: moved into the local queue with its durable row kept, same key', async () => {
+    // Hold the drain's own settle timer so the held state can be read.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new ChatHttpError(
+        409,
+        'The engine is replying on its own',
+        'provider_turn_in_progress',
+      ),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(chat, 'codex', undefined, 'wait your turn');
+    });
+    const body = sendExecutionMessageMock.mock.calls[0]?.[1] as {
+      clientTurnId: string;
+    };
+    const held = activeChatsStore.getSnapshot()[chat];
+    // In the queue, or just popped by the drain that the turn's end allows.
+    expect([
+      ...(held?.queuedMessageMetadata ?? []).map((entry) => entry.id),
+      held?.pendingQueueDispatch?.metadata.id,
+    ]).toContain(body.clientTurnId);
+    expect(await outboundDispatch.snapshot()).toEqual([
+      expect.objectContaining({
+        clientTurnId: body.clientTurnId,
+        status: 'pending',
+        heldBy: expect.objectContaining({ bootId: expect.any(String) }),
       }),
     ]);
   });
@@ -271,6 +367,7 @@ describe('useSendMessage: durable before the request', () => {
       'http://api.test',
       body.conversationId,
       body.clientTurnId,
+      { projectSlug: 'station' },
     );
     expect(
       messageDeliveryStateFor(activeChatsStore.getSnapshot()[chat], bubble()),

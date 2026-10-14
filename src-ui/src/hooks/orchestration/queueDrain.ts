@@ -145,6 +145,9 @@ export function resumeHeldQueueDrain(apiBase: string, chatKey: string): void {
   drainQueuedMessageOnTurnCompleted(apiBase, chatKey);
 }
 
+/** How long a drained send waits for its durable row before going without. */
+const DRAIN_DURABILITY_TIMEOUT_MS = 3_000;
+
 /** #2324 review L2: bounded re-drains for a send refused by a provider turn. */
 const PROVIDER_TURN_REDRAIN_DELAY_MS = 1_000;
 const PROVIDER_TURN_REDRAIN_MAX_ATTEMPTS = 10;
@@ -588,6 +591,37 @@ export function drainQueuedMessageOnTurnCompleted(
       return;
     }
 
+    // Durable before the request, exactly like a composer send: the drained
+    // message's held row becomes this send's `invoking` row under the same
+    // key, so closing the app now loses nothing and never sends it twice.
+    let live:
+      | import('../../lib/outboundQueue').LiveOutboundDispatch
+      | undefined;
+    try {
+      const { outboundDispatch } = await import('../../lib/outboundQueue');
+      const durable = outboundDispatch.beginLive({
+        clientTurnId: clientId,
+        sessionId: threadId,
+        agentSlug: current.agentSlug,
+        conversationId: current.conversationId ?? threadId,
+        projectSlug: continueUnbound ? undefined : current.projectSlug,
+        content: nextMessage,
+        model: current.model,
+        providerOptions: current.providerOptions,
+      });
+      live = await Promise.race([
+        durable,
+        new Promise<undefined>((resolve) =>
+          setTimeout(() => resolve(undefined), DRAIN_DURABILITY_TIMEOUT_MS),
+        ),
+      ]);
+      if (!live)
+        void durable.then((late) => late.hold()).catch(() => undefined);
+    } catch {
+      // Storage unavailable: the drain sends as it always has.
+      live = undefined;
+    }
+
     await dispatchForeground({
       apiBase,
       sessionId: threadId,
@@ -612,7 +646,8 @@ export function drainQueuedMessageOnTurnCompleted(
         nextMessage,
       ),
     })
-      .then((receipt) => {
+      .then(async (receipt) => {
+        await live?.accepted();
         dispatchAccepted = true;
         providerTurnRedrainAttempts.delete(threadId);
         // Settled only by what the server reports became of the pick (see
@@ -645,7 +680,22 @@ export function drainQueuedMessageOnTurnCompleted(
             'Sent to this conversation as it is. It was started without a workspace, so it does not run inside your project directory.',
         });
       })
-      .catch((error: unknown) => {
+      .catch(async (error: unknown) => {
+        // The row follows the message: refused for good (kept as not sent),
+        // possibly started (kept as unconfirmed evidence), or otherwise back
+        // in the queue below (held, same key: the drain's next try is the same
+        // message, which Station's deduplication sends at most once).
+        if (live) {
+          const indeterminate =
+            (error as { outcome?: unknown })?.outcome === 'indeterminate';
+          if (isDefinitiveClientRejection(error))
+            await live.notSent(
+              error instanceof Error ? error.message : String(error),
+            );
+          else if (indeterminate)
+            await live.indeterminate('Station could not confirm the start.');
+          else await live.hold();
+        }
         // A failed drain must never strand the session at 'sending' with the
         // popped message silently lost — surface it like the interactive send
         // path does and requeue the message at the head so nothing is dropped.
