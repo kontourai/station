@@ -1,0 +1,7 @@
+{
+  "revision": "464ffaeb2e2a837b28c49f447fb61c56fbacf196",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"no configuration change in ChatDock/ChatDockBody","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}
