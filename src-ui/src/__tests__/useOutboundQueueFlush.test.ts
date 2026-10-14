@@ -64,6 +64,44 @@ describe('useOutboundQueueFlush', () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
+  it('drops the unsent bubble of a message discarded in another window', async () => {
+    let stored: unknown;
+    _setOutboundQueueStorage(
+      {
+        getItem: async () => stored,
+        setItem: async (_key, value) => {
+          stored = value;
+        },
+        updateItem: async (_key, updater) => {
+          stored = updater(stored);
+        },
+      },
+      {
+        // Another window discarded `discarded-elsewhere`: only the shared
+        // retired list says so.
+        get: async () => [
+          { clientTurnId: 'discarded-elsewhere', reason: 'discarded', at: 1 },
+        ],
+        set: async () => {},
+      },
+    );
+    activeChatsStore.updateChat('session-1', {
+      messages: [
+        {
+          id: 'discarded-elsewhere',
+          clientId: 'discarded-elsewhere',
+          role: 'user',
+          content: 'not wanted',
+          timestamp: 1,
+        },
+      ] as never,
+    });
+    renderHook(() => useOutboundQueueFlush('http://api.test'));
+    await waitFor(() =>
+      expect(activeChatsStore.getSnapshot()['session-1']?.messages).toEqual([]),
+    );
+  });
+
   it('replays the model and provider options captured when the turn was queued', async () => {
     let stored: unknown;
     _setOutboundQueueStorage({

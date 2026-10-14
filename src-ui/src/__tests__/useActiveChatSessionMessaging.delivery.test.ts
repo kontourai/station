@@ -710,6 +710,37 @@ describe('useSendMessage: durable before the request', () => {
     ).toBe('delivered');
   });
 
+  it("records this window's own send, and whether it was saved on the device, until Station starts it", async () => {
+    let answer!: (value: unknown) => void;
+    sendExecutionMessageMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    let pending!: Promise<unknown>;
+    await act(async () => {
+      pending = result.current(chat, 'codex', undefined, 'mine');
+      await vi.waitFor(() =>
+        expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1),
+      );
+    });
+    const body = sendExecutionMessageMock.mock.calls[0]?.[1] as {
+      clientTurnId: string;
+    };
+    const state = () => activeChatsStore.getSnapshot()[chat];
+    expect(state()?.localSendKeys).toEqual([body.clientTurnId]);
+    // Its outbox row was written before the request.
+    expect(state()?.durableClientTurnId).toBe(body.clientTurnId);
+    await act(async () => {
+      answer(receipt());
+      await pending;
+    });
+    // Started: delivered for good, never "Not confirmed" later.
+    expect(state()?.localSendKeys).toEqual([]);
+  });
+
   it('a send that waited on a starting session and went back to the queue loses its earlier "received"', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     let refuse!: (error: unknown) => void;
