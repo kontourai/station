@@ -350,6 +350,41 @@ test('the composer measuring itself never opens a gap under the newest message',
   await expect(transcript).toBeVisible();
 });
 
+test("the long-load row keeps the transcript's inset on a phone", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  const { conversationOpen, lateChunks, transcript } =
+    await openThrottledConversation(page, { holdMarkdownRenderer: false });
+  lateChunks.release();
+  const sentence = page
+    .locator('.chat-dock__body > .session-history-controls')
+    .getByText('This conversation is taking longer to load.', {
+      exact: false,
+    });
+  await expect(sentence).toBeVisible({ timeout: 20_000 });
+  await page.screenshot({ path: testInfo.outputPath('long-wait-390.png') });
+  const gutter = await transcript.evaluate(
+    (element) => Number.parseFloat(getComputedStyle(element).paddingLeft) || 0,
+  );
+  const row = await page
+    .locator('.chat-dock__body > .session-history-controls')
+    .boundingBox();
+  const text = await sentence.boundingBox();
+  const viewport = page.viewportSize()!;
+  expect(gutter).toBeGreaterThan(0);
+  expect(row).not.toBeNull();
+  expect(text).not.toBeNull();
+  // The words sit inside the same gutter as the transcript's rows.
+  expect(text!.x - row!.x).toBeGreaterThanOrEqual(gutter - 0.5);
+  expect(text!.x).toBeGreaterThanOrEqual(gutter - 0.5);
+  expect(text!.x + text!.width).toBeLessThanOrEqual(
+    viewport.width - gutter + 0.5,
+  );
+  conversationOpen.release();
+  await expectConversationLoaded(page);
+});
+
 test('a reader scrolled up keeps their row while late content renders', async ({
   page,
 }, testInfo) => {
