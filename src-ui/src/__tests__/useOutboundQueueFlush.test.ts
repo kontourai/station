@@ -144,6 +144,47 @@ describe('useOutboundQueueFlush', () => {
     expect(sendMessage.mock.calls[0]?.[6]).toBe('waits-for-open');
   });
 
+  it("keeps a durable copy of each follow-up held in a chat's queue, and drops it when the queue no longer holds it", async () => {
+    let stored: unknown;
+    _setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, value) => {
+        stored = value;
+      },
+      updateItem: async (_key, updater) => {
+        stored = updater(stored);
+      },
+    });
+    activeChatsStore.updateChat('session-1', {
+      queuedMessages: ['held one', 'steering one'],
+      queuedMessageMetadata: [
+        { id: 'held-key', mode: 'queue' },
+        { id: 'steer-key', mode: 'steer', delivery: 'steering' },
+      ],
+    });
+    renderHook(() => useOutboundQueueFlush('http://api.test'));
+    await waitFor(async () =>
+      expect(await outboundDispatch.snapshot()).toEqual([
+        expect.objectContaining({
+          clientTurnId: 'held-key',
+          content: 'held one',
+          status: 'pending',
+          heldBy: expect.objectContaining({ bootId: expect.any(String) }),
+          station: { apiBase: 'http://api.test' },
+        }),
+      ]),
+    );
+    // Held rows are the queue's to send while this app lives.
+    expect(sendMessage).not.toHaveBeenCalled();
+    activeChatsStore.updateChat('session-1', {
+      queuedMessages: [],
+      queuedMessageMetadata: [],
+    });
+    await waitFor(async () =>
+      expect(await outboundDispatch.snapshot()).toEqual([]),
+    );
+  });
+
   describe('a send the app was closed during', () => {
     function orphanedLiveRow() {
       let stored: unknown = {
