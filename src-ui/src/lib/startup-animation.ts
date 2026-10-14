@@ -1,5 +1,11 @@
-const RIVER =
-  'M132 29 C111 39 89 25 77 39 C55 59 93 67 104 79 C133 107 71 107 58 125 L48 140';
+import {
+  STARTUP_MARK_LIP,
+  STARTUP_MARK_RIVER,
+  STARTUP_MARK_SIZE,
+  STARTUP_MARK_WATER,
+} from './startup-mark-geometry';
+
+const MARK = STARTUP_MARK_SIZE;
 let startedAt: number | undefined;
 let firstPaintCleanup: (() => void) | undefined;
 
@@ -44,10 +50,10 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
 
   const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const guide = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-  guide.setAttribute('d', RIVER);
+  guide.setAttribute('d', STARTUP_MARK_RIVER);
   const length = guide.getTotalLength();
   const layer = document.createElement('canvas');
-  layer.width = layer.height = 187;
+  layer.width = layer.height = MARK;
   const candidateFlow = layer.getContext('2d');
   if (!candidateFlow) return () => {};
   const flowContext = candidateFlow;
@@ -77,10 +83,11 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
 
   function loadMark() {
     const next = new Image();
-    const channel = document.documentElement.dataset.appChannel;
-    const variant = document.documentElement.classList.contains('is-dev-build')
+    const root = document.documentElement;
+    // Before the host report arrives, the mark startup-theme.js remembered.
+    const variant = root.classList.contains('is-dev-build')
       ? 'dev'
-      : channel;
+      : (root.dataset.appChannel ?? root.dataset.startupMark);
     next.src = ['dev', 'beta', 'nightly'].includes(variant ?? '')
       ? `/favicon-${variant}.png`
       : '/favicon.png';
@@ -90,12 +97,13 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
     next.onload = () => {
       if (stopped || image !== next) return;
       mask = document.createElement('canvas');
-      mask.width = mask.height = 187;
+      mask.width = mask.height = MARK;
       const maskContext = mask.getContext('2d');
       if (!maskContext) return;
-      maskContext.drawImage(next, 0, 0, 187, 187);
-      const pixels = maskContext.getImageData(0, 0, 187, 187);
-      const sample = (49 * 187 + 74) * 4;
+      maskContext.drawImage(next, 0, 0, MARK, MARK);
+      const pixels = maskContext.getImageData(0, 0, MARK, MARK);
+      const [waterX, waterY] = STARTUP_MARK_WATER;
+      const sample = (waterY * MARK + waterX) * 4;
       water = {
         red: pixels.data[sample],
         green: pixels.data[sample + 1],
@@ -169,9 +177,9 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
       context.restore();
     }
 
-    const scale = size / 187;
-    const dropX = x + 46 * scale;
-    const lipY = y + 140 * scale;
+    const scale = size / MARK;
+    const dropX = x + STARTUP_MARK_LIP[0] * scale;
+    const lipY = y + STARTUP_MARK_LIP[1] * scale;
     const trackY = y + size + 36 * fit;
     const trackX = destination + 18 * fit;
     const trackWidth = totalWidth - 32 * fit;
@@ -248,7 +256,7 @@ export function startStartupAnimation(canvas: HTMLCanvasElement): () => void {
 
     if (!motion.matches) {
       flowContext.globalCompositeOperation = 'source-over';
-      flowContext.clearRect(0, 0, 187, 187);
+      flowContext.clearRect(0, 0, MARK, MARK);
       flowContext.strokeStyle = ink;
       flowContext.lineWidth = 0.8;
       flowContext.lineCap = 'round';
