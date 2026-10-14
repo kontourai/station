@@ -59,6 +59,10 @@ import { StreamingMessage } from './StreamingMessage';
 import { ToolCallDisplay } from './ToolCallDisplay';
 import { TranscriptVirtualizer } from './TranscriptVirtualizer';
 import {
+  foldTranscriptChildren,
+  TranscriptChildrenContext,
+} from './transcript-child-work';
+import {
   markTranscriptPhase,
   noteTranscriptProgrammaticScroll,
   traceKey,
@@ -132,7 +136,10 @@ interface ChatMessageListProps {
   /**
    * #2316: the transcript window's runtime events. Open approvals no rendered
    * row can answer are derived from them here and rendered as the
-   * pending-approvals strip below the transcript (never as messages).
+   * pending-approvals strip below the transcript (never as messages). The
+   * subagent cards are folded from the same events
+   * (`transcript-child-work.ts`), so a card and the transcript it sits in
+   * read one record.
    */
   approvalEvents?: readonly { event: CanonicalRuntimeEvent }[];
   /** Whether `approvalEvents`' window has finished its first read (#2344). */
@@ -250,6 +257,10 @@ function ChatMessageListComponent({
       suppressStreamingRow,
       approvalEvents,
     ],
+  );
+  const transcriptChildren = useMemo(
+    () => foldTranscriptChildren(approvalEvents),
+    [approvalEvents],
   );
   const sendMessage = useSendMessage(apiBase);
   const sheetRequests = useMemo(
@@ -1340,201 +1351,205 @@ function ChatMessageListComponent({
       }
     >
       <UIBlockActionsContext.Provider value={uiBlockActions}>
-        {onQuote && !activeSession.replay && (
-          <QuoteSelectionToolbar
-            container={messagesContainerRef}
-            messages={messages}
-            onQuote={onQuote}
-          />
-        )}
-        <SessionSummaryCard
-          activeSession={activeSession}
-          hasSettingsEntryPoint={hasSettingsEntryPoint}
-        />
-        <div
-          className="chat-messages"
-          ref={messagesContainerRef}
-          role="log"
-          aria-label="Conversation transcript"
-          data-chat-session-id={activeSession.id}
-          aria-live="polite"
-          style={{ fontSize: `${fontSize}px` }}
-          onScroll={handleScroll}
-          onWheel={onReaderInput}
-          onTouchStart={onReaderInput}
-          onPointerDown={onReaderInput}
-          onKeyDown={onReaderInput}
-        >
-          {hasOlderMessages && (
-            <div className="session-history-controls">
-              <button
-                type="button"
-                className="button button--secondary session-history-controls__more"
-                disabled={historyLoading}
-                onClick={() => void loadOlder()}
-              >
-                {historyLoading
-                  ? 'Loading earlier messages…'
-                  : 'Earlier messages'}
-              </button>
-            </div>
+        <TranscriptChildrenContext.Provider value={transcriptChildren}>
+          {onQuote && !activeSession.replay && (
+            <QuoteSelectionToolbar
+              container={messagesContainerRef}
+              messages={messages}
+              onQuote={onQuote}
+            />
           )}
-          {historyNotice}
-          {messages.length === 0 && !isStreaming ? (
-            (emptyState ?? (
-              <ChatEmptyState
-                agentSlug={activeSession.agentSlug}
-                agentName={activeSession.agentName}
-              />
-            ))
-          ) : (
-            <>
-              {messages.length > 0 &&
-                (messages.length > VIRTUALIZE_AFTER_MESSAGE_COUNT ? (
-                  <TranscriptVirtualizer
-                    rows={transcriptRows}
-                    scrollElement={messagesContainerRef}
-                    renderRow={renderTranscriptRow}
-                    followTail={!isUserScrolledUp && !requestedMessageRowId}
-                    followTick={`${tailContentLength}:${tailPartsLength}`}
-                    anchorVersion={scrollAnchorVersion}
-                    revealRowId={
-                      requestedMessageRowId ??
-                      approvalRevealRowId ??
-                      currentReaderRestoreRequest?.anchor?.key
-                    }
-                    restoreAnchor={currentReaderRestoreRequest?.anchor}
-                    restoreAnchorVersion={currentReaderRestoreRequest?.version}
-                    // Read at mount only: a reader already in the transcript
-                    // when it crosses into virtualization keeps their row.
-                    initialAnchor={
-                      isUserScrolledUp ? visibleAnchorRef.current : null
-                    }
-                  />
-                ) : (
-                  transcriptRows.map((row) => (
-                    <React.Fragment key={row.id}>
-                      {renderTranscriptRow(row)}
-                    </React.Fragment>
-                  ))
-                ))}
-              {isStreaming && (
-                <div
-                  className="chat-message-anchor"
-                  data-chat-message-key={`${activeSession.id}:streaming`}
+          <SessionSummaryCard
+            activeSession={activeSession}
+            hasSettingsEntryPoint={hasSettingsEntryPoint}
+          />
+          <div
+            className="chat-messages"
+            ref={messagesContainerRef}
+            role="log"
+            aria-label="Conversation transcript"
+            data-chat-session-id={activeSession.id}
+            aria-live="polite"
+            style={{ fontSize: `${fontSize}px` }}
+            onScroll={handleScroll}
+            onWheel={onReaderInput}
+            onTouchStart={onReaderInput}
+            onPointerDown={onReaderInput}
+            onKeyDown={onReaderInput}
+          >
+            {hasOlderMessages && (
+              <div className="session-history-controls">
+                <button
+                  type="button"
+                  className="button button--secondary session-history-controls__more"
+                  disabled={historyLoading}
+                  onClick={() => void loadOlder()}
                 >
-                  <ActiveStreamingMessage
-                    sessionId={activeSession.id}
-                    agentIcon={agentIcon}
-                    agentIconStyle={EMPTY_STYLE}
-                    fontSize={fontSize}
-                    showReasoning={showReasoning}
-                    renderReasoning={renderReasoning}
-                    renderToolCall={renderToolCall}
-                    activityHint={activeSession.activityHint}
-                    elapsedMs={activeSession.replay?.elapsedMs}
-                    conversationActivity={activeSession.conversationActivity}
-                    turnStartedAt={activeSession.openTurnStartedAt}
-                    suppressActivity={suppressActivity}
-                    hideProgressSilence={progressSilenceShownElsewhere}
-                    statusLabel={
-                      activeSession.orchestrationStatus ===
-                        'awaiting-approval' && chatWaitsOnUser(activeSession)
-                        ? // station#2235: the status alone asserts nothing about
-                          // an approval — a crashed turn's needs_input folds to
-                          // this status with no request behind it. Name the
-                          // approval only when a request is still waiting on
-                          // the user; without one the session is waiting on the
-                          // user, not on a decision. A session whose requests
-                          // are all answered is waiting on the engine, and says
-                          // nothing here.
-                          waitingApprovalCount > 0
-                          ? 'Waiting for approval'
-                          : 'Waiting on you'
-                        : undefined
-                    }
-                    attributionAgent={streamingAttributionAgent}
-                    owner={owner}
-                    onContentChange={handleStreamingContentChange}
-                  />
-                </div>
-              )}
-              {/* Backgrounded provider tasks outlive the assistant turn: the
+                  {historyLoading
+                    ? 'Loading earlier messages…'
+                    : 'Earlier messages'}
+                </button>
+              </div>
+            )}
+            {historyNotice}
+            {messages.length === 0 && !isStreaming ? (
+              (emptyState ?? (
+                <ChatEmptyState
+                  agentSlug={activeSession.agentSlug}
+                  agentName={activeSession.agentName}
+                />
+              ))
+            ) : (
+              <>
+                {messages.length > 0 &&
+                  (messages.length > VIRTUALIZE_AFTER_MESSAGE_COUNT ? (
+                    <TranscriptVirtualizer
+                      rows={transcriptRows}
+                      scrollElement={messagesContainerRef}
+                      renderRow={renderTranscriptRow}
+                      followTail={!isUserScrolledUp && !requestedMessageRowId}
+                      followTick={`${tailContentLength}:${tailPartsLength}`}
+                      anchorVersion={scrollAnchorVersion}
+                      revealRowId={
+                        requestedMessageRowId ??
+                        approvalRevealRowId ??
+                        currentReaderRestoreRequest?.anchor?.key
+                      }
+                      restoreAnchor={currentReaderRestoreRequest?.anchor}
+                      restoreAnchorVersion={
+                        currentReaderRestoreRequest?.version
+                      }
+                      // Read at mount only: a reader already in the transcript
+                      // when it crosses into virtualization keeps their row.
+                      initialAnchor={
+                        isUserScrolledUp ? visibleAnchorRef.current : null
+                      }
+                    />
+                  ) : (
+                    transcriptRows.map((row) => (
+                      <React.Fragment key={row.id}>
+                        {renderTranscriptRow(row)}
+                      </React.Fragment>
+                    ))
+                  ))}
+                {isStreaming && (
+                  <div
+                    className="chat-message-anchor"
+                    data-chat-message-key={`${activeSession.id}:streaming`}
+                  >
+                    <ActiveStreamingMessage
+                      sessionId={activeSession.id}
+                      agentIcon={agentIcon}
+                      agentIconStyle={EMPTY_STYLE}
+                      fontSize={fontSize}
+                      showReasoning={showReasoning}
+                      renderReasoning={renderReasoning}
+                      renderToolCall={renderToolCall}
+                      activityHint={activeSession.activityHint}
+                      elapsedMs={activeSession.replay?.elapsedMs}
+                      conversationActivity={activeSession.conversationActivity}
+                      turnStartedAt={activeSession.openTurnStartedAt}
+                      suppressActivity={suppressActivity}
+                      hideProgressSilence={progressSilenceShownElsewhere}
+                      statusLabel={
+                        activeSession.orchestrationStatus ===
+                          'awaiting-approval' && chatWaitsOnUser(activeSession)
+                          ? // station#2235: the status alone asserts nothing about
+                            // an approval — a crashed turn's needs_input folds to
+                            // this status with no request behind it. Name the
+                            // approval only when a request is still waiting on
+                            // the user; without one the session is waiting on the
+                            // user, not on a decision. A session whose requests
+                            // are all answered is waiting on the engine, and says
+                            // nothing here.
+                            waitingApprovalCount > 0
+                            ? 'Waiting for approval'
+                            : 'Waiting on you'
+                          : undefined
+                      }
+                      attributionAgent={streamingAttributionAgent}
+                      owner={owner}
+                      onContentChange={handleStreamingContentChange}
+                    />
+                  </div>
+                )}
+                {/* Backgrounded provider tasks outlive the assistant turn: the
                 session is honestly idle, but work continues. Keep a live
                 affordance so the chat never looks done while it isn't. */}
-              {!turnLive &&
-                (localBackgroundTasks.length > 0 ||
-                  serverBackgroundCount > 0) &&
-                (onOpenBackgroundTasks && localBackgroundTasks.length > 0 ? (
-                  // archive#1301: a `<button>` cannot
-                  // also carry `role="status"` (an interactive element and a
-                  // live region are mutually exclusive ARIA roles) — a visually
-                  // hidden sibling carries the exact live-region semantics the
-                  // plain `<div>` below has, so the wording still auto-announces
-                  // as it changes, while the button itself stays the one
-                  // accessible interactive element (name via `aria-label`).
-                  <>
-                    <button
-                      type="button"
-                      className="background-tasks-banner"
-                      onClick={onOpenBackgroundTasks}
-                      aria-label={`${backgroundBannerLabel} — open background tasks`}
-                    >
-                      <LoadingDots />
+                {!turnLive &&
+                  (localBackgroundTasks.length > 0 ||
+                    serverBackgroundCount > 0) &&
+                  (onOpenBackgroundTasks && localBackgroundTasks.length > 0 ? (
+                    // archive#1301: a `<button>` cannot
+                    // also carry `role="status"` (an interactive element and a
+                    // live region are mutually exclusive ARIA roles) — a visually
+                    // hidden sibling carries the exact live-region semantics the
+                    // plain `<div>` below has, so the wording still auto-announces
+                    // as it changes, while the button itself stays the one
+                    // accessible interactive element (name via `aria-label`).
+                    <>
+                      <button
+                        type="button"
+                        className="background-tasks-banner"
+                        onClick={onOpenBackgroundTasks}
+                        aria-label={`${backgroundBannerLabel} — open background tasks`}
+                      >
+                        <LoadingDots />
+                        <span
+                          className="background-tasks-banner__label"
+                          aria-hidden="true"
+                        >
+                          {backgroundBannerLabel}
+                        </span>
+                      </button>
                       <span
-                        className="background-tasks-banner__label"
-                        aria-hidden="true"
+                        className="background-tasks-banner__sr-status"
+                        role="status"
                       >
                         {backgroundBannerLabel}
                       </span>
-                    </button>
-                    <span
-                      className="background-tasks-banner__sr-status"
-                      role="status"
-                    >
-                      {backgroundBannerLabel}
-                    </span>
-                  </>
-                ) : (
-                  <div className="background-tasks-banner" role="status">
-                    <LoadingDots />
-                    <span className="background-tasks-banner__label">
-                      {backgroundBannerLabel}
-                    </span>
-                  </div>
-                ))}
-            </>
-          )}
-          {/* Mounted while empty too: its live region must exist before the
+                    </>
+                  ) : (
+                    <div className="background-tasks-banner" role="status">
+                      <LoadingDots />
+                      <span className="background-tasks-banner__label">
+                        {backgroundBannerLabel}
+                      </span>
+                    </div>
+                  ))}
+              </>
+            )}
+            {/* Mounted while empty too: its live region must exist before the
             first request arrives (#2344). */}
-          {!activeSession.replay && (
-            <PendingApprovalStrip
-              requests={pendingApprovalRequests}
-              settled={approvalEventsSettled !== false}
-              onApprove={(request, action) =>
-                handleToolApproval(
-                  activeSession.id,
-                  activeSession.agentSlug,
-                  request.approvalId ?? '',
-                  request.toolName || request.name || '',
-                  action,
-                  request.approvalThreadId,
-                  request.approvalEventId,
-                )
-              }
-            />
-          )}
-        </div>
-        {isUserScrolledUp &&
-          !scrollingToBottom &&
-          (scrollControlsTarget ? (
-            createPortal(
-              <ScrollToBottomButton onClick={handleScrollToBottom} />,
-              scrollControlsTarget,
-            )
-          ) : (
-            <ScrollToBottomButton onClick={handleScrollToBottom} />
-          ))}
+            {!activeSession.replay && (
+              <PendingApprovalStrip
+                requests={pendingApprovalRequests}
+                settled={approvalEventsSettled !== false}
+                onApprove={(request, action) =>
+                  handleToolApproval(
+                    activeSession.id,
+                    activeSession.agentSlug,
+                    request.approvalId ?? '',
+                    request.toolName || request.name || '',
+                    action,
+                    request.approvalThreadId,
+                    request.approvalEventId,
+                  )
+                }
+              />
+            )}
+          </div>
+          {isUserScrolledUp &&
+            !scrollingToBottom &&
+            (scrollControlsTarget ? (
+              createPortal(
+                <ScrollToBottomButton onClick={handleScrollToBottom} />,
+                scrollControlsTarget,
+              )
+            ) : (
+              <ScrollToBottomButton onClick={handleScrollToBottom} />
+            ))}
+        </TranscriptChildrenContext.Provider>
       </UIBlockActionsContext.Provider>
     </ApprovalSheetProvider>
   );

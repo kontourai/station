@@ -356,6 +356,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/branding-theme-boot.spec.ts',
     'tests/buffered-answer-delivery.spec.ts',
     'tests/agents-pane.spec.ts',
+    'tests/subagent-transcript-cards.spec.ts',
     'tests/toolbar-reachability.spec.ts',
     'tests/command-palette.spec.ts',
     'tests/sidebar-file-intake.spec.ts',
@@ -1480,6 +1481,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       '#585 device-local buffered answer delivery: real preference selection, canonical live event injection, semantic boundary reveal, and mid-turn disable flush.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/subagent-transcript-cards.spec.ts',
+    bucket: 'product',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'A subagent spawned by a tool call renders one inline transcript card at its spawn point, folded from child-work.updated events: Running with its live status line and reported model, then Completed with elapsed time and a result preview, expandable to the full summary and usage, and still inside the viewport at 390px.',
     exceptions: [],
   },
   {

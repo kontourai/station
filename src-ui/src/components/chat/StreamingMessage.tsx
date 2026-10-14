@@ -18,6 +18,7 @@ import { InputRequestRecordRow } from './InputRequestRecordRow';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
 import { StreamingMarkdown } from './StreamingMarkdown';
+import { SubagentCardsForCalls } from './SubagentTranscriptCard';
 import {
   ToolCallBatchBoundary,
   usePreloadToolCallBatch,
@@ -205,22 +206,33 @@ export function StreamingMessageView({
             // (`MessageContent`'s INLINE_RUN_LIMIT) so a run does not
             // change shape when the turn settles. Solo calls stay a
             // row; 2+ consecutive calls become one updating line.
+            // Same subagent cards, in the same place, as the settled row.
+            const subagents = (
+              <SubagentCardsForCalls
+                key={`subagents:${block.key}`}
+                calls={block.calls}
+              />
+            );
             if (block.calls.length <= INLINE_RUN_LIMIT) {
-              return block.calls.map(({ part, index }) =>
-                renderToolCall(part, index),
-              );
+              return [
+                ...block.calls.map(({ part, index }) =>
+                  renderToolCall(part, index),
+                ),
+                subagents,
+              ];
             }
             const inlineRows = block.calls.map(({ part, index }) =>
               renderToolCall(part, index),
             );
-            return (
+            return [
               <ToolCallBatchBoundary
                 key={block.key}
                 run={block}
                 renderCall={renderToolCall}
                 pending={inlineRows}
-              />
-            );
+              />,
+              subagents,
+            ];
           }
 
           const { index: i, part } = block;

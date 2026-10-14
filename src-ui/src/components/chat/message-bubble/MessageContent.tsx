@@ -9,6 +9,7 @@ import { FilePartPreview } from '../FilePartPreview';
 import { InputRequestRecordRow } from '../InputRequestRecordRow';
 import { LazyMarkdown } from '../LazyMarkdown';
 import { ReasoningSection } from '../ReasoningSection';
+import { SubagentCardsForCalls } from '../SubagentTranscriptCard';
 import { ChatErrorDetails } from '../SystemEventMessage';
 import {
   ToolCallBatchBoundary,
@@ -121,10 +122,21 @@ function MessageContentComponent({
             // calls collapse to one summary line that opens the sheet —
             // live and settled share this threshold so a run does not
             // change shape when the turn completes.
+            // A subagent a call spawned is drawn after the run, outside any
+            // collapsed summary, so a folded turn never hides it.
+            const subagents = (
+              <SubagentCardsForCalls
+                key={`subagents:${block.key}`}
+                calls={block.calls}
+              />
+            );
             if (block.calls.length <= INLINE_RUN_LIMIT) {
-              return block.calls.map(({ part, index }) =>
-                renderToolCall(part, index),
-              );
+              return [
+                ...block.calls.map(({ part, index }) =>
+                  renderToolCall(part, index),
+                ),
+                subagents,
+              ];
             }
             // Until (or unless) the batch chunk loads, a folded run falls
             // back to its parts in original order — narration included — so
@@ -141,15 +153,16 @@ function MessageContentComponent({
             ]
               .sort((a, b) => a.index - b.index)
               .map((row) => row.node);
-            return (
+            return [
               <ToolCallBatchBoundary
                 key={block.key}
                 run={block}
                 renderCall={renderToolCall}
                 renderInterlude={renderInterlude}
                 pending={inlineRows}
-              />
-            );
+              />,
+              subagents,
+            ];
           }
 
           const { index, part } = block;
