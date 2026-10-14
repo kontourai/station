@@ -1,0 +1,7 @@
+{
+  "revision": "f8971d9927031db0eefeecb619552e5bcf998dd4",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-checked after a code-health refactor: two unused helpers removed (heldMessageDeliveryState, deliveryCanRecheck), file-local constants and helpers no longer exported, the delivery lookup module imported by destructuring. No behaviour changed; this document's claims still hold.","inputs":["docs/architecture/module-map.md","src-server/services/turn-idempotency.ts","src-ui/src/hooks/useActiveChatSessionMessaging.ts","src-ui/src/hooks/useOutboundQueueFlush.ts"]}
+  ]
+}

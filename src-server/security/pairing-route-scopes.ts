@@ -3055,6 +3055,16 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/conversations/:conversationId/event-window',
     },
+    // The foreground delivery lookup: what this Station knows about one keyed
+    // send. Read-only (it never sends, claims or releases), answers only from
+    // this Station's own turn ledger and in-flight sends of the same caller,
+    // and an unreadable conversation answers like an unknown key. A paired
+    // device is its main caller (recovering a send after losing its
+    // connection), so it keeps the family's orchestration:read tier.
+    {
+      method: 'GET',
+      path: '/api/orchestration/conversations/:conversationId/turn-deliveries/:clientTurnId',
+    },
     // A conversation's usage tree: read-only, re-checks the Session read ACL
     // for the conversation and for every session in it, and returns only
     // usage figures this Station recorded for sessions the caller can already

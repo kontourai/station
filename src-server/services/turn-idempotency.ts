@@ -7,6 +7,7 @@ import {
   type OwnerLiveness,
   ownerLivenessFromProbe,
   type ProcessIdentityProbe,
+  turnClaimIsReclaimable,
 } from '@kontourai/monument';
 import {
   exactProcessIdentity,
@@ -64,9 +65,35 @@ type TurnIdempotencyClaim =
       indeterminate?: undefined;
     };
 
+/**
+ * How long an unresolved claim whose owner is not proven dead still reads as
+ * in flight. A provider accepts a turn in seconds; past this, the owner is
+ * treated as one that may have started the effect and stopped
+ * (`indeterminate`), never as safe to resend.
+ */
+const TURN_CLAIM_UNPROVABLE_IN_FLIGHT_MS = 15 * 60 * 1000;
+/** Bound on this owner's remembered abandoned claims (oldest dropped first). */
+const TURN_CLAIM_RETAINED_MAX = 4096;
+
+/** {@link TurnIdempotencyStore.inspect}'s answer; see there. */
+export type TurnClaimInspection =
+  | { state: 'absent' }
+  | { state: 'resolved'; value: string }
+  | { state: 'in-flight' }
+  | { state: 'reclaimable' }
+  | { state: 'indeterminate' }
+  | { state: 'expired' };
+
 export class TurnIdempotencyStore {
   private readonly owner: OwnerIdentity;
   private readonly liveness: OwnerLiveness;
+  /**
+   * Keys this owner stopped working on with a possible effect: the provider
+   * call failed after invocation began, so the claim stays unresolved (never
+   * reclaimed or replayed) while this process lives. Process memory, because
+   * the owner dying turns the same claim `indeterminate` durably.
+   */
+  private readonly retained = new Set<string>();
   constructor(
     private readonly persistence: TurnIdempotencyPersistence,
     processIdentity: TurnIdempotencyProcessIdentity = defaultProcessIdentity,
@@ -165,6 +192,55 @@ export class TurnIdempotencyStore {
       },
       this.liveness,
     );
+  }
+  /**
+   * Read-only: what a claim of `key` would meet, decided by the same rules
+   * {@link claim} applies, without writing anything (no claim, no reclaim, no
+   * retention pass). `in-flight` is an unresolved claim whose owner is live or
+   * cannot be proven dead; `reclaimable` is one whose owner died before it
+   * began its effect, which the next claim of the key takes over.
+   */
+  inspect(key: string, now = Date.now()): TurnClaimInspection {
+    const result = this.persistence.execute(
+      { type: 'turnDedup.read', key },
+      this.liveness,
+    );
+    if (result.kind === 'absent') return { state: 'absent' };
+    if (result.kind === 'expired') return { state: 'expired' };
+    if (result.kind === 'refused')
+      throw new Error(
+        `Turn claim read refused by ${result.participant}: ${result.reason}`,
+      );
+    const record = result.record;
+    if (record.value !== null)
+      return { state: 'resolved', value: record.value };
+    if (record.owner?.id === this.owner.id && this.retained.has(key))
+      return { state: 'indeterminate' };
+    const liveness = record.owner ? this.liveness(record.owner) : 'unknown';
+    if (liveness === 'dead')
+      return turnClaimIsReclaimable(record)
+        ? { state: 'reclaimable' }
+        : { state: 'indeterminate' };
+    // A provider accepts a turn in seconds: an unresolved claim this old is
+    // not a send in flight, whoever owns it (and an abandoned claim the
+    // bounded `retained` memory has forgotten still lands here).
+    if (now - record.createdAt > TURN_CLAIM_UNPROVABLE_IN_FLIGHT_MS)
+      return { state: 'indeterminate' };
+    return { state: 'in-flight' };
+  }
+  /**
+   * Records that this owner abandoned its unresolved claim of `key` after it
+   * may have started the effect. Writes nothing durable: the claim stays
+   * exactly as it is; only {@link inspect} answers it `indeterminate` instead
+   * of `in-flight`.
+   */
+  retain(key: string): void {
+    this.retained.delete(key);
+    this.retained.add(key);
+    if (this.retained.size > TURN_CLAIM_RETAINED_MAX) {
+      const oldest = this.retained.values().next().value;
+      if (oldest !== undefined) this.retained.delete(oldest);
+    }
   }
   /** Whether any row (pending or resolved) still holds the key. */
   held(key: string): boolean {

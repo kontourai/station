@@ -4907,6 +4907,20 @@ export class OrchestrationService {
     );
   }
 
+  /** Read-only delivery lookup; see `ConversationLineage.inspectTurnDelivery`. */
+  inspectTurnDelivery(
+    conversationId: string,
+    clientTurnId: string,
+    authority: SessionReadScope,
+  ): ReturnType<ConversationLineage['inspectTurnDelivery']> {
+    this.initialize();
+    return this.conversationLineage.inspectTurnDelivery(
+      conversationId,
+      clientTurnId,
+      authority,
+    );
+  }
+
   async readConversationHandoffStatus(
     conversationId: string,
     idempotencyKey: string,
@@ -6929,10 +6943,13 @@ export class OrchestrationService {
             reviewIsolation: _untrustedReviewIsolation,
             confinement: _untrustedConfinement,
             expectedInputRequest: _expectedInputRequest,
+            // The client's own key for the turn.started stamp; Station's.
+            clientKey: stampedClientKey,
             ...publicTurnInput
           } = command.input as ProviderSendTurnInput & {
             expectedInputRequest?: AttentionRequestReference;
             ambientContext?: string;
+            clientKey?: string;
           };
           // archive#895 wave C: an engine with no native systemPrompt
           // channel gets its authored prompt delivered by prepending it
@@ -7322,6 +7339,7 @@ export class OrchestrationService {
                           context?.clientOrigin,
                           context?.principal,
                           experienceReference,
+                          stampedClientKey ?? turnInput.clientTurnId,
                         );
                         // The Station-agent adapter owns the canonical provider
                         // turn id for this engine, so mint it before crossing its
@@ -7573,6 +7591,7 @@ export class OrchestrationService {
                           context?.clientOrigin,
                           context?.principal,
                           experienceReference,
+                          stampedClientKey ?? turnInput.clientTurnId,
                         );
                         if (earlyOriginEvent) {
                           this.projectAndPublishEvent(earlyOriginEvent);
@@ -7603,7 +7622,10 @@ export class OrchestrationService {
                         return accepted;
                       } catch (error) {
                         if (!providerAccepted) {
-                          this.clientOriginTurns.cancel(turnInput.threadId);
+                          for (const held of this.clientOriginTurns.cancel(
+                            turnInput.threadId,
+                          ))
+                            this.projectAndPublishEvent(held);
                           if (
                             (nativeOutputRelay ||
                               internal?.nativeMemoryReadAuthority) &&
@@ -7949,6 +7971,8 @@ export class OrchestrationService {
                 ownedClientTurnClaim.resolve(obtainedResult.turnId);
               } else if (claimOutcome === 'release') {
                 ownedClientTurnClaim.release();
+              } else {
+                ownedClientTurnClaim.retain();
               }
             }
             // UX audit T1 review: this is the one moment the service knows
@@ -8258,7 +8282,10 @@ export class OrchestrationService {
                 // Release transient attribution on a failed acknowledgement.
                 // The durable steer claim stays held because engine acceptance
                 // cannot be ruled out.
-                this.clientOriginTurns.cancel(command.threadId);
+                for (const held of this.clientOriginTurns.cancel(
+                  command.threadId,
+                ))
+                  this.projectAndPublishEvent(held);
                 throw steerError;
               }
               const earlySteerOriginEvent = this.clientOriginTurns.settle(

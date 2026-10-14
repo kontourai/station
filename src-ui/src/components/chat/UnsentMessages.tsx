@@ -30,6 +30,10 @@ export function UnsentMessages({ sessionId, messages }: UnsentMessagesProps) {
         (record) => record.id !== id,
       ),
     });
+    // The same message's durable not-sent copy (keyed alike) goes with it.
+    void import('../../lib/outboundQueue')
+      .then(({ outboundDispatch }) => outboundDispatch.discard(id))
+      .catch(() => undefined);
   };
 
   const copy = async (record: UnsentMessageRecord) => {
