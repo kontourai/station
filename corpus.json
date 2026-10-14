@@ -1,23 +1,151 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+  "purpose": "A local-first workspace where agent work keeps execution history, review evidence, and receipts beside it.",
+  "builtOn": [
+    {
+      "product": "conduit",
+      "via": [
+        "@kontourai/conduit"
+      ],
+      "for": "Project agent hook outcomes through framework host adapters."
+    },
+    {
+      "product": "console",
+      "via": [
+        "@kontourai/console-core",
+        "@kontourai/console-server",
+        "@kontourai/console-ui"
+      ],
+      "for": "Resolve consent-bound intents and render current operating state."
+    },
+    {
+      "product": "datum",
+      "via": [
+        "@kontourai/datum"
+      ],
+      "for": "Parse and materialize secret references through the public runner contract."
+    },
+    {
+      "product": "dispatch",
+      "via": [
+        "@kontourai/dispatch"
+      ],
+      "for": "Route model requests through execution plans with dispatch receipts."
+    },
+    {
+      "product": "ephemeris",
+      "via": [
+        "@kontourai/ephemeris"
+      ],
+      "for": "Validate schedules and calculate upcoming job occurrences."
+    },
+    {
+      "product": "fieldwork",
+      "via": [
+        "@kontourai/fieldwork"
+      ],
+      "for": "Validate owner-provided reviewed source descriptors and currentness."
+    },
+    {
+      "product": "flow",
+      "via": [
+        "@kontourai/flow"
+      ],
+      "for": "Read and evaluate workflow gates with bound evidence references."
+    },
+    {
+      "product": "flow-agents",
+      "via": [
+        "@kontourai/flow-agents"
+      ],
+      "for": "Read workflow sidecars, validate run correlation, and project process status."
+    },
+    {
+      "product": "relay",
+      "via": [
+        "@kontourai/relay"
+      ],
+      "for": "Report typed model invocation failures in fleet inference."
+    },
+    {
+      "product": "surface",
+      "via": [
+        "@kontourai/surface"
+      ],
+      "for": "Derive trust assessments and render Task Basis evidence panels."
+    },
+    {
+      "product": "survey",
+      "via": [
+        "@kontourai/survey"
+      ],
+      "for": "Present workflow review items and apply review session decisions."
+    },
+    {
+      "product": "thread",
+      "via": [
+        "@kontourai/ferry",
+        "@kontourai/thread"
+      ],
+      "for": "Normalize retained tool results and export portable conversations."
+    },
+    {
+      "product": "ui",
+      "via": [
+        "@kontourai/ui"
+      ],
+      "for": "Render shared React controls and semantic visual primitives."
+    },
+    {
+      "product": "veritas",
+      "via": [
+        "@kontourai/veritas"
+      ],
+      "for": "Classify changed files to route review lenses."
+    }
+  ],
   "product": "station",
   "title": "Station",
   "tagline": "The agent workspace where work ships with receipts.",
   "repo": "kontourai/station",
   "landing": "README.md",
   "documents": [
-    { "source": "docs/user/getting-started.md", "section": "Start Here" },
-    { "source": "docs/user/concepts.md", "section": "Understand Station" },
-    { "source": "docs/user/native-recovery.md", "section": "Use Station" },
-    { "source": "docs/user/work-board.md", "section": "Use Station" },
-    { "source": "docs/user/contributing.md", "section": "Contribute" },
-    { "source": "docs/guides/contributing.md", "section": "Contribute" },
-    { "source": "docs/guides/keyboard-shortcuts.md", "section": "Use Station" },
+    {
+      "source": "docs/user/getting-started.md",
+      "section": "Start Here"
+    },
+    {
+      "source": "docs/user/concepts.md",
+      "section": "Understand Station"
+    },
+    {
+      "source": "docs/user/native-recovery.md",
+      "section": "Use Station"
+    },
+    {
+      "source": "docs/user/work-board.md",
+      "section": "Use Station"
+    },
+    {
+      "source": "docs/user/contributing.md",
+      "section": "Contribute"
+    },
+    {
+      "source": "docs/guides/contributing.md",
+      "section": "Contribute"
+    },
+    {
+      "source": "docs/guides/keyboard-shortcuts.md",
+      "section": "Use Station"
+    },
     {
       "source": "docs/guides/product-law-authoring.md",
       "section": "Build Station"
     },
-    { "source": "docs/reference/product-laws.md", "section": "Reference" },
+    {
+      "source": "docs/reference/product-laws.md",
+      "section": "Reference"
+    },
     {
       "source": "docs/reference/contributor-commands.md",
       "section": "Reference"

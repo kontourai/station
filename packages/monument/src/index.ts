@@ -55,3 +55,4 @@ export {
   KernelStorageClosedError,
 } from './port.js';
 export type * from './records.js';
+export { resolveKernelLimits } from './step.js';

@@ -36,10 +36,15 @@ export function turnClaimIsReclaimable(record: TurnDedupRecord): boolean {
   return record.invocation === 'pending' || record.invocation === 'untracked';
 }
 
+/**
+ * `tombstoned` says the key's resolved row was evicted by retention. It is
+ * consulted only when no row exists: a row always answers for itself.
+ */
 export function decideTurnDedupClaim(
   current: TurnDedupRecord | undefined,
   command: TurnDedupClaimCommand,
   liveness: OwnerLiveness,
+  tombstoned = false,
 ): TurnDedupDecision<TurnDedupClaimResult> {
   const owned: TurnDedupRecord = {
     key: command.key,
@@ -48,11 +53,14 @@ export function decideTurnDedupClaim(
     owner: ownerFields(command.owner),
     invocation: command.tracking === 'tracked' ? 'pending' : 'untracked',
   };
-  if (!current)
+  if (!current) {
+    // The effect ran and its result is gone: never claim the key afresh.
+    if (tombstoned) return { write: NO_WRITE, result: { kind: 'expired' } };
     return {
       write: { kind: 'put', record: owned },
       result: { kind: 'claimed', reclaimed: false },
     };
+  }
   if (current.value !== null)
     return {
       write: NO_WRITE,

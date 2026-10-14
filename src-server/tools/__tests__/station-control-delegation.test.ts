@@ -2808,19 +2808,21 @@ describe('Station Control canonical Environment + Agent execution', () => {
         ),
       ).rejects.toThrow('no provider call was made');
       expect(stationAgent.startSession).toHaveBeenCalledTimes(1);
-      // The existing trusted lifecycle observer supplies the missing terminal
-      // evidence; elapsed time or the start exception is not enough.
-      expect(
-        eventStore.sessionTurnBoundaryAuthority().observe({
-          eventId: 'confirmed-start-terminal',
-          provider: 'claude',
-          threadId: reservedChildId,
-          sessionId: reservedChildId,
-          method: 'session.exited',
-          exitCode: 0,
-          createdAt: new Date().toISOString(),
-        }),
-      ).toEqual({ kind: 'applied' });
+      // Production observes terminal evidence only after its append commits;
+      // a failed exit is retryable, while exit code 0 would mark this child completed.
+      const exited: CanonicalRuntimeEvent = {
+        eventId: 'confirmed-start-terminal',
+        provider: stationAgent.provider,
+        threadId: reservedChildId,
+        sessionId: reservedChildId,
+        method: 'session.exited',
+        exitCode: 1,
+        createdAt: new Date().toISOString(),
+      };
+      eventStore.appendEvent(exited);
+      expect(eventStore.sessionTurnBoundaryAuthority().observe(exited)).toEqual(
+        { kind: 'applied' },
+      );
 
       // The retry must look through the reserved-unstarted tail to the
       // predecessor's binding and REUSE the same reserved child identity,

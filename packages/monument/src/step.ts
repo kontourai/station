@@ -33,14 +33,32 @@ import {
 const LONE_SURROGATE =
   /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
-function resolveKernelLimits(
+/**
+ * The limits a command runs under, or a `RangeError` for one that is not
+ * valid. Every command resolves its limits, so an invalid one fails at its
+ * first command; a host that builds its limits once can call this when it
+ * does, and fail at construction instead.
+ */
+export function resolveKernelLimits(
   limits: Partial<KernelLimits> | undefined,
 ): KernelLimits {
   const resolved = { ...DEFAULT_KERNEL_LIMITS, ...limits };
-  for (const [name, value] of Object.entries(resolved))
-    if (!Number.isInteger(value) || value < 1)
+  for (const [name, value] of Object.entries(resolved)) {
+    if (name === 'turnDedupTombstoneRetention') continue;
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 1)
       throw new RangeError(
         `monument limit ${name} must be a positive integer.`,
+      );
+  }
+  for (const rule of resolved.turnDedupTombstoneRetention)
+    if (
+      typeof rule.keyPrefix !== 'string' ||
+      rule.keyPrefix === '' ||
+      !Number.isInteger(rule.maxAgeMs) ||
+      rule.maxAgeMs < 1
+    )
+      throw new RangeError(
+        'monument limit turnDedupTombstoneRetention needs a non-empty keyPrefix and a positive integer maxAgeMs.',
       );
   return resolved;
 }
@@ -50,11 +68,17 @@ function applyTurnDedup<Result>(
   key: string,
   decision: TurnDedupDecision<Result>,
   limits: KernelLimits,
+  now: number,
   prune: boolean,
 ): Result {
   if (decision.write.kind === 'put') tx.turnDedup.put(decision.write.record);
   else if (decision.write.kind === 'delete') tx.turnDedup.delete(key);
-  if (prune) tx.turnDedup.pruneResolved(limits.turnDedupMaxEntries);
+  if (prune) {
+    // Eviction first, so its own tombstones are never older than the rule.
+    tx.turnDedup.pruneResolved(limits.turnDedupMaxEntries, now);
+    for (const rule of limits.turnDedupTombstoneRetention)
+      tx.turnDedup.deleteTombstonesBefore(rule.keyPrefix, now - rule.maxAgeMs);
+  }
   return decision.result;
 }
 
@@ -94,18 +118,23 @@ function dispatch(
     },
   };
   switch (command.type) {
-    case 'turnDedup.claim':
+    case 'turnDedup.claim': {
+      const decision = decideTurnDedupClaim(
+        tx.turnDedup.get(command.key),
+        command,
+        context.liveness,
+        tx.turnDedup.expiredAt(command.key) !== undefined,
+      );
+      // A tombstone is final: an expired claim touches nothing at all.
       return applyTurnDedup(
         tx,
         command.key,
-        decideTurnDedupClaim(
-          tx.turnDedup.get(command.key),
-          command,
-          context.liveness,
-        ),
+        decision,
         limits,
-        true,
+        command.now,
+        decision.result.kind !== 'expired',
       );
+    }
     case 'turnDedup.beginInvocation': {
       const decision = decideTurnDedupBeginInvocation(
         tx.turnDedup.get(command.key),
@@ -117,6 +146,7 @@ function dispatch(
         command.key,
         decision,
         limits,
+        command.now,
         decision.result.kind === 'applied',
       );
     }
@@ -126,6 +156,7 @@ function dispatch(
         command.key,
         decideTurnDedupResolve(tx.turnDedup.get(command.key), command),
         limits,
+        command.now,
         true,
       );
     case 'turnDedup.release':
@@ -134,11 +165,16 @@ function dispatch(
         command.key,
         decideTurnDedupRelease(tx.turnDedup.get(command.key), command),
         limits,
+        command.now,
         true,
       );
     case 'turnDedup.read': {
       const record = tx.turnDedup.get(command.key);
-      return record ? { kind: 'found', record } : { kind: 'absent' };
+      if (record) return { kind: 'found', record };
+      const expiredAt = tx.turnDedup.expiredAt(command.key);
+      return expiredAt === undefined
+        ? { kind: 'absent' }
+        : { kind: 'expired', expiredAt };
     }
     case 'turnDedup.forgetPrefix':
       // An empty prefix would forget every key, and an unpaired surrogate is
@@ -239,20 +275,23 @@ function dispatch(
     }
 
     case 'requestKeys.claim': {
-      // station#3559 remainder (#3581): this purge also forgets unresolved
-      // claims. Reproduced exactly from Station; the fixing lane owns it.
-      tx.requestKeys.deleteCreatedBefore(command.now - limits.requestKeyTtlMs);
+      // station#3559: the purge forgets completed rows only. An unresolved
+      // claim may have had its effect, so a late retry must re-drive it. Past
+      // the TTL it stays but stops holding a quota slot (station#3606), or a
+      // claim that can never resolve would lock its caller out for good.
+      const cutoff = command.now - limits.requestKeyTtlMs;
+      tx.requestKeys.deleteCompletedCreatedBefore(cutoff);
       const existing = tx.requestKeys.get(command.id);
       const decision = decideRequestKeyClaim({
         existing,
         digest: command.digest,
         callerRows: existing
           ? 0
-          : tx.requestKeys.countCaller(command.id.callerSessionId),
+          : tx.requestKeys.countCaller(command.id.callerSessionId, cutoff),
         callerCompletedRows: existing
           ? 0
           : tx.requestKeys.countCallerCompleted(command.id.callerSessionId),
-        allRows: existing ? 0 : tx.requestKeys.countAll(),
+        allRows: existing ? 0 : tx.requestKeys.countAll(cutoff),
         limits,
       });
       if (decision.evict > 0)

@@ -104,6 +104,7 @@ import {
   ensureConversationContextBoundaryColumns,
 } from '../../domain/migrations/012-conversation-context-boundaries.js';
 import { SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION } from '../../domain/migrations/013-session-work-items.js';
+import { ensureTurnBoundarySequenceFence } from '../../domain/migrations/014-turn-boundary-sequence-fence.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -287,9 +288,9 @@ import { createSqliteRevisionEvidencePersistence } from './sqlite-revision-evide
 import {
   chatTurnDedupKey,
   createSqliteTurnDedupPersistence,
+  type SqliteTurnDedupPersistence,
   TURN_DEDUP_MAX_ENTRIES,
   turnDedupKey,
-  turnDedupThreadPrefix,
 } from './sqlite-turn-dedup-persistence.js';
 import {
   MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES,
@@ -1918,6 +1919,7 @@ export class EventStore {
    */
   private readonly attachmentBlobs: AttachmentBlobStore;
   private readonly turnIdempotence: TurnIdempotencyStore;
+  private readonly turnDedupPersistence: SqliteTurnDedupPersistence;
   private readonly turnDedupMaxEntries: number;
   private readonly recoveryLedgerOwner: RecoveryOwner;
   private readonly recoveryProcessIdentity: RecoveryLedgerProcessIdentity;
@@ -2178,11 +2180,13 @@ export class EventStore {
       // still in flight, and set once it resolves.
       ensureOrchestrationTurnDedupColumns(this.db);
       ensureOrchestrationBoundaryPurpose(this.db);
+      ensureTurnBoundarySequenceFence(this.db);
+      this.turnDedupPersistence = createSqliteTurnDedupPersistence({
+        db: this.db,
+        maxEntries: this.turnDedupMaxEntries,
+      });
       this.turnIdempotence = new TurnIdempotencyStore(
-        createSqliteTurnDedupPersistence({
-          db: this.db,
-          maxEntries: this.turnDedupMaxEntries,
-        }),
+        this.turnDedupPersistence,
         turnProcessIdentity,
       );
       ensureOrchestrationSessionStateColumns(this.db);
@@ -11135,8 +11139,8 @@ export class EventStore {
         .prepare(
           `INSERT INTO orchestration_turn_boundaries
             (boundary_id, thread_id, state, provider_turn_id, owner_id,
-             owner_pid, owner_birth, owner_identity_kind, created_at, updated_at, purpose)
-           VALUES (?, ?, 'accepted', ?, ?, ?, ?, ?, ?, ?, 'turn')`,
+             owner_pid, owner_birth, owner_identity_kind, created_at, updated_at, purpose, created_sequence)
+           VALUES (?, ?, 'accepted', ?, ?, ?, ?, ?, ?, ?, 'turn', ?)`,
         )
         .run(
           record.boundaryId,
@@ -11148,6 +11152,7 @@ export class EventStore {
           record.ownerIdentityKind,
           record.createdAt,
           record.updatedAt,
+          this.headGlobalSequence(),
         );
     const exact = (input: {
       boundaryId: string;
@@ -11219,8 +11224,8 @@ export class EventStore {
             .prepare(
               `INSERT INTO orchestration_turn_boundaries
                 (boundary_id, thread_id, state, provider_turn_id, owner_id,
-                 owner_pid, owner_birth, owner_identity_kind, created_at, updated_at, purpose)
-               VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
+                 owner_pid, owner_birth, owner_identity_kind, created_at, updated_at, purpose, created_sequence)
+               VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
             )
             .run(
               record.boundaryId,
@@ -11233,6 +11238,7 @@ export class EventStore {
               record.createdAt,
               record.updatedAt,
               record.purpose ?? 'turn',
+              this.headGlobalSequence(),
             );
           this.db.exec('COMMIT');
           return { kind: 'applied' };
@@ -11402,13 +11408,25 @@ export class EventStore {
       removeTerminal: (input) => {
         try {
           if (input.sessionTerminal) {
+            // NULL fences retain timestamp ordering.
+            // A missing terminal makes the subquery NULL and keeps fenced boundaries.
             this.db
               .prepare(
                 `DELETE FROM orchestration_turn_boundaries
                   WHERE thread_id = ? AND state != 'lifecycle' AND purpose != 'task-dispatch'
-                    AND created_at <= ?`,
+                    AND (
+                      (created_sequence IS NULL AND created_at <= ?)
+                      OR created_sequence < (
+                        SELECT global_sequence FROM orchestration_events WHERE id = ?
+                          AND thread_id = orchestration_turn_boundaries.thread_id
+                      )
+                    )`,
               )
-              .run(input.threadId, input.terminalCreatedAt);
+              .run(
+                input.threadId,
+                input.terminalCreatedAt,
+                input.terminalEventId ?? null,
+              );
           } else if (input.providerTurnId) {
             this.db
               .prepare(
@@ -11436,6 +11454,7 @@ export class EventStore {
         if (this.db.isTransaction) {
           this.db.exec('SAVEPOINT record_accepted_turn_boundary');
           try {
+            this.reserveEventAppendWriter();
             const { rows } = this.db
               .prepare(
                 `SELECT COUNT(*) AS rows FROM orchestration_turn_boundaries
@@ -11638,8 +11657,8 @@ export class EventStore {
 
   /**
    * Join a boundary with terminal facts already durably appended before a
-   * crash or transient boundary-delete fault. Boundary creation time prevents
-   * an older provider turn-id reuse from settling a newer invocation.
+   * crash or transient boundary-delete fault. Session terminals use the
+   * creation fence; legacy rows and turn-id generation checks retain timestamps.
    */
   private reconcileSessionTurnTerminalsFromEvents(threadId?: string): void {
     this.db
@@ -11650,13 +11669,20 @@ export class EventStore {
             AND EXISTS (
               SELECT 1 FROM orchestration_events AS event
                WHERE event.thread_id = orchestration_turn_boundaries.thread_id
-                 AND event.created_at >= orchestration_turn_boundaries.created_at
                  AND (
-                   event.method = 'session.exited'
-                   OR (event.method = 'runtime.error' AND event.turn_id IS NULL
-                       AND COALESCE(json_extract(event.payload, '$.code'), '') != ?)
+                   (
+                     (event.method = 'session.exited'
+                      OR (event.method = 'runtime.error' AND event.turn_id IS NULL
+                          AND COALESCE(json_extract(event.payload, '$.code'), '') != ?))
+                     AND (
+                       (orchestration_turn_boundaries.created_sequence IS NULL
+                        AND event.created_at >= orchestration_turn_boundaries.created_at)
+                       OR event.global_sequence > orchestration_turn_boundaries.created_sequence
+                     )
+                   )
                    OR (
                      orchestration_turn_boundaries.state = 'accepted'
+                     AND event.created_at >= orchestration_turn_boundaries.created_at
                      AND event.turn_id = orchestration_turn_boundaries.provider_turn_id
                      AND event.method IN ('turn.completed', 'turn.aborted', 'runtime.error')
                      -- station#2235: a recovery-synthesized abort
@@ -12965,25 +12991,8 @@ export class EventStore {
           'DELETE FROM orchestration_attachment_refs WHERE thread_id = ?',
         )
         .run(threadId);
-      {
-        // archive#1224 HIGH fix (independent review): an unescaped `LIKE`
-        // prefix would let `%`/`_` inside threadId behave as SQL wildcards,
-        // over-matching another thread's keys. `substr(...) = ?` is an exact
-        // string comparison -- no wildcard semantics at all -- against the
-        // exact prefix `turnDedupThreadPrefix` produces.
-        const prefix = turnDedupThreadPrefix(threadId);
-        this.db
-          .prepare(
-            'DELETE FROM orchestration_turn_dedup WHERE substr(dedup_key, 1, ?) = ?',
-          )
-          .run(prefix.length, prefix);
-        // #3559: an evicted key's tombstone leaves with its thread.
-        this.db
-          .prepare(
-            'DELETE FROM orchestration_turn_dedup_expired WHERE substr(dedup_key, 1, ?) = ?',
-          )
-          .run(prefix.length, prefix);
-      }
+      // #3559: a deleted thread's claims and their tombstones leave with it.
+      this.turnDedupPersistence.forgetThread(threadId);
       this.db.exec('COMMIT');
     } catch (error) {
       this.db.exec('ROLLBACK');

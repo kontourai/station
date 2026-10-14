@@ -21,6 +21,7 @@ import {
   readReviewState,
   readReviewStateAt,
   recordFile,
+  serializeRecordFile,
 } from '../lib/review-ledger-store.mjs';
 import {
   check,
@@ -59,6 +60,146 @@ import {
 forbidAmbientFreshnessMode();
 
 describe('scoped documentation freshness (#2923)', () => {
+  function classifiedNote({
+    path = '.changeset/release-fixture.md',
+    kind = 'release-note',
+    checks = [],
+    sources = [],
+    tracked = true,
+  }: {
+    path?: string;
+    kind?: string;
+    checks?: string[];
+    sources?: string[];
+    tracked?: boolean;
+  } = {}) {
+    const f = fixture();
+    expect(
+      run(f.root, 'migrate-review-ledger.mjs', ['--path-only']).status,
+    ).toBe(0);
+    expect(readReviewState(f.root).ledger.layoutVersion).toBe(3);
+    if (tracked)
+      f.write(path, 'Pending release declaration; no publication claim.\n');
+    f.write(
+      recordFile(path),
+      serializeRecordFile({
+        path,
+        kind,
+        state: 'classified',
+        summary: 'Release declaration only.',
+        limits: 'Publication and installed availability are not established.',
+        sources,
+        checks,
+      }),
+    );
+    commit(f.root, 'classify release note');
+    git(f.root, ['switch', '-qc', 'release']);
+    return { ...f, path };
+  }
+
+  it('records an ordinary review of a committed classified-note deletion without turning the note into a check claim', () => {
+    const f = classifiedNote();
+    git(f.root, ['rm', f.path]);
+    const deletedAt = commit(f.root, 'remove reviewed release declaration');
+    expect(check(f.root, scoped).status).toBe(1);
+    const note =
+      'Reviewed committed deletion; no publication or consumption attestation.';
+    const reviewed = record_(f.root, [f.path, '--note', note]);
+    expect(reviewed.error).toBeUndefined();
+    expect(reviewed.status).toBe(0);
+    const recorded = compiled(f.root, f.path);
+    expect(recorded).toMatchObject({
+      state: 'classified',
+      declaredChecks: [],
+      checks: [note],
+    });
+    expect(recorded.notes.at(-1)).toMatchObject({
+      revision: deletedAt,
+      note,
+      inputs: [f.path],
+    });
+    commit(f.root, 'record deletion review');
+    expect(check(f.root, scoped).status).toBe(0);
+    expect(check(f.root, strict).status).toBe(0);
+    f.write(f.path, 'A different release declaration.\n');
+    commit(f.root, 'restore changed declaration');
+    expect(check(f.root, scoped).status).toBe(1);
+  });
+
+  it('requires explicit review when a historical check is removed before recording a classified-note deletion', () => {
+    const f = classifiedNote({ checks: ['npm run changesets:check'] });
+    git(f.root, ['rm', f.path]);
+    commit(f.root, 'remove declaration');
+    expect(
+      record_(f.root, [f.path, '--note', 'Observed deletion only.']).status,
+    ).not.toBe(0);
+    editRecord(f.root, f.path, (record) => {
+      record.checks = [];
+    });
+    commit(f.root, 'reclassify historical check explicitly');
+    const note =
+      'Reviewed removal of the historical changesets:check entry; declaration is absent, publication is not established.';
+    expect(record_(f.root, [f.path, '--note', note]).status).toBe(0);
+    commit(f.root, 'record explicit classification review');
+    const refreshed = check(f.root, scoped);
+    expect(refreshed.status, JSON.stringify(refreshed)).toBe(0);
+    expect(compiled(f.root, f.path).checks).toContain(note);
+  });
+
+  it('requires a review note when reclassifying a check on a declaration already absent at the PR base', () => {
+    const f = classifiedNote({ checks: ['npm run changesets:check'] });
+    git(f.root, ['switch', 'main']);
+    git(f.root, ['rm', f.path]);
+    commit(f.root, 'remove declaration on main');
+    git(f.root, ['switch', '-qc', 'reclassification']);
+    editRecord(f.root, f.path, (record) => {
+      record.checks = [];
+    });
+    commit(f.root, 'remove historical check claim');
+    expect(check(f.root, scoped).status).toBe(1);
+    expect(
+      record_(f.root, [
+        f.path,
+        '--note',
+        'Reviewed the historical check removal; absent declaration is not publication.',
+      ]).status,
+    ).toBe(0);
+    commit(f.root, 'record reclassification review');
+    const refreshed = check(f.root, scoped);
+    expect(refreshed.status, JSON.stringify(refreshed)).toBe(0);
+  });
+
+  it.each([
+    { path: '.changeset/README.md' },
+    { path: '.changeset/nested/release.md' },
+    { path: 'docs/release-guide.md', kind: 'current' },
+    { sources: ['src/a.ts'] },
+  ])(
+    'refuses deletion review outside pure release-note classification: %j',
+    (options) => {
+      const f = classifiedNote(options);
+      git(f.root, ['rm', f.path]);
+      commit(f.root, 'remove ineligible document');
+      expect(
+        record_(f.root, [f.path, '--note', 'Observed deletion.']).status,
+      ).not.toBe(0);
+      expect(check(f.root, scoped).status).toBe(1);
+    },
+  );
+
+  it('refuses a staged deletion that HEAD still contains, and a record for a never-tracked note', () => {
+    const dirty = classifiedNote();
+    git(dirty.root, ['rm', dirty.path]);
+    expect(
+      record_(dirty.root, [dirty.path, '--note', 'Uncommitted deletion.'])
+        .status,
+    ).not.toBe(0);
+    const missing = classifiedNote({ tracked: false });
+    expect(
+      record_(missing.root, [missing.path, '--note', 'Never existed.']).status,
+    ).not.toBe(0);
+  });
+
   it('fails a PR that stales its own record without re-review, and passes once it records the review', () => {
     const f = fixture();
     git(f.root, ['switch', '-qc', 'pr-a']);

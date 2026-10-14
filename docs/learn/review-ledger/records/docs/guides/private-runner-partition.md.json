@@ -22,8 +22,6 @@
 
     "config/product-laws.json",
 
-    "package.json",
-
     "packages/cli/src/commands/cloud-project-import.ts",
 
     "packages/cli/src/commands/cloud.ts",

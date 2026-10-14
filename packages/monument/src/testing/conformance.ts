@@ -25,8 +25,16 @@ import {
  * `node:assert` only, so any runner can drive them; see
  * {@link registerKernelConformance} for Vitest, Jest or `node:test`.
  */
+/** The machines a case drives. A host that keeps only some runs only those. */
+export type KernelConformanceArea =
+  | 'turnDedup'
+  | 'turnBoundary'
+  | 'requestKeys';
+
 export interface KernelConformanceCase {
   readonly name: string;
+  /** Every machine the case uses, durability cases included. */
+  readonly areas: readonly KernelConformanceArea[];
   run(harness: KernelStorageHarness): Promise<void>;
 }
 
@@ -180,9 +188,30 @@ async function dedupRecord(session: Session, key: string) {
   return read.kind === 'found' ? read.record : undefined;
 }
 
+/** Claim a key and resolve it, as one finished turn. */
+async function settleDedup(
+  session: Session,
+  owner: OwnerIdentity,
+  key: string,
+  now: number,
+): Promise<void> {
+  assert.deepEqual(await session.run(claim(key, owner, now)), {
+    kind: 'claimed',
+    reclaimed: false,
+  });
+  await session.run({
+    type: 'turnDedup.resolve',
+    key,
+    ownerId: owner.id,
+    now,
+    value: `v-${key}`,
+  });
+}
+
 const durability: KernelConformanceCase[] = [
   {
     name: 'durability: a committed command survives reopen',
+    areas: ['turnDedup'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const owner = session.processes.spawn();
@@ -199,6 +228,7 @@ const durability: KernelConformanceCase[] = [
   },
   {
     name: 'durability: a failed commit leaves no partial state, including after reopen',
+    areas: ['requestKeys'],
     run: (harness) =>
       withSession(
         harness,
@@ -251,6 +281,7 @@ const durability: KernelConformanceCase[] = [
   },
   {
     name: 'durability: a participant refusal writes nothing',
+    areas: ['turnDedup'],
     run: (harness) =>
       withSession(
         harness,
@@ -278,6 +309,7 @@ const durability: KernelConformanceCase[] = [
   },
   {
     name: 'durability: participants commit inside the transaction with the result',
+    areas: ['turnDedup'],
     run: async (harness) => {
       const seen: string[] = [];
       await withSession(
@@ -306,6 +338,7 @@ const durability: KernelConformanceCase[] = [
   },
   {
     name: 'durability: a closed storage refuses commands',
+    areas: ['turnDedup'],
     run: (harness) =>
       withSession(harness, async (session) => {
         await session.store.storage.close();
@@ -317,6 +350,7 @@ const durability: KernelConformanceCase[] = [
   },
   {
     name: "durability: a command cannot run inside another command's transaction",
+    areas: ['turnDedup'],
     run: async (harness) => {
       let current: Session | undefined;
       let nested: Promise<unknown> | undefined;
@@ -365,6 +399,7 @@ const durability: KernelConformanceCase[] = [
 const turnDedup: KernelConformanceCase[] = [
   {
     name: 'turn dedup: one owner per key; only the owner settles; a resolved key replays',
+    areas: ['turnDedup'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const a = session.processes.spawn();
@@ -381,6 +416,7 @@ const turnDedup: KernelConformanceCase[] = [
             type: 'turnDedup.resolve',
             key: 'k',
             ownerId: b.id,
+            now: 1,
             value: 'x',
           }),
           { kind: 'stale' },
@@ -390,6 +426,7 @@ const turnDedup: KernelConformanceCase[] = [
             type: 'turnDedup.resolve',
             key: 'k',
             ownerId: a.id,
+            now: 1,
             value: 'turn-1',
           }),
           { kind: 'applied' },
@@ -404,6 +441,7 @@ const turnDedup: KernelConformanceCase[] = [
             type: 'turnDedup.resolve',
             key: 'k',
             ownerId: a.id,
+            now: 1,
             value: 'turn-1',
           }),
           { kind: 'applied' },
@@ -413,6 +451,7 @@ const turnDedup: KernelConformanceCase[] = [
             type: 'turnDedup.resolve',
             key: 'k',
             ownerId: a.id,
+            now: 1,
             value: 'turn-2',
           }),
           { kind: 'stale' },
@@ -422,6 +461,7 @@ const turnDedup: KernelConformanceCase[] = [
             type: 'turnDedup.release',
             key: 'k',
             ownerId: a.id,
+            now: 1,
           }),
           { kind: 'stale' },
         );
@@ -429,6 +469,7 @@ const turnDedup: KernelConformanceCase[] = [
   },
   {
     name: 'turn dedup: a released claim can be claimed again',
+    areas: ['turnDedup'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const a = session.processes.spawn();
@@ -439,6 +480,7 @@ const turnDedup: KernelConformanceCase[] = [
             type: 'turnDedup.release',
             key: 'k',
             ownerId: a.id,
+            now: 1,
           }),
           { kind: 'applied' },
         );
@@ -450,6 +492,7 @@ const turnDedup: KernelConformanceCase[] = [
   },
   {
     name: "turn dedup: beginInvocation needs the owner's pending or begun claim",
+    areas: ['turnDedup'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const a = session.processes.spawn();
@@ -459,6 +502,7 @@ const turnDedup: KernelConformanceCase[] = [
             type: 'turnDedup.beginInvocation',
             key,
             ownerId: owner.id,
+            now: 1,
           });
         assert.deepEqual(await begin('absent', a), { kind: 'refused' });
         await session.run(claim('k', a));
@@ -472,6 +516,7 @@ const turnDedup: KernelConformanceCase[] = [
           type: 'turnDedup.resolve',
           key: 'k',
           ownerId: a.id,
+          now: 1,
           value: 't',
         });
         assert.deepEqual(await begin('k', a), { kind: 'refused' });
@@ -479,6 +524,7 @@ const turnDedup: KernelConformanceCase[] = [
   },
   {
     name: 'turn dedup: a dead owner is reclaimed only if it never began its effect',
+    areas: ['turnDedup'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const dead = session.processes.spawn();
@@ -489,6 +535,7 @@ const turnDedup: KernelConformanceCase[] = [
           type: 'turnDedup.beginInvocation',
           key: 'begun',
           ownerId: dead.id,
+          now: 1,
         });
         await session.run(claim('untracked', dead, 1, 'untracked'));
         session.processes.kill(dead);
@@ -511,6 +558,7 @@ const turnDedup: KernelConformanceCase[] = [
   },
   {
     name: 'turn dedup: an unobservable owner is never freed; a reused pid is',
+    areas: ['turnDedup'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const hidden = session.processes.spawn();
@@ -531,6 +579,7 @@ const turnDedup: KernelConformanceCase[] = [
   },
   {
     name: 'turn dedup: retention evicts the oldest resolved rows and never an unresolved one',
+    areas: ['turnDedup'],
     run: (harness) =>
       withSession(
         harness,
@@ -541,6 +590,7 @@ const turnDedup: KernelConformanceCase[] = [
               type: 'turnDedup.resolve',
               key,
               ownerId: a.id,
+              now: 1,
               value: `v-${key}`,
             });
           await session.run(claim('k1', a, 1));
@@ -560,7 +610,155 @@ const turnDedup: KernelConformanceCase[] = [
       ),
   },
   {
+    name: 'turn dedup: an evicted key answers expired, and only that key',
+    areas: ['turnDedup'],
+    run: (harness) =>
+      withSession(
+        harness,
+        async (session) => {
+          const a = session.processes.spawn();
+          const settle = (key: string, now: number) =>
+            settleDedup(session, a, key, now);
+          await settle('k1', 1);
+          await settle('k2', 2);
+          await settle('k3', 3);
+          // k1, the oldest resolved row, was evicted and left its key.
+          assert.equal(await dedupRecord(session, 'k1'), undefined);
+          assert.deepEqual(
+            await session.run({ type: 'turnDedup.read', key: 'k1' }),
+            {
+              kind: 'expired',
+              expiredAt: 3,
+            },
+          );
+          // Never claimable again, by anyone, and it changes nothing.
+          for (const owner of [a, session.processes.spawn()])
+            assert.deepEqual(await session.run(claim('k1', owner, 4)), {
+              kind: 'expired',
+            });
+          assert.deepEqual(
+            await session.run({
+              type: 'turnDedup.beginInvocation',
+              key: 'k1',
+              ownerId: a.id,
+              now: 4,
+            }),
+            { kind: 'refused' },
+          );
+          assert.deepEqual(
+            await session.run({
+              type: 'turnDedup.resolve',
+              key: 'k1',
+              ownerId: a.id,
+              now: 4,
+              value: 'again',
+            }),
+            { kind: 'stale' },
+          );
+          assert.deepEqual(
+            await session.run({ type: 'turnDedup.read', key: 'k1' }),
+            {
+              kind: 'expired',
+              expiredAt: 3,
+            },
+          );
+          // Other keys are untouched, and a tombstone holds no capacity: a
+          // fresh key claims, and the rows still evict only past the cap.
+          assert.deepEqual(await session.run(claim('fresh', a, 5)), {
+            kind: 'claimed',
+            reclaimed: false,
+          });
+          assert.equal((await dedupRecord(session, 'k3'))?.value, 'v-k3');
+          await session.store.reopen();
+          assert.deepEqual(await session.run(claim('k1', a, 6)), {
+            kind: 'expired',
+          });
+        },
+        { limits: { turnDedupMaxEntries: 2 } },
+      ),
+  },
+  {
+    name: 'turn dedup: a tombstone under a retention rule is forgotten once old, and no other is',
+    areas: ['turnDedup'],
+    run: (harness) =>
+      withSession(
+        harness,
+        async (session) => {
+          const a = session.processes.spawn();
+          const settle = (key: string, now: number) =>
+            settleDedup(session, a, key, now);
+          // Both are evicted at 3 and 4 by the two later keys.
+          await settle('chat:a', 1);
+          await settle('thread:a', 2);
+          await settle('chat:b', 3);
+          await settle('thread:b', 4);
+          const expired = (key: string) =>
+            session
+              .run({ type: 'turnDedup.read', key })
+              .then((read) => read.kind === 'expired');
+          assert.equal(await expired('chat:a'), true);
+          assert.equal(await expired('thread:a'), true);
+          // A write exactly maxAgeMs after the eviction keeps it: the bound
+          // is strict.
+          await session.run(claim('w1', a, 3 + 10));
+          assert.equal(await expired('chat:a'), true);
+          // One millisecond later, the next write forgets it, and only
+          // the keys the rule names. The key is then new again.
+          await session.run(claim('w2', a, 3 + 10 + 1));
+          assert.equal(await expired('chat:a'), false);
+          assert.equal(await expired('thread:a'), true);
+          assert.deepEqual(await session.run(claim('chat:a', a, 20)), {
+            kind: 'claimed',
+            reclaimed: false,
+          });
+          // A read does not run retention.
+          assert.equal(await expired('thread:a'), true);
+          assert.deepEqual(await session.run(claim('thread:a', a, 10_000)), {
+            kind: 'expired',
+          });
+        },
+        {
+          limits: {
+            turnDedupMaxEntries: 2,
+            turnDedupTombstoneRetention: [{ keyPrefix: 'chat:', maxAgeMs: 10 }],
+          },
+        },
+      ),
+  },
+  {
+    name: 'turn dedup: forgetting a prefix forgets the tombstones under it too',
+    areas: ['turnDedup'],
+    run: (harness) =>
+      withSession(
+        harness,
+        async (session) => {
+          const a = session.processes.spawn();
+          const settle = (key: string, now: number) =>
+            settleDedup(session, a, key, now);
+          for (const [index, key] of ['a::1', 'b::1', 'a::2', 'b::2'].entries())
+            await settle(key, index + 1);
+          // a::1 and b::1 were evicted; a::2 and b::2 are rows.
+          assert.deepEqual(
+            await session.run({
+              type: 'turnDedup.forgetPrefix',
+              prefix: 'a::',
+            }),
+            { kind: 'applied', removed: 2 },
+          );
+          assert.deepEqual(await session.run(claim('a::1', a, 9)), {
+            kind: 'claimed',
+            reclaimed: false,
+          });
+          assert.deepEqual(await session.run(claim('b::1', a, 9)), {
+            kind: 'expired',
+          });
+        },
+        { limits: { turnDedupMaxEntries: 2 } },
+      ),
+  },
+  {
     name: 'turn dedup: forgetPrefix is an exact prefix match',
+    areas: ['turnDedup'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const a = session.processes.spawn();
@@ -614,6 +812,7 @@ const turnDedup: KernelConformanceCase[] = [
 const turnBoundary: KernelConformanceCase[] = [
   {
     name: 'turn boundary: a pending, invoking or lifecycle row occupies its thread',
+    areas: ['turnBoundary'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const a = session.processes.spawn();
@@ -645,6 +844,7 @@ const turnBoundary: KernelConformanceCase[] = [
   },
   {
     name: 'turn boundary: transitions are owner-only, from-guarded and idempotent on exact retry',
+    areas: ['turnBoundary'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const a = session.processes.spawn();
@@ -689,6 +889,7 @@ const turnBoundary: KernelConformanceCase[] = [
   },
   {
     name: 'turn boundary: accepting a provider turn the thread saw terminate is ambiguous',
+    areas: ['turnBoundary'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const a = session.processes.spawn();
@@ -714,6 +915,7 @@ const turnBoundary: KernelConformanceCase[] = [
   },
   {
     name: 'turn boundary: accepting a provider turn another row holds is ambiguous',
+    areas: ['turnBoundary'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const a = session.processes.spawn();
@@ -736,6 +938,7 @@ const turnBoundary: KernelConformanceCase[] = [
   },
   {
     name: 'turn boundary: remove is guarded by owner, state, updatedAt and owner death',
+    areas: ['turnBoundary'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const a = session.processes.spawn();
@@ -778,6 +981,7 @@ const turnBoundary: KernelConformanceCase[] = [
   },
   {
     name: 'turn boundary: a thread holds at most the accepted capacity',
+    areas: ['turnBoundary'],
     run: (harness) =>
       withSession(
         harness,
@@ -801,6 +1005,7 @@ const turnBoundary: KernelConformanceCase[] = [
   },
   {
     name: 'turn boundary: a terminal retires only the rows it ends',
+    areas: ['turnBoundary'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const a = session.processes.spawn();
@@ -875,6 +1080,7 @@ const turnBoundary: KernelConformanceCase[] = [
   },
   {
     name: 'turn boundary: a lifecycle claim alone is no possible effect',
+    areas: ['turnBoundary'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const a = session.processes.spawn();
@@ -898,6 +1104,7 @@ const turnBoundary: KernelConformanceCase[] = [
   },
   {
     name: "turn boundary: reconcile settles only dead owners' rows",
+    areas: ['turnBoundary'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const dead = session.processes.spawn();
@@ -952,6 +1159,7 @@ const turnBoundary: KernelConformanceCase[] = [
   },
   {
     name: 'turn boundary: forgetting a thread retires its rows and terminal facts, not its lifecycle claim',
+    areas: ['turnBoundary'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const a = session.processes.spawn();
@@ -984,6 +1192,7 @@ const turnBoundary: KernelConformanceCase[] = [
 
 turnBoundary.push({
   name: 'turn boundary: reconcile probes each process once and acts only on rows it saw unchanged',
+  areas: ['turnBoundary'],
   run: (harness) =>
     withSession(harness, async (session) => {
       const dead = session.processes.spawn();
@@ -1033,6 +1242,7 @@ turnBoundary.push({
 
 turnBoundary.push({
   name: 'turn boundary: reconcile leaves alone a row recreated under the same id and timestamps by another process',
+  areas: ['turnBoundary'],
   run: (harness) =>
     withSession(harness, async (session) => {
       const dead = session.processes.spawn({ identityKind: 'unverified' });
@@ -1065,6 +1275,7 @@ turnBoundary.push({
 
 turnBoundary.push({
   name: 'turn boundary: reconcile leaves alone a row recreated by the same owner at another createdAt',
+  areas: ['turnBoundary'],
   run: (harness) =>
     withSession(harness, async (session) => {
       const dead = session.processes.spawn();
@@ -1095,6 +1306,7 @@ turnBoundary.push({
 const requestKeys: KernelConformanceCase[] = [
   {
     name: 'request keys: same digest replays or re-drives; a different digest conflicts',
+    areas: ['requestKeys'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const claimKey = (digest: string) =>
@@ -1132,6 +1344,7 @@ const requestKeys: KernelConformanceCase[] = [
   },
   {
     name: 'request keys: only an unresolved key is released; writes to a missing key say so',
+    areas: ['requestKeys'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const id = requestKey('k');
@@ -1177,6 +1390,7 @@ const requestKeys: KernelConformanceCase[] = [
   },
   {
     name: 'request keys: a completed key past its TTL is forgotten',
+    areas: ['requestKeys'],
     run: (harness) =>
       withSession(
         harness,
@@ -1207,7 +1421,65 @@ const requestKeys: KernelConformanceCase[] = [
       ),
   },
   {
+    name: 'request keys: an unresolved key past its TTL is kept and re-driven, and holds no quota slot',
+    areas: ['requestKeys'],
+    run: (harness) =>
+      withSession(
+        harness,
+        async (session) => {
+          const claimKey = (key: string, now: number, caller = 'c') =>
+            session.run({
+              type: 'requestKeys.claim',
+              id: requestKey(key, caller),
+              digest: 'd',
+              now,
+            });
+          for (const key of ['stuck', 'stuck2'])
+            assert.deepEqual(await claimKey(key, 0), { kind: 'claimed' });
+          await session.run({
+            type: 'requestKeys.recordDecision',
+            id: requestKey('stuck', 'c'),
+            decision: 'steer',
+          });
+          // At exactly the TTL both rows still hold a slot of the caller's
+          // quota of two, and neither may be evicted: the caller is full.
+          assert.deepEqual(await claimKey('a', 10), {
+            kind: 'capacity',
+            scope: 'caller',
+          });
+          // One millisecond later they are kept but hold no slot.
+          assert.deepEqual(await claimKey('a', 11), { kind: 'claimed' });
+          assert.deepEqual(await claimKey('b', 12), { kind: 'claimed' });
+          assert.deepEqual(await claimKey('c', 13), {
+            kind: 'capacity',
+            scope: 'caller',
+          });
+          // The store-wide backstop of three does not count them either: a
+          // and b are the only counted rows, so one more caller fits.
+          assert.deepEqual(await claimKey('k', 13, 'o1'), { kind: 'claimed' });
+          assert.deepEqual(await claimKey('k', 13, 'o2'), {
+            kind: 'capacity',
+            scope: 'store',
+          });
+          // A kept row is never answered as new, however old: it re-drives
+          // with its decision.
+          assert.deepEqual(await claimKey('stuck', 1_000_000), {
+            kind: 'unresolved',
+            decision: 'steer',
+          });
+        },
+        {
+          limits: {
+            requestKeyTtlMs: 10,
+            requestKeyMaxRowsPerCaller: 2,
+            requestKeyMaxRows: 3,
+          },
+        },
+      ),
+  },
+  {
     name: 'request keys: a caller over quota evicts only its own oldest completed rows',
+    areas: ['requestKeys'],
     run: (harness) =>
       withSession(
         harness,
@@ -1249,6 +1521,7 @@ const requestKeys: KernelConformanceCase[] = [
   },
   {
     name: 'request keys: the store-wide backstop refuses instead of evicting',
+    areas: ['requestKeys'],
     run: (harness) =>
       withSession(
         harness,
@@ -1285,6 +1558,7 @@ const requestKeys: KernelConformanceCase[] = [
 const crashPoints: KernelConformanceCase[] = [
   {
     name: 'crash: after a dedup claim is begun, the retry is indeterminate',
+    areas: ['turnDedup'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const first = session.processes.spawn();
@@ -1294,6 +1568,7 @@ const crashPoints: KernelConformanceCase[] = [
             type: 'turnDedup.beginInvocation',
             key: 'k',
             ownerId: first.id,
+            now: 1,
           }),
           { kind: 'applied' },
         );
@@ -1309,6 +1584,7 @@ const crashPoints: KernelConformanceCase[] = [
             type: 'turnDedup.beginInvocation',
             key: 'k',
             ownerId: retry.id,
+            now: 1,
           }),
           { kind: 'refused' },
         );
@@ -1317,6 +1593,7 @@ const crashPoints: KernelConformanceCase[] = [
   },
   {
     name: 'crash: before a dedup begin commits, the retry reclaims (control)',
+    areas: ['turnDedup'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const first = session.processes.spawn();
@@ -1326,6 +1603,7 @@ const crashPoints: KernelConformanceCase[] = [
           type: 'turnDedup.beginInvocation',
           key: 'k',
           ownerId: first.id,
+          now: 1,
         });
         assert.equal((await held.entered).type, 'turnDedup.beginInvocation');
         await session.store.crash();
@@ -1340,6 +1618,7 @@ const crashPoints: KernelConformanceCase[] = [
   },
   {
     name: 'crash: a dedup begin whose commit failed leaves the claim pending',
+    areas: ['turnDedup'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const first = session.processes.spawn();
@@ -1350,6 +1629,7 @@ const crashPoints: KernelConformanceCase[] = [
             type: 'turnDedup.beginInvocation',
             key: 'k',
             ownerId: first.id,
+            now: 1,
           }),
         );
         assert.equal((await dedupRecord(session, 'k'))?.invocation, 'pending');
@@ -1364,6 +1644,7 @@ const crashPoints: KernelConformanceCase[] = [
   },
   {
     name: 'crash: between prepared and invoking, recovery removes the row and frees the thread',
+    areas: ['turnBoundary'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const first = session.processes.spawn();
@@ -1390,6 +1671,7 @@ const crashPoints: KernelConformanceCase[] = [
   },
   {
     name: 'crash: after invoking, recovery reports the turn indeterminate and holds the thread',
+    areas: ['turnBoundary'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const first = session.processes.spawn();
@@ -1425,6 +1707,7 @@ const crashPoints: KernelConformanceCase[] = [
   },
   {
     name: 'crash: before an acceptance commits, recovery reports indeterminate, not accepted',
+    areas: ['turnBoundary'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const first = session.processes.spawn();
@@ -1449,6 +1732,7 @@ const crashPoints: KernelConformanceCase[] = [
   },
   {
     name: 'crash: a request key whose attempt recorded its decision is re-driven with it',
+    areas: ['requestKeys'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const id = requestKey('k');
@@ -1478,6 +1762,7 @@ const crashPoints: KernelConformanceCase[] = [
   },
   {
     name: 'crash: a request key whose decision never committed is unresolved without one',
+    areas: ['requestKeys'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const id = requestKey('k');
@@ -1513,6 +1798,7 @@ const crashPoints: KernelConformanceCase[] = [
 crashPoints.push(
   {
     name: 'crash: a reconcile whose commit failed changes no row',
+    areas: ['turnBoundary'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const dead = session.processes.spawn();
@@ -1541,6 +1827,7 @@ crashPoints.push(
   },
   {
     name: 'crash: a terminal whose commit failed neither retires the row nor records the fact',
+    areas: ['turnBoundary'],
     run: (harness) =>
       withSession(harness, async (session) => {
         const a = session.processes.spawn();
@@ -1586,6 +1873,19 @@ export const kernelConformanceCases: readonly KernelConformanceCase[] =
     ...requestKeys,
     ...crashPoints,
   ]);
+
+/**
+ * The cases that use only the given machines, for a storage that keeps only
+ * those (a host that binds its own tables for them and has no turn boundaries,
+ * say). An adapter that keeps all three runs every case.
+ */
+export function kernelConformanceCasesFor(
+  areas: readonly KernelConformanceArea[],
+): readonly KernelConformanceCase[] {
+  return kernelConformanceCases.filter((entry) =>
+    entry.areas.every((area) => areas.includes(area)),
+  );
+}
 
 export interface KernelConformanceOutcome {
   readonly name: string;

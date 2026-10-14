@@ -540,7 +540,7 @@ function notesByPath(notes) {
 
 /**
  * The shared compiled record: old byte bindings or derived history metadata.
- * @returns {{ path: string, kind: string, state: string, summary: string, limits: string, documentDigest?: string, documentRevision?: string, historyChanges?: string[], reviewBaseline?: string, historyUnavailable?: string, sources: { path: string, digest?: string, revision?: string }[], checks: string[], notes: { file: string, revision: string, note: string, inputs?: string[] }[] }}
+ * @returns {{ path: string, kind: string, state: string, summary: string, limits: string, documentDigest?: string, documentRevision?: string, historyChanges?: string[], reviewBaseline?: string, historyUnavailable?: string, sources: { path: string, digest?: string, revision?: string }[], checks: string[], declaredChecks: string[], notes: { file: string, revision: string, note: string, inputs?: string[] }[] }}
  */
 function compileRecord(data, notes = []) {
   return {
@@ -556,6 +556,7 @@ function compileRecord(data, notes = []) {
         }
       : { historyChanges: [] }),
     sources: data.sources.map(binding),
+    declaredChecks: data.checks,
     checks: [...new Set([...data.checks, ...notes.map(({ note }) => note)])],
     notes,
   };

@@ -3,10 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, test } from 'vitest';
+import { ORCHESTRATION_EVENT_STORE_MIGRATION } from '../../../domain/migrations/003-orchestration-events.js';
 import { TurnIdempotencyStore } from '../../turn-idempotency.js';
 import { EventStore } from '../event-store.js';
 import {
   chatTurnDedupKey,
+  createSqliteTurnDedupPersistence,
   turnDedupKey,
 } from '../sqlite-turn-dedup-persistence.js';
 import { createTurnDeduplicator } from '../turn-deduplicator.js';
@@ -430,18 +432,17 @@ describe('TurnDeduplicator', () => {
   });
 
   test('keeps an owner handle usable when its first durable resolve rolls back', () => {
-    let record: { value: string | null; createdAt: number } | undefined;
+    const database = new DatabaseSync(':memory:');
+    database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+    const persistence = createSqliteTurnDedupPersistence({ db: database });
     let failResolve = true;
     const store = new TurnIdempotencyStore({
-      read: () => record,
-      update: (_key, updater) => {
-        const decision = updater(record);
-        if (failResolve && record && decision.record?.value !== null) {
+      execute: (command, liveness) => {
+        if (failResolve && command.type === 'turnDedup.resolve') {
           failResolve = false;
           throw new Error('injected rollback');
         }
-        record = decision.record;
-        return decision.result;
+        return persistence.execute(command, liveness);
       },
     });
     const ledger = createTurnDeduplicator({
@@ -461,6 +462,7 @@ describe('TurnDeduplicator', () => {
     expect(
       ledger.claim({ threadId: 'thread', clientTurnId: 'client' }),
     ).toEqual({ kind: 'contended', turnId: 'turn' });
+    database.close();
   });
 
   test('deletes exact wildcard-like thread keys without touching another ledger tuple', () => {
