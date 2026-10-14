@@ -112,6 +112,14 @@ application-session client owns key/proof construction; a relay only carries the
 authenticated encrypted request/response stream. Provider hooks resolve private session
 references; no virtual response installs a browser cookie.
 
+Explicit device administration is independent of operator identity.
+`EnvironmentSecurityService.authorizeCredential` admits `access:devices` only
+on existing-device list/scope/revoke/remove leaves. `DevicePairingService` checks
+the current device credential and group ceiling before mutations; only the
+operator may grant or remove `access:devices`. CLI and Paired devices UI use the
+same authenticated principal. See the [CLI reference](../reference/cli.md#environment)
+and [threat model](../security/remote-access-threat-model.md).
+
 Operator passkeys are a separate, enrollment-only owner so far (#3257). The
 [enrollment service](../../src-server/services/identity/operator-passkey-enrollment.ts)
 owns the confirm-by-code request and the single-use WebAuthn ceremony, and the

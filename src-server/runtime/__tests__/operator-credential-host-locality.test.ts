@@ -8,6 +8,7 @@ import {
   type PairedDevice,
   PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
 } from '@kontourai/station-contracts';
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
@@ -28,6 +29,7 @@ import { configureRuntimeHttp } from '../bootstrap/runtime-http.js';
 import {
   configureDevicePairingHostRoutes,
   configureDevicePairingPublicRoutes,
+  type DeviceAccessAuditRecord,
   type OperatorCredentialUseRecord,
 } from '../routes/runtime-routes.js';
 
@@ -74,6 +76,7 @@ async function createHarness(
   const { credential: operatorCredential } = await security.initialize();
   const secretPath = join(homeDir, 'runtime', 'local-grant.secret');
   const observed: OperatorCredentialUseRecord[] = [];
+  const deviceAccessAudit: DeviceAccessAuditRecord[] = [];
 
   const app = new Hono<{ Bindings: TestBindings }>();
   configureDevicePairingPublicRoutes(app as never, security.devicePairing, {
@@ -115,6 +118,7 @@ async function createHarness(
       isRuntimeRequestPrincipalCurrent(request, security),
     isRequestPrincipalCurrent: (request) =>
       isRuntimeRequestPrincipalCurrent(request, security),
+    auditDeviceAccess: (record) => deviceAccessAudit.push(record),
     observeOperatorCredentialUse: (record) => {
       observed.push(record);
       observe(record);
@@ -244,8 +248,10 @@ async function createHarness(
 
   return {
     security,
+    homeDir,
     operatorCredential,
     observed,
+    deviceAccessAudit,
     call,
     bearer,
     pairDevice,
@@ -688,5 +694,293 @@ describe('reportOperatorCredentialUse, the production sink (#2894 S1)', () => {
         record('off-host', false),
       ],
     ]);
+  });
+});
+
+describe('explicit remote device administration', () => {
+  test('a promoted device administers another device, and withdrawal takes effect on the next request', async () => {
+    const h = await createHarness();
+    const admin = await h.pairDevice('Admin laptop');
+    const target = await h.pairDevice('Phone');
+    const json = (credential: string, scope: string[]) => ({
+      method: 'POST',
+      headers: { ...h.bearer(credential), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ scope }),
+    });
+    const call = (path: string, init: RequestInit) =>
+      h.call(path, init, positions.remotePeer);
+    const scopePath = `/api/pairing/devices/${target.device.id}/scope`;
+    // The real pairing flow gave this older-default device access:manage.
+    expect(admin.device.scope).toContain('access:manage');
+    expect(
+      (
+        await call(
+          scopePath,
+          json(admin.credential, [
+            'orchestration:read',
+            'approval:full-access',
+          ]),
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      h.security.devicePairing.identifyDevice(target.credential)?.scope,
+    ).toBe(target.device.scope);
+    const pairingPromotion = await call('/api/pairing/offers', {
+      method: 'POST',
+      headers: {
+        ...h.bearer(h.operatorCredential),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        endpoint: ORIGIN,
+        scope: 'orchestration:read access:devices',
+      }),
+    });
+    expect(pairingPromotion.status).toBe(400);
+    const adminScope = ['orchestration:read', 'access:devices'];
+    const promotion = await call(
+      `/api/pairing/devices/${admin.device.id}/scope`,
+      json(h.operatorCredential, adminScope),
+    );
+    expect(promotion.status).toBe(200);
+    const list = await call('/api/pairing/devices', {
+      headers: h.bearer(admin.credential),
+    });
+    expect(list.status).toBe(200);
+    const listed = (await list.json()) as { devices: PairedDevice[] };
+    expect(listed.devices).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: target.device.id }),
+      ]),
+    );
+    const granted = await call(
+      scopePath,
+      json(admin.credential, ['orchestration:read', 'approval:full-access']),
+    );
+    expect(granted.status).toBe(200);
+    expect(h.security.resolveGrantedScope(target.credential)).toBe(
+      'orchestration:read approval:full-access',
+    );
+    expect(
+      (
+        await call(
+          `/api/pairing/devices/${admin.device.id}/scope`,
+          json(target.credential, [
+            'orchestration:read',
+            'approval:full-access',
+          ]),
+        )
+      ).status,
+    ).toBe(403);
+    expect(h.deviceAccessAudit.at(-1)).toMatchObject({
+      action: 'scope',
+      actor: 'device-access',
+      actorDeviceId: admin.device.id,
+      deviceId: target.device.id,
+      scope: 'orchestration:read approval:full-access',
+    });
+    // Administrative authority cannot propagate through its own grant.
+    const delegated = await call(scopePath, json(admin.credential, adminScope));
+    expect(delegated.status).toBe(403);
+    expect(h.security.resolveGrantedScope(target.credential)).toBe(
+      'orchestration:read approval:full-access',
+    );
+    const removedAdmin = await call(
+      `/api/pairing/devices/${admin.device.id}/scope`,
+      json(admin.credential, ['orchestration:read']),
+    );
+    expect(removedAdmin.status).toBe(403);
+    // The grant admits only existing-device leaves, never other pairing authority.
+    for (const path of [
+      '/api/pairing/requests',
+      '/api/pairing/people',
+      '/api/pairing/operator-passkeys',
+    ])
+      expect(
+        (await call(path, { headers: h.bearer(admin.credential) })).status,
+      ).toBe(403);
+    expect(
+      (
+        await call('/api/pairing/offers', {
+          method: 'POST',
+          headers: h.bearer(admin.credential),
+          body: '{}',
+        })
+      ).status,
+    ).toBe(403);
+    const revoked = await call(`/api/pairing/devices/${target.device.id}`, {
+      method: 'DELETE',
+      headers: h.bearer(admin.credential),
+    });
+    expect(revoked.status).toBe(200);
+    const revokedDevice = (await revoked.json()) as PairedDevice;
+    expect(revokedDevice.revocation).toEqual({
+      state: 'recorded',
+      actor: 'device-access',
+      reason: 'owner-request',
+    });
+    expect(h.security.verifyCredential(target.credential)).toBe(false);
+    const reopened = new EnvironmentSecurityService({ homeDir: h.homeDir });
+    await reopened.initialize();
+    expect(
+      reopened.devicePairing
+        .listDevices()
+        .find((device) => device.id === target.device.id)?.revocation,
+    ).toMatchObject({ actor: 'device-access' });
+    expect(h.deviceAccessAudit.at(-1)).toMatchObject({
+      action: 'revoke',
+      actorDeviceId: admin.device.id,
+    });
+    const removed = await call(
+      `/api/pairing/devices/${target.device.id}/record`,
+      { method: 'DELETE', headers: h.bearer(admin.credential) },
+    );
+    expect(removed.status).toBe(200);
+    expect(
+      h.security.devicePairing
+        .listDevices()
+        .some((device) => device.id === target.device.id),
+    ).toBe(false);
+    expect(h.deviceAccessAudit.at(-1)).toMatchObject({
+      action: 'remove',
+      actorDeviceId: admin.device.id,
+    });
+    const withdrawal = await call(
+      `/api/pairing/devices/${admin.device.id}/scope`,
+      json(h.operatorCredential, ['orchestration:read']),
+    );
+    expect(withdrawal.status).toBe(200);
+    expect(
+      (
+        await call('/api/pairing/devices', {
+          headers: h.bearer(admin.credential),
+        })
+      ).status,
+    ).toBe(403);
+    expect(JSON.stringify(h.deviceAccessAudit)).not.toContain(admin.credential);
+  });
+
+  test('a bound administrator loses administration when their person is demoted to Member', async () => {
+    const h = await createHarness();
+    const pairing = h.security.devicePairing;
+    const offer = pairing.createOffer({ endpoint: ORIGIN });
+    const pending = pairing.requestPairing({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: 'Person laptop',
+      source: 'tailnet',
+      requester: { provider: 'tailscale-serve', login: 'admin@example.test' },
+      requesterPosition: 'off-box',
+    });
+    const person = humanPrincipal(
+      'tailscale-serve',
+      'admin@example.test',
+      'Admin',
+    );
+    pairing.confirmRequest(
+      pending.requestId,
+      { kind: 'presented-credential' },
+      { principalId: person.id },
+    );
+    const admin = pairing.exchange({
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      requestId: pending.requestId,
+    });
+    await h.security.assignGroup(person.id, 'admin');
+    pairing.setDeviceScope(
+      admin.device.id,
+      ['orchestration:read', 'access:devices'],
+      { kind: 'presented-credential' },
+    );
+    expect(
+      (
+        await h.call(
+          '/api/pairing/devices',
+          { headers: h.bearer(admin.credential) },
+          positions.remotePeer,
+        )
+      ).status,
+    ).toBe(200);
+    await h.security.assignGroup(person.id, 'member');
+    expect(
+      (
+        await h.call(
+          '/api/pairing/devices',
+          { headers: h.bearer(admin.credential) },
+          positions.remotePeer,
+        )
+      ).status,
+    ).toBe(403);
+    expect(pairing.identifyDevice(admin.credential)?.scope).toContain(
+      'access:devices',
+    );
+    expect(h.security.resolveGrantedScope(admin.credential)).toBe(
+      'orchestration:read',
+    );
+  });
+
+  test('revocation while reading a scope request body prevents its commit', async () => {
+    const h = await createHarness();
+    const admin = await h.pairDevice('Admin laptop');
+    const target = await h.pairDevice('Phone');
+    h.security.devicePairing.setDeviceScope(
+      admin.device.id,
+      ['orchestration:read', 'access:devices'],
+      { kind: 'presented-credential' },
+    );
+    let releaseBody!: () => void;
+    let bodyRead!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      bodyRead = resolve;
+    });
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          bodyRead();
+          return new Promise<void>((resolve) => {
+            releaseBody = () => {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  '{"scope":["orchestration:read","approval:full-access"]}',
+                ),
+              );
+              controller.close();
+              resolve();
+            };
+          });
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const pending = h.call(
+      `/api/pairing/devices/${target.device.id}/scope`,
+      {
+        method: 'POST',
+        headers: {
+          ...h.bearer(admin.credential),
+          'Content-Type': 'application/json',
+        },
+        body,
+        duplex: 'half',
+      } as RequestInit,
+      positions.remotePeer,
+    );
+    await reading;
+    try {
+      h.security.devicePairing.revokeDevice(
+        admin.device.id,
+        'operator-credential',
+      );
+    } finally {
+      releaseBody();
+    }
+    const response = await pending;
+    expect(response.status).toBe(401);
+    expect(h.security.resolveGrantedScope(target.credential)).toBe(
+      target.device.scope,
+    );
+    expect(h.deviceAccessAudit).toEqual([]);
   });
 });

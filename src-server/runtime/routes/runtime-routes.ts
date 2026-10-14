@@ -155,6 +155,7 @@ import {
   type FullAccessRevocationReport,
   isDeviceRequestableScope,
   PAIRING_SCOPE_PRESETS,
+  type PairedDevice,
   type PairingScope,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
   PUBLIC_DEVICE_PAIRING_API_DOCS_LAUNCH_PATH,
@@ -606,6 +607,7 @@ import { createSpatialBoardOwnerResolver } from '../../services/spatial-board/sp
 import { SpatialBoardStore } from '../../services/spatial-board/spatial-board-store.js';
 import { ClientConnectionPresence } from '../../services/ssh/client-connection-presence.js';
 import {
+  type DeviceAccessApproval,
   DevicePairingError,
   type DevicePairingService,
   type PairingApproval,
@@ -2670,6 +2672,8 @@ export function configureRuntimeRoutes(
       // residue being exercised — warn volume, same as a denied remote
       // authentication, so it is readable in the same place.
       audit: pairingApprovalAudit,
+      auditDeviceAccess: (record) =>
+        context.logger.warn('Device access changed', { ...record }),
       verifyOperatorCredential: (credential) =>
         context.environmentSecurityService.verifyOperatorCredential(credential),
       isApprovalCurrent: (request) =>
@@ -8730,6 +8734,16 @@ function isPairingAuthenticationFailure(error: unknown): boolean {
   );
 }
 
+export interface DeviceAccessAuditRecord {
+  readonly event: 'station.device_access.changed';
+  readonly action: 'scope' | 'revoke' | 'remove';
+  readonly actor: 'operator-credential' | 'device-access';
+  readonly actorDeviceId?: string;
+  readonly deviceId: string;
+  readonly timestamp: number;
+  readonly scope?: string;
+}
+
 export function configureDevicePairingHostRoutes(
   app: HonoApp,
   pairing: DevicePairingService,
@@ -8778,6 +8792,7 @@ export function configureDevicePairingHostRoutes(
       cause: FullAccessRevocationReport['cause'];
       clientOrigin: ClientOrigin;
     }) => Promise<FullAccessRevocationReport>;
+    auditDeviceAccess?: (record: DeviceAccessAuditRecord) => void;
     /** #2894 S1: every raw operator-credential use on a device-admin route. */
     observeOperatorCredentialUse?: (
       record: OperatorCredentialUseRecord,
@@ -8874,6 +8889,59 @@ export function configureDevicePairingHostRoutes(
       return false;
     }
   };
+  const currentDeviceAccessApproval = (
+    context: Context,
+    request: Request,
+  ): DeviceAccessApproval | null => {
+    if (currentOperator(context, request))
+      return { kind: 'presented-credential' };
+    if (isAgentOriginatedRequest(request)) return null;
+    const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+    if (
+      principal?.kind !== 'credential' ||
+      principal.authority !== 'device-credential'
+    )
+      return null;
+    try {
+      if (
+        isRequestPrincipalCurrent(request) !== true ||
+        !pairing.deviceAccessAdministrator(principal.credential)
+      )
+        return null;
+      return { kind: 'device-access', credential: principal.credential };
+    } catch {
+      return null;
+    }
+  };
+  const auditDeviceAccess = (
+    request: Request,
+    approval: DeviceAccessApproval,
+    action: DeviceAccessAuditRecord['action'],
+    device: PairedDevice,
+  ): void => {
+    try {
+      options.auditDeviceAccess?.({
+        event: 'station.device_access.changed',
+        action,
+        actor:
+          approval.kind === 'device-access'
+            ? 'device-access'
+            : 'operator-credential',
+        ...(approval.kind === 'device-access'
+          ? {
+              actorDeviceId:
+                getRuntimeAuthenticatedRequestPrincipal(request)?.deviceId,
+            }
+          : {}),
+        deviceId: device.id,
+        timestamp: Date.now(),
+        ...(action === 'scope' ? { scope: device.scope } : {}),
+      });
+    } catch {
+      // A dropped observation cannot undo a committed access decision.
+    }
+  };
+
   if (options.operatorPasskeys) {
     app.route(
       '/api/pairing/operator-passkeys',
@@ -9275,12 +9343,17 @@ export function configureDevicePairingHostRoutes(
   app.delete('/api/pairing/devices/:deviceId', async (c) => {
     try {
       const request = c.req.raw;
-      if (!currentOperator(c, request)) {
+      const approval = currentDeviceAccessApproval(c, request);
+      if (!approval) {
         return c.json({ error: 'authentication_required' }, 401);
       }
       observeOperatorCredentialUse(c, 'DELETE /api/pairing/devices/:deviceId');
       const deviceId = c.req.param('deviceId');
-      const device = pairing.revokeDevice(deviceId, 'operator-credential');
+      const device = pairing.revokeDevice(
+        deviceId,
+        approval.kind === 'device-access' ? approval : 'operator-credential',
+      );
+      auditDeviceAccess(request, approval, 'revoke', device);
       options.connectedClientPresence?.disconnectDevice(deviceId);
       // #1796: revoking the device revokes its full access too.
       return c.json({
@@ -9297,7 +9370,7 @@ export function configureDevicePairingHostRoutes(
   /**
    * Change a paired device's access (station#3816).
    *
-   * Operator-only, exactly like revoking — the same authority check, because
+   * Operator or explicitly granted device administrator, like revoking, because
    * this is the same class of decision: what a device may do on this
    * Station. Until now the only available answer was "nothing", so narrowing
    * a device meant unpairing and re-pairing it, losing its identity and
@@ -9528,7 +9601,7 @@ export function configureDevicePairingHostRoutes(
   app.post('/api/pairing/devices/:deviceId/scope', async (c) => {
     try {
       const request = c.req.raw;
-      if (!currentOperator(c, request)) {
+      if (!currentDeviceAccessApproval(c, request)) {
         return c.json({ error: 'authentication_required' }, 401);
       }
       observeOperatorCredentialUse(
@@ -9551,7 +9624,8 @@ export function configureDevicePairingHostRoutes(
         typeof body?.expectedScope === 'string'
           ? body.expectedScope
           : undefined;
-      if (!currentOperator(c, request)) {
+      const approval = currentDeviceAccessApproval(c, request);
+      if (!approval) {
         return c.json({ error: 'authentication_required' }, 401);
       }
       const deviceId = c.req.param('deviceId');
@@ -9563,11 +9637,10 @@ export function configureDevicePairingHostRoutes(
       const device = pairing.setDeviceScope(
         deviceId,
         scope as PairingScope[],
-        // The operator credential IS the approval here; the service still
-        // checks the approval shape so no caller can reach it another way.
-        { kind: 'presented-credential' },
+        approval,
         expectedScope,
       );
+      auditDeviceAccess(request, approval, 'scope', device);
       // station#3816 (review HIGH): HTTP re-reads scope per request, but
       // terminal and voice authenticate ONCE at the handshake and never
       // again — so a device demoted to Read-only kept writing on a terminal
@@ -9617,19 +9690,20 @@ export function configureDevicePairingHostRoutes(
   app.delete('/api/pairing/devices/:deviceId/record', (c) => {
     try {
       const request = c.req.raw;
-      if (!currentOperator(c, request)) {
+      const approval = currentDeviceAccessApproval(c, request);
+      if (!approval) {
         return c.json({ error: 'authentication_required' }, 401);
       }
       observeOperatorCredentialUse(
         c,
         'DELETE /api/pairing/devices/:deviceId/record',
       );
-      return c.json(
-        pairing.removeRevokedDevice(
-          c.req.param('deviceId'),
-          'operator-credential',
-        ),
+      const device = pairing.removeRevokedDevice(
+        c.req.param('deviceId'),
+        approval.kind === 'device-access' ? approval : 'operator-credential',
       );
+      auditDeviceAccess(request, approval, 'remove', device);
+      return c.json(device);
     } catch (error) {
       return c.json(
         { error: pairingErrorCode(error) },

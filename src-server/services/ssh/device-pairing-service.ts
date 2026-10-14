@@ -29,6 +29,7 @@ import {
   type DevicePrincipalBinding,
   isPairingScopeSubset,
   PAIRING_SCOPE_ACCESS_APPROVE,
+  PAIRING_SCOPE_ACCESS_DEVICES,
   PAIRING_SCOPE_GRANT_PATHS,
   PAIRING_SCOPE_HOME_CONTROL,
   PAIRING_SCOPES,
@@ -393,7 +394,13 @@ export type PairingApproval =
   | { readonly kind: 'unauthenticated' }
   | RelayManagementApproval;
 
-type DeviceRevocationActor = 'operator-credential';
+export type DeviceAccessApproval =
+  | PairingApproval
+  | { readonly kind: 'device-access'; readonly credential: string };
+
+type DeviceRevocationActor =
+  | 'operator-credential'
+  | { readonly kind: 'device-access'; readonly credential: string };
 
 /**
  * Whether an exact Station-internal caller with no pairing credential may
@@ -819,7 +826,8 @@ function isValidRevocation(value: unknown, revokedAt: unknown): boolean {
   return (
     record.state === 'recorded' &&
     typeof revokedAt === 'number' &&
-    ((record.actor === 'operator-credential' &&
+    (((record.actor === 'operator-credential' ||
+      record.actor === 'device-access') &&
       record.reason === 'owner-request') ||
       (record.actor === 'same-client-replacement' &&
         record.reason === 'same-client-replacement')) &&
@@ -1252,7 +1260,8 @@ export class DevicePairingService {
     if (
       parsedScope === null ||
       (input.scope !== undefined &&
-        parsedScope.includes(PAIRING_SCOPE_HOME_CONTROL))
+        (parsedScope.includes(PAIRING_SCOPE_HOME_CONTROL) ||
+          parsedScope.includes(PAIRING_SCOPE_ACCESS_DEVICES)))
     ) {
       throw new DevicePairingError('invalid_request');
     }
@@ -2197,6 +2206,16 @@ export class DevicePairingService {
     return device ? this.#capScope(device) : undefined;
   }
 
+  /** Current, explicit device administration; never an agent or personal token. */
+  deviceAccessAdministrator(candidate: string): PairedDevice | null {
+    const device = this.identifyDevice(candidate);
+    return device?.kind === 'device' &&
+      device.credentialKind !== 'personal-token' &&
+      pairingScopeIncludes(this.#capScope(device), PAIRING_SCOPE_ACCESS_DEVICES)
+      ? device
+      : null;
+  }
+
   /** #3557: a live device's effective scope, by id (device lists). */
   effectiveScopeOfDevice(deviceId: string): string | undefined {
     const device = this.#registry.devices.find((item) => item.id === deviceId);
@@ -2273,6 +2292,11 @@ export class DevicePairingService {
   }
 
   revokeDevice(deviceId: string, actor: DeviceRevocationActor): PairedDevice {
+    if (
+      actor !== 'operator-credential' &&
+      !this.deviceAccessAdministrator(actor.credential)
+    )
+      throw new DevicePairingError('approval_requires_operator');
     const nextRegistry = cloneRegistry(this.#registry);
     const device = nextRegistry.devices.find((item) => item.id === deviceId);
     if (!device) throw new DevicePairingError('device_not_found');
@@ -2284,7 +2308,7 @@ export class DevicePairingService {
       cascadeCredentialAliasRevocation(device, revokedAt);
       device.revocation = {
         state: 'recorded',
-        actor,
+        actor: actor === 'operator-credential' ? actor : 'device-access',
         reason: 'owner-request',
       };
       // Revocation explicitly severs push, not just credential lookup — a
@@ -2444,7 +2468,10 @@ export class DevicePairingService {
     deviceId: string,
     actor: DeviceRevocationActor,
   ): PairedDevice {
-    if (actor !== 'operator-credential') {
+    if (
+      actor !== 'operator-credential' &&
+      !this.deviceAccessAdministrator(actor.credential)
+    ) {
       throw new DevicePairingError('approval_requires_operator');
     }
     const device = this.#registry.devices.find((item) => item.id === deviceId);
@@ -2503,13 +2530,15 @@ export class DevicePairingService {
    *    the contracts warn must not grow — a promotion path for it was never
    *    intended to exist, so this refuses rather than quietly offering one.
    *
+   * An access:devices approval rechecks its credential and group ceiling.
+   * Only the operator may grant or remove access:devices itself.
    * The scope is re-serialised through the vocabulary order so the stored
    * string stays canonical rather than recording the caller's spelling.
    */
   setDeviceScope(
     deviceId: string,
     scope: readonly PairingScope[],
-    approval: PairingApproval,
+    approval: DeviceAccessApproval,
     /**
      * The scope the caller believes the device currently has (archive#3816
      * review). A scope edit submits a COMPLETE replacement, so without this
@@ -2523,7 +2552,11 @@ export class DevicePairingService {
   ): PairedDevice {
     if (
       approval.kind !== 'presented-credential' &&
-      approval.kind !== 'local-grant'
+      approval.kind !== 'local-grant' &&
+      !(
+        approval.kind === 'device-access' &&
+        this.deviceAccessAdministrator(approval.credential)
+      )
     ) {
       throw new DevicePairingError('approval_requires_operator');
     }
@@ -2543,6 +2576,18 @@ export class DevicePairingService {
       throw new DevicePairingError('device_not_found');
     if (device.revokedAt !== null) {
       throw new DevicePairingError('device_revoked');
+    }
+    if (
+      scope.includes(PAIRING_SCOPE_ACCESS_DEVICES) &&
+      device.kind !== 'device'
+    )
+      throw new DevicePairingError('scope_not_grantable');
+    if (
+      approval.kind === 'device-access' &&
+      pairingScopeIncludes(device.scope, PAIRING_SCOPE_ACCESS_DEVICES) !==
+        scope.includes(PAIRING_SCOPE_ACCESS_DEVICES)
+    ) {
+      throw new DevicePairingError('approval_requires_operator');
     }
     if (expectedScope !== undefined && device.scope !== expectedScope) {
       throw new DevicePairingError('scope_changed');

@@ -23,6 +23,7 @@ describe('Station group ceilings (#3557)', () => {
     expect([...STATION_GROUP_CEILINGS.admin].sort()).toEqual(
       [
         'access:approve',
+        'access:devices',
         'approval:full-access',
         'coding:exec',
         'consent:decide',
