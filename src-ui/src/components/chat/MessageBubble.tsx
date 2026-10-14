@@ -411,10 +411,13 @@ function MessageBubbleComponent({
         <CopyGlyph />
       </button>
     ) : null;
+  // Gated on exactly what the menu can list (TurnActionsMenu's
+  // UserMessageActionsMenu): a fork needs its handler, so a fork source alone
+  // would draw a ⋯ that opens an empty menu.
   const userMessageMenu =
     msg.role === 'user' &&
     textContent &&
-    (userForkSource || onNewChatFromMessage) ? (
+    ((userForkSource && onForkFromTurn) || onNewChatFromMessage) ? (
       <LazyBoundary
         load={loadUserMessageActionsMenu}
         componentProps={{
@@ -767,9 +770,11 @@ function MessageBubbleComponent({
       ? [traceLink, userMessageMenu]
       : [metadataControls, hasTurnFooter ? footerActions : null];
   const sheetAfter = msg.role === 'user' ? null : metadataAfter;
-  const sheetHasContent = [...sheetStart, ...sheetEnd, sheetAfter].some(
-    (item) => item !== null,
-  );
+  // Only a user row's slots can all be empty; an answer's always carry its
+  // identity and footer fragments, so it keeps its ⋯ as before.
+  const sheetHasContent =
+    msg.role !== 'user' ||
+    [...sheetStart, ...sheetEnd, sheetAfter].some((item) => item !== null);
   const details =
     isMobile && sheetHasContent ? (
       <MessageDetails

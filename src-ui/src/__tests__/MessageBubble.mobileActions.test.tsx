@@ -17,6 +17,8 @@ import {
 } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import type { ForkTurnSource } from '../components/chat/fork-turn-source';
+import { precedingForkSource } from '../components/chat/fork-turn-source';
 import type { ChatMessage } from '../types';
 
 const { mobile } = vi.hoisted(() => ({ mobile: { current: true } }));
@@ -83,7 +85,11 @@ const envelope = {
 
 function renderRow(
   msg: ChatMessage,
-  extra: { onNewChatFromMessage?: (text: string) => void } = {},
+  extra: {
+    onNewChatFromMessage?: (text: string) => void;
+    userForkSource?: ForkTurnSource | null;
+    onForkFromTurn?: (source: ForkTurnSource) => void;
+  } = {},
 ) {
   const onCopy = vi.fn();
   render(
@@ -427,5 +433,78 @@ describe('MessageBubble phone copy and details actions', () => {
     );
     const sheet = screen.getByRole('dialog', { name: 'Your message actions' });
     expect(sheet.querySelector('.message__task-input-action')).not.toBeNull();
+  });
+
+  describe('a user message with a fork source but no fork handler', () => {
+    const question = { role: 'user' as const, content: 'Fork me?' };
+    // A fork source is the completed answer BEFORE this message.
+    const forkSource = precedingForkSource(
+      [
+        { role: 'user', content: 'First.' },
+        {
+          role: 'assistant',
+          content: 'Done',
+          turnId: 'turn-ok',
+          answerEligible: true,
+          agentSlug: 'agent',
+          sessionId: 'thread-1',
+        },
+        question,
+      ] as ChatMessage[],
+      2,
+    );
+
+    it('has a fork source to offer (fixture guard)', () => {
+      expect(forkSource).toBeTruthy();
+    });
+
+    it('draws no desktop ⋯ whose menu would be empty', async () => {
+      mobile.current = false;
+      try {
+        renderRow(question, { userForkSource: forkSource });
+        expect(
+          screen.getByRole('button', { name: 'Copy your message' }),
+        ).toBeTruthy();
+        expect(
+          screen.queryByRole('button', { name: 'More message actions' }),
+        ).toBeNull();
+        cleanup();
+        // Positive control: the same row with the handler offers the menu.
+        renderRow(question, {
+          userForkSource: forkSource,
+          onForkFromTurn: () => {},
+        });
+        expect(
+          await screen.findByRole('button', { name: 'More message actions' }),
+        ).toBeTruthy();
+      } finally {
+        mobile.current = true;
+      }
+    });
+
+    it('draws no phone ⋯ for a sheet that would hold only an empty menu', () => {
+      mobile.current = true;
+      renderRow(question, { userForkSource: forkSource });
+      expect(
+        screen.queryByRole('button', { name: 'Your message actions' }),
+      ).toBeNull();
+    });
+  });
+
+  it('keeps the Task pin on a desktop user message', () => {
+    mobile.current = false;
+    try {
+      renderRow({
+        role: 'user',
+        content: 'Pin me on desktop.',
+        sourceEventId: 'event-1',
+        sessionId: 'thread-1',
+        turnId: 'turn-1',
+      });
+      const pin = document.querySelector('.message__task-input-action');
+      expect(pin?.closest('.message.user')).not.toBeNull();
+    } finally {
+      mobile.current = true;
+    }
   });
 });
