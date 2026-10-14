@@ -132,7 +132,12 @@ export function answerOrchestrationRequest(
         );
   if (pendingAnswers.size >= 256) {
     for (const [settledKey, entry] of pendingAnswers) {
-      if (entry.state.phase !== 'already-settled') continue;
+      // Confirmed receipts may age out; uncertain decisions must stay locked.
+      if (
+        entry.state.phase !== 'already-settled' &&
+        entry.state.phase !== 'sent'
+      )
+        continue;
       pendingAnswers.delete(settledKey);
       if (pendingAnswers.size < 256) break;
     }

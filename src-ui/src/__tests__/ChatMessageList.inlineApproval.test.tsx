@@ -235,12 +235,30 @@ describe('#2316 inline approval card', () => {
   });
 
   test('remounting an accepted decision keeps it locked until the request resolves', async () => {
-    const calls = stubFetch(() => Response.json({ success: true, data: {} }));
+    const calls = stubFetch((call) =>
+      Response.json({
+        success: true,
+        data:
+          call.method === 'POST'
+            ? {}
+            : {
+                state: 'resolved',
+                reference: {
+                  threadId: 'claude-child-b',
+                  requestId: 'req-claude-b',
+                  requestEventId: 'evt-3',
+                },
+                message: 'Answered elsewhere.',
+              },
+      }),
+    );
     const first = renderCard();
     fireEvent.click(await screen.findByRole('button', { name: 'Allow Once' }));
     await screen.findByText('Decision sent. Waiting for the tool to continue.');
     first.unmount();
-    const second = renderCard();
+    const second = renderCard(
+      chatSession({ answeredApprovals: ['req-claude-b'] }),
+    );
     expect(
       (await screen.findByRole('button', { name: 'Allow Once' })).hasAttribute(
         'disabled',
@@ -251,6 +269,15 @@ describe('#2316 inline approval card', () => {
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
     expect(calls.filter((call) => call.method === 'POST')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Check status' }));
+    await screen.findByText('This request is no longer open.');
+    expect(calls.filter((call) => call.method === 'GET')).toEqual([
+      {
+        url: `${API_BASE}/api/orchestration/sessions/claude-child-b/requests/req-claude-b?eventId=evt-3`,
+        method: 'GET',
+        body: null,
+      },
+    ]);
     windowEvents.current = [
       ...windowEvents.current,
       runtimeEvent({
