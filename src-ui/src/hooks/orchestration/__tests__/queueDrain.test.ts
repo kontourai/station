@@ -224,6 +224,45 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     );
   });
 
+  test("a queued message discarded in another window is not sent by this window's drain", async () => {
+    const queue = await import('../../../lib/outboundQueue');
+    let stored: unknown;
+    queue._setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, next) => {
+        stored = next;
+      },
+      updateItem: async (_key, updater) => {
+        stored = updater(stored);
+      },
+    });
+    await queue.outboundDispatch.syncHeld([
+      {
+        clientTurnId: 'queue-key-gone',
+        sessionId: threadId,
+        agentSlug: 'claude',
+        content: 'discarded elsewhere',
+      },
+    ]);
+    await queue.outboundDispatch.discard('queue-key-gone');
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['discarded elsewhere'],
+      queuedMessageMetadata: [{ id: 'queue-key-gone', mode: 'queue' }],
+    });
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.waitFor(() =>
+      expect(
+        activeChatsStore.getSnapshot()[threadId]?.ephemeralMessages?.at(-1)
+          ?.content,
+      ).toMatch(/discarded/),
+    );
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[threadId]?.queuedMessages).toEqual(
+      [],
+    );
+  });
+
   test('a durable write that lands after the drain sent without it is let go, never left to be resent', async () => {
     const queue = await import('../../../lib/outboundQueue');
     let stored: unknown;

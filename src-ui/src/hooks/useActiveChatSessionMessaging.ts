@@ -736,8 +736,10 @@ export function useSendMessage(
           if (!live && timedOut)
             void durable.then((late) => late.refused()).catch(() => undefined);
         } catch (error) {
+          const refusal = (error as { name?: unknown })?.name;
           if (
-            (error as { name?: unknown })?.name === 'OutboundRowInFlightError'
+            refusal === 'OutboundRowInFlightError' ||
+            refusal === 'OutboundKeyRetiredError'
           ) {
             // This exact message is already on its way, or may already have
             // reached the agent: its outbox row is where it is settled.
@@ -762,7 +764,9 @@ export function useSendMessage(
             addEphemeralMessage(sessionId, {
               role: 'system',
               content:
-                'This message is already on its way or may have reached the agent, so it was not sent again. Check it in the outbox list.',
+                refusal === 'OutboundKeyRetiredError'
+                  ? `${(error as Error).message} It was not sent again.`
+                  : 'This message is already on its way or may have reached the agent, so it was not sent again. Check it in the outbox list.',
             });
             // Not "not sent": the message may well arrive. A caller told it
             // was not sent would offer to send it again under a new key.

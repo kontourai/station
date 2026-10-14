@@ -633,12 +633,14 @@ export function drainQueuedMessageOnTurnCompleted(
           )
           .catch(() => undefined);
     } catch (error) {
-      const { OutboundRowInFlightError } = await import(
-        '../../lib/outboundQueue'
-      ).catch(() => ({ OutboundRowInFlightError: undefined }));
+      const refusals = await import('../../lib/outboundQueue').catch(
+        () => undefined,
+      );
+      const retired =
+        refusals && error instanceof refusals.OutboundKeyRetiredError;
       if (
-        OutboundRowInFlightError &&
-        error instanceof OutboundRowInFlightError
+        refusals &&
+        (error instanceof refusals.OutboundRowInFlightError || retired)
       ) {
         // The outbox already holds this message on its way, or as possibly
         // started: sending it again from here would bypass that record. It
@@ -656,8 +658,9 @@ export function drainQueuedMessageOnTurnCompleted(
         });
         activeChatsStore.addEphemeralMessage(threadId, {
           role: 'system',
-          content:
-            'This queued message is already on its way or may have reached the agent. It was not sent again; check it in the outbox list.',
+          content: retired
+            ? `${(error as Error).message} It was not sent again.`
+            : 'This queued message is already on its way or may have reached the agent. It was not sent again; check it in the outbox list.',
         });
         // It left the queue: the next one may go.
         dispatchAccepted = true;

@@ -492,4 +492,72 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
       ),
     ).toMatchObject({ content: 'held' });
   });
+
+  it("a held copy discarded in any window is never re-created by its holder's queue, nor sent", async () => {
+    const queue = await freshRenderer();
+    await queue.outboundDispatch.syncHeld([
+      { ...intent, clientTurnId: 'discard-me', content: 'not wanted' },
+    ]);
+    // Another window's Discard (the outbox is shared; the key is what counts).
+    await queue.outboundDispatch.discard('discard-me');
+    await queue.outboundDispatch.syncHeld([
+      { ...intent, clientTurnId: 'discard-me', content: 'not wanted' },
+    ]);
+    expect(await queue.outboundDispatch.snapshot()).toEqual([]);
+    await expect(
+      queue.outboundDispatch.beginLive({
+        ...intent,
+        clientTurnId: 'discard-me',
+      }),
+    ).rejects.toMatchObject({
+      name: 'OutboundKeyRetiredError',
+      reason: 'discarded',
+    });
+  });
+
+  it('a delivered message is never held again (no ghost copy listed for Send)', async () => {
+    const queue = await freshRenderer();
+    await queue.outboundDispatch.syncHeld([
+      { ...intent, clientTurnId: 'delivered', content: 'sent from elsewhere' },
+    ]);
+    await queue.outboundDispatch.sendHeld('delivered');
+    const transport = vi.fn(async () => ({
+      kind: 'accepted' as const,
+      providerTurnId: 'p-delivered',
+    }));
+    await queue.outboundDispatch.flush(transport);
+    await queue.outboundDispatch.completeAcceptedTurn('chat-1', 'p-delivered');
+    expect(await queue.outboundDispatch.snapshot()).toEqual([]);
+    // The holder's queue still lists it until its turn ends; its copy is
+    // not re-created, and its drain cannot send it.
+    await queue.outboundDispatch.syncHeld([
+      { ...intent, clientTurnId: 'delivered', content: 'sent from elsewhere' },
+    ]);
+    expect(await queue.outboundDispatch.snapshot()).toEqual([]);
+    await expect(
+      queue.outboundDispatch.beginLive({
+        ...intent,
+        clientTurnId: 'delivered',
+      }),
+    ).rejects.toMatchObject({ reason: 'accepted' });
+    // Same for a composer send Station accepted.
+    const live = await queue.outboundDispatch.beginLive({
+      ...intent,
+      clientTurnId: 'live-delivered',
+    });
+    await live.accepted();
+    await queue.outboundDispatch.syncHeld([
+      { ...intent, clientTurnId: 'live-delivered', content: 'x' },
+    ]);
+    expect(await queue.outboundDispatch.snapshot()).toEqual([]);
+  });
+
+  it("knows its own held copies before it lists anything, so a window never lists its own queue's message as held elsewhere", async () => {
+    const queue = await freshRenderer();
+    await queue.outboundDispatch.syncHeld([
+      { ...intent, clientTurnId: 'mine', content: 'in my queue' },
+    ]);
+    queue._forgetKnownBootId();
+    expect((await queue.outboundDispatch.open())[0]?.heldHere).toBe(true);
+  });
 });

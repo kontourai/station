@@ -201,7 +201,7 @@ export function OutboundQueuedMessages({
               {turn.heldElsewhere ? (
                 <span className="queued-messages__label">
                   Held for after a reply, in another window or one that closed.
-                  Not sent yet.{' '}
+                  Not sent yet; messages after it are not held back by it.{' '}
                   <button
                     type="button"
                     onClick={() =>

@@ -81,9 +81,15 @@ export function projectOutboundQueueEntries(
         ...(first.projectSlug ? { projectSlug: first.projectSlug } : {}),
       });
     }
+    // A copy held by another or a closed window is listed first: it was
+    // written before anything queued after it, and it waits on the user.
+    const ordered = [
+      ...queued.filter((entry) => entry.heldBy),
+      ...queued.filter((entry) => !entry.heldBy),
+    ];
     activeChatsStore.updateChat(sessionId, {
       status: 'queued',
-      outboundQueuedTurns: queued.map(
+      outboundQueuedTurns: ordered.map(
         ({
           clientTurnId,
           content,

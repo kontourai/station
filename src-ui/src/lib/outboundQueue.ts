@@ -382,6 +382,52 @@ interface OutboundQueueState {
   terminalEvidence: TerminalEvidence[];
   /** Bounded exact tombstones ignore a replayed terminal after completion. */
   completedTerminals: TerminalEvidence[];
+  /**
+   * Keys whose message is finished with: discarded by the user, or accepted
+   * by Station. A held copy is never re-created for one, and no send of one
+   * is started again, in any window. Bounded, newest kept.
+   */
+  retired?: RetiredKey[];
+}
+
+interface RetiredKey {
+  clientTurnId: string;
+  reason: 'discarded' | 'accepted';
+  at: number;
+}
+
+const RETIRED_KEYS_MAX = 512;
+
+function isRetiredKey(value: unknown): value is RetiredKey {
+  if (typeof value !== 'object' || value === null) return false;
+  const key = value as Partial<RetiredKey>;
+  return (
+    typeof key.clientTurnId === 'string' &&
+    (key.reason === 'discarded' || key.reason === 'accepted') &&
+    typeof key.at === 'number'
+  );
+}
+
+function withRetired(
+  state: OutboundQueueState,
+  clientTurnId: string,
+  reason: RetiredKey['reason'],
+): OutboundQueueState {
+  const retired = [
+    ...(state.retired ?? []).filter(
+      (entry) => entry.clientTurnId !== clientTurnId,
+    ),
+    { clientTurnId, reason, at: Date.now() },
+  ].slice(-RETIRED_KEYS_MAX);
+  return { ...state, retired };
+}
+
+function retiredReason(
+  state: OutboundQueueState,
+  clientTurnId: string,
+): RetiredKey['reason'] | undefined {
+  return state.retired?.find((entry) => entry.clientTurnId === clientTurnId)
+    ?.reason;
 }
 
 /** Legacy array reads remain supported; all writes use this private state. */
@@ -592,7 +638,9 @@ function queueState(stored: unknown): OutboundQueueState {
     if (
       !state.turns.every(isStoredTurn) ||
       !state.terminalEvidence.every(isTerminalEvidence) ||
-      !(state.completedTerminals ?? []).every(isTerminalEvidence)
+      !(state.completedTerminals ?? []).every(isTerminalEvidence) ||
+      (state.retired !== undefined &&
+        (!Array.isArray(state.retired) || !state.retired.every(isRetiredKey)))
     ) {
       throw new OutboundQueueStateError();
     }
@@ -601,6 +649,7 @@ function queueState(stored: unknown): OutboundQueueState {
       turns: state.turns.map(normalizeEntry),
       terminalEvidence: state.terminalEvidence,
       completedTerminals: state.completedTerminals ?? [],
+      ...(state.retired ? { retired: state.retired } : {}),
     };
   }
   throw new OutboundQueueStateError();
@@ -1091,7 +1140,19 @@ async function settle(
         }
       }
       return {
-        state: { ...state, turns: next, terminalEvidence, completedTerminals },
+        state:
+          status === 'accepted'
+            ? withRetired(
+                {
+                  ...state,
+                  turns: next,
+                  terminalEvidence,
+                  completedTerminals,
+                },
+                claimed.clientTurnId,
+                'accepted',
+              )
+            : { ...state, turns: next, terminalEvidence, completedTerminals },
         result: 'applied' as const,
         changed: true,
       };
@@ -1324,24 +1385,49 @@ async function enqueue(
 }
 
 async function discard(clientTurnId: string): Promise<void> {
-  await mutate((entries) => {
-    const entry = entries.find(
+  await mutateState((state) => {
+    const entry = state.turns.find(
       (candidate) => candidate.clientTurnId === clientTurnId,
     );
-    if (!entry) return { entries, result: undefined, changed: false };
+    if (!entry) return { state, result: undefined, changed: false };
     if (protectedEvidence(entry)) {
       throw new Error(
         'Queued turn may have started and cannot be withdrawn. Inspect the session instead.',
       );
     }
+    // Discarded for good, in every window: a queue still holding it (another
+    // window's) neither re-creates its copy nor sends it.
     return {
-      entries: entries.filter(
-        (candidate) => candidate.clientTurnId !== clientTurnId,
+      state: withRetired(
+        {
+          ...state,
+          turns: state.turns.filter(
+            (candidate) => candidate.clientTurnId !== clientTurnId,
+          ),
+        },
+        clientTurnId,
+        'discarded',
       ),
       result: undefined,
       changed: true,
     };
   });
+}
+
+/** Records that a key's message is finished with (see `retired`). */
+async function retireKey(
+  clientTurnId: string,
+  reason: RetiredKey['reason'],
+): Promise<void> {
+  try {
+    await mutateState((state) => ({
+      state: withRetired(state, clientTurnId, reason),
+      result: undefined,
+      changed: true,
+    }));
+  } catch {
+    // Best effort: the send itself is settled; only the guard is missing.
+  }
 }
 
 async function edit(
@@ -1695,6 +1781,21 @@ export class OutboundRowInFlightError extends Error {
   }
 }
 
+/**
+ * `beginLive` refused: this key's message was discarded or already accepted
+ * (in this window or another). It is never sent again.
+ */
+export class OutboundKeyRetiredError extends Error {
+  constructor(readonly reason: 'discarded' | 'accepted') {
+    super(
+      reason === 'discarded'
+        ? 'This message was discarded.'
+        : 'This message was already delivered.',
+    );
+    this.name = 'OutboundKeyRetiredError';
+  }
+}
+
 async function beginLive(
   intent: OutboundDispatchIntent,
 ): Promise<LiveOutboundDispatch> {
@@ -1709,7 +1810,10 @@ async function beginLive(
   liveOwned.add(clientTurnId);
   let claimed: QueuedOutboundTurn;
   try {
-    claimed = await mutate((entries) => {
+    claimed = await mutateState((state) => {
+      const retired = retiredReason(state, clientTurnId);
+      if (retired) throw new OutboundKeyRetiredError(retired);
+      const entries = prune(state.turns, Date.now());
       const existing = entries.find(
         (entry) => entry.clientTurnId === clientTurnId,
       );
@@ -1741,10 +1845,15 @@ async function beginLive(
       const retained = existing
         ? entries.filter((entry) => entry !== existing)
         : admitOne(entries);
-      return { entries: [...retained, next], result: next, changed: true };
+      return {
+        state: { ...state, turns: [...retained, next] },
+        result: next,
+        changed: true,
+      };
     });
   } catch (error) {
-    liveOwned.delete(clientTurnId);
+    // Only when no attempt of this renderer holds the key's claim.
+    if (!liveClaimOf.has(clientTurnId)) liveOwned.delete(clientTurnId);
     throw error;
   }
   liveClaimOf.set(clientTurnId, claimed.claimedAt!);
@@ -1776,6 +1885,7 @@ async function beginLive(
     clientTurnId,
     accepted: async () => {
       await transition(() => undefined);
+      await retireKey(clientTurnId, 'accepted');
       releaseLive();
     },
     refused: async () => {
@@ -1998,7 +2108,11 @@ async function syncHeld(intents: readonly HeldOutboundIntent[]): Promise<void> {
   const wanted = new Map(
     intents.map((intent) => [intent.clientTurnId, intent]),
   );
-  await mutate((entries) => {
+  await mutateState((state) => {
+    // A finished key (discarded or accepted) is never held again.
+    for (const key of wanted.keys())
+      if (retiredReason(state, key)) wanted.delete(key);
+    const entries = prune(state.turns, Date.now());
     let changed = false;
     const next: QueuedOutboundTurn[] = [];
     for (const entry of entries) {
@@ -2060,7 +2174,11 @@ async function syncHeld(intents: readonly HeldOutboundIntent[]): Promise<void> {
       });
       changed = true;
     }
-    return { entries: retained, result: undefined, changed };
+    return {
+      state: { ...state, turns: retained },
+      result: undefined,
+      changed,
+    };
   });
 }
 
@@ -2150,4 +2268,9 @@ export function _resetOutboundQueueStorage(): void {
   unavailableClaims.clear();
   liveOwned.clear();
   liveClaimOf.clear();
+}
+
+/** Test-only: as if this renderer had not yet learned its own boot id. */
+export function _forgetKnownBootId(): void {
+  knownBootId = undefined;
 }

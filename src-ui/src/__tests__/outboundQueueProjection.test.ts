@@ -95,6 +95,19 @@ describe('outboundQueueProjection (station#1224 restart hydration)', () => {
         heldElsewhere: true,
       }),
     ]);
+    // Listed first, ahead of messages written after it.
+    projectOutboundQueueEntries([
+      turn('later', 'session-held', 'written later'),
+      {
+        ...turn('held-away', 'session-held', 'held elsewhere'),
+        heldBy: { bootId: 'closed-window', heldAt: 1 },
+      },
+    ]);
+    expect(
+      activeChatsStore
+        .getSnapshot()
+        ['session-held']?.outboundQueuedTurns?.map((row) => row.clientTurnId),
+    ).toEqual(['held-away', 'later']);
   });
 
   it('restores the Project a chat was sending in when only its row survived', () => {
