@@ -282,6 +282,9 @@ function ChatMessageListComponent({
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const visibleAnchorRef = useRef<ChatScrollAnchor | null>(null);
   const isUserScrolledUpRef = useRef(false);
+  // The transcript's last known position, ours or the reader's: a reader
+  // scroll below it is the reader moving up.
+  const lastKnownScrollTopRef = useRef<number | null>(null);
   const lastProgrammaticScrollRef = useRef<{
     top: number;
     at: number;
@@ -345,6 +348,7 @@ function ChatMessageListComponent({
       top: el.scrollTop,
       at: performance.now(),
     };
+    lastKnownScrollTopRef.current = el.scrollTop;
     noteTranscriptProgrammaticScroll(el.scrollTop);
   }, []);
   const writeProgrammaticScroll = useCallback(
@@ -863,7 +867,16 @@ function ChatMessageListComponent({
     // against the glide is theirs and ends it.
     if (scrollAnimationRef.current) {
       const glide = lastProgrammaticScrollRef.current;
-      if (!glide || target.scrollTop >= glide.top - PROGRAMMATIC_SCROLL_ECHO_PX)
+      const atEnd =
+        target.scrollTop >=
+        target.scrollHeight - target.clientHeight - PROGRAMMATIC_SCROLL_ECHO_PX;
+      // Content that shrank under the glide clamps it to the new end: not
+      // the reader.
+      if (
+        !glide ||
+        atEnd ||
+        target.scrollTop >= glide.top - PROGRAMMATIC_SCROLL_ECHO_PX
+      )
         return;
       scrollAnimationRef.current.cancel();
     }
@@ -899,6 +912,8 @@ function ChatMessageListComponent({
     // the height comes back within the same frame — no resize is ever
     // observed. Without this the newest message stayed that many pixels short.
     const acting = readerActing();
+    const previousTop = lastKnownScrollTopRef.current;
+    lastKnownScrollTopRef.current = target.scrollTop;
     // Momentum keeps scrolling after the finger lifts; while it does, the
     // reader's window stays open.
     if (acting)
@@ -929,7 +944,12 @@ function ChatMessageListComponent({
     // Resize animations can emit a scroll event between two ResizeObserver
     // frames. Treat a small transient gap as still pinned so a dock/keyboard
     // transition cannot be mistaken for deliberate reader navigation.
-    const isAtBottom = shortBy <= PINNED_TOLERANCE_PX;
+    // The tolerance absorbs layout transitions, not the reader: a reader who
+    // is moving up has left the end however few pixels they have moved, or a
+    // streaming pin would undo a slow drag on every token.
+    const readerMovingUp =
+      acting && previousTop !== null && target.scrollTop < previousTop - 0.5;
+    const isAtBottom = shortBy <= PINNED_TOLERANCE_PX && !readerMovingUp;
     isUserScrolledUpRef.current = !isAtBottom;
     setIsUserScrolledUp(!isAtBottom);
     visibleAnchorRef.current = isAtBottom
@@ -947,10 +967,20 @@ function ChatMessageListComponent({
       if (event.type === 'touchstart') {
         input.touching = true;
         input.interactedUntil = now + READER_INTERACTION_GRACE_MS;
+        // A touch's events stay with the node it began on. A virtualized row
+        // can leave the document mid-drag, and its touchend then never
+        // reaches the window: listen on the node itself as well.
+        const origin = event.target as EventTarget;
+        const release = (end: Event) => releaseTouchRef.current(end);
+        origin.addEventListener('touchend', release, { once: true });
+        origin.addEventListener('touchcancel', release, { once: true });
       } else if (event.type === 'pointerdown') {
         // A touch is tracked by its touch events: the browser cancels the
         // pointer as soon as the finger starts panning.
-        if ((event as React.PointerEvent).pointerType !== 'touch')
+        const pointer = event as React.PointerEvent;
+        // A secondary press opens a context menu that often swallows the
+        // release.
+        if (pointer.pointerType !== 'touch' && pointer.button === 0)
           input.pressing = true;
         input.interactedUntil = now + READER_INTERACTION_GRACE_MS;
       } else {
@@ -964,10 +994,13 @@ function ChatMessageListComponent({
     [endOlderRestoreSuppression, cancelScrollToBottom],
   );
   // A press can end outside the transcript, so its end is observed globally.
+  const releaseTouchRef = useRef<(event: Event) => void>(() => {});
   useEffect(() => {
-    const releaseTouch = () => {
+    const releaseTouch = (event: Event) => {
       const input = readerInputRef.current;
       if (!input.touching) return;
+      // The reader is still touching while any finger is down.
+      if ((event as TouchEvent).touches?.length) return;
       input.touching = false;
       input.until = Math.max(
         input.until,
@@ -984,17 +1017,28 @@ function ChatMessageListComponent({
         performance.now() + READER_INPUT_GRACE_MS,
       );
     };
+    // Leaving the page or opening a context menu can swallow a release.
+    const releaseAll = () => {
+      const input = readerInputRef.current;
+      input.touching = false;
+      input.pressing = false;
+    };
+    releaseTouchRef.current = releaseTouch;
     const listeners: Array<[string, (event: Event) => void]> = [
       ['touchend', releaseTouch],
       ['touchcancel', releaseTouch],
       ['pointerup', releasePress],
       ['pointercancel', releasePress],
+      ['contextmenu', releaseAll],
+      ['blur', releaseAll],
     ];
     for (const [type, listener] of listeners)
       window.addEventListener(type, listener, true);
+    document.addEventListener('visibilitychange', releaseAll);
     return () => {
       for (const [type, listener] of listeners)
         window.removeEventListener(type, listener, true);
+      document.removeEventListener('visibilitychange', releaseAll);
     };
   }, []);
 

@@ -184,12 +184,18 @@ export function TranscriptVirtualizer<Row extends VirtualTranscriptRow>({
     instance,
   ) => {
     const anchor = virtualAnchorRef.current;
-    // TanStack's own fold: the cached offset plus adjustments already queued
-    // in this batch of measurements.
-    if (followTail)
-      return (
-        item.start < (instance.scrollOffset ?? 0) + instance.scrollAdjustments
-      );
+    // TanStack's own default rule (virtual-core 3.17.11): the fold is the
+    // cached offset plus adjustments already queued in this batch; a first
+    // measurement compensates any row starting above it, a re-measurement
+    // only a row entirely above it and not while scrolling backward (a
+    // streaming row spanning the fold grows below the reader).
+    if (followTail) {
+      const fold = (instance.scrollOffset ?? 0) + instance.scrollAdjustments;
+      return instance.itemSizeCache.has(item.key)
+        ? item.start + item.size <= fold &&
+            instance.scrollDirection !== 'backward'
+        : item.start < fold;
+    }
     return anchor ? item.index < anchor.index : false;
   };
 

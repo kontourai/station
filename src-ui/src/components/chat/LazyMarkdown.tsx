@@ -57,14 +57,16 @@ function LazyMarkdownComponent({
   // warm mount renders parsed output on its first commit with no extra pass.
   // act() flushes effects before assertions, so unit suites cannot observe
   // the cold-mount frame either way.
-  const [rendererEnabled, setRendererEnabled] = useState(
-    rendererModule !== null,
-  );
+  // Decided once, at mount: an instance that mounted cold keeps its lazy
+  // element, since switching element type later would remount its subtree
+  // (code highlighting and the incremental parse would start over).
+  const [warmModule] = useState(() => rendererModule);
+  const [rendererEnabled, setRendererEnabled] = useState(warmModule !== null);
   useLayoutEffect(() => setRendererEnabled(true), []);
   // Loaded already (preloaded, or an earlier row): render it directly, so the
   // first commit is the parsed output with no suspension in between.
-  if (rendererModule) {
-    const Renderer = rendererModule.default;
+  if (warmModule) {
+    const Renderer = warmModule.default;
     return <Renderer {...options}>{children}</Renderer>;
   }
   if (!rendererEnabled) return loadingProjection;

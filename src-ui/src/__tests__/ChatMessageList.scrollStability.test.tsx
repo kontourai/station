@@ -284,6 +284,22 @@ describe('Scroll to bottom', () => {
     expect(scrollToBottomButton()).not.toBeNull();
   });
 
+  test('content that shrinks under the glide clamps it to the new end without ending it', () => {
+    stubMotion(false);
+    const { scroller, geometry } = renderList();
+    readerScrollsTo(scroller, 1_300);
+    advanceFrames(1_000);
+    fireEvent.click(scrollToBottomButton()!);
+    advanceFrames(64);
+    // A streaming row is replaced by a shorter saved one: the browser clamps.
+    geometry.scrollHeight = 1_600;
+    scroller.scrollTop = 1_200;
+    fireEvent.scroll(scroller);
+    advanceFrames(500);
+    expect(scroller.scrollTop).toBe(1_600);
+    expect(scrollToBottomButton()).toBeNull();
+  });
+
   test('reduced motion lands at once', () => {
     stubMotion(true);
     const { scroller } = renderList();
@@ -367,18 +383,86 @@ describe('a finger on the transcript', () => {
     }
   });
 
-  test('momentum after the finger lifts is still the reader', () => {
+  test('momentum after the finger lifts is the reader for as long as it moves, then ends', () => {
     const { scroller } = renderList();
     vi.advanceTimersByTime(2_000);
     fingerDown(scroller);
     fireEvent.touchEnd(window);
-    // Momentum frames: scrolls with no input event, inside the 32px band.
-    for (const top of [1_590, 1_582, 1_576]) {
+    // Momentum frames for 1.65s, longer than the lift's own grace: scrolls
+    // with no input event, still carrying the reader up inside the 32px band.
+    for (let frame = 0; frame < 11; frame += 1) {
       vi.advanceTimersByTime(150);
+      const top = 1_598 - frame * 2;
       scroller.scrollTop = top;
       fireEvent.scroll(scroller);
       expect(scroller.scrollTop).toBe(top);
     }
+    // Once it has stopped, a short landing with no input is a clamp again.
+    vi.advanceTimersByTime(1_500);
+    scroller.scrollTop = 1_579;
+    fireEvent.scroll(scroller);
+    expect(scroller.scrollTop).toBe(2_000);
+  });
+
+  test('a lift on a row that left the document still ends the touch', () => {
+    const { scroller } = renderList();
+    vi.advanceTimersByTime(2_000);
+    const row = document.createElement('span');
+    scroller.append(row);
+    fireEvent.touchStart(row);
+    // The virtualizer recycles the row mid-drag: its touchend never reaches
+    // the window.
+    row.remove();
+    row.dispatchEvent(new Event('touchend'));
+    vi.advanceTimersByTime(1_500);
+    scroller.scrollTop = 1_579;
+    fireEvent.scroll(scroller);
+    expect(scroller.scrollTop).toBe(2_000);
+  });
+
+  test('one finger lifting while another stays down is still a touch', () => {
+    const { scroller } = renderList();
+    vi.advanceTimersByTime(2_000);
+    fingerDown(scroller);
+    const stillDown = new Event('touchend');
+    Object.defineProperty(stillDown, 'touches', { value: [{}] });
+    window.dispatchEvent(stillDown);
+    vi.advanceTimersByTime(1_500);
+    scroller.scrollTop = 1_590;
+    fireEvent.scroll(scroller);
+    expect(scroller.scrollTop).toBe(1_590);
+  });
+
+  test('a secondary press (context menu) does not hold the transcript', () => {
+    const { scroller } = renderList();
+    vi.advanceTimersByTime(2_000);
+    fireEvent.pointerDown(scroller, { pointerType: 'mouse', button: 2 });
+    // The context menu swallows the release.
+    vi.advanceTimersByTime(1_500);
+    scroller.scrollTop = 1_579;
+    fireEvent.scroll(scroller);
+    expect(scroller.scrollTop).toBe(2_000);
+  });
+
+  test('a slow drag up while an answer streams is not undone by the stream', () => {
+    const { scroller, geometry, base, rerender } = renderList();
+    vi.advanceTimersByTime(2_000);
+    fingerDown(scroller);
+    // Three pixels a frame: never past the 32px tolerance on its own.
+    scroller.scrollTop = 1_597;
+    fireEvent.scroll(scroller);
+    geometry.scrollHeight = 2_050;
+    rerender({
+      activeSession: {
+        ...base,
+        messages: [
+          ...base.messages.slice(0, -1),
+          { role: 'assistant', content: 'a streamed token', timestamp: 9 },
+        ],
+      },
+    });
+    expect(scroller.scrollTop).toBe(1_597);
+    expect(scrollToBottomButton()).not.toBeNull();
   });
 
   test('a row the reader opens near the end opens in place', () => {
@@ -387,8 +471,10 @@ describe('a finger on the transcript', () => {
     scroller.scrollTop = 1_600;
     fireEvent.scroll(scroller);
     // A press inside the transcript expands a tool card: content grows below.
-    fireEvent.pointerDown(scroller, { pointerType: 'mouse' });
+    fireEvent.pointerDown(scroller, { pointerType: 'mouse', button: 0 });
     fireEvent.pointerUp(window, { pointerType: 'mouse' });
+    // Past the press's own scroll grace: only the interaction window holds.
+    vi.advanceTimersByTime(500);
     geometry.scrollHeight = 2_300;
     deliverResize(scroller.querySelector('.chat-message-anchor')!);
     expect(scroller.scrollTop).toBe(1_600);

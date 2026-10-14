@@ -1278,34 +1278,36 @@ export function ChatDockBody({
          * and read "No messages yet" instead — a true sentence that is not
          * the reason nothing can be sent.
          */
-        <div
-          className="chat-messages chat-messages--empty"
-          // The skeleton is its own status region; the filler only announces
-          // what it says once loading is over.
-          role={
-            conversationLoading && !historyFailureNotice ? undefined : 'status'
-          }
-        >
-          {historyElisionNotice}
-          {historyFailureNotice ??
-            (conversationLoading ? (
-              /*
-               * "Start a chat" is a CLAIM that this chat has none, and
-               * a transcript read that has not landed has established nothing.
-               * It rendered here for ~1.7s on every reload of a conversation
-               * that had turns in it (#1582 E3/B6). The skeleton keeps the flex
-               * fill this slot exists for while saying only what is known.
-               */
-              <SkeletonList
-                count={4}
-                label={transcript.catchingUp ? 'Catching up' : 'Loading chat'}
-              />
-            ) : (
-              <ChatEmptyState
-                agentSlug={renderedSession.agentSlug}
-                agentName={renderedSession.agentName}
-              />
-            ))}
+        <div className="chat-messages chat-messages--empty">
+          {/*
+           * One status region that exists before what it announces (a region
+           * created together with its text is often not read). The skeleton
+           * is its own status region, so it sits beside this one, not in it.
+           * `display: contents` keeps the filler's layout unchanged.
+           */}
+          <div role="status" style={{ display: 'contents' }}>
+            {historyElisionNotice}
+            {historyFailureNotice ??
+              (conversationLoading ? null : (
+                <ChatEmptyState
+                  agentSlug={renderedSession.agentSlug}
+                  agentName={renderedSession.agentName}
+                />
+              ))}
+          </div>
+          {!historyFailureNotice && conversationLoading ? (
+            /*
+             * "Start a chat" is a CLAIM that this chat has none, and
+             * a transcript read that has not landed has established nothing.
+             * It rendered here for ~1.7s on every reload of a conversation
+             * that had turns in it (#1582 E3/B6). The skeleton keeps the flex
+             * fill this slot exists for while saying only what is known.
+             */
+            <SkeletonList
+              count={4}
+              label={transcript.catchingUp ? 'Catching up' : 'Loading chat'}
+            />
+          ) : null}
         </div>
       )}
       {displayedTranscriptMessages.length > 0 && (

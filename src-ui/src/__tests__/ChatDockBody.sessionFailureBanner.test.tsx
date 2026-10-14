@@ -1141,6 +1141,28 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       expect(region.querySelector('[role="status"]')).toBeNull();
   });
 
+  test('an empty resolving reload keeps one status region that outlives the skeleton', async () => {
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenPending: true,
+      }),
+    });
+    await screen.findByLabelText('Loading chat');
+    const filler = document.querySelector('.chat-messages--empty')!;
+    const regions = [...filler.querySelectorAll('[role="status"]')];
+    // The filler's own region already exists, empty, beside the skeleton's.
+    expect(regions.some((region) => !region.getAttribute('aria-label'))).toBe(
+      true,
+    );
+    for (const region of regions)
+      expect(region.querySelector('[role="status"]')).toBeNull();
+  });
+
   // The three simultaneous claims E3 recorded, each asserted absent by the
   // words the user actually saw.
   test('#1582 E3 a resolving reload shows one state, not three', async () => {

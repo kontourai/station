@@ -479,10 +479,14 @@ test('Scroll to bottom glides to the newest message and hands back to follow', a
   });
   // Frame counts depend on the host; the invariants do not: it only ever
   // moves toward the end, and lands there.
-  expect(tops.length, 'frames after the press were sampled').toBeGreaterThan(0);
+  const final = travel.at(-1)!;
+  const intermediate = new Set(tops.filter((top) => top < tops.at(-1)! - 1));
+  expect(
+    intermediate.size,
+    'it passes through positions on the way, not one jump',
+  ).toBeGreaterThanOrEqual(2);
   for (let index = 1; index < tops.length; index += 1)
     expect(tops[index]).toBeGreaterThanOrEqual(tops[index - 1] - 1);
-  const final = travel.at(-1)!;
   expect(final.distanceFromBottom).toBeLessThanOrEqual(2);
 });
 
