@@ -408,7 +408,13 @@ describe('OutboundQueuedMessages (station#2522)', () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/delivery-uncertain/)).toBeNull();
-    expect(screen.getByRole('button', { name: 'Discard…' })).toBeTruthy();
+    // Check and Discard… sit in one action group, outside the label.
+    const check = screen.getByRole('button', { name: 'Check' });
+    const discard = screen.getByRole('button', { name: 'Discard…' });
+    expect(check.parentElement).toBe(discard.parentElement);
+    expect(
+      check.parentElement?.classList.contains('queued-message__actions'),
+    ).toBe(true);
   });
 
   it('#3596: a row still invoking offers no discard; its send may be under way', () => {
