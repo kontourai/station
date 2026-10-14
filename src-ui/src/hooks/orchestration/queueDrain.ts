@@ -623,11 +623,14 @@ export function drainQueuedMessageOnTurnCompleted(
           .then((late) =>
             // Back in the queue (a transient failure requeued it): the late
             // row becomes its held copy. Otherwise nothing will settle it.
-            activeChatsStore
-              .getSnapshot()
-              [threadId]?.queuedMessageMetadata?.some(
-                (entry) => entry.id === clientId,
-              )
+            (() => {
+              const chat = activeChatsStore.getSnapshot()[threadId];
+              return (
+                chat?.queuedMessageMetadata?.some(
+                  (entry) => entry.id === clientId,
+                ) || chat?.pendingQueueDispatch?.metadata.id === clientId
+              );
+            })()
               ? late.hold()
               : late.refused(),
           )

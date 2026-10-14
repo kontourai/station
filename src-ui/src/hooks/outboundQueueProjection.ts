@@ -19,6 +19,11 @@ export interface OutboundQueuedTurnProjection {
    * that Station and is never sent anywhere else.
    */
   waitingForStation?: string;
+  /**
+   * Held behind a turn by another window or by one that closed: nothing
+   * sends it until the user does.
+   */
+  heldElsewhere?: true;
 }
 
 export function projectOutboundQueueEntries(
@@ -30,9 +35,10 @@ export function projectOutboundQueueEntries(
     // its own bubble, with the chat saying "Sending"; listing it here too
     // would show the message twice and call the chat queued.
     if (entry.liveInFlight) continue;
-    // A follow-up held in a live chat's own queue is listed there; its row is
-    // only the durable copy.
-    if (entry.heldBy) continue;
+    // A follow-up this window's own queue holds is listed there; its row is
+    // only the durable copy. One held anywhere else (another window, or a
+    // window that closed) is listed here, never sent without the user.
+    if (entry.heldHere) continue;
     const group = groups.get(entry.sessionId) ?? [];
     group.push(entry);
     groups.set(entry.sessionId, group);
@@ -88,6 +94,7 @@ export function projectOutboundQueueEntries(
           mergedTurns,
           deliveryCheck,
           station,
+          heldBy,
         }) => ({
           clientTurnId,
           content,
@@ -97,6 +104,7 @@ export function projectOutboundQueueEntries(
           lastError,
           mergedTurns,
           ...(deliveryCheck ? { deliveryCheck } : {}),
+          ...(heldBy ? { heldElsewhere: true as const } : {}),
           ...(station &&
           !rowBelongsToStation({ station }, currentOutboundStation())
             ? { waitingForStation: station.apiBase }

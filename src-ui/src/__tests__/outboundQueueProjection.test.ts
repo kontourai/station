@@ -70,6 +70,33 @@ describe('outboundQueueProjection (station#1224 restart hydration)', () => {
     ).toEqual(['other-1']);
   });
 
+  it("lists a follow-up held by another or a closed window (sent only on the user's Send), and not one this window's queue shows", () => {
+    activeChatsStore.initChat('session-held', {
+      agentSlug: 'assistant',
+      agentName: 'Assistant',
+      title: 'Chat',
+    });
+    projectOutboundQueueEntries([
+      {
+        ...turn('held-here', 'session-held', 'in my queue'),
+        heldBy: { bootId: 'this-window', heldAt: 1 },
+        heldHere: true,
+      },
+      {
+        ...turn('held-away', 'session-held', 'held elsewhere'),
+        heldBy: { bootId: 'closed-window', heldAt: 1 },
+      },
+    ]);
+    expect(
+      activeChatsStore.getSnapshot()['session-held']?.outboundQueuedTurns,
+    ).toEqual([
+      expect.objectContaining({
+        clientTurnId: 'held-away',
+        heldElsewhere: true,
+      }),
+    ]);
+  });
+
   it('restores the Project a chat was sending in when only its row survived', () => {
     projectOutboundQueueEntries([
       {

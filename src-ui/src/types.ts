@@ -354,6 +354,8 @@ export interface ChatSession {
     };
     /** Written for another Station (its API base); waits for it. */
     waitingForStation?: string;
+    /** Held by another window or a closed one; sent only by the user. */
+    heldElsewhere?: true;
   }>;
   status: ChatSessionStatus;
   isThinking?: boolean;

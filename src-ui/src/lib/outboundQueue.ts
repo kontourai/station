@@ -80,21 +80,12 @@ export interface QueuedOutboundTurn {
   station?: OutboundStationIdentity;
   /**
    * A pending row the renderer `bootId` is holding in its chat's local queue
-   * behind a running turn: the durable copy of a held follow-up. The flush
-   * never sends it while that renderer lives (the queue's own drain does,
-   * under the same key); once the renderer is gone it becomes an ordinary
-   * pending row and is sent with its key.
+   * behind a running turn: the durable copy of a held follow-up. Nothing
+   * sends it automatically: that renderer's queue drain does (under the same
+   * key), or, once no live queue holds it, the user does (`sendHeld`), after
+   * seeing it listed. A copy is never released by a timer or a guess.
    */
-  heldBy?: {
-    bootId: string;
-    heldAt: number;
-    /**
-     * When a reconcile first found the holder gone. The copy is released only
-     * a grace period later, so a reloading tab (whose queue comes back under a
-     * new renderer) takes it back first instead of another tab sending it.
-     */
-    orphanSince?: number;
-  };
+  heldBy?: { bootId: string; heldAt: number };
   /**
    * The original pending rows collapsed into this opt-in text merge. Keeping
    * their complete pre-send records makes the merge reversible until this row
@@ -126,6 +117,12 @@ export type OutboundDispatchTurn = Omit<
    * screen as the optimistic bubble, so a projection must not list it again.
    */
   liveInFlight?: true;
+  /**
+   * A held copy this renderer's own queue holds (its queue shows it). A held
+   * copy without it belongs to another window or a closed one: listed, with
+   * Send.
+   */
+  heldHere?: true;
 };
 
 export interface OutboundDispatchIntent
@@ -238,6 +235,8 @@ export interface OutboundDispatchModule {
    * Touches only pending rows this renderer holds.
    */
   syncHeld(intents: readonly HeldOutboundIntent[]): Promise<void>;
+  /** The user sends a listed held copy (see `heldBy`). */
+  sendHeld(clientTurnId: string): Promise<void>;
   /**
    * The user's explicit check of one unconfirmed or orphaned row. Like
    * {@link reconcile}, except `not-received` on a row that may have started
@@ -341,14 +340,6 @@ export interface LiveOutboundDispatch {
   /** Station refused it for good: keep it durable as not sent. */
   notSent(reason: string): Promise<void>;
 }
-
-/** How long, without Web Locks, a held row's renderer is presumed alive. */
-export const OUTBOUND_HELD_ORPHAN_GRACE_MS = 10 * 60 * 1000;
-/**
- * How long a held copy whose renderer is gone waits before it is released:
- * long enough for a reloading tab to restore its queue and take it back.
- */
-export const OUTBOUND_HELD_RELOAD_GRACE_MS = 60 * 1000;
 
 /**
  * How long another renderer's `invoking` row is presumed alive when the
@@ -731,17 +722,24 @@ function reorderBarrier(
   );
 }
 
+/** This renderer's boot id once the lease module is loaded (sync reads). */
+let knownBootId: string | undefined;
+
 function publicTurn(entry: QueuedOutboundTurn): OutboundDispatchTurn {
   const {
     dispatchBootId: _dispatchBootId,
     claimedAt: _claimedAt,
     ...turn
   } = entry;
-  return Object.freeze(
-    liveOwned.has(entry.clientTurnId)
-      ? { ...turn, liveInFlight: true as const }
-      : turn,
-  );
+  return Object.freeze({
+    ...turn,
+    ...(liveOwned.has(entry.clientTurnId)
+      ? { liveInFlight: true as const }
+      : {}),
+    ...(entry.heldBy && entry.heldBy.bootId === knownBootId
+      ? { heldHere: true as const }
+      : {}),
+  });
 }
 
 function mergedContent(entries: readonly QueuedOutboundTurn[]): string {
@@ -855,6 +853,7 @@ async function withQueueLock<T>(operation: () => Promise<T>): Promise<T> {
 
 async function rendererBootId(): Promise<string> {
   const { rendererBootId } = await import('./outboundQueueLease');
+  knownBootId = rendererBootId;
   return rendererBootId;
 }
 
@@ -1692,7 +1691,13 @@ async function beginLive(
       const existing = entries.find(
         (entry) => entry.clientTurnId === clientTurnId,
       );
-      if (existing && protectedEvidence(existing))
+      // This renderer's own earlier claim of the key (a durable write that
+      // landed after its send went without it) is not another send: the
+      // message is being sent again here, so the row is adopted, never left
+      // for the abandoned attempt's cleanup to delete.
+      const ownAbandoned =
+        existing?.status === 'invoking' && existing.dispatchBootId === bootId;
+      if (existing && protectedEvidence(existing) && !ownAbandoned)
         throw new OutboundRowInFlightError();
       const { heldBy: _held, ...withoutHold } = existing ?? {};
       void _held;
@@ -1706,7 +1711,9 @@ async function beginLive(
         status: 'invoking',
         origin: 'live',
         dispatchBootId: bootId,
-        claimedAt,
+        // Distinct from an adopted claim's, even within one millisecond, so
+        // that attempt's own transitions can never touch this one.
+        claimedAt: Math.max(claimedAt, (existing?.claimedAt ?? 0) + 1),
         lastAttemptAt: claimedAt,
       };
       const retained = existing
@@ -1910,25 +1917,9 @@ async function reconcile(
   let received = 0;
   for (const row of await readStored()) {
     if (liveOwned.has(row.clientTurnId)) continue;
-    if (row.heldBy) {
-      // A held follow-up whose renderer is gone has no queue left to drain
-      // it: it becomes an ordinary pending row, sent with its own key.
-      const holder = await ownerLiveness(row.heldBy.bootId);
-      if (
-        holder === true ||
-        (holder === undefined &&
-          now - row.heldBy.heldAt < OUTBOUND_HELD_ORPHAN_GRACE_MS)
-      )
-        continue;
-      if (row.heldBy.orphanSince === undefined) {
-        await markHeldOrphan(row, now);
-        continue;
-      }
-      if (now - row.heldBy.orphanSince < OUTBOUND_HELD_RELOAD_GRACE_MS)
-        continue;
-      await releaseHeld(row);
-      continue;
-    }
+    // Held copies are never released here: a live queue sends them, or the
+    // user does once they are listed (`sendHeld`).
+    if (row.heldBy) continue;
     if (row.status !== 'invoking') continue;
     // Only the Station a row was written for can say what became of it.
     if (!rowBelongsToStation(row, station)) continue;
@@ -1952,40 +1943,21 @@ async function reconcile(
   return { received };
 }
 
-async function markHeldOrphan(
-  row: QueuedOutboundTurn,
-  now: number,
-): Promise<void> {
+/**
+ * The user's Send on a held copy no live queue of theirs shows (another
+ * window's, or a closed one's): it becomes an ordinary pending row and the
+ * flush sends it with its own key.
+ */
+async function sendHeld(clientTurnId: string): Promise<void> {
   await mutate((entries) => {
     const index = entries.findIndex(
-      (entry) =>
-        entry.clientTurnId === row.clientTurnId &&
-        entry.heldBy?.bootId === row.heldBy?.bootId &&
-        entry.heldBy?.orphanSince === undefined,
-    );
-    if (index === -1) return { entries, result: undefined, changed: false };
-    const entry = entries[index]!;
-    const replaced = [...entries];
-    replaced[index] = {
-      ...entry,
-      heldBy: { ...entry.heldBy!, orphanSince: now },
-    };
-    return { entries: replaced, result: undefined, changed: true };
-  });
-}
-
-async function releaseHeld(row: QueuedOutboundTurn): Promise<void> {
-  await mutate((entries) => {
-    const index = entries.findIndex(
-      (entry) =>
-        entry.clientTurnId === row.clientTurnId &&
-        entry.heldBy?.bootId === row.heldBy?.bootId,
+      (entry) => entry.clientTurnId === clientTurnId && entry.heldBy,
     );
     if (index === -1) return { entries, result: undefined, changed: false };
     const { heldBy: _released, ...pending } = entries[index]!;
     void _released;
     const replaced = [...entries];
-    replaced[index] = pending;
+    replaced[index] = { ...pending, status: 'pending', attempts: 0 };
     return { entries: replaced, result: undefined, changed: true };
   });
 }
@@ -2097,10 +2069,13 @@ export const outboundDispatch: OutboundDispatchModule = {
   enqueue,
   open: async () => {
     await reconcileAcceptedTerminals();
+    // Known before projecting: which held copies are this renderer's own.
+    await rendererBootId();
     return (await readStored()).map(publicTurn);
   },
   snapshot: async () => {
     await reconcileAcceptedTerminals();
+    await rendererBootId();
     return (await readStored()).map(publicTurn);
   },
   fenceConversationHandoff,
@@ -2115,6 +2090,7 @@ export const outboundDispatch: OutboundDispatchModule = {
   beginLive,
   reconcile,
   syncHeld,
+  sendHeld,
   check,
   edit,
   reorder,

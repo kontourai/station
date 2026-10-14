@@ -15,6 +15,8 @@ interface OutboundQueuedTurn {
   mergedTurns?: readonly { content: string }[];
   /** Written for another Station (its address): waits for that Station. */
   waitingForStation?: string;
+  /** Held by another window or a closed one; sent only on Send. */
+  heldElsewhere?: true;
 }
 
 interface OutboundQueuedMessagesProps {
@@ -190,6 +192,28 @@ export function OutboundQueuedMessages({
               {turn.waitingForStation ? (
                 <span className="queued-messages__label">
                   Waiting for {turn.waitingForStation}; it is only sent there
+                </span>
+              ) : null}
+              {turn.heldElsewhere ? (
+                <span className="queued-messages__label">
+                  Held for after a reply, in another window or one that closed.
+                  Not sent yet.{' '}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void import('../../lib/outboundQueue')
+                        .then(({ outboundDispatch }) =>
+                          outboundDispatch.sendHeld(turn.clientTurnId),
+                        )
+                        .catch((error: unknown) =>
+                          onError(
+                            `Could not send this message: ${error instanceof Error ? error.message : String(error)}`,
+                          ),
+                        )
+                    }
+                  >
+                    Send
+                  </button>
                 </span>
               ) : null}
               {turn.status === 'may-have-started' ||

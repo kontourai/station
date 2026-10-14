@@ -3,6 +3,7 @@ import {
   deriveMessageDeliveryState,
   type MessageDeliverySignals,
   type MessageDeliveryState,
+  outboxTurnDeliveryState,
 } from '../messageDeliveryState';
 
 /** Signal → state, with literal expectations (no derivation from the code). */
@@ -76,5 +77,16 @@ const TABLE: Array<
 describe('deriveMessageDeliveryState', () => {
   test.each(TABLE)('%s', (_label, signals, expected) => {
     expect(deriveMessageDeliveryState(signals)).toBe(expected);
+  });
+});
+
+describe('outboxTurnDeliveryState', () => {
+  test('a listed held copy is held on a device, not waiting to send', () => {
+    expect(
+      outboxTurnDeliveryState({ status: 'pending', heldElsewhere: true }),
+    ).toBe('held-on-device');
+    expect(outboxTurnDeliveryState({ status: 'pending' })).toBe(
+      'waiting-to-send',
+    );
   });
 });

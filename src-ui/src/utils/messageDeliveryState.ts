@@ -135,9 +135,12 @@ export function messageDeliveryStateFor(
 export function outboxTurnDeliveryState(row: {
   status: OutboxDeliveryStatus;
   deliveryCheck?: { outcome: TurnDeliveryOutcome };
+  /** A held copy listed here: kept on a device, sent only on Send. */
+  heldElsewhere?: true;
 }): MessageDeliveryState | undefined {
   return deriveMessageDeliveryState({
     outbox: row.status,
+    heldBehindTurn: row.heldElsewhere === true,
     lookup: row.deliveryCheck?.outcome,
   });
 }

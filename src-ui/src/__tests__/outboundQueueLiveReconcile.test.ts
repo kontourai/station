@@ -91,17 +91,6 @@ function lookupAnswering(outcome: TurnDeliveryOutcome) {
   );
 }
 
-/**
- * A held copy whose renderer is gone is released only after a grace period
- * (a reloading tab takes it back first): the first reconcile notes the
- * orphan, the one after the grace releases it.
- */
-async function reconcileAfterHeldGrace(queue: QueueModule) {
-  await queue.outboundDispatch.reconcile(lookupAnswering('not-received'));
-  vi.setSystemTime(Date.now() + 61_000);
-  await queue.outboundDispatch.reconcile(lookupAnswering('not-received'));
-}
-
 describe('live outbox rows survive a killed app and settle by the delivery lookup', () => {
   beforeEach(() => {
     value = undefined;
@@ -265,7 +254,7 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     expect(row?.liveInFlight).toBeUndefined();
   });
 
-  it('a held follow-up is never flushed while its renderer lives, and is sent once with its key after the app was closed', async () => {
+  it('a held follow-up is never sent automatically: once its window is gone it is listed, and Send sends it once with its key', async () => {
     const first = await freshRenderer();
     await first.outboundDispatch.syncHeld([
       { ...intent, clientTurnId: 'held-1', content: 'after this turn' },
@@ -276,6 +265,8 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     }));
     await first.outboundDispatch.flush(transport);
     expect(transport).not.toHaveBeenCalled();
+    // This window's queue shows it; its copy is not listed here.
+    expect((await first.outboundDispatch.snapshot())[0]?.heldHere).toBe(true);
     // Removing it from the chat's queue removes its durable copy.
     await first.outboundDispatch.syncHeld([]);
     expect(await first.outboundDispatch.snapshot()).toEqual([]);
@@ -284,12 +275,20 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     ]);
     kill();
     const second = await freshRenderer();
-    // Not at once: a reloading tab gets the grace period to take it back.
+    // No timer or lookup sends it: it is listed for the user, unchanged.
+    await second.outboundDispatch.reconcile(lookupAnswering('not-received'));
+    vi.setSystemTime(Date.now() + 24 * 60 * 60_000);
     await second.outboundDispatch.reconcile(lookupAnswering('not-received'));
     await second.outboundDispatch.flush(transport);
     expect(transport).not.toHaveBeenCalled();
-    vi.setSystemTime(Date.now() + 61_000);
-    await second.outboundDispatch.reconcile(lookupAnswering('not-received'));
+    const [listed] = await second.outboundDispatch.snapshot();
+    expect(listed).toMatchObject({
+      clientTurnId: 'held-2',
+      content: 'still waiting',
+    });
+    expect(listed?.heldHere).toBeUndefined();
+    await second.outboundDispatch.sendHeld('held-2');
+    await second.outboundDispatch.flush(transport);
     await second.outboundDispatch.flush(transport);
     expect(transport).toHaveBeenCalledTimes(1);
     expect(transport.mock.calls[0]?.[0]).toMatchObject({
@@ -400,10 +399,17 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
         content: 'edited text',
       }),
     ]);
-    // Closed before the turn ended: only the edited text is ever sent.
+    // Closed before the turn ended: only the edited text is left, listed
+    // for the user, and that is what Send sends.
     kill();
     const later = await freshRenderer();
-    await reconcileAfterHeldGrace(later);
+    await later.outboundDispatch.reconcile(lookupAnswering('not-received'));
+    await later.outboundDispatch.flush(transport);
+    expect(transport).not.toHaveBeenCalled();
+    expect(
+      (await later.outboundDispatch.snapshot()).map((row) => row.content),
+    ).toEqual(['edited text']);
+    await later.outboundDispatch.sendHeld('held-edit');
     await later.outboundDispatch.flush(transport);
     expect(transport.mock.calls.map(([turn]) => turn.content)).toEqual([
       'edited text',
@@ -428,5 +434,24 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     });
     expect(lookup).toHaveBeenCalledTimes(1);
     expect(await later.outboundDispatch.snapshot()).toEqual([]);
+  });
+
+  it("re-sending a key whose own earlier durable write landed late adopts that row; the old attempt's cleanup cannot delete it", async () => {
+    const queue = await freshRenderer();
+    const lateAttempt = await queue.outboundDispatch.beginLive({
+      ...intent,
+      clientTurnId: 'retried',
+    });
+    // The same message sent again from this renderer (a drain retry).
+    const retry = await queue.outboundDispatch.beginLive({
+      ...intent,
+      clientTurnId: 'retried',
+    });
+    await lateAttempt.refused();
+    expect(await queue.outboundDispatch.snapshot()).toEqual([
+      expect.objectContaining({ clientTurnId: 'retried', status: 'invoking' }),
+    ]);
+    await retry.accepted();
+    expect(await queue.outboundDispatch.snapshot()).toEqual([]);
   });
 });
