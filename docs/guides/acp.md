@@ -98,8 +98,11 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
    that history, so while the session reattaches the adapter does not publish
    message, thought, tool or plan updates; commands, mode, config and usage
    updates still apply. A turn sent before the start finishes waits for it
-   (up to 60 seconds) instead of racing it; past that wait it is refused with
-   the retryable code `provider_session_starting`, which the client queues.
+   (up to 15 seconds, before orchestration takes the thread's turn-start
+   claim, so Stop is never held behind it) instead of racing it. A Stop or
+   the request's own cancellation ends the wait with nothing sent. Past the
+   wait it is refused with the retryable code `provider_session_starting`,
+   which the client queues and re-sends.
    Station's restore eligibility upstream of the adapter still requires
    `loadSession` (`src-server/runtime/bootstrap/acp-resume-cursor-support.ts`).
 
