@@ -136,6 +136,17 @@ export class TurnIdempotencyStore {
       case 'resolved':
         return { claimed: false, value: result.value };
       case 'contended':
+        // A claim this owner retained after a possible effect stays
+        // unresolved in the row, so the kernel calls it contended, but no
+        // owner will ever resolve it. Answer it as {@link inspect} does, so a
+        // same-key resend is refused at once instead of waiting it out.
+        if (
+          this.retained.has(key) &&
+          this.inspect(key, now).state === 'indeterminate'
+        ) {
+          turnDedupClaims.add(1, { outcome: 'indeterminate' });
+          return { claimed: false, indeterminate: true };
+        }
         turnDedupClaims.add(1, { outcome: 'contended' });
         return { claimed: false };
       case 'indeterminate':
@@ -231,8 +242,8 @@ export class TurnIdempotencyStore {
   /**
    * Records that this owner abandoned its unresolved claim of `key` after it
    * may have started the effect. Writes nothing durable: the claim stays
-   * exactly as it is; only {@link inspect} answers it `indeterminate` instead
-   * of `in-flight`.
+   * exactly as it is; only this owner's {@link inspect} and {@link claim}
+   * answer it `indeterminate` instead of `in-flight` and `contended`.
    */
   retain(key: string): void {
     this.retained.delete(key);

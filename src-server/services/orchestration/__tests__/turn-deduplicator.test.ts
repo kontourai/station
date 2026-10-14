@@ -102,7 +102,7 @@ describe('TurnDeduplicator', () => {
   });
 
   test('inspect: an owner that gave its claim up after a possible effect reads indeterminate, never in flight', () => {
-    const { store, ledger } = open();
+    const { store, ledger, directory } = open();
     const owner = ledger.claim({ threadId: 't', clientTurnId: 'gave-up' });
     if (owner.kind !== 'owner') throw new Error('expected owner');
     owner.claim.beginInvocation();
@@ -113,11 +113,20 @@ describe('TurnDeduplicator', () => {
     expect(ledger.inspect({ threadId: 't', clientTurnId: 'gave-up' })).toEqual({
       state: 'indeterminate',
     });
-    // Still never claimable: retain writes nothing durable.
+    // Never claimable, and this owner's claim agrees with inspect instead of
+    // reading contended (a wait on a claim nothing will resolve).
     expect(ledger.claim({ threadId: 't', clientTurnId: 'gave-up' })).toEqual({
-      kind: 'contended',
-      turnId: undefined,
+      kind: 'indeterminate',
     });
+    // Retain writes nothing durable: another live process still meets the
+    // unresolved claim as contended.
+    const peer = new EventStore(join(directory, 'orchestration.sqlite'));
+    expect(
+      peer
+        .createTurnDeduplicator()
+        .claim({ threadId: 't', clientTurnId: 'gave-up' }),
+    ).toEqual({ kind: 'contended', turnId: undefined });
+    peer.close();
     store.close();
   });
 

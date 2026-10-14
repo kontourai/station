@@ -16873,7 +16873,7 @@ describe('OrchestrationService', () => {
           threadId: 'thread-dedup-retry',
           clientTurnId: 'client-turn-ambiguous',
         }),
-      ).toEqual({ kind: 'contended', turnId: undefined });
+      ).toEqual({ kind: 'indeterminate' });
 
       claude.sendTurn.mockImplementation(async (input) => ({
         threadId: input.threadId,
@@ -16891,6 +16891,71 @@ describe('OrchestrationService', () => {
       ).rejects.toThrow(/already being processed|turn start in progress/);
 
       expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('a same-key resend of a claim retained after a possible effect is refused as may-have-started at once, never waited on', async () => {
+      const ledger = eventStore.createTurnDeduplicator();
+      const awaitResolution = vi.fn(ledger.awaitResolution);
+      const retainedService = new OrchestrationService({
+        adapterRegistry: createRegistry([claude]),
+        eventBus: new EventBus(),
+        eventStore,
+        turnDeduplicator: { ...ledger, awaitResolution },
+        listProjects: () => [],
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      await retainedService.dispatch({
+        type: 'startSession',
+        input: { threadId: 'thread-retained', provider: 'claude' },
+      });
+      claude.sendTurn.mockClear();
+      // The engine call fails after invocation began: a possible effect, so
+      // the send retains its claim of the key rather than releasing it.
+      claude.sendTurn.mockRejectedValueOnce(new Error('response lost'));
+      const send = () =>
+        retainedService
+          .dispatch({
+            type: 'sendTurn',
+            input: {
+              threadId: 'thread-retained',
+              input: 'hello',
+              clientTurnId: 'client-retained',
+            },
+          })
+          .then(
+            () => undefined,
+            (error: unknown) => error,
+          );
+      expect(await send()).toMatchObject({
+        code: 'foreground_message_indeterminate',
+        outcome: 'indeterminate',
+      });
+      expect(
+        ledger.inspect({
+          threadId: 'thread-retained',
+          clientTurnId: 'client-retained',
+        }),
+      ).toEqual({ state: 'indeterminate' });
+
+      // The user presses Retry: the same key is sent again.
+      const retry = send();
+      const settled = await Promise.race([
+        retry.then(() => 'settled' as const),
+        new Promise<'pending'>((resolve) =>
+          setTimeout(() => resolve('pending'), 2_000),
+        ),
+      ]);
+      expect(settled).toBe('settled');
+      const refusal = (await retry) as OrchestrationCommandDispatchError;
+      expect(refusal).toBeInstanceOf(OrchestrationCommandDispatchError);
+      // The same answer the delivery lookup gives, not a retryable
+      // `client_turn_in_flight` after a five-minute wait.
+      expect(refusal.code).toBe('foreground_message_indeterminate');
+      expect(refusal.outcome).toBe('indeterminate');
+      expect(refusal.retryable).not.toBe(true);
+      expect(awaitResolution).not.toHaveBeenCalled();
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+      await retainedService.shutdown();
     });
 
     test('station#1224 CRITICAL fix — the missing test: a still-running turn resolves AFTER a concurrent replay has already started polling, and the adapter executes EXACTLY ONCE', async () => {

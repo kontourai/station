@@ -38,8 +38,9 @@ export interface TurnClaim {
   release(): void;
   /**
    * Gives up an owned claim that may have reached the provider: it stays
-   * unresolved and is never released, and the delivery lookup answers it
-   * `indeterminate` rather than in flight. Settles the handle.
+   * unresolved and is never released, and both the delivery lookup and a
+   * same-key claim in this process answer it `indeterminate` rather than in
+   * flight or contended. Settles the handle.
    */
   retain(): void;
 }
@@ -48,7 +49,10 @@ export interface TurnDeduplicator {
   claim(input: { threadId: string; clientTurnId: string }):
     | { kind: 'owner'; claim: TurnClaim }
     | { kind: 'contended'; turnId?: string }
-    /** The dead owner may have invoked the provider. Never send this turn. */
+    /**
+     * The owner may have invoked the provider and will never resolve the
+     * claim: it died, or (in this process) retained it. Never send this turn.
+     */
     | { kind: 'indeterminate' }
     /**
      * #3559: the key's resolved row was evicted. The turn was sent, and its
