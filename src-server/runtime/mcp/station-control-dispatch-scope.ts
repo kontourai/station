@@ -419,6 +419,8 @@ export function createStationControlDispatchScope(
         const project = sources
           .projectDirectories()
           .find((entry) => entry.id === own.id);
+        // Presence only: the folder is never read here; the dispatch resolves
+        // the Project's working directory (tilde-expanded) where it starts.
         if (!project?.slug || !project.workingDirectory) return undefined;
         // The slug is what the dispatch names; it must lead back to the
         // same Project, or the session would start somewhere else.
