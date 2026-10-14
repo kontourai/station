@@ -7940,6 +7940,8 @@ export class OrchestrationService {
                 ownedClientTurnClaim.resolve(obtainedResult.turnId);
               } else if (claimOutcome === 'release') {
                 ownedClientTurnClaim.release();
+              } else {
+                ownedClientTurnClaim.retain();
               }
             }
             // UX audit T1 review: this is the one moment the service knows

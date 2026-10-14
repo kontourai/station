@@ -77,6 +77,13 @@ export type TurnClaimInspection =
 export class TurnIdempotencyStore {
   private readonly owner: OwnerIdentity;
   private readonly liveness: OwnerLiveness;
+  /**
+   * Keys this owner stopped working on with a possible effect: the provider
+   * call failed after invocation began, so the claim stays unresolved (never
+   * reclaimed or replayed) while this process lives. Process memory, because
+   * the owner dying turns the same claim `indeterminate` durably.
+   */
+  private readonly retained = new Set<string>();
   constructor(
     private readonly persistence: TurnIdempotencyPersistence,
     processIdentity: TurnIdempotencyProcessIdentity = defaultProcessIdentity,
@@ -197,11 +204,22 @@ export class TurnIdempotencyStore {
     const record = result.record;
     if (record.value !== null)
       return { state: 'resolved', value: record.value };
+    if (record.owner?.id === this.owner.id && this.retained.has(key))
+      return { state: 'indeterminate' };
     if (record.owner && this.liveness(record.owner) === 'dead')
       return turnClaimIsReclaimable(record)
         ? { state: 'reclaimable' }
         : { state: 'indeterminate' };
     return { state: 'in-flight' };
+  }
+  /**
+   * Records that this owner abandoned its unresolved claim of `key` after it
+   * may have started the effect. Writes nothing durable: the claim stays
+   * exactly as it is; only {@link inspect} answers it `indeterminate` instead
+   * of `in-flight`.
+   */
+  retain(key: string): void {
+    this.retained.add(key);
   }
   read(key: string): string | undefined {
     const result = this.persistence.execute(

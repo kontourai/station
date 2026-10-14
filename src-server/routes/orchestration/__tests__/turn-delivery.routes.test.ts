@@ -17,11 +17,12 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import type {
-  ProviderAdapterMetadata,
-  ProviderAdapterShape,
-  ProviderSendTurnInput,
-  ProviderSessionStartInput,
+import {
+  type ProviderAdapterMetadata,
+  type ProviderAdapterShape,
+  type ProviderSendTurnInput,
+  type ProviderSessionStartInput,
+  SendTurnRefusedError,
 } from '../../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
@@ -88,7 +89,18 @@ class ScriptedAdapter implements ProviderAdapterShape {
     };
   }
 
+  /**
+   * `refuse`: the adapter refuses before any provider-visible effect.
+   * `fail`: the call fails after the engine may have taken the turn.
+   */
+  nextTurn: 'refuse' | 'fail' | undefined;
+
   async sendTurn(input: ProviderSendTurnInput) {
+    const next = this.nextTurn;
+    this.nextTurn = undefined;
+    if (next === 'refuse')
+      throw new SendTurnRefusedError('The engine refused this turn.');
+    if (next === 'fail') throw new Error('The engine connection dropped.');
     this.turns.push(input);
     const turnId = `delivery-turn-${this.turns.length}`;
     const base = {
@@ -382,6 +394,34 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
         .providerTurnId,
     ).toBe(receipt.data.providerTurnId);
     expect(adapter.turns).toHaveLength(1);
+  });
+
+  test('a send refused before the engine took it is not-received again, so the same key can be retried', async () => {
+    const { adapter, send, lookup } = station();
+    adapter.nextTurn = 'refuse';
+    const refused = await send('conversation:refused', 'key-refused');
+    expect(refused.status).toBeGreaterThanOrEqual(400);
+    expect(await lookup('conversation:refused', 'key-refused')).toEqual({
+      outcome: 'not-received',
+      conversationId: 'conversation:refused',
+      clientTurnId: 'key-refused',
+    });
+    const retried = await send('conversation:refused', 'key-refused');
+    expect(retried.status, await retried.clone().text()).toBe(200);
+    expect(adapter.turns).toHaveLength(1);
+  });
+
+  test('a send that failed after the engine may have taken it is indeterminate while this Station lives, never received', async () => {
+    const { adapter, send, lookup } = station();
+    adapter.nextTurn = 'fail';
+    const failed = await send('conversation:failed', 'key-failed');
+    expect(failed.status).toBe(409);
+    expect(await lookup('conversation:failed', 'key-failed')).toEqual({
+      outcome: 'indeterminate',
+      conversationId: 'conversation:failed',
+      clientTurnId: 'key-failed',
+    });
+    expect(adapter.turns).toHaveLength(0);
   });
 
   test('stamps the send key on the turn.started that send produced', async () => {

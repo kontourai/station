@@ -28,6 +28,40 @@ describe('outboundQueueProjection (station#1224 restart hydration)', () => {
     }
   });
 
+  it('does not list a live send this renderer is still waiting on, nor call its chat queued', () => {
+    activeChatsStore.initChat('session-live', {
+      agentSlug: 'assistant',
+      agentName: 'Assistant',
+      title: 'Chat',
+    });
+    activeChatsStore.updateChat('session-live', { status: 'sending' });
+    projectOutboundQueueEntries([
+      {
+        ...turn('live-1', 'session-live', 'on its way'),
+        status: 'invoking',
+        origin: 'live',
+        liveInFlight: true,
+      },
+    ]);
+    const chat = activeChatsStore.getSnapshot()['session-live'];
+    expect(chat?.outboundQueuedTurns ?? []).toEqual([]);
+    expect(chat?.status).toBe('sending');
+  });
+
+  it('restores the Project a chat was sending in when only its row survived', () => {
+    projectOutboundQueueEntries([
+      {
+        ...turn('orphan-1', 'session-gone', 'from before the crash'),
+        projectSlug: 'station',
+        conversationId: 'session-gone',
+      },
+    ]);
+    expect(activeChatsStore.getSnapshot()['session-gone']).toMatchObject({
+      projectSlug: 'station',
+      conversationId: 'session-gone',
+    });
+  });
+
   it('hydrates durable queued turns into visible chat state after restart', () => {
     activeChatsStore.initChat('session-1', {
       agentSlug: 'assistant',
