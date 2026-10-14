@@ -90,12 +90,16 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
    adapter calls `session/resume`, which restores the native session without
    replaying it. It falls back to `connection.loadSession()` when `resume` is
    not advertised, or when the engine answers it with method-not-found and
-   advertises `loadSession`; any other resume failure fails the start.
+   advertises `loadSession`. Any other resume failure fails the start rather
+   than loading: the fallback is closed, so an unexplained resume failure is
+   reported instead of hidden behind a replayed load.
    On `session/load`, ACP has the agent replay the whole conversation as
    `session/update` notifications before it answers. Station already stored
    that history, so while the session reattaches the adapter does not publish
    message, thought, tool or plan updates; commands, mode, config and usage
-   updates still apply. A turn sent before reattaching finishes is refused.
+   updates still apply. A turn sent before the start finishes waits for it
+   (up to 60 seconds) instead of racing it; past that wait it is refused with
+   the retryable code `provider_session_starting`, which the client queues.
    Station's restore eligibility upstream of the adapter still requires
    `loadSession` (`src-server/runtime/bootstrap/acp-resume-cursor-support.ts`).
 

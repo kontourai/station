@@ -363,6 +363,12 @@ the session lifecycle like any turn (reasons `provider_turn_started` /
 `provider_turn_completed`), and notifies "Your agent replied" when the owner
 is offline. A send while it runs is refused with the retryable code
 `provider_turn_in_progress`, and the client queues the message until it ends.
+A send to an ACP session that is still starting (for a restored session,
+reattaching to the engine's stored session) waits for the start, up to 60
+seconds. If the start fails, the send is refused definitively with the start's
+reason; if it is still starting after the wait, the send is refused with the
+retryable code `provider_session_starting`, and the client queues the message
+and re-sends it.
 A Claude send's own `turn.started` is published when the engine starts
 running it, so a send queued behind such a turn starts after it ends. That
 ordering relies on the CLI's per-message lifecycle frames (`msg_lifecycle_v1`,
