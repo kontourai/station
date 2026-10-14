@@ -7,11 +7,13 @@ import {
   useState,
 } from 'react';
 import type { Options } from 'react-markdown';
+import { markTranscriptPhase } from './transcriptLayoutTrace';
 
 let rendererWarm = false;
 const LazyMarkdownRenderer = lazy(() =>
   import('./MarkdownRenderer').then((module) => {
     rendererWarm = true;
+    markTranscriptPhase('markdown-renderer-resolved');
     return module;
   }),
 );

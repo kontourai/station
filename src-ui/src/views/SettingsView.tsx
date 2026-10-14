@@ -1575,7 +1575,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                   >
                     <PageRow
                       {...settingsRow('enable-developer-tools')}
-                      description="Show Developer in Customize and the command palette on this device."
+                      description="Show Developer in Customize and the command palette, and record transcript layout diagnostics, on this device."
                       control={
                         <Toggle
                           checked={developerToolsEnabled}
