@@ -79,9 +79,13 @@ import { useIsRestoring, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 
 /**
- * Only a lost or regained credential changes whose data the cache holds. A
- * transient reachability reason (timeout, unreachable, busy, …) says nothing
- * about identity, and it flaps: the health probe records `timeout` when a
+ * Only an authentication failure (`classifyConnectionFailure`'s one terminal
+ * reason) re-keys the switch. The other non-transient reasons
+ * (`identity-mismatch`, `access-method-mismatch`) are left out on purpose:
+ * the profile, credential and environment identity already in the key
+ * change when the Station actually changes, and reads against a mismatched
+ * Station fail rather than cache its data. A transient reachability reason
+ * (timeout, unreachable, busy, …) says nothing about identity, and it flaps: the health probe records `timeout` when a
  * slow Station misses its deadline and the next accepted request clears it.
  * Keying the switch on those reasons turned every flap into two blanket
  * `invalidateQueries()` calls, each refetching every mounted query against

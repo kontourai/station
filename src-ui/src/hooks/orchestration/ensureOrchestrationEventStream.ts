@@ -205,11 +205,39 @@ const SESSION_READ_MODEL_FACT_METHODS: ReadonlySet<string> = new Set([
   'turn.aborted',
 ]);
 const SESSION_READ_MODEL_REFRESH_WINDOW_MS = 1000;
-let lastSessionReadModelRefreshAt = 0;
-let deferredSessionReadModelRefresh: ReturnType<typeof setTimeout> | undefined;
-/** Unsubscribes the wait for an in-flight read-model read to settle. */
-let awaitingSessionReadModelSettle: (() => void) | undefined;
-let sessionReadModelRefreshOwed = false;
+/**
+ * Refresh scheduling, per apiBase: a stream for a Station the user switched
+ * away from keeps running, and its frames must not hold the live Station's
+ * window or wait.
+ */
+interface SessionReadModelRefreshState {
+  lastAt: number;
+  deferred: ReturnType<typeof setTimeout> | undefined;
+  /** Unsubscribes the wait for an in-flight read to settle. */
+  awaitingSettle: (() => void) | undefined;
+  /** An update arrived during the in-flight read; re-read once it settles. */
+  owed: boolean;
+}
+const sessionReadModelRefreshes = new Map<
+  string,
+  SessionReadModelRefreshState
+>();
+
+function sessionReadModelRefreshState(
+  apiBase: string,
+): SessionReadModelRefreshState {
+  let state = sessionReadModelRefreshes.get(apiBase);
+  if (!state) {
+    state = {
+      lastAt: 0,
+      deferred: undefined,
+      awaitingSettle: undefined,
+      owed: false,
+    };
+    sessionReadModelRefreshes.set(apiBase, state);
+  }
+  return state;
+}
 /**
  * #2307: the `QueryClient` each apiBase's stream writes through.
  *
@@ -286,18 +314,19 @@ function refreshSessionReadModelOnFact(
  * and settles rather than holding the refresh forever.
  */
 function requestSessionReadModelRefresh(apiBase: string): void {
-  if (deferredSessionReadModelRefresh !== undefined) return;
-  if (awaitingSessionReadModelSettle !== undefined) {
-    sessionReadModelRefreshOwed = true;
+  const state = sessionReadModelRefreshState(apiBase);
+  if (state.deferred !== undefined) return;
+  if (state.awaitingSettle !== undefined) {
+    state.owed = true;
     return;
   }
-  const elapsed = Date.now() - lastSessionReadModelRefreshAt;
+  const elapsed = Date.now() - state.lastAt;
   if (elapsed < SESSION_READ_MODEL_REFRESH_WINDOW_MS) {
     // One deferred refresh covers every request that arrives in the window.
     // It re-resolves the client when it fires: an authority switch inside the
     // window must not send the refresh to the client it retired.
-    deferredSessionReadModelRefresh = setTimeout(() => {
-      deferredSessionReadModelRefresh = undefined;
+    state.deferred = setTimeout(() => {
+      state.deferred = undefined;
       refreshSessionReadModelNow(apiBase);
     }, SESSION_READ_MODEL_REFRESH_WINDOW_MS - elapsed);
     return;
@@ -308,23 +337,23 @@ function requestSessionReadModelRefresh(apiBase: string): void {
 function refreshSessionReadModelNow(apiBase: string): void {
   const client = currentStreamQueryClient(apiBase);
   if (!client) return;
+  const state = sessionReadModelRefreshState(apiBase);
   const queryKey = ['orchestration-sessions'];
   if (client.isFetching({ queryKey }) > 0) {
-    sessionReadModelRefreshOwed = true;
-    const cache = client.getQueryCache();
-    const stop = cache.subscribe(() => {
+    state.owed = true;
+    const stop = client.getQueryCache().subscribe(() => {
       if (client.isFetching({ queryKey }) > 0) return;
       stop();
-      awaitingSessionReadModelSettle = undefined;
-      if (!sessionReadModelRefreshOwed) return;
-      sessionReadModelRefreshOwed = false;
+      state.awaitingSettle = undefined;
+      if (!state.owed) return;
+      state.owed = false;
       requestSessionReadModelRefresh(apiBase);
     });
-    awaitingSessionReadModelSettle = stop;
+    state.awaitingSettle = stop;
     return;
   }
-  sessionReadModelRefreshOwed = false;
-  lastSessionReadModelRefreshAt = Date.now();
+  state.owed = false;
+  state.lastAt = Date.now();
   void client.invalidateQueries({ queryKey });
 }
 
@@ -334,14 +363,11 @@ function refreshSessionReadModelNow(apiBase: string): void {
  * test's (#2310 review L3).
  */
 export function resetSessionReadModelRefreshForTests(): void {
-  if (deferredSessionReadModelRefresh !== undefined) {
-    clearTimeout(deferredSessionReadModelRefresh);
+  for (const state of sessionReadModelRefreshes.values()) {
+    if (state.deferred !== undefined) clearTimeout(state.deferred);
+    state.awaitingSettle?.();
   }
-  deferredSessionReadModelRefresh = undefined;
-  awaitingSessionReadModelSettle?.();
-  awaitingSessionReadModelSettle = undefined;
-  sessionReadModelRefreshOwed = false;
-  lastSessionReadModelRefreshAt = 0;
+  sessionReadModelRefreshes.clear();
   streamQueryClients.length = 0;
 }
 

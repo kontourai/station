@@ -528,7 +528,9 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
    * takes `readMs` — a megabyte over a remote link to a busy Station.
    */
   function observeSlowReadModel(client: QueryClient, readMs: number) {
-    const reads = { started: 0, landed: 0 };
+    // `kept` counts answers that reached the cache: a cancelled read still
+    // finishes on the wire (the fetcher has no abort path) but is discarded.
+    const reads = { started: 0, landed: 0, kept: 0 };
     const observer = new QueryObserver(client, {
       queryKey: ['orchestration-sessions'],
       queryFn: async () => {
@@ -540,7 +542,13 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
       },
       staleTime: Number.POSITIVE_INFINITY,
     });
-    const stop = observer.subscribe(() => undefined);
+    let lastData: number | undefined;
+    const stop = observer.subscribe((result) => {
+      if (result.data !== undefined && result.data !== lastData) {
+        lastData = result.data;
+        reads.kept += 1;
+      }
+    });
     return { observer, reads, stop };
   }
 
@@ -561,9 +569,10 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
     }
     await vi.advanceTimersByTimeAsync(4_000);
 
-    // Every read that started was allowed to finish, and the inbox moved on
-    // from the snapshot it had before the updates began.
-    expect(model.reads.landed).toBe(model.reads.started);
+    // Every read that started was kept — none was cancelled and discarded —
+    // and the inbox moved on from the snapshot it had before the updates.
+    // (`kept` also counts the first read, which landed before the updates.)
+    expect(model.reads.kept).toBe(model.reads.started);
     expect(model.reads.started).toBeGreaterThanOrEqual(3);
     // Single flight: never more reads than the 3s read time allows, rather
     // than one per update (30) or one per throttle window (12).
@@ -594,5 +603,47 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
     await vi.advanceTimersByTimeAsync(10_000);
     expect(model.reads.started).toBe(3);
     model.stop();
+  });
+
+  it("a stream for a Station without a client never holds the live Station's refresh", async () => {
+    const { client, invalidateQueries } = spiedClient();
+    const live = pushableSseResponse();
+    const stale = pushableSseResponse();
+    const liveOrigin = 'https://ensure-orchestration-live-station.example.test';
+    const staleOrigin =
+      'https://ensure-orchestration-switched-away.example.test';
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockImplementation((input: RequestInfo | URL) =>
+          Promise.resolve(
+            String(input).startsWith(staleOrigin)
+              ? stale.response
+              : live.response,
+          ),
+        ),
+    );
+    ensureOrchestrationEventStream(liveOrigin, client);
+    // The Station the user switched away from: its stream keeps running, and
+    // nothing is registered to receive its refreshes.
+    ensureOrchestrationEventStream(staleOrigin);
+
+    live.push(projectionFrame);
+    await vi.advanceTimersByTimeAsync(100);
+    stale.push(projectionFrame);
+    await vi.advanceTimersByTimeAsync(100);
+    live.push(projectionFrame);
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    // The live Station's second update is deferred to the end of ITS window
+    // and lands; the other Station's frame does not consume it.
+    expect(
+      invalidateQueries.mock.calls.filter(
+        ([filters]: unknown[]) =>
+          JSON.stringify((filters as { queryKey?: unknown }).queryKey) ===
+          JSON.stringify(['orchestration-sessions']),
+      ),
+    ).toHaveLength(2);
   });
 });
