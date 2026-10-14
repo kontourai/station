@@ -1054,10 +1054,6 @@ function retainFailedReport(
   root,
   suffix = '',
 ) {
-  const target = join(
-    directory,
-    `${execution.resourceGroup}-${index}${suffix}.json`,
-  );
   try {
     const size = existsSync(reportPath) ? statSync(reportPath).size : null;
     let contents =
@@ -1068,6 +1064,11 @@ function retainFailedReport(
           : redactVerificationOutput(readFileSync(reportPath, 'utf8'));
     if (Buffer.byteLength(contents) > FAILED_REPORT_LIMIT_BYTES)
       contents = `${JSON.stringify({ omitted: 'redacted report exceeds byte limit' })}\n`;
+    const sha256 = createHash('sha256').update(contents).digest('hex');
+    const target = join(
+      directory,
+      `${execution.resourceGroup}-${index}-${sha256}${suffix}.json`,
+    );
     const local = relative(root, target);
     if (local && !local.startsWith('..') && !isAbsolute(local))
       writeReceiptSecurely(local, contents, root);
@@ -1077,7 +1078,7 @@ function retainFailedReport(
     }
     return {
       path: local.split(sep).join('/'),
-      sha256: createHash('sha256').update(contents).digest('hex'),
+      sha256,
     };
   } catch (error) {
     const omitted = boundedRedactedText(
@@ -1902,7 +1903,7 @@ export async function runChangedVerification(
         vitestPath,
         failedReportDir: join(
           root,
-          '.kontourai/verification-output',
+          '.kontourai/test-impact/failed-reports',
           request.key,
         ),
         // The merge base, not the ref: SDK barrel refinement compares

@@ -2618,6 +2618,7 @@ setInterval(() => {}, 1000);`,
     'malformed-companion',
     'ambiguous-companion',
     'retention-unavailable',
+    'repeated',
   ] as const)(
     'keeps a real Vitest failure truthful with %s diagnostic reports',
     async (mode) => {
@@ -2635,8 +2636,9 @@ setInterval(() => {}, 1000);`,
 describe('primary error fixture', () => {
   test('preserves the primary message', () => {
     const cause = new Error('nested root failure; Authorization: Bearer secret-fixture-token');
-    const error = new Error('fixture primary failure', { cause });
-    error.stack = 'Error: STACK_TRACE_ERROR\\n at declaration (fixture.js:1:1)';
+    const message = process.env.STATION_FIXTURE_FAILURE_MESSAGE;
+    const error = new Error(message, { cause });
+    error.stack = 'Error: STACK_TRACE_ERROR\\n at declaration (fixture.js:1:1)\\n attempt ' + process.env.STATION_FIXTURE_ATTEMPT;
     throw error;
   });
 });\n`,
@@ -2675,45 +2677,63 @@ describe('primary error fixture', () => {
           }
         | undefined;
       let temporaryReport = '';
-      const result = await runChangedVerification(['--base=HEAD'], {
-        root,
-        vitestPath: join(process.cwd(), 'node_modules/vitest/vitest.mjs'),
-        changedPathsFn: () => ({ mergeBase: 'HEAD', paths: [fixture] }),
-        collectProvenance: () => ({ ...provenance(), worktree: root }),
-        // The fixture deliberately has no installed graph: this control owns
-        // reporting through the real pinned Vitest, not dependency admission.
-        assertDependencyProvenance: () => {},
-        resourcePartition: splitResourceGroups,
-        run: async (command, args, options) => {
-          const child = await runOwnedChangedCommand(command, args, options);
-          temporaryReport = args
-            .find((arg) => arg.startsWith('--outputFile='))!
-            .slice('--outputFile='.length);
-          originalReport = JSON.parse(readFileSync(temporaryReport, 'utf8'));
-          if (mode === 'missing') rmSync(temporaryReport);
-          if (mode === 'oversized')
-            appendFileSync(temporaryReport, ' '.repeat(16 * 1024 * 1024));
-          if (mode === 'retention-unavailable') {
-            mkdirSync(join(root, '.kontourai'), { recursive: true });
-            writeFileSync(
-              join(root, '.kontourai/verification-output'),
-              'blocked',
-            );
-          }
-          const companionPath = `${temporaryReport}.errors.json`;
-          if (existsSync(companionPath)) {
-            if (mode === 'missing-companion') rmSync(companionPath);
-            if (mode === 'malformed-companion')
-              writeFileSync(companionPath, '{invalid-json');
-            if (mode === 'ambiguous-companion') {
-              const companion = JSON.parse(readFileSync(companionPath, 'utf8'));
-              companion.tests.push(companion.tests[0]);
-              writeFileSync(companionPath, JSON.stringify(companion));
+      let attempt = 0;
+      const runFailure = () =>
+        runChangedVerification(['--base=HEAD'], {
+          root,
+          vitestPath: join(process.cwd(), 'node_modules/vitest/vitest.mjs'),
+          changedPathsFn: () => ({ mergeBase: 'HEAD', paths: [fixture] }),
+          collectProvenance: () => ({ ...provenance(), worktree: root }),
+          // The fixture deliberately has no installed graph: this control owns
+          // reporting through the real pinned Vitest, not dependency admission.
+          assertDependencyProvenance: () => {},
+          resourcePartition: splitResourceGroups,
+          run: async (command, args, options) => {
+            const currentAttempt = ++attempt;
+            const child = await runOwnedChangedCommand(command, args, {
+              ...options,
+              env: {
+                ...(options.env ?? process.env),
+                STATION_FIXTURE_FAILURE_MESSAGE:
+                  currentAttempt === 1
+                    ? 'fixture primary failure'
+                    : 'fixture primary failure second attempt',
+                STATION_FIXTURE_ATTEMPT: String(currentAttempt),
+              },
+            });
+            temporaryReport = args
+              .find((arg) => arg.startsWith('--outputFile='))!
+              .slice('--outputFile='.length);
+            originalReport = JSON.parse(readFileSync(temporaryReport, 'utf8'));
+            if (mode === 'missing') rmSync(temporaryReport);
+            if (mode === 'oversized')
+              appendFileSync(temporaryReport, ' '.repeat(16 * 1024 * 1024));
+            if (mode === 'retention-unavailable') {
+              mkdirSync(join(root, '.kontourai/test-impact'), {
+                recursive: true,
+              });
+              writeFileSync(
+                join(root, '.kontourai/test-impact/failed-reports'),
+                'blocked',
+              );
             }
-          }
-          return child;
-        },
-      });
+            const companionPath = `${temporaryReport}.errors.json`;
+            if (existsSync(companionPath)) {
+              if (mode === 'missing-companion') rmSync(companionPath);
+              if (mode === 'malformed-companion')
+                writeFileSync(companionPath, '{invalid-json');
+              if (mode === 'ambiguous-companion') {
+                const companion = JSON.parse(
+                  readFileSync(companionPath, 'utf8'),
+                );
+                companion.tests.push(companion.tests[0]);
+                writeFileSync(companionPath, JSON.stringify(companion));
+              }
+            }
+            return child;
+          },
+        });
+      const result = await runFailure();
       const officialMessages =
         originalReport?.testResults[0].assertionResults[0].failureMessages.join(
           '\n',
@@ -2755,6 +2775,10 @@ describe('primary error fixture', () => {
         'failed raw reports must survive temporary cleanup',
       ).toBe(true);
       const reports = result.executed[0].retainedReports;
+      for (const report of reports)
+        expect(report.path).toMatch(
+          /^\.kontourai\/test-impact\/failed-reports\/[a-f0-9]{64}\//,
+        );
       const standard = reports.find(
         (report) => !report.path.endsWith('.errors.json'),
       );
@@ -2830,6 +2854,27 @@ describe('primary error fixture', () => {
         readFileSync(attached.attachments[0].path, 'utf8'),
       );
       expect(diagnostic.executions[0].retainedReports).toEqual(reports);
+      if (mode === 'repeated') {
+        const subsequent = await runFailure();
+        expect(subsequent.receipt.request.key).toBe(result.receipt.request.key);
+        expect(subsequent.executed[0].resourceGroup).toBe(
+          result.executed[0].resourceGroup,
+        );
+        expect(subsequent.executed[0].failedTests[0].excerpt).toContain(
+          'fixture primary failure second attempt',
+        );
+        const allReports = [
+          ...reports,
+          ...subsequent.executed[0].retainedReports,
+        ];
+        for (const report of allReports) {
+          const bytes = readFileSync(join(root, report.path));
+          expect(createHash('sha256').update(bytes).digest('hex')).toBe(
+            report.sha256,
+          );
+        }
+        expect(new Set(allReports.map((report) => report.path)).size).toBe(4);
+      }
     },
   );
   test('escalates a deleted related path to test-full without spawning', async () => {

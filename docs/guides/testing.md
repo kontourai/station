@@ -397,9 +397,13 @@ rules still check counts, parsing, child status and provenance.
 
 Before temporary reports are removed, a failing unsharded run writes redacted
 standard and companion JSON under
-`.kontourai/verification-output/<test-changed-request-key>/`. The changed receipt
+`.kontourai/test-impact/failed-reports/<test-changed-request-key>/`, within the
+changed and fast-feedback lanes' declared outputs. Filenames include the digest
+of the retained bytes, so later failures for the same request preserve earlier
+reports. The changed receipt
 and its attached diagnostic bind the retained paths and SHA-256 digests; PR CI
-uploads the verification-output directory. Raw reports exceeding 16 MiB and
+uploads this failed-report directory separately from canonical text artifacts
+under verification-output. Raw reports exceeding 16 MiB and
 missing reports produce explicit omission files. If retention cannot write,
 `retentionFailure` names the error and private temporary directory, which is
 preserved for recovery. Reporter diagnostics and retention failures never turn
