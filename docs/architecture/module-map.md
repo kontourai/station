@@ -1358,30 +1358,43 @@ app that wrote it closes. `POST /chat` with `whenBusy: 'queue'` submits it when
 the conversation's current Session has a turn open (the persisted fold or the
 live coordinator) or earlier follow-ups are still waiting, and also when the
 dispatch is refused `provider_turn_in_progress` or `provider_session_starting`.
-Only a plain continuation the caller may read qualifies. The entry is a
+Only a plain continuation qualifies: one the caller may read, whose target
+names exactly the conversation's bound Agent and workspace
+(`followUpTargetMatchesBinding`), from a sender placement would accept;
+otherwise the send takes the live path. Inbox ids are canonical conversation
+ids (`conversationOf`). The entry is a
 [`@kontourai/monument`](../../packages/monument/CONTEXT.md) inbox entry on
 `EventStore`'s connection: idempotent by `clientTurnId` with a digest of the
-sender and input, FIFO, one `placing` at a time. Placement runs after a fold
-event on the conversation, after each submit, at startup, and on four bounded
-re-checks. It is not this module: a follow-up is a start, never a steer. It
-records the pinned Session before the effect, then continues the conversation
-as the recorded sender through the same `continueExecutionTargetMessage`
-continuation delegated results use, with the entry's key as `clientTurnId`.
-After a crash a `placing` entry is re-driven under that key into its pinned
-Session, so the turn claim decides: resolved is `placed`, a dead owner that never
-began is sent once, and begun or unknown is `unconfirmed`. An `unconfirmed`
-entry is never sent again and holds the ones behind it until its sender
-dismisses it. A Session the conversation left since the pin is also
-`unconfirmed`. The delivery lookup answers `queued` for a waiting entry.
-`GET`/`DELETE /conversations/:id/inbox` list it and withdraw it.
-`deleteThread` forgets a conversation's entries. Hosted Stations have no inbox.
-Steer and display-only entries, a stale-head check and the UI's switch from
-its own per-tab queue are not built yet. The
+sender and input, FIFO, one `placing` at a time. Placement runs after a turn
+or Session-state event on the conversation, after each submit, at startup,
+and on bounded re-checks (the schedule, then two-minute checks up to 30 while
+entries wait, and after a drive that failed mid-placement). It is not this
+module: a follow-up is a start, never a steer. Before each start it re-checks
+the sender with the live continuation's rule (`mayContinue`) and the sending
+device's `orchestration:operate` (`deviceMaySendChat`), then reads the turn
+ledger for the key across the whole conversation
+(`startUnlessDelivered`, `inspectTurnDelivery`): `started` is settled
+`placed` without a send, `indeterminate`/`expired` is `unconfirmed`, a live
+claim waits, and only a key no Session holds is started, through the same
+`continueExecutionTargetMessage` continuation delegated results use, as the
+recorded sender. Delegated results use `startUnlessDelivered` too, so neither
+can send twice into a successor Session a continuation reserves. A start that
+has not answered within ten minutes is `unconfirmed`. An `unconfirmed` entry
+is never sent again and holds the ones behind it until someone who may send to
+the conversation dismisses it; only the sender withdraws a waiting one.
+Refusal reasons are stable codes with fixed messages. The delivery lookup
+answers `queued` for a waiting entry. `GET`/`DELETE /conversations/:id/inbox`
+list it and withdraw it. `deleteThread` forgets a conversation's entries.
+Hosted Stations have no inbox. Steer and display-only entries, a stale-head
+check and the UI's switch from its own per-tab queue are not built yet. The
 [service test](../../src-server/services/orchestration/__tests__/thread-inbox.test.ts)
 restarts a real `OrchestrationService` and `EventStore` around a counting
 adapter. The
 [route test](../../src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts)
-runs `/chat` through the production foreground execution with a scripted engine.
+runs `/chat` through the production foreground execution with a scripted
+engine, including a Session that ends between a crash and its re-drive. The
+[runtime composition test](../../src-server/runtime/routes/__tests__/runtime-routes-delegation-result-delivery.test.ts)
+covers the production ports for both deliveries.
 
 ## SessionDigest
 

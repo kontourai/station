@@ -6914,6 +6914,69 @@ export function resumedWorkspaceBinding(
   return {};
 }
 
+/**
+ * #3568 fix round (A4): whether a `/chat` follow-up's target names exactly
+ * what continuing this conversation will use: its bound Agent (and execution
+ * Agent) and its bound workspace, with no engine precondition. The inbox
+ * replays a held follow-up through {@link continueExecutionTargetMessage},
+ * which rebuilds the target from the binding, so a body that names anything
+ * else must take the live path, which checks it while the sender waits.
+ * Conservative: a reserved handoff, an unreadable or unbound conversation,
+ * or any shape it does not recognise answers `false`.
+ */
+export async function followUpTargetMatchesBinding(
+  orchestrationService: OrchestrationService,
+  conversationId: string,
+  target: ExecutionTarget,
+  readAuthority: SessionReadAuthority,
+): Promise<boolean> {
+  if (target.expectedEngine) return false;
+  const rootDetail = await orchestrationService.readSession(
+    conversationId,
+    readAuthority,
+  );
+  if (!rootDetail) return false;
+  const currentSessionId =
+    orchestrationService.currentConversationSessionId(conversationId);
+  if (orchestrationService.reservedConversationHandoff(currentSessionId))
+    return false;
+  const currentDetail = await orchestrationService.readSession(
+    currentSessionId,
+    readAuthority,
+  );
+  if (!currentDetail) return false;
+  const metadata = sessionBinding(rootDetail);
+  const currentMetadata = sessionBinding(currentDetail);
+  const bound = delegationTargetBinding(currentMetadata);
+  if (!bound || !metadata) return false;
+  const agent = target.agent;
+  const requestedAgent = typeof agent === 'string' ? agent : agent.agent;
+  const requestedExecution =
+    typeof agent === 'string' ? undefined : agent.executionAgent;
+  const boundExecution =
+    typeof currentMetadata?.executionAgentId === 'string'
+      ? currentMetadata.executionAgentId
+      : undefined;
+  if (requestedAgent !== bound.id || requestedExecution !== boundExecution)
+    return false;
+  const workspace = resumedWorkspaceBinding(
+    metadata,
+    record(rootDetail.session).cwd,
+  ).workspace;
+  const requested = target.workspace;
+  if (!requested) return workspace === undefined;
+  if (requested.kind === 'project')
+    return (
+      workspace?.kind === 'project' &&
+      workspace.projectSlug === requested.projectSlug &&
+      requested.cwd === undefined &&
+      requested.workspaceIsolation === undefined
+    );
+  if (requested.kind === 'directory')
+    return workspace?.kind === 'directory' && workspace.cwd === requested.cwd;
+  return false;
+}
+
 export async function continueExecutionTargetMessage(
   input: ContinueForegroundMessageInput,
   orchestrationService?: OrchestrationService,

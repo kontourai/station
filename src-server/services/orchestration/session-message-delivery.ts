@@ -180,3 +180,61 @@ export async function deliverSessionMessage(
       return { outcome: 'session_busy', reason: 'steer-in-flight' };
   }
 }
+
+/** What the turn ledger holds for a key across every Session of a conversation. */
+export type ConversationKeyInspection =
+  | {
+      readonly outcome:
+        | 'not-received'
+        | 'received'
+        | 'indeterminate'
+        | 'expired';
+    }
+  | {
+      readonly outcome: 'started';
+      readonly sessionId: string;
+      readonly turnId: string;
+    }
+  | null
+  | undefined;
+
+/** `client_turn_in_flight`: another attempt still holds the key. */
+const KEY_IN_FLIGHT_CODE = 'client_turn_in_flight';
+
+/**
+ * #3568 fix round (D1): start a re-drivable delivery only when no Session of
+ * the conversation holds its key. Turn deduplication is per Session, and a
+ * continuation reserves a successor Session when the one an earlier attempt
+ * used has ended, so a re-drive that went straight to `start` could send the
+ * same text again into the successor under a claim of its own. Reading the
+ * whole conversation's ledger first closes that:
+ *
+ * - `started`: an earlier attempt's turn; answered without sending;
+ * - `indeterminate` or `expired`: it may have been sent; never sent again;
+ * - `received`: a live attempt still holds the key; refused as retryable
+ *   (`client_turn_in_flight`), nothing sent;
+ * - `not-received`, or nothing materialized yet: no Session took it, so it
+ *   is safe to start in whichever Session the continuation picks.
+ */
+export async function startUnlessDelivered(input: {
+  readonly conversationId: string;
+  readonly inspect: () => ConversationKeyInspection;
+  readonly start: () => Promise<SessionStartResult>;
+}): Promise<SessionStartResult> {
+  const held = input.inspect();
+  if (held?.outcome === 'started')
+    return {
+      outcome: 'started',
+      conversationId: input.conversationId,
+      sessionId: held.sessionId,
+      turnId: held.turnId,
+    };
+  if (held?.outcome === 'indeterminate' || held?.outcome === 'expired')
+    return { outcome: 'indeterminate' };
+  if (held?.outcome === 'received')
+    throw Object.assign(
+      new Error('An earlier attempt of this delivery still holds its key.'),
+      { code: KEY_IN_FLIGHT_CODE },
+    );
+  return input.start();
+}

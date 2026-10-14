@@ -15,7 +15,10 @@ import type {
   TurnDeliveryInspection,
 } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import {
+  INTERNAL_SESSION_READ_SCOPE,
+  sessionReadAuthorityFromRequest,
+} from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -47,6 +50,7 @@ import {
 
 const OWNER = 'inbox-owner';
 const STRANGER = 'inbox-stranger';
+const READER = 'inbox-reader';
 const ENVIRONMENT = 'inbox-station';
 const AGENT = agentId('claude');
 const CONVERSATION = 'conversation:inbox';
@@ -195,63 +199,6 @@ function currentBinding(
   };
 }
 
-describe('withdrawing a held follow-up (#3568)', () => {
-  test('a reader of the conversation who did not send the message cannot withdraw it', async () => {
-    const cancel = vi.fn();
-    let caller = OWNER;
-    const app = new Hono();
-    app.route(
-      '/api/orchestration',
-      createOrchestrationRoutes(
-        // Everyone here may read the conversation.
-        { readSession: async () => ({ session: {} }) } as never,
-        {
-          eventBus: new EventBus(),
-          logger: { debug: vi.fn() },
-          getUserId: () => caller,
-          threadInbox: {
-            mustQueue: () => false,
-            submit: vi.fn(),
-            list: () => [],
-            deliveryOutcome: () => undefined,
-            entry: () => ({
-              conversationId: CONVERSATION,
-              clientTurnId: 'follow',
-              kind: 'follow-up',
-              state: 'queued',
-              message: 'then summarize',
-              createdAt: new Date(0).toISOString(),
-              updatedAt: new Date(0).toISOString(),
-              userId: OWNER,
-            }),
-            cancel: (...args: unknown[]) => {
-              cancel(...args);
-              return { kind: 'cancelled' } as never;
-            },
-          } as never,
-        },
-      ),
-    );
-    const withdraw = () =>
-      app.request(
-        `/api/orchestration/conversations/${encodeURIComponent(CONVERSATION)}/inbox/follow`,
-        { method: 'DELETE' },
-      );
-    caller = STRANGER;
-    expect((await withdraw()).status).toBe(404);
-    expect(cancel).not.toHaveBeenCalled();
-    caller = OWNER;
-    const own = await withdraw();
-    expect(own.status).toBe(200);
-    expect(cancel).toHaveBeenCalledWith(CONVERSATION, 'follow');
-    // The sender's id is not part of the answer.
-    expect(
-      ((await own.json()) as { data: { entry: Record<string, unknown> } }).data
-        .entry,
-    ).not.toHaveProperty('userId');
-  });
-});
-
 describe('POST /chat whenBusy queue (#3568)', () => {
   const tempDir = trackTempDirs();
   const cleanup: Array<() => Promise<void> | void> = [];
@@ -272,6 +219,14 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       } satisfies IProviderAdapterRegistry,
       eventBus: bus,
       eventStore: store,
+      // A personal Station that lets READER read (and so continue) OWNER's
+      // conversations, as a paired person's second account would.
+      personalConversationAccess: {
+        canRead: (requesterId, ownerId) =>
+          requesterId === READER && ownerId === OWNER,
+        ownerIds: (requesterId) =>
+          requesterId === READER ? [READER, OWNER] : undefined,
+      },
       loadAgentExecutionConfig: async () => ({}),
       resolveSessionAgent: createSessionAgentResolver({
         loadAgentSpec: async (slug) => ({
@@ -310,6 +265,9 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         config: { provider: 'claude' },
       }),
       getProject: vi.fn(),
+      // The live path's own rule for a reader who is not the owner.
+      canContinueConversation: (_access, conversationId, userId) =>
+        service.canUserReadSession(conversationId, authority(userId)),
       getProviderAdapter: (provider) => service.getProviderAdapter(provider),
       readSessionBinding: async (_access, id) => currentBinding(store, id),
       resolveConversationSession: async (_access, id, requested) =>
@@ -347,62 +305,89 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         return { turnId: dispatched.result.turnId };
       },
     };
-    const inbox = new ThreadInboxDelivery({
-      store: store.threadInboxStore(),
-      foldEvents: (threadId) =>
-        store
-          .listEventsByMethods(threadId, ACTIVE_TURN_FOLD_METHODS)
-          .map((stored) => ({
-            sequence: stored.sequence,
-            event: stored.payload,
-          })),
-      headSequence: (threadId) => store.readSessionInventoryHighWater(threadId),
-      coordinatorBusy: (threadId) => service.hasActiveTurn(threadId),
-      conversationOf: (threadId) =>
-        store.conversationForSession(threadId)?.conversationId ?? threadId,
-      currentSessionId: (conversationId) =>
-        service.currentConversationSessionId(conversationId),
-      sessionOwnerId: (threadId) => service.sessionRecordedOwnerId(threadId),
-      // The continuation a placement makes, through the same foreground
-      // execution the route uses, as the recorded sender.
-      start: async ({ conversationId, payload, clientTurnId }) => {
-        try {
-          const handle = await executeForegroundMessage(
-            {
-              target: { environment: { kind: 'current' }, agent: AGENT },
-              message: payload.message,
-              conversationId,
-              clientTurnId,
-              userId: payload.actor.userId,
-              ownerAttribution: undefined,
-              fullAccessGrant: null,
-            } as never,
-            deps,
-          );
-          if (!isForegroundDispatchHandle(handle))
-            return { outcome: 'indeterminate' };
-          return {
-            outcome: 'started',
-            conversationId: handle.conversationId,
-            sessionId: (handle as { sessionId: string }).sessionId,
-            turnId: handle.providerTurnId,
-          };
-        } catch (error) {
-          if (isForegroundIndeterminateShape(error))
-            return { outcome: 'indeterminate' };
-          throw error;
-        }
-      },
-      subscribe: (listener) =>
-        bus.subscribe((frame) => {
-          const event = (frame.data as { event?: CanonicalRuntimeEvent })
-            ?.event;
-          if (frame.event === 'orchestration:event' && event)
-            listener({ threadId: event.threadId, method: event.method });
-        }),
-      logger: { warn: vi.fn() },
-      retryDelaysMs: [20, 50, 100],
-    });
+    /** Set to lose the inbox's answer after the engine took the turn (a crash). */
+    const crashAfterStart: { armed: boolean; release?: () => void } = {
+      armed: false,
+    };
+    const authority = (userId: string) =>
+      sessionReadAuthorityFromRequest(userId, undefined, undefined);
+    // A new delivery over the same store and service: a restarted process.
+    const makeInbox = () =>
+      new ThreadInboxDelivery({
+        store: store.threadInboxStore(),
+        foldEvents: (threadId) =>
+          store
+            .listEventsByMethods(threadId, ACTIVE_TURN_FOLD_METHODS)
+            .map((stored) => ({
+              sequence: stored.sequence,
+              event: stored.payload,
+            })),
+        headSequence: (threadId) =>
+          store.readSessionInventoryHighWater(threadId),
+        coordinatorBusy: (threadId) => service.hasActiveTurn(threadId),
+        conversationOf: (threadId) =>
+          store.conversationForSession(threadId)?.conversationId ?? threadId,
+        currentSessionId: (conversationId) =>
+          service.currentConversationSessionId(conversationId),
+        // The live continuation's own rule, as production composes it.
+        mayContinue: (conversationId, userId) =>
+          service.sessionRecordedOwnerId(
+            service.currentConversationSessionId(conversationId),
+          ) === userId ||
+          service.canUserReadSession(conversationId, authority(userId)),
+        deviceMaySend: () => true,
+        inspectDelivery: (conversationId, clientTurnId) =>
+          service.inspectTurnDelivery(
+            conversationId,
+            clientTurnId,
+            INTERNAL_SESSION_READ_SCOPE,
+          ),
+        // The continuation a placement makes, through the same foreground
+        // execution the route uses, as the recorded sender.
+        start: async ({ conversationId, payload, clientTurnId }) => {
+          try {
+            const handle = await executeForegroundMessage(
+              {
+                target: { environment: { kind: 'current' }, agent: AGENT },
+                message: payload.message,
+                conversationId,
+                clientTurnId,
+                userId: payload.actor.userId,
+                ownerAttribution: undefined,
+                fullAccessGrant: null,
+              } as never,
+              deps,
+            );
+            if (!isForegroundDispatchHandle(handle))
+              return { outcome: 'indeterminate' };
+            if (crashAfterStart.armed)
+              return new Promise((_resolve, reject) => {
+                crashAfterStart.release = () =>
+                  reject(new Error('The process is gone.'));
+              });
+            return {
+              outcome: 'started',
+              conversationId: handle.conversationId,
+              sessionId: (handle as { sessionId: string }).sessionId,
+              turnId: handle.providerTurnId,
+            };
+          } catch (error) {
+            if (isForegroundIndeterminateShape(error))
+              return { outcome: 'indeterminate' };
+            throw error;
+          }
+        },
+        subscribe: (listener) =>
+          bus.subscribe((frame) => {
+            const event = (frame.data as { event?: CanonicalRuntimeEvent })
+              ?.event;
+            if (frame.event === 'orchestration:event' && event)
+              listener({ threadId: event.threadId, method: event.method });
+          }),
+        logger: { warn: vi.fn() },
+        retryDelaysMs: [20, 50, 100],
+      });
+    const inbox = makeInbox();
     inbox.start();
     cleanup.push(() => {
       store.close();
@@ -421,7 +406,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         logger: { debug: vi.fn() },
         getUserId: () => caller,
         executeForegroundMessage: (input) =>
-          executeForegroundMessage({ ...input, userId: OWNER }, deps),
+          executeForegroundMessage(input, deps),
         ...(options.inbox === false ? {} : { threadInbox: inbox }),
       }),
     );
@@ -480,7 +465,21 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       await eventually(() => expect(inbox.mustQueue(CONVERSATION)).toBe(true));
     };
     const prompts = () => adapter.turns.map((turn) => turn.input);
-    return { adapter, inbox, send, lookup, listInbox, cancel, busy, prompts };
+    return {
+      adapter,
+      store,
+      service,
+      inbox,
+      makeInbox,
+      crashAfterStart,
+      as,
+      send,
+      lookup,
+      listInbox,
+      cancel,
+      busy,
+      prompts,
+    };
   }
 
   test('a follow-up to a busy conversation is held, answered 202, and sent once when the turn ends', async () => {
@@ -628,5 +627,117 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(world.prompts()).toEqual(['read the file']);
     expect(await world.lookup('follow')).toBe('not-received');
+  });
+
+  test('D1: an entry the engine took before a crash is not sent again into a successor Session', async () => {
+    const world = station();
+    await world.busy();
+    expect(
+      (await world.send('follow', 'then summarize', { whenBusy: 'queue' }))
+        .status,
+    ).toBe(202);
+    // The engine takes the follow-up, and the process dies before the
+    // inbox hears back: the entry stays `sending`, pinned to this Session.
+    world.crashAfterStart.armed = true;
+    world.adapter.holdTurns = false;
+    world.adapter.complete();
+    await eventually(() =>
+      expect(world.prompts()).toEqual(['read the file', 'then summarize']),
+    );
+    expect(world.inbox.list(CONVERSATION)).toMatchObject([
+      { state: 'sending' },
+    ]);
+    world.inbox.stop();
+    world.crashAfterStart.armed = false;
+    // That Session ends, so continuing the conversation would reserve a
+    // successor with a fresh turn claim.
+    const session = world.service.currentConversationSessionId(CONVERSATION);
+    world.adapter.events.push({
+      eventId: `${session}:exited`,
+      provider: 'claude',
+      threadId: session,
+      sessionId: session,
+      createdAt: new Date().toISOString(),
+      method: 'session.exited',
+      exitKind: 'error',
+    } as unknown as CanonicalRuntimeEvent);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const restarted = world.makeInbox();
+    restarted.start();
+    try {
+      await restarted.reconcile();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await restarted.idle();
+      expect(world.prompts()).toEqual(['read the file', 'then summarize']);
+      expect(restarted.list(CONVERSATION)).toMatchObject([{ state: 'sent' }]);
+    } finally {
+      restarted.stop();
+      await restarted.idle();
+      // Let the dead process's abandoned call end, so teardown can finish.
+      world.crashAfterStart.release?.();
+    }
+  });
+
+  test('A1: a reader the Station lets continue the conversation has a held follow-up delivered', async () => {
+    const world = station();
+    await world.busy();
+    const queued = await world.as(READER, () =>
+      world.send('reader-follow', 'from the other account', {
+        whenBusy: 'queue',
+      }),
+    );
+    expect(queued.status, await queued.clone().text()).toBe(202);
+    world.adapter.holdTurns = false;
+    world.adapter.complete();
+    await eventually(() =>
+      expect(world.prompts()).toEqual([
+        'read the file',
+        'from the other account',
+      ]),
+    );
+    await eventually(() =>
+      expect(world.inbox.list(CONVERSATION)).toMatchObject([
+        { clientTurnId: 'reader-follow', state: 'sent' },
+      ]),
+    );
+  });
+
+  test('A1: a caller placement would refuse is never answered 202', async () => {
+    const world = station();
+    await world.busy();
+    const refused = await world.as(STRANGER, () =>
+      world.send('stranger-follow', 'not mine', { whenBusy: 'queue' }),
+    );
+    expect(refused.status).not.toBe(202);
+    expect(world.inbox.list(CONVERSATION)).toEqual([]);
+  });
+
+  test('A3: another reader cannot withdraw a waiting message that is not theirs', async () => {
+    const world = station();
+    await world.busy();
+    await world.send('follow', 'then summarize', { whenBusy: 'queue' });
+    expect((await world.cancel('follow', READER)).status).toBe(404);
+    expect((await world.cancel('follow', STRANGER)).status).toBe(404);
+    expect(world.inbox.list(CONVERSATION)).toMatchObject([{ state: 'queued' }]);
+  });
+
+  test('A4: a body naming another Agent or workspace than the binding takes the live path', async () => {
+    const world = station();
+    await world.busy();
+    const otherAgent = await world.send('other-agent', 'elsewhere', {
+      whenBusy: 'queue',
+      target: { environment: { kind: 'current' }, agent: agentId('writer') },
+    });
+    expect(otherAgent.status).not.toBe(202);
+    const otherWorkspace = await world.send('other-ws', 'elsewhere', {
+      whenBusy: 'queue',
+      target: {
+        environment: { kind: 'current' },
+        agent: AGENT,
+        workspace: { kind: 'directory', cwd: '/tmp/somewhere-else' },
+      },
+    });
+    expect(otherWorkspace.status).not.toBe(202);
+    expect(world.inbox.list(CONVERSATION)).toEqual([]);
   });
 });

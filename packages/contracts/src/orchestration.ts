@@ -1570,7 +1570,7 @@ export type TurnDeliveryOutcome = TurnDeliveryInspection['outcome'];
  * - `unconfirmed`: it may have reached the agent and nothing can prove which
  *   way. Never sent again. Later messages wait behind it until it is
  *   dismissed (cancelled).
- * - `refused`: Station could not send it, and nothing was sent; `reason`
+ * - `refused`: Station could not send it, and nothing was sent; `reasonCode`
  *   says why. Later messages are not held behind it.
  * - `cancelled`: withdrawn before it was sent, or dismissed.
  */
@@ -1598,15 +1598,25 @@ export interface ConversationInboxEntry {
   turnId?: string;
   /** The execution Session it was sent to, once Station picked one. */
   sessionId?: string;
-  /** Why it was `refused` or is `unconfirmed`. */
+  /**
+   * Why it was `refused` or is `unconfirmed`, as a stable code:
+   * `not_permitted`, `device_not_permitted`, `may_have_been_sent`,
+   * `start_deadline`, `unreadable_entry`, or the send's own refusal code
+   * (`start_refused` when it had none).
+   */
+  reasonCode?: string;
+  /** A fixed message for `reasonCode`; never the raw refusal text. */
   reason?: string;
 }
 
 /**
  * What `POST /chat` answers when the conversation's inbox has the message
- * (`whenBusy: 'queue'`). `entry` is where it stands now: the same send made
- * again after Station already sent it answers its `sent` entry, with the
- * `turnId` it started, and is not sent again.
+ * (`whenBusy: 'queue'`). `entry` is where it stands now. The same send made
+ * again while the conversation is still busy (or holds other messages)
+ * answers this entry again, `sent` with its `turnId` once Station sent it;
+ * made when the conversation is idle and holds nothing, it takes the live
+ * path, whose turn claim answers with the turn already started. Either way it
+ * is not sent twice.
  */
 export interface ConversationInboxQueuedReceipt {
   outcome: 'queued';

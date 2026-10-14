@@ -548,7 +548,10 @@ import {
   ACTIVE_TURN_FOLD_METHODS,
   projectSessionLifecycle,
 } from '../../services/orchestration/session-lifecycle-service.js';
-import type { SessionStartResult } from '../../services/orchestration/session-message-delivery.js';
+import {
+  type SessionStartResult,
+  startUnlessDelivered,
+} from '../../services/orchestration/session-message-delivery.js';
 import type { StartOwnerAttribution } from '../../services/orchestration/session-owner-attribution.js';
 import { createSessionWorkItemModule } from '../../services/orchestration/session-work-item-module.js';
 import { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
@@ -4432,9 +4435,34 @@ export function configureRuntimeRoutes(
   function createThreadInboxDelivery(
     eventStore: EventStore,
   ): ThreadInboxDelivery {
+    const service = context.orchestrationService;
     return new ThreadInboxDelivery({
       ...conversationDeliveryPorts(eventStore),
       store: eventStore.threadInboxStore(),
+      // The live continuation's own rule (`canContinueConversation`): the
+      // conversation's recorded owner, or a reader a personal Station lets
+      // continue it.
+      mayContinue: (conversationId, userId) => {
+        if (
+          service.sessionRecordedOwnerId(
+            service.currentConversationSessionId(conversationId),
+          ) === userId
+        )
+          return true;
+        const authority = readAuthorityForExecution(userId);
+        return (
+          authority.mode === 'personal' &&
+          service.canUserReadSession(conversationId, authority)
+        );
+      },
+      deviceMaySend: (deviceId) =>
+        context.environmentSecurityService.deviceMaySendChat(deviceId),
+      inspectDelivery: (conversationId, clientTurnId) =>
+        service.inspectTurnDelivery(
+          conversationId,
+          clientTurnId,
+          INTERNAL_SESSION_READ_SCOPE,
+        ),
       start: stationServerEntry(
         ({ conversationId, threadId, payload, clientTurnId }) =>
           continueAsRecordedActor(
@@ -4475,20 +4503,33 @@ export function configureRuntimeRoutes(
       // Delivery acts exactly as the delegating dispatch did (its user,
       // owner attribution and principal, recorded when it armed), never as
       // the operator and never with a stronger attribution.
+      // #3568 fix round (D1): a re-driven start answers from the whole
+      // conversation's ledger first, so it can never land a second time in a
+      // successor Session the continuation reserves.
       start: stationServerEntry(
         ({ parentConversationId, threadId, actor, text, clientTurnId }) =>
-          continueAsRecordedActor(
-            {
-              conversationId: parentConversationId,
-              message: text,
-              clientTurnId,
-              userId: actor.userId,
-              principal: actor.principal,
-              ownerAttribution: actor.attribution,
-              clientOrigin: origin,
-            },
-            threadId,
-          ),
+          startUnlessDelivered({
+            conversationId: parentConversationId,
+            inspect: () =>
+              context.orchestrationService.inspectTurnDelivery(
+                parentConversationId,
+                clientTurnId,
+                INTERNAL_SESSION_READ_SCOPE,
+              ),
+            start: () =>
+              continueAsRecordedActor(
+                {
+                  conversationId: parentConversationId,
+                  message: text,
+                  clientTurnId,
+                  userId: actor.userId,
+                  principal: actor.principal,
+                  ownerAttribution: actor.attribution,
+                  clientOrigin: origin,
+                },
+                threadId,
+              ),
+          }),
       ),
       steer: stationServerEntry(
         createDelegationResultSteerPort((command, dispatchContext) =>

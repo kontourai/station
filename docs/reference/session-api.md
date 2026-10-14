@@ -156,7 +156,7 @@ refused with `400`; any other lookup answers `200` with `data.outcome`:
 
 | `outcome` | Meaning | Send the same key again? |
 | --- | --- | --- |
-| `not-received` | Nothing on this Station holds the key for you: no request carrying it is being handled, and no Session of the conversation holds a turn claim for it, except one whose owner died before it began invoking the engine (the next send of the key takes that claim over). | Yes — the same key can only ever make one turn. |
+| `not-received` | Nothing on this Station holds the key for you: no request carrying it is being handled, and no Session of the conversation holds a turn claim for it, except one whose owner died before it began invoking the engine (the next send of the key takes that claim over). Also the answer for a message the conversation's [inbox](#let-station-hold-a-follow-up) refused or that was withdrawn. | Yes — the same key can only ever make one turn. A refused held message is likely to be refused again: read its `reasonCode` in the inbox first. |
 | `received` | A request carrying the key is being handled now (its Session may still be starting), or a live owner holds its turn claim. An unresolved claim reads `received` for at most 15 minutes, then `indeterminate` (an engine accepts a turn in seconds). A message the conversation's inbox is sending right now also reads `received`. | No — wait and ask again. |
 | `queued` | The conversation's [inbox](#let-station-hold-a-follow-up) holds the message you sent behind a running turn, and Station sends it itself when that turn ends. It is safe to close the app. | No — withdraw it through the inbox instead. |
 | `started` | The engine accepted the turn; `data.sessionId` and `data.turnId` name it. | No. |
@@ -200,24 +200,43 @@ another device and a restart.
   once, with the usual receipt. A send refused because the engine opened a turn
   itself (`provider_turn_in_progress`) or is still starting
   (`provider_session_starting`) is held too.
-- The same body sent again under the same key answers the same entry. The same
-  key with a different message is refused `409` with
-  `code: "inbox_key_conflict"`. An inbox holds at most 50 unsettled messages;
-  past that a send is refused `409` with `code: "conversation_inbox_full"`.
+- The same body sent again under the same key, while the conversation is still
+  busy or holds other messages, answers the same entry (`sent`, with its
+  `turnId`, once Station sent it). Sent when the conversation is idle and
+  holds nothing, it takes the live path, whose turn claim answers with the
+  turn already started. The same key with a different message is refused
+  `409` with `code: "inbox_key_conflict"`. An inbox holds at most 50 unsettled
+  messages; past that a send is refused `409` with
+  `code: "conversation_inbox_full"`.
 - Only a plain continuation can be held: no attachments, approval pick, input
-  reply, visual skill start, delegated or background send, and no target on
-  another Station. Any other busy send, and every send to a Station without an
-  inbox (a hosted Station, or one that predates it, which ignores the field),
-  is refused as before.
+  reply, visual skill start, engine precondition, delegated or background
+  send, and no target on another Station. Its `target.agent` and
+  `target.workspace` must name exactly the conversation's binding, since that
+  binding is what the message is sent through later. The sender must be one
+  Station would let send it then: the conversation's owner, or a reader the
+  personal Station lets continue it, from a device that still holds
+  `orchestration:operate`. Any other busy send, and every send to a Station
+  without an inbox (a hosted Station, or one that predates it, which ignores
+  the field), is answered as before.
 
 Station sends held messages one at a time, in the order received, each after
 the turn before it ends, as the person who sent it, through the conversation's
-persisted binding. It never stores a full-access grant: an engine restarted to
-take a held message starts confined. Each message keeps its `clientTurnId`, so
-the [delivery lookup](#find-out-what-became-of-a-send) follows it. A message
-that may have reached the agent without Station being able to prove it (it
-stopped mid-send) is `unconfirmed`: it is never sent again, and the messages
-behind it wait until you dismiss it.
+persisted binding. Just before sending it checks again that the sender may
+still send to the conversation and that their device is still paired with
+the scope to; otherwise the message is `refused` (`not_permitted` or
+`device_not_permitted`) and nothing is sent. It never stores a full-access
+grant: an engine restarted to take a held message starts confined. Each
+message keeps its `clientTurnId`, so the
+[delivery lookup](#find-out-what-became-of-a-send) follows it, and Station
+reads that same ledger, across every Session of the conversation, before each
+send: a message an earlier attempt already started is settled `sent` without
+sending it again, even when the conversation has since moved to a new
+Session. A message that may have reached the agent without Station being able
+to prove it (it stopped mid-send, or the agent did not take it within ten
+minutes) is `unconfirmed`: it is never sent again, and the messages behind it
+wait until someone dismisses it. While a held message waits on a Session that
+is starting, Station looks again when the Session reports a change, and every
+two minutes for up to an hour.
 
 ```
 GET    /api/orchestration/conversations/<conversationId>/inbox
@@ -226,11 +245,14 @@ DELETE /api/orchestration/conversations/<conversationId>/inbox/<clientTurnId>
 
 `GET` lists the conversation's held messages (`ConversationInboxEntry`:
 `state` is `queued`, `sending`, `sent`, `unconfirmed`, `refused` or
-`cancelled`, with `position` among those still waiting). Every client of the
-conversation sees the same list. A conversation you may not read, or a Station
-without an inbox, answers `404`. `DELETE` withdraws a waiting message, or
-dismisses an `unconfirmed` or `refused` one. Only its sender may; anyone else
-gets `404`. A message being sent right now answers `409` with
+`cancelled`, with `position` among those still waiting, and for a `refused`
+or `unconfirmed` one a stable `reasonCode` and a fixed `reason`, never the
+refusal's own text). Every client of the conversation sees the same list. A
+conversation you may not read, or a Station without an inbox, answers `404`.
+`DELETE` withdraws a waiting message (its sender only), or dismisses an
+`unconfirmed` or `refused` one (anyone who may send to the conversation, so
+one person's possibly-sent message cannot hold everyone's). Anyone else gets
+`404`. A message being sent right now answers `409` with
 `code: "inbox_entry_sending"`, and one already sent `inbox_entry_sent`.
 Deleting the conversation deletes its held messages. `@kontourai/station-sdk/client`
 exposes these as `queueExecutionMessage`, `listConversationInbox` and

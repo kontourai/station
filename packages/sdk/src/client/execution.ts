@@ -346,8 +346,13 @@ export type QueuedFollowUpResult =
  */
 export async function queueExecutionMessage(
   apiBase: string,
-  input: ForegroundMessageFields &
-    ApprovalPickCarry & { conversationId: string; clientTurnId: string },
+  input: ForegroundMessageFields & {
+    conversationId: string;
+    clientTurnId: string;
+    /** Station never holds a send that carries an approval pick. */
+    setApprovalMode?: undefined;
+    setApprovalModeBasedOn?: undefined;
+  },
   opts?: ClientRequestOptions,
 ): Promise<QueuedFollowUpResult> {
   const { automaticBackground: _background, ...body } = input;

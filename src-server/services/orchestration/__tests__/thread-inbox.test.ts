@@ -12,6 +12,7 @@
  */
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { GateTestAdapter } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -29,6 +30,7 @@ import {
   ThreadInboxDelivery,
   type ThreadInboxDeliveryPorts,
   type ThreadInboxPayload,
+  type ThreadInboxStore,
 } from '../thread-inbox.js';
 
 const OWNER = 'human:local:owner';
@@ -42,6 +44,10 @@ let sends: string[] = [];
 /** What the next engine send does instead of answering. */
 let nextSend: 'answer' | 'hang' = 'answer';
 let incarnation = 0;
+/** Who may send to the conversation now (the live send rule's answer). */
+const permitted = new Set<string>([OWNER]);
+/** Paired devices still holding the scope to send. */
+const devicesAllowed = new Set<string>();
 let sequence = 0;
 
 class CountingAdapter extends GateTestAdapter {
@@ -70,7 +76,11 @@ interface World {
 const open: World[] = [];
 
 /** One "process": its own birth, so the previous one's claims read as dead. */
-function boot(path: string, ports: Partial<ThreadInboxDeliveryPorts> = {}) {
+function boot(
+  path: string,
+  ports: Partial<ThreadInboxDeliveryPorts> = {},
+  wrapStore?: (store: ThreadInboxStore) => ThreadInboxStore,
+) {
   incarnation += 1;
   const birth = `boot-${incarnation}`;
   const store = new EventStore(path, TURN_DEDUP_MAX_ENTRIES, {
@@ -94,7 +104,9 @@ function boot(path: string, ports: Partial<ThreadInboxDeliveryPorts> = {}) {
   });
   const afterStart = { hang: false };
   const inbox = new ThreadInboxDelivery({
-    store: store.threadInboxStore(),
+    store: wrapStore
+      ? wrapStore(store.threadInboxStore())
+      : store.threadInboxStore(),
     foldEvents: (threadId) =>
       store
         .listEventsByMethods(threadId, ACTIVE_TURN_FOLD_METHODS)
@@ -106,7 +118,14 @@ function boot(path: string, ports: Partial<ThreadInboxDeliveryPorts> = {}) {
     coordinatorBusy: (threadId) => service.hasActiveTurn(threadId),
     conversationOf: (threadId) => threadId,
     currentSessionId: (conversationId) => conversationId,
-    sessionOwnerId: (threadId) => service.sessionRecordedOwnerId(threadId),
+    mayContinue: (_conversationId, userId) => permitted.has(userId),
+    deviceMaySend: (deviceId) => devicesAllowed.has(deviceId),
+    inspectDelivery: (conversationId, clientTurnId) =>
+      service.inspectTurnDelivery(
+        conversationId,
+        clientTurnId,
+        INTERNAL_SESSION_READ_SCOPE,
+      ),
     start: async ({ threadId, payload, clientTurnId }) => {
       try {
         const result = (await service.dispatch({
@@ -210,6 +229,12 @@ function queueFollowUp(world: World, key = 'follow-up-1') {
   });
 }
 
+async function eventuallyTrue(check: () => boolean, timeoutMs: number) {
+  const started = Date.now();
+  while (!check() && Date.now() - started < timeoutMs)
+    await new Promise((resolve) => setTimeout(resolve, 10));
+}
+
 /** Let a drive that a submit, an event or a re-check started finish. */
 async function settle(world: World) {
   await new Promise((resolve) => setTimeout(resolve, 100));
@@ -227,6 +252,9 @@ afterEach(async () => {
   }
   sends = [];
   nextSend = 'answer';
+  permitted.clear();
+  permitted.add(OWNER);
+  devicesAllowed.clear();
 });
 
 describe('thread inbox (#3568)', () => {
@@ -429,7 +457,7 @@ describe('thread inbox (#3568)', () => {
     expect(sends).not.toContain('behind it');
 
     // Dismissing it lets the one behind it go, and never re-sends it.
-    expect(second.inbox.cancel(THREAD, 'a').kind).toBe('cancelled');
+    expect(second.inbox.cancel(THREAD, 'a', OWNER).kind).toBe('cancelled');
     await settle(second);
     expect(sends.filter((input) => input === 'behind it')).toEqual([
       'behind it',
@@ -463,7 +491,12 @@ describe('thread inbox (#3568)', () => {
     await emit(world, 'turn.completed', { turnId: 'turn-1' });
     await settle(world);
     expect(world.inbox.list(THREAD)).toMatchObject([
-      { clientTurnId: 'a', state: 'refused', reason: 'The session has ended.' },
+      {
+        clientTurnId: 'a',
+        state: 'refused',
+        reasonCode: 'session_ended',
+        reason: 'Station could not send this message. Nothing was sent.',
+      },
       { clientTurnId: 'b', state: 'sent' },
     ]);
     expect(world.inbox.deliveryOutcome(THREAD, 'a', OWNER)).toBeUndefined();
@@ -516,7 +549,7 @@ describe('thread inbox (#3568)', () => {
     expect(followUpSends()).toEqual([FOLLOW_UP]);
   });
 
-  test('an entry pinned to a session the conversation has left is surfaced, not sent there or anywhere', async () => {
+  test('an entry claimed on a session the conversation has left, but never sent, is sent once', async () => {
     const file = path();
     const first = boot(file);
     await runningFirstTurn(first);
@@ -530,23 +563,257 @@ describe('thread inbox (#3568)', () => {
     store.claimNext(THREAD, 'an-earlier-session', Date.now());
     await crash(first);
 
+    // No Session of the conversation holds the key: nothing reached an
+    // engine, so sending it where the conversation is now is the one send.
     const second = boot(file);
     await startSession(second);
     await second.inbox.reconcile();
+    await settle(second);
+    expect(followUpSends()).toEqual([FOLLOW_UP]);
+    expect(second.inbox.list(THREAD)).toMatchObject([{ state: 'sent' }]);
+  });
+
+  test('a sender who may no longer send to the conversation is refused at placement, and nothing is sent', async () => {
+    const world = boot(path());
+    await runningFirstTurn(world);
+    queueFollowUp(world);
+    permitted.delete(OWNER);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await settle(world);
     expect(followUpSends()).toEqual([]);
-    expect(second.inbox.list(THREAD)).toMatchObject([
-      { state: 'unconfirmed', sessionId: 'an-earlier-session' },
+    expect(world.inbox.list(THREAD)).toMatchObject([
+      { state: 'refused', reasonCode: 'not_permitted' },
     ]);
   });
 
-  test('a conversation now owned by someone else is never sent to', async () => {
-    const world = boot(path(), { sessionOwnerId: () => 'human:local:other' });
+  test('a sender placement would refuse is never accepted', async () => {
+    const world = boot(path());
+    await runningFirstTurn(world);
+    expect(
+      world.inbox.submit({
+        conversationId: THREAD,
+        clientTurnId: 'stranger',
+        payload: { ...payload, actor: { userId: 'human:local:stranger' } },
+      }),
+    ).toEqual({ outcome: 'not-permitted' });
+    expect(world.inbox.list(THREAD)).toEqual([]);
+  });
+
+  test('a device revoked or narrowed after it queued is refused at placement', async () => {
+    const world = boot(path());
+    await runningFirstTurn(world);
+    devicesAllowed.add('phone');
+    const fromPhone = {
+      ...payload,
+      clientOrigin: {
+        version: 1 as const,
+        actor: { kind: 'device' as const, deviceId: 'phone' },
+        reported: { version: 1 as const, surface: 'web' as const, build: null },
+      },
+    };
+    expect(
+      world.inbox.submit({
+        conversationId: THREAD,
+        clientTurnId: 'from-phone',
+        payload: fromPhone,
+      }).outcome,
+    ).toBe('queued');
+    devicesAllowed.delete('phone');
+    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await settle(world);
+    expect(followUpSends()).toEqual([]);
+    expect(world.inbox.list(THREAD)).toMatchObject([
+      { state: 'refused', reasonCode: 'device_not_permitted' },
+    ]);
+    // And a device without the scope cannot queue at all.
+    expect(
+      world.inbox.submit({
+        conversationId: THREAD,
+        clientTurnId: 'from-phone-again',
+        payload: fromPhone,
+      }),
+    ).toEqual({ outcome: 'not-permitted' });
+  });
+
+  test("anyone who may send dismisses another person's unconfirmed entry; only the sender withdraws a waiting one", async () => {
+    const READER = 'human:local:reader';
+    const file = path();
+    const first = boot(file);
+    await runningFirstTurn(first);
+    permitted.add(READER);
+    nextSend = 'hang';
+    first.inbox.submit({
+      conversationId: THREAD,
+      clientTurnId: 'reader-1',
+      payload: { message: 'reader note', actor: { userId: READER } },
+    });
+    queueFollowUp(first, 'owner-1');
+    await emit(first, 'turn.completed', { turnId: 'turn-1' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await crash(first);
+    const second = boot(file);
+    permitted.add(READER);
+    await startSession(second);
+    await second.inbox.reconcile();
+    await settle(second);
+    expect(second.inbox.list(THREAD)).toMatchObject([
+      { clientTurnId: 'reader-1', state: 'unconfirmed' },
+      { clientTurnId: 'owner-1', state: 'queued' },
+    ]);
+    // The reader cannot withdraw the owner's waiting message.
+    expect(second.inbox.cancel(THREAD, 'owner-1', READER)).toEqual({
+      kind: 'forbidden',
+    });
+    // A stranger cannot dismiss anything.
+    expect(
+      second.inbox.cancel(THREAD, 'reader-1', 'human:local:stranger'),
+    ).toEqual({ kind: 'forbidden' });
+    // The owner dismisses the reader's unconfirmed one, and its own goes.
+    expect(second.inbox.cancel(THREAD, 'reader-1', OWNER).kind).toBe(
+      'cancelled',
+    );
+    await settle(second);
+    expect(followUpSends()).toEqual([FOLLOW_UP]);
+  });
+
+  test('a start that stays refused while the session starts, with no event, is sent once it is ready', async () => {
+    let refusals = 7;
+    const world = boot(path(), {
+      start: async ({ payload: sent }) => {
+        if (refusals > 0) {
+          refusals -= 1;
+          throw Object.assign(new Error('starting'), {
+            code: 'provider_session_starting',
+          });
+        }
+        sends.push(sent.message);
+        return {
+          outcome: 'started',
+          conversationId: THREAD,
+          sessionId: THREAD,
+          turnId: 'turn-next',
+        };
+      },
+    });
+    await runningFirstTurn(world);
+    queueFollowUp(world);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    // More refusals than the four-step schedule: the last delay repeats.
+    await eventuallyTrue(() => followUpSends().length === 1, 3_000);
+    expect(followUpSends()).toEqual([FOLLOW_UP]);
+  });
+
+  test('a session becoming ready places a waiting entry without any re-check', async () => {
+    let refuseOnce = true;
+    const world = boot(path(), {
+      retryDelaysMs: [],
+      start: async ({ payload: sent }) => {
+        if (refuseOnce) {
+          refuseOnce = false;
+          throw Object.assign(new Error('starting'), {
+            code: 'provider_session_starting',
+          });
+        }
+        sends.push(sent.message);
+        return {
+          outcome: 'started',
+          conversationId: THREAD,
+          sessionId: THREAD,
+          turnId: 'turn-next',
+        };
+      },
+    });
     await runningFirstTurn(world);
     queueFollowUp(world);
     await emit(world, 'turn.completed', { turnId: 'turn-1' });
     await settle(world);
     expect(followUpSends()).toEqual([]);
-    expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'refused' }]);
+    await emit(world, 'session.state-changed', {
+      sessionId: THREAD,
+      state: 'ready',
+    });
+    await settle(world);
+    expect(followUpSends()).toEqual([FOLLOW_UP]);
+  });
+
+  test('a start that never answers is unconfirmed at its deadline, and the inbox is not wedged', async () => {
+    const world = boot(path(), {
+      placementDeadlineMs: 50,
+      start: async () => new Promise(() => {}),
+    });
+    await runningFirstTurn(world);
+    queueFollowUp(world, 'a');
+    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await settle(world);
+    expect(world.inbox.list(THREAD)).toMatchObject([
+      { clientTurnId: 'a', state: 'unconfirmed', reasonCode: 'start_deadline' },
+    ]);
+    // Dismissable, so the inbox can move on.
+    expect(world.inbox.cancel(THREAD, 'a', OWNER).kind).toBe('cancelled');
+  });
+
+  test('a settle that fails after the engine took it is re-driven to sent, with no second send', async () => {
+    let failOnce = true;
+    const flaky = boot(path(), {}, (inner) => ({
+      ...inner,
+      settle: (...args: Parameters<typeof inner.settle>) => {
+        if (failOnce && args[1] === 'placed') {
+          failOnce = false;
+          throw new Error('disk full');
+        }
+        return inner.settle(...args);
+      },
+    }));
+    await runningFirstTurn(flaky);
+    queueFollowUp(flaky);
+    await emit(flaky, 'turn.completed', { turnId: 'turn-1' });
+    await eventuallyTrue(
+      () => flaky.inbox.list(THREAD)[0]?.state === 'sent',
+      3_000,
+    );
+    expect(followUpSends()).toEqual([FOLLOW_UP]);
+  });
+
+  test('a head met twice in one drive is looked at again later, not left waiting', async () => {
+    let sabotage = true;
+    // A store whose first settle puts the entry back in the queue, as if it
+    // never moved: the drive meets the same head twice.
+    const stuck = boot(path(), {}, (inner) => ({
+      ...inner,
+      settle: (...args: Parameters<typeof inner.settle>) => {
+        if (sabotage) {
+          sabotage = false;
+          return inner.release(args[0], false, Date.now());
+        }
+        return inner.settle(...args);
+      },
+    }));
+    await runningFirstTurn(stuck);
+    queueFollowUp(stuck);
+    await emit(stuck, 'turn.completed', { turnId: 'turn-1' });
+    await eventuallyTrue(
+      () => stuck.inbox.list(THREAD)[0]?.state === 'sent',
+      3_000,
+    );
+    // The engine took it once; the re-check answered from the ledger.
+    expect(followUpSends()).toEqual([FOLLOW_UP]);
+  });
+
+  test('a session id of the conversation names the same inbox as the conversation', async () => {
+    const world = boot(path(), {
+      conversationOf: (threadId) =>
+        threadId === 'later-session' ? THREAD : threadId,
+    });
+    await runningFirstTurn(world);
+    world.inbox.submit({
+      conversationId: 'later-session',
+      clientTurnId: 'via-session',
+      payload,
+    });
+    expect(world.inbox.list(THREAD)).toMatchObject([
+      { clientTurnId: 'via-session', conversationId: THREAD },
+    ]);
+    expect(world.inbox.mustQueue('later-session')).toBe(true);
   });
 
   test('the lookup answers queued only to the sender, and only while it waits', async () => {

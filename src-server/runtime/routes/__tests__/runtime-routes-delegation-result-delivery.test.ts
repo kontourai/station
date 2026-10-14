@@ -46,6 +46,12 @@ const support = vi.hoisted(() => ({
   busy: new Set<string>(),
   /** The steer dispatch throws (after, possibly, being accepted). */
   steerThrows: false,
+  /** What the conversation's turn ledger answers for a key (#3568 D1). */
+  inspect: undefined as
+    | ((conversationId: string, clientTurnId: string) => unknown)
+    | undefined,
+  /** Paired devices still allowed to send (#3568 A2). */
+  devices: new Set<string>(),
 }));
 
 vi.mock('../runtime-route-support.js', () => {
@@ -121,6 +127,161 @@ function event(
   } as unknown as CanonicalRuntimeEvent;
 }
 
+/**
+ * The real runtime composition over `store` (shared by both suites): the
+ * runtime routes mount, startup reconcile runs, and the server listens.
+ */
+async function composeOver(
+  homeDir: string,
+  store: EventStore,
+  closers: Array<() => Promise<void> | void>,
+) {
+  const delegationResultStore = vi.fn(() => store.delegationResultStore());
+  const notifications = new NotificationService(
+    new EventBus(),
+    homeDir,
+    999_999,
+  );
+  closers.push(() => notifications.shutdown());
+  support.notificationService = notifications;
+  __resetStationServerSelfAttestationForTests();
+  const bus = new EventBus();
+  const app = new Hono();
+  const context = deepStub({
+    projectSharedTasks: undefined,
+    deploymentAuthentication: undefined,
+    localAccounts: undefined,
+    applicationSessions: undefined,
+    app,
+    port: 4321,
+    appConfig: {},
+    eventBus: bus,
+    configLoader: {
+      getProjectHomeDir: () => homeDir,
+      loadAppConfig: () => ({}),
+    },
+    logger: { debug() {}, info() {}, warn() {}, error() {} },
+    activeAgents: new Map(),
+    agentService: { listAgents: () => [] },
+    agentMetadataMap: new Map(),
+    agentFixedTokens: new Map(),
+    agentTools: new Map(),
+    agentStats: new Map(),
+    agentStatus: new Map(),
+    memoryAdapters: new Map(),
+    metricsLog: [],
+    monitoringEvents: [],
+    // The delivery's reads go to the real store; the rest of the runtime
+    // sees inert stubs.
+    orchestrationEventStore: deepStub({
+      sessionTurnBoundaryAuthority: () => ({
+        reconcile: () => ({ kind: 'available', interrupted: [] }),
+      }),
+      delegationResultStore,
+      listEventsByMethods: (threadId: string, methods: readonly string[]) =>
+        store.listEventsByMethods(threadId, methods),
+      listTurnEventsByMethods: (
+        threadId: string,
+        turnId: string,
+        methods: readonly string[],
+        limit: number,
+      ) => store.listTurnEventsByMethods(threadId, turnId, methods, limit),
+      readSessionInventoryHighWater: (threadId: string) =>
+        store.readSessionInventoryHighWater(threadId),
+      conversationForSession: (threadId: string) =>
+        store.conversationForSession(threadId),
+      conversationSessions: () => [],
+      readSessionByThread: () => undefined,
+      sessionControlRequestKeys: () => store.sessionControlRequestKeys(),
+      threadInboxStore: () => store.threadInboxStore(),
+    }),
+    orchestrationService: deepStub({
+      resolveSessionActingPrincipal: () => ({
+        id: LOCAL_OPERATOR_PRINCIPAL_ID,
+        source: 'session-owner' as const,
+      }),
+      sessionRecordedOwnerId: () => LOCAL_OPERATOR_PRINCIPAL_ID,
+      hasSessionStartRecord: () => true,
+      currentConversationSessionId: (conversationId: string) => conversationId,
+      canUserReadSession: () => true,
+      inspectTurnDelivery: (conversationId: string, clientTurnId: string) =>
+        support.inspect?.(conversationId, clientTurnId),
+      hasActiveTurn: (threadId: string) => support.busy.has(threadId),
+      dispatchWithReceipt: async (
+        command: Record<string, unknown>,
+        dispatchContext: Record<string, unknown>,
+      ) => {
+        support.commands.push({ ...command, context: dispatchContext });
+        if (support.steerThrows) throw new Error('receipt lost');
+        return {
+          result: {
+            outcome: 'unsupported-engine',
+            threadId: command.threadId,
+          },
+        };
+      },
+      firstStartedMetadataOfThread: () => ({
+        adoptedFromThreadId: 'attached',
+      }),
+      firstStartedEngineOfThread: () => 'claude',
+      sessionRunsHost: () => false,
+    }),
+    storageAdapter: deepStub({
+      getProject: () => {
+        throw new Error('no project');
+      },
+    }),
+    projectMembership: deepStub({ admissionsForResolvedPrincipal: () => [] }),
+    taskGraphService: { listTasks: () => [] },
+    projectService: {
+      listProjects: () => [],
+      getProject: (slug: string) => ({ slug }),
+    },
+    environmentSecurityService: deepStub({
+      verifyCredential: () => false,
+      authorizeCredential: () => false,
+      verifyOperatorCredential: () => false,
+      resolveGrantedScope: () => undefined,
+      identifyDevice: () => undefined,
+      deviceMaySendChat: (deviceId: string) => support.devices.has(deviceId),
+      devicePairing: deepStub({}),
+    }),
+  });
+  Reflect.set(context as object, 'buildRuntimeContext', () => context);
+  const result = configureRuntimeRoutes(
+    context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
+  );
+  await result.kitLifecycleReady;
+  let resolvePort!: (port: number) => void;
+  const listening = new Promise<number>((resolve) => {
+    resolvePort = resolve;
+  });
+  const server = serve(
+    { fetch: app.fetch, hostname: '127.0.0.1', port: 0 },
+    (info) => resolvePort((info as AddressInfo).port),
+  );
+  closers.unshift(
+    () =>
+      new Promise<void>((resolve) => {
+        (
+          server as unknown as { closeAllConnections?: () => void }
+        ).closeAllConnections?.();
+        server.close(() => resolve());
+      }),
+  );
+  /** Persist, then publish on the runtime's own bus. */
+  const emit = (threadId: string, method: string, fields = {}) => {
+    const persisted = event(threadId, method, fields);
+    store.appendEvent(persisted);
+    bus.emit('orchestration:event', { event: persisted });
+  };
+  return {
+    base: `http://127.0.0.1:${await listening}`,
+    emit,
+    delegationResultStore,
+  };
+}
+
 describe('configureRuntimeRoutes: delegated result delivery wiring (#3158)', () => {
   const closers: Array<() => Promise<void> | void> = [];
 
@@ -131,6 +292,8 @@ describe('configureRuntimeRoutes: delegated result delivery wiring (#3158)', () 
     support.commands.length = 0;
     support.busy.clear();
     support.steerThrows = false;
+    support.inspect = undefined;
+    support.devices.clear();
     for (const close of closers.splice(0)) await close();
   });
 
@@ -158,148 +321,7 @@ describe('configureRuntimeRoutes: delegated result delivery wiring (#3158)', () 
       store.close();
     });
     options.seed?.(store);
-    const delegationResultStore = vi.fn(() => store.delegationResultStore());
-    const notifications = new NotificationService(
-      new EventBus(),
-      homeDir,
-      999_999,
-    );
-    closers.push(() => notifications.shutdown());
-    support.notificationService = notifications;
-    __resetStationServerSelfAttestationForTests();
-    const bus = new EventBus();
-    const app = new Hono();
-    const context = deepStub({
-      projectSharedTasks: undefined,
-      deploymentAuthentication: undefined,
-      localAccounts: undefined,
-      applicationSessions: undefined,
-      app,
-      port: 4321,
-      appConfig: {},
-      eventBus: bus,
-      configLoader: {
-        getProjectHomeDir: () => homeDir,
-        loadAppConfig: () => ({}),
-      },
-      logger: { debug() {}, info() {}, warn() {}, error() {} },
-      activeAgents: new Map(),
-      agentService: { listAgents: () => [] },
-      agentMetadataMap: new Map(),
-      agentFixedTokens: new Map(),
-      agentTools: new Map(),
-      agentStats: new Map(),
-      agentStatus: new Map(),
-      memoryAdapters: new Map(),
-      metricsLog: [],
-      monitoringEvents: [],
-      // The delivery's reads go to the real store; the rest of the runtime
-      // sees inert stubs.
-      orchestrationEventStore: deepStub({
-        sessionTurnBoundaryAuthority: () => ({
-          reconcile: () => ({ kind: 'available', interrupted: [] }),
-        }),
-        delegationResultStore,
-        listEventsByMethods: (threadId: string, methods: readonly string[]) =>
-          store.listEventsByMethods(threadId, methods),
-        listTurnEventsByMethods: (
-          threadId: string,
-          turnId: string,
-          methods: readonly string[],
-          limit: number,
-        ) => store.listTurnEventsByMethods(threadId, turnId, methods, limit),
-        readSessionInventoryHighWater: (threadId: string) =>
-          store.readSessionInventoryHighWater(threadId),
-        conversationForSession: (threadId: string) =>
-          store.conversationForSession(threadId),
-        conversationSessions: () => [],
-        readSessionByThread: () => undefined,
-        sessionControlRequestKeys: () => store.sessionControlRequestKeys(),
-      }),
-      orchestrationService: deepStub({
-        resolveSessionActingPrincipal: () => ({
-          id: LOCAL_OPERATOR_PRINCIPAL_ID,
-          source: 'session-owner' as const,
-        }),
-        sessionRecordedOwnerId: () => LOCAL_OPERATOR_PRINCIPAL_ID,
-        hasSessionStartRecord: () => true,
-        currentConversationSessionId: (conversationId: string) =>
-          conversationId,
-        canUserReadSession: () => true,
-        hasActiveTurn: (threadId: string) => support.busy.has(threadId),
-        dispatchWithReceipt: async (
-          command: Record<string, unknown>,
-          dispatchContext: Record<string, unknown>,
-        ) => {
-          support.commands.push({ ...command, context: dispatchContext });
-          if (support.steerThrows) throw new Error('receipt lost');
-          return {
-            result: {
-              outcome: 'unsupported-engine',
-              threadId: command.threadId,
-            },
-          };
-        },
-        firstStartedMetadataOfThread: () => ({
-          adoptedFromThreadId: 'attached',
-        }),
-        firstStartedEngineOfThread: () => 'claude',
-        sessionRunsHost: () => false,
-      }),
-      storageAdapter: deepStub({
-        getProject: () => {
-          throw new Error('no project');
-        },
-      }),
-      projectMembership: deepStub({ admissionsForResolvedPrincipal: () => [] }),
-      taskGraphService: { listTasks: () => [] },
-      projectService: {
-        listProjects: () => [],
-        getProject: (slug: string) => ({ slug }),
-      },
-      environmentSecurityService: deepStub({
-        verifyCredential: () => false,
-        authorizeCredential: () => false,
-        verifyOperatorCredential: () => false,
-        resolveGrantedScope: () => undefined,
-        identifyDevice: () => undefined,
-        devicePairing: deepStub({}),
-      }),
-    });
-    Reflect.set(context as object, 'buildRuntimeContext', () => context);
-    const result = configureRuntimeRoutes(
-      context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
-    );
-    await result.kitLifecycleReady;
-    let resolvePort!: (port: number) => void;
-    const listening = new Promise<number>((resolve) => {
-      resolvePort = resolve;
-    });
-    const server = serve(
-      { fetch: app.fetch, hostname: '127.0.0.1', port: 0 },
-      (info) => resolvePort((info as AddressInfo).port),
-    );
-    closers.unshift(
-      () =>
-        new Promise<void>((resolve) => {
-          (
-            server as unknown as { closeAllConnections?: () => void }
-          ).closeAllConnections?.();
-          server.close(() => resolve());
-        }),
-    );
-    /** Persist, then publish on the runtime's own bus. */
-    const emit = (threadId: string, method: string, fields = {}) => {
-      const persisted = event(threadId, method, fields);
-      store.appendEvent(persisted);
-      bus.emit('orchestration:event', { event: persisted });
-    };
-    return {
-      base: `http://127.0.0.1:${await listening}`,
-      store,
-      emit,
-      delegationResultStore,
-    };
+    return { store, ...(await composeOver(homeDir, store, closers)) };
   }
 
   const callerHeaders = (channel: 'sdk-in-process' | 'url-token') => ({
@@ -451,5 +473,107 @@ describe('configureRuntimeRoutes: delegated result delivery wiring (#3158)', () 
     expect(store.delegationResultStore().listForChild(CHILD)[0]!.decision).toBe(
       `steer:${PARENT}`,
     );
+  });
+
+  test('#3568 D1: a delivery whose key a Session of the parent already started is not continued again', async () => {
+    const { base, emit, store } = await setup();
+    support.inspect = () => ({
+      outcome: 'started',
+      sessionId: `${PARENT}:session:earlier`,
+      turnId: 'parent-turn-earlier',
+    });
+    await delegate(base, 'sdk-in-process');
+    settleChild(emit);
+    await vi.waitFor(() =>
+      expect(store.delegationResultStore().listForChild(CHILD)[0]?.state).toBe(
+        'delivered',
+      ),
+    );
+    expect(support.continued).toHaveLength(0);
+  });
+});
+
+describe('configureRuntimeRoutes: conversation inbox wiring (#3568)', () => {
+  const closers: Array<() => Promise<void> | void> = [];
+  afterEach(async () => {
+    support.continued.length = 0;
+    support.inspect = undefined;
+    support.devices.clear();
+    for (const close of closers.splice(0)) await close();
+  });
+
+  const held = (
+    store: EventStore,
+    clientTurnId: string,
+    clientOrigin?: Record<string, unknown>,
+  ) =>
+    store.threadInboxStore().submit({
+      conversationId: PARENT,
+      clientTurnId,
+      payload: {
+        message: `held ${clientTurnId}`,
+        actor: { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+        ...(clientOrigin ? { clientOrigin: clientOrigin as never } : {}),
+      },
+      now: Date.now(),
+    });
+
+  // The same composition as the delegation suite above, reached through its
+  // `setup`; re-declared here so this block owns its own closers.
+  async function compose(seed: (store: EventStore) => void) {
+    const homeDir = makeTempDir('station-thread-inbox-runtime-');
+    const store = new EventStore(join(homeDir, 'orchestration.sqlite'));
+    closers.push(() => {
+      store.close();
+    });
+    seed(store);
+    return { store, ...(await composeOver(homeDir, store, closers)) };
+  }
+
+  test('startup places a held follow-up through the production start port, as its sender', async () => {
+    const { store } = await compose((store) => held(store, 'k1'));
+    await vi.waitFor(() => expect(support.continued).toHaveLength(1));
+    expect(support.continued[0]).toMatchObject({
+      conversationId: PARENT,
+      message: 'held k1',
+      clientTurnId: 'k1',
+      userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+      fullAccessGrant: null,
+    });
+    await vi.waitFor(() =>
+      expect(store.threadInboxStore().list(PARENT)[0]?.state).toBe('placed'),
+    );
+  });
+
+  test('a held follow-up whose key the conversation already started is settled without a send', async () => {
+    support.inspect = () => ({
+      outcome: 'started',
+      sessionId: PARENT,
+      turnId: 'turn-already',
+    });
+    const { store } = await compose((store) => held(store, 'k2'));
+    await vi.waitFor(() =>
+      expect(store.threadInboxStore().list(PARENT)[0]?.state).toBe('placed'),
+    );
+    expect(support.continued).toHaveLength(0);
+  });
+
+  test('a follow-up from a device that lost the scope to send is refused, never sent', async () => {
+    const { store } = await compose((store) =>
+      held(store, 'k3', {
+        version: 1,
+        actor: { kind: 'device', deviceId: 'phone' },
+        reported: { version: 1, surface: 'web', build: null },
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(store.threadInboxStore().list(PARENT)[0]).toMatchObject({
+        state: 'refused',
+      }),
+    );
+    expect(
+      JSON.parse(store.threadInboxStore().list(PARENT)[0]!.outcome ?? '{}'),
+    ).toMatchObject({ reasonCode: 'device_not_permitted' });
+    expect(support.continued).toHaveLength(0);
   });
 });

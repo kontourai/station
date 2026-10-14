@@ -43,6 +43,7 @@ import {
 import {
   CLIENT_PROTOCOL_HEADER_CAPABILITY,
   PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
+  PAIRING_SCOPE_ORCHESTRATION_OPERATE,
 } from '@kontourai/station-contracts/environment-security';
 import {
   PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_CAPABILITY,
@@ -386,6 +387,20 @@ export class EnvironmentSecurityService {
       this.#devicePairingService?.deviceHoldsScope(
         deviceId,
         PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
+      ) ?? false
+    );
+  }
+
+  /**
+   * #3568: whether a paired device may still send a chat message: unrevoked,
+   * enrolled, and holding `orchestration:operate` after its person's group
+   * cap (#3557), which is what a live `POST /api/orchestration/chat` needs.
+   */
+  deviceMaySendChat(deviceId: string): boolean {
+    return (
+      this.#devicePairingService?.deviceHoldsScope(
+        deviceId,
+        PAIRING_SCOPE_ORCHESTRATION_OPERATE,
       ) ?? false
     );
   }

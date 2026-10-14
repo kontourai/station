@@ -176,6 +176,7 @@ import {
 } from '../../telemetry/metrics.js';
 import {
   type DelegatedTaskInterruptResult,
+  followUpTargetMatchesBinding,
   PeerDelegationAttemptDuplicateError,
 } from '../../tools/station-control-delegation.js';
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
@@ -2288,7 +2289,8 @@ export function createOrchestrationRoutes(
     c: Context,
     submitted: ReturnType<ThreadInboxDelivery['submit']>,
     followUp: { conversationId: string; clientTurnId: string },
-  ) => {
+  ): Response | undefined => {
+    if (submitted.outcome === 'not-permitted') return undefined;
     if (submitted.outcome === 'conflict')
       return c.json(
         {
@@ -2310,7 +2312,7 @@ export function createOrchestrationRoutes(
       );
     const data: ConversationInboxQueuedReceipt = {
       outcome: 'queued',
-      conversationId: followUp.conversationId,
+      conversationId: submitted.entry.conversationId,
       clientTurnId: followUp.clientTurnId,
       entry: submitted.entry,
     };
@@ -2336,7 +2338,7 @@ export function createOrchestrationRoutes(
     let releaseDeliveryReceipt: (() => void) | undefined;
     // #3568: set once this send may wait in its conversation's inbox; a
     // busy refusal from the dispatch below then queues it instead.
-    let queueOnBusyRefusal: (() => Response) | undefined;
+    let queueOnBusyRefusal: (() => Response | undefined) | undefined;
     try {
       const {
         delegation: claimedDelegation,
@@ -2557,8 +2559,10 @@ export function createOrchestrationRoutes(
         clientOrigin: resolveClientOriginForRequest(c.req.raw),
       } as ForegroundMessageRequest;
       // #3568: a follow-up to a busy conversation waits in its inbox rather
-      // than being refused. Only for a caller that may read the conversation;
-      // any other send goes on to the dispatch, which refuses it as before.
+      // than being refused. Only for a caller that may read the conversation,
+      // whose body names exactly the binding the inbox will continue through,
+      // and whom placement would accept (`submit` refuses anyone else); any
+      // other send goes on to the dispatch, which answers it as before.
       const followUp = deps.threadInbox
         ? inboxFollowUpOf(body, {
             delegated: Boolean(claimedDelegation || delegation),
@@ -2569,6 +2573,12 @@ export function createOrchestrationRoutes(
         followUp &&
         (await orchestrationService.readSession(
           followUp.conversationId,
+          readAuthorityFor(c),
+        )) &&
+        (await followUpTargetMatchesBinding(
+          orchestrationService,
+          followUp.conversationId,
+          body.target as ExecutionTarget,
           readAuthorityFor(c),
         ))
       ) {
@@ -2595,8 +2605,12 @@ export function createOrchestrationRoutes(
             }),
             followUp,
           );
-        if (inbox.mustQueue(followUp.conversationId))
-          return queueOnBusyRefusal();
+        if (inbox.mustQueue(followUp.conversationId)) {
+          const held = queueOnBusyRefusal();
+          if (held) return held;
+          // Placement would refuse this sender: the live send answers it.
+          queueOnBusyRefusal = undefined;
+        }
       }
       // Admitted: from here until the route answers, the delivery lookup says
       // Station has this send (a cold session start can take a long time
@@ -2655,8 +2669,10 @@ export function createOrchestrationRoutes(
         queueOnBusyRefusal &&
         busyCode &&
         INBOX_BUSY_REFUSAL_CODES.has(busyCode)
-      )
-        return queueOnBusyRefusal();
+      ) {
+        const held = queueOnBusyRefusal();
+        if (held) return held;
+      }
       const refused =
         delegationRefusal(c, error) ??
         fullAccessRefusalFor(c, error) ??
@@ -2986,9 +3002,11 @@ export function createOrchestrationRoutes(
   });
 
   /**
-   * #3568: withdraw a held follow-up, or dismiss one that is unconfirmed or
-   * refused. Only its sender may; anyone else, like a key the inbox does not
-   * hold, gets 404. One being sent right now cannot be withdrawn.
+   * #3568: withdraw a held follow-up (its sender only), or dismiss one that
+   * is unconfirmed or refused (anyone who may send to the conversation, so
+   * one person's possibly-sent message cannot hold everyone's). Anyone else,
+   * like a key the inbox does not hold, gets 404. One being sent right now
+   * cannot be withdrawn.
    */
   app.delete(
     '/conversations/:conversationId/inbox/:clientTurnId',
@@ -3000,21 +3018,20 @@ export function createOrchestrationRoutes(
       if (
         !deps.threadInbox ||
         conversationId.length > 512 ||
-        clientTurnId.length > 200
-      )
-        return notFound();
-      const held = deps.threadInbox.entry(conversationId, clientTurnId);
-      if (
-        !held ||
-        held.userId !== resolveDispatchActor(deps, c).userId ||
+        clientTurnId.length > 200 ||
         !(await orchestrationService.readSession(
           conversationId,
           readAuthorityFor(c),
         ))
       )
         return notFound();
-      const result = deps.threadInbox.cancel(conversationId, clientTurnId);
-      if (result.kind === 'missing') return notFound();
+      const result = deps.threadInbox.cancel(
+        conversationId,
+        clientTurnId,
+        resolveDispatchActor(deps, c).userId,
+      );
+      if (result.kind === 'missing' || result.kind === 'forbidden')
+        return notFound();
       if (result.kind === 'in-flight')
         return c.json(
           {
@@ -3034,9 +3051,8 @@ export function createOrchestrationRoutes(
           },
           409,
         );
-      const { userId: _sender, ...entry } =
-        deps.threadInbox.entry(conversationId, clientTurnId) ?? held;
-      return c.json({ success: true, data: { entry } });
+      const entry = deps.threadInbox.entry(conversationId, clientTurnId);
+      return entry ? c.json({ success: true, data: { entry } }) : notFound();
     },
   );
 
