@@ -1653,6 +1653,9 @@ async function applyDeliveryAnswer(
     );
     if (index === -1) return { entries, result: undefined, changed: false };
     const entry = entries[index]!;
+    // The same answer again changes nothing (and wakes no observer).
+    if (outcome === 'received' && entry.deliveryCheck?.outcome === 'received')
+      return { entries, result: undefined, changed: false };
     const deliveryCheck = { outcome, checkedAt: Date.now() };
     const released = {
       ...entry,

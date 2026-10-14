@@ -24,6 +24,12 @@ import { useSendMessage } from './useActiveChatSessions';
 // not a second mounted instance.
 let flushing = false;
 /**
+ * A flush asked for while one is running. The running pass may already have
+ * passed the row or chat that changed, so it runs once more when it ends
+ * instead of the request being dropped.
+ */
+let flushRequestedWhileFlushing = false;
+/**
  * Asking Station again about sends it reported `received` (an app closed
  * while its session was starting). Doubles up to the lookup's ceiling; reset
  * once nothing is waiting. Module-level for the same reason as `flushing`.
@@ -40,112 +46,125 @@ export function useOutboundQueueFlush(apiBase: string): void {
   });
   const previousStatusRef = useRef(status);
 
-  const triggerFlush = useCallback(() => {
-    if (flushing) return;
-    flushing = true;
-    void Promise.all([
-      import('../lib/outboundQueue'),
-      import('../lib/deliveryLookup'),
-    ])
-      .then(async ([{ outboundDispatch }, delivery]) => {
-        // Sends a closed or crashed app left `invoking`: ask Station what
-        // became of each key before anything is sent. Not-received rows
-        // become pending and go out below, with their original key.
-        const { received } = await outboundDispatch.reconcile(
-          delivery.lookupTurnDelivery(apiBase),
-        );
-        if (reconcileRetryTimer) clearTimeout(reconcileRetryTimer);
-        reconcileRetryTimer = undefined;
-        if (received > 0) {
-          reconcileRetryDelayMs = Math.min(
-            Math.max(
-              reconcileRetryDelayMs * 2,
-              delivery.IN_FLIGHT_FIRST_CHECK_MS,
-            ),
-            delivery.DELIVERY_CHECK_MAX_INTERVAL_MS,
+  const triggerFlush = useCallback(
+    (rerunIfBusy = false) => {
+      if (flushing) {
+        // Only a request for a change the running pass cannot have seen (a
+        // chat that just became writable). Queue notifications are not: the
+        // pass makes them itself, and rerunning on them would never settle.
+        if (rerunIfBusy) flushRequestedWhileFlushing = true;
+        return;
+      }
+      flushing = true;
+      void Promise.all([
+        import('../lib/outboundQueue'),
+        import('../lib/deliveryLookup'),
+      ])
+        .then(async ([{ outboundDispatch }, delivery]) => {
+          // Sends a closed or crashed app left `invoking`: ask Station what
+          // became of each key before anything is sent. Not-received rows
+          // become pending and go out below, with their original key.
+          const { received } = await outboundDispatch.reconcile(
+            delivery.lookupTurnDelivery(apiBase),
           );
-          reconcileRetryTimer = setTimeout(() => {
-            reconcileRetryTimer = undefined;
-            triggerFlushRef.current();
-          }, reconcileRetryDelayMs);
-        } else {
-          reconcileRetryDelayMs = 0;
-        }
-        const blockedSessionIds = new Set(
-          Object.entries(activeChatsStore.getSnapshot())
-            .filter(([, chat]) => !conversationCanMutate(chat))
-            .map(([sessionId]) => sessionId),
-        );
-        const outcome = await outboundDispatch.flush(
-          async (turn, claim) => {
-            const chat = activeChatsStore.getSnapshot()[turn.sessionId];
-            if (chat && !conversationCanMutate(chat)) {
-              return {
-                kind: 'deferred' as const,
-                reason: 'Conversation open state is not currently mutable.',
-              };
-            }
-            const result = await sendMessage(
-              turn.sessionId,
-              turn.agentSlug,
-              turn.conversationId,
-              turn.content,
-              turn.attachments,
-              turn.ambientContext,
-              turn.clientTurnId,
-              {
-                skipInMemoryQueueOnBusy: true,
-                dispatch: claim,
-                executionSnapshot: {
-                  executionAgentId: turn.executionAgentId,
-                  executionOnCurrentStation: turn.executionOnCurrentStation,
-                  expectedDefinitionFingerprint:
-                    turn.expectedDefinitionFingerprint,
-                  requestedModel: turn.requestedModel,
-                  requestedProviderOptions: turn.requestedProviderOptions,
-                  model: turn.model,
-                  providerOptions: turn.providerOptions,
-                },
-              },
+          if (reconcileRetryTimer) clearTimeout(reconcileRetryTimer);
+          reconcileRetryTimer = undefined;
+          if (received > 0) {
+            reconcileRetryDelayMs = Math.min(
+              Math.max(
+                reconcileRetryDelayMs * 2,
+                delivery.IN_FLIGHT_FIRST_CHECK_MS,
+              ),
+              delivery.DELIVERY_CHECK_MAX_INTERVAL_MS,
             );
-            // The replay call is given an outbound capability, so its Interface
-            // returns an explicit transport fact. Keep this narrow conversion at
-            // the composition Seam; the Module never infers invocation from a
-            // boolean.
-            if (result && typeof result === 'object' && 'kind' in result) {
-              return result;
-            }
-            // A boolean success is only available to direct callers. A replay
-            // lacking the typed provider receipt cannot be accepted because a
-            // later terminal event would have no exact correlation.
-            return {
-              kind: 'not-invoked' as const,
-              reason: 'The send gate did not invoke the provider.',
-            };
-          },
-          { blockedSessionIds },
-        );
-        if (outcome === 'unavailable') {
+            reconcileRetryTimer = setTimeout(() => {
+              reconcileRetryTimer = undefined;
+              triggerFlushRef.current();
+            }, reconcileRetryDelayMs);
+          } else {
+            reconcileRetryDelayMs = 0;
+          }
+          const blockedSessionIds = new Set(
+            Object.entries(activeChatsStore.getSnapshot())
+              .filter(([, chat]) => !conversationCanMutate(chat))
+              .map(([sessionId]) => sessionId),
+          );
+          const outcome = await outboundDispatch.flush(
+            async (turn, claim) => {
+              const chat = activeChatsStore.getSnapshot()[turn.sessionId];
+              if (chat && !conversationCanMutate(chat)) {
+                return {
+                  kind: 'deferred' as const,
+                  reason: 'Conversation open state is not currently mutable.',
+                };
+              }
+              const result = await sendMessage(
+                turn.sessionId,
+                turn.agentSlug,
+                turn.conversationId,
+                turn.content,
+                turn.attachments,
+                turn.ambientContext,
+                turn.clientTurnId,
+                {
+                  skipInMemoryQueueOnBusy: true,
+                  dispatch: claim,
+                  executionSnapshot: {
+                    executionAgentId: turn.executionAgentId,
+                    executionOnCurrentStation: turn.executionOnCurrentStation,
+                    expectedDefinitionFingerprint:
+                      turn.expectedDefinitionFingerprint,
+                    requestedModel: turn.requestedModel,
+                    requestedProviderOptions: turn.requestedProviderOptions,
+                    model: turn.model,
+                    providerOptions: turn.providerOptions,
+                  },
+                },
+              );
+              // The replay call is given an outbound capability, so its Interface
+              // returns an explicit transport fact. Keep this narrow conversion at
+              // the composition Seam; the Module never infers invocation from a
+              // boolean.
+              if (result && typeof result === 'object' && 'kind' in result) {
+                return result;
+              }
+              // A boolean success is only available to direct callers. A replay
+              // lacking the typed provider receipt cannot be accepted because a
+              // later terminal event would have no exact correlation.
+              return {
+                kind: 'not-invoked' as const,
+                reason: 'The send gate did not invoke the provider.',
+              };
+            },
+            { blockedSessionIds },
+          );
+          if (outcome === 'unavailable') {
+            const { reportOutboundQueueUnavailable } = await import(
+              '../lib/outboundQueueReporting'
+            );
+            reportOutboundQueueUnavailable(
+              'persistent queue settlement could not be confirmed.',
+            );
+          }
+        })
+        .catch(async (error) => {
           const { reportOutboundQueueUnavailable } = await import(
             '../lib/outboundQueueReporting'
           );
           reportOutboundQueueUnavailable(
-            'persistent queue settlement could not be confirmed.',
+            error instanceof Error ? error.message : String(error),
           );
-        }
-      })
-      .catch(async (error) => {
-        const { reportOutboundQueueUnavailable } = await import(
-          '../lib/outboundQueueReporting'
-        );
-        reportOutboundQueueUnavailable(
-          error instanceof Error ? error.message : String(error),
-        );
-      })
-      .finally(() => {
-        flushing = false;
-      });
-  }, [sendMessage, apiBase]);
+        })
+        .finally(() => {
+          flushing = false;
+          if (flushRequestedWhileFlushing) {
+            flushRequestedWhileFlushing = false;
+            triggerFlushRef.current(true);
+          }
+        });
+    },
+    [sendMessage, apiBase],
+  );
   const triggerFlushRef = useRef(triggerFlush);
   triggerFlushRef.current = triggerFlush;
 
@@ -218,7 +237,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
       const next = writableWithWaiting();
       const gained = [...next].some((sessionId) => !previous.has(sessionId));
       previous = next;
-      if (gained) triggerFlush();
+      if (gained) triggerFlush(true);
     });
     return () => {
       unsubscribe();
