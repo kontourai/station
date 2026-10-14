@@ -199,6 +199,11 @@ import {
   createCredentialApplicationFactory,
 } from './credential-application-ledger.js';
 import {
+  createSqliteDelegationResultStore,
+  type DelegationResultStore,
+  migrateDelegationResultSchema,
+} from './delegation-result-delivery.js';
+import {
   createNativeInvocationRuns,
   type NativeInvocationRunReader,
   type NativeInvocationStarter,
@@ -1956,6 +1961,7 @@ export class EventStore {
   private skillExperienceSnapshots?: SkillExperienceSnapshots;
   private registryTrustPolicyDecisions?: RegistryTrustPolicyDecisions;
   private sessionControlKeys?: SessionControlRequestKeys;
+  private delegationResults?: DelegationResultStore;
 
   constructor(
     dbPath: string,
@@ -2106,6 +2112,9 @@ export class EventStore {
       )`);
       // #3160: the request keys behind `send_to_session` / `interrupt_session`.
       this.db.exec(SESSION_CONTROL_REQUEST_KEY_SCHEMA);
+      // #3158: delegated-result ownership and its one consumption record,
+      // migrated from any earlier version of the schema.
+      migrateDelegationResultSchema(this.db);
       this.db.exec(PACKAGE_MCP_ADMISSION_SCHEMA);
       this.db.exec(REGISTRY_TRUST_POLICY_SCHEMA);
       this.db
@@ -7003,6 +7012,39 @@ export class EventStore {
         )
         .all(threadId, ...methods) as any[]
     ).map((row: any) => this.mapEventRow(row));
+  }
+
+  /**
+   * #3158: one turn's events of a finite method set, oldest first, at most
+   * `limit` rows, through the `(thread_id, turn_id, sequence)` index, so
+   * reading a settled turn's output never scans the rest of a long Session or
+   * an unbounded turn. A caller that must know whether the turn had more asks
+   * for one row past its bound.
+   */
+  listTurnEventsByMethods(
+    threadId: string,
+    turnId: string,
+    methods: readonly string[],
+    limit: number,
+  ): PersistedRuntimeEvent[] {
+    if (methods.length === 0) {
+      throw new Error('An event-method query requires at least one method');
+    }
+    if (!Number.isInteger(limit) || limit < 1 || limit > 5_000) {
+      throw new Error('A turn event read limit must be between 1 and 5000');
+    }
+    const placeholders = methods.map(() => '?').join(', ');
+    return (
+      this.db
+        .prepare(
+          `SELECT id, provider, thread_id, turn_id, method, payload, created_at, sequence, global_sequence
+           FROM orchestration_events
+           WHERE thread_id = ? AND turn_id = ? AND method IN (${placeholders})
+           ORDER BY sequence ASC
+           LIMIT ?`,
+        )
+        .all(threadId, turnId, ...methods, limit) as Record<string, unknown>[]
+    ).map((row) => this.mapEventRow(row));
   }
 
   listEventsByMethodsAfterSequence(
@@ -12113,6 +12155,12 @@ export class EventStore {
   sessionControlRequestKeys(): SessionControlRequestKeys {
     this.sessionControlKeys ??= createSqliteSessionControlRequestKeys(this.db);
     return this.sessionControlKeys;
+  }
+
+  /** #3158: who receives a delegated child's results, and what was sent. */
+  delegationResultStore(): DelegationResultStore {
+    this.delegationResults ??= createSqliteDelegationResultStore(this.db);
+    return this.delegationResults;
   }
 
   /** A pending steer claim is never reclaimed: its engine may have accepted it. */

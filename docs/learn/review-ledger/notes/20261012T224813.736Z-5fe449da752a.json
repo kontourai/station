@@ -1,0 +1,17 @@
+{
+  "revision": "7969fdd8fae93a97b2fc6144a025b619f09151e1",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"theming.md delta in e1c4d42a21 adds one sentence to the startup splash paragraph (the install's channel mark applied before first paint from the identity it last reported). This page links the theming guide's white-label branding section and lists a Brand/Splash slot; neither claim concerns the per-channel splash mark. No change needed.","inputs":["docs/design/shell-plugins-distributions.md","docs/guides/theming.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"PlatformProfileContext delta in e1c4d42a21: the identity effect now also sets data-startup-mark and stores it in localStorage for the next launch's splash. Responsive layout, profile resolution and mobile/desktop branching are unchanged; grepped this page for profile, channel and startup claims: none concern the change.","inputs":["docs/guides/responsive-ui.md","src-ui/src/platform/PlatformProfileContext.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"PlatformProfileContext delta in e1c4d42a21 only remembers the reported splash mark (data-startup-mark plus a localStorage key) in the existing identity effect. The page's backend and startup-monitoring claims do not concern it.","inputs":["docs/patterns/backend.md","src-ui/src/platform/PlatformProfileContext.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"PlatformProfileContext delta in e1c4d42a21 only remembers the reported splash mark (data-startup-mark plus a localStorage key) in the existing identity effect; profile derivation, root tagging and teardown described or implied by the page are unchanged.","inputs":["docs/patterns/frontend.md","src-ui/src/platform/PlatformProfileContext.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"e1c4d42a21: added the sentence that the splash shows the install's channel mark before first paint via startup-theme.js reading the identity PlatformProfileContext stored on the previous launch, with the first-launch gap stated. startup-animation.ts now falls back to that remembered mark before the host report. EXECUTED: startup-splash-channel.test.ts loads the real index.html, startup-theme.js and startup-screen.css in Chromium (nightly/beta/dev own mark; stable/first launch/unknown keep stable), and PlatformProfile.test.tsx runs the real startup-theme.js against what the context stored. Fault injection removing either side failed those tests.","inputs":["docs/guides/theming.md","src-ui/src/lib/startup-animation.ts","src-ui/src/platform/PlatformProfileContext.tsx"]},
+
+    {"path":"src-desktop/icons/README.md","note":"e1c4d42a21: README now names the macOS-grid master as the .icns source only and the tighter desktop master for ico/PNGs/icon.png/tray, the Live Activity StationAppIcon and Android status-bar mark as generated surfaces, the manifest and its test, the narrowed purple-distance scope (icon palettes and Android accents and tints; in-app theme tokens not covered), and the pre-paint splash mark. Checked each against generate-app-icons.mjs, station-icon.mjs and station-icon.test.ts; EXECUTED generator (second run a no-op before the manifest), focused icon tests and five fault injections. No native build or device run.","inputs":["src-desktop/icons/README.md","scripts/__tests__/station-icon.test.ts","scripts/generate-app-icons.mjs","scripts/lib/station-icon-geometry.mjs","scripts/lib/station-icon.mjs"]}
+  ]
+}
