@@ -448,10 +448,48 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
       clientTurnId: 'retried',
     });
     await lateAttempt.refused();
-    expect(await queue.outboundDispatch.snapshot()).toEqual([
-      expect.objectContaining({ clientTurnId: 'retried', status: 'invoking' }),
-    ]);
+    const [adopted] = await queue.outboundDispatch.snapshot();
+    expect(adopted).toMatchObject({
+      clientTurnId: 'retried',
+      status: 'invoking',
+    });
+    // Still the retry's own send in flight: not listed beside its bubble.
+    expect(adopted?.liveInFlight).toBe(true);
     await retry.accepted();
     expect(await queue.outboundDispatch.snapshot()).toEqual([]);
+  });
+
+  it('a held copy cannot be edited, merged or reordered here, and never holds back later messages', async () => {
+    const queue = await freshRenderer();
+    await queue.outboundDispatch.syncHeld([
+      { ...intent, clientTurnId: 'held-x', content: 'held' },
+    ]);
+    await queue.outboundDispatch.enqueue({
+      ...intent,
+      clientTurnId: 'offline-after',
+      content: 'written while offline',
+    });
+    await expect(
+      queue.outboundDispatch.edit('held-x', 'changed'),
+    ).rejects.toThrow(/held in a chat's queue/);
+    await expect(
+      queue.outboundDispatch.merge('held-x', 'offline-after'),
+    ).rejects.toThrow(/held in a chat's queue/);
+    await expect(
+      queue.outboundDispatch.reorder('held-x', 'down'),
+    ).rejects.toThrow(/held in a chat's queue/);
+    const transport = vi.fn(async (turn: Readonly<OutboundDispatchTurn>) => ({
+      kind: 'accepted' as const,
+      providerTurnId: `p-${turn.clientTurnId}`,
+    }));
+    await queue.outboundDispatch.flush(transport);
+    expect(transport.mock.calls.map(([turn]) => turn.clientTurnId)).toEqual([
+      'offline-after',
+    ]);
+    expect(
+      (await queue.outboundDispatch.snapshot()).find(
+        (row) => row.clientTurnId === 'held-x',
+      ),
+    ).toMatchObject({ content: 'held' });
   });
 });

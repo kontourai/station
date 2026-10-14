@@ -126,11 +126,10 @@ export function useOutboundQueueFlush(apiBase: string): void {
             delivery.lookupTurnDelivery(apiBase),
             { station: stationRef.current },
           );
-          // Then this tab's held follow-ups: a reconcile can release a row
-          // this tab's queue holds (a held copy past its reload grace, or a
-          // send that was mid-drain at a reload), and the restored queue must
-          // take it back before the flush could send it too (one message,
-          // one sender).
+          // Then this tab's held follow-ups: a reconcile can release a send
+          // that was mid-drain at a reload to pending, and the restored queue
+          // must take it back before the flush could send it too (one
+          // message, one sender).
           await outboundDispatch
             .syncHeld(
               heldOutboundIntents(activeChatsStore.getSnapshot()).map(

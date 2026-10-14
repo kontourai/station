@@ -550,6 +550,12 @@ const listeners = new Set<() => void>();
 const unavailableClaims = new Set<string>();
 /** Live sends this renderer is still waiting on (see `liveInFlight`). */
 const liveOwned = new Set<string>();
+/**
+ * The claim each live send of this renderer currently holds, by key: an
+ * abandoned attempt (its write landed late and a re-send adopted the row)
+ * must not clear the flag of the attempt that adopted it.
+ */
+const liveClaimOf = new Map<string, number>();
 
 function queueState(stored: unknown): OutboundQueueState {
   if (stored === undefined || stored === null) {
@@ -707,6 +713,17 @@ function mutationRefusal(
     case 'pending':
       return new Error(`${subject} cannot be ${action}.`);
   }
+}
+
+/**
+ * A held copy is the durable shadow of a message a chat's queue holds (in
+ * this window or another): changing the copy would not change what that
+ * queue sends. Only Send or Discard act on it.
+ */
+function heldCopyRefusal(action: 'edited' | 'reordered' | 'merged'): Error {
+  return new Error(
+    `This message is held in a chat's queue and cannot be ${action} here. Send it, or edit it where it is queued.`,
+  );
 }
 
 function reorderBarrier(
@@ -1213,9 +1230,11 @@ async function claimNext(
         !entries.slice(0, index).some(
           (earlier) =>
             earlier.sessionId === entry.sessionId &&
-            // An unconfirmed row is evidence, not a send in progress: it
-            // never holds back the messages written after it.
-            earlier.status !== 'may-have-started',
+            // An unconfirmed row is evidence, not a send in progress, and a
+            // held copy waits on its queue or on the user: neither holds back
+            // the messages written after it.
+            earlier.status !== 'may-have-started' &&
+            !earlier.heldBy,
         ),
     );
     if (!candidate) return { entries, result: undefined, changed: false };
@@ -1339,6 +1358,7 @@ async function edit(
     if (protectedEvidence(entries[index]!)) {
       throw mutationRefusal(entries[index]!, 'edited');
     }
+    if (entries[index]!.heldBy) throw heldCopyRefusal('edited');
     const edited = {
       ...entries[index]!,
       clientTurnId: randomCorrelationId(),
@@ -1361,6 +1381,7 @@ async function reorder(
     if (index === -1) throw new Error('Queued turn no longer exists');
     const moved = entries[index]!;
     if (protectedEvidence(moved)) throw mutationRefusal(moved, 'reordered');
+    if (moved.heldBy) throw heldCopyRefusal('reordered');
     const target = direction === 'up' ? index - 1 : index + 1;
     if (target < 0 || target >= entries.length) {
       return { entries, result: entries[index]!, changed: false };
@@ -1394,6 +1415,7 @@ async function merge(
     if (current.status !== 'pending') throw mutationRefusal(current, 'merged');
     if (nextTurn.status !== 'pending')
       throw mutationRefusal(nextTurn, 'merged');
+    if (current.heldBy || nextTurn.heldBy) throw heldCopyRefusal('merged');
     if (current.sessionId !== nextTurn.sessionId) {
       throw new Error('Only messages from the same session can be merged.');
     }
@@ -1725,6 +1747,13 @@ async function beginLive(
     liveOwned.delete(clientTurnId);
     throw error;
   }
+  liveClaimOf.set(clientTurnId, claimed.claimedAt!);
+  /** Clears the in-flight flag only while this attempt is the current one. */
+  const releaseLive = () => {
+    if (liveClaimOf.get(clientTurnId) !== claimed.claimedAt) return;
+    liveClaimOf.delete(clientTurnId);
+    liveOwned.delete(clientTurnId);
+  };
   const transition = async (
     change: (entry: QueuedOutboundTurn) => QueuedOutboundTurn | undefined,
   ): Promise<void> => {
@@ -1747,14 +1776,14 @@ async function beginLive(
     clientTurnId,
     accepted: async () => {
       await transition(() => undefined);
-      liveOwned.delete(clientTurnId);
+      releaseLive();
     },
     refused: async () => {
       await transition(() => undefined);
-      liveOwned.delete(clientTurnId);
+      releaseLive();
     },
     undeliverable: async (error) => {
-      liveOwned.delete(clientTurnId);
+      releaseLive();
       await transition((entry) => ({
         ...entry,
         status: 'pending',
@@ -1766,7 +1795,7 @@ async function beginLive(
     indeterminate: async (reason, options) => {
       // Still this renderer's unless listed: the chat already says so, and
       // the row is otherwise listed once this renderer is gone.
-      if (options?.listed) liveOwned.delete(clientTurnId);
+      if (options?.listed) releaseLive();
       await transition((entry) => ({
         ...entry,
         status: 'may-have-started',
@@ -1784,7 +1813,7 @@ async function beginLive(
     unanswered: async () => {
       // Released for the lookup: with no claim left, `reconcile` settles it by
       // Station's answer at the next pass instead of waiting out a renderer.
-      liveOwned.delete(clientTurnId);
+      releaseLive();
       await transition((entry) => ({
         ...entry,
         dispatchBootId: undefined,
@@ -1793,7 +1822,7 @@ async function beginLive(
       }));
     },
     hold: async () => {
-      liveOwned.delete(clientTurnId);
+      releaseLive();
       await transition((entry) => ({
         ...entry,
         status: 'pending',
@@ -2105,6 +2134,7 @@ export function _setOutboundQueueStorage(next: OutboundQueueStorage): void {
   mutationTail = Promise.resolve();
   unavailableClaims.clear();
   liveOwned.clear();
+  liveClaimOf.clear();
 }
 
 /** Test-only: drop the cross-tab channel so one test's stub cannot outlive it. */
@@ -2119,4 +2149,5 @@ export function _resetOutboundQueueStorage(): void {
   mutationTail = Promise.resolve();
   unavailableClaims.clear();
   liveOwned.clear();
+  liveClaimOf.clear();
 }

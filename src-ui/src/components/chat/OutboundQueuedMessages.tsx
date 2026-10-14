@@ -129,8 +129,12 @@ export function OutboundQueuedMessages({
                 message.timestamp > refusedAt,
             );
           const nextTurn = turns[index + 1];
+          // A held copy is only sent or discarded here (see `heldCopyRefusal`).
           const canMergeWithNext =
-            turn.status === 'pending' && nextTurn?.status === 'pending';
+            turn.status === 'pending' &&
+            nextTurn?.status === 'pending' &&
+            !turn.heldElsewhere &&
+            !nextTurn.heldElsewhere;
           const showingMergePreview =
             mergePreviewId === turn.clientTurnId && canMergeWithNext;
           return (
@@ -297,7 +301,7 @@ export function OutboundQueuedMessages({
               turn.status !== 'may-have-started' &&
               editingId !== turn.clientTurnId ? (
                 <>
-                  {turn.status === 'pending' ? (
+                  {turn.status === 'pending' && !turn.heldElsewhere ? (
                     <>
                       <button
                         type="button"
@@ -371,18 +375,20 @@ export function OutboundQueuedMessages({
                       Undo merge
                     </button>
                   ) : null}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingId(turn.clientTurnId);
-                      setEditValue(turn.content);
-                    }}
-                    className="queued-message__btn"
-                    title="Edit"
-                    aria-label="Edit message"
-                  >
-                    <EditGlyph />
-                  </button>
+                  {turn.heldElsewhere ? null : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingId(turn.clientTurnId);
+                        setEditValue(turn.content);
+                      }}
+                      className="queued-message__btn"
+                      title="Edit"
+                      aria-label="Edit message"
+                    >
+                      <EditGlyph />
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() =>
