@@ -1,5 +1,11 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+} from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import { readPluginManifest } from '@kontourai/station-shared/parsers';
@@ -8,8 +14,12 @@ import {
   admitStationRuntimeHome,
   resolveStationRuntimeContext,
   runtimeChannelFromEnvironment,
+  StationRuntimeHomeAdmissionError,
 } from '@kontourai/station-shared/runtime-path-resolver';
-import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
+import {
+  createStationTempDirSync,
+  STATION_TEMP_ROOT_NAME,
+} from '@kontourai/station-shared/temp-dir';
 import {
   type LifecycleCodeRoot,
   type LifecycleStateLocation,
@@ -111,15 +121,58 @@ export function normalizeHomePath(
   return normalized;
 }
 
+function mintAdmittedTemporaryHome(
+  env: NodeJS.ProcessEnv,
+  root?: string,
+): string {
+  const candidate = realpathSync(createStationTempDirSync('dev-home', root));
+  try {
+    return normalizeHomePath(candidate, env);
+  } catch (error) {
+    rmSync(candidate, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+/**
+ * A `--temp-home` lives under the Station temp root, which follows the ambient
+ * `TMPDIR`. Station points every agent it spawns at
+ * `<instance>/tmp/engine-spawn` (see `engine-spawn-tmpdir.ts`), so an agent
+ * running `./station start --temp-home` would mint its home inside a Station
+ * instance tree, which the runtime-home guard correctly refuses (and the
+ * engine-spawn reaper would delete on age). Rather than widen the guard, a
+ * rejected candidate is retried once under the system `/tmp`. Windows agents
+ * do not get this redirect (`os.tmpdir()` reads TEMP/TMP there), so the
+ * original rejection stands.
+ */
+function createTemporaryRuntimeHome(env: NodeJS.ProcessEnv): string {
+  try {
+    return mintAdmittedTemporaryHome(env);
+  } catch (error) {
+    if (
+      !(error instanceof StationRuntimeHomeAdmissionError) ||
+      process.platform === 'win32'
+    ) {
+      throw error;
+    }
+    try {
+      return mintAdmittedTemporaryHome(
+        env,
+        join('/tmp', STATION_TEMP_ROOT_NAME),
+      );
+    } catch {
+      throw error;
+    }
+  }
+}
+
 export function resolveLifecycleHomeTarget(
   options: LifecycleHomeOptions = {},
 ): LifecycleHomeTarget {
   const env = options.env ?? process.env;
 
   if (options.tempHome) {
-    const projectHome = normalizeHomePath(
-      realpathSync(createStationTempDirSync('dev-home')),
-    );
+    const projectHome = createTemporaryRuntimeHome(env);
     return {
       projectHome,
       isDefaultHome: false,

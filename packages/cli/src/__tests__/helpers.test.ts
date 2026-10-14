@@ -2,6 +2,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   realpathSync,
   rmSync,
   symlinkSync,
@@ -136,6 +137,55 @@ describe('channel lifecycle homes', () => {
       rmSync(fixture, { recursive: true, force: true });
     }
   });
+
+  // Station hands every agent it spawns `TMPDIR=<instance>/tmp/engine-spawn`.
+  // An agent that then runs `./station start --temp-home` (the screenshot
+  // harness does) used to mint its throwaway home inside that instance tree,
+  // which the runtime-home guard rightly refuses as a non-leaf instance path.
+  it.skipIf(process.platform === 'win32')(
+    'mints an admissible temporary home when TMPDIR is inside a Station instance tree',
+    () => {
+      const sharedRoot = realpathSync(
+        mkdtempSync(join(tmpdir(), 'station-cli-agent-tmpdir-root-')),
+      );
+      const engineSpawnTmp = join(
+        sharedRoot,
+        'instances',
+        'default',
+        'tmp',
+        'engine-spawn',
+      );
+      mkdirSync(engineSpawnTmp, { recursive: true });
+      vi.stubEnv('STATION_ROOT', sharedRoot);
+      vi.stubEnv('STATION_HOME', undefined);
+      vi.stubEnv('STATION_TEMP_ROOT', undefined);
+      vi.stubEnv('TMPDIR', engineSpawnTmp);
+      let projectHome: string | undefined;
+      try {
+        // Precondition: the ambient temp root really is inside the tree.
+        expect(tmpdir()).toBe(engineSpawnTmp);
+        const target = resolveLifecycleHomeTarget({
+          tempHome: true,
+          env: process.env,
+        });
+        projectHome = target.projectHome;
+        expect(target.source).toBe('--temp-home');
+        expect(projectHome.startsWith(`${sharedRoot}/`)).toBe(false);
+        expect(normalizeHomePath(projectHome, process.env)).toBe(projectHome);
+        expect(existsSync(projectHome)).toBe(true);
+        // The rejected candidate is not left behind in the instance tree.
+        expect(
+          existsSync(join(engineSpawnTmp, 'station'))
+            ? readdirSync(join(engineSpawnTmp, 'station'))
+            : [],
+        ).toEqual([]);
+      } finally {
+        vi.unstubAllEnvs();
+        if (projectHome) rmSync(projectHome, { recursive: true, force: true });
+        rmSync(sharedRoot, { recursive: true, force: true });
+      }
+    },
+  );
 
   it('rejects shared-root and container selections before CLI lifecycle work', () => {
     const sharedRoot = mkdtempSync(join(tmpdir(), 'station-cli-shared-root-'));
