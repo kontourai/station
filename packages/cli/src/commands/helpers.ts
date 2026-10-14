@@ -6,16 +6,16 @@ import {
   realpathSync,
   rmSync,
 } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import type { PluginManifest } from '@kontourai/station-contracts/plugin';
 import { readPluginManifest } from '@kontourai/station-shared/parsers';
 
 import {
   admitStationRuntimeHome,
+  resolveStationRoot,
   resolveStationRuntimeContext,
   runtimeChannelFromEnvironment,
   StationRuntimeHomeAdmissionError,
-  stationTreeContaining,
 } from '@kontourai/station-shared/runtime-path-resolver';
 import {
   createStationTempDirSync,
@@ -124,17 +124,54 @@ export function normalizeHomePath(
 
 const SYSTEM_TEMP_HOME_ROOT = join('/tmp', STATION_TEMP_ROOT_NAME);
 
+/**
+ * The Station-owned `<home>/tmp` tree containing `candidate`, for the homes an
+ * agent can inherit: `STATION_HOME` and the resolved Station root (which is
+ * that home when it is self-rooted). Station hands spawned engines
+ * `<home>/tmp/engine-spawn` and reaps it by age, so nothing durable for the
+ * length of a run may live there. Only that subtree is refused: a temp root
+ * elsewhere under a Station root, such as `STATION_ROOT=/tmp/station` with
+ * the default `TMPDIR`, stays where it was.
+ */
+function stationHomeTmpContaining(
+  candidate: string,
+  env: NodeJS.ProcessEnv,
+): string | undefined {
+  const target = realpathSync.native(candidate);
+  for (const owner of [resolveStationRoot(env), env.STATION_HOME?.trim()]) {
+    if (!owner) continue;
+    let ownedTmp: string;
+    try {
+      ownedTmp = realpathSync.native(join(resolve(owner), 'tmp'));
+    } catch {
+      continue; // No such tree, so the candidate cannot be inside it.
+    }
+    const relation = relative(ownedTmp, target);
+    if (
+      relation === '' ||
+      (relation !== '..' &&
+        !relation.startsWith(
+          `..${process.platform === 'win32' ? '\\' : '/'}`,
+        ) &&
+        !isAbsolute(relation))
+    ) {
+      return ownedTmp;
+    }
+  }
+  return undefined;
+}
+
 function mintAdmittedTemporaryHome(
   env: NodeJS.ProcessEnv,
   root?: string,
 ): string {
   const candidate = realpathSync(createStationTempDirSync('dev-home', root));
   try {
-    const owner = stationTreeContaining(candidate, env);
-    if (owner) {
+    const ownedTmp = stationHomeTmpContaining(candidate, env);
+    if (ownedTmp) {
       throw new StationRuntimeHomeAdmissionError(
         candidate,
-        `a temporary home must not live inside the Station tree at ${owner}`,
+        `a temporary home must not live in the Station-reaped tree ${ownedTmp}`,
       );
     }
     return normalizeHomePath(candidate, env);
@@ -152,10 +189,10 @@ function mintAdmittedTemporaryHome(
  * Station tree. Under `instances/` the runtime-home guard refuses it; under a
  * self-rooted parent home (`--home`, `--temp-home`) the guard admits it, and
  * the parent's engine-spawn reaper then deletes it by age while it may still
- * be in use. So a candidate inside the resolved Station root or `STATION_HOME`
- * is refused here too, and any refused candidate is retried once under the
- * system `/tmp`. Windows agents do not get this redirect (`os.tmpdir()` reads
- * TEMP/TMP there), so the original refusal stands.
+ * be in use. So a candidate inside that home's `tmp/` tree is refused here
+ * too, and any refused candidate is retried once under the system `/tmp`.
+ * Windows agents do not get this redirect (`os.tmpdir()` reads TEMP/TMP
+ * there), so the original refusal stands.
  */
 function createTemporaryRuntimeHome(env: NodeJS.ProcessEnv): string {
   try {

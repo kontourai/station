@@ -6,6 +6,7 @@ import {
   realpathSync,
   rmSync,
   symlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -228,16 +229,20 @@ describe('channel lifecycle homes', () => {
   it.skipIf(process.platform === 'win32')(
     'reports the refused /tmp retry alongside the original temp-home refusal',
     () => {
-      // A Station root at the system /tmp contains both the ambient candidate
-      // and the /tmp/station fallback, so both attempts must be refused.
-      const systemTmp = realpathSync('/tmp');
-      const fixture = mkdtempSync(
-        join(systemTmp, 'station-cli-retry-refused-'),
+      // A Station root whose `config` container is a regular file refuses
+      // every home it would own, so both the ambient candidate and the
+      // /tmp/station retry are refused by admission.
+      const brokenRoot = realpathSync(
+        mkdtempSync(join(tmpdir(), 'station-cli-broken-root-')),
       );
-      vi.stubEnv('STATION_ROOT', systemTmp);
+      writeFileSync(join(brokenRoot, 'config'), 'not a directory');
+      const ambientTmp = realpathSync(
+        mkdtempSync(join(tmpdir(), 'station-cli-retry-tmp-')),
+      );
+      vi.stubEnv('STATION_ROOT', brokenRoot);
       vi.stubEnv('STATION_HOME', undefined);
       vi.stubEnv('STATION_TEMP_ROOT', undefined);
-      vi.stubEnv('TMPDIR', fixture);
+      vi.stubEnv('TMPDIR', ambientTmp);
       try {
         let thrown: unknown;
         try {
@@ -251,14 +256,92 @@ describe('channel lifecycle homes', () => {
         }
         expect(thrown).toBeInstanceOf(Error);
         const message = (thrown as Error).message;
-        expect(message).toContain(`${fixture}/station/dev-home-`);
+        expect(message).toContain(`${ambientTmp}/station/dev-home-`);
         expect(message).toMatch(
-          /retrying under \/tmp\/station was also refused: .*\/tmp\/station\/dev-home-/,
+          /shared Station container is unsafe: config; retrying under \/tmp\/station was also refused: .*\/tmp\/station\/dev-home-.*shared Station container is unsafe: config/,
         );
-        expect(readdirSync(join(fixture, 'station'))).toEqual([]);
+        expect(readdirSync(join(ambientTmp, 'station'))).toEqual([]);
       } finally {
         vi.unstubAllEnvs();
+        rmSync(brokenRoot, { recursive: true, force: true });
+        rmSync(ambientTmp, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'keeps a temp home under a Station root at /tmp/station with the default TMPDIR',
+    () => {
+      const systemTmp = realpathSync('/tmp');
+      const stationRoot = join(systemTmp, 'station');
+      vi.stubEnv('STATION_ROOT', stationRoot);
+      vi.stubEnv('STATION_HOME', undefined);
+      vi.stubEnv('STATION_TEMP_ROOT', undefined);
+      vi.stubEnv('TMPDIR', systemTmp);
+      let projectHome: string | undefined;
+      try {
+        projectHome = resolveLifecycleHomeTarget({
+          tempHome: true,
+          env: process.env,
+        }).projectHome;
+        expect(projectHome.startsWith(`${stationRoot}/dev-home-`)).toBe(true);
+      } finally {
+        vi.unstubAllEnvs();
+        if (projectHome) rmSync(projectHome, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'refuses the engine-spawn tree of an explicit STATION_HOME outside an explicit STATION_ROOT',
+    () => {
+      const fixture = realpathSync(
+        mkdtempSync(join(tmpdir(), 'station-cli-split-root-home-')),
+      );
+      const stationRoot = join(fixture, 'root');
+      const parentHome = join(fixture, 'home');
+      const engineSpawnTmp = join(parentHome, 'tmp', 'engine-spawn');
+      mkdirSync(stationRoot);
+      mkdirSync(engineSpawnTmp, { recursive: true });
+      vi.stubEnv('STATION_ROOT', stationRoot);
+      vi.stubEnv('STATION_HOME', parentHome);
+      vi.stubEnv('STATION_TEMP_ROOT', undefined);
+      vi.stubEnv('TMPDIR', engineSpawnTmp);
+      let projectHome: string | undefined;
+      try {
+        projectHome = resolveLifecycleHomeTarget({
+          tempHome: true,
+          env: process.env,
+        }).projectHome;
+        expect(projectHome.startsWith(`${parentHome}/`)).toBe(false);
+        expect(projectHome.startsWith(realpathSync('/tmp'))).toBe(true);
+      } finally {
+        vi.unstubAllEnvs();
+        if (projectHome) rmSync(projectHome, { recursive: true, force: true });
         rmSync(fixture, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'honors a STATION_TEMP_ROOT inside STATION_HOME but outside its tmp tree',
+    () => {
+      const parentHome = realpathSync(
+        mkdtempSync(join(tmpdir(), 'station-cli-scratch-home-')),
+      );
+      const scratch = join(parentHome, 'scratch');
+      vi.stubEnv('STATION_ROOT', undefined);
+      vi.stubEnv('STATION_HOME', parentHome);
+      vi.stubEnv('STATION_TEMP_ROOT', scratch);
+      try {
+        const projectHome = resolveLifecycleHomeTarget({
+          tempHome: true,
+          env: process.env,
+        }).projectHome;
+        expect(projectHome.startsWith(`${scratch}/dev-home-`)).toBe(true);
+      } finally {
+        vi.unstubAllEnvs();
+        rmSync(parentHome, { recursive: true, force: true });
       }
     },
   );
