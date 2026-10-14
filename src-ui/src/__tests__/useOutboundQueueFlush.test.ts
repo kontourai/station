@@ -107,6 +107,43 @@ describe('useOutboundQueueFlush', () => {
     });
   });
 
+  it('sends a waiting row once its chat becomes writable, after the pass that deferred it', async () => {
+    let stored: unknown;
+    _setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, value) => {
+        stored = value;
+      },
+      updateItem: async (_key, updater) => {
+        stored = updater(stored);
+      },
+    });
+    // A reloaded chat re-proves its conversation before it may send.
+    activeChatsStore.updateChat('session-1', { conversationOpenPending: true });
+    await outboundDispatch.enqueue({
+      clientTurnId: 'waits-for-open',
+      sessionId: 'session-1',
+      agentSlug: 'codex',
+      content: 'send me when writable',
+    });
+    sendMessage.mockResolvedValue({
+      kind: 'accepted',
+      providerTurnId: 'provider-turn-open',
+    });
+    renderHook(() => useOutboundQueueFlush('http://api.test'));
+    await waitFor(() =>
+      expect(
+        activeChatsStore.getSnapshot()['session-1']?.outboundQueuedTurns,
+      ).toEqual([expect.objectContaining({ clientTurnId: 'waits-for-open' })]),
+    );
+    expect(sendMessage).not.toHaveBeenCalled();
+    activeChatsStore.updateChat('session-1', {
+      conversationOpenPending: false,
+    });
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+    expect(sendMessage.mock.calls[0]?.[6]).toBe('waits-for-open');
+  });
+
   describe('a send the app was closed during', () => {
     function orphanedLiveRow() {
       let stored: unknown = {

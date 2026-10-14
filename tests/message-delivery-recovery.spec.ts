@@ -1,9 +1,6 @@
 import type { Server } from 'node:http';
 import { expect, type Page } from '@playwright/test';
-import {
-  openChatWithAgent,
-  waitForSeededAgent,
-} from './helpers/agents-journey';
+import { waitForSeededAgent } from './helpers/agents-journey';
 import {
   type AuthenticatedE2ERequest,
   createAuthenticatedE2ERequest,
@@ -34,6 +31,7 @@ import {
 const FIXTURE_CONNECTION_ID = 'e2e-message-delivery-fixture';
 const FIXTURE_MODEL = 'station-message-delivery:latest';
 const FIXTURE_REPLY = 'Delivery fixture answered.';
+const FIRST_MESSAGE = 'Start of the conversation.';
 
 interface LlmConnection extends Record<string, unknown> {
   id: string;
@@ -118,9 +116,9 @@ async function sendHeldOpen(
   await expect(composer).toBeVisible({ timeout: 20_000 });
   await composer.fill(text);
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  const body = await sent;
-  await page.unrouteAll({ behavior: 'ignoreErrors' });
-  return body;
+  // The intercept stays installed through the reload: removing it first
+  // would let the held request continue to Station before the page dies.
+  return sent;
 }
 
 test.describe('A send whose app closed before Station answered', () => {
@@ -191,8 +189,38 @@ test.describe('A send whose app closed before Station answered', () => {
     expect(agentCreated.ok()).toBe(true);
     seededAgentSlug = agentSlug;
     await waitForSeededAgent(authenticatedRequest, agentSlug);
-    await page.goto(new URL(`/agents/${agentSlug}`, baseURL).href);
-    await openChatWithAgent(page, agentName);
+    // The conversation's first turn goes in directly, so the journey starts
+    // in an open chat with a bound Session; the composer sends the second.
+    const conversationId = `${agentSlug}:${stamp}`;
+    const firstSend = await authenticatedRequest.post(
+      '/api/orchestration/chat',
+      {
+        data: {
+          target: { environment: { kind: 'current' }, agent: agentSlug },
+          message: FIRST_MESSAGE,
+          conversationId,
+          clientTurnId: `e2e-first-${stamp}`,
+        },
+      },
+    );
+    expect(firstSend.ok(), await firstSend.text()).toBe(true);
+    await expect
+      .poll(() => turnPrompts(authenticatedRequest, conversationId), {
+        timeout: 60_000,
+      })
+      .toEqual([FIRST_MESSAGE]);
+    await page.goto(
+      new URL(
+        `/?dock=open&maximize=true&chat=${encodeURIComponent(conversationId)}`,
+        baseURL,
+      ).href,
+    );
+    await expect(
+      page
+        .getByRole('log', { name: 'Conversation transcript' })
+        .getByText(FIXTURE_REPLY, { exact: true }),
+    ).toHaveCount(1, { timeout: 60_000 });
+    return conversationId;
   }
 
   for (const { forward, outcome, label } of [
@@ -212,10 +240,15 @@ test.describe('A send whose app closed before Station answered', () => {
       test.setTimeout(240_000);
       if (!baseURL) throw new Error('Playwright baseURL is required');
       const authenticatedRequest = createAuthenticatedE2ERequest(request);
-      await openFixtureChat(page, authenticatedRequest, baseURL);
+      const conversationId = await openFixtureChat(
+        page,
+        authenticatedRequest,
+        baseURL,
+      );
       const text = `Deliver me exactly once ${outcome} ${Date.now()}`;
 
       const held = await sendHeldOpen(page, text, forward);
+      expect(held.conversationId).toBe(conversationId);
 
       // The reloaded app asks Station about the key before sending anything.
       const lookup = page.waitForResponse(
@@ -237,6 +270,7 @@ test.describe('A send whose app closed before Station answered', () => {
       });
       await page.reload();
       const answered = await lookup;
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
       expect(answered.status()).toBe(200);
       expect(
         ((await answered.json()) as { data: { outcome: string } }).data,
@@ -247,17 +281,17 @@ test.describe('A send whose app closed before Station answered', () => {
         .poll(() => turnPrompts(authenticatedRequest, held.conversationId), {
           timeout: 90_000,
         })
-        .toEqual([text]);
+        .toEqual([FIRST_MESSAGE, text]);
       // Settled, not merely not-yet-duplicated: once the reply shows, the
       // outbox has nothing left to send; count again.
       await expect(
         page
           .getByRole('log', { name: 'Conversation transcript' })
           .getByText(FIXTURE_REPLY, { exact: true }),
-      ).toHaveCount(1, { timeout: 60_000 });
+      ).toHaveCount(2, { timeout: 60_000 });
       expect(
         await turnPrompts(authenticatedRequest, held.conversationId),
-      ).toEqual([text]);
+      ).toEqual([FIRST_MESSAGE, text]);
       expect(replays).toEqual(forward ? [] : [held.clientTurnId]);
     });
   }

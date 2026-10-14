@@ -195,6 +195,36 @@ export function useOutboundQueueFlush(apiBase: string): void {
     }
   }, [status, triggerFlush]);
 
+  // A pass defers a chat whose conversation is not writable yet (a reload
+  // re-proves the open conversation before it may send), and nothing else
+  // would send its rows once it is. Flush again when a chat holding a
+  // waiting row becomes writable.
+  useEffect(() => {
+    if (status !== 'connected') return;
+    const writableWithWaiting = () =>
+      new Set(
+        Object.entries(activeChatsStore.getSnapshot())
+          .filter(
+            ([, chat]) =>
+              conversationCanMutate(chat) &&
+              chat.outboundQueuedTurns?.some(
+                (turn) => turn.status === 'pending',
+              ),
+          )
+          .map(([sessionId]) => sessionId),
+      );
+    let previous = writableWithWaiting();
+    const unsubscribe = activeChatsStore.subscribe(() => {
+      const next = writableWithWaiting();
+      const gained = [...next].some((sessionId) => !previous.has(sessionId));
+      previous = next;
+      if (gained) triggerFlush();
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [status, triggerFlush]);
+
   const hasFlushedOnMountRef = useRef(false);
   useEffect(() => {
     // A queue populated by a prior session (survived a restart) with the

@@ -136,6 +136,41 @@ function containsRouteFulfill(node) {
 }
 
 /**
+ * A route handler that only reads the request and forwards it to the real
+ * Station (`route.request()`, `route.fetch()`), never fulfilling it or handing
+ * the route to anything else: an intercept that holds or observes a real
+ * send, not a receipt mock. Anything else is treated as a mock.
+ */
+function isPassThroughRouteHandler(handler) {
+  if (
+    !handler ||
+    !(ts.isArrowFunction(handler) || ts.isFunctionExpression(handler)) ||
+    handler.parameters.length === 0 ||
+    !ts.isIdentifier(handler.parameters[0].name)
+  )
+    return false;
+  const routeName = handler.parameters[0].name.text;
+  let passThrough = !containsRouteFulfill(handler.body);
+  const visit = (candidate) => {
+    if (!passThrough) return;
+    if (ts.isIdentifier(candidate) && candidate.text === routeName) {
+      const parent = candidate.parent;
+      if (
+        !parent ||
+        !ts.isPropertyAccessExpression(parent) ||
+        parent.expression !== candidate ||
+        !['request', 'fetch'].includes(parent.name.text)
+      )
+        passThrough = false;
+      return;
+    }
+    ts.forEachChild(candidate, visit);
+  };
+  visit(handler.body);
+  return passThrough;
+}
+
+/**
  * archive#3800: a mocked `POST /api/orchestration/chat` is only ACCEPTED when
  * its body carries the exact provider turn identity — `readExecutionReceipt`
  * (`packages/sdk/src/client/execution.ts:126-137`) and the route itself
@@ -179,7 +214,8 @@ export function foregroundReceiptFixtureErrors(filePath, text) {
       ts.isPropertyAccessExpression(node.expression) &&
       node.expression.name.text === 'route' &&
       node.arguments.length > 0 &&
-      isForegroundChatRouteLiteral(node.arguments[0])
+      isForegroundChatRouteLiteral(node.arguments[0]) &&
+      !isPassThroughRouteHandler(node.arguments[1])
     ) {
       mocksChatRoute = true;
     }
