@@ -3290,6 +3290,34 @@ describe('the real workflow corpus', () => {
     ).toBeGreaterThan(10);
   });
 
+  // A merge-group run failed on one TLS reset (curl exit 35) while fetching
+  // actionlint; `--retry` alone does not retry that exit. The gate pins the
+  // exact step text, so this reads the intended flags from the tree itself.
+  test('retries every pinned actionlint download through a TLS reset and keeps its checksum', () => {
+    const runs = workflows.flatMap(({ document }) =>
+      Object.values(
+        (document as { jobs?: Record<string, { steps?: unknown[] }> }).jobs ??
+          {},
+      ).flatMap((job) =>
+        (job.steps ?? [])
+          .filter(
+            (step): step is { run: string } =>
+              (step as { name?: unknown }).name === 'Install pinned actionlint',
+          )
+          .map((step) => step.run),
+      ),
+    );
+    expect(runs).toHaveLength(5);
+    for (const run of runs) {
+      expect(run).toMatch(
+        /^curl --fail --location --retry 5 --retry-all-errors --retry-delay 2 --output "\$RUNNER_TEMP\/\$ACTIONLINT_ARCHIVE"/m,
+      );
+      expect(run).toContain(
+        'echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$ACTIONLINT_ARCHIVE" | sha256sum --check --status',
+      );
+    }
+  });
+
   test('satisfies the persistent-runner policy it is checked against', () => {
     expect(
       persistentRunnerPolicyFindings(workflows).map(

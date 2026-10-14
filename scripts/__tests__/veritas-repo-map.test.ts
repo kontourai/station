@@ -7,19 +7,24 @@
  * for the runtime-contracts family), and the required governance gate must
  * stay wired. See docs/strategy/veritas/migration-0.5-record.md.
  */
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 // @ts-expect-error -- @kontourai/veritas ships untyped ESM
 import { classifyNodes } from '@kontourai/veritas';
 import { describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   codexHookFeatureFindings,
   codexPreEditHookFindings,
+  collectUnscopedVeritasExecFindings,
   findUnexecutableRoutedProofFamilyIds,
   runRepoGovernanceChecks,
+  unscopedVeritasExecLines,
+  veritasExecSurfacePaths,
 } from '../proof-family-lane.mjs';
 
 const rootDir = process.cwd();
+const makeTempDir = trackTempDirs();
 
 function readJson(relativePath: string) {
   return JSON.parse(readFileSync(resolve(rootDir, relativePath), 'utf8'));
@@ -217,6 +222,7 @@ describe('veritas repo map (1.5)', () => {
       runRepoGovernanceChecks({
         codexHookConfig: duplicate,
         routeErrorEgressCheck: () => [],
+        veritasExecCheck: () => [],
       }),
     ).toEqual(
       expect.arrayContaining([
@@ -244,11 +250,113 @@ describe('veritas repo map (1.5)', () => {
       runRepoGovernanceChecks({
         codexConfigToml: '[features]\nhooks = false\n',
         routeErrorEgressCheck: () => [],
+        veritasExecCheck: () => [],
       }),
     ).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: 'codex-project-hooks-enabled',
+          severity: 'block',
+        }),
+      ]),
+    );
+  });
+
+  // The bare npm name `veritas` is an unrelated third-party package; a runner
+  // given that name fetches it whenever the local bin is missing.
+  it.each([
+    'npm exec -- veritas readiness --working-tree',
+    '"command": "npm exec -- veritas hooks codex pre-tool-use",',
+    "  'npm exec -- veritas hooks codex pre-tool-use';",
+    'Run `npx veritas init` first.',
+    'npx -y veritas@latest readiness',
+    'npx --no veritas readiness',
+    'npm x veritas readiness',
+    'pnpm dlx veritas readiness',
+    'yarn dlx veritas readiness',
+    'bunx veritas readiness',
+    'npm exec --package=veritas -- veritas readiness',
+    'npx -p veritas veritas readiness',
+    'cd repo && npx veritas readiness',
+  ])('refuses a runner that resolves the unscoped package: %s', (line) => {
+    expect(unscopedVeritasExecLines(`first line\n${line}\n`)).toEqual([2]);
+  });
+
+  it.each([
+    'npm exec --no --package=@kontourai/veritas -- veritas hooks codex pre-tool-use',
+    'npx --no @kontourai/veritas readiness',
+    'npx @kontourai/veritas@latest init --non-interactive',
+    '"veritas:readiness": "veritas readiness --working-tree",',
+    'npm run --silent veritas:readiness',
+    'pnpm exec veritas readiness',
+    'npx biome check veritas.claims.json',
+    'npm exec -- tsc --noEmit # then veritas readiness',
+  ])('accepts a scoped or local-only Veritas invocation: %s', (line) => {
+    expect(unscopedVeritasExecLines(line)).toEqual([]);
+  });
+
+  it('reads Station instructions, hooks and scripts but not test inputs', () => {
+    const surfaces = [
+      'AGENTS.md',
+      'CLAUDE.md',
+      'scripts/AGENTS.md',
+      'package.json',
+      'packages/sdk/package.json',
+      '.agents/skills/documentation-audit/SKILL.md',
+      '.codex/hooks.json',
+      '.githooks/pre-push',
+      '.github/workflows/ci.yml',
+      '.veritas/GOVERNANCE.md',
+      'docs/guides/testing.md',
+      'scripts/proof-family-lane.mjs',
+    ];
+    const ignored = [
+      'scripts/__tests__/veritas-repo-map.test.ts',
+      'scripts/__tests__/fixtures/hooks.json',
+      'docs/strategy/veritas/migration-0.5-record.md',
+      'src-server/services/evidence/veritas-readiness-service.ts',
+    ];
+    expect(veritasExecSurfacePaths([...surfaces, ...ignored])).toEqual(
+      surfaces,
+    );
+  });
+
+  it('blocks repo governance when a tracked script runs the unscoped package', () => {
+    const trackedPaths = [
+      '.codex/hooks.json',
+      'package.json',
+      'scripts/proof-family-lane.mjs',
+    ];
+    expect(collectUnscopedVeritasExecFindings({ trackedPaths })).toEqual([]);
+
+    const root = makeTempDir('veritas-exec-guard-');
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify(
+        {
+          scripts: {
+            'veritas:readiness': 'npm exec -- veritas readiness --working-tree',
+          },
+        },
+        null,
+        2,
+      ),
+    );
+    const findings = collectUnscopedVeritasExecFindings({
+      root,
+      trackedPaths: ['package.json', 'scripts/removed.mjs'],
+    });
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatch(/^package\.json:3 runs the unscoped "veritas"/);
+    expect(
+      runRepoGovernanceChecks({
+        routeErrorEgressCheck: () => [],
+        veritasExecCheck: () => findings,
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'veritas-unscoped-exec',
           severity: 'block',
         }),
       ]),

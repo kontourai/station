@@ -213,7 +213,10 @@ export function ReadinessInspectorContent({
             <SetupCta
               label="Set up readiness"
               docsUrl={VERITAS_DOCS_URL}
-              command={result?.command ?? 'npx veritas init --non-interactive'}
+              command={
+                result?.command ??
+                'npx @kontourai/veritas@latest init --non-interactive'
+              }
               commandNote="The Veritas CLI is not installed in this workspace yet, so Station cannot run the setup for you. Copy the command below into a terminal in this project — it downloads the CLI and scaffolds a .veritas/ directory (it writes files to your project)."
             />
           ) : (

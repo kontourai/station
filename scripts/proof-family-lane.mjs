@@ -9,6 +9,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { evaluateRepoStandards, loadRepoStandards } from '@kontourai/veritas';
 import { collectCiWorkflowGovernanceFindings } from './ci-workflow-governance.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { collectPublicContributionSurfaceFindings } from './public-contribution-surfaces.mjs';
 import { collectRouteErrorEgressFindings } from './route-error-egress-gate.mjs';
@@ -26,7 +27,7 @@ const repoStandardsPath = resolve(
   '.veritas/repo-standards/default.repo-standards.json',
 );
 const CODEX_VERITAS_HOOK_COMMAND =
-  'npm exec -- veritas hooks codex pre-tool-use';
+  'npm exec --no --package=@kontourai/veritas -- veritas hooks codex pre-tool-use';
 const CODEX_VERITAS_HOOK_MATCHER = 'apply_patch|Edit|Write';
 const generatedEvidenceRoot = resolve(
   rootDir,
@@ -428,6 +429,136 @@ export function codexHookFeatureFindings(configText) {
   return [];
 }
 
+/*
+ * The bare npm name `veritas` belongs to an unrelated third-party package.
+ * A package runner given that name (rather than `@kontourai/veritas`) fetches
+ * it whenever the local bin is missing, as in a fresh worktree without
+ * node_modules. It fails today only because that package ships no bin. So
+ * Station's instructions, hooks and scripts must name the scoped package, or
+ * call the installed `veritas` bin from an npm script, which resolves through
+ * node_modules/.bin and never fetches.
+ */
+const PACKAGE_RUNNER =
+  /(?<![\w@/.:-])(?:npx|pnpx|bunx|npm\s+(?:exec|x)|pnpm\s+dlx|yarn\s+dlx|bun\s+x)(?=\s)/g;
+// Runner options whose value is the next argument when written without `=`.
+const RUNNER_VALUE_OPTIONS = new Set([
+  'package',
+  'p',
+  'prefix',
+  'cache',
+  'userconfig',
+  'globalconfig',
+  'registry',
+  'call',
+  'c',
+  'shell',
+  'script-shell',
+  'workspace',
+  'w',
+  'before',
+  'loglevel',
+]);
+const VERITAS_EXEC_SURFACES = Object.freeze([
+  /(?:^|\/)(?:AGENTS|CLAUDE)\.md$/,
+  /(?:^|\/)package\.json$/,
+  /^\.agents\//,
+  /^\.claude\//,
+  /^\.codex\//,
+  /^\.githooks\//,
+  /^\.github\//,
+  /^\.veritas\/.*\.md$/,
+  /^docs\/guides\//,
+  /^scripts\//,
+]);
+const TEST_INPUT_PATH = /(?:^|\/)(?:__tests__|fixtures)\//;
+
+function unquotedToken(token) {
+  return (token ?? '').replace(/^["'`(]+/, '').replace(/["'`),;\\]+$/, '');
+}
+
+function isBareVeritasSpec(spec) {
+  return /^veritas(?:@\S*)?$/.test(spec);
+}
+
+/** Lines whose package runner would resolve the unscoped `veritas` package. */
+export function unscopedVeritasExecLines(text) {
+  const lines = [];
+  for (const [index, line] of text.split(/\r?\n/).entries()) {
+    for (const match of line.matchAll(PACKAGE_RUNNER)) {
+      const tokens = line
+        .slice(match.index + match[0].length)
+        .trim()
+        .split(/\s+/);
+      const packages = [];
+      let command = '';
+      for (let i = 0; i < tokens.length; i += 1) {
+        const token = unquotedToken(tokens[i]);
+        if (!token || /^(?:&&|\|\||[;|&])$/.test(token)) break;
+        if (token === '--') {
+          command = unquotedToken(tokens[i + 1]);
+          break;
+        }
+        if (token.startsWith('-')) {
+          const [key, ...value] = token.replace(/^-+/, '').split('=');
+          if (!RUNNER_VALUE_OPTIONS.has(key)) continue;
+          let optionValue = value.join('=');
+          if (!value.length) {
+            i += 1;
+            optionValue = unquotedToken(tokens[i]);
+          }
+          if (key === 'package' || key === 'p') packages.push(optionValue);
+          continue;
+        }
+        command = token;
+        break;
+      }
+      const runs = packages.length > 0 ? packages : [command];
+      if (runs.some(isBareVeritasSpec)) {
+        lines.push(index + 1);
+        break;
+      }
+    }
+  }
+  return lines;
+}
+
+/** Tracked instruction, hook and script files the Veritas exec guard reads. */
+export function veritasExecSurfacePaths(trackedPaths) {
+  return trackedPaths.filter(
+    (path) =>
+      VERITAS_EXEC_SURFACES.some((surface) => surface.test(path)) &&
+      !TEST_INPUT_PATH.test(path),
+  );
+}
+
+export function collectUnscopedVeritasExecFindings({
+  root = rootDir,
+  trackedPaths = String(
+    execFileSyncBounded('git', ['ls-files', '-z'], {
+      cwd: root,
+      encoding: 'utf8',
+      windowsHide: true,
+    }),
+  )
+    .split('\0')
+    .filter(Boolean),
+} = {}) {
+  const findings = [];
+  for (const path of veritasExecSurfacePaths(trackedPaths)) {
+    const absolutePath = resolve(root, path);
+    // A tracked file deleted in the working tree has nothing left to run.
+    if (!existsSync(absolutePath)) continue;
+    for (const line of unscopedVeritasExecLines(
+      readFileSync(absolutePath, 'utf8'),
+    )) {
+      findings.push(
+        `${path}:${line} runs the unscoped "veritas" npm package. Name @kontourai/veritas (npm exec --no --package=@kontourai/veritas -- veritas …), or call the installed veritas bin from an npm script.`,
+      );
+    }
+  }
+  return findings;
+}
+
 function readInstalledCodexHooks() {
   try {
     return JSON.parse(
@@ -452,8 +583,17 @@ export function runRepoGovernanceChecks({
   proofFamilyManifest = readJson(manifestPath),
   codexHookConfig = readInstalledCodexHooks(),
   codexConfigToml = readInstalledCodexConfig(),
+  veritasExecCheck = () => collectUnscopedVeritasExecFindings(),
 } = {}) {
   const findings = [];
+
+  for (const message of veritasExecCheck()) {
+    findings.push({
+      id: 'veritas-unscoped-exec',
+      message,
+      severity: 'block',
+    });
+  }
 
   for (const message of codexPreEditHookFindings(codexHookConfig)) {
     findings.push({

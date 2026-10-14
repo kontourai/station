@@ -152,12 +152,13 @@ const RUNNER_TOKEN = `(?:npx|npm(?:${WS}+exec|${WS}+run)?|yarn(?:${WS}+run)?|pnp
 /**
  * npm's documented `--` argument separator (`npm run <script> -- <args>`,
  * `npm exec -- <bin> <args>`) sits between the runner token and the verb on
- * a real invocation — including the VERBATIM body of this repo's own
- * `veritas:shadow`/`veritas:readiness` scripts (`npm exec -- veritas
- * readiness --working-tree`, package.json). Without accounting for it, an
- * agent that ran that exact command line (rather than the `npm run
- * veritas:shadow` alias) produced governance.merge-readiness NO-ROUTE —
- * found in archive#1451 review. Optional (most invocations have no separator), a
+ * a real invocation — as in `npm exec -- veritas readiness --working-tree`,
+ * which was then the body of this repo's `veritas:shadow`/`veritas:readiness`
+ * scripts. Without accounting for it, an agent that ran that exact command
+ * line (rather than the `npm run veritas:shadow` alias) produced
+ * governance.merge-readiness NO-ROUTE — found in archive#1451 review. The
+ * scripts now call the installed bin directly (`veritas readiness
+ * --working-tree`), which routes without a runner. Optional (most invocations have no separator), a
  * single bounded `WS+` after the fixed two-character literal — no new
  * backtracking surface next to `ENV_PREFIX`/`RUNNER_TOKEN` above.
  */
@@ -409,9 +410,9 @@ function stripHeredocBodies(command: string): string {
  * `SEP` (an optional `--` separator, folded into `ANCHOR_OPTIONAL`/
  * `ANCHOR_REQUIRED` themselves so every pattern built from them gets it for
  * free) covers npm's documented `npm run <script> -- <args>` / `npm exec --
- * <bin> <args>` forms — including the VERBATIM body of this repo's own
- * `veritas:shadow`/`veritas:readiness` scripts (`npm exec -- veritas
- * readiness --working-tree`), which NO-ROUTEd before this fix if an agent
+ * <bin> <args>` forms — including `npm exec -- veritas readiness
+ * --working-tree`, the former body of this repo's `veritas:shadow`/
+ * `veritas:readiness` scripts, which NO-ROUTEd before this fix if an agent
  * ran that literal command instead of the `npm run veritas:shadow` alias
  * (archive#1451 review FN-1).
  *

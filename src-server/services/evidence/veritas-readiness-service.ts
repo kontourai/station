@@ -212,6 +212,8 @@ interface ReadinessCliJson {
 }
 
 const STDERR_TAIL_CHARS = 600;
+const VERITAS_INIT_COMMAND =
+  'npx @kontourai/veritas@latest init --non-interactive';
 const DEFAULT_CLI_TIMEOUT_MS = 5 * 60 * 1000;
 
 function defaultRunCli(timeoutMs: number): VeritasCliRunner {
@@ -375,10 +377,11 @@ export class VeritasReadinessService {
     const cliPath = resolveVeritasBin(cwd);
     if (!cliPath) {
       veritasReadinessInits.add(1, { outcome: 'no-cli' });
-      return {
-        outcome: 'no-cli',
-        command: 'npx veritas init --non-interactive',
-      };
+      // The bare npm name `veritas` is an unrelated package, so the command
+      // names the scoped one. `--no` would refuse here, because the CLI is
+      // not installed; npx asks before downloading it. `@latest` keeps an
+      // older global or cached copy from scaffolding the workspace.
+      return { outcome: 'no-cli', command: VERITAS_INIT_COMMAND };
     }
     const args = ['init', '--root', cwd, '--non-interactive'];
     let result: VeritasCliResult;

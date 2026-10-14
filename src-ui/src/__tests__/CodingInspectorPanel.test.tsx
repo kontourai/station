@@ -140,7 +140,7 @@ describe('ReadinessInspectorContent — copyable setup command', () => {
     };
     state.initReadinessResult = {
       outcome: 'no-cli',
-      command: 'npx veritas init --non-interactive',
+      command: 'npx @kontourai/veritas@latest init --non-interactive',
     };
     return render(<ReadinessInspectorContent projectSlug="dev" />);
   }
@@ -158,7 +158,7 @@ describe('ReadinessInspectorContent — copyable setup command', () => {
     fireEvent.click(copyButton());
 
     expect(writeText).toHaveBeenCalledWith(
-      'npx veritas init --non-interactive',
+      'npx @kontourai/veritas@latest init --non-interactive',
     );
     await waitFor(() => expect(copyButton().textContent).toBe('Copied'));
   });

@@ -213,16 +213,19 @@ describe('veritas readiness routes', () => {
 
   test('POST /init reports no-cli with a copyable command', async () => {
     const service = createMockService({
-      initWorkspace: vi
-        .fn()
-        .mockResolvedValue({ outcome: 'no-cli', command: 'npx veritas init' }),
+      initWorkspace: vi.fn().mockResolvedValue({
+        outcome: 'no-cli',
+        command: 'npx @kontourai/veritas@latest init --non-interactive',
+      }),
     });
     const { app } = createApp(service);
     const body = await readJson(
       await post(app, '/api/projects/dev/readiness/init'),
     );
     expect(body.data.outcome).toBe('no-cli');
-    expect(body.data.command).toContain('veritas init');
+    expect(body.data.command).toBe(
+      'npx @kontourai/veritas@latest init --non-interactive',
+    );
   });
 
   test('POST /init maps a CLI failure to 502', async () => {

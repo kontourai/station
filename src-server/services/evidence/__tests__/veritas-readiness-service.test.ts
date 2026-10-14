@@ -270,7 +270,10 @@ describe('VeritasReadinessService.initWorkspace', () => {
     const service = new VeritasReadinessService({ runCli });
     const result = await service.initWorkspace(cwd);
     expect(result.outcome).toBe('no-cli');
-    expect(result.command).toContain('veritas init');
+    // The bare npm name `veritas` is an unrelated third-party package.
+    expect(result.command).toBe(
+      'npx @kontourai/veritas@latest init --non-interactive',
+    );
     expect(runCli).not.toHaveBeenCalled();
   });
 

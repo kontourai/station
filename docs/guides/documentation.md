@@ -40,6 +40,9 @@ merge group's base, so a file added under `docs/adr/` fails there. Locally the
 base is `origin/main`, and only committed files are compared. Corpus is not on
 npm: both commands fetch it with `npm exec` from the commit that
 `scripts/corpus-decisions.mjs` pins, the same one the Docs kit gate uses.
+That tarball has no lockfile, so its dependencies resolve with npm `--before`
+set to one day ago, the workspace's `minimumReleaseAge`: a dependency release
+from the last day is not installed.
 
 ## Make authority explicit
 
@@ -469,9 +472,11 @@ Keep concise explanations of non-obvious invariants, ownership, ordering,
 security boundaries, external compatibility constraints, and previous defects.
 These explain why an apparently simpler change would be wrong.
 
-Long rationale belongs in a canonical guide or ADR, with a short local pointer
-when the decision is easy to accidentally undo. Preserve regression-test and
-issue references when moving it. Tests should encode the reproducible failure;
+Long rationale belongs in a canonical guide or a decision record
+(`docs/decisions/<slug>.md`; see [Record a decision](#record-a-decision)), with
+a short local pointer when the decision is easy to accidentally undo. Preserve
+regression-test and issue references when moving it. Tests should encode the
+reproducible failure;
 they do not always replace the explanation of why it matters.
 
 Do not remove licenses, public API documentation, compiler/linter directives,

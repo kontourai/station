@@ -15,6 +15,12 @@
  * commit as docs-kit.yml's corpus-ref; the Corpus pin test keeps them equal.
  * It is a Node wrapper rather than an npm script so the base needs no shell
  * expansion, which cmd.exe does not do.
+ *
+ * The tarball has no lockfile, so npm resolves Corpus's caret-ranged
+ * dependencies fresh on every cold run, outside pnpm's minimumReleaseAge. npm
+ * `--before` applies the same floor: only versions published at least
+ * RELEASE_AGE_MINUTES ago are eligible, so a dependency release published in
+ * the last day cannot run in the required lane.
  */
 import { spawnSync } from 'node:child_process';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -23,10 +29,23 @@ import { fastBase } from './run-ci-fast.mjs';
 
 export const CORPUS_PIN = '08c62ccd72880ff4bd4c378ae252ad437b4b4fb5';
 const CORPUS_PACKAGE = `https://codeload.github.com/kontourai/corpus/tar.gz/${CORPUS_PIN}`;
+/** pnpm-workspace.yaml's minimumReleaseAge; the test keeps the two equal. */
+export const RELEASE_AGE_MINUTES = 1440;
 
 /** The npm arguments for one subcommand; refuses anything else. */
-export function corpusDecisionsNpmArgs(subcommand, env = process.env) {
-  const corpus = ['exec', '--yes', `--package=${CORPUS_PACKAGE}`, '--'];
+export function corpusDecisionsNpmArgs(
+  subcommand,
+  env = process.env,
+  now = Date.now(),
+) {
+  const before = new Date(now - RELEASE_AGE_MINUTES * 60_000).toISOString();
+  const corpus = [
+    'exec',
+    '--yes',
+    `--before=${before}`,
+    `--package=${CORPUS_PACKAGE}`,
+    '--',
+  ];
   if (subcommand === 'check')
     return [...corpus, 'corpus', 'decisions', 'check', '--base', fastBase(env)];
   if (subcommand === 'index')
@@ -45,15 +64,17 @@ export function corpusDecisionsNpmArgs(subcommand, env = process.env) {
  *     args: string[],
  *     options: import('node:child_process').SpawnSyncOptions,
  *   ) => { status: number | null, signal?: NodeJS.Signals | null, error?: Error },
+ *   now?: number,
  * }} [options]
  */
 export function runCorpusDecisions(
   subcommand,
-  { env = process.env, spawn = spawnSync } = {},
+  { env = process.env, spawn = spawnSync, now = Date.now() } = {},
 ) {
-  const invocation = npmInvocation(corpusDecisionsNpmArgs(subcommand, env), {
-    env,
-  });
+  const invocation = npmInvocation(
+    corpusDecisionsNpmArgs(subcommand, env, now),
+    { env },
+  );
   const result = spawn(invocation.command, invocation.args, {
     stdio: 'inherit',
     env,

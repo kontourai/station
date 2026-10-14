@@ -92,7 +92,7 @@ function baseScripts() {
     'test:connected-agents': pass,
     'proof:session-transition-contract': pass,
     'proof:bounded-work-contract': pass,
-    'veritas:readiness': 'npm exec -- veritas readiness --working-tree',
+    'veritas:readiness': 'veritas readiness --working-tree',
     'proof:sdk-builds': pass,
     'proof:app-builds': pass,
     'veritas:fallow:advisory': pass,

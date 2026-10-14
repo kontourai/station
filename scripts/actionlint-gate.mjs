@@ -569,8 +569,11 @@ const FULL_REGRESSION_COMPLETION_STEP = 'Run full-regression phases';
 const ACTIONLINT_ARCHIVE = 'actionlint_1.7.12_linux_amd64.tar.gz';
 const ACTIONLINT_SHA256 =
   '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8';
+// `--retry` alone does not retry curl exit 35, a TLS reset from the release
+// CDN; `--retry-all-errors` does (see REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA).
+// The checksum below still verifies whatever the retried download returns.
 const PINNED_ACTIONLINT_PROVISION_RUN = `mkdir -p "$RUNNER_TEMP/actionlint"
-curl --fail --location --retry 3 --output "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" \\
+curl --fail --location --retry 5 --retry-all-errors --retry-delay 2 --output "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" \\
   "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
 echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$ACTIONLINT_ARCHIVE" | sha256sum --check --status
 tar -xzf "$RUNNER_TEMP/$ACTIONLINT_ARCHIVE" -C "$RUNNER_TEMP/actionlint"

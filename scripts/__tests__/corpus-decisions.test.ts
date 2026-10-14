@@ -1,13 +1,18 @@
 import { readFileSync } from 'node:fs';
+import { load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
 import {
   CORPUS_PIN,
   corpusDecisionsNpmArgs,
+  RELEASE_AGE_MINUTES,
   runCorpusDecisions,
 } from '../corpus-decisions.mjs';
 import { FAST_BASE_ENV } from '../run-ci-fast.mjs';
 
 const CORPUS_PACKAGE = `--package=https://codeload.github.com/kontourai/corpus/tar.gz/${CORPUS_PIN}`;
+const NOW = Date.parse('2026-10-14T12:00:00.000Z');
+// One day before NOW: pnpm-workspace.yaml's 1,440-minute release age.
+const BEFORE = '--before=2026-10-13T12:00:00.000Z';
 
 describe('Corpus decisions wrapper', () => {
   it('declares the registry with the numbered-ADR freeze in corpus.json', () => {
@@ -30,12 +35,45 @@ describe('Corpus decisions wrapper', () => {
     );
   });
 
+  // The tarball has no lockfile, so without --before npm would resolve
+  // Corpus's caret ranges to a dependency release published minutes ago.
+  it("resolves Corpus's dependencies under the workspace release-age floor", () => {
+    const workspace = load(readFileSync('pnpm-workspace.yaml', 'utf8')) as {
+      minimumReleaseAge?: unknown;
+    };
+    expect(RELEASE_AGE_MINUTES).toBe(1440);
+    expect(workspace.minimumReleaseAge).toBe(RELEASE_AGE_MINUTES);
+    for (const subcommand of ['check', 'index']) {
+      const args = corpusDecisionsNpmArgs(subcommand, {}, NOW);
+      expect(args.slice(0, 5)).toEqual([
+        'exec',
+        '--yes',
+        BEFORE,
+        CORPUS_PACKAGE,
+        '--',
+      ]);
+    }
+    const calls: string[][] = [];
+    runCorpusDecisions('check', {
+      env: {},
+      now: NOW,
+      spawn: (_command: string, args: string[]) => {
+        calls.push(args);
+        return { status: 0 };
+      },
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain(BEFORE);
+    expect(calls[0].indexOf(BEFORE)).toBeLessThan(calls[0].indexOf('--'));
+  });
+
   it('checks against the ci:fast base, which defaults to origin/main', () => {
     expect(
-      corpusDecisionsNpmArgs('check', { [FAST_BASE_ENV]: 'abc1234' }),
+      corpusDecisionsNpmArgs('check', { [FAST_BASE_ENV]: 'abc1234' }, NOW),
     ).toEqual([
       'exec',
       '--yes',
+      BEFORE,
       CORPUS_PACKAGE,
       '--',
       'corpus',
@@ -48,9 +86,10 @@ describe('Corpus decisions wrapper', () => {
       '--base',
       'origin/main',
     ]);
-    expect(corpusDecisionsNpmArgs('index', {})).toEqual([
+    expect(corpusDecisionsNpmArgs('index', {}, NOW)).toEqual([
       'exec',
       '--yes',
+      BEFORE,
       CORPUS_PACKAGE,
       '--',
       'corpus',

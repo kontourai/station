@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import {
   DefaultCommandEvidenceRoutingPolicy,
@@ -882,10 +883,10 @@ describe('DefaultCommandEvidenceRoutingPolicy — station#1451: gate-passing pat
         'npm exec veritas readiness --working-tree',
         'governance.merge-readiness',
       ],
-      // The VERBATIM body of this repo's own veritas:shadow/veritas:readiness
-      // npm scripts (package.json) — archive#1451 review FN-1, reviewer-
-      // verified: npm's documented `--` separator broke the anchor before
-      // this fix, so an agent running the expanded form (instead of the
+      // The former body of this repo's veritas:shadow/veritas:readiness npm
+      // scripts — archive#1451 review FN-1, reviewer-verified: npm's
+      // documented `--` separator broke the anchor before this fix, so an
+      // agent running the expanded form (instead of the
       // `npm run veritas:shadow` alias) produced NO-ROUTE.
       [
         'npm exec -- veritas readiness --working-tree',
@@ -894,6 +895,22 @@ describe('DefaultCommandEvidenceRoutingPolicy — station#1451: gate-passing pat
     ])('%s routes to %s (real invocation)', (command, claimType) => {
       expect(claimTypeFor(command)).toBe(claimType);
     });
+
+    // An agent may run a script's expanded body instead of its alias; the
+    // repo's own readiness scripts must stay routable either way.
+    test.each([
+      'veritas:shadow',
+      'veritas:readiness',
+      'veritas:readiness:diff',
+    ])(
+      'the body of the %s package script routes to governance.merge-readiness',
+      (script) => {
+        const { scripts } = JSON.parse(readFileSync('package.json', 'utf8'));
+        expect(claimTypeFor(scripts[script])).toBe(
+          'governance.merge-readiness',
+        );
+      },
+    );
 
     test('npx veritas readiness --help does not route (no-op)', () => {
       expect(claimTypeFor('npx veritas readiness --help')).toBeUndefined();
