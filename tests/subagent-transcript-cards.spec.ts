@@ -33,6 +33,11 @@ const runningChild = {
   title: '[opus] review station#3657 ADR freeze',
   kindLabel: 'general-purpose',
   model: { id: 'claude-opus-5-5', source: 'subagent-reply' },
+  transcript: {
+    kind: 'claude-subagent',
+    sessionId: '3f1c9b2e-8d4a-4c11-9e2f-5b7a6c0d1e2f',
+    agentId: 'a1b2c3',
+  },
   backgrounded: true,
   depth: 1,
   startedAt: STARTED_AT,
@@ -88,6 +93,32 @@ test.describe('subagent transcript cards', () => {
       page,
       (conversationId) =>
         conversationId === CONVERSATION_ID ? [SESSION_ID] : [],
+    );
+    // The subagent's own transcript, as the server resolves it.
+    await page.route(
+      `**/api/orchestration/sessions/${SESSION_ID}/child-work/a1b2c3/transcript**`,
+      (route) =>
+        route.fulfill({
+          json: {
+            success: true,
+            data: {
+              entries: [
+                {
+                  message: 0,
+                  kind: 'text',
+                  role: 'user',
+                  text: 'Review the ADR freeze PR.',
+                },
+                {
+                  message: 1,
+                  kind: 'tool-call',
+                  name: 'Bash',
+                  input: 'gh pr view 3657 --repo kontourai/station',
+                },
+              ],
+            },
+          },
+        }),
     );
     // The chat's own session, as the read model lists it.
     await page.route('**/api/orchestration/sessions/read-model', (route) =>
@@ -203,6 +234,7 @@ test.describe('subagent transcript cards', () => {
       title: runningChild.title,
       kindLabel: runningChild.kindLabel,
       model: runningChild.model,
+      transcript: runningChild.transcript,
       backgrounded: true,
       depth: 1,
       startedAt: STARTED_AT,
@@ -247,7 +279,9 @@ test.describe('subagent transcript cards', () => {
       path: testInfo.outputPath('subagent-card-completed-desktop.png'),
     });
 
-    await card.getByRole('button', { expanded: false }).click();
+    await card
+      .getByRole('button', { name: /review station#3657 ADR freeze/ })
+      .click();
     await expect(card.getByText('No further action needed.')).toBeVisible();
     await expect(
       card.getByText('48,210 tokens · 37 tool uses · ran 17:04'),
@@ -261,10 +295,27 @@ test.describe('subagent transcript cards', () => {
     await card.scrollIntoViewIfNeeded();
     const box = await card.boundingBox();
     expect(box?.width ?? 0).toBeLessThanOrEqual(390);
+    // The card's one action keeps the 44px phone floor and stays on screen.
+    const viewTranscript = card.getByRole('button', {
+      name: 'View transcript',
+    });
+    const actionBox = await viewTranscript.boundingBox();
+    expect(actionBox?.height ?? 0).toBeGreaterThanOrEqual(44);
+    expect((actionBox?.x ?? -1) >= 0).toBe(true);
+    expect((actionBox?.x ?? 0) + (actionBox?.width ?? 0)).toBeLessThanOrEqual(
+      390,
+    );
+    await viewTranscript.click();
+    await expect(
+      card.getByText('gh pr view 3657 --repo kontourai/station'),
+    ).toBeVisible();
+    await card.scrollIntoViewIfNeeded();
     await page.screenshot({
       path: testInfo.outputPath('subagent-card-expanded-mobile-390.png'),
     });
-    await card.getByRole('button', { expanded: true }).click();
+    await card
+      .getByRole('button', { name: /review station#3657 ADR freeze/ })
+      .click();
     await expect(card.getByText('No further action needed.')).toHaveCount(0);
     await page.screenshot({
       path: testInfo.outputPath('subagent-card-completed-mobile-390.png'),

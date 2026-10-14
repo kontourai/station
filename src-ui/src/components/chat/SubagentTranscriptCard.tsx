@@ -1,6 +1,6 @@
 import { CHILD_WORK_SUMMARY_MAX_CHARS } from '@kontourai/station-contracts/child-work';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
-import { lazy, Suspense, useEffect, useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import {
   CHILD_WORK_MODEL_SOURCE_TEXT,
   CHILD_WORK_STATUS_LABEL,
@@ -15,6 +15,7 @@ import {
   CheckGlyph,
   CloseGlyph,
 } from '../icons/Glyph';
+import { LazyBoundary } from '../LazyBoundary';
 import { LazyMarkdown } from './LazyMarkdown';
 import type { ToolCallLike } from './tool-call-runs';
 import {
@@ -31,11 +32,10 @@ import './SubagentTranscriptCard.css';
  * has no producer at all, so the card has no slot for it.
  */
 
-const ChildWorkTranscript = lazy(() =>
+const loadChildWorkTranscript = () =>
   import('../../workspace-panes/agents/ChildWorkTranscript').then((module) => ({
     default: module.ChildWorkTranscript,
-  })),
-);
+  }));
 
 function parseTime(iso: string | undefined): number | undefined {
   if (!iso) return undefined;
@@ -218,19 +218,29 @@ export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
             </div>
           )}
           {item.transcript && transcriptOpen && (
-            <Suspense fallback={null}>
-              <ChildWorkTranscript
-                id={transcriptId}
-                threadId={item.reporterThreadId}
-                childId={item.childId}
-                running={running}
-                revision={JSON.stringify([
+            <LazyBoundary
+              load={loadChildWorkTranscript}
+              componentProps={{
+                id: transcriptId,
+                threadId: item.reporterThreadId,
+                childId: item.childId,
+                running,
+                revision: JSON.stringify([
                   item.status,
                   item.progress,
                   item.usage,
-                ])}
-              />
-            </Suspense>
+                ]),
+              }}
+              pending={null}
+              unavailable={(retry) => (
+                <p className="subagent-card__note" role="alert">
+                  Could not load the transcript viewer.{' '}
+                  <Button size="sm" onClick={retry}>
+                    Retry
+                  </Button>
+                </p>
+              )}
+            />
           )}
         </div>
       )}

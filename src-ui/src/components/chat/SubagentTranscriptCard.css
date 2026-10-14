@@ -116,19 +116,9 @@
 
 .subagent-card__spinner {
   border-right-color: transparent;
-  animation: subagent-card-spin 0.9s linear infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .subagent-card__spinner {
-    animation: none;
-  }
-}
-
-@keyframes subagent-card-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  /* The shared spin keyframes and token; the global reduced-motion rule in
+     tokens.css stops it. */
+  animation: spin var(--motion-status-spin) var(--ease-linear) infinite;
 }
 
 .subagent-card__meta,
