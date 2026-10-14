@@ -61,10 +61,12 @@ describe('TurnDeduplicator', () => {
   test('inspect: a claim whose owner cannot be proven live or dead reads in flight only for a bounded time', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     try {
-      const directory = mkdtempSync(join(tmpdir(), 'station-turn-dedup-'));
-      directories.push(directory);
+      // A tracked directory from the suite's helper; its own store is not
+      // the one under test.
+      const { directory, store: helperStore } = open();
+      helperStore.close();
       const store = new EventStore(
-        join(directory, 'orchestration.sqlite'),
+        join(directory, 'unknowable-owner.sqlite'),
         512,
         {
           exact: () => ({ pid: process.pid, start: 'unknowable' }),

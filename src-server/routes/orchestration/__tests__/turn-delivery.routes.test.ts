@@ -5,8 +5,6 @@
  * Only the engine is scripted, so a held session start, a resend and a dead
  * owner are the real ones.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   agentId,
@@ -17,6 +15,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   type ProviderAdapterMetadata,
   type ProviderAdapterShape,
@@ -183,20 +182,16 @@ function currentBinding(
 }
 
 describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:key)', () => {
-  const roots: string[] = [];
+  const tempDir = trackTempDirs();
   const stores: EventStore[] = [];
   afterEach(() => {
     for (const store of stores.splice(0)) store.close();
-    for (const root of roots.splice(0))
-      rmSync(root, { recursive: true, force: true });
   });
 
   function station(
     options: { root?: string; maxEntries?: number; deadOwners?: boolean } = {},
   ) {
-    const root =
-      options.root ?? mkdtempSync(join(tmpdir(), 'station-delivery-'));
-    if (!options.root) roots.push(root);
+    const root = options.root ?? tempDir('station-delivery-');
     const store = new EventStore(
       join(root, 'orchestration.sqlite'),
       options.maxEntries ?? 512,
