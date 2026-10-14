@@ -17,19 +17,31 @@ The queue survives restart and is projected back into the chat dock before a
 reconnect flush begins.
 
 The same queue keeps a text send from the composer durable while it is in
-flight. The send is written as `invoking` before its request goes out, and the
-composer's saved draft is let go only once that row is written, so closing the
-app mid-send loses nothing and leaves no second copy to send under a new key.
-Station's answer settles the row: a response removes it (a refusal hands the
-text back to the composer); no response returns it to pending for replay with
-the same key. A row whose app was closed is settled at the next launch or
-reconnect by asking Station about its key
-([delivery lookup](../reference/session-api.md#find-out-what-became-of-a-send)):
-never received → sent again with the same key; started → done; received → asked
-again later; possibly started → kept as evidence and never resent. Sends with
-attachments or a visual skill are not written there (their draft is kept until
-Station answers, as before), and follow-ups held behind a running turn stay in
-the tab's session storage.
+flight. The send is written as `invoking` before its request goes out (a write
+bounded to three seconds; past it the send goes without the row and the
+composer keeps its saved draft), and the composer's saved draft is let go only
+once that row is written, so closing the app mid-send loses nothing and leaves
+no second copy to send under a new key. Station's own answer settles the row:
+a refusal removes it and hands the text back to the composer; Station's
+"may have started" answer keeps it as unconfirmed (never resent, and it no
+longer holds back later messages in the chat); anything else, including a
+proxy's or tunnel's 502/503/504 or no answer at all, releases the row for
+Station's [delivery lookup](../reference/session-api.md#find-out-what-became-of-a-send).
+The lookup settles released rows, and rows whose app was closed, at the next
+launch or reconnect: never received → sent again with the same key; started →
+done; received → asked again later; possibly started, or the conversation runs
+on another Station → kept as unconfirmed, with a Check that asks Station again
+and never resends. Each row records the Station it was written for and is
+only ever sent to, or settled by, that Station; for another it waits, listed.
+
+Follow-ups held behind a running turn stay in the tab's session storage, and
+each keeps a durable copy in the queue under the key the queue will send it
+with. The flush never sends that copy while its app lives; if the app closes
+first it becomes an ordinary queued message and is sent with its key. A send
+refused because the engine is busy joins that queue with its own key and
+copy, and the queue's drain writes the same before-the-request row as a
+composer send. Sends with attachments or a visual skill are not written to
+the queue (their draft is kept until Station answers, as before).
 
 Configuration edits are excluded by default. Station has no single
 configuration-mutation protocol: agent, connection, plugin, and system edits

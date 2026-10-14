@@ -25,7 +25,7 @@ This source addition requires a published version that exports `/agent`.
 | --- | --- |
 | Authoring and addressing | `AgentSpec`, `AgentId`, `agentId`, `ExecutionTarget`, `ExecutionAgentRef`, `executionProfileAgentId`, `executionBindingAgentId`, `environmentId`, `ClientRequestOptions` |
 | Catalog and definitions | `fetchAgentCatalog`, `getAgent`, `createAgentDetailed`, `updateAgentRaw`, `deleteAgentRaw` |
-| Foreground execution | `sendExecutionMessage`, `continueExecutionMessage`, `handoffExecutionMessage`, `getConversationHandoffStatus`, `getTurnDelivery` (what became of a keyed send; see the [session API](session-api.md#find-out-what-became-of-a-send)) |
+| Foreground execution | `sendExecutionMessage`, `continueExecutionMessage`, `handoffExecutionMessage`, `getConversationHandoffStatus` |
 | Durable delegation | `discoverDelegationOptions`, `delegateTask`, `observeDelegatedTask`, `observeDelegatedTaskEvents`, `continueDelegatedTask`, `listDelegatedTasks`, `lookupDelegationAttempt` |
 | Decisions and interruption | `respondToDelegatedTaskRequest`, `interruptDelegatedTask`, `respondToRequest`, `interruptTurn` |
 | Session observation | `getOrchestrationSession`, `getOrchestrationSessionEventPage`, `getOrchestrationSessionEventWindow`, `getOrchestrationConversationEventWindow`, `getConversationUsageTree` |
@@ -1946,7 +1946,7 @@ providers return a guidance projection instead of local account controls.
 answer to "what authority is this request acting as": the current public home
 identity, the server-resolved effective principal (kind+id only, no contacts),
 and the verified grant tier (operator, or paired Device with its public Device
-id and granted scopes). The read is authorization-neutral — it describes
+id and the scopes it may use: its grant, capped by its person's Station group). The read is authorization-neutral — it describes
 authority and grants nothing — and fails closed on absent, conflicting, or
 revoked authority, never a guessed identity. Pass the SAME `ClientRequestOptions`
 (request scope, credential, headers) as the caller's other protected requests;

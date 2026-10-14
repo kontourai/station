@@ -143,30 +143,42 @@ by a device whose connection dropped before the answer arrived, or that was
 closed mid-send:
 
 ```
-GET /api/orchestration/conversations/<conversationId>/turn-deliveries/<clientTurnId>
+GET /api/orchestration/conversations/<conversationId>/turn-deliveries/<clientTurnId>[?projectSlug=<slug>]
 ```
 
-The answer is read-only (it never sends, claims or releases anything) and is
-always `200` with `data.outcome`:
+The lookup is read-only: it never sends, claims or releases anything. An empty
+id, a `conversationId` over 512 characters or a `clientTurnId` over 200 is
+refused with `400`; any other lookup answers `200` with `data.outcome`:
 
 | `outcome` | Meaning | Send the same key again? |
 | --- | --- | --- |
-| `not-received` | Nothing on this Station holds the key for you: no request carrying it is being handled, and no turn was claimed in any Session of the conversation. | Yes — the same key can only ever make one turn. |
-| `received` | A request carrying the key is being handled now (its Session may still be starting), or a live owner holds its turn claim. | No — wait and ask again. |
+| `not-received` | Nothing on this Station holds the key for you: no request carrying it is being handled, and no Session of the conversation holds a turn claim for it, except one whose owner died before it began invoking the engine (the next send of the key takes that claim over). | Yes — the same key can only ever make one turn. |
+| `received` | A request carrying the key is being handled now (its Session may still be starting), or a live owner holds its turn claim. A claim whose owner can be proven neither live nor dead reads `received` for at most 15 minutes, then `indeterminate`. | No — wait and ask again. |
 | `started` | The engine accepted the turn; `data.sessionId` and `data.turnId` name it. | No. |
-| `indeterminate` | The turn may have reached the engine and nothing can prove it either way. | No — inspect the conversation. |
+| `indeterminate` | The turn may have reached the engine and nothing can prove it either way (its owner died after it began invoking, or gave the claim up after a failed engine call). | No — inspect the conversation. |
 | `expired` | The turn was sent and retention evicted its record. | No. |
+| `unknown` | This Station forwards the conversation's turns to another Station or Environment, so it can prove nothing: the Project named by `projectSlug` defaults to another Environment, or this Station process forwarded a keyed send for the conversation. | No — treat it like `indeterminate`. |
 
-A conversation you may not read answers `not-received`, exactly like a key
-nothing holds, so the lookup reveals nothing about other callers'
-conversations. `received` comes from the request being handled in this Station
-process, so a Station that restarted answers from the turn ledger alone. The
-lookup covers conversations whose Sessions run on this Station; it is on no
-Station Control tool's route table (an Agent cannot call it). The SDK exposes
-it as `getTurnDelivery(apiBase, conversationId, clientTurnId)`.
+A conversation you may not read answers like a key nothing holds, so the
+lookup reveals nothing about other callers' conversations. `received` comes
+from the request being handled in this Station process, so a Station that
+restarted answers from the turn ledger alone; pass `projectSlug` when the send
+named a Project, so a Project that runs elsewhere answers `unknown` rather than
+`not-received` after a restart too. The lookup is on no Station Control tool's
+route table (an Agent cannot call it); a paired device reaches it with
+`orchestration:read`. `@kontourai/station-sdk/client` exposes it as
+`getTurnDelivery(apiBase, conversationId, clientTurnId, { projectSlug })`.
 
-The `turn.started` event a keyed send produces carries that send's
-`clientTurnId`, stamped by Station; an engine cannot supply it.
+While a keyed send is being handled it is recorded for this lookup; if more than
+1,024 keyed sends are in flight at once, a new one is refused with `503` and
+`code: "foreground_delivery_capacity"` before anything runs (send it again).
+This applies to `/chat`, `/chat/delegated` and `/chat/background`.
+
+The `turn.started` event a keyed send produces carries the key the client sent
+it with, stamped by Station (an engine cannot supply one): the send's
+`clientTurnId`, or for a handoff `handoff:<idempotencyKey>`, the key the
+handoff dialog names its message by, rather than the conversation-derived key
+Station deduplicates the handoff under.
 
 ### State the engine you expect
 

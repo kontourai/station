@@ -200,7 +200,9 @@ The pill uses compact state labels such as Sending, Working, Thinking, and
 Reconnecting; it does not expand to display tool names. **Sending** covers the
 chat's own send until the agent has its turn (no turn open on the server yet);
 once Station's delivery lookup says it has the message, its detail says Station
-has it and is starting the agent, and that the app may be closed. State changes animate its width with
+has it and is starting the agent, and that the app may be closed only when
+that Station keeps running without the app (not the desktop's own Station when
+it stops with the app, nor while the desktop has not reported it). State changes animate its width with
 the shared motion token, while the clock reserves a stable text column. Running
 tool rows and batches show a subtle reflection sweeping left to right; settled
 calls and approval requests stay still. Reduced motion disables the reflection
