@@ -71,9 +71,9 @@ type TurnIdempotencyClaim =
  * treated as one that may have started the effect and stopped
  * (`indeterminate`), never as safe to resend.
  */
-export const TURN_CLAIM_UNPROVABLE_IN_FLIGHT_MS = 15 * 60 * 1000;
+const TURN_CLAIM_UNPROVABLE_IN_FLIGHT_MS = 15 * 60 * 1000;
 /** Bound on this owner's remembered abandoned claims (oldest dropped first). */
-export const TURN_CLAIM_RETAINED_MAX = 4096;
+const TURN_CLAIM_RETAINED_MAX = 4096;
 
 /** {@link TurnIdempotencyStore.inspect}'s answer; see there. */
 export type TurnClaimInspection =

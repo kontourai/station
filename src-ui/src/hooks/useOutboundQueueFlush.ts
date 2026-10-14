@@ -29,7 +29,7 @@ import { useSendMessage } from './useActiveChatSessions';
  * as durable outbox intents keyed by their queue ids (the key the drain will
  * send them under). A steer already handed to the engine is not held.
  */
-export function heldOutboundIntents(
+function heldOutboundIntents(
   chats: Readonly<Record<string, ChatUIState>>,
 ): HeldOutboundIntent[] {
   const intents: HeldOutboundIntent[] = [];
@@ -114,16 +114,18 @@ export function useOutboundQueueFlush(apiBase: string): void {
         return;
       }
       flushing = true;
-      void Promise.all([
-        import('../lib/outboundQueue'),
-        import('../lib/deliveryLookup'),
-      ])
-        .then(async ([{ outboundDispatch }, delivery]) => {
+      void import('../lib/outboundQueue')
+        .then(async ({ outboundDispatch }) => {
+          const {
+            lookupTurnDelivery,
+            IN_FLIGHT_FIRST_CHECK_MS,
+            DELIVERY_CHECK_MAX_INTERVAL_MS,
+          } = await import('../lib/deliveryLookup');
           // Sends a closed or crashed app left `invoking`: ask Station what
           // became of each key before anything is sent. Not-received rows
           // become pending and go out below, with their original key.
           const { received } = await outboundDispatch.reconcile(
-            delivery.lookupTurnDelivery(apiBase),
+            lookupTurnDelivery(apiBase),
             { station: stationRef.current },
           );
           // Then this tab's held follow-ups: a reconcile can release a send
@@ -141,11 +143,8 @@ export function useOutboundQueueFlush(apiBase: string): void {
           reconcileRetryTimer = undefined;
           if (received > 0) {
             reconcileRetryDelayMs = Math.min(
-              Math.max(
-                reconcileRetryDelayMs * 2,
-                delivery.IN_FLIGHT_FIRST_CHECK_MS,
-              ),
-              delivery.DELIVERY_CHECK_MAX_INTERVAL_MS,
+              Math.max(reconcileRetryDelayMs * 2, IN_FLIGHT_FIRST_CHECK_MS),
+              DELIVERY_CHECK_MAX_INTERVAL_MS,
             );
             reconcileRetryTimer = setTimeout(() => {
               reconcileRetryTimer = undefined;

@@ -144,26 +144,3 @@ export function outboxTurnDeliveryState(row: {
     lookup: row.deliveryCheck?.outcome,
   });
 }
-
-/**
- * A follow-up held in the chat's local queue. A steer this device sent into
- * the open turn is on its way (or unconfirmed); everything else is held here.
- */
-export function heldMessageDeliveryState(metadata?: {
-  delivery?: 'steering' | 'indeterminate';
-}): MessageDeliveryState {
-  if (metadata?.delivery === 'steering') return 'sending';
-  if (metadata?.delivery === 'indeterminate') return 'unconfirmed';
-  return 'held-on-device';
-}
-
-/**
- * Whether a message in this state has a re-check to offer
- * (`useRecheckMessageDelivery`): only an unconfirmed one, whose fate only
- * Station can tell.
- */
-export function deliveryCanRecheck(
-  state: MessageDeliveryState | undefined,
-): boolean {
-  return state === 'unconfirmed';
-}

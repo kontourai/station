@@ -20,7 +20,7 @@
  * is refused rather than handled unrecorded, which would make the lookup
  * answer `not-received` for a request that is in fact in flight.
  */
-export const FOREGROUND_DELIVERY_RECEIPTS_MAX = 1024;
+const FOREGROUND_DELIVERY_RECEIPTS_MAX = 1024;
 
 /** The refusal's fixed public text (never an internal error's message). */
 export const FOREGROUND_DELIVERY_CAPACITY_MESSAGE =
@@ -42,7 +42,7 @@ export interface ForegroundDeliveryReceipt {
 }
 
 /** Bound on remembered forwarded conversations (oldest dropped first). */
-export const FORWARDED_CONVERSATIONS_MAX = 4096;
+const FORWARDED_CONVERSATIONS_MAX = 4096;
 
 export class ForegroundDeliveryReceipts {
   /** Key → number of requests carrying it (a retry can overlap the original). */

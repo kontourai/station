@@ -274,7 +274,7 @@ async function observeSendAdmission<T>(
  * the text is back only when it was put back; otherwise it carries the text,
  * so the words are never lost behind a draft the user has since typed.
  */
-export function discardedMessageNotice(
+function discardedMessageNotice(
   restored: boolean,
   text: string,
 ): { role: 'system'; content: string } {
@@ -286,7 +286,7 @@ export function discardedMessageNotice(
   };
 }
 
-export const LIVE_DURABILITY_TIMEOUT_MS = 3_000;
+const LIVE_DURABILITY_TIMEOUT_MS = 3_000;
 
 /**
  * Station itself answered (its envelope, any status). A proxy's or tunnel's
@@ -849,23 +849,26 @@ export function useSendMessage(
       // A slow answer: ask Station whether it has this send. Reports only.
       const stopDeliveryWatch = options?.dispatch
         ? undefined
-        : (await import('../lib/deliveryLookup')).watchInFlightDelivery({
-            apiBase,
-            conversationId: sentConversationId,
-            clientTurnId: resolvedTurnId,
-            projectSlug: currentState?.projectSlug,
-            onAnswer: (outcome) => {
-              updateChat(
-                sessionId,
-                withDeliveryCheck(
-                  activeChatsStore.getSnapshot()[sessionId],
-                  resolvedTurnId,
-                  outcome,
-                ),
-              );
-              void live?.observed(outcome);
-            },
-          });
+        : await import('../lib/deliveryLookup').then(
+            ({ watchInFlightDelivery }) =>
+              watchInFlightDelivery({
+                apiBase,
+                conversationId: sentConversationId,
+                clientTurnId: resolvedTurnId,
+                projectSlug: currentState?.projectSlug,
+                onAnswer: (outcome) => {
+                  updateChat(
+                    sessionId,
+                    withDeliveryCheck(
+                      activeChatsStore.getSnapshot()[sessionId],
+                      resolvedTurnId,
+                      outcome,
+                    ),
+                  );
+                  void live?.observed(outcome);
+                },
+              }),
+          );
 
       try {
         const { dispatchForeground } = await import(
