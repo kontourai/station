@@ -268,7 +268,14 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     );
 
     expect(screen.getByText('1 sending')).not.toBeNull();
-    expect(screen.getByText('Sending')).not.toBeNull();
+    const label = screen.getByText('Sending');
+    // Under way elsewhere: a neutral note, not the caution tone.
+    expect(label.classList.contains('queued-messages__label--sending')).toBe(
+      true,
+    );
+    expect(
+      label.classList.contains('queued-messages__label--unconfirmed'),
+    ).toBe(false);
     expect(screen.queryByText(/may have reached/i)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Discard…' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Edit message' })).toBeNull();
