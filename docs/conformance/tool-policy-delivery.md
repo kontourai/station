@@ -512,8 +512,13 @@ The shared answer path coalesces concurrent answers to the same prompt. Its
 15-second send deadline is followed by a bounded 5-second inspection when the
 send fails. A resolved request is shown as settled without claiming a local
 grant. If a lost response or a refusal from a proxy cannot be inspected, delivery remains unconfirmed:
-Check status reads the request before another decision can be sent. Errors
-keep a short summary beside the controls and technical details in a disclosure.
+Check status reads the request before another decision can be sent. An accepted
+decision stays locked across hiding or remounting the controls until the request
+resolves or inspection confirms it is still answerable. The controls show
+sending and accepted state; an accepted decision also offers Check status while
+waiting for the tool to continue. Desktop controls and delivery feedback follow
+the command preview, with technical details in a disclosure. A failed status
+read keeps the decision locked and does not resend it.
 
 Owners: [approval sheet](../../src-ui/src/components/chat/ApprovalSheetProvider.tsx),
 [decision delivery](../../src-ui/src/hooks/orchestration/answerRequest.ts),

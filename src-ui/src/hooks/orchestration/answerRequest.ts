@@ -20,7 +20,7 @@ export interface ApprovalAnswerReference {
   requestEventId?: string;
 }
 interface ApprovalAnswerState {
-  phase: 'sending' | 'unconfirmed' | 'already-settled';
+  phase: 'sending' | 'sent' | 'unconfirmed' | 'already-settled';
   decision: 'accept' | 'acceptForSession' | 'decline';
   error?: Error;
 }
@@ -160,7 +160,11 @@ export function answerOrchestrationRequest(
   };
   void result.then(
     (outcome) => {
-      if (outcome !== 'already-settled') release();
+      const current = pendingAnswers.get(key);
+      if (current?.result === result && outcome === 'answered') {
+        current.state = { ...current.state, phase: 'sent' };
+        notifyAnswers();
+      }
     },
     (error: unknown) => {
       if (error instanceof ApprovalDeliveryUnconfirmedError) {

@@ -1879,6 +1879,9 @@ export function ChatDockBody({
       */}
       {conversationLoading && loadingLong && !recoveryOpen ? (
         <div className="session-history-controls">
+          <span role="status">
+            This conversation is taking longer to load. Waiting for Station.
+          </span>
           {onNewChat ? (
             <button
               type="button"

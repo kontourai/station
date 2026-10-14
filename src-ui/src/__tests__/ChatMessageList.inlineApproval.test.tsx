@@ -39,8 +39,8 @@ vi.mock('../hooks/useActiveChatSessions', () => ({
   useSendMessage: () => vi.fn(),
 }));
 vi.mock('../components/chat/AttachAnswerToTaskButton', () => ({
-  AttachUserInputToTaskButton: () => null,
-  AttachAnswerToTaskButton: () => null,
+  ConnectedAttachUserInputToTaskButton: () => null,
+  ConnectedAnswerBasisAffordance: () => null,
 }));
 vi.mock('../components/chat/StreamingMessage', () => ({
   StreamingMessage: () => <div data-testid="streaming-message">Streaming</div>,
@@ -232,6 +232,37 @@ describe('#2316 inline approval card', () => {
     windowEvents.settled = true;
     vi.unstubAllGlobals();
     _setApiBase('');
+  });
+
+  test('remounting an accepted decision keeps it locked until the request resolves', async () => {
+    const calls = stubFetch(() => Response.json({ success: true, data: {} }));
+    const first = renderCard();
+    fireEvent.click(await screen.findByRole('button', { name: 'Allow Once' }));
+    await screen.findByText('Decision sent. Waiting for the tool to continue.');
+    first.unmount();
+    const second = renderCard();
+    expect(
+      (await screen.findByRole('button', { name: 'Allow Once' })).hasAttribute(
+        'disabled',
+      ),
+    ).toBe(true);
+    expect(
+      screen.getByText('Decision sent. Waiting for the tool to continue.'),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
+    expect(calls.filter((call) => call.method === 'POST')).toHaveLength(1);
+    windowEvents.current = [
+      ...windowEvents.current,
+      runtimeEvent({
+        method: 'request.resolved',
+        requestId: 'req-claude-b',
+        decision: 'accept',
+      }),
+    ];
+    second.rerender();
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull(),
+    );
   });
 
   test('remounting an uncertain approval keeps decisions locked and status checking visible', async () => {
