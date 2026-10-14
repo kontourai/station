@@ -284,7 +284,7 @@ describe('Scroll to bottom', () => {
     expect(scrollToBottomButton()).not.toBeNull();
   });
 
-  test('content that shrinks under the glide clamps it to the new end without ending it', () => {
+  test('content that shrinks under the glide still lands the reader at the new end', () => {
     stubMotion(false);
     const { scroller, geometry } = renderList();
     readerScrollsTo(scroller, 1_300);

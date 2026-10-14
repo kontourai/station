@@ -866,17 +866,10 @@ function ChatMessageListComponent({
     // reader started before tapping emits no input event: a scroll that moves
     // against the glide is theirs and ends it.
     if (scrollAnimationRef.current) {
+      // (Content that shrank under the glide clamps it to the new end; that
+      // reads as reaching the end below, which pins, the glide's own goal.)
       const glide = lastProgrammaticScrollRef.current;
-      const atEnd =
-        target.scrollTop >=
-        target.scrollHeight - target.clientHeight - PROGRAMMATIC_SCROLL_ECHO_PX;
-      // Content that shrank under the glide clamps it to the new end: not
-      // the reader.
-      if (
-        !glide ||
-        atEnd ||
-        target.scrollTop >= glide.top - PROGRAMMATIC_SCROLL_ECHO_PX
-      )
+      if (!glide || target.scrollTop >= glide.top - PROGRAMMATIC_SCROLL_ECHO_PX)
         return;
       scrollAnimationRef.current.cancel();
     }

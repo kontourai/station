@@ -17,7 +17,7 @@ describe('LazyMarkdown once its renderer has loaded', () => {
     const before = screen.getByText('cold');
     // The renderer is now loaded; a re-render must not swap the element type
     // under the row (that remounts it: highlighting and parsing start over).
-    view.rerender(<LazyMarkdown>{'**cold** row'}</LazyMarkdown>);
+    view.rerender(<LazyMarkdown>{'**cold** row, grown'}</LazyMarkdown>);
     expect(screen.getByText('cold')).toBe(before);
   });
 
