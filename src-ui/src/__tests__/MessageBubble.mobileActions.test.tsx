@@ -495,6 +495,16 @@ describe('MessageBubble phone copy and details actions', () => {
       expect(
         screen.queryByRole('button', { name: 'Your message actions' }),
       ).toBeNull();
+      cleanup();
+      // Positive control: with the handler the fork entry exists, so the ⋯
+      // is offered.
+      renderRow(question, {
+        userForkSource: forkSource,
+        onForkFromTurn: () => {},
+      });
+      expect(
+        screen.getByRole('button', { name: 'Your message actions' }),
+      ).toBeTruthy();
     });
   });
 
