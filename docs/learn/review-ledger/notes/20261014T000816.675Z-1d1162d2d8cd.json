@@ -1,0 +1,7 @@
+{
+  "revision": "7fda2eee6d29d9c0b4993ce8510cc9fd637f28c9",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Reviewed after a comment-only edit to station-control-policy.ts project-activity block. It says the project-activity tools read as the calling Session's owner within the caller's Project; still true (the own-conversation exception only adds the caller's own conversation, detailed in api.md).","inputs":["docs/reference/session-api.md","src-server/tools/station-control-policy.ts"]}
+  ]
+}
