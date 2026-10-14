@@ -193,8 +193,14 @@ Show inbox directly, as an icon button whose pressed state is available to assis
 Pending tool requests from the loaded event window also feed Needs approval,
 whose action opens the conversation's approval sheet. Failed history or
 continuation observation shows Status unavailable and withholds the cached
-working clock; the remote turn may still be running. History Retry refreshes
-the capability observation before reloading.
+working clock; the remote turn may still be running. Its Resync action
+reconnects the Station's orchestration stream and re-runs the failed history or
+conversation-open read, and background work the session record last reported
+reads as "Last known: …" without animated dots until a read succeeds. History
+Retry refreshes the capability observation before reloading. The desktop
+inbox footer offers Refresh, which reconnects the same stream and re-reads the
+session list and conversation inventory; when the last read failed, the footer
+says the rows are the last known list.
 
 The pill uses compact state labels such as Sending, Working, Thinking, and
 Reconnecting; it does not expand to display tool names. **Sending** covers the
