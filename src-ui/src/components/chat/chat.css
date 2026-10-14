@@ -960,7 +960,8 @@
   color: var(--text-primary);
 }
 /* Phone: every delivery action is a full 44px target. */
-.message-row--compact .message-delivery__action {
+.message-row--compact .message-delivery__action,
+.message-row--compact .unconfirmed-discard__button {
   min-height: 44px;
   padding-inline: var(--k-space-3);
 }

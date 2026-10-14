@@ -42,10 +42,18 @@
   border-color: var(--k-negative);
   color: var(--error-text, var(--k-negative));
 }
-/* Phone: full 44px targets, as every chat action. */
-@media (max-width: 768px), (pointer: coarse) {
-  .unconfirmed-discard__button {
-    min-height: 44px;
-    padding-inline: var(--k-space-3);
-  }
+/* A 44px hit area always, without a page-local media query (as ActionRow):
+   the button keeps its drawn size and a finger gets the full target. A
+   phone bubble also draws them at 44px (`.message-row--compact` in chat.css). */
+.unconfirmed-discard__button {
+  position: relative;
+}
+.unconfirmed-discard__button::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100%, 44px);
+  height: max(100%, 44px);
+  content: "";
+  transform: translate(-50%, -50%);
 }
