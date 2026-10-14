@@ -326,6 +326,66 @@ describe('useSendMessage: durable before the request', () => {
     expect(onDurable).not.toHaveBeenCalled();
   });
 
+  it('a stuck outbox write does not hold the send: it goes after the bound, and the draft is kept', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    _setOutboundQueueStorage({
+      getItem: async () => undefined,
+      setItem: () => new Promise<void>(() => {}),
+      updateItem: () => new Promise<void>(() => {}),
+    });
+    sendExecutionMessageMock.mockResolvedValueOnce(receipt());
+    const onDurable = vi.fn();
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    let pending!: Promise<unknown>;
+    await act(async () => {
+      pending = result.current(
+        chat,
+        'codex',
+        undefined,
+        'stuck disk',
+        undefined,
+        undefined,
+        undefined,
+        { onDurable },
+      );
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_500);
+      await pending;
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+    expect(onDurable).not.toHaveBeenCalled();
+  });
+
+  it('a replay is sent under the conversation its row recorded, not one the chat learned since', async () => {
+    activeChatsStore.updateChat(chat, {
+      conversationId: 'conversation-learned-later',
+    });
+    sendExecutionMessageMock.mockResolvedValueOnce(receipt());
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(
+        chat,
+        'codex',
+        'conversation-the-row-recorded',
+        'replayed',
+        undefined,
+        undefined,
+        'replay-key',
+        {
+          skipInMemoryQueueOnBusy: true,
+          dispatch: { indeterminate: async () => 'applied' as const },
+        },
+      );
+    });
+    expect(sendExecutionMessageMock.mock.calls[0]?.[1]).toMatchObject({
+      conversationId: 'conversation-the-row-recorded',
+      clientTurnId: 'replay-key',
+    });
+  });
+
   it('a slow answer: Station is asked, and the bubble reads received while the request is still out', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     let answer!: (value: unknown) => void;
