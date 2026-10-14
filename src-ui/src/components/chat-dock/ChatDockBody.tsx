@@ -28,6 +28,7 @@ import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { conversationOpenPhase } from '../../contexts/conversation-open-policy';
 import { useMessageContextContext } from '../../contexts/MessageContextContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
+import { resyncOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import {
   drainQueuedMessageOnTurnCompleted,
@@ -535,6 +536,28 @@ export function ChatDockBody({
       ),
     [transcript.events],
   );
+  // A history or continuation read failed: what the session record last said
+  // (Running, background work) is no longer current proof.
+  const observationUnavailable =
+    unverifiedOpen ||
+    Boolean(
+      transcript.enabled && (transcript.error || transcript.upgradeRequired),
+    );
+  const transcriptReadFailed = Boolean(transcript.enabled && transcript.error);
+  const reloadTranscript = transcript.reload;
+  // The explicit resync: reconnect the stream (a fresh connect replays or
+  // snapshots this Station's sessions) and re-run whichever read failed.
+  const resyncConversation = useCallback(() => {
+    resyncOrchestrationEventStream(apiBase);
+    if (transcriptReadFailed) void reloadTranscript();
+    if (unverifiedOpen) void onRetryConversationOpen?.();
+  }, [
+    apiBase,
+    transcriptReadFailed,
+    reloadTranscript,
+    unverifiedOpen,
+    onRetryConversationOpen,
+  ]);
   // Live chat status shares the composer rail; replay keeps its recorded rows.
   const { pill: statusPill, statusInPill } = useChatStatusPill({
     activeSession,
@@ -542,11 +565,8 @@ export function ChatDockBody({
     turnLive: isTurnStreamLive(activeSession),
     enabled: !activeSession.replay,
     windowRequests,
-    observationUnavailable:
-      unverifiedOpen ||
-      Boolean(
-        transcript.enabled && (transcript.error || transcript.upgradeRequired),
-      ),
+    observationUnavailable,
+    onResync: resyncConversation,
   });
   /*
    * One transitional state for the whole conversation, from the two things
@@ -1369,6 +1389,7 @@ export function ChatDockBody({
             ),
             onLoadOlder: transcript.loadOlder,
             onOpenBackgroundTasks,
+            liveStatusUnavailable: observationUnavailable,
             owner,
             accountableHuman,
             onQuote: (quote) =>

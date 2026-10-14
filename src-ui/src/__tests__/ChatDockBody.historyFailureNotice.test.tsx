@@ -13,10 +13,19 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const agentsMock = vi.hoisted(() => ({ current: [] as any[] }));
+const resyncStream = vi.hoisted(() => vi.fn());
+
+vi.mock(
+  '../hooks/orchestration/ensureOrchestrationEventStream',
+  async (importOriginal) => ({
+    ...(await importOriginal<object>()),
+    resyncOrchestrationEventStream: resyncStream,
+  }),
+);
 const transcriptStateMock = vi.hoisted(() => ({
   current: {
     enabled: false,
@@ -113,7 +122,10 @@ vi.mock('../hooks/orchestration/useActiveChatTranscript', () => ({
 }));
 
 vi.mock('../components/chat/ChatInputArea', () => ({
-  ChatInputArea: () => <div data-testid="chat-input-area" />,
+  // The composer rail hosts the chat's status pill (its `activity` slot).
+  ChatInputArea: ({ activity }: { activity?: React.ReactNode }) => (
+    <div data-testid="chat-input-area">{activity}</div>
+  ),
 }));
 
 vi.mock('../components/chat/QueuedMessages', () => ({
@@ -188,7 +200,7 @@ function buildOrchestrationSession(overrides: Record<string, unknown> = {}) {
   } as any;
 }
 
-function renderDock() {
+function renderDock(session: ChatSession = buildSession()) {
   agentsMock.current = [{ slug: agentId('codex'), name: 'Codex' }];
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -196,7 +208,7 @@ function renderDock() {
   return render(
     <QueryClientProvider client={queryClient}>
       <ChatDockBody
-        activeSession={buildSession()}
+        activeSession={session}
         activeOrchestrationSession={buildOrchestrationSession()}
         chatFontSize={14}
         dockHeight={400}
@@ -285,5 +297,52 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
       'Update Station to use bounded managed-session history.',
     );
     expect(notice.textContent).not.toContain('should not print');
+  });
+
+  test("the status pill's Resync re-reads the failed history and reconnects the Station's stream", async () => {
+    resyncStream.mockClear();
+    transcriptStateMock.current.enabled = true;
+    transcriptStateMock.current.error = new Error(
+      'Native request queue is full',
+    );
+    transcriptStateMock.current.messages = [
+      { role: 'user', content: 'hi', timestamp: 1 },
+    ] as any;
+    renderDock();
+
+    const pill = await screen.findByRole('button', {
+      name: 'Status unavailable — resync this conversation',
+    });
+    await act(async () => {
+      fireEvent.click(pill);
+    });
+    expect(transcriptStateMock.current.reload).toHaveBeenCalledOnce();
+    expect(resyncStream).toHaveBeenCalledWith('http://localhost:3242');
+  });
+
+  test('background work the record last reported is shown as last known, not as current, while history is unavailable', async () => {
+    transcriptStateMock.current.enabled = true;
+    transcriptStateMock.current.error = new Error(
+      'Native request queue is full',
+    );
+    transcriptStateMock.current.messages = [
+      { role: 'user', content: 'hi', timestamp: 1 },
+    ] as any;
+    renderDock(
+      buildSession({
+        conversationActivity: {
+          conversationId: 'thread-alpha',
+          asOfSequence: 3,
+          runningChildWork: { count: 1, producers: ['engine-subagent'] },
+        },
+      } as Partial<ChatSession>),
+    );
+
+    expect(
+      await screen.findByText(
+        'Last known: background agent working (status unavailable)',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Background agent working')).toBeNull();
   });
 });

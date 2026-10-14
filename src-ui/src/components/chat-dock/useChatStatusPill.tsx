@@ -54,6 +54,7 @@ export function useChatStatusPill({
   enabled,
   windowRequests,
   observationUnavailable = false,
+  onResync,
 }: {
   activeSession: ChatSession;
   streamStatus: ChatStreamStatus | undefined;
@@ -61,6 +62,8 @@ export function useChatStatusPill({
   enabled: boolean;
   windowRequests?: readonly RevealApprovalDetail[];
   observationUnavailable?: boolean;
+  /** Re-reads this conversation when its status could not be observed. */
+  onResync?: () => void;
 }): { pill: ReactNode; statusInPill: boolean } {
   const [view, setView] = useState<'loading' | 'mounted' | 'unavailable'>(
     'loading',
@@ -176,6 +179,7 @@ export function useChatStatusPill({
           input,
           onRevealApproval,
           onRepair: () => openConnectionsModal({ mode: 'request-access' }),
+          onResync,
           onMounted,
         }}
       />

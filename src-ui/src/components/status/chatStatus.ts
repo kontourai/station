@@ -32,7 +32,7 @@ export interface ChatStatus {
    */
   details: Array<{ text: string; since?: number }>;
   /** What a tap does. */
-  action: 'reveal-approval' | 'repair' | 'details' | undefined;
+  action: 'reveal-approval' | 'repair' | 'resync' | 'details' | undefined;
 }
 
 export interface ChatStatusInput {
@@ -93,7 +93,9 @@ export function deriveChatStatus(
           text: 'Station could not verify this conversation. The remote turn may still be running.',
         },
       ],
-      action: 'repair',
+      // The connection is fine; this conversation's reads failed. Re-read it
+      // rather than asking the user to re-pair the Station.
+      action: 'resync',
     };
   if (input.approvalCount > 0) {
     return {

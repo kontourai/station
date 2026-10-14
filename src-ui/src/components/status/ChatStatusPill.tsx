@@ -86,10 +86,13 @@ export function ChatStatusPill({
   status,
   onRevealApproval,
   onRepair,
+  onResync,
 }: {
   status: ChatStatus | undefined;
   onRevealApproval?: () => void;
   onRepair?: () => void;
+  /** Re-reads this conversation's status and history from the Station. */
+  onResync?: () => void;
 }) {
   useEffect(trackPageVisibilityForStatusMotion, []);
   const detailsId = useId();
@@ -217,6 +220,7 @@ export function ChatStatusPill({
     if (!current) return;
     if (current.action === 'reveal-approval') onRevealApproval?.();
     else if (current.action === 'repair') onRepair?.();
+    else if (current.action === 'resync') onResync?.();
     else if (current.action === 'details') setExpanded((open) => !open);
   };
   const actionable = Boolean(
@@ -224,6 +228,7 @@ export function ChatStatusPill({
       !leaving &&
       ((current.action === 'reveal-approval' && onRevealApproval) ||
         (current.action === 'repair' && onRepair) ||
+        (current.action === 'resync' && onResync) ||
         (current.action === 'details' && current.details.length > 0)),
   );
   const body = current && (
@@ -242,6 +247,11 @@ export function ChatStatusPill({
       )}
       {current.clockFrom !== undefined && (
         <PillClock from={current.clockFrom} />
+      )}
+      {current.action === 'resync' && onResync && (
+        <span className="chat-status-pill__action" aria-hidden="true">
+          Resync
+        </span>
       )}
     </span>
   );
@@ -271,7 +281,9 @@ export function ChatStatusPill({
                   : `${current.label} — show the request`
                 : current.action === 'repair'
                   ? `${current.label} — repair the connection`
-                  : current.label
+                  : current.action === 'resync'
+                    ? `${current.label} — resync this conversation`
+                    : current.label
             }
             aria-expanded={current.action === 'details' ? expanded : undefined}
             aria-controls={

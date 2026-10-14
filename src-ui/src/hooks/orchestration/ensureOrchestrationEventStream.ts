@@ -123,6 +123,17 @@ function notifyOrchestrationAuthorityChanged(apiBase: string): void {
   }
 }
 
+/**
+ * The user's explicit "resync": reconnect this Station's orchestration stream
+ * now. A fresh connect replays from the applied cursor or sends a snapshot,
+ * so chats, the inbox and turn state are re-derived from the server instead
+ * of from whatever the last frame said. The same restart an authority change
+ * uses; nothing here invents a second reconnect path.
+ */
+export function resyncOrchestrationEventStream(apiBase: string): void {
+  notifyOrchestrationAuthorityChanged(apiBase);
+}
+
 function reensureRequestedStreams(): void {
   if (
     (globalThis as { document?: { hidden?: boolean } }).document?.hidden ===

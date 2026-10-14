@@ -92,7 +92,8 @@ describe('deriveChatStatus — one status, by priority', () => {
     });
     expect(status?.label).toBe('Status unavailable');
     expect(status?.clockFrom).toBeUndefined();
-    expect(status?.action).toBe('repair');
+    // The remedy is re-reading this conversation, not re-pairing the Station.
+    expect(status?.action).toBe('resync');
   });
   test('the live pill names a reported retry and includes only reported counters', () => {
     const reported = deriveChatStatus({
@@ -210,6 +211,39 @@ describe('deriveChatStatus — one status, by priority', () => {
 });
 
 describe('ChatStatusPill', () => {
+  test('an unobservable conversation offers a visible Resync that re-reads it, not a re-pair', () => {
+    const onRepair = vi.fn();
+    const onResync = vi.fn();
+    render(
+      <ChatStatusPill
+        status={deriveChatStatus({
+          ...base,
+          turnLive: true,
+          activity: openTurn,
+          observationUnavailable: true,
+        })}
+        onRepair={onRepair}
+        onResync={onResync}
+      />,
+    );
+    const pill = screen.getByRole('button', {
+      name: 'Status unavailable — resync this conversation',
+    });
+    expect(pill.textContent).toContain('Resync');
+    pill.click();
+    expect(onResync).toHaveBeenCalledOnce();
+    expect(onRepair).not.toHaveBeenCalled();
+  });
+  test('without a resync handler the unavailable pill is a plain status, not a dead button', () => {
+    render(
+      <ChatStatusPill
+        status={deriveChatStatus({ ...base, observationUnavailable: true })}
+      />,
+    );
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(document.body.textContent).not.toContain('Resync');
+  });
+
   test('an approval that resolves settles as "Resumed" before the pill moves on', () => {
     vi.useFakeTimers();
     const approval = deriveChatStatus({ ...base, approvalCount: 1 });
