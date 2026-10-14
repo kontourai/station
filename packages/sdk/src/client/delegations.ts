@@ -51,6 +51,7 @@ import type {
   ExecutionResolutionReceipt,
   ExecutionTarget,
 } from '@kontourai/station-contracts/execution-target';
+import type { InterruptTurnResult } from '@kontourai/station-contracts/orchestration';
 import { envelopeError, type StationHttpError } from './api-error-message';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 import type { ApprovalDecision } from './orchestration';
@@ -716,6 +717,13 @@ export interface InterruptDelegatedTaskInput
 
 export type DelegatedTaskInterruptResult = DelegatedTaskSnapshot & {
   interruptRequested: true;
+  /**
+   * What the stop actually did, as the Station that ran it derived it
+   * (`InterruptTurnResult['outcome']`). `no-active-turn` means nothing was
+   * interrupted: no turn was running, or the requested `turnId` was not the
+   * running one. Absent from a Station that does not report it.
+   */
+  interruptOutcome?: InterruptTurnResult['outcome'];
 };
 
 /**

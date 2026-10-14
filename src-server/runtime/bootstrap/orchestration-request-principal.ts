@@ -23,6 +23,7 @@ import {
   getRuntimeNativeDeviceProofPrincipal,
 } from '../../security/runtime-request-security.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
+import { principalForDeviceBinding } from '../../services/access/device-binding-principal.js';
 import {
   type DeploymentAuthenticationService,
   deploymentAccountPrincipal,
@@ -45,22 +46,6 @@ function isAccountDeviceBinding(
   binding: DevicePrincipalBinding,
 ): binding is Extract<DevicePrincipalBinding, { kind: 'account' }> {
   return 'kind' in binding && binding.kind === 'account';
-}
-
-function principalForDeviceBinding(
-  binding: DevicePrincipalBinding,
-): PrincipalRef {
-  return 'kind' in binding
-    ? deploymentAccountPrincipal(
-        binding.issuer,
-        binding.subject,
-        binding.displayName,
-      )
-    : deploymentHumanPrincipal(
-        binding.provider,
-        binding.subject,
-        binding.subject,
-      );
 }
 
 /** The identity a request carrying this device's own credential presents. */

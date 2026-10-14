@@ -557,6 +557,83 @@ describe('EventStore', () => {
     }
   });
 
+  // #3158 fix round 5, P2-B: the delegation-result migration runs on every
+  // boot and reads (PRAGMA table_info) before it writes. As a deferred
+  // SAVEPOINT that upgrade was refused at once under a peer writer, so a
+  // second runtime on a shared home died booting an ALREADY-migrated store.
+  test('reopens an already-migrated home while a peer writer holds the lock', async () => {
+    const path = join(dir, 'orchestration.sqlite');
+    store.delegationResultStore().arm({
+      childConversationId: 'child',
+      taskId: 'child',
+      parentConversationId: 'parent',
+      actor: { userId: 'human:local:owner', attribution: 'verified-bound' },
+    });
+    const peer = await holdPeerWriteLock(path, 1_000);
+    const startedAt = Date.now();
+    let returnedAt: number | undefined;
+    let reopened: EventStore | undefined;
+    try {
+      expect(() => {
+        reopened = new EventStore(path);
+      }).not.toThrow();
+      returnedAt = Date.now();
+      expect(reopened!.delegationResultStore().owner('child')).toBeDefined();
+    } finally {
+      reopened?.close();
+      const releasedAt = await peer.releasedAt();
+      expect(startedAt).toBeLessThan(releasedAt);
+      if (returnedAt !== undefined)
+        expect(returnedAt).toBeGreaterThanOrEqual(releasedAt);
+    }
+  });
+
+  // The same failure on the delivery store's runtime transitions that read
+  // before they write, on the shared EventStore connection.
+  test.each(['arm', 'spendSuppressions'] as const)(
+    'delegation result %s waits through a peer writer',
+    async (transition) => {
+      const results = store.delegationResultStore();
+      results.arm({
+        childConversationId: 'child',
+        taskId: 'child',
+        parentConversationId: 'parent',
+        actor: { userId: 'human:local:owner', attribution: 'verified-bound' },
+      });
+      results.beginCancel('child', 'token', 'turn-a');
+      const peer = await holdPeerWriteLock(
+        join(dir, 'orchestration.sqlite'),
+        1_000,
+      );
+      const startedAt = Date.now();
+      let returnedAt: number | undefined;
+      try {
+        if (transition === 'arm')
+          expect(
+            results.arm({
+              childConversationId: 'child-2',
+              taskId: 'child-2',
+              parentConversationId: 'parent',
+              actor: {
+                userId: 'human:local:owner',
+                attribution: 'verified-bound',
+              },
+            }),
+          ).toBe('armed');
+        else
+          expect(
+            results.spendSuppressions('child', 'turn-a', 'aborted'),
+          ).toEqual(['token']);
+        returnedAt = Date.now();
+      } finally {
+        const releasedAt = await peer.releasedAt();
+        expect(startedAt).toBeLessThan(releasedAt);
+        if (returnedAt !== undefined)
+          expect(returnedAt).toBeGreaterThanOrEqual(releasedAt);
+      }
+    },
+  );
+
   // #3561 review F1: SQLite can answer SQLITE_FULL/IOERR/NOMEM by rolling
   // back the whole transaction. A co-commit participant that swallows that
   // error returns into autocommit mode; the append must then store nothing,

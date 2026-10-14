@@ -54,9 +54,9 @@
 
 /* The mark is a raster asset, so retinting --k-brand cannot reach it: the dev
    build showed amber buttons beside the release logo. favicon-dev.png is
-   rendered by scripts/generate-app-icons.mjs with the same selective water-hue
-   shift as the "Station Dev" launcher icon, so the in-app mark and the
-   home-screen icon agree by construction — a CSS filter was the previous
+   rendered by scripts/generate-app-icons.mjs with the same dev palette as the
+   "Station Dev" launcher icon, so the in-app mark and the home-screen icon
+   agree by construction — a CSS filter was the previous
    mechanism and could only approximate the launcher's colours. Selected by
    src rather than by class because the same file renders as
    .app-toolbar__logo, .sidebar__logo, .guided-connect__logo and the SDK's
