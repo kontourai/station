@@ -482,6 +482,51 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
     expect(restarted.adapter.turns).toHaveLength(0);
   });
 
+  // Investigation: a first send whose Station died while its session was
+  // starting. The lookup says not-received (the request record died with the
+  // process and no turn was ever claimed), so the client replays the SAME
+  // key. What happens next is pinned as observed: the dead owner's session-
+  // start boundary still fences the conversation, so the replay is refused
+  // before any provider call — no duplicate, and nothing delivered. Without
+  // a startup recovery pass in this harness, whether production's recovery
+  // sweep clears that fence (and the replay then delivers) is not shown here.
+  test('Station dies mid-session-start: a same-key replay never makes a second turn', async () => {
+    const first = station();
+    first.adapter.startGate = new Promise(() => {
+      // Never released: this Station "dies" holding the start open.
+    });
+    const entered = new Promise<void>((resolve) =>
+      first.adapter.startEntered.push(resolve),
+    );
+    void first.send('conversation:crash', 'key-crash');
+    await entered;
+    expect(await first.lookup('conversation:crash', 'key-crash')).toMatchObject(
+      {
+        outcome: 'received',
+      },
+    );
+    stores.splice(stores.indexOf(first.store), 1);
+    first.store.close();
+
+    const restarted = station({ root: first.root, deadOwners: true });
+    expect(
+      await restarted.lookup('conversation:crash', 'key-crash'),
+    ).toMatchObject({ outcome: 'not-received' });
+    const replay = await restarted.send('conversation:crash', 'key-crash');
+    expect(replay.status).toBe(400);
+    expect(await replay.json()).toMatchObject({
+      error:
+        'Session start admission is unavailable; no provider call was made.',
+    });
+    expect(first.adapter.turns).toHaveLength(0);
+    expect(restarted.adapter.turns).toHaveLength(0);
+    // Still nothing claimed: the client shows not-sent, and a Retry reuses
+    // the same key.
+    expect(
+      await restarted.lookup('conversation:crash', 'key-crash'),
+    ).toMatchObject({ outcome: 'not-received' });
+  });
+
   test('an evicted key answers expired', async () => {
     const { send, lookup, adapter } = station({ maxEntries: 1 });
     expect((await send('conversation:evict', 'key-old')).status).toBe(200);
