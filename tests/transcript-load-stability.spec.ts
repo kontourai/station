@@ -699,3 +699,61 @@ test.describe('a finger on the phone', () => {
     });
   }
 });
+
+// Owner report: "scrolling manually to the bottom gets there and then scrolls
+// back up", while Scroll to bottom worked. Reaching the end removed Scroll to
+// bottom from the composer, the composer re-measured itself by shrinking its
+// draft, and the browser clamped the transcript up by that much while the
+// wheel was still counted as the reader's: the transcript stayed unpinned,
+// 18px (desktop, virtualized) or 69px (phone) short. Fixed by #3661's
+// measurement; these pin the reader's own path to the end.
+test.describe('wheeling back to the newest message', () => {
+  for (const [label, viewport, turnCount] of [
+    ['desktop, virtualized', { width: 1280, height: 900 }, 400],
+    ['phone, short chat', { width: 390, height: 844 }, 8],
+  ] as const) {
+    test(`stays at the newest message (${label})`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await mockChatShell(page);
+      await installMockOrchestrationSse(page);
+      const threadId = 'thread-wheel-to-end';
+      const turns = buildLongSessionTurns({
+        threadId,
+        turnCount,
+        replyText: (index) =>
+          `Reply ${index}.\n\n- one\n- two\n- three\n\n${'word '.repeat(40)}`,
+      });
+      await mockLongTranscriptConversation(page, {
+        threadId,
+        title: 'Wheel to end',
+        turns: () => turns,
+      });
+      await page.goto(`/?dock=open&maximize=true&chat=${threadId}`);
+      await dismissSetupLauncher(page);
+      const transcript = page.getByRole('log', {
+        name: 'Conversation transcript',
+      });
+      await expect(
+        transcript.getByText(`Reply ${turnCount - 1}.`, { exact: true }),
+      ).toBeVisible({ timeout: 30_000 });
+      await waitForStableTranscript(page, 30);
+      const shortBy = () =>
+        transcript.evaluate(
+          (element) =>
+            element.scrollHeight - element.scrollTop - element.clientHeight,
+        );
+      await transcript.hover();
+      await page.mouse.wheel(0, -1_200);
+      const jump = page.getByRole('button', { name: 'Scroll to bottom' });
+      await expect(jump).toBeVisible();
+      // Back down in wheel notches, past the end, the way a person does.
+      for (let notch = 0; notch < 30; notch += 1) {
+        await page.mouse.wheel(0, 120);
+        await page.waitForTimeout(30);
+      }
+      await waitForStableTranscript(page, 30);
+      await expect.poll(shortBy).toBeLessThanOrEqual(1);
+      await expect(jump).toHaveCount(0);
+    });
+  }
+});
