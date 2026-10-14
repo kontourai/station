@@ -39,7 +39,7 @@ docs:public:hygiene` renders each admitted document and rejects any other
 relative link, so the mistake fails at PR time instead of in the post-merge
 Pages build.
 
-The root `docs-kit.json` mirrors `public-docs.json` for the shared Kontour docs
+The root `corpus.json` mirrors `public-docs.json` for the shared Kontour docs
 system, with `README.md` as its landing page (this site's own `index.html` stays
 the hand-authored home). Only its `docs-bundle.json` is published here, and its
 document URLs are the same `docs/<path>.html` pages this builder writes. The

@@ -1,0 +1,7 @@
+{
+  "revision": "7f25ba968df96afd38fab7e4468731beaf4da597",
+
+  "notes": [
+    {"path":"src-desktop/icons/README.md","note":"The latest delta only drops the export keyword from statusBarMarkXml and ICON_MANIFEST in generate-app-icons.mjs (no caller outside the module); behaviour and every README claim unchanged.","inputs":["src-desktop/icons/README.md","scripts/generate-app-icons.mjs"]}
+  ]
+}

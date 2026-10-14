@@ -96,7 +96,6 @@ import type { ApplicationSessionService } from '../../services/identity/applicat
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
 import {
   type DeploymentAuthenticationService,
-  deploymentAccountPrincipal,
   isDeploymentAccountPrincipalId,
 } from '../../services/identity/deployment-authentication-service.js';
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
@@ -152,8 +151,9 @@ import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
   DEVICE_PAIRING_BROWSER_COOKIE_DELIVERY,
-  type DevicePrincipalBinding,
+  deviceRequestedExtraScopes,
   type FullAccessRevocationReport,
+  isDeviceRequestableScope,
   PAIRING_SCOPE_PRESETS,
   type PairingScope,
   PUBLIC_DEVICE_PAIRING_ACCESS_REQUEST_PATH,
@@ -176,6 +176,13 @@ import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-
 import type { LaunchableModelInventory } from '@kontourai/station-contracts/model-inventory';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
+import {
+  isStationGroup,
+  type StationGroup,
+  type StationGroupAssignment,
+  type StationPerson,
+} from '@kontourai/station-contracts/station-groups';
 import { parseStationTaskBasisCollection } from '@kontourai/station-contracts/task-basis';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -183,28 +190,7 @@ import {
 } from '@kontourai/station-contracts/tenancy';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { isStationNativeShellOrigin } from '@kontourai/station-shared/native-shell-origin';
-
-function isAccountDeviceBinding(
-  binding: DevicePrincipalBinding,
-): binding is Extract<DevicePrincipalBinding, { kind: 'account' }> {
-  return 'kind' in binding && binding.kind === 'account';
-}
-
-function principalForDeviceBinding(binding: DevicePrincipalBinding) {
-  return isAccountDeviceBinding(binding)
-    ? deploymentAccountPrincipal(
-        binding.issuer,
-        binding.subject,
-        binding.displayName,
-      )
-    : deploymentHumanPrincipal(
-        binding.provider,
-        binding.subject,
-        binding.subject,
-      );
-}
-
-import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
+import { operatorCliCommand } from '@kontourai/station-shared/ports';
 import type { Agent } from '@voltagent/core';
 import type { HonoServerConfig } from '@voltagent/server-hono';
 import type { Context } from 'hono';
@@ -320,7 +306,11 @@ import { createDeclarePullRequestRoutes } from '../../routes/orchestration/decla
 import { createEventRoutes } from '../../routes/orchestration/events.js';
 import { createLiveActivityRoutes } from '../../routes/orchestration/live-activity.js';
 import { createOperatingStateRoutes } from '../../routes/orchestration/operating-state.js';
-import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
+import {
+  createOrchestrationRoutes,
+  isForegroundDispatchHandle,
+  isForegroundIndeterminateShape,
+} from '../../routes/orchestration/orchestration.js';
 import { createProjectTaskRoomRoutes } from '../../routes/orchestration/project-task-rooms.js';
 import { createRunRoutes } from '../../routes/orchestration/runs.js';
 import { createSessionAgentControlRoutes } from '../../routes/orchestration/session-agent-control.js';
@@ -420,6 +410,8 @@ import {
 } from '../../security/runtime-request-security.js';
 import { resolveStationBrowserOrigins } from '../../security/station-browser-origins.js';
 import { runAsStationServer } from '../../security/station-server-scope.js';
+import { principalForDeviceBinding } from '../../services/access/device-binding-principal.js';
+import { StationGroupsError } from '../../services/access/station-groups-service.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
 import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
@@ -524,6 +516,11 @@ import {
   delegationAttemptClaimKey,
   projectDelegationAttemptClaim,
 } from '../../services/orchestration/delegation-attempt-claim-store.js';
+import {
+  createDelegationResultSteerPort,
+  DELEGATION_RESULT_CLIENT_ORIGIN,
+  DelegationResultDelivery,
+} from '../../services/orchestration/delegation-result-delivery.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
@@ -533,7 +530,10 @@ import { ProjectTaskRoomRuntime } from '../../services/orchestration/project-tas
 import { RunService } from '../../services/orchestration/run-service.js';
 import { createSessionInventoryAppReadModule } from '../../services/orchestration/session-inventory-app-read-module.js';
 import { createSessionInventoryModule } from '../../services/orchestration/session-inventory-module.js';
-import { projectSessionLifecycle } from '../../services/orchestration/session-lifecycle-service.js';
+import {
+  ACTIVE_TURN_FOLD_METHODS,
+  projectSessionLifecycle,
+} from '../../services/orchestration/session-lifecycle-service.js';
 import { createSessionWorkItemModule } from '../../services/orchestration/session-work-item-module.js';
 import { resolveWorkspaceIdentity } from '../../services/orchestration/workspace-identity.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
@@ -1927,6 +1927,7 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService.devicePairing
         .listDevices()
         .find((device) => device.id === deviceId)?.name,
+    hostCli: () => operatorCliCommand(context.buildProvenanceSnapshot?.channel),
   };
   context.app.use('*', async (c, next) => {
     bindFullAccessRefusalIdentity(c.req.raw, fullAccessRefusalIdentity);
@@ -2326,6 +2327,8 @@ export function configureRuntimeRoutes(
     context.app,
     context.environmentSecurityService.devicePairing,
     {
+      operatorCli: () =>
+        operatorCliCommand(context.buildProvenanceSnapshot?.channel),
       allowedOrigins,
       localGrant: {
         secretPath: join(
@@ -2618,6 +2621,16 @@ export function configureRuntimeRoutes(
     context.app,
     context.environmentSecurityService.devicePairing,
     {
+      operatorCli: () =>
+        operatorCliCommand(context.buildProvenanceSnapshot?.channel),
+      groups: {
+        groupOf: (principalId) =>
+          context.environmentSecurityService.groupOf(principalId),
+        assignments: () =>
+          context.environmentSecurityService.groupAssignments(),
+        assign: (principalId, group) =>
+          context.environmentSecurityService.assignGroup(principalId, group),
+      },
       // An approval by a caller that presented no credential is the disclosed
       // residue being exercised — warn volume, same as a denied remote
       // authentication, so it is readable in the same place.
@@ -4281,10 +4294,137 @@ export function configureRuntimeRoutes(
       config: context.configLoader,
     }));
 
+  function createDelegationResultDelivery(
+    eventStore: EventStore,
+  ): DelegationResultDelivery {
+    const origin = DELEGATION_RESULT_CLIENT_ORIGIN;
+    return new DelegationResultDelivery({
+      store: eventStore.delegationResultStore(),
+      foldEvents: (threadId) =>
+        eventStore
+          .listEventsByMethods(threadId, ACTIVE_TURN_FOLD_METHODS)
+          .map((stored) => ({
+            sequence: stored.sequence,
+            event: stored.payload,
+          })),
+      headSequence: (threadId) =>
+        eventStore.readSessionInventoryHighWater(threadId),
+      turnEvents: (threadId, turnId, methods, limit) =>
+        eventStore
+          .listTurnEventsByMethods(threadId, turnId, methods, limit)
+          .map((stored) => ({
+            ...(stored.turnId ? { turnId: stored.turnId } : {}),
+            method: stored.method,
+            payload: stored.payload,
+          })),
+      conversationOf: (threadId) =>
+        eventStore.conversationForSession(threadId)?.conversationId ?? threadId,
+      currentSessionId: (conversationId) =>
+        context.orchestrationService.currentConversationSessionId(
+          conversationId,
+        ),
+      coordinatorBusy: (threadId) =>
+        context.orchestrationService.hasActiveTurn(threadId),
+      sessionOwnerId: (threadId) =>
+        context.orchestrationService.sessionRecordedOwnerId(threadId),
+      // Delivery acts exactly as the delegating dispatch did (its user,
+      // owner attribution and principal, recorded when it armed), never as
+      // the operator and never with a stronger attribution.
+      start: stationServerEntry(
+        async ({
+          parentConversationId,
+          threadId,
+          actor,
+          text,
+          clientTurnId,
+        }) => {
+          try {
+            const handle = await continueExecutionTargetMessage(
+              {
+                conversationId: parentConversationId,
+                message: text,
+                clientTurnId,
+                userId: actor.userId,
+                principal: actor.principal,
+                ownerAttribution: actor.attribution,
+                fullAccessGrant: null,
+                clientOrigin: origin,
+                readAuthority: readAuthorityForExecution(actor.userId),
+              },
+              context.orchestrationService,
+              remoteStations,
+            );
+            if (!isForegroundDispatchHandle(handle))
+              return { outcome: 'indeterminate' as const };
+            const started = handle as { sessionId?: unknown };
+            return {
+              outcome: 'started' as const,
+              conversationId: handle.conversationId,
+              sessionId:
+                typeof started.sessionId === 'string'
+                  ? started.sessionId
+                  : threadId,
+              turnId: handle.providerTurnId,
+            };
+          } catch (error) {
+            if (isForegroundIndeterminateShape(error))
+              return { outcome: 'indeterminate' as const };
+            throw error;
+          }
+        },
+      ),
+      steer: stationServerEntry(
+        createDelegationResultSteerPort((command, dispatchContext) =>
+          context.orchestrationService.dispatchWithReceipt(
+            command,
+            dispatchContext,
+          ),
+        ),
+      ),
+      subscribe: (listener) =>
+        context.eventBus.subscribe((frame) => {
+          if (frame.event !== 'orchestration:event') return;
+          const inner = (
+            frame.data as
+              | { event?: { threadId?: unknown; method?: unknown } }
+              | undefined
+          )?.event;
+          if (
+            typeof inner?.threadId === 'string' &&
+            typeof inner.method === 'string'
+          )
+            listener({ threadId: inner.threadId, method: inner.method });
+        }),
+      logger: context.logger,
+    });
+  }
+
+  // #3158: a delegated child's result goes back to the conversation that
+  // delegated it. Personal Stations only: a hosted delivery would run outside
+  // any request's tenant context.
+  // Optional: if it cannot start, no route arms it and agents poll as before.
+  const delegationResults = (() => {
+    if (!context.orchestrationEventStore || hostedTenantRegistry !== undefined)
+      return undefined;
+    try {
+      const delivery = createDelegationResultDelivery(
+        context.orchestrationEventStore,
+      );
+      delivery.start();
+      return delivery;
+    } catch (error) {
+      context.logger.warn('delegation result delivery is unavailable', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
+  })();
+
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
       eventBus: context.eventBus,
+      ...(delegationResults ? { delegationResults } : {}),
       logger: context.logger,
       actionOperations,
       terminalService: context.terminalService,
@@ -6938,6 +7078,16 @@ export function configureRuntimeRoutes(
     // exact-once room/history/outbox startup replay.
     projectTaskRoomLifecycleReady,
   ]).then(() => undefined);
+  // #3158: results a restart left undelivered. Never part of readiness: a
+  // delivery that cannot run now is retried, not allowed to block startup.
+  if (delegationResults)
+    void kitLifecycleReady
+      .then(() => delegationResults.reconcile())
+      .catch((error: unknown) =>
+        context.logger.warn('delegation result reconcile failed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
 
   return {
     schedulerService,
@@ -7439,6 +7589,12 @@ export function configureDevicePairingPublicRoutes(
   app: HonoApp,
   pairing: DevicePairingService,
   options: {
+    /**
+     * The operator CLI command on this Station's host (`npx
+     * @kontourai/station-cli@nightly` on a nightly), named in every remedy
+     * that tells a person what to run there. `station` when omitted.
+     */
+    operatorCli?: () => string;
     allowedOrigins?: readonly string[];
     /**
      * Same-user local self-authorization (station#1715). Present in every
@@ -8017,7 +8173,14 @@ export function configureDevicePairingPublicRoutes(
       (body.requireAccountBinding !== undefined &&
         body.requireAccountBinding !== true) ||
       (body.clientInstanceId !== undefined &&
-        typeof body.clientInstanceId !== 'string')
+        typeof body.clientInstanceId !== 'string') ||
+      // A device names one requestable base plus requestable extras, never
+      // `access:manage`, and never beside a delegation (which has its own
+      // preset). The operator sees and may trim it before approving.
+      (body.scope !== undefined &&
+        (body.kind === 'delegation' ||
+          typeof body.scope !== 'string' ||
+          !isDeviceRequestableScope(body.scope)))
     ) {
       devicePairingRequests.add(1, {
         source: requestSource,
@@ -8093,7 +8256,9 @@ export function configureDevicePairingPublicRoutes(
               kind: 'delegation' as const,
               scope: PAIRING_SCOPE_PRESETS.delegation.join(' '),
             }
-          : {}),
+          : typeof body.scope === 'string'
+            ? { scope: body.scope }
+            : {}),
         deviceName: body.deviceName,
         clientInstanceId: body.clientInstanceId as string | undefined,
         requesterPosition: pairingRequesterPosition(c),
@@ -8130,7 +8295,11 @@ export function configureDevicePairingPublicRoutes(
         source: requestSource,
         outcome: 'requested',
       });
-      return c.json(result, 202);
+      // The requester shows the operator what to run to approve it.
+      return c.json(
+        { ...result, operatorCli: options.operatorCli?.() ?? 'station' },
+        202,
+      );
     } catch (error) {
       devicePairingRequests.add(1, {
         source: requestSource,
@@ -8546,6 +8715,21 @@ export function configureDevicePairingHostRoutes(
   app: HonoApp,
   pairing: DevicePairingService,
   options: {
+    /**
+     * The operator CLI command on this Station's host (`npx
+     * @kontourai/station-cli@nightly` on a nightly), named in every remedy
+     * that tells a person what to run there. `station` when omitted.
+     */
+    operatorCli?: () => string;
+    /**
+     * #3557: Station groups for people. Omitted, the people routes answer
+     * 404 (a harness that does not exercise them).
+     */
+    groups?: {
+      groupOf(principalId: string): StationGroup;
+      assignments(): StationGroupAssignment[];
+      assign(principalId: string, group: StationGroup): Promise<void>;
+    };
     audit?: (record: PairingApprovalAuditRecord) => void;
     verifyOperatorCredential?: (credential: string) => boolean;
     isApprovalCurrent?: (request: Request) => boolean;
@@ -8584,6 +8768,15 @@ export function configureDevicePairingHostRoutes(
   },
 ): void {
   const audit = options.audit;
+  // A refused approval names the command that approves it on this host.
+  const approvalRequiresOperator = (c: Context) =>
+    c.json(
+      {
+        error: 'approval_requires_operator',
+        operatorCli: options.operatorCli?.() ?? 'station',
+      },
+      403,
+    );
   // #2894 S1: counted per process, so the log line itself carries the total.
   let offHostOperatorCredentialUses = 0;
   const observeOperatorCredentialUse = (
@@ -8746,17 +8939,29 @@ export function configureDevicePairingHostRoutes(
           }
         | undefined;
       let relayConfirmation: DevicePairingRequest | undefined;
+      // What the approver keeps of the requested scope (the approval
+      // surfaces' Limit access list); omitted keeps all of it.
+      let grantedScope: string | undefined;
       if (c.req.raw.body !== null) {
         const body = await readPairingOfferJson(
           c.req.raw,
-          new Set(['', 'bindVerifiedIdentity', 'bindAccountIdentity']),
+          new Set([
+            '',
+            'bindVerifiedIdentity',
+            'bindAccountIdentity',
+            'scope',
+            'bindVerifiedIdentity,scope',
+          ]),
         );
         if (
           !body ||
           Object.keys(body).some(
             (key) =>
-              key !== 'bindVerifiedIdentity' && key !== 'bindAccountIdentity',
+              key !== 'bindVerifiedIdentity' &&
+              key !== 'bindAccountIdentity' &&
+              key !== 'scope',
           ) ||
+          (body.scope !== undefined && typeof body.scope !== 'string') ||
           (body.bindVerifiedIdentity !== undefined &&
             typeof body.bindVerifiedIdentity !== 'boolean') ||
           (body.bindAccountIdentity !== undefined &&
@@ -8769,8 +8974,9 @@ export function configureDevicePairingHostRoutes(
         // Reading the body yielded. Reapply the existing credential and scope
         // predicate before either ordinary approval or person binding commits.
         if (options.isApprovalCurrent?.(c.req.raw) !== true) {
-          return c.json({ error: 'approval_requires_operator' }, 403);
+          return approvalRequiresOperator(c);
         }
+        if (typeof body.scope === 'string') grantedScope = body.scope;
         if (body.bindVerifiedIdentity === true) {
           const actor = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
           const operatorCredential =
@@ -8787,7 +8993,7 @@ export function configureDevicePairingHostRoutes(
             return c.json({ error: 'person_binding_unavailable' }, 409);
           }
           if (!operatorCredential && !localGrant) {
-            return c.json({ error: 'approval_requires_operator' }, 403);
+            return approvalRequiresOperator(c);
           }
           bindingApproval = {
             principalId: resolveStationPrincipal(
@@ -8807,7 +9013,7 @@ export function configureDevicePairingHostRoutes(
             actor?.authority !== 'operator-credential' ||
             options.verifyOperatorCredential?.(actor.credential) !== true
           ) {
-            return c.json({ error: 'approval_requires_operator' }, 403);
+            return approvalRequiresOperator(c);
           }
           if (pairing.isRelayEnrollmentRequest(requestId)) {
             if (!options.relayEnrollment)
@@ -8868,7 +9074,7 @@ export function configureDevicePairingHostRoutes(
               actor.authority !== 'operator-credential' ||
               options.verifyOperatorCredential?.(actor.credential) !== true
             ) {
-              return c.json({ error: 'approval_requires_operator' }, 403);
+              return approvalRequiresOperator(c);
             }
             bindingApproval = {
               principalId: resolveStationPrincipal(
@@ -8882,9 +9088,42 @@ export function configureDevicePairingHostRoutes(
           }
         }
       }
+      // Full access or running commands, asked for at pairing, is the
+      // operator's to grant: an `access:approve` device may approve the rest,
+      // with those left out, but not keep them.
+      if (!relayConfirmation) {
+        const requested = pairing
+          .listRequests()
+          .find((candidate) => candidate.requestId === requestId);
+        const kept = grantedScope ?? requested?.scope ?? '';
+        if (deviceRequestedExtraScopes(kept).length > 0) {
+          const actor = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+          const operatorCredential =
+            actor?.authority === 'operator-credential' &&
+            options.verifyOperatorCredential?.(actor.credential) === true;
+          // The same operator test person binding uses: the operator
+          // credential, or the desktop's own home-possession local grant.
+          const localGrant =
+            actor?.authority === 'device-credential' &&
+            actor.locality === 'home-possession' &&
+            actor.mintKind === 'local-grant' &&
+            pairing.credentialLocality(actor.credential) ===
+              'home-possession' &&
+            pairing.credentialMintKind(actor.credential) === 'local-grant';
+          // Thrown, not returned, so it is counted and audited as the
+          // refusal it is, with the service's own refusals below.
+          if (!operatorCredential && !localGrant)
+            throw new DevicePairingError('approval_requires_operator');
+        }
+      }
       const request =
         relayConfirmation ??
-        pairing.confirmRequest(requestId, approval, bindingApproval);
+        pairing.confirmRequest(
+          requestId,
+          approval,
+          bindingApproval,
+          grantedScope === undefined ? undefined : { scope: grantedScope },
+        );
       devicePairingRequests.add(1, {
         source: request.source,
         outcome: 'approved',
@@ -8936,6 +9175,11 @@ export function configureDevicePairingHostRoutes(
           });
         }
       }
+      if (
+        error instanceof DevicePairingError &&
+        error.code === 'approval_requires_operator'
+      )
+        return approvalRequiresOperator(c);
       return c.json(
         { error: pairingErrorCode(error) },
         pairingErrorStatus(error),
@@ -8982,6 +9226,10 @@ export function configureDevicePairingHostRoutes(
     return c.json({
       devices: devices.map((device) => ({
         ...device,
+        // #3557: what it may use now (its person's Station group cap).
+        ...(device.revokedAt === null
+          ? { effectiveScope: pairing.effectiveScopeOfDevice(device.id) }
+          : {}),
         connectedClients: connected?.get(device.id) ?? null,
       })),
     });
@@ -9037,6 +9285,131 @@ export function configureDevicePairingHostRoutes(
    * history; and `operator-promotion`, the grant path the contracts declare
    * for `access:approve` and `consent:decide`, had no mechanism at all.
    */
+  // #3557: everyone tied to a device or placed in a group, with what each
+  // tied device may actually use. Operator only, like device access.
+  const peopleView = (): StationPerson[] => {
+    const groups = options.groups!;
+    const people = new Map<string, StationPerson>();
+    const personFor = (principalId: string, displayName: string) => {
+      let person = people.get(principalId);
+      if (!person) {
+        const assigned = groups
+          .assignments()
+          .some((entry) => entry.principalId === principalId);
+        person = {
+          principalId,
+          displayName,
+          group: groups.groupOf(principalId),
+          assigned,
+          devices: [],
+        };
+        people.set(principalId, person);
+      }
+      return person;
+    };
+    for (const device of pairing.listDevices()) {
+      if (
+        device.revokedAt !== null ||
+        !device.principalBinding ||
+        device.kind === 'delegation'
+      )
+        continue;
+      const principal = principalForDeviceBinding(device.principalBinding);
+      personFor(principal.id, principal.display).devices.push({
+        id: device.id,
+        name: device.name,
+        scope: device.scope,
+        effectiveScope: pairing.effectiveScopeOfDevice(device.id) ?? '',
+      });
+    }
+    for (const entry of groups.assignments())
+      personFor(entry.principalId, entry.principalId);
+    return [...people.values()].sort((left, right) =>
+      left.displayName.localeCompare(right.displayName),
+    );
+  };
+  // Read like the device list: the pairing family's boundary admits the
+  // operator and the desktop's own local grant. Changing a group is a device
+  // access change, so it needs the operator credential itself.
+  app.get('/api/pairing/people', (c) => {
+    if (!options.groups) return c.json({ error: 'not_found' }, 404);
+    c.header('Cache-Control', 'no-store');
+    return c.json({ people: peopleView() });
+  });
+  app.put('/api/pairing/people/:principalId/group', async (c) => {
+    if (!options.groups) return c.json({ error: 'not_found' }, 404);
+    const request = c.req.raw;
+    if (!currentOperator(c, request))
+      return c.json({ error: 'authentication_required' }, 401);
+    const body = (await request.json().catch(() => null)) as {
+      group?: unknown;
+    } | null;
+    if (!isStationGroup(body?.group))
+      return c.json({ error: 'invalid_group' }, 400);
+    const principalId = c.req.param('principalId');
+    // Reading the body yielded: the decision stays the operator's.
+    if (!currentOperator(c, request))
+      return c.json({ error: 'authentication_required' }, 401);
+    const tied = pairing
+      .listDevices()
+      .filter(
+        (device) =>
+          device.revokedAt === null &&
+          device.kind !== 'delegation' &&
+          device.principalBinding !== undefined &&
+          principalForDeviceBinding(device.principalBinding).id === principalId,
+      );
+    const heldFullAccess = new Set(
+      tied
+        .filter((device) =>
+          pairingScopeIncludes(
+            pairing.effectiveScopeOfDevice(device.id) ?? '',
+            'approval:full-access',
+          ),
+        )
+        .map((device) => device.id),
+    );
+    try {
+      await options.groups.assign(principalId, body.group);
+    } catch (error) {
+      return error instanceof StationGroupsError
+        ? c.json({ error: 'invalid_principal' }, 400)
+        : c.json({ error: 'groups_unavailable' }, 503);
+    }
+    observeOperatorCredentialUse(
+      c,
+      'PUT /api/pairing/people/:principalId/group',
+    );
+    // As a device scope change: live terminal and voice connections
+    // re-authenticate under the new cap, and a full access the group no
+    // longer allows resets what it had granted.
+    const revocations: Record<string, unknown> = {};
+    for (const device of tied) {
+      options.connectedClientPresence?.disconnectDevice(device.id);
+      if (
+        heldFullAccess.has(device.id) &&
+        !pairingScopeIncludes(
+          pairing.effectiveScopeOfDevice(device.id) ?? '',
+          'approval:full-access',
+        )
+      )
+        revocations[device.id] = await revokeFullAccess(
+          request,
+          device.id,
+          'scope-removed',
+        );
+    }
+    const person = peopleView().find(
+      (entry) => entry.principalId === principalId,
+    ) ?? {
+      principalId,
+      displayName: principalId,
+      group: body.group,
+      assigned: body.group !== 'member',
+      devices: [],
+    };
+    return c.json({ person, revocations });
+  });
   app.post('/api/pairing/devices/:deviceId/scope', async (c) => {
     try {
       const request = c.req.raw;

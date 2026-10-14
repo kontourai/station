@@ -111,14 +111,37 @@ export function executionBindingAgentId(ref: ExecutionAgentRef): AgentId {
  *
  * The public target deliberately contains no provider, engine, connection,
  * endpoint, transport, or credential selector. The selected Environment
- * resolves its own Agent binding and model launch plan.
+ * resolves its own Agent binding and model launch plan. The one engine-shaped
+ * field, `expectedEngine`, is a precondition the Environment checks against its
+ * own resolution and can only refuse on; it chooses nothing.
  */
 export interface ExecutionTarget {
   environment: EnvironmentRef;
   agent: ExecutionAgentRef;
   model?: ExecutionModelRequest;
   workspace?: WorkspaceTarget;
+  /**
+   * A PRECONDITION, never a selector: the engine this caller's own view of the
+   * Agent showed it running on. The target Environment still resolves the
+   * binding itself and alone decides where the work runs. When that
+   * resolution names a different engine the request is refused with
+   * `EXECUTION_ENGINE_CHANGED_CODE` before anything starts, so a caller
+   * working from a stale snapshot is told, not run somewhere it did not see.
+   *
+   * Absent states no expectation. A receiver from before this field ignores
+   * it, so a caller needing the guarantee must know its receiver's version.
+   * The shape is the resolution receipt's own `engine` (`ResolvedExecutionEngine`),
+   * which is why it names nothing a caller could use to aim a request.
+   */
+  expectedEngine?: ResolvedExecutionEngine;
 }
+
+/**
+ * The request's `expectedEngine` did not match the engine the target
+ * Environment resolved the Agent to. Nothing started; re-read the Agent and
+ * choose again.
+ */
+export const EXECUTION_ENGINE_CHANGED_CODE = 'execution_engine_changed';
 
 export const EXECUTION_RESOLUTION_RECEIPT_SCHEMA_VERSION =
   'station.execution-resolution/v1' as const;

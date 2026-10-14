@@ -40,6 +40,7 @@ import {
   type WebPushSubscription,
 } from '@kontourai/station-contracts';
 import {
+  deviceRequestedExtraScopes,
   PAIRING_SCOPE_ORCHESTRATION_READ,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
@@ -447,6 +448,12 @@ interface DevicePairingServiceOptions {
    * global: no self-declared client field is an authority key.
    */
   maxActiveCredentialsWithoutVerifiedIdentity?: number;
+  /**
+   * #3557: the scope a device may actually use, given its granted scope.
+   * Station groups cap a device tied to a person; the caller decides who is
+   * capped. Omitted, a device uses exactly what it was granted.
+   */
+  capScope?: (device: PairedDevice) => string;
 }
 
 export class DevicePairingError extends Error {
@@ -1100,6 +1107,7 @@ export class DevicePairingService {
   readonly #maxActiveOffers: number;
   readonly #maxActiveCredentialsPerVerifiedIdentity: number;
   readonly #maxActiveCredentialsWithoutVerifiedIdentity: number;
+  readonly #capScope: NonNullable<DevicePairingServiceOptions['capScope']>;
   readonly #offers = new Map<string, PairingOfferState>();
   #registry: DeviceRegistry;
   #pendingRegistryMigrationPersist = false;
@@ -1112,6 +1120,7 @@ export class DevicePairingService {
   readonly #accessListeners = new Set<(deviceId: string) => void>();
 
   constructor(options: DevicePairingServiceOptions) {
+    this.#capScope = options.capScope ?? ((device) => device.scope);
     this.#registryPath = join(options.homeDir, 'security', REGISTRY_FILE);
     this.#nativePush = new NativePushRegistrationStore(options.homeDir);
     this.#nativePushIos = new NativePushIosRegistrationStore(
@@ -1496,6 +1505,14 @@ export class DevicePairingService {
    *   identity reachable before archive#2051 retired the generic loopback
    *   floor.
    */
+  /**
+   * @param grant.scope What the approver keeps of the requested scope: a
+   *   non-empty subset of it, for a device request only. Omitted, the device
+   *   gets what it asked for. Whatever is kept, a requested extra
+   *   ({@link DEVICE_REQUESTABLE_EXTRA_SCOPES}: full access, running
+   *   commands) needs a credentialed approval; the route further limits that
+   *   to the operator.
+   */
   confirmRequest(
     requestId: string,
     approval: PairingApproval,
@@ -1503,8 +1520,15 @@ export class DevicePairingService {
       readonly principalId: string;
       readonly kind?: 'verified-ingress' | 'account';
     },
+    grant?: { readonly scope?: string },
   ): DevicePairingConfirmation {
-    return this.#confirmRequest(requestId, approval, personBindingApproval);
+    return this.#confirmRequest(
+      requestId,
+      approval,
+      personBindingApproval,
+      undefined,
+      grant?.scope,
+    );
   }
 
   /** Dedicated server path after the pending provider hook verified this exact attempt. */
@@ -1530,6 +1554,7 @@ export class DevicePairingService {
       readonly kind?: 'verified-ingress' | 'account';
     },
     relayVerification?: VerifiedRelayEnrollmentCandidate,
+    grantedScope?: string,
   ): DevicePairingConfirmation {
     const offer = [...this.#offers.values()].find(
       (candidate) => candidate.request?.requestId === requestId,
@@ -1538,6 +1563,28 @@ export class DevicePairingService {
     this.#ensureNotExpired(offer);
     if (offer.status !== 'requested' || !offer.request) {
       throw new DevicePairingError('offer_unavailable');
+    }
+    // The approver may keep less than was requested, never more, and only
+    // of an ordinary device request (a delegation or relay grant is fixed).
+    if (
+      grantedScope !== undefined &&
+      (offer.kind !== 'device' ||
+        offer.relayEnrollmentId !== undefined ||
+        !parsePairingScope(grantedScope)?.length ||
+        !isPairingScopeSubset(grantedScope, offer.scope))
+    ) {
+      throw new DevicePairingError('invalid_request');
+    }
+    const finalScope = grantedScope ?? offer.scope;
+    // Full access or running commands, asked for at pairing, is kept only by
+    // a credentialed approval, never by the unauthenticated floor.
+    if (
+      deviceRequestedExtraScopes(finalScope).length > 0 &&
+      approval.kind !== 'presented-credential' &&
+      approval.kind !== 'local-grant' &&
+      approval.kind !== 'ui-bootstrap'
+    ) {
+      throw new DevicePairingError('approval_requires_operator');
     }
     if (offer.relayEnrollmentId) {
       const candidate = offer.request.accountCandidate;
@@ -1616,6 +1663,8 @@ export class DevicePairingService {
         };
       }
     }
+    offer.scope = finalScope;
+    offer.request.scope = finalScope;
     offer.status = 'confirmed';
     offer.request.status = 'confirmed';
     return {
@@ -2086,8 +2135,27 @@ export class DevicePairingService {
     return (
       device?.revokedAt === null &&
       device.pendingEnrollmentId === undefined &&
-      pairingScopeIncludes(device.scope, scope)
+      pairingScopeIncludes(this.#capScope(publicDevice(device)), scope)
     );
+  }
+
+  /**
+   * #3557: the scope `candidate` may actually use: its granted scope (an
+   * alias's own), capped by its person's Station group. `undefined` for an
+   * invalid or revoked credential. Device lists and every authorization
+   * read this, never the raw stored scope.
+   */
+  effectiveScope(candidate: string): string | undefined {
+    const device = this.identifyDevice(candidate);
+    return device ? this.#capScope(device) : undefined;
+  }
+
+  /** #3557: a live device's effective scope, by id (device lists). */
+  effectiveScopeOfDevice(deviceId: string): string | undefined {
+    const device = this.#registry.devices.find((item) => item.id === deviceId);
+    return device?.revokedAt === null
+      ? this.#capScope(publicDevice(device))
+      : undefined;
   }
 
   /** Private current incarnation for an explicitly promoted home-control grant. */
@@ -2506,9 +2574,9 @@ export class DevicePairingService {
    * and nothing else in the `/api/pairing` family.
    */
   credentialMayApprovePairing(candidate: string): boolean {
-    const device = this.identifyDevice(candidate);
-    if (!device) return false;
-    return (parsePairingScope(device.scope) ?? []).includes(
+    const scope = this.effectiveScope(candidate);
+    if (scope === undefined) return false;
+    return (parsePairingScope(scope) ?? []).includes(
       PAIRING_SCOPE_ACCESS_APPROVE,
     );
   }

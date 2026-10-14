@@ -150,6 +150,11 @@
       "name": "advisory-review",
       "color": "5319e7",
       "description": "Request one advisory engine review of the current head (spends review credits)"
+    },
+    {
+      "name": "flaky",
+      "color": "d93f0b",
+      "description": "Quarantined flaky test"
     }
   ]
 }

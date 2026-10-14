@@ -610,7 +610,8 @@ the credential-free principal on the final Request, and every later seam
 (account-bound gate, orchestration principal, Project membership authority,
 native account continuation) re-reads binding, paired Device and account
 binding through it — including before and after each provider await — never
-carrying identity from headers. Station-runtime composes binding, replay and
+carrying identity from headers. The paired Device it re-reads carries the scope
+its person's Station group allows (#3557), not the raw stored grant. Station-runtime composes binding, replay and
 admission only behind `STATION_NATIVE_DEVICE_PROOF_PILOT=1` with a supported
 provider/session capability and native connector; `0` disables the pilot and
 unsupported opt-in configurations fail closed at startup. The

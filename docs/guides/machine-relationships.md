@@ -67,9 +67,15 @@ public application, physical-device and release qualification limits.
 
 A paired device holds scopes: `orchestration:read`, `orchestration:operate`,
 `terminal:operate`, and the elevated ones the operator adds to an
-already-paired device (`station environment access scopes` lists them all with
-their meanings). The operator changes them per device on the Station's own
-host:
+already-paired device, or keeps when approving a request that asked for
+`coding:exec` or `approval:full-access`, as the Station app does (**Limit
+access** leaves them out; `station environment access scopes` lists them all
+with their meanings). The operator changes them per device on the Station's own
+host. Without a global install, prefix these with
+`npx @kontourai/station-cli@<tag>` (`nightly` for a nightly Station, otherwise
+`latest`); a full-access refusal's command already includes the prefix. A
+device paired by an older Station may also hold `access:manage`, which no device
+can be granted again; the first change removes it and says so:
 
 ```bash
 station environment access devices
@@ -82,6 +88,19 @@ the device → **Change access**) does not apply the change from the desktop
 app: the app holds a device credential, not the operator credential, and the
 route refuses it. Use the host CLI above. Remote operator access is
 [a proposal](../design/operator-device-access.md) (#2894).
+
+A device tied to a person (a verified Tailscale identity or an account) is
+also capped by that person's **Station group** (#3557). In **Member**, the
+default, it may use only Standard (`orchestration:read orchestration:operate
+terminal:operate`), whatever else it was granted; in **Admin** it may also
+use `coding:exec`, `approval:full-access`, `access:approve` and
+`consent:decide`. The stored grant is never rewritten, so moving the person
+back to Admin restores it. Moving a person to Member re-authenticates their
+devices' live terminal and voice connections and takes back any full access
+they had given, as removing the scope does. The operator changes a group
+with `PUT /api/pairing/people/:principalId/group`; there is no CLI command or
+desktop control for it yet, and a full-access refusal's command (`--add
+approval:full-access`) does not lift a Member cap.
 
 **Full access** (`approval:full-access`) is the scope that lets a device put a
 chat, or an Agent's default, at approval mode `never`: the agent runs with no

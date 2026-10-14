@@ -1390,7 +1390,10 @@ rebuilds the target from the authorized conversation binding and forwards that
 model choice. Whether it can apply to an existing Session or requires another
 lifecycle boundary depends on the engine. Unsupported lifecycle overrides have
 the typed `model-override-unsupported` refusal; this is not permission to invent
-an applied model after an unsuccessful request.
+an applied model after an unsuccessful request. A new ACP session whose requested
+model the engine's fresh session options did not offer is refused with the typed
+`model_not_advertised` code once the engine has answered; the start is settled,
+not uncertain.
 
 The [session projection](../../src-server/services/orchestration/orchestration-session-state.ts)
 keeps `requestedModel`, `appliedModel`, and independently reported model facts
@@ -3514,6 +3517,29 @@ sealing, activation, cancellation, recovery and evidence limits.
 ---
 
 
+## People and Station groups
+
+Like the device list, `GET` is admitted by the pairing family's boundary (the
+operator credential or the desktop's own local grant); changing a group needs
+the operator credential itself, as changing a device's access does:
+
+- `GET /api/pairing/people` returns `{ people: StationPerson[] }`: everyone
+  with a group assignment or a live device tied to them, each with `group`,
+  `assigned`, and their tied devices' granted `scope` and `effectiveScope`
+  (the scope capped by the group).
+- `PUT /api/pairing/people/:principalId/group` with `{ "group": "admin" |
+  "member" }` places a person (a `human:` principal id) in a group; Member
+  removes the assignment. Live connections of the person's devices
+  re-authenticate, and a full access the group no longer allows is reset
+  (`revocations`, keyed by device id). `400 invalid_group` or
+  `invalid_principal` refuses anything else.
+
+Device lists (`GET /api/pairing/devices`) also carry `effectiveScope` on each
+live device: its granted `scope` capped by its person's group, equal to `scope`
+for a device tied to no person. See the
+[threat model](../security/remote-access-threat-model.md#scope-model)
+for what each group allows.
+
 ## Decide a pending paired-device request
 
 A current operator, qualifying local-grant credential, or Device explicitly
@@ -3524,9 +3550,32 @@ promoted with `access:approve` can use these exact routes:
 - `DELETE /api/pairing/requests/:requestId`
 
 The promotion satisfies the pending-request route scope without granting
-`access:manage`. Authority is rechecked before publishing a decision. It does
+`access:manage`. A Device tied to a person uses it only while that person's
+Station group (Admin) allows it. Authority is rechecked before publishing a decision. It does
 not admit other Device-management routes or verified-person/account binding.
 Ordinary Device presets do not include the promotion.
+
+Each listed request carries the `scope` the device asked for (or its offer
+carried). A device's public access request
+(`POST /.well-known/station/v1/pairing/access-request`) may name `scope`:
+exactly one of `orchestration:read` (Read-only) or `orchestration:read
+orchestration:operate terminal:operate` (Standard), plus optionally
+`coding:exec` and `approval:full-access`; anything else is 400
+`invalid_request`. Omitted, the request still receives the historical default
+grant, `access:manage` included. Its 202 response carries `operatorCli`, the
+operator CLI command on this host (`npx @kontourai/station-cli@nightly` on a
+nightly build, otherwise `npx @kontourai/station-cli@latest`).
+
+`confirm` may take `{ "scope": "<space-delimited>" }`: what the approver keeps,
+a non-empty subset of the request's scope, for an ordinary device request only
+(not a delegation, relay or account binding). Omitted, it keeps everything
+requested. Keeping `coding:exec` or `approval:full-access` needs the operator
+credential or a qualifying local-grant credential; an `access:approve` Device or
+an unauthenticated approval is refused with 403
+`{ "error": "approval_requires_operator", "operatorCli": "…" }` and may approve
+the rest with them left out. Every such 403 carries `operatorCli`. A device
+pairing **Needs attention** item carries `requestedScope` for an ordinary,
+non-account-bound device request.
 
 Sender-side Station peer enrollment is a separate operator-only workflow under
 `/api/environments/peers/enrollments`. Its safe status response never returns the

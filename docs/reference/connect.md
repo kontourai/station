@@ -459,6 +459,43 @@ the delegation intent only with the fixed delegation preset and without account
 binding or client-instance inputs. The receiving trusted approver sees **Station
 peer** separately from Device access.
 
+A Device's access request may also name `scope`: exactly one base from
+`DEVICE_REQUESTABLE_BASE_PRESETS` (Read-only or Standard) plus any of
+`DEVICE_REQUESTABLE_EXTRA_SCOPES` (**Run commands**, `coding:exec`, and **Skip
+approval prompts**, `approval:full-access`). Anything else, and any `scope` beside a
+delegation, is refused with `invalid_request`. The device-pairing panel asks
+for all of it (full device access: Standard, `coding:exec` and
+`approval:full-access`), never the default grant's `access:manage`; an
+account-bound request asks for Standard.
+
+Every approval surface (the **Paired devices** inbox, **Needs attention**, and
+`station environment access approve --scope=<scope,…>`) lists what the request
+asks for, summarized ("asks for full device access"), and approves it as asked
+unless the approver narrows it under **Limit access** (or with `--scope`). In
+**Needs attention** the request is a one-line card whose **Review** opens a
+dialog with that summary and Approve/Deny. The confirm
+route takes the kept scope as `scope`, which must be a non-empty subset of the
+request; omitted, the device gets what it asked for. Requested extras are the
+operator's to grant: an approval that keeps one needs the operator credential or
+the desktop's own local grant, never an `access:approve` device or the
+unauthenticated at-the-machine approval, which may still approve the rest with
+the extras left out. The same rule covers an operator-created offer whose scope
+carries one. A delegation, relay or account-bound grant cannot be trimmed, and
+its **Needs attention** item carries no `requestedScope`; an account binding
+(operator only) approves the request as asked. The Station app never asks for
+an elevated grant on an account-bound request, so that matters only for an
+operator-created offer that carries one. Pairing with a Station
+that predates `scope` ignores it, and that Station's own approval surface shows
+the default grant it would issue. A request that names no scope still receives the historical
+default grant, which Station peers (`station environment access request`) and
+older clients rely on; a Station that predates the field ignores it. The 202
+response, and an approval refused with `approval_requires_operator`, carry
+`operatorCli`: the operator CLI command on that host
+(`npx @kontourai/station-cli@nightly` for a nightly Station, otherwise
+`npx @kontourai/station-cli@latest`). Connect shows it in the approve command
+it prints, and accepts only `station` or the published package through `npx`,
+so a Station cannot put other text in a command a person is asked to run.
+
 Ordinary Device invitations keep their existing encoded payload shape: default
 Device kind is omitted so older strict invitation parsers remain usable.
 Delegation invitations remain distinguishable and cannot be saved as interactive
@@ -588,7 +625,8 @@ not a guarantee that revocation closes every already admitted socket. It does
 not recall data already delivered or guarantee cancellation of effects already
 dispatched. Ordinary paired
 credentials cannot create pairing offers or revoke other devices. A device
-explicitly granted `access:approve` can list and decide pending requests; that
+explicitly granted `access:approve` can list and decide pending requests (a
+device tied to a person only while that person's Station group is Admin); that
 does not grant device-inventory or offer-management access. The native desktop's
 local grant, minted using proof of Station-home possession, can manage pairing
 within its current scope. Browser launcher grants do not inherit that authority.

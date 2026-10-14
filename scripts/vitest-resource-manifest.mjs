@@ -379,6 +379,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2012: a real child runtime races the home maintenance ownership fence.
   'packages/shared/src/__tests__/station-home-lifecycle.test.ts',
   'scripts/__tests__/builder-delivery-viewer-import-gate.test.ts',
+  // #3565: a real child claims a turn through the node:sqlite adapter and is
+  // SIGKILLed; the parent reopens the file. Single-shot, no wall-clock bound.
+  'packages/monument/src/__tests__/sqlite-crash.process.test.ts',
+  // #3565: runs the monument import boundary gate as a child process against
+  // throwaway git repositories. Single-shot spawns, no wall-clock assertion.
+  'scripts/__tests__/monument-import-boundary-gate.test.ts',
   // Drives the changed-verification CLI through spawnSync against a real
   // fixture worktree to prove its dependency and selection behavior.
   'scripts/__tests__/changed-verification.test.ts',
@@ -502,6 +508,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/dialog-surface-class-guard.test.ts',
   'scripts/__tests__/dependency-advisory-policy.test.ts',
   'scripts/__tests__/dependency-patch-binding.test.ts',
+  // Installed YAML CLI children protect the parser migration's public behavior.
+  'scripts/__tests__/js-yaml3-argparse2-compatibility.test.ts',
   // Bounded Bash children test Linux bootstrap recovery with inert swap commands.
   'scripts/__tests__/gcp-bootstrap.test.ts',
   // Offline Git children validate encrypted workspace transport against real repositories.
@@ -539,6 +547,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Bounded Git fixtures run the freshness check and review-record CLIs (#3036).
   'scripts/__tests__/review-ledger-guards.test.ts',
   'scripts/__tests__/documentation-review-notes.test.ts',
+  'scripts/__tests__/documentation-value-bindings.test.ts',
   'scripts/__tests__/learning-media.test.ts',
   'scripts/__tests__/repo-docs-hygiene.test.ts',
   'scripts/__tests__/e2e-coverage.test.ts',
@@ -661,6 +670,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2675: runs the manifest signer CLI (sign, verify, assemble) as bounded
   // single-shot children for each golden vector.
   'scripts/__tests__/release-manifest-vectors.test.ts',
+  // #187: runs install.sh's accepted-release functions (cut from the shipped
+  // script) as bounded single-shot `sh -c` children, two per parity case.
+  'scripts/__tests__/accepted-release-parity.test.ts',
   // #2675 slice E: drives the manifest signer and the Nightly publication
   // helper CLIs as bounded single-shot children (dry-run sign and verify).
   'scripts/__tests__/portable-nightly-publish-workflow.test.ts',
@@ -977,6 +989,14 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#2238: starts real Station children against one SQLite claims
   // store to prove construction preserves live ownership.
   'src-server/routes/chat/__tests__/chat-turn-dedup.test.ts',
+  // #3581: runs the real `/chat` stream as an owner process over SQLite,
+  // SIGKILLs it before or after its agent call, and retries the same client
+  // turn from a reopened store. Single-shot children; no wall-clock bound.
+  'src-server/routes/chat/__tests__/chat-turn-dedup-crash.process.test.ts',
+  // #3559: runs a real OrchestrationService owner process over SQLite,
+  // SIGKILLs it before or after its engine call, and retries the same client
+  // turn from a restarted store. Single-shot children; no wall-clock bound.
+  'src-server/services/orchestration/__tests__/turn-dedup-crash.process.test.ts',
   // The child process is owned by the hermetic helper rather than imported by
   // the test file; its broken-pipe proof also writes a 4 MiB stdin payload.
   'src-server/services/__tests__/helpers/hermetic-openssh.test.ts',
@@ -985,6 +1005,17 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // and asserts the startup sweep reaps the orphaned group. Same process-tree
   // shape as process-utils.test.ts; must not run under the ordinary pool.
   'src-server/services/infra/__tests__/owned-process-reaping.test.ts',
+  // #561: spawns the real Codex app-server path against a stub executable
+  // that starts a grandchild in its group, then sweeps and terminates it.
+  // Same process-tree shape as owned-process-reaping.test.ts.
+  'src-server/providers/__tests__/codex-app-server-owned-process.test.ts',
+  // #561: runs a real Flow shell command (a stub script that leaves a
+  // grandchild in its group) to prove the spawn is registered and released
+  // only once the whole group exits. Same shape as the Codex test above.
+  'src-server/services/flow/__tests__/flow-run-service.owned-process.test.ts',
+  // #561: wraps the birth-probe primitives pass-through and registers two
+  // real detached sleepers to count probes of this process.
+  'src-server/services/infra/__tests__/owned-process-owner-birth.test.ts',
   // station#1895: spawns a real node child process (through `tsx`) to prove
   // the durable log sink survives an actual uncaught exception, the same
   // resource shape as `agent-registry.test.ts`'s schema-gate child probe.
@@ -1107,6 +1138,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/ssh/__tests__/openssh-reachability.process.test.ts',
   'src-server/services/orchestration/__tests__/planned-home-transfer-store.process.test.ts',
   'src-server/services/ssh/__tests__/openssh-launch-bootstrap.test.ts',
+  // #2675: runs the Windows identity probe (System32 PowerShell) against a
+  // real child node.exe; it runs only on win32, in the Windows PR job.
+  'packages/cli/src/__tests__/windows-process-identity.process.test.ts',
   'src-server/services/ssh/__tests__/openssh-worker-probe.test.ts',
   'src-server/services/terminal/__tests__/terminal-subprocess-state.test.ts',
   // Timing-sensitive responsive-UI suites: no child_process import, kept out

@@ -975,11 +975,21 @@ WebSockets additionally require `terminal:operate`; **Standard** includes that
 scope along with read and operate. The operator changes an existing Device's
 scope in place with **Paired devices** → the Device → **Change access**, or on
 the Station host with `station environment access scope`; `access:manage` is
-never granted this way.
+never granted this way. A phone or browser that uses Station's **Request
+access** screen asks for full device access: Standard plus **Run commands**
+and **Skip approval prompts**. Whoever approves sees "asks for full device
+access" and approves it as asked, or opens **Limit access** to untick
+permissions first; only the operator can approve the two elevated ones. In
+**Needs attention** the request is one line with **Review**, which opens the
+details. (The share prompt's **Request pairing for this browser** still
+asks for the full default grant; it says so on screen.) A Device paired by an older Station may still hold
+`access:manage` from the historical default grant; its first access change, in
+either place, removes it for good and says so.
 
 An operator can separately grant **Approve pairing requests** (`access:approve`).
 This allows that Device to list, approve, or deny pending requests, without
-Device-management access. A pairing notification opens the exact request in
+Device-management access. A Device tied to a person keeps it only while that
+person's Station group is Admin (#3557). A pairing notification opens the exact request in
 **Notifications**; opening it does not approve it. Devices without approval
 authority see the trusted-Station remedy instead of decision controls.
 

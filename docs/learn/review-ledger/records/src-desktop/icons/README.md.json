@@ -34,7 +34,13 @@
 
     "src-ui/src/index.css",
 
-    "scripts/lib/ios-launch-screen.mjs"
+    "scripts/lib/ios-launch-screen.mjs",
+
+    "scripts/lib/station-icon.mjs",
+
+    "scripts/lib/station-icon-geometry.mjs",
+
+    "scripts/__tests__/station-icon.test.ts"
   ],
 
   "checks": [

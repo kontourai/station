@@ -1826,6 +1826,13 @@ function waitForInstanceShutdown(
   return isInstanceFullyStopped(record);
 }
 
+/** A command an operator can run to see what a PID is on this host. */
+function processCheckCommand(pid: number): string {
+  return process.platform === 'win32'
+    ? `tasklist /V /FI "PID eq ${pid}"`
+    : `ps -p ${pid} -o command=`;
+}
+
 function stopRecord(
   record: InstanceStateRecord,
   announce = true,
@@ -1887,7 +1894,11 @@ function stopRecord(
       [record.uiPid, record.uiFingerprint, 'ui'],
     ] as const;
     let anyAlive = false;
-    let unverifiable: { label: string; pid: number } | undefined;
+    const unverifiable: Array<{
+      label: string;
+      pid: number;
+      unrecorded: boolean;
+    }> = [];
     for (const [pid, expected, label] of identities) {
       if (!pid) continue;
       // Liveness is decided by `isProcessAlive` (signal-0 + a zombie check),
@@ -1910,10 +1921,16 @@ function stopRecord(
         // wrong for a live Station; this refuses both and names the way out
         // (check the pid, then remove the state file), since only the
         // operator can tell them apart.
-        unverifiable = { label, pid };
+        unverifiable.push({ label, pid, unrecorded: false });
         continue;
       }
-      if (!expected || !fingerprintMatchesRecorded(actual, expected)) {
+      if (!expected) {
+        // A record without a fingerprint (one whose start could not capture
+        // it) has nothing to match: unverified, not a proven mismatch.
+        unverifiable.push({ label, pid, unrecorded: true });
+        continue;
+      }
+      if (!fingerprintMatchesRecorded(actual, expected)) {
         appendStopResult('failed');
         throw new Error(
           `Refusing to signal ${label} PID ${pid}: process fingerprint mismatch`,
@@ -1948,14 +1965,24 @@ function stopRecord(
       );
       return;
     }
-    if (unverifiable) {
+    if (unverifiable.length > 0) {
       appendStopResult('failed');
+      // Every unverified process is named, so the operator checks the right
+      // ones; none was signalled.
+      const several = unverifiable.length > 1;
       throw new Error(
         [
-          `Refusing to stop Station instance ${record.instanceId}: its ${unverifiable.label} PID ${unverifiable.pid} is running, but its identity could not be verified (unreadable /proc, unsupported ps output, or a missing boot id), so it was not signalled and the recorded state was kept.`,
-          `Check what PID ${unverifiable.pid} is (for example \`ps -p ${unverifiable.pid} -o command=\`).`,
-          `If it is this Station, stop it with your OS tools and run \`station stop\` again.`,
-          `If it is an unrelated process that reused the PID, do not signal it; remove ${record.statePath} to forget this instance.`,
+          `Refusing to stop Station instance ${record.instanceId}: ${unverifiable
+            .map(
+              (entry) =>
+                `its ${entry.label} PID ${entry.pid} is running, but its identity could not be verified (${entry.unrecorded ? 'its start recorded no fingerprint to check it against' : 'unreadable /proc, unsupported ps output, a missing boot id, or a failed Windows PowerShell probe'})`,
+            )
+            .join(
+              '; ',
+            )}, so ${several ? 'none was' : 'it was not'} signalled and the recorded state was kept.`,
+          `Check what ${unverifiable.map((entry) => `PID ${entry.pid}`).join(' and ')} ${several ? 'are' : 'is'} (for example ${unverifiable.map((entry) => `\`${processCheckCommand(entry.pid)}\``).join(', ')}).`,
+          `If ${several ? 'they are' : 'it is'} this Station, stop ${several ? 'them' : 'it'} with your OS tools and run \`station stop\` again.`,
+          `If ${several ? 'every one is an unrelated process' : 'it is an unrelated process'} that reused the PID, do not signal it; remove ${record.statePath} to forget this instance.`,
         ].join(' '),
       );
     }
@@ -1974,7 +2001,19 @@ function stopRecord(
       // PID alone: an accepted residual, never extended to port ownership.
       if (expected && isProcessAlive(pid)) {
         const actual = inspectProcessFingerprint(pid);
-        if (!actual || !fingerprintMatchesRecorded(actual, expected)) {
+        if (!actual) {
+          // Unread is not reused: the process may be this Station's, alive,
+          // so forgetting the record would orphan it. Keep it and name the
+          // ways forward that never drop a live instance.
+          throw new Error(
+            [
+              `Refusing to signal PID ${pid}: it is running, but its identity could not be read to confirm it is the process recorded for Station instance ${record.instanceId}, so it was not signalled and the recorded state was kept.`,
+              'Run `station stop` again.',
+              `If it still cannot be read, check what PID ${pid} is (for example \`${processCheckCommand(pid)}\`); if it is this Station, end it with your OS tools, then run \`station stop\` again.`,
+            ].join(' '),
+          );
+        }
+        if (!fingerprintMatchesRecorded(actual, expected)) {
           throw new Error(
             `Refusing to signal PID ${pid}: it no longer matches the process recorded for Station instance ${record.instanceId}. The recorded state was kept; remove ${record.statePath} to forget this instance.`,
           );

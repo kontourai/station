@@ -1,0 +1,7 @@
+{
+  "revision": "c17900a783059df67cda728d15f6d0f535707a43",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Rechecked after the real-ledger test's per-test timeout moved to 240 s: docs:foundations:test's role as required Veritas evidence and its lanes are unchanged.","inputs":[".veritas/README.md","scripts/__tests__/docs-index-reachability.test.ts"]}
+  ]
+}

@@ -436,7 +436,7 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
     reason: 'public documentation admission is governed data',
   }),
   Object.freeze({
-    pattern: 'docs-kit.json',
+    pattern: 'corpus.json',
     tests: Object.freeze(['scripts/__tests__/docs-kit-manifest.test.ts']),
     reason: 'the docs-kit bundle must publish exactly the admitted public docs',
   }),
@@ -875,6 +875,14 @@ export const SPAWNED_SCRIPT_EDGES = Object.freeze([
     related: true,
     tests: Object.freeze([
       'scripts/__tests__/evidence-check-execution-gate.test.ts',
+    ]),
+    reason: EXECUTED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
+    pattern: 'scripts/monument-import-boundary-gate.mjs',
+    related: true,
+    tests: Object.freeze([
+      'scripts/__tests__/monument-import-boundary-gate.test.ts',
     ]),
     reason: EXECUTED_SCRIPT_EDGE_REASON,
   }),

@@ -1,8 +1,10 @@
 import { existsSync } from 'node:fs';
-import { mkdir, readdir, readFile, unlink, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { readdir, readFile, unlink } from 'node:fs/promises';
+import { join } from 'node:path';
+import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import type { WorkflowStateEntry, WorkingMemoryScope } from '@voltagent/core';
 import { createLogger } from '../../utils/logger.js';
+import { withFileMutation } from './memory-adapter-mutation-queue.js';
 import { MemoryAdapterPaths } from './memory-adapter-paths.js';
 import {
   deserializeWorkflowState,
@@ -11,6 +13,28 @@ import {
 } from './memory-adapter-workflows.js';
 
 const logger = createLogger({ name: 'memory-adapter-state' });
+
+/*
+ * Unreachable in Station today (#3564), kept and made safe rather than
+ * removed. These are `StorageAdapter` methods that VoltAgent calls, and
+ * nothing in Station calls them directly:
+ *
+ * - Working memory: VoltAgent's `Memory` reads and writes it only when
+ *   `workingMemory.enabled` is set. Both `new Memory(...)` sites in
+ *   `runtime/frameworks/voltagent-adapter.ts` pass `storage` only.
+ * - Workflow state: VoltAgent writes it only for registered workflows. The
+ *   only `new VoltAgent(...)` call (`runtime/bootstrap/runtime-initialize.ts`)
+ *   registers agents and no workflows.
+ *
+ * They cannot be deleted: `FileMemoryAdapter` implements VoltAgent's
+ * `StorageAdapter`, whose interface requires every one of these methods, and
+ * a stub that throws or silently drops would turn enabling either feature
+ * into data loss. So each write goes through the same per-path queue as the
+ * transcript and is published by temp file, fsync and rename: concurrent
+ * writers cannot interleave, and a reader sees the previous document or the
+ * new one, never a truncated file. Reads take no lock; the rename makes them
+ * safe. Scope is in-process, as for the transcript.
+ */
 
 export async function getWorkingMemoryState({
   paths,
@@ -95,8 +119,9 @@ export async function setWorkingMemoryState({
       resourceId,
       conversationId,
     );
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, JSON.stringify(payload, null, 2), 'utf-8');
+    await withFileMutation(path, () =>
+      publishJsonFileWithOwnedLock(path, payload),
+    );
     return;
   }
 
@@ -105,8 +130,9 @@ export async function setWorkingMemoryState({
   }
 
   const path = paths.getUserWorkingMemoryPath(resourceId, userId);
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify(payload, null, 2), 'utf-8');
+  await withFileMutation(path, () =>
+    publishJsonFileWithOwnedLock(path, payload),
+  );
 }
 
 export async function deleteWorkingMemoryState({
@@ -130,16 +156,21 @@ export async function deleteWorkingMemoryState({
       resourceId,
       conversationId,
     );
-    if (existsSync(path)) {
-      await unlink(path);
-    }
+    await withFileMutation(path, () => removeIfPresent(path));
     return;
   }
 
   if (!userId) return;
   const path = paths.getUserWorkingMemoryPath(resourceId, userId);
-  if (existsSync(path)) {
+  await withFileMutation(path, () => removeIfPresent(path));
+}
+
+/** Delete inside the queue slot, so a write queued before it lands first. */
+async function removeIfPresent(path: string): Promise<void> {
+  try {
     await unlink(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
 }
 
@@ -166,14 +197,51 @@ export async function setWorkflowStateEntry(
   executionId: string,
   state: WorkflowStateEntry,
 ): Promise<void> {
-  const dir = paths.getWorkflowStatesDir();
-  await mkdir(dir, { recursive: true });
   const path = paths.getWorkflowStatePath(executionId);
-  await writeFile(
-    path,
-    JSON.stringify(serializeWorkflowState(state), null, 2),
-    'utf-8',
-  );
+  await withFileMutation(path, () => publishWorkflowState(path, state));
+}
+
+function publishWorkflowState(
+  path: string,
+  state: WorkflowStateEntry,
+): Promise<void> {
+  return publishJsonFileWithOwnedLock(path, serializeWorkflowState(state));
+}
+
+/**
+ * Merge `updates` into the stored entry. The read, the merge and the write
+ * share one queue slot: with the read outside it, two updates to different
+ * fields both start from the same entry and the later write drops the
+ * earlier one's change.
+ */
+export async function updateWorkflowStateEntry(
+  paths: MemoryAdapterPaths,
+  executionId: string,
+  updates: Partial<WorkflowStateEntry>,
+): Promise<void> {
+  const path = paths.getWorkflowStatePath(executionId);
+  await withFileMutation(path, async () => {
+    const existing = await getWorkflowStateEntry(paths, executionId);
+    if (!existing) {
+      throw new Error(`Workflow state ${executionId} not found`);
+    }
+
+    const merged: WorkflowStateEntry = {
+      ...existing,
+      ...updates,
+      createdAt: existing.createdAt,
+      updatedAt: updates.updatedAt ?? new Date(),
+    };
+
+    if (merged.suspension && existing.suspension) {
+      merged.suspension = {
+        ...existing.suspension,
+        ...updates.suspension,
+      };
+    }
+
+    await publishWorkflowState(path, merged);
+  });
 }
 
 export async function getSuspendedWorkflowStateEntries(
