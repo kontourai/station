@@ -39,8 +39,8 @@ export interface AnimateScrollToBottomOptions {
 }
 
 export const SCROLL_TO_BOTTOM_DURATION_MS = 300;
-export const SCROLL_TO_BOTTOM_MAX_DURATION_MS = 450;
-export const SCROLL_TO_BOTTOM_JUMP_VIEWPORTS = 1.5;
+const SCROLL_TO_BOTTOM_MAX_DURATION_MS = 450;
+const SCROLL_TO_BOTTOM_JUMP_VIEWPORTS = 1.5;
 
 /**
  * Motion is opt-in by capability: an environment that cannot answer the

@@ -17,7 +17,7 @@
  */
 import debug from 'debug';
 
-export const TRANSCRIPT_LAYOUT_TRACE_NAMESPACE = 'app:transcript-layout';
+const TRANSCRIPT_LAYOUT_TRACE_NAMESPACE = 'app:transcript-layout';
 
 export interface TranscriptTraceState {
   isUserScrolledUp: boolean;

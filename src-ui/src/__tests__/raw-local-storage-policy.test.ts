@@ -12,6 +12,7 @@ const SOURCE_ROOT = path.resolve(import.meta.dirname, '..');
  */
 const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'debug', // Development-only logger bootstrap flag, not a product preference.
+  'station.transcriptTrace.overlay', // Opt-in transcript layout tracer's debug overlay toggle (only read while the `app:transcript-layout` debug namespace is on); developer tooling, not a product preference.
   'lastProject', // Navigation restore pointer to the last visited project.
   'lastProjectLayout', // Navigation restore pointer to the last visited layout.
   'recentAgents', // Derived MRU used for picker ordering, not a setting.
