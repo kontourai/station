@@ -120,7 +120,10 @@ declare global {
   }
 }
 
-/** Describes a node by its transcript row key, else its tag, class and label. */
+/**
+ * Describes a node by its transcript row key, else its test id, else its tag,
+ * classes and nearest accessible label.
+ */
 export function describeTraceNode(node: Node | null | undefined): string {
   if (!(node instanceof Element)) return 'unknown';
   const row = node.closest<HTMLElement>('[data-chat-message-key]');
@@ -128,6 +131,8 @@ export function describeTraceNode(node: Node | null | undefined): string {
   const virtualRow = node.closest<HTMLElement>('[data-transcript-row]');
   if (virtualRow?.dataset.transcriptRow)
     return `row:${virtualRow.dataset.transcriptRow}`;
+  const testId = node.getAttribute('data-testid');
+  if (testId) return `${node.tagName.toLowerCase()}#${testId}`;
   const labelled = node.closest('[aria-label]')?.getAttribute('aria-label');
   const classes =
     typeof node.className === 'string'
