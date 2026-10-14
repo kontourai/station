@@ -15,7 +15,7 @@ export function writeAndroidThemedIcon(resources) {
     android:width="108dp" android:height="108dp"
     android:viewportWidth="24" android:viewportHeight="24">
   <group android:pivotX="12" android:pivotY="12"
-      android:scaleX="0.75" android:scaleY="0.75">
+      android:scaleX="0.5" android:scaleY="0.5">
     <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
         android:pathData="${statusBarMarkPathData()}" />
   </group>

@@ -310,7 +310,8 @@ function main(args) {
       ? iosIconChannelForProject()
       : requestedChannel;
   if (command === 'apply') {
-    if (args.length !== 2) fail('usage: apply <channel>');
+    if (args.length !== 2)
+      fail('usage: apply <stable|beta|nightly|dev|project>');
     const { files } = applyIosChannelIcons(channel);
     process.stdout.write(
       `Applied the ${channel} iOS icon set to the catalog (${files.length} files)\n`,
@@ -321,7 +322,9 @@ function main(args) {
     const appDir = option(args, 'app');
     const receiptPath = option(args, 'receipt');
     if (!appDir || !receiptPath || args.length !== 6)
-      fail('usage: verify <channel> --app <Payload/*.app> --receipt <path>');
+      fail(
+        'usage: verify <stable|beta|nightly|dev|project> --app <dir> --receipt <path>',
+      );
     const receipt = existsSync(receiptPath)
       ? JSON.parse(readFileSync(receiptPath, 'utf8'))
       : {};
@@ -343,7 +346,7 @@ function main(args) {
     return;
   }
   fail(
-    'usage: apply <channel> | verify <channel> --app <dir> --receipt <path>',
+    'usage: apply <stable|beta|nightly|dev|project> | verify <channel|project> --app <dir> --receipt <path>',
   );
 }
 

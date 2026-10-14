@@ -254,7 +254,21 @@ describe('cross-platform release channel matrix', () => {
           'utf8',
         );
         expect(monochrome).toContain('android:fillType="evenOdd"');
-        expect(monochrome).toContain('android:scaleX="0.75"');
+        // The rounded tile's farthest corner must fit Android's guaranteed
+        // 66dp safe circle, before a launcher applies its own mask.
+        const scale = Number(
+          monochrome.match(/android:scaleX="([\d.]+)"/)?.[1],
+        );
+        const topEdge = monochrome.match(
+          /android:pathData="M([\d.]+),([\d.]+)L/,
+        );
+        expect(topEdge).not.toBeNull();
+        const half = 12 - Number(topEdge![2]);
+        const corner = Number(topEdge![1]) - Number(topEdge![2]);
+        const farthest =
+          (Math.SQRT2 * (half - corner) + corner) * scale * (108 / 24);
+        expect(farthest).toBeGreaterThan(0);
+        expect(farthest).toBeLessThanOrEqual(33);
         expect(monochrome).toMatch(/android:pathData="M[^"]+Z"/);
         expect(
           readFileSync(
