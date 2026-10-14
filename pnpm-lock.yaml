@@ -165,8 +165,8 @@ importers:
         specifier: ^1.18.0
         version: 1.18.0(react@19.3.0)
       '@kontourai/veritas':
-        specifier: 1.7.6
-        version: 1.7.6(supports-color@7.2.0)(zod@4.6.5)
+        specifier: 1.11.2
+        version: 1.11.2(@kontourai/survey@3.0.0(supports-color@7.2.0)(typescript@7.0.2))(supports-color@7.2.0)(zod@4.6.5)
       '@modelcontextprotocol/client':
         specifier: 2.2.0
         version: 2.2.0
@@ -2366,6 +2366,11 @@ packages:
     engines: {node: '>=22'}
     hasBin: true
 
+  '@kontourai/plumb@0.2.0':
+    resolution: {integrity: sha512-LiYmwDpsBiAjeHFSqbtA51CGjdOKY0l+r/tneqV9aPdT4Ct+5zq7o6fH5NbRhoTW2h9sqiIZL0SOA69CSGJlnA==}
+    engines: {node: '>=22'}
+    hasBin: true
+
   '@kontourai/relay@0.2.0':
     resolution: {integrity: sha512-hKNm4eQl3i+O834cJppava0D+DFcCENkzZHPLqh/nB8oQFgyaT5AsqdDIfZDv7coGxIT0BFMjsx7cBWGviZdTg==}
     engines: {node: '>=22'}
@@ -2521,10 +2526,15 @@ packages:
     peerDependencies:
       react: ^19.0.0
 
-  '@kontourai/veritas@1.7.6':
-    resolution: {integrity: sha512-1BOyT7EbrSFZqVWdpmH65c9Ay8E/uk/4uOxM7Fe24uoax78BjgVB36cTKOS5cp0bxwsFBE9e5OHQJRbthpjViw==}
+  '@kontourai/veritas@1.11.2':
+    resolution: {integrity: sha512-hneXxMe0kpwzzhF6d9Qu2OgBv3GlAbs/9IlIF4r72Y4YvNO2Dgofalz6/ZgL+xIh28emetN4PBdMTY1agzxMTw==}
     engines: {node: '>=22'}
     hasBin: true
+    peerDependencies:
+      '@kontourai/survey': '>=8.2.0 <9'
+    peerDependenciesMeta:
+      '@kontourai/survey':
+        optional: true
 
   '@levischuck/tiny-cbor@0.2.11':
     resolution: {integrity: sha512-llBRm4dT4Z89aRsm6u2oEZ8tfwL/2l6BwpZ7JcyieouniDECM5AqNgr/y08zalEIvW3RSK4upYyybDcmjXqAow==}
@@ -9974,6 +9984,8 @@ snapshots:
       - playwright
       - typescript
 
+  '@kontourai/plumb@0.2.0': {}
+
   '@kontourai/relay@0.2.0(@ai-sdk/provider@3.0.18)(@anthropic-ai/sdk@0.116.0(zod@4.6.5))':
     dependencies:
       '@ai-sdk/provider': 3.0.18
@@ -10115,8 +10127,9 @@ snapshots:
     dependencies:
       react: 19.3.0
 
-  '@kontourai/veritas@1.7.6(supports-color@7.2.0)(zod@4.6.5)':
+  '@kontourai/veritas@1.11.2(@kontourai/survey@3.0.0(supports-color@7.2.0)(typescript@7.0.2))(supports-color@7.2.0)(zod@4.6.5)':
     dependencies:
+      '@kontourai/plumb': 0.2.0
       '@kontourai/surface': 2.18.0(supports-color@7.2.0)
       '@modelcontextprotocol/sdk': 1.31.0(supports-color@7.2.0)(zod@4.6.5)
       ajv: 8.20.0
@@ -10124,6 +10137,8 @@ snapshots:
       cross-spawn: 7.0.6
       hachure: 0.15.0
       picomatch: 4.0.7
+    optionalDependencies:
+      '@kontourai/survey': 3.0.0(supports-color@7.2.0)(typescript@7.0.2)
     transitivePeerDependencies:
       - '@cfworker/json-schema'
       - kerberos
