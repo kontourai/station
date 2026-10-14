@@ -1,0 +1,7 @@
+{
+  "revision": "55f1550cc6bf976d4ab418ee43ab3695be049166",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Re-checked after docs/reference/session-api.md gained a clause that the station-control own-Project default needs the Session's owner to be able to dispatch there. This ADR links the Session API for the managed-chat routing decision only and states no station-control dispatch scope or refusal claim; no prose change.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

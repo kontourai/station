@@ -1,0 +1,7 @@
+{
+  "revision": "8a09b8296f39ea32392fd23093ae32cf28727575",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Reviewed the chat.css change (phone message sheet summary row, ghost action buttons, desktop copy/⋯ chip family, copy glyph sizing, 320px title size): the document's ⋯ and Copy claims concern toolbar rows, external-link reports and pane heads, none touched. No prose change.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

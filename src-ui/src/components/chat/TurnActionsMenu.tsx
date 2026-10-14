@@ -12,6 +12,7 @@ import { useMenuTriggerToggle } from '../../hooks/useMenuTriggerToggle';
 import { Dialog } from '../Dialog';
 import { LazyBoundary } from '../LazyBoundary';
 import type { ForkTurnSource } from './fork-turn-source';
+import { MoreActionsGlyph } from './MoreActionsGlyph';
 import type { TurnProvenanceStatedInRow } from './TurnProvenanceCard';
 import { TurnProvenanceCard } from './TurnProvenanceCard';
 import './TurnActionsMenu.css';
@@ -196,7 +197,7 @@ export default function TurnActionsMenu({
         aria-expanded={open}
         {...triggerProps}
       >
-        …
+        <MoreActionsGlyph />
       </button>
       {/* The menu portals to the document — see `useFixedMenuPlacement` for
           why an in-bubble anchor cannot hold it. The picker and the #2211
@@ -323,15 +324,14 @@ export default function TurnActionsMenu({
 }
 
 export interface UserMessageActionsMenuProps {
-  onCopy?: () => void;
   forkSource?: ForkTurnSource | null;
   onForkFromTurn?: (source: ForkTurnSource) => void;
   onNewChatFromMessage?: () => void;
 }
 
-/** Overflow for a user bubble: Copy plus fork or a new-chat seed (#2216). */
+/** Overflow for a user bubble: fork or a new-chat seed (#2216). Copy is the
+ * bubble's own icon button, never a second entry here. */
 export function UserMessageActionsMenu({
-  onCopy,
   forkSource,
   onForkFromTurn,
   onNewChatFromMessage,
@@ -341,8 +341,7 @@ export function UserMessageActionsMenu({
   const close = () => setOpen(false);
   const menuRef = useMenuFocus<HTMLDivElement>(open, close);
   const canFork = Boolean(forkSource && onForkFromTurn);
-  const rowCount =
-    (onCopy ? 1 : 0) + (canFork ? 1 : onNewChatFromMessage ? 1 : 0);
+  const rowCount = canFork ? 1 : onNewChatFromMessage ? 1 : 0;
   const { position, place } = useFixedMenuPlacement(triggerRef, open, rowCount);
   const triggerProps = useMenuTriggerToggle(
     open,
@@ -364,7 +363,7 @@ export function UserMessageActionsMenu({
         aria-expanded={open}
         {...triggerProps}
       >
-        …
+        <MoreActionsGlyph />
       </button>
       {/* Portalled for the same reason as the answer menu above. */}
       {open &&
@@ -383,18 +382,6 @@ export function UserMessageActionsMenu({
               }
             }}
           >
-            {onCopy && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  close();
-                  onCopy();
-                }}
-              >
-                Copy
-              </button>
-            )}
             {canFork && forkSource && onForkFromTurn && (
               <button
                 type="button"

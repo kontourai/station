@@ -1106,6 +1106,57 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(screen.queryByText(/is read-only/)).toBeNull();
   });
 
+  // A reload with the transcript already read: the open read's wait is shown
+  // by the composer and announced as text, with no panel under the rows.
+  test('a resolving reload over a displayed transcript says so without drawing a panel', async () => {
+    transcriptMock.messages = [
+      { role: 'user', content: 'earlier question', timestamp: 1 },
+      { role: 'assistant', content: 'earlier answer', timestamp: 2 },
+    ];
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenPending: true,
+      }),
+    });
+    await waitFor(() =>
+      expect(chatInputPropsMock.current?.loadingConversation).toBe(true),
+    );
+    const announcement = screen
+      .getAllByLabelText('Loading chat')
+      .find((node) => node.classList.contains('skeleton-block'));
+    expect(announcement, 'the wait is announced').toBeTruthy();
+    expect(announcement!.getAttribute('role')).toBe('status');
+    // ...and not drawn: no visible panel under the rows.
+    expect(announcement!.classList.contains('sr-only')).toBe(true);
+    // No status region nests another.
+    for (const region of screen.getAllByRole('status'))
+      expect(region.querySelector('[role="status"]')).toBeNull();
+  });
+
+  test('an empty resolving reload is one status region, the filler itself', async () => {
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenPending: true,
+      }),
+    });
+    const notice = await screen.findByLabelText('Loading chat');
+    // The persistent filler names the wait (it later announces the empty
+    // state or notice); the skeleton inside is not a second region.
+    expect(notice.classList.contains('chat-messages--empty')).toBe(true);
+    expect(notice.getAttribute('role')).toBe('status');
+    expect(notice.querySelector('[role="status"]')).toBeNull();
+  });
+
   // The three simultaneous claims E3 recorded, each asserted absent by the
   // words the user actually saw.
   test('#1582 E3 a resolving reload shows one state, not three', async () => {

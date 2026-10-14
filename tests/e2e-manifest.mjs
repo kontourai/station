@@ -382,6 +382,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/mcp-ui-layout.spec.ts',
     'tests/default-agent-workflow.spec.ts',
     'tests/chat-replay.spec.ts',
+    'tests/transcript-load-stability.spec.ts',
     'tests/chat-history-reopen.spec.ts',
     'tests/mobile-dock-clearance.spec.ts',
     'tests/accessibility-core.spec.ts',
@@ -1031,6 +1032,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Cold mobile hydration uses the real bounded SQLite history reader and canonical projector before paging backward within a noisy turn.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/transcript-load-stability.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Transcript geometry while a long Markdown-heavy conversation loads on a CPU-throttled 390x844 phone: the conversation-open read and the late row chunks are held behind explicit gates, and a per-frame sampler proves an unscrolled transcript settles at its newest message, a scrolled-up reader keeps their row, the virtualized handoff never blanks the viewport, and Scroll to bottom glides monotonically to the end. Browser-local page.route fixtures only; writes only testInfo outputs.',
     exceptions: [],
   },
   {

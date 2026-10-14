@@ -1,0 +1,7 @@
+{
+  "revision": "988949305e1df68541059efcb1e81d3e5f8ea739",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Changed input ChatDockBody.tsx: the list chunk's pending state now renders inside the .chat-messages--empty filler, the resolving-open 'Loading chat' SkeletonBlock is sr-only when the transcript is displayed, and a tracer phase mark was added. The doc's ChatDockBody-backed claim (refusing to re-send a turn whose attachment blob was reclaimed) is untouched. No prose change.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

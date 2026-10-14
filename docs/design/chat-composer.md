@@ -218,8 +218,8 @@ follows the last call. While the turn is live it keeps the shape it streamed
 with. In the summary, a failure is counted as **retried** rather than
 **failed** when a later call in the same summary ran the same tool with
 identical, recorded arguments and succeeded. A steer inside a turn does not
-start a new exchange. Under each settled answer, a muted time beside the ⋯
-button gives the turn's completion time from its provenance envelope. An
+start a new exchange. Under each settled answer, a muted time beside the copy
+and ⋯ buttons gives the turn's completion time from its provenance envelope. An
 answer without a readable envelope time shows no time. Exchanges are divided
 by a thin rule.
 
@@ -547,9 +547,13 @@ or **Exit full screen**. Collapse stays on the header control. No resize or
 navigation action requires a gesture.
 
 Mobile message rows prioritize the authored text and essential live approval or
-error state. A separate 44px actions button opens attribution, model facts,
-provenance, copy, ratings, and Task references on demand. These details retain
-their original event-backed identities. Desktop attribution stays inline.
+error state. Each row with text has a 44px copy button beside a separate 44px
+actions button; the actions button opens attribution, model facts, provenance,
+ratings, and Task references on demand, and omits itself from a user message
+that has none of them. These details retain their original event-backed
+identities. Desktop attribution stays inline. On every screen size a message's
+copy control is one icon button, named "Copy your message" or "Copy answer";
+no menu repeats it as text.
 
 The executable contracts are `ChatDockMobileHeader.test.tsx` and the mobile
 project-switcher journey in `tests/cross-runtime-chat-switching.spec.ts`.
