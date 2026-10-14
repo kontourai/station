@@ -31,7 +31,9 @@ The lookup settles released rows, and rows whose app was closed, at the next
 launch or reconnect: never received → sent again with the same key; started →
 done; received → asked again later; possibly started, or the conversation runs
 on another Station → kept as unconfirmed, with a Check that asks Station again
-and never resends. Each row records the Station it was written for and is
+and never resends, and a Discard… that removes it only after the user confirms
+"I checked, discard it" with the risk stated (its key is retired, so it is never
+sent again). Each row records the Station it was written for and is
 only ever sent to, or settled by, that Station; for another it waits, listed.
 
 Follow-ups held behind a running turn stay in the tab's session storage, and
