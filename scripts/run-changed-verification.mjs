@@ -23,6 +23,7 @@ import {
   resolve,
   sep,
 } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import receiptSchema from '../schemas/verification-receipt.schema.json' with {
   type: 'json',
@@ -60,6 +61,10 @@ import {
 } from './lib/verification-receipt.mjs';
 import { redactVerificationOutput } from './lib/verification-redaction.mjs';
 import { prepareVerificationExecution } from './lib/verification-request-context.mjs';
+import {
+  readVitestErrorReport,
+  vitestErrorIdentity,
+} from './lib/vitest-error-reporter.mjs';
 import { groupFiles, VITEST_CORPUS_GROUPS } from './run-vitest-corpus.mjs';
 import {
   buildTestImpactManifest,
@@ -770,7 +775,7 @@ function reportFile(name, root) {
   );
 }
 
-function failedTestIdentities(report, root) {
+function failedTestIdentities(report, root, structuredReport) {
   const found = [];
   for (const suite of Array.isArray(report.testResults)
     ? report.testResults
@@ -790,10 +795,43 @@ function failedTestIdentities(report, root) {
         assertion.failureMessages?.find((message) => message) ??
         suite?.message ??
         'No assertion excerpt was reported';
+      const matching = structuredReport?.tests?.filter(
+        (test) => test.id === vitestErrorIdentity(suite.name, fullName),
+      );
+      const details = matching?.length === 1 ? matching[0] : undefined;
+      const primary = details?.errors
+        .map((error) => {
+          const messages = [];
+          for (let current = error; current; current = current.cause) {
+            if (current.message)
+              messages.push(`${current.name || 'Error'}: ${current.message}`);
+            if (current.omitted) messages.push(current.omitted);
+          }
+          return messages.join('\nCaused by: ');
+        })
+        .filter(Boolean)
+        .join('\n');
       found.push({
         file: reportFile(suite?.name, root),
         name: boundedRedactedText(fullName, FAILURE_NAME_LIMIT),
-        excerpt: boundedRedactedText(failureMessage, FAILURE_EXCERPT_LIMIT),
+        excerpt: boundedRedactedText(
+          primary || failureMessage,
+          FAILURE_EXCERPT_LIMIT,
+        ),
+        ...(details
+          ? { errors: details.errors, duration: details.duration }
+          : {}),
+        ...(!primary
+          ? {
+              primaryErrorUnavailable:
+                structuredReport?.omitted ??
+                (matching?.length > 1
+                  ? 'ambiguous structured error identity'
+                  : details
+                    ? 'structured errors contain no primary message'
+                    : 'no matching structured error identity'),
+            }
+          : {}),
       });
     }
   }
@@ -840,7 +878,10 @@ function countAssertionsWithStatus(report, status) {
  * `skipped` field: `isPassingCounts` requires `passed === executed` and
  * `executed > 0`, so a skipped-only or partial run still cannot pass.
  */
-function parseVitestReport(contents, { root = process.cwd() } = {}) {
+function parseVitestReport(
+  contents,
+  { root = process.cwd(), structuredReport } = {},
+) {
   let report;
   try {
     report = JSON.parse(contents);
@@ -877,7 +918,7 @@ function parseVitestReport(contents, { root = process.cwd() } = {}) {
   if (total === 0 || suites === 0) return { empty: true };
   const skipped = pending - unfinished;
   const counts = { executed: passed + failed, passed, failed, skipped, todo };
-  const failures = failedTestIdentities(report, root);
+  const failures = failedTestIdentities(report, root, structuredReport);
   const parsed = {
     counts,
     ...failures,
@@ -1005,24 +1046,39 @@ export function vitestExecutionsForGroups(groups, { kind, vitest }) {
 const FAILED_REPORT_LIMIT_BYTES = 16 * 1024 * 1024;
 
 /** Diagnostics only: a report that cannot be kept never changes the verdict. */
-function retainFailedReport(reportPath, directory, execution, index) {
-  const target = join(directory, `${execution.resourceGroup}-${index}.json`);
+function retainFailedReport(
+  reportPath,
+  directory,
+  execution,
+  index,
+  root,
+  suffix = '',
+) {
+  const target = join(
+    directory,
+    `${execution.resourceGroup}-${index}${suffix}.json`,
+  );
   try {
-    mkdirSync(directory, { recursive: true });
-    if (!existsSync(reportPath)) {
-      writeFileSync(
-        target,
-        `${JSON.stringify({ omitted: 'Vitest wrote no JSON report' })}\n`,
-      );
-      return;
+    const size = existsSync(reportPath) ? statSync(reportPath).size : null;
+    let contents =
+      size === null
+        ? `${JSON.stringify({ omitted: 'Vitest wrote no JSON report' })}\n`
+        : size > FAILED_REPORT_LIMIT_BYTES
+          ? `${JSON.stringify({ omitted: `report of ${size} bytes exceeds ${FAILED_REPORT_LIMIT_BYTES}` })}\n`
+          : redactVerificationOutput(readFileSync(reportPath, 'utf8'));
+    if (Buffer.byteLength(contents) > FAILED_REPORT_LIMIT_BYTES)
+      contents = `${JSON.stringify({ omitted: 'redacted report exceeds byte limit' })}\n`;
+    const local = relative(root, target);
+    if (local && !local.startsWith('..') && !isAbsolute(local))
+      writeReceiptSecurely(local, contents, root);
+    else {
+      mkdirSync(directory, { recursive: true });
+      writeFileSync(target, contents);
     }
-    const size = statSync(reportPath).size;
-    writeFileSync(
-      target,
-      size > FAILED_REPORT_LIMIT_BYTES
-        ? `${JSON.stringify({ omitted: `report of ${size} bytes exceeds ${FAILED_REPORT_LIMIT_BYTES}` })}\n`
-        : redactVerificationOutput(readFileSync(reportPath, 'utf8')),
-    );
+    return {
+      path: local,
+      sha256: createHash('sha256').update(contents).digest('hex'),
+    };
   } catch (error) {
     process.stderr.write(
       `[fast-checks] could not retain the failing Vitest report: ${error instanceof Error ? error.message : String(error)}\n`,
@@ -1098,6 +1154,7 @@ async function runVitest(
         break;
       }
       const reportPath = join(reportDirectory, `${index}.json`);
+      const structuredPath = `${reportPath}.errors.json`;
       let child;
       try {
         child = await run(
@@ -1105,6 +1162,7 @@ async function runVitest(
           [
             ...execution.command,
             '--reporter=json',
+            `--reporter=${fileURLToPath(new URL('./lib/vitest-error-reporter.mjs', import.meta.url))}`,
             `--outputFile=${reportPath}`,
             '--passWithNoTests',
           ],
@@ -1153,10 +1211,23 @@ async function runVitest(
       }
       if (!execution.infrastructureError) {
         try {
+          const structuredReport = readVitestErrorReport(structuredPath);
           Object.assign(
             execution,
-            parseVitestReport(readReport(reportPath, 'utf8'), { root }),
+            parseVitestReport(readReport(reportPath, 'utf8'), {
+              root,
+              structuredReport,
+            }),
           );
+          if (execution.counts?.failed > 0 || execution.exitCode !== 0)
+            execution.structuredErrorReport = structuredReport.omitted
+              ? { omitted: structuredReport.omitted }
+              : {
+                  omittedTests: structuredReport.omittedTests,
+                  unhandledErrors: structuredReport.unhandledErrors,
+                  omittedUnhandledErrors:
+                    structuredReport.omittedUnhandledErrors,
+                };
         } catch {
           execution.error = 'Vitest JSON report was missing or unreadable';
         }
@@ -1166,8 +1237,25 @@ async function runVitest(
         execution.infrastructureError ||
         execution.error
       ) {
-        if (failedReportDir)
-          retainFailedReport(reportPath, failedReportDir, execution, index);
+        if (failedReportDir) {
+          execution.retainedReports = [
+            retainFailedReport(
+              reportPath,
+              failedReportDir,
+              execution,
+              index,
+              root,
+            ),
+            retainFailedReport(
+              structuredPath,
+              failedReportDir,
+              execution,
+              index,
+              root,
+              '.errors',
+            ),
+          ].filter(Boolean);
+        }
         break;
       }
     }
@@ -1329,6 +1417,12 @@ function diagnosticsArtifact(result, counts, provenance) {
       exitCode: execution.exitCode,
       infrastructureError: execution.infrastructureError === true,
       ...(execution.error ? { error: execution.error } : {}),
+      ...(execution.structuredErrorReport
+        ? { structuredErrorReport: execution.structuredErrorReport }
+        : {}),
+      ...(execution.retainedReports
+        ? { retainedReports: execution.retainedReports }
+        : {}),
       ...(execution.empty ? { empty: true } : {}),
       ...(execution.emptyReason ? { emptyReason: execution.emptyReason } : {}),
       ...(execution.counts ? { counts: execution.counts } : {}),
@@ -1784,6 +1878,11 @@ export async function runChangedVerification(
       { ...executionSelection, signal },
       {
         vitestPath,
+        failedReportDir: join(
+          root,
+          '.kontourai/verification-output',
+          request.key,
+        ),
         // The merge base, not the ref: SDK barrel refinement compares
         // purity and exported names against the tree this diff was taken
         // from (#2707).
@@ -1885,7 +1984,13 @@ export async function runChangedVerification(
     status,
     exitCode: receiptExitCode,
     counts: receiptCounts,
-    artifacts: [artifact, diagnostics.artifact],
+    artifacts: [
+      artifact,
+      diagnostics.artifact,
+      ...result.executed.flatMap(
+        (execution) => execution.retainedReports ?? [],
+      ),
+    ],
     cleanup: cleanupFor(result),
     before,
     after,
@@ -2140,6 +2245,12 @@ export async function runChangedVerificationShard(
       ...(execution.error ? { error: execution.error } : {}),
       ...(execution.empty ? { empty: true } : {}),
       ...(execution.failedTests ? { failedTests: execution.failedTests } : {}),
+      ...(execution.structuredErrorReport
+        ? { structuredErrorReport: execution.structuredErrorReport }
+        : {}),
+      ...(execution.retainedReports
+        ? { retainedReports: execution.retainedReports }
+        : {}),
     })),
   };
 }

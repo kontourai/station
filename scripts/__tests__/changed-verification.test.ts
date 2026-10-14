@@ -1,5 +1,7 @@
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -13,6 +15,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { execFileSyncBounded } from '../lib/bounded-capture.mjs';
 import { loadProductLawManifest } from '../lib/product-laws.mjs';
 import { attachCiFastDiagnostics } from '../lib/verification-ci-fast-diagnostics.mjs';
 import { runProductLawGate } from '../product-law-gate.mjs';
@@ -2607,6 +2610,199 @@ setInterval(() => {}, 1000);`,
       passed: false,
     });
   });
+  test.each([
+    'retained',
+    'missing',
+    'oversized',
+    'missing-companion',
+    'malformed-companion',
+    'ambiguous-companion',
+  ] as const)(
+    'keeps a real Vitest failure truthful with %s diagnostic reports',
+    async (mode) => {
+      const root = makeTempDir('station-vitest-primary-error-');
+      const fixture = 'scripts/__tests__/primary-error.test.ts';
+      mkdirSync(join(root, 'config'), { recursive: true });
+      writeFileSync(
+        join(root, 'config/product-laws.json'),
+        readFileSync(join(process.cwd(), 'config/product-laws.json')),
+      );
+      mkdirSync(dirname(join(root, fixture)), { recursive: true });
+      writeFileSync(
+        join(root, fixture),
+        `import { describe, test } from ${JSON.stringify(import.meta.resolve('vitest'))};
+describe('primary error fixture', () => {
+  test('preserves the primary message', () => {
+    const cause = new Error('nested root failure; Authorization: Bearer secret-fixture-token');
+    const error = new Error('fixture primary failure', { cause });
+    error.stack = 'Error: STACK_TRACE_ERROR\\n at declaration (fixture.js:1:1)';
+    throw error;
+  });
+});\n`,
+      );
+      writeFileSync(
+        join(root, 'vitest.config.mjs'),
+        'export default { test: { testTimeout: 30000, hookTimeout: 30000 } };\n',
+      );
+      execFileSyncBounded('git', ['init', '--quiet'], {
+        cwd: root,
+        windowsHide: true,
+      });
+      execFileSyncBounded('git', ['add', '.'], {
+        cwd: root,
+        windowsHide: true,
+      });
+      execFileSyncBounded(
+        'git',
+        [
+          '-c',
+          'user.name=Fixture',
+          '-c',
+          'user.email=fixture@example.test',
+          'commit',
+          '--quiet',
+          '-m',
+          'reporter fixture',
+        ],
+        { cwd: root, windowsHide: true },
+      );
+      let originalReport:
+        | {
+            testResults: {
+              assertionResults: { failureMessages: string[] }[];
+            }[];
+          }
+        | undefined;
+      let temporaryReport = '';
+      const result = await runChangedVerification(['--base=HEAD'], {
+        root,
+        vitestPath: join(process.cwd(), 'node_modules/vitest/vitest.mjs'),
+        changedPathsFn: () => ({ mergeBase: 'HEAD', paths: [fixture] }),
+        collectProvenance: () => ({ ...provenance(), worktree: root }),
+        // The fixture deliberately has no installed graph: this control owns
+        // reporting through the real pinned Vitest, not dependency admission.
+        assertDependencyProvenance: () => {},
+        resourcePartition: splitResourceGroups,
+        run: async (command, args, options) => {
+          const child = await runOwnedChangedCommand(command, args, options);
+          temporaryReport = args
+            .find((arg) => arg.startsWith('--outputFile='))!
+            .slice('--outputFile='.length);
+          originalReport = JSON.parse(readFileSync(temporaryReport, 'utf8'));
+          if (mode === 'missing') rmSync(temporaryReport);
+          if (mode === 'oversized')
+            appendFileSync(temporaryReport, ' '.repeat(16 * 1024 * 1024));
+          const companionPath = `${temporaryReport}.errors.json`;
+          if (existsSync(companionPath)) {
+            if (mode === 'missing-companion') rmSync(companionPath);
+            if (mode === 'malformed-companion')
+              writeFileSync(companionPath, '{invalid-json');
+            if (mode === 'ambiguous-companion') {
+              const companion = JSON.parse(readFileSync(companionPath, 'utf8'));
+              companion.tests.push(companion.tests[0]);
+              writeFileSync(companionPath, JSON.stringify(companion));
+            }
+          }
+          return child;
+        },
+      });
+      const officialMessages =
+        originalReport?.testResults[0].assertionResults[0].failureMessages.join(
+          '\n',
+        );
+      expect(officialMessages).toContain('STACK_TRACE_ERROR');
+      expect(officialMessages).not.toContain('fixture primary failure');
+      expect(result.exitCode).toBe(1);
+      expect(result.receipt.terminal.passed).toBe(false);
+      expect(existsSync(temporaryReport)).toBe(false);
+      if (mode === 'retained' || mode === 'oversized') {
+        expect(
+          result.executed[0].failedTests[0].excerpt,
+          'the primary error must survive a differing declaration stack',
+        ).toContain('fixture primary failure');
+      }
+      expect(
+        Array.isArray(result.executed[0].retainedReports),
+        'failed raw reports must survive temporary cleanup',
+      ).toBe(true);
+      const reports = result.executed[0].retainedReports;
+      const standard = reports.find(
+        (report) => !report.path.endsWith('.errors.json'),
+      );
+      expect(result.receipt.artifacts).toContainEqual(standard);
+      const retained = readFileSync(join(root, standard.path), 'utf8');
+      expect(createHash('sha256').update(retained).digest('hex')).toBe(
+        standard.sha256,
+      );
+      if (mode === 'missing') {
+        expect(JSON.parse(retained)).toEqual({
+          omitted: 'Vitest wrote no JSON report',
+        });
+        expect(result.receipt.terminal.status).toBe('parser_error');
+      } else {
+        expect(result.receipt.counts).toMatchObject({
+          executed: 1,
+          passed: 0,
+          failed: 1,
+          infrastructureErrors: 0,
+        });
+        const failure = result.executed[0].failedTests[0];
+        if (
+          mode === 'missing-companion' ||
+          mode === 'malformed-companion' ||
+          mode === 'ambiguous-companion'
+        ) {
+          expect(failure.excerpt).toContain('STACK_TRACE_ERROR');
+          expect(failure.excerpt).not.toContain('fixture primary failure');
+          expect(failure.errors).toBeUndefined();
+          expect(failure.primaryErrorUnavailable).toContain(
+            mode === 'ambiguous-companion' ? 'ambiguous' : 'no readable',
+          );
+        } else {
+          expect(failure.excerpt).toContain('fixture primary failure');
+          expect(failure.excerpt).toContain('nested root failure');
+          expect(failure.errors[0]).toMatchObject({
+            message: 'fixture primary failure',
+            stack: expect.stringContaining('STACK_TRACE_ERROR'),
+            cause: { message: expect.stringContaining('nested root failure') },
+          });
+        }
+        if (mode === 'oversized')
+          expect(JSON.parse(retained).omitted).toContain('exceeds 16777216');
+        else expect(JSON.parse(retained).numFailedTests).toBe(1);
+      }
+      const companion = reports.find((report) =>
+        report.path.endsWith('.errors.json'),
+      );
+      const details = readFileSync(join(root, companion.path), 'utf8');
+      expect(createHash('sha256').update(details).digest('hex')).toBe(
+        companion.sha256,
+      );
+      if (mode === 'missing-companion') {
+        expect(JSON.parse(details)).toEqual({
+          omitted: 'Vitest wrote no JSON report',
+        });
+      } else if (mode !== 'malformed-companion') {
+        expect(details).toContain('fixture primary failure');
+        expect(details).toContain('nested root failure');
+      } else expect(details).toBe('{invalid-json');
+      expect(details).not.toContain('secret-fixture-token');
+      expect(result.receipt.artifacts).toContainEqual(companion);
+      const attached = attachCiFastDiagnostics(
+        {
+          lane: { id: 'ci-fast' },
+          env: {},
+          before: { ...provenance(), worktree: root },
+        },
+        {},
+      );
+      expect(attached.unavailableAttachments).toBeUndefined();
+      const diagnostic = JSON.parse(
+        readFileSync(attached.attachments[0].path, 'utf8'),
+      );
+      expect(diagnostic.executions[0].retainedReports).toEqual(reports);
+    },
+  );
   test('escalates a deleted related path to test-full without spawning', async () => {
     const run = vi.fn();
     const result = await runChangedVerification(['--base=origin/main'], {
