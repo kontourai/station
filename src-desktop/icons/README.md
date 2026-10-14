@@ -57,11 +57,14 @@ referenced by the source catalog with that set, then compares the shipped
 every rendition in the compiled asset catalog. It amends the channel-icon receipt the
 overlay step created (its `desktopBundleIcon*` fields name the desktop master
 from `bundle.icon`, not the shipped icon). `write-ios-build-manifest.mjs` also
-restores the icon set for the identity in the generated Xcode project, so local
+restores the icon set for the active Tauri configuration, so local
 development, CI and release simulator builds do not rely on init preserving
 the committed catalog. Applying the set checks its files against the generated
 manifest before replacing catalog PNGs; repeat application of a valid set is
-allowed. CI, release and local development simulator completion compare the
+allowed. Pass `--config <overlay>` when the build uses a channel overlay;
+without it, staging uses the base Stable configuration. Tauri can preserve
+an old `project.yml` during init, so its identifier is not the selection authority.
+CI, release and local development simulator completion compare the
 shipped loose icon too. An alternate build must run these staging and
 verification steps. Stable keeps the approved
 default artwork; `favicon-dev.png` is swapped into Dev by `is-dev-build` in

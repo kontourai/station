@@ -205,7 +205,7 @@ describe('iOS channel icon sets', () => {
   });
 
   it.each(iconChannels)(
-    'the post-init resource command stages %s icons on both first and repeat builds',
+    'the post-init resource command stages %s icons with a preserved Stable project on first and repeat builds',
     (channel) => {
       const {
         base,
@@ -218,8 +218,19 @@ describe('iOS channel icon sets', () => {
           : IOS_TESTFLIGHT_CHANNELS[channel].bundleId;
       writeFileSync(
         join(base, 'src-desktop/gen/apple/project.yml'),
-        `targets:\n  station_iOS:\n    settings:\n      base:\n        PRODUCT_BUNDLE_IDENTIFIER: ${identifier}\n`,
+        'settingGroups:\n  app:\n    base:\n      PRODUCT_BUNDLE_IDENTIFIER: io.kontourai.station\n',
       );
+      writeFileSync(
+        join(base, 'src-desktop/tauri.conf.json'),
+        JSON.stringify({ identifier: 'io.kontourai.station' }),
+      );
+      const overlay = join(base, 'channel.json');
+      writeFileSync(overlay, JSON.stringify({ identifier }));
+      const command = [
+        join(root, 'scripts/write-ios-build-manifest.mjs'),
+        '--config',
+        overlay,
+      ];
       mkdirSync(join(base, 'src-ui/public'), { recursive: true });
       mkdirSync(join(base, 'scripts/templates/ios'), { recursive: true });
       copyFileSync(
@@ -233,15 +244,11 @@ describe('iOS channel icon sets', () => {
         join(base, 'src-ui/public', favicon),
       );
       for (let build = 0; build < 2; build++) {
-        execFileSync(
-          process.execPath,
-          [join(root, 'scripts/write-ios-build-manifest.mjs')],
-          {
-            cwd: base,
-            stdio: 'pipe',
-            windowsHide: true,
-          },
-        );
+        execFileSync(process.execPath, command, {
+          cwd: base,
+          stdio: 'pipe',
+          windowsHide: true,
+        });
         for (const name of committedFilenames)
           expect(readFileSync(join(fixtureCatalog, name))).toEqual(
             readFileSync(join(set, name)),
@@ -249,15 +256,11 @@ describe('iOS channel icon sets', () => {
       }
       writeFileSync(join(set, committedFilenames[0]), 'substituted');
       expect(() =>
-        execFileSync(
-          process.execPath,
-          [join(root, 'scripts/write-ios-build-manifest.mjs')],
-          {
-            cwd: base,
-            stdio: 'pipe',
-            windowsHide: true,
-          },
-        ),
+        execFileSync(process.execPath, command, {
+          cwd: base,
+          stdio: 'pipe',
+          windowsHide: true,
+        }),
       ).toThrow(/differs from the generated icon manifest/);
     },
   );

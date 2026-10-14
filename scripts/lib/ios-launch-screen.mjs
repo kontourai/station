@@ -1,11 +1,13 @@
 import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { iosIconChannelForProject } from '../ios-channel-icons.mjs';
+import { iosIconChannelForConfig } from '../ios-channel-icons.mjs';
 
 /** Restore launch resources after Tauri regenerates the selected app project. */
-export function stageIosLaunchScreen(root) {
+export function stageIosLaunchScreen(
+  root,
+  { channel = iosIconChannelForConfig(root) } = {},
+) {
   const apple = join(root, 'src-desktop/gen/apple');
-  const channel = iosIconChannelForProject(root);
   copyFileSync(
     join(root, 'scripts/templates/ios/LaunchScreen.storyboard'),
     join(apple, 'LaunchScreen.storyboard'),

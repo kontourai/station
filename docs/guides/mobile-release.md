@@ -204,11 +204,13 @@ The sets are generated, not hand-edited: `node scripts/generate-app-icons.mjs`
 emits them from each channel's opaque square master (iOS rejects alpha; the
 committed `gen/apple` catalog is the stable set). The Dev set is for local
 simulator builds and does not enable store delivery. The common
-`write-ios-build-manifest.mjs` step selects the set from the generated project's
-bundle identifier and restores it after init for every maintained build route.
-CI and release simulator packaging verify the shipped icon with channel
-`project`, which resolves that same identifier; local development completion
-verifies the Dev icon. These comparisons cover the source catalog and the loose
+`write-ios-build-manifest.mjs --config <overlay>` step selects the set from
+the active Tauri configuration and restores it after init for every maintained
+build route. Without an overlay it selects the base Stable identity. Tauri may
+preserve a `project.yml` from another channel, so staging does not use its
+identifier. CI and release simulator packaging verify the shipped icon against
+their selected channel; local development completion verifies the Dev icon.
+These comparisons cover the source catalog and the loose
 iPhone @2x icon, not every rendition in `Assets.car` or the installed home-screen
 appearance. See `src-desktop/icons/README.md`.
 

@@ -37,7 +37,6 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
-import YAML from 'yaml';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -77,13 +76,14 @@ function channelSetDir(channel, root) {
   return join(root, 'src-desktop', 'icons', channel, 'ios');
 }
 
-export function iosIconChannelForProject(root = ROOT) {
-  const project = YAML.parse(
-    readFileSync(join(root, 'src-desktop/gen/apple/project.yml'), 'utf8'),
+export function iosIconChannelForConfig(root = ROOT, overlayPath) {
+  const base = JSON.parse(
+    readFileSync(join(root, 'src-desktop/tauri.conf.json'), 'utf8'),
   );
-  const identifier =
-    project.targets?.station_iOS?.settings?.base?.PRODUCT_BUNDLE_IDENTIFIER ??
-    project.settingGroups?.app?.base?.PRODUCT_BUNDLE_IDENTIFIER;
+  const overlay = overlayPath
+    ? JSON.parse(readFileSync(resolve(root, overlayPath), 'utf8'))
+    : {};
+  const identifier = overlay.identifier ?? base.identifier;
   const channel = identifier?.startsWith('io.kontourai.station.dev.')
     ? 'dev'
     : {
@@ -91,7 +91,7 @@ export function iosIconChannelForProject(root = ROOT) {
         'io.kontourai.station.beta': 'beta',
         'io.kontourai.station.nightly': 'nightly',
       }[identifier];
-  if (!channel) fail(`Unknown generated iOS Station identity: ${identifier}`);
+  if (!channel) fail(`Unknown configured iOS Station identity: ${identifier}`);
   return channel;
 }
 
@@ -304,14 +304,9 @@ function option(args, name) {
 }
 
 function main(args) {
-  const [command, requestedChannel] = args;
-  const channel =
-    requestedChannel === 'project'
-      ? iosIconChannelForProject()
-      : requestedChannel;
+  const [command, channel] = args;
   if (command === 'apply') {
-    if (args.length !== 2)
-      fail('usage: apply <stable|beta|nightly|dev|project>');
+    if (args.length !== 2) fail('usage: apply <stable|beta|nightly|dev>');
     const { files } = applyIosChannelIcons(channel);
     process.stdout.write(
       `Applied the ${channel} iOS icon set to the catalog (${files.length} files)\n`,
@@ -323,7 +318,7 @@ function main(args) {
     const receiptPath = option(args, 'receipt');
     if (!appDir || !receiptPath || args.length !== 6)
       fail(
-        'usage: verify <stable|beta|nightly|dev|project> --app <dir> --receipt <path>',
+        'usage: verify <stable|beta|nightly|dev> --app <dir> --receipt <path>',
       );
     const receipt = existsSync(receiptPath)
       ? JSON.parse(readFileSync(receiptPath, 'utf8'))
@@ -346,7 +341,7 @@ function main(args) {
     return;
   }
   fail(
-    'usage: apply <stable|beta|nightly|dev|project> | verify <channel|project> --app <dir> --receipt <path>',
+    'usage: apply <stable|beta|nightly|dev> | verify <channel> --app <dir> --receipt <path>',
   );
 }
 
