@@ -4,20 +4,25 @@
  * Rebuilds of session-backed roots require the local operator and run through
  * the Station indexer; searches recheck the caller before releasing records.
  *
- * Search re-resolves title/category through the adapter but returns the
- * index's cached excerpt. Existence/access checks are not content freshness.
- * Validate path-bearing migration input before filesystem work; report an
- * in-progress rebuild as 409 and retain per-root partial failures.
+ * Search admits only chunks embedded by the current embedder's generation
+ * (#2727) and reports readable roots indexed under another one. It returns a
+ * cached excerpt only while the re-read record still contains it as a chunk
+ * (#2728); a withheld excerpt is counted, never shown. Hits the caller cannot
+ * read are refilled from further down the ranking. Validate path-bearing
+ * migration input before filesystem work; report an in-progress rebuild as
+ * 409 and retain per-root partial failures.
  */
 import type {
   IEmbeddingProvider,
   KnowledgeIndexProvider,
 } from '@kontourai/station-contracts/knowledge-index';
 import type {
+  KitRecord,
   KnowledgeStoreProvider,
   KnowledgeStoreRoot,
 } from '@kontourai/station-contracts/knowledge-store';
 import { Hono } from 'hono';
+import { knowledgeEmbeddingIdentity } from '../../knowledge-index/embedding-identity.js';
 import { RebuildInProgressError } from '../../knowledge-index/inflight-guard.js';
 import { migratePreIndexKnowledge } from '../../knowledge-index/migrate-pre-index-knowledge.js';
 import { isSafePathSegment } from '../../knowledge-index/path-safety.js';
@@ -25,6 +30,7 @@ import {
   knowledgeRootReadKind,
   SESSION_BACKED_BUILD_FORBIDDEN_ERROR,
 } from '../../knowledge-store/session-backed-roots.js';
+import { chunkKnowledgeText } from '../../services/knowledge/knowledge-storage.js';
 import { errorMessage } from '../schemas/schemas.js';
 import { projectKnowledgePersistenceError } from './knowledge-persistence-errors.js';
 
@@ -104,8 +110,25 @@ interface KnowledgeSearchResult {
   category: string;
 }
 
+/** `POST /index/search` sibling of `data`: what the index could not answer
+ * for the current embedder. Only roots this caller may read are named. */
+interface KnowledgeSearchIndexReport {
+  /** Roots holding chunks from another, or an unknown, embedding generation.
+   * Their chunks are never searched; rebuild the root to recover them. */
+  staleRoots: Array<{
+    rootId: string;
+    reason: 'embedding-changed' | 'unknown-generation';
+  }>;
+  /** Readable records whose indexed excerpt is no longer in the record. */
+  staleRecords: number;
+  /** The scan stopped at `MAX_SEARCH_SCAN` before finding `topK` results. */
+  scanLimitReached: boolean;
+}
+
 const DEFAULT_SEARCH_TOP_K = 10;
 const MAX_SEARCH_TOP_K = 50;
+/** How far down the ranking a search may read to refill hits it withheld. */
+const MAX_SEARCH_SCAN = 1000;
 
 function isPlausibleRootIdArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((v) => isPlausibleRootId(v));
@@ -265,53 +288,118 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
       }
 
       const [vector] = await embedder.embed([body.query]);
-      const hits = await deps.indexProvider.search(vector, {
-        topK,
+      const embeddingIdentity = knowledgeEmbeddingIdentity(embedder);
+
+      const rootReadable = new Map<string, boolean>();
+      const mayReadRoot = async (rootId: string): Promise<boolean> => {
+        if (!deps.mayReadHitRoot) return true;
+        let readable = rootReadable.get(rootId);
+        if (readable === undefined) {
+          const root = await deps.store.getRoot(rootId);
+          // An unregistered root decides nothing: fail closed.
+          readable = !!root && deps.mayReadHitRoot(c.req.raw, root);
+          rootReadable.set(rootId, readable);
+        }
+        return readable;
+      };
+
+      const staleRoots: KnowledgeSearchIndexReport['staleRoots'] = [];
+      for (const generation of (await deps.indexProvider.generations?.(
         rootIds,
-        filter,
-      });
+      )) ?? []) {
+        if (generation.embeddingIdentity === embeddingIdentity) continue;
+        if (staleRoots.some((stale) => stale.rootId === generation.rootId)) {
+          continue;
+        }
+        // Leftover chunks of a removed root are not a rebuild the caller can do.
+        if (!(await deps.store.getRoot(generation.rootId))) continue;
+        if (!(await mayReadRoot(generation.rootId))) continue;
+        staleRoots.push({
+          rootId: generation.rootId,
+          reason:
+            generation.embeddingIdentity === null
+              ? 'unknown-generation'
+              : 'embedding-changed',
+        });
+      }
 
       const resolvedAdapters = new Map<
         string,
         Awaited<ReturnType<KnowledgeStoreProvider['adapterFor']>>
       >();
+      // One read per record per request, however many of its chunks match.
+      const currentRecords = new Map<
+        string,
+        { record: KitRecord; chunks: Set<string> } | null
+      >();
+      const staleRecordKeys = new Set<string>();
       const results: KnowledgeSearchResult[] = [];
-      const rootReadable = new Map<string, boolean>();
-      for (const hit of hits) {
-        if (deps.mayReadHitRoot) {
-          let readable = rootReadable.get(hit.rootId);
-          if (readable === undefined) {
-            const root = await deps.store.getRoot(hit.rootId);
-            // An unregistered root decides nothing: fail closed.
-            readable = !!root && deps.mayReadHitRoot(c.req.raw, root);
-            rootReadable.set(hit.rootId, readable);
-          }
-          if (!readable) continue;
-        }
-        let adapter = resolvedAdapters.get(hit.rootId);
-        if (!adapter) {
-          try {
-            adapter = await deps.store.adapterFor(hit.rootId);
-          } catch {
-            continue; // root no longer registered — drop this hit, not the whole search.
-          }
-          resolvedAdapters.set(hit.rootId, adapter);
-        }
-
-        const record = await adapter.get(hit.recordId);
-        if (!record) continue; // K3's "never treat a hit as the record" rule — module doc.
-
-        results.push({
-          recordId: hit.recordId,
-          rootId: hit.rootId,
-          score: hit.score,
-          title: record.title,
-          excerpt: hit.text,
-          category: record.category,
+      let scanned = 0;
+      let fetchK = topK;
+      let scanLimitReached = false;
+      // Withheld hits (unreadable root, missing record, stale excerpt) must
+      // not shrink the answer: read further down the ranking until topK
+      // results are found, the index runs out, or the scan bound is hit.
+      for (;;) {
+        const hits = await deps.indexProvider.search(vector, {
+          topK: fetchK,
+          rootIds,
+          filter,
+          embeddingIdentity,
         });
+        for (; scanned < hits.length && results.length < topK; scanned += 1) {
+          const hit = hits[scanned];
+          if (!(await mayReadRoot(hit.rootId))) continue;
+          let adapter = resolvedAdapters.get(hit.rootId);
+          if (!adapter) {
+            try {
+              adapter = await deps.store.adapterFor(hit.rootId);
+            } catch {
+              continue; // root no longer registered — drop this hit, not the whole search.
+            }
+            resolvedAdapters.set(hit.rootId, adapter);
+          }
+
+          const recordKey = JSON.stringify([hit.rootId, hit.recordId]);
+          let current = currentRecords.get(recordKey);
+          if (current === undefined) {
+            const record = await adapter.get(hit.recordId);
+            current = record
+              ? { record, chunks: new Set(chunkKnowledgeText(record.body)) }
+              : null;
+            currentRecords.set(recordKey, current);
+          }
+          if (!current) continue; // K3's "never treat a hit as the record" rule — module doc.
+          const { record } = current;
+          // The excerpt is current only while the record still produces it.
+          if (!current.chunks.has(hit.text)) {
+            staleRecordKeys.add(recordKey);
+            continue;
+          }
+
+          results.push({
+            recordId: hit.recordId,
+            rootId: hit.rootId,
+            score: hit.score,
+            title: record.title,
+            excerpt: hit.text,
+            category: record.category,
+          });
+        }
+        if (results.length >= topK || hits.length < fetchK) break;
+        if (fetchK >= MAX_SEARCH_SCAN) {
+          scanLimitReached = true;
+          break;
+        }
+        fetchK = Math.min(fetchK * 4, MAX_SEARCH_SCAN);
       }
 
-      return c.json({ success: true, data: results });
+      const index: KnowledgeSearchIndexReport = {
+        staleRoots,
+        staleRecords: staleRecordKeys.size,
+        scanLimitReached,
+      };
+      return c.json({ success: true, data: results, index });
     } catch (e: unknown) {
       return c.json({ success: false, error: errorMessage(e) }, 500);
     }
