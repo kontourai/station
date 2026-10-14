@@ -1,5 +1,78 @@
 [
   {
+    "timestampUtc": "2026-10-14T09:35:52Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2478.5",
+    "sha": "59ff630e0e832be3e5c6400776411a9dae06a6b9",
+    "artifactBuiltAt": "2026-10-14T08:50:11.132Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38529818593",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 38529818593)"
+    ],
+    "changelog": {
+      "previousSha": "154624a8726d33e489d2c165471b876e69db76b5",
+      "groups": {
+        "feat": [
+          "[#3585](https://github.com/kontourai/station/pull/3585) feat(access): personal access tokens act as their person, never as more (#3557)",
+          "[#3649](https://github.com/kontourai/station/pull/3649) feat(chat): inline copy beside the phone ⋯, one copy icon, and a compact message sheet",
+          "[#3624](https://github.com/kontourai/station/pull/3624) feat(brand): ship the River app icon, channel palettes and square-tile marks",
+          "[#3635](https://github.com/kontourai/station/pull/3635) feat(delegation): deliver a delegated task's result to its parent conversation, exactly once (#3158)",
+          "[#3584](https://github.com/kontourai/station/pull/3584) feat(access): Station groups cap what a person's devices may use (#3557)",
+          "[#3620](https://github.com/kontourai/station/pull/3620) feat(execution): let a request state the engine its caller saw, as a refusal-only precondition",
+          "[#3607](https://github.com/kontourai/station/pull/3607) feat(monument): add the durable kernel package with a command-shaped storage port"
+        ],
+        "fix": [
+          "[#3650](https://github.com/kontourai/station/pull/3650) fix(acp): keep a resumed session's replay out of the transcript; sends wait for a starting session",
+          "[#3645](https://github.com/kontourai/station/pull/3645) fix(status): release completed pill animation effects",
+          "[#3651](https://github.com/kontourai/station/pull/3651) fix(chat): stable transcript while loading, animated scroll-to-bottom, opt-in layout tracer",
+          "[#3648](https://github.com/kontourai/station/pull/3648) fix(station-control): start an agent's unscoped Session in its own Project; say why a scope refusal happened",
+          "[#3646](https://github.com/kontourai/station/pull/3646) fix(station-control): list the caller's own conversation in list_project_activity",
+          "[#3644](https://github.com/kontourai/station/pull/3644) fix: order session-terminal retirement by event sequence",
+          "[#3643](https://github.com/kontourai/station/pull/3643) fix(docs): bind release reviews to relevant manifest and lock values",
+          "[#3641](https://github.com/kontourai/station/pull/3641) fix(orchestration): retry a failed interrupted-turn recovery within the boot and surface exhaustion",
+          "[#3640](https://github.com/kontourai/station/pull/3640) fix(memory): report a torn transcript tail on read and write state files atomically",
+          "[#3637](https://github.com/kontourai/station/pull/3637) fix(knowledge): reject path-shaped default-store record IDs",
+          "[#3636](https://github.com/kontourai/station/pull/3636) fix(docs): allow ordinary reviews of deleted release declarations",
+          "[#3608](https://github.com/kontourai/station/pull/3608) fix(orchestration): change nothing observable before an event's append commits (#3561)",
+          "[#3631](https://github.com/kontourai/station/pull/3631) fix(ci): wait for qualification capacity instead of failing the merge-queue check",
+          "[#3630](https://github.com/kontourai/station/pull/3630) fix(deps): remove sprintf-js through compatible YAML CLI migration",
+          "[#3616](https://github.com/kontourai/station/pull/3616) fix(process): register detached Flow, plugin-draft and flow-agents spawns; drop null-birth records of gone owners",
+          "[#3606](https://github.com/kontourai/station/pull/3606) fix(chat): never resend a /chat turn that may have reached the agent; evicted dedup keys answer expired (#3581, #3559)",
+          "[#3626](https://github.com/kontourai/station/pull/3626) fix(sdk): accept current conversation execution metadata",
+          "[#3614](https://github.com/kontourai/station/pull/3614) fix(install): refuse a manifest older than the newest release an install accepted (#187)",
+          "[#3618](https://github.com/kontourai/station/pull/3618) fix(acp): settle a refused model at session start; do not send unchecked defaults",
+          "[#3615](https://github.com/kontourai/station/pull/3615) fix(liveness): decide reused PIDs, dead null-birth claims, malformed jobs and failed source-terminal repair (#3563 items 1-4)",
+          "[#3600](https://github.com/kontourai/station/pull/3600) fix(ci-health): attribute pull-request runs whose PR list is empty",
+          "[#3613](https://github.com/kontourai/station/pull/3613) fix(recovery): keep a failed startup obligation scan from latching credential reconciliation",
+          "[#3604](https://github.com/kontourai/station/pull/3604) fix(cli): fingerprint Station's server and UI on Windows before signalling them (#2675)",
+          "[#3578](https://github.com/kontourai/station/pull/3578) fix(process): register the Codex app-server and retain dead-leader groups instead of reaping them",
+          "[#3603](https://github.com/kontourai/station/pull/3603) fix(memory): keep a torn transcript tail from swallowing the next message",
+          "[#3602](https://github.com/kontourai/station/pull/3602) fix(orchestration): never read a dead dispatch's own turn.started as moved on"
+        ],
+        "ci": [],
+        "docs": [
+          "[#3625](https://github.com/kontourai/station/pull/3625) docs: align docs-kit tagline with the README",
+          "[#3617](https://github.com/kontourai/station/pull/3617) docs(readme): align the tagline with the site and add a badge row"
+        ],
+        "other": [
+          "[#3642](https://github.com/kontourai/station/pull/3642) chore(docs): declare Corpus v2 purpose and building blocks",
+          "[#3634](https://github.com/kontourai/station/pull/3634) refactor(orchestration): run turn dedup and session-control request keys on Monument (#3565)",
+          "[#3632](https://github.com/kontourai/station/pull/3632) test(relay): derive ICE expiry from one issuance timestamp",
+          "[#3629](https://github.com/kontourai/station/pull/3629) test(dependency-advisory): pin the audit CLI test's clock and add the same-CLI expiry control (fixture clock defect)",
+          "[#3204](https://github.com/kontourai/station/pull/3204) test(connect): remove boot reset seam and stale native commentary",
+          "[#3599](https://github.com/kontourai/station/pull/3599) chore(ci): declare the live flaky label and update renamed workflow fixtures",
+          "[#3598](https://github.com/kontourai/station/pull/3598) chore(docs): advance the review coverage baseline and archive 316 landed notes"
+        ]
+      },
+      "note": null,
+      "commitCount": 42
+    }
+  },
+  {
     "timestampUtc": "2026-10-14T09:35:49Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.2478.5",
