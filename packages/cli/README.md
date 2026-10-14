@@ -208,6 +208,13 @@ The published CLI drives Stations that are already running — see `station stat
 `environment access list|approve|deny|devices|scope|revoke|remove`, `environment operator passkeys`, and `service status|start|stop` support
 an existing local installation. Local authorization validates the selected
 owner-only home and the loopback listener; it does not create a missing home.
+For a saved paired Station, `environment access devices|scope|revoke|remove`
+use its paired credential and work remotely when the operator explicitly grants
+`access:devices`. This is separate from using full access. Only the operator can
+grant or remove this administrative scope; legacy `access:manage` does not
+qualify. See [device administration](../../docs/reference/cli.md#environment) for
+setup, revocation and mixed-version limits.
+
 Service start/stop controls an existing OS service rather than building or
 installing a backend. See the [availability table](../../docs/reference/cli.md)
 for the full boundary and prerequisites.

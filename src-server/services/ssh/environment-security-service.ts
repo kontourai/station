@@ -59,6 +59,7 @@ import {
   readExistingEnvironmentSecurityRecord,
 } from '@kontourai/station-shared/environment-security-record';
 import {
+  isDeviceAccessManagementLeaf,
   isPairingApprovalLeaf,
   matchPairingScopeRule,
 } from '../../security/pairing-route-scopes.js';
@@ -600,6 +601,17 @@ export class EnvironmentSecurityService {
     )
       return false;
     if (request.path.startsWith('/api/pairing')) {
+      if (
+        isDeviceAccessManagementLeaf(request) &&
+        this.#devicePairingService?.deviceAccessAdministrator(candidate)
+      ) {
+        return request.activity
+          ? this.#devicePairingService.recordCredentialActivity(
+              candidate,
+              request.activity.lastSeenFrom,
+            )
+          : true;
+      }
       // Native desktop credentials prove home possession at local-grant mint
       // time. They are the desktop operator's authority for this family,
       // unlike ordinary paired devices (even those carrying access:manage).

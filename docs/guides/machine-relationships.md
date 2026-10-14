@@ -70,8 +70,10 @@ A paired device holds scopes: `orchestration:read`, `orchestration:operate`,
 already-paired device, or keeps when approving a request that asked for
 `coding:exec` or `approval:full-access`, as the Station app does (**Limit
 access** leaves them out; `station environment access scopes` lists them all
-with their meanings). The operator changes them per device on the Station's own
-host. Without a global install, prefix these with
+with their meanings). The operator can change them per device on the Station's
+own host, or explicitly grant `access:devices` to an already-paired administrator.
+That device can use the same commands remotely with `--station=<name>` and its
+own credential. Without a global install, prefix these with
 `npx @kontourai/station-cli@<tag>` (`nightly` for a nightly Station, otherwise
 `latest`); a full-access refusal's command already includes the prefix. A
 device paired by an older Station may also hold `access:manage`, which no device
@@ -84,16 +86,17 @@ station environment access scope <device> --remove approval:full-access
 ```
 
 The **Paired devices** panel (Station name, top right → **Paired devices** →
-the device → **Change access**) does not apply the change from the desktop
-app: the app holds a device credential, not the operator credential, and the
-route refuses it. Use the host CLI above. Remote operator access is
-[a proposal](../design/operator-device-access.md) (#2894).
+the device → **Change access**) uses its authenticated credential. A client with
+**Manage device access** (`access:devices`) can administer devices remotely.
+Only the operator can grant or remove that permission; **Skip approval prompts**
+(`approval:full-access`) alone cannot change device grants. Operator passkey
+sign-in remains [a separate proposal](../design/operator-device-access.md) (#2894).
 
 A device tied to a person (a verified Tailscale identity or an account) is
 also capped by that person's **Station group** (#3557). In **Member**, the
 default, it may use only Standard (`orchestration:read orchestration:operate
 terminal:operate`), whatever else it was granted; in **Admin** it may also
-use `coding:exec`, `approval:full-access`, `access:approve` and
+use `coding:exec`, `approval:full-access`, `access:approve`, `access:devices` and
 `consent:decide`. The stored grant is never rewritten, so moving the person
 back to Admin restores it. Moving a person to Member re-authenticates their
 devices' live terminal and voice connections and takes back any full access
@@ -103,6 +106,11 @@ on the People page (Settings, then Devices) or with
 yet. When a Member's device asks for full access, the refusal says the group
 is what stops it and points the operator at People, adding the device's own
 `--add approval:full-access` command only if its grant lacks it too.
+
+Account-bound guest principals remain restricted by their separate route
+allowlist: it excludes device administration even with an Admin group and an
+`access:devices` grant. Use an operator-approved personal Device or the host
+operator channel. The CLI reports this policy refusal distinctly.
 
 **Full access** (`approval:full-access`) is the scope that lets a device put a
 chat, or an Agent's default, at approval mode `never`: the agent runs with no
