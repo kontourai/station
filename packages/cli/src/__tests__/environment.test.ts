@@ -1600,42 +1600,43 @@ describe('environment-security verbs honor saved Stations (station#4515)', () =>
     },
   );
 
-  test('a paired administration refusal names the required permission without reading a local home', async () => {
-    const previousStore = getProfileCredentialStore();
-    const createService = vi.fn(() => makeService());
-    setProfileCredentialStore({
-      get: () => 'unpromoted-device',
-      set: () => {},
-      delete: () => {},
-      status: () => 'available',
-    });
-    upsertProfile({
-      name: 'paired-limited',
-      endpoint: 'https://station.example.test',
-      credentialRef: { kind: 'station-bearer', id: 'paired-limited' },
-    });
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        Response.json(
-          { error: { code: 'insufficient_scope' } },
-          { status: 403 },
-        ),
-      ),
-    );
-    try {
-      await expect(
-        runEnvironmentCommand(
-          ['access', 'devices', '--station=paired-limited'],
-          { createService, projectHome: stationRoot, stdout },
-        ),
-      ).rejects.toThrow('explicit access:devices grant');
-      expect(createService).not.toHaveBeenCalled();
-    } finally {
-      setProfileCredentialStore(previousStore);
-      setClientCredentialResolver(undefined);
-    }
-  });
+  test.each([
+    ['insufficient_scope', 'explicit access:devices grant'],
+    ['account_bound_device_route_forbidden', 'even with access:devices'],
+  ])(
+    'a paired administration refusal explains %s without reading a local home',
+    async (code, remedy) => {
+      const previousStore = getProfileCredentialStore();
+      const createService = vi.fn(() => makeService());
+      setProfileCredentialStore({
+        get: () => 'unpromoted-device',
+        set: () => {},
+        delete: () => {},
+        status: () => 'available',
+      });
+      upsertProfile({
+        name: 'paired-limited',
+        endpoint: 'https://station.example.test',
+        credentialRef: { kind: 'station-bearer', id: 'paired-limited' },
+      });
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => Response.json({ error: { code } }, { status: 403 })),
+      );
+      try {
+        await expect(
+          runEnvironmentCommand(
+            ['access', 'devices', '--station=paired-limited'],
+            { createService, projectHome: stationRoot, stdout },
+          ),
+        ).rejects.toThrow(remedy);
+        expect(createService).not.toHaveBeenCalled();
+      } finally {
+        setProfileCredentialStore(previousStore);
+        setClientCredentialResolver(undefined);
+      }
+    },
+  );
 
   test('accepts --station=<name> for a profile with a recorded localService.baseDir whose home identity matches the loopback listener', async () => {
     upsertProfile({

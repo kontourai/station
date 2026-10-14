@@ -107,6 +107,11 @@ yet. When a Member's device asks for full access, the refusal says the group
 is what stops it and points the operator at People, adding the device's own
 `--add approval:full-access` command only if its grant lacks it too.
 
+Account-bound guest principals remain restricted by their separate route
+allowlist: it excludes device administration even with an Admin group and an
+`access:devices` grant. Use an operator-approved personal Device or the host
+operator channel. The CLI reports this policy refusal distinctly.
+
 **Full access** (`approval:full-access`) is the scope that lets a device put a
 chat, or an Agent's default, at approval mode `never`: the agent runs with no
 sandbox and no approval prompts, as the operator. A device without it that

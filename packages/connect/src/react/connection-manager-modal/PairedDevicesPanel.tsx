@@ -137,7 +137,7 @@ export function PairedDevicesPanel({
           response.status === 401
             ? "This device's access to this Station needs review. Reconnect it, then try again."
             : response.status === 403
-              ? 'Listing devices requires Manage device access. Ask the Station operator to grant it to this device.'
+              ? 'Listing devices requires Manage device access and a principal allowed by this Station’s account policy. Ask the Station operator to review this device.'
               : `This Station could not list its paired devices (HTTP ${response.status}).`,
         );
         return;
@@ -256,7 +256,7 @@ export function PairedDevicesPanel({
                   ? 'Revoking a device requires this Station’s operator credential. Enter it below and try again.'
                   : hostCliRefusal(hostAppName, 'revoke a device', 'revoke')
                 : response.status === 403
-                  ? 'Revoking devices requires Manage device access. Ask the Station operator to grant it to this device.'
+                  ? 'Revoking devices requires Manage device access and a principal allowed by this Station’s account policy.'
                   : deviceRevokeError(response.status),
             );
             return;
@@ -303,7 +303,7 @@ export function PairedDevicesPanel({
                       'remove',
                     )
                 : response.status === 403
-                  ? 'Removing device records requires Manage device access. Ask the Station operator to grant it to this device.'
+                  ? 'Removing device records requires Manage device access and a principal allowed by this Station’s account policy.'
                   : `This Station could not remove the revoked record for “${device.name}” (HTTP ${response.status}).`,
             );
             return;

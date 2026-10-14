@@ -2468,9 +2468,17 @@ station environment access devices --station=workstation
 station environment access scope <target-device> --add=approval:full-access --station=workstation
 ```
 
+Account-bound guest principals remain restricted by their separate route
+allowlist: it excludes device administration even with an Admin group and an
+`access:devices` grant. Use an operator-approved personal Device or the host
+operator channel. The CLI reports this policy refusal distinctly.
+
 Update both host and CLI before granting the new scope. Older clients reject
 scope strings containing unknown tokens; they do not gain administrative access
-by upgrading. Removing `access:devices` or revoking the holder immediately stops
+by upgrading. Older hosts also reject the new `device-access` revocation actor,
+even after the administrative scope is removed. Downgrading a home that used
+this feature requires a compatible host build; startup fails closed rather than
+silently discarding unknown authority records. Removing `access:devices` or revoking the holder immediately stops
 administration, including a scope request waiting for its body. Successful scope,
 revoke and remove operations emit a credential-free `station.device_access.changed`
 audit record; device revocation records distinguish a device administrator from

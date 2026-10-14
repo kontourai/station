@@ -856,10 +856,16 @@ async function requestBareJson<T>(
   if (!response.ok) {
     // The bare pairing routes answer `{ error: <code> }`; keep the code and
     // status on the error (#1796) so a caller branches on them, not on text.
-    const code =
+    const error =
       value && typeof value === 'object' && !Array.isArray(value)
         ? (value as { error?: unknown }).error
         : undefined;
+    const code =
+      typeof error === 'string'
+        ? error
+        : error && typeof error === 'object' && !Array.isArray(error)
+          ? (error as { code?: unknown }).code
+          : undefined;
     throw Object.assign(
       new Error(describeBareJsonFailure(response.status, value)),
       {
@@ -1941,7 +1947,12 @@ async function openDeviceAccessChannel(
       try {
         return await request(resolved.apiBase, path, init);
       } catch (error) {
-        const { status } = pairingErrorSignal(error);
+        const { status, code } = pairingErrorSignal(error);
+        if (code === 'account_bound_device_route_forbidden')
+          throw new Error(
+            'This Station restricts account-bound guest principals to its guest routes. Device administration is outside that policy, even with access:devices. Use an operator-approved personal device or the host operator channel.',
+            { cause: error },
+          );
         if (status === 403)
           throw new Error(
             'Station refused this device-access action. Administration requires an explicit access:devices grant. Only the Station operator can grant or remove access:devices itself; other device permissions and legacy access:manage do not authorize administration.',

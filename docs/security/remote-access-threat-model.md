@@ -616,6 +616,11 @@ until the grant is removed or the credential revoked. There is no passkey
 step-up on this scoped path. Operator passkey enrollment remains separate;
 remote operator sessions and fresh per-action verification are still proposed
 ([operator device access](../design/operator-device-access.md), #2894).
+Account-bound guest principals remain restricted by their separate route
+allowlist: it excludes device administration even with an Admin group and an
+`access:devices` grant. Use an operator-approved personal Device or the host
+operator channel. The CLI reports this policy refusal distinctly.
+
 Scope, revoke and remove check current authority before their commit. The service
 also revalidates the administrative credential; scope parsing that yields cannot
 keep a grant after its holder has been revoked or demoted. Administrative changes
