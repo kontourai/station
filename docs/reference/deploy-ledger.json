@@ -1,5 +1,34 @@
 [
   {
+    "timestampUtc": "2026-10-14T05:18:06Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2478.38510962155",
+    "sha": "0e6a18f1647a269284a614ce16cffd23604b2564",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38510962155",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2478.38510962155 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "ebc8c328dfd39eeb1b35f8d465812ae12c10ba33",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#3648](https://github.com/kontourai/station/pull/3648) fix(station-control): start an agent's unscoped Session in its own Project; say why a scope refusal happened"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-10-14T03:59:31Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2478.38503738124",
