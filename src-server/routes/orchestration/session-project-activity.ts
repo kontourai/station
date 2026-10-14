@@ -312,11 +312,7 @@ export function createSessionProjectActivityRoutes(
       // out of OTHER Sessions, and its own Session is not another.
       if (!isOwnSession(caller, row.session)) {
         const seen = visibleToCaller(caller, row.session.threadId);
-        if (
-          !seen.visible ||
-          !seen.scope ||
-          !sameScope(callerScope, seen.scope)
-        )
+        if (!seen.visible || !seen.scope || !sameScope(callerScope, seen.scope))
           continue;
       }
       // One visible row past the page proves there is more.

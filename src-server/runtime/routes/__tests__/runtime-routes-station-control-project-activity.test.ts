@@ -798,9 +798,10 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
         const own = listed.body.data.sessions.filter(
           (row: any) => row.self === true,
         );
-        expect([caller.channel, own.map((row: any) => row.sessionId)]).toEqual(
-          [caller.channel, ['a-host']],
-        );
+        expect([caller.channel, own.map((row: any) => row.sessionId)]).toEqual([
+          caller.channel,
+          ['a-host'],
+        ]);
       }
     });
 
@@ -832,9 +833,10 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
         const own = listed.body.data.sessions.filter(
           (row: any) => row.self === true,
         );
-        expect([caller.channel, own.map((row: any) => row.sessionId)]).toEqual(
-          [caller.channel, ['p-old-next']],
-        );
+        expect([caller.channel, own.map((row: any) => row.sessionId)]).toEqual([
+          caller.channel,
+          ['p-old-next'],
+        ]);
         // Another unconfined Session of the Project is still not its to see.
         expect([caller.channel, ids(listed.body).includes('a-host')]).toEqual([
           caller.channel,
