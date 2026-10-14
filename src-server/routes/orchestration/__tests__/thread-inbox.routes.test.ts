@@ -898,7 +898,10 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       whenBusy: 'queue',
       target: {
         environment: { kind: 'current' },
-        agent: { ...override, expectedDefinitionFingerprint: 'sha256-stale' },
+        agent: {
+          ...override, // A well-formed fingerprint, so the route reaches the hold check.
+          expectedDefinitionFingerprint: `sha256:${'0'.repeat(64)}`,
+        },
       },
     });
     expect(fingerprinted.status).not.toBe(202);
