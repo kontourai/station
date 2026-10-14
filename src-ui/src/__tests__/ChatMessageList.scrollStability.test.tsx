@@ -324,27 +324,3 @@ describe('a pinned transcript clamped by layout', () => {
     expect(scroller.scrollTop).toBe(1_579);
   });
 });
-
-describe('earlier history restoring the reader', () => {
-  test('a scroll with no reader input while the page restores does not hand the transcript to tail-follow', async () => {
-    vi.useFakeTimers({
-      toFake: ['requestAnimationFrame', 'cancelAnimationFrame', 'performance'],
-    });
-    const onLoadOlder = vi.fn(async () => {});
-    const { scroller } = renderList({ hasOlderMessages: true, onLoadOlder });
-    readerScrollsTo(scroller, 600);
-    // Past the wheel's grace; the restoration frames below never run.
-    act(() => {
-      vi.advanceTimersByTime(1_000);
-    });
-    const press = screen.getByRole('button', { name: 'Earlier messages' });
-    await act(async () => {
-      fireEvent.click(press);
-    });
-    expect(onLoadOlder).toHaveBeenCalledTimes(1);
-    // The page's restoration lands at the (clamped) end with no input.
-    scroller.scrollTop = 1_600;
-    fireEvent.scroll(scroller);
-    expect(scrollToBottomButton()).not.toBeNull();
-  });
-});

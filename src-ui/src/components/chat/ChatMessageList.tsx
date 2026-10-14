@@ -867,13 +867,6 @@ function ChatMessageListComponent({
     const readerInput = readerInputRef.current;
     const readerActing =
       readerInput.down || performance.now() < readerInput.until;
-    // An "Earlier messages" commit restores the reader's row over several
-    // frames (the virtualizer measures rows above it and compensates, and a
-    // compensation written before the spacer grows is clamped to the old end).
-    // Those scrolls are the restoration, not the reader: they must not
-    // re-capture the anchor or, landing at the clamped end, hand the
-    // transcript to tail-follow.
-    if (olderRestoringRef.current && !readerActing) return;
     const shortBy =
       target.scrollHeight - target.scrollTop - target.clientHeight;
     if (
