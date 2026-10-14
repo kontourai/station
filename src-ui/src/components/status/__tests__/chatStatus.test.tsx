@@ -36,6 +36,36 @@ const openTurn = {
 };
 
 describe('deriveChatStatus — one status, by priority', () => {
+  test('says Sending, not Working, until the agent has the turn', () => {
+    const sending = deriveChatStatus({
+      ...base,
+      turnLive: true,
+      sendAwaitingTurnStart: true,
+    });
+    expect(sending?.label).toBe('Sending');
+    expect(sending?.details).toEqual([]);
+    const received = deriveChatStatus({
+      ...base,
+      turnLive: true,
+      sendAwaitingTurnStart: true,
+      stationHasSend: true,
+    });
+    expect(received?.label).toBe('Sending');
+    expect(received?.details).toEqual([
+      {
+        text: 'Station has your message and is starting the agent. It is safe to close the app.',
+      },
+    ]);
+    // Once the server shows the turn open, it is the turn's status.
+    expect(
+      deriveChatStatus({
+        ...base,
+        turnLive: true,
+        sendAwaitingTurnStart: true,
+        activity: openTurn,
+      })?.label,
+    ).toBe('Working');
+  });
   test('does not report a cached active turn as Working when its observation failed', () => {
     const status = deriveChatStatus({
       ...base,

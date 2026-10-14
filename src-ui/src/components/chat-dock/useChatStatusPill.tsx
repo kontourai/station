@@ -99,6 +99,8 @@ export function useChatStatusPill({
     activity: activeSession.conversationActivity,
     activityHint: activeSession.activityHint,
     turnStartedAt: activeSession.openTurnStartedAt,
+    sendAwaitingTurnStart: activeSession.sendAwaitingTurnStart,
+    stationHasSend: activeSession.pendingSendStationHasIt,
   };
   useEffect(() => {
     if (enabled) void loadChatStatusPillView().catch(() => undefined);

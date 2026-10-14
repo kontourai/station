@@ -553,13 +553,16 @@ export function drainQueuedMessageOnTurnCompleted(
       return;
     }
 
-    const outgoing = buildOutgoingUserMessage(current.messages, nextMessage);
-    const clientId = nextMetadata?.id ?? outgoing.clientId;
-    const messages = outgoing.messages.map((message) =>
-      message.clientId === outgoing.clientId
-        ? { ...message, clientId }
-        : message,
+    // The drained message's id is its send key, so its bubble and its
+    // turn's `turn.started` share one identity.
+    const outgoing = buildOutgoingUserMessage(
+      current.messages,
+      nextMessage,
+      undefined,
+      nextMetadata?.id,
     );
+    const clientId = outgoing.clientId;
+    const messages = outgoing.messages;
     activeChatsStore.updateChat(threadId, {
       status: 'sending',
       // #2309: this drain's dispatch is the optimistic window until the

@@ -13,6 +13,7 @@ export type ChatStatusKind =
   | 'restored'
   | 'resumed'
   | 'waiting'
+  | 'sending'
   | 'working';
 
 export interface ChatStatus {
@@ -47,6 +48,10 @@ export interface ChatStatusInput {
   activityHint?: ChatActivityHint;
   /** The witnessed turn start, for a server without an activity record. */
   turnStartedAt?: number;
+  /** This chat's own send is out and its turn has not started yet. */
+  sendAwaitingTurnStart?: boolean;
+  /** Station's delivery lookup said it has that send (`received`). */
+  stationHasSend?: boolean;
 }
 
 const STREAM_DETAIL =
@@ -140,6 +145,24 @@ export function deriveChatStatus(
       clockFrom,
       details: [],
       action: undefined,
+    };
+  }
+  // The chat's own send, before the agent has its turn: the message is on
+  // its way, not being worked on. Only while no turn is open on the server.
+  if (input.sendAwaitingTurnStart && !activity?.openTurn) {
+    return {
+      kind: 'sending',
+      tone: 'neutral',
+      glyph: 'working',
+      label: 'Sending',
+      details: input.stationHasSend
+        ? [
+            {
+              text: 'Station has your message and is starting the agent. It is safe to close the app.',
+            },
+          ]
+        : [],
+      action: input.stationHasSend ? 'details' : undefined,
     };
   }
   const details: ChatStatus['details'] = [];
