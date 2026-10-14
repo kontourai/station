@@ -8,6 +8,8 @@ export interface OutboundQueuedTurnProjection {
   createdAt: number;
   status: 'pending' | 'invoking' | 'accepted' | 'failed' | 'may-have-started';
   lastError?: string;
+  /** Station's newest delivery-lookup answer for this row's key. */
+  deliveryCheck?: OutboundDispatchTurn['deliveryCheck'];
 }
 
 export function projectOutboundQueueEntries(
@@ -15,6 +17,10 @@ export function projectOutboundQueueEntries(
 ): void {
   const groups = new Map<string, OutboundDispatchTurn[]>();
   for (const entry of entries) {
+    // A live send this renderer is still waiting on is already on screen as
+    // its own bubble, with the chat saying "Sending"; listing it here too
+    // would show the message twice and call the chat queued.
+    if (entry.liveInFlight) continue;
     const group = groups.get(entry.sessionId) ?? [];
     group.push(entry);
     groups.set(entry.sessionId, group);
@@ -38,6 +44,7 @@ export function projectOutboundQueueEntries(
         agentName: first.agentSlug,
         title: 'Queued message',
         conversationId: first.conversationId,
+        ...(first.projectSlug ? { projectSlug: first.projectSlug } : {}),
       });
     }
     activeChatsStore.updateChat(sessionId, {
@@ -51,6 +58,7 @@ export function projectOutboundQueueEntries(
           status,
           lastError,
           mergedTurns,
+          deliveryCheck,
         }) => ({
           clientTurnId,
           content,
@@ -59,6 +67,7 @@ export function projectOutboundQueueEntries(
           status,
           lastError,
           mergedTurns,
+          ...(deliveryCheck ? { deliveryCheck } : {}),
         }),
       ),
     });

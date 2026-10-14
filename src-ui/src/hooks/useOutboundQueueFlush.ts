@@ -23,6 +23,13 @@ import { useSendMessage } from './useActiveChatSessions';
 // drain passes; a `useRef` would only guard a SINGLE instance's re-renders,
 // not a second mounted instance.
 let flushing = false;
+/**
+ * Asking Station again about sends it reported `received` (an app closed
+ * while its session was starting). Doubles up to the lookup's ceiling; reset
+ * once nothing is waiting. Module-level for the same reason as `flushing`.
+ */
+let reconcileRetryTimer: ReturnType<typeof setTimeout> | undefined;
+let reconcileRetryDelayMs = 0;
 
 export function useOutboundQueueFlush(apiBase: string): void {
   const sendMessage = useSendMessage(apiBase);
@@ -36,8 +43,34 @@ export function useOutboundQueueFlush(apiBase: string): void {
   const triggerFlush = useCallback(() => {
     if (flushing) return;
     flushing = true;
-    void import('../lib/outboundQueue')
-      .then(async ({ outboundDispatch }) => {
+    void Promise.all([
+      import('../lib/outboundQueue'),
+      import('../lib/deliveryLookup'),
+    ])
+      .then(async ([{ outboundDispatch }, delivery]) => {
+        // Sends a closed or crashed app left `invoking`: ask Station what
+        // became of each key before anything is sent. Not-received rows
+        // become pending and go out below, with their original key.
+        const { received } = await outboundDispatch.reconcile(
+          delivery.lookupTurnDelivery(apiBase),
+        );
+        if (reconcileRetryTimer) clearTimeout(reconcileRetryTimer);
+        reconcileRetryTimer = undefined;
+        if (received > 0) {
+          reconcileRetryDelayMs = Math.min(
+            Math.max(
+              reconcileRetryDelayMs * 2,
+              delivery.IN_FLIGHT_FIRST_CHECK_MS,
+            ),
+            delivery.DELIVERY_CHECK_MAX_INTERVAL_MS,
+          );
+          reconcileRetryTimer = setTimeout(() => {
+            reconcileRetryTimer = undefined;
+            triggerFlushRef.current();
+          }, reconcileRetryDelayMs);
+        } else {
+          reconcileRetryDelayMs = 0;
+        }
         const blockedSessionIds = new Set(
           Object.entries(activeChatsStore.getSnapshot())
             .filter(([, chat]) => !conversationCanMutate(chat))
@@ -112,7 +145,9 @@ export function useOutboundQueueFlush(apiBase: string): void {
       .finally(() => {
         flushing = false;
       });
-  }, [sendMessage]);
+  }, [sendMessage, apiBase]);
+  const triggerFlushRef = useRef(triggerFlush);
+  triggerFlushRef.current = triggerFlush;
 
   useEffect(() => {
     let active = true;

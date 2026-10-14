@@ -2,6 +2,7 @@ import { EXECUTION_ENGINE_CHANGED_CODE } from '@kontourai/station-contracts/exec
 import type {
   InterruptTurnResult,
   OrchestrationSessionSummary,
+  TurnDeliveryOutcome,
 } from '@kontourai/station-contracts/orchestration';
 import {
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
@@ -41,6 +42,7 @@ import {
   observedEngine,
 } from '../lib/expectedEngine';
 import type {
+  LiveOutboundDispatch,
   OutboundDispatchClaim,
   OutboundDispatchTransportResult,
 } from '../lib/outboundQueue';
@@ -103,12 +105,31 @@ function prepareSendTransaction(options: {
   submittedDraft: string;
   modelInput: string;
   attachments?: FileAttachment[];
+  /** The send's idempotency key: the bubble's identity too. */
+  clientTurnId: string;
 }): SendTransaction {
   const originalMessages = options.state?.messages ?? [];
+  // A resend of the same key (a replay of a kept row, a Retry) is the same
+  // message: it keeps its one bubble instead of gaining a second.
+  if (
+    originalMessages.some(
+      (message) =>
+        message.role === 'user' && message.clientId === options.clientTurnId,
+    )
+  )
+    return {
+      submittedDraft: options.submittedDraft,
+      originalMessages,
+      optimisticMessages: originalMessages,
+      optimisticMessageClientId: options.clientTurnId,
+      attachments: options.attachments,
+      attachmentStages: options.state?.attachmentStages,
+    };
   const outgoing = buildOutgoingUserMessage(
     originalMessages,
     options.modelInput,
     options.attachments,
+    options.clientTurnId,
   );
   return {
     submittedDraft: options.submittedDraft,
@@ -229,6 +250,22 @@ async function observeSendAdmission<T>(
   }
 }
 
+/** Newest-first bound on a chat's remembered delivery answers. */
+const DELIVERY_CHECKS_MAX = 32;
+
+function withDeliveryCheck(
+  chat: ChatUIState | undefined,
+  clientTurnId: string,
+  outcome: TurnDeliveryOutcome,
+): Pick<ChatUIState, 'deliveryChecks'> {
+  const kept = Object.entries(chat?.deliveryChecks ?? {})
+    .filter(([key]) => key !== clientTurnId)
+    .slice(-(DELIVERY_CHECKS_MAX - 1));
+  return {
+    deliveryChecks: Object.fromEntries([...kept, [clientTurnId, outcome]]),
+  };
+}
+
 export function useSendMessage(
   apiBase: string,
   onActiveSessionChange?: (newSessionId: string) => void,
@@ -290,6 +327,13 @@ export function useSendMessage(
         queueOnBusy?: boolean;
         /** Form ownership observes admission without inferring delivery from the legacy return value. */
         onAdmission?: (status: SendAdmission) => void;
+        /**
+         * Called once this send's text is durable in the outbox, before its
+         * request is made: the composer's saved draft may be let go then.
+         * Not called when the send cannot be made durable (attachments, a
+         * visual skill, a replay, or storage unavailable).
+         */
+        onDurable?: () => void;
         /** Retire recovery actions whose originating submission was superseded. */
         claimRetry?: () => boolean;
         /** State-bound capability supplied only by OutboundDispatchModule. */
@@ -572,18 +616,22 @@ export function useSendMessage(
         }
       }
 
+      // archive#1207: reuse the id passed in by a Retry handler; mint a
+      // fresh one for every other call (first send, queued-message drain,
+      // "Continue" after tool-calls/length) since those are genuinely new
+      // turns, not a resend of this one. It is also the bubble's id, so the
+      // turn's `turn.started` (which carries it) matches this message.
+      const resolvedTurnId = turnId ?? randomCorrelationId();
       const transaction = prepareSendTransaction({
         state: currentState,
         submittedDraft,
         modelInput: content,
         attachments,
+        clientTurnId: resolvedTurnId,
       });
-
-      // archive#1207: reuse the id passed in by a Retry handler; mint a
-      // fresh one for every other call (first send, queued-message drain,
-      // "Continue" after tool-calls/length) since those are genuinely new
-      // turns, not a resend of this one.
-      const resolvedTurnId = turnId ?? randomCorrelationId();
+      // The conversation this send names; the delivery lookup asks by it.
+      const sentConversationId =
+        currentState?.conversationId ?? conversationId ?? sessionId;
 
       const abortController = new AbortController();
 
@@ -600,6 +648,70 @@ export function useSendMessage(
         attachments: [],
         attachmentStages: [],
       });
+
+      // Durable BEFORE the request: from here until Station answers, the
+      // text lives in the outbox as `invoking`, so closing the app cannot lose
+      // it, and a relaunch asks Station what became of this key instead of
+      // guessing. Text-only composer sends; a replay already has its row, and
+      // attachment bytes and visual skills are not kept there.
+      let live: LiveOutboundDispatch | undefined;
+      if (
+        !options?.dispatch &&
+        !sourceStart &&
+        !attachments?.length &&
+        !currentState?.attachmentStages?.length
+      ) {
+        try {
+          const { outboundDispatch } = await import('../lib/outboundQueue');
+          live = await outboundDispatch.beginLive({
+            clientTurnId: resolvedTurnId,
+            sessionId,
+            agentSlug,
+            executionAgentId: currentState?.executionAgentId,
+            executionOnCurrentStation: currentState?.executionOnCurrentStation,
+            expectedDefinitionFingerprint:
+              currentState?.expectedDefinitionFingerprint,
+            conversationId: sentConversationId,
+            projectSlug: currentState?.projectSlug,
+            content,
+            ambientContext,
+            requestedModel: currentState?.requestedModel,
+            requestedProviderOptions: currentState?.requestedProviderOptions,
+            model: currentState?.model,
+            providerOptions: currentState?.providerOptions,
+          });
+        } catch {
+          // Storage unavailable: send as before, and the composer keeps its
+          // saved draft until Station answers.
+          live = undefined;
+        }
+        if (live) {
+          try {
+            options?.onDurable?.();
+          } catch {
+            // An observer cannot undo the durable record.
+          }
+        }
+      }
+      // A slow answer: ask Station whether it has this send. Reports only.
+      const stopDeliveryWatch = options?.dispatch
+        ? undefined
+        : (await import('../lib/deliveryLookup')).watchInFlightDelivery({
+            apiBase,
+            conversationId: sentConversationId,
+            clientTurnId: resolvedTurnId,
+            onAnswer: (outcome) => {
+              updateChat(
+                sessionId,
+                withDeliveryCheck(
+                  activeChatsStore.getSnapshot()[sessionId],
+                  resolvedTurnId,
+                  outcome,
+                ),
+              );
+              void live?.observed(outcome);
+            },
+          });
 
       try {
         const { dispatchForeground } = await import(
@@ -655,8 +767,7 @@ export function useSendMessage(
             ? options.executionSnapshot.providerOptions
             : currentState?.providerOptions,
           message: content,
-          conversationId:
-            currentState?.conversationId ?? conversationId ?? sessionId,
+          conversationId: sentConversationId,
           attachments,
           attachmentStages: currentState?.attachmentStages,
           ambientContext,
@@ -674,6 +785,17 @@ export function useSendMessage(
             : undefined,
         });
 
+        stopDeliveryWatch?.();
+        // Station answered with the turn: the transcript holds it now.
+        await live?.accepted();
+        updateChat(
+          sessionId,
+          withDeliveryCheck(
+            activeChatsStore.getSnapshot()[sessionId],
+            resolvedTurnId,
+            'started',
+          ),
+        );
         if (sourceStart) invalidate(['skills', 'experiences', 'session']);
         if (currentState?.conversationId !== receipt.conversationId) {
           assignConversationId(sessionId, receipt.conversationId);
@@ -752,6 +874,34 @@ export function useSendMessage(
             } satisfies OutboundDispatchTransportResult)
           : true;
       } catch (error) {
+        stopDeliveryWatch?.();
+        // The outbox row follows what the answer proves. Any response is
+        // Station's own answer and Station keeps its own record of it: a
+        // refusal started nothing (the composer gets the text back below),
+        // and a may-have-started answer is said in the chat and held by
+        // Station's session record, so the row is let go either way (a kept
+        // possible-effect row would block this chat's later queued sends).
+        // No response: kept for replay with the same key (the queue notice
+        // below). No response and not a transport failure: kept as
+        // evidence, never resent.
+        if (live) {
+          const answered =
+            typeof (error as { status?: unknown })?.status === 'number';
+          const undeliverable =
+            !answered &&
+            (await import('../lib/outboundQueue')
+              .then((queue) => queue.classifyUndeliverableSend(error))
+              .catch(() => null));
+          const userStopped =
+            (abortController as UserCancelableAbortController)._userInitiated &&
+            abortController.signal.aborted;
+          if (answered || userStopped) await live.refused();
+          else if (undeliverable) await live.undeliverable(error);
+          else
+            await live.indeterminate(
+              error instanceof Error ? error.message : 'no answer',
+            );
+        }
         if (sourceStart) {
           const latest = activeChatsStore.getSnapshot()[sessionId];
           const rollback = rejectedSendRollback(transaction, latest);
@@ -907,28 +1057,30 @@ export function useSendMessage(
         if (undeliverableCause && !options?.dispatch) {
           try {
             const { outboundDispatch } = await import('../lib/outboundQueue');
-            await outboundDispatch.enqueue(
-              {
-                clientTurnId: resolvedTurnId,
-                sessionId,
-                agentSlug,
-                executionAgentId: currentState?.executionAgentId,
-                executionOnCurrentStation:
-                  currentState?.executionOnCurrentStation,
-                expectedDefinitionFingerprint:
-                  currentState?.expectedDefinitionFingerprint,
-                conversationId: latestState?.conversationId ?? conversationId,
-                content,
-                attachments,
-                ambientContext,
-                requestedModel: currentState?.requestedModel,
-                requestedProviderOptions:
-                  currentState?.requestedProviderOptions,
-                model: currentState?.model,
-                providerOptions: currentState?.providerOptions,
-              },
-              error,
-            );
+            // A live send's own row already went back to pending above.
+            if (!live)
+              await outboundDispatch.enqueue(
+                {
+                  clientTurnId: resolvedTurnId,
+                  sessionId,
+                  agentSlug,
+                  executionAgentId: currentState?.executionAgentId,
+                  executionOnCurrentStation:
+                    currentState?.executionOnCurrentStation,
+                  expectedDefinitionFingerprint:
+                    currentState?.expectedDefinitionFingerprint,
+                  conversationId: latestState?.conversationId ?? conversationId,
+                  content,
+                  attachments,
+                  ambientContext,
+                  requestedModel: currentState?.requestedModel,
+                  requestedProviderOptions:
+                    currentState?.requestedProviderOptions,
+                  model: currentState?.model,
+                  providerOptions: currentState?.providerOptions,
+                },
+                error,
+              );
           } catch (queueError) {
             clearStreamingMessage(sessionId);
             updateChat(sessionId, {

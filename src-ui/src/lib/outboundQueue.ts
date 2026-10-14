@@ -15,6 +15,10 @@
  * second terminal mutation.
  */
 
+import type {
+  TurnDeliveryInspection,
+  TurnDeliveryOutcome,
+} from '@kontourai/station-contracts/orchestration';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { createStore, get, set, update } from 'idb-keyval';
 import type { FileAttachment } from '../types';
@@ -34,6 +38,11 @@ export interface QueuedOutboundTurn {
   executionOnCurrentStation?: boolean;
   expectedDefinitionFingerprint?: string;
   conversationId?: string;
+  /**
+   * The Project the chat was sending in, so a chat restored from this row
+   * alone (its tab's state lost with the app) sends to the same place.
+   */
+  projectSlug?: string;
   content: string;
   attachments?: FileAttachment[];
   ambientContext?: string;
@@ -51,6 +60,18 @@ export interface QueuedOutboundTurn {
   claimedAt?: number;
   /** Provider turn identity, only when the transport can prove it. */
   providerTurnId?: string;
+  /**
+   * `live`: a send the user made from the composer while Station looked
+   * reachable, recorded `invoking` BEFORE its request so the text survives the
+   * app closing mid-send. Rows without it entered as offline intents.
+   */
+  origin?: 'live';
+  /**
+   * The newest answer Station's delivery lookup gave for this row's key. An
+   * observation, kept with the row so a restarted app can say what it last
+   * learned; never a reason to send by itself.
+   */
+  deliveryCheck?: { outcome: TurnDeliveryOutcome; checkedAt: number };
   /**
    * The original pending rows collapsed into this opt-in text merge. Keeping
    * their complete pre-send records makes the merge reversible until this row
@@ -76,7 +97,13 @@ export {
 export type OutboundDispatchTurn = Omit<
   QueuedOutboundTurn,
   'dispatchBootId' | 'claimedAt'
->;
+> & {
+  /**
+   * A live send this renderer is still waiting on. Its message is already on
+   * screen as the optimistic bubble, so a projection must not list it again.
+   */
+  liveInFlight?: true;
+};
 
 export interface OutboundDispatchIntent
   extends Omit<
@@ -159,6 +186,32 @@ export interface OutboundDispatchModule {
     providerTurnId: string,
   ): Promise<void>;
   discard(clientTurnId: string): Promise<void>;
+  /**
+   * Records a live send `invoking` before its request is made, so its text is
+   * durable while it is in flight. Rejects when storage is unavailable; the
+   * caller then sends without the durability (and keeps the draft).
+   */
+  beginLive(intent: OutboundDispatchIntent): Promise<LiveOutboundDispatch>;
+  /**
+   * Settles `invoking` rows whose renderer is gone (the app was closed or
+   * crashed mid-send) by asking Station what became of each key:
+   * `not-received` → pending (sent again with the SAME key), `started` →
+   * removed (delivered), `received` → left to ask again later,
+   * `indeterminate`/`expired` → may-have-started (never resent). A lookup
+   * that fails leaves the row as it is. Returns how many rows Station still
+   * reports as received, so the caller can ask again with backoff.
+   */
+  reconcile(lookup: OutboundDeliveryLookup): Promise<{ received: number }>;
+  /**
+   * The user's explicit check of one unconfirmed or orphaned row. Like
+   * {@link reconcile}, except `not-received` on a row that may have started
+   * becomes `failed` (not sent; the user retries it with the same key)
+   * instead of being resent automatically.
+   */
+  check(
+    clientTurnId: string,
+    lookup: OutboundDeliveryLookup,
+  ): Promise<TurnDeliveryOutcome | undefined>;
   edit(clientTurnId: string, content: string): Promise<OutboundDispatchTurn>;
   reorder(
     clientTurnId: string,
@@ -171,6 +224,34 @@ export interface OutboundDispatchModule {
   unmerge(clientTurnId: string): Promise<void>;
   retry(clientTurnId: string): Promise<void>;
 }
+
+/** Station's delivery lookup for one row (`getTurnDelivery`). */
+export type OutboundDeliveryLookup = (
+  turn: Readonly<OutboundDispatchTurn>,
+) => Promise<TurnDeliveryInspection>;
+
+/** The live send's hold on its own row; see `beginLive`. */
+export interface LiveOutboundDispatch {
+  readonly clientTurnId: string;
+  /** Station answered with the turn: the transcript holds it now. */
+  accepted(): Promise<void>;
+  /** Station refused it before anything ran; the composer has the text back. */
+  refused(): Promise<void>;
+  /** No answer came back: keep it for replay with the same key. */
+  undeliverable(error: unknown): Promise<void>;
+  /** It may have reached the agent: keep it as evidence, never resend. */
+  indeterminate(reason: string): Promise<void>;
+  /** Records a lookup answer observed while the request is still out. */
+  observed(outcome: TurnDeliveryOutcome): Promise<void>;
+}
+
+/**
+ * How long another renderer's `invoking` row is presumed alive when the
+ * platform cannot report renderer liveness (no Web Locks). A Station request
+ * outlives this only during an unusually long session start, and the lookup
+ * then answers `received`, which leaves the row alone.
+ */
+export const OUTBOUND_ORPHAN_GRACE_MS = 2 * 60 * 1000;
 
 /** Oldest-first ordinary-cache ceiling. Protected evidence is never evicted. */
 export const OUTBOUND_QUEUE_MAX_ENTRIES = 50;
@@ -356,6 +437,8 @@ let mutationTail: Promise<void> = Promise.resolve();
 const listeners = new Set<() => void>();
 /** A same-renderer safety net when a post-effect IndexedDB transition fails. */
 const unavailableClaims = new Set<string>();
+/** Live sends this renderer is still waiting on (see `liveInFlight`). */
+const liveOwned = new Set<string>();
 
 function queueState(stored: unknown): OutboundQueueState {
   if (stored === undefined || stored === null) {
@@ -534,7 +617,11 @@ function publicTurn(entry: QueuedOutboundTurn): OutboundDispatchTurn {
     claimedAt: _claimedAt,
     ...turn
   } = entry;
-  return Object.freeze(turn);
+  return Object.freeze(
+    liveOwned.has(entry.clientTurnId)
+      ? { ...turn, liveInFlight: true as const }
+      : turn,
+  );
 }
 
 function mergedContent(entries: readonly QueuedOutboundTurn[]): string {
@@ -649,6 +736,19 @@ async function withQueueLock<T>(operation: () => Promise<T>): Promise<T> {
 async function rendererBootId(): Promise<string> {
   const { rendererBootId } = await import('./outboundQueueLease');
   return rendererBootId;
+}
+
+/** Called before this renderer writes any `invoking` row it then owns. */
+async function holdRendererLiveness(): Promise<void> {
+  const { ensureRendererLiveness } = await import('./outboundQueueLease');
+  await ensureRendererLiveness();
+}
+
+async function ownerLiveness(
+  bootId: string | undefined,
+): Promise<boolean | undefined> {
+  const { rendererLiveness } = await import('./outboundQueueLease');
+  return rendererLiveness(bootId);
 }
 
 function serialize<T>(operation: () => Promise<T>): Promise<T> {
@@ -981,6 +1081,7 @@ async function claimNext(
   blockedSessions: ReadonlySet<string>,
 ): Promise<QueuedOutboundTurn | undefined> {
   const bootId = await rendererBootId();
+  await holdRendererLiveness();
   const claimedAt = Date.now();
   return mutate((entries) => {
     const candidate = entries.find(
@@ -1406,6 +1507,254 @@ async function reconcileAcceptedTerminals(): Promise<void> {
   });
 }
 
+/**
+ * Room for one more row, evicting the oldest ordinary drafts as `enqueue`
+ * does; fenced evidence is never a victim.
+ */
+function admitOne(entries: QueuedOutboundTurn[]): QueuedOutboundTurn[] {
+  const requiredEvictions = Math.max(
+    0,
+    entries.length - OUTBOUND_QUEUE_MAX_ENTRIES + 1,
+  );
+  const evicted = new Set(
+    entries
+      .filter(
+        (entry) => entry.status === 'pending' || entry.status === 'failed',
+      )
+      .sort((a, b) => a.createdAt - b.createdAt)
+      .slice(0, requiredEvictions)
+      .map((entry) => entry.clientTurnId),
+  );
+  if (evicted.size !== requiredEvictions)
+    throw new OutboundDispatchCapacityError();
+  return entries.filter((entry) => !evicted.has(entry.clientTurnId));
+}
+
+async function beginLive(
+  intent: OutboundDispatchIntent,
+): Promise<LiveOutboundDispatch> {
+  const { providerTurnId: _ignoredProviderTurnId, ...safeIntent } =
+    intent as OutboundDispatchIntent & { providerTurnId?: unknown };
+  const bootId = await rendererBootId();
+  await holdRendererLiveness();
+  const claimedAt = Date.now();
+  const clientTurnId = safeIntent.clientTurnId;
+  // Before the write: the write notifies observers, and a projection must
+  // never list this send a second time beside its own bubble.
+  liveOwned.add(clientTurnId);
+  let claimed: QueuedOutboundTurn;
+  try {
+    claimed = await mutate((entries) => {
+      const existing = entries.find(
+        (entry) => entry.clientTurnId === clientTurnId,
+      );
+      if (existing && protectedEvidence(existing))
+        throw new Error('This message is already on its way.');
+      const next: QueuedOutboundTurn = {
+        ...safeIntent,
+        createdAt: existing?.createdAt ?? safeIntent.createdAt ?? claimedAt,
+        attempts: (existing?.attempts ?? 0) + 1,
+        status: 'invoking',
+        origin: 'live',
+        dispatchBootId: bootId,
+        claimedAt,
+        lastAttemptAt: claimedAt,
+      };
+      const retained = existing
+        ? entries.filter((entry) => entry !== existing)
+        : admitOne(entries);
+      return { entries: [...retained, next], result: next, changed: true };
+    });
+  } catch (error) {
+    liveOwned.delete(clientTurnId);
+    throw error;
+  }
+  const transition = async (
+    change: (entry: QueuedOutboundTurn) => QueuedOutboundTurn | undefined,
+  ): Promise<void> => {
+    try {
+      await mutate((entries) => {
+        const index = entries.findIndex((entry) => exact(entry, claimed));
+        if (index === -1) return { entries, result: undefined, changed: false };
+        const next = change(entries[index]!);
+        const replaced = [...entries];
+        if (next) replaced[index] = next;
+        else replaced.splice(index, 1);
+        return { entries: replaced, result: undefined, changed: true };
+      });
+    } catch {
+      // Best effort: a row left `invoking` is reconciled by the delivery
+      // lookup after this renderer is gone, never replayed blindly.
+    }
+  };
+  return {
+    clientTurnId,
+    accepted: async () => {
+      await transition(() => undefined);
+      liveOwned.delete(clientTurnId);
+    },
+    refused: async () => {
+      await transition(() => undefined);
+      liveOwned.delete(clientTurnId);
+    },
+    undeliverable: async (error) => {
+      liveOwned.delete(clientTurnId);
+      await transition((entry) => ({
+        ...entry,
+        status: 'pending',
+        lastError: error instanceof Error ? error.message : undefined,
+        dispatchBootId: undefined,
+        claimedAt: undefined,
+      }));
+    },
+    indeterminate: async (reason) => {
+      // Still this renderer's: the chat already says so, and the row is only
+      // listed once this renderer is gone.
+      await transition((entry) => ({
+        ...entry,
+        status: 'may-have-started',
+        lastError: `Dispatch may have started: ${reason}`,
+        dispatchBootId: undefined,
+        claimedAt: undefined,
+      }));
+    },
+    observed: async (outcome) => {
+      await transition((entry) => ({
+        ...entry,
+        deliveryCheck: { outcome, checkedAt: Date.now() },
+      }));
+    },
+  };
+}
+
+const NOT_RECEIVED_RESEND =
+  'Station had not received this message; it is being sent again.';
+const NOT_RECEIVED_STOPPED =
+  'Station never received this message. Send it again when you are ready.';
+const POSSIBLE_EFFECT =
+  'Dispatch may have started: Station cannot confirm whether this message reached the agent. It was not sent again.';
+
+/**
+ * Applies one lookup answer to the row exactly as it was observed (same
+ * status and claim), so a row another tab moved meanwhile is left alone.
+ */
+async function applyDeliveryAnswer(
+  observed: QueuedOutboundTurn,
+  outcome: TurnDeliveryOutcome,
+  notReceived: 'resend' | 'stop',
+): Promise<void> {
+  await mutate((entries) => {
+    const index = entries.findIndex(
+      (entry) =>
+        entry.clientTurnId === observed.clientTurnId &&
+        entry.status === observed.status &&
+        entry.dispatchBootId === observed.dispatchBootId &&
+        entry.claimedAt === observed.claimedAt,
+    );
+    if (index === -1) return { entries, result: undefined, changed: false };
+    const entry = entries[index]!;
+    const deliveryCheck = { outcome, checkedAt: Date.now() };
+    const released = {
+      ...entry,
+      deliveryCheck,
+      dispatchBootId: undefined,
+      claimedAt: undefined,
+    };
+    let next: QueuedOutboundTurn | undefined;
+    switch (outcome) {
+      case 'started':
+        next = undefined;
+        break;
+      case 'received':
+        next = { ...entry, deliveryCheck };
+        break;
+      case 'indeterminate':
+      case 'expired':
+        next = {
+          ...released,
+          status: 'may-have-started',
+          lastError: POSSIBLE_EFFECT,
+        };
+        break;
+      case 'not-received':
+        next =
+          notReceived === 'resend'
+            ? { ...released, status: 'pending', lastError: NOT_RECEIVED_RESEND }
+            : {
+                ...released,
+                status: 'failed',
+                lastError: NOT_RECEIVED_STOPPED,
+              };
+        break;
+    }
+    const replaced = [...entries];
+    if (next) replaced[index] = next;
+    else replaced.splice(index, 1);
+    unavailableClaims.delete(entry.clientTurnId);
+    return { entries: replaced, result: undefined, changed: true };
+  });
+}
+
+async function askStation(
+  row: QueuedOutboundTurn,
+  lookup: OutboundDeliveryLookup,
+): Promise<TurnDeliveryOutcome | undefined> {
+  try {
+    const answer = await lookup(publicTurn(row));
+    // The answer must be about this exact key, never a near match.
+    return answer.clientTurnId === row.clientTurnId
+      ? answer.outcome
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function reconcile(
+  lookup: OutboundDeliveryLookup,
+): Promise<{ received: number }> {
+  const now = Date.now();
+  let received = 0;
+  for (const row of await readStored()) {
+    if (row.status !== 'invoking' || liveOwned.has(row.clientTurnId)) continue;
+    const live = await ownerLiveness(row.dispatchBootId);
+    if (live === true) continue;
+    if (
+      live === undefined &&
+      now - (row.claimedAt ?? row.lastAttemptAt ?? row.createdAt) <
+        OUTBOUND_ORPHAN_GRACE_MS
+    )
+      continue;
+    const outcome = await askStation(row, lookup);
+    if (!outcome) continue;
+    await applyDeliveryAnswer(row, outcome, 'resend');
+    if (outcome === 'received') received += 1;
+  }
+  return { received };
+}
+
+async function check(
+  clientTurnId: string,
+  lookup: OutboundDeliveryLookup,
+): Promise<TurnDeliveryOutcome | undefined> {
+  const row = (await readStored()).find(
+    (entry) => entry.clientTurnId === clientTurnId,
+  );
+  if (!row || liveOwned.has(clientTurnId)) return undefined;
+  if (row.status !== 'may-have-started' && row.status !== 'invoking')
+    return undefined;
+  if (row.status === 'invoking' && (await ownerLiveness(row.dispatchBootId)))
+    return undefined;
+  const outcome = await askStation(row, lookup);
+  if (!outcome) return undefined;
+  await applyDeliveryAnswer(
+    row,
+    outcome,
+    row.status === 'invoking' ? 'resend' : 'stop',
+  );
+  return outcome;
+}
+
 export const outboundDispatch: OutboundDispatchModule = {
   enqueue,
   open: async () => {
@@ -1425,6 +1774,9 @@ export const outboundDispatch: OutboundDispatchModule = {
   flush,
   completeAcceptedTurn,
   discard,
+  beginLive,
+  reconcile,
+  check,
   edit,
   reorder,
   merge,
@@ -1437,6 +1789,7 @@ export function _setOutboundQueueStorage(next: OutboundQueueStorage): void {
   storage = next;
   mutationTail = Promise.resolve();
   unavailableClaims.clear();
+  liveOwned.clear();
 }
 
 /** Test-only: drop the cross-tab channel so one test's stub cannot outlive it. */
@@ -1450,4 +1803,5 @@ export function _resetOutboundQueueStorage(): void {
   storage = createIdbOutboundQueueStorage();
   mutationTail = Promise.resolve();
   unavailableClaims.clear();
+  liveOwned.clear();
 }

@@ -294,7 +294,8 @@ describe('useChatInput send-failure toast visibility (station#1294 review SHOULD
       [],
       undefined,
       undefined,
-      undefined,
+      // The composer always offers the durable-handoff callback.
+      { onDurable: expect.any(Function) },
     );
   });
 
@@ -550,7 +551,8 @@ describe('useChatInput send-failure toast visibility (station#1294 review SHOULD
       [attachment],
       undefined,
       undefined,
-      undefined,
+      // The composer always offers the durable-handoff callback.
+      { onDurable: expect.any(Function) },
     );
     expect(chatDraftsStore.get(SESSION_ID)).toBe('same text');
     expect(activeChatsStore.getSnapshot()[SESSION_ID].input).toBe('same text');

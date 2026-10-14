@@ -12,6 +12,12 @@ import {
 } from '../lib/outboundQueue';
 
 const sendMessage = vi.fn();
+const getTurnDelivery = vi.fn();
+
+vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
+  getTurnDelivery: (...args: unknown[]) => getTurnDelivery(...args),
+}));
 
 vi.mock('@kontourai/station-connect', () => ({
   useConnectionStatus: () => ({ status: 'connected' }),
@@ -98,6 +104,84 @@ describe('useOutboundQueueFlush', () => {
         model: 'model-x-resolved',
         providerOptions: { effort: 'high', fastMode: true },
       },
+    });
+  });
+
+  describe('a send the app was closed during', () => {
+    function orphanedLiveRow() {
+      let stored: unknown = {
+        version: 2,
+        terminalEvidence: [],
+        completedTerminals: [],
+        turns: [
+          {
+            clientTurnId: 'key-orphan',
+            sessionId: 'session-1',
+            conversationId: 'session-1',
+            agentSlug: 'codex',
+            content: 'sent as the app closed',
+            createdAt: Date.now() - 10 * 60_000,
+            attempts: 1,
+            status: 'invoking',
+            origin: 'live',
+            // A renderer that no longer exists; this platform has no Web
+            // Locks, so the row's age decides it is abandoned.
+            dispatchBootId: 'renderer-that-was-killed',
+            claimedAt: Date.now() - 10 * 60_000,
+          },
+        ],
+      };
+      _setOutboundQueueStorage({
+        getItem: async () => stored,
+        setItem: async (_key, value) => {
+          stored = value;
+        },
+        updateItem: async (_key, updater) => {
+          stored = updater(stored);
+        },
+      });
+    }
+
+    it('Station never received it: sent again on launch with the same key, once', async () => {
+      orphanedLiveRow();
+      getTurnDelivery.mockImplementation(
+        async (_apiBase, conversationId, clientTurnId) => ({
+          outcome: 'not-received',
+          conversationId,
+          clientTurnId,
+        }),
+      );
+      sendMessage.mockResolvedValue({
+        kind: 'accepted',
+        providerTurnId: 'provider-turn-orphan',
+      });
+      renderHook(() => useOutboundQueueFlush('http://api.test'));
+      await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+      expect(getTurnDelivery).toHaveBeenCalledWith(
+        'http://api.test',
+        'session-1',
+        'key-orphan',
+      );
+      expect(sendMessage.mock.calls[0]?.[6]).toBe('key-orphan');
+      expect(sendMessage.mock.calls[0]?.[3]).toBe('sent as the app closed');
+    });
+
+    it('Station started it: delivered, nothing is sent', async () => {
+      orphanedLiveRow();
+      getTurnDelivery.mockImplementation(
+        async (_apiBase, conversationId, clientTurnId) => ({
+          outcome: 'started',
+          conversationId,
+          clientTurnId,
+          sessionId: 'session-1',
+          turnId: 'provider-turn-orphan',
+        }),
+      );
+      renderHook(() => useOutboundQueueFlush('http://api.test'));
+      await waitFor(async () =>
+        expect(await outboundDispatch.snapshot()).toEqual([]),
+      );
+      expect(sendMessage).not.toHaveBeenCalled();
     });
   });
 });
