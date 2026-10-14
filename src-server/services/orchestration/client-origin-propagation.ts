@@ -62,10 +62,22 @@ interface TurnAttribution {
 
 function hasAttribution(attribution: TurnAttribution): boolean {
   return (
+    reservesTurn(attribution) || attribution.clientTurnId !== undefined
+  );
+}
+
+/**
+ * Whether a send holds its turn's early `turn.started` back for attribution.
+ * A send key alone does not: keyed internal sends (scheduled jobs, channel
+ * relays) keep their events flowing exactly as before, and their key is
+ * stamped only when the start arrives after acceptance. User sends always
+ * carry an origin or principal, so theirs is held and stamped.
+ */
+function reservesTurn(attribution: TurnAttribution): boolean {
+  return (
     attribution.clientOrigin !== undefined ||
     attribution.principal !== undefined ||
-    attribution.experience !== undefined ||
-    attribution.clientTurnId !== undefined
+    attribution.experience !== undefined
   );
 }
 
@@ -105,7 +117,7 @@ export class ClientOriginTurnPropagation {
       experience,
       clientTurnId,
     };
-    if (!hasAttribution(attribution) || this.#inFlight.has(threadId)) {
+    if (!reservesTurn(attribution) || this.#inFlight.has(threadId)) {
       return false;
     }
     if (this.#inFlight.size >= ClientOriginTurnPropagation.MAX_PENDING)
@@ -199,8 +211,21 @@ export class ClientOriginTurnPropagation {
     this.#early.delete(key);
   }
 
-  cancel(threadId: string): void {
+  /**
+   * The send failed before its acceptance. Any start it held back is still a
+   * start the engine reported, so it is handed back to be published (without
+   * attribution) instead of being kept here forever.
+   */
+  cancel(threadId: string): CanonicalRuntimeEvent[] {
     this.#inFlight.delete(threadId);
+    const released: CanonicalRuntimeEvent[] = [];
+    const prefix = `${threadId.length}:${threadId}:`;
+    for (const [key, event] of this.#early) {
+      if (!key.startsWith(prefix)) continue;
+      this.#early.delete(key);
+      released.push(event);
+    }
+    return released;
   }
 
   #attribute(

@@ -7598,7 +7598,10 @@ export class OrchestrationService {
                         return accepted;
                       } catch (error) {
                         if (!providerAccepted) {
-                          this.clientOriginTurns.cancel(turnInput.threadId);
+                          for (const held of this.clientOriginTurns.cancel(
+                            turnInput.threadId,
+                          ))
+                            this.projectAndPublishEvent(held);
                           if (
                             (nativeOutputRelay ||
                               internal?.nativeMemoryReadAuthority) &&
@@ -8254,7 +8257,10 @@ export class OrchestrationService {
                 // Release transient attribution on a failed acknowledgement.
                 // The durable steer claim stays held because engine acceptance
                 // cannot be ruled out.
-                this.clientOriginTurns.cancel(command.threadId);
+                for (const held of this.clientOriginTurns.cancel(
+                  command.threadId,
+                ))
+                  this.projectAndPublishEvent(held);
                 throw steerError;
               }
               const earlySteerOriginEvent = this.clientOriginTurns.settle(

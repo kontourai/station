@@ -44,17 +44,39 @@ describe('client origin propagation', () => {
       createdAt: '2026-10-13T00:00:00.000Z',
       method: 'turn.started' as const,
     };
-    // A keyed send with no other attribution still reserves its turn.
+    // A user send (it has an origin) holds its early start and stamps it.
     expect(
-      propagation.begin('thread-k', undefined, undefined, undefined, 'key-1'),
+      propagation.begin('thread-k', origin, undefined, undefined, 'key-1'),
     ).toBe(true);
     expect(
       propagation.apply({ ...base, eventId: 'e-1', turnId: 'turn-k1' }),
     ).toBeUndefined();
-    const settled = propagation.settle('thread-k', 'turn-k1', undefined);
+    const settled = propagation.settle('thread-k', 'turn-k1', origin);
     expect(settled?.method === 'turn.started' && settled.clientTurnId).toBe(
       'key-1',
     );
+    // A key alone holds nothing back (an internal keyed send's events keep
+    // flowing); a start arriving after acceptance is still stamped.
+    expect(
+      propagation.begin('thread-i', undefined, undefined, undefined, 'key-2'),
+    ).toBe(false);
+    expect(
+      propagation.settle(
+        'thread-i',
+        'turn-i1',
+        undefined,
+        undefined,
+        undefined,
+        'key-2',
+      ),
+    ).toBeUndefined();
+    const late = propagation.apply({
+      ...base,
+      threadId: 'thread-i',
+      eventId: 'e-3',
+      turnId: 'turn-i1',
+    });
+    expect(late?.method === 'turn.started' && late.clientTurnId).toBe('key-2');
     // No reservation: an adapter's own claim of a key is stripped.
     const forged = propagation.apply({
       ...base,
@@ -64,6 +86,22 @@ describe('client origin propagation', () => {
     });
     expect(forged).toBeDefined();
     expect(forged && 'clientTurnId' in forged).toBe(false);
+  });
+
+  it('a send that fails before acceptance hands back the start it held, instead of losing it', () => {
+    const propagation = new ClientOriginTurnPropagation();
+    propagation.begin('thread-c', origin);
+    const start = {
+      eventId: 'event-c',
+      provider: 'test',
+      threadId: 'thread-c',
+      createdAt: '2026-10-13T00:00:00.000Z',
+      method: 'turn.started' as const,
+      turnId: 'turn-c',
+    };
+    expect(propagation.apply(start)).toBeUndefined();
+    expect(propagation.cancel('thread-c')).toEqual([start]);
+    expect(propagation.cancel('thread-c')).toEqual([]);
   });
 
   it('#2324: passes a provider-triggered start straight through while a send holds a reservation', () => {
