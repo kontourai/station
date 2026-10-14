@@ -70,9 +70,33 @@
  *     is lost: `isRestoring` is a dependency, so the effect re-evaluates the
  *     moment it flips back to false, against whatever changed meanwhile.
  */
-import { useConnections } from '@kontourai/station-connect';
+import {
+  type ConnectionFailureReason,
+  classifyConnectionFailure,
+  useConnections,
+} from '@kontourai/station-connect';
 import { useIsRestoring, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
+
+/**
+ * Only a lost or regained credential changes whose data the cache holds. A
+ * transient reachability reason (timeout, unreachable, busy, …) says nothing
+ * about identity, and it flaps: the health probe records `timeout` when a
+ * slow Station misses its deadline and the next accepted request clears it.
+ * Keying the switch on those reasons turned every flap into two blanket
+ * `invalidateQueries()` calls, each refetching every mounted query against
+ * the Station that was already too slow to answer — the native request queue
+ * then filled with duplicate reads (64/64 waiting) and session history,
+ * status, and the inbox were refused. Queries that errored during a real
+ * outage are recovered by `useQueryCacheReconnectSync`, not by this key.
+ */
+function authorityFailureReason(
+  reason: ConnectionFailureReason | undefined,
+): string {
+  return reason && classifyConnectionFailure(reason) === 'terminal'
+    ? reason
+    : '';
+}
 
 /**
  * The connection-switch identity this hook invalidates on, read from the
@@ -100,7 +124,7 @@ export function useConnectionSwitchScope(): {
         activeConnection.credentialRef?.id ?? '',
         activeConnection.environmentId ?? '',
         activeConnection.credentialState,
-        activeConnection.lastError?.reason ?? '',
+        authorityFailureReason(activeConnection.lastError?.reason),
       ].join(':')
     : null;
   return {
