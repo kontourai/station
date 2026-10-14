@@ -51,9 +51,10 @@ describe('client origin propagation', () => {
     expect(
       propagation.apply({ ...base, eventId: 'e-1', turnId: 'turn-k1' }),
     ).toBeUndefined();
-    expect(
-      propagation.settle('thread-k', 'turn-k1', undefined)?.clientTurnId,
-    ).toBe('key-1');
+    const settled = propagation.settle('thread-k', 'turn-k1', undefined);
+    expect(settled?.method === 'turn.started' && settled.clientTurnId).toBe(
+      'key-1',
+    );
     // No reservation: an adapter's own claim of a key is stripped.
     const forged = propagation.apply({
       ...base,
