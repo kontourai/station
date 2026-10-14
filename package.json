@@ -197,6 +197,8 @@
     "build:cli": "npm run --workspace=packages/cli build",
     "station-dev:install": "node scripts/install-station-dev.mjs",
     "check:mobile-compile": "node scripts/check-mobile-compile.mjs",
+    "check:decisions": "node scripts/corpus-decisions.mjs check",
+    "gen:decisions-index": "node scripts/corpus-decisions.mjs index",
     "mobile:permissions:gate": "node scripts/check-mobile-permissions.mjs",
     "build": "npm run build:connect && npm run build:sdk && npm run build:basis-pane && npm run build:board-pane && npm run build:server && npm run build:ui",
     "test": "npm run test:prepush",

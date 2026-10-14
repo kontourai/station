@@ -18,6 +18,7 @@ export const LIVE_DOC_DIRECTORIES = [
   'docs/design',
   'docs/contexts',
   'docs/adr',
+  'docs/decisions',
 ];
 
 export const LIVE_DOC_PATTERNS = [

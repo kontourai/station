@@ -158,6 +158,7 @@ describe('live documentation discovery', () => {
     'docs/design',
     'docs/contexts',
     'docs/adr',
+    'docs/decisions',
   ];
   const expectedFiles = [
     'docs/architecture.md',
@@ -185,6 +186,7 @@ describe('live documentation discovery', () => {
     'docs/design/root.md',
     'docs/contexts/deeper/guide.md',
     'docs/adr/root.md',
+    'docs/decisions/root.md',
     ...expectedFiles,
   ];
   const nulOutput = (entries = validEntries) =>
