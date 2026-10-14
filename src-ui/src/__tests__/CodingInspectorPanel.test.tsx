@@ -174,6 +174,26 @@ describe('ReadinessInspectorContent — copyable setup command', () => {
     expect(note.textContent).toContain('.veritas/');
   });
 
+  // The bare npm name `veritas` is an unrelated third-party package, so the
+  // fallback the panel shows without a server command must be scoped too.
+  test('falls back to the scoped command when the server sends none', async () => {
+    const writeText = clipboardWrites();
+    state.readiness = {
+      data: { configured: false, reason: 'no-veritas-dir' },
+      isLoading: false,
+      error: null,
+    };
+    state.initReadinessResult = { outcome: 'no-cli' };
+    render(<ReadinessInspectorContent projectSlug="dev" />);
+
+    fireEvent.click(copyButton());
+
+    expect(writeText).toHaveBeenCalledWith(
+      'npx @kontourai/veritas@latest init --non-interactive',
+    );
+    await waitFor(() => expect(copyButton().textContent).toBe('Copied'));
+  });
+
   // ONE failure case here, not the primitive's matrix. Which clipboard states
   // resolve `false` (absent, no `writeText`, rejected, throwing) is
   // `copyToClipboard`'s own contract, pinned in
