@@ -583,10 +583,9 @@ localStorage.debug = 'app:transcript-layout'; // also prints each record
 location.reload();
 ```
 
-The **Developer tools** device setting (Settings, Developer tools) also turns
-it on. In a production build that setting records into the buffer without
-printing; a development build prints too, because it turns on the `app:*`
-logs by default ([logger](../../src-ui/src/utils/logger.ts)).
+Only that explicit namespace turns it on. The implicit `app:*` logging of a
+development build ([logger](../../src-ui/src/utils/logger.ts)) and the
+Developer tools setting do not.
 
 In the page console:
 
@@ -594,6 +593,7 @@ In the page console:
 __stationTranscriptTrace.dump();     // { capacity, total, dropped, records }
 __stationTranscriptTrace.clear();
 __stationTranscriptTrace.overlay(true); // live numbers in a corner; persists
+                                        // (removed when the tracer detaches)
 copy(JSON.stringify(__stationTranscriptTrace.dump())); // DevTools only
 ```
 
@@ -603,11 +603,16 @@ Its `kind` says what happened:
 
 | Kind | Meaning |
 | --- | --- |
-| `resize` | A row (`row:<key>`), the virtualizer spacer (`#virtualized-transcript-spacer`), the history controls, the scroller, or a sibling such as a loading skeleton changed height (`from` and `to`). |
+| `resize` | A row (`row:<role>#<hash>`), the virtualizer spacer (`#virtualized-transcript-spacer`), the history controls, the scroller, or a sibling such as a loading skeleton changed height (`from` and `to`). |
 | `scroll` | A scroll event, labelled `programmatic` when it lands on the transcript list's own last write, otherwise `reader`. The virtualizer's own scroll writes are not noted, so they read as `reader`. |
-| `layout-shift` | A Chromium layout-shift entry and the rows or elements it names as sources. |
+| `layout-shift` | A Chromium layout-shift entry and the rows or elements it names as sources. A chat switch does not record the browser's buffered entries twice. |
 | `rows`, `sibling` | Rows mounted or removed in the transcript, and elements added beside it in the chat body. |
 | `phase` | A named step: `pin-layout`, `pin-raf`, `content-repin`, `content-reanchor`, `clamp-repin`, `older-request`, `older-commit`, `scroll-to-bottom-*`, `virtualizer-*`, `dock-loading`, `lazy-chunk-resolved`, `markdown-renderer-resolved`, and `highlight-applied`. |
+
+Records name elements without user content. A row appears as its role and a
+one-way hash of its key, because a row key can embed message text. Other
+elements appear by test id, or by tag, classes and ARIA role; accessible
+labels, which can carry file names, are never read.
 
 The buffer keeps the newest 2,000 records; `dropped` counts every record it
 let go. Phase marks raised before the tracer attached (the dock's loading
@@ -629,9 +634,7 @@ To look at a phone layout against a running Station:
   in that console, reload, and use the commands above.
 - **iOS:** turn on Web Inspector on the device (Settings > Safari > Advanced),
   then use Safari's Develop menu on a Mac to inspect Safari (or the app's
-  WebView, in a build that marks it inspectable). Without a Mac, the
-  Developer tools setting still records, but reading the buffer needs a
-  console.
+  WebView, in a build that marks it inspectable).
 
 `tests/transcript-load-stability.spec.ts` is the automated version: a
 throttled 390 x 844 journey that holds the conversation-open read and the
