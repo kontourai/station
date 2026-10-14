@@ -1436,6 +1436,43 @@ export interface ConversationHandoffStatusProjection {
   nativeResumeIdentity?: import('./provider.js').NativeResumeIdentityStatus;
 }
 
+/**
+ * What Station knows about one foreground send, looked up by the idempotency
+ * key the sender minted (`clientTurnId`) inside the conversation it named.
+ * Read-only: the lookup never claims, releases or dispatches anything.
+ *
+ * - `not-received`: nothing on this Station holds the key for this caller —
+ *   no request carrying it is being handled, and no turn claim exists in any
+ *   Session of the conversation (or only one whose owner died before it began
+ *   invoking, which the next send of the same key reclaims). Sending again
+ *   with the SAME key is safe. Also the answer for a conversation the caller
+ *   may not read: the two are deliberately indistinguishable.
+ * - `received`: a request carrying the key is being handled now (the session
+ *   may still be starting), or a live owner holds its claim. Wait; do not send
+ *   again.
+ * - `started`: the engine accepted the turn. `turnId` is the provider turn and
+ *   `sessionId` the execution Session that holds it.
+ * - `indeterminate`: the owner died after it may have handed the turn to the
+ *   engine. Never send again; inspect the conversation.
+ * - `expired`: the turn was sent, and retention evicted its record. Never send
+ *   again.
+ */
+export type TurnDeliveryInspection =
+  | {
+      outcome: 'not-received' | 'received' | 'indeterminate' | 'expired';
+      conversationId: string;
+      clientTurnId: string;
+    }
+  | {
+      outcome: 'started';
+      conversationId: string;
+      clientTurnId: string;
+      sessionId: string;
+      turnId: string;
+    };
+
+export type TurnDeliveryOutcome = TurnDeliveryInspection['outcome'];
+
 /** Bounded agent-facing transcript rows; missing attribution stays unknown. */
 export interface ConversationReadMessage {
   index: number;

@@ -19,6 +19,7 @@ import {
   type ConversationHandoffStatusProjection,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
+  type TurnDeliveryInspection,
 } from '@kontourai/station-contracts/orchestration';
 import type {
   SkillExperienceInventoryV1,
@@ -403,6 +404,36 @@ export async function getConversationHandoffStatus(
       result,
       'Conversation handoff status is unavailable.',
     );
+  }
+  return result.data;
+}
+
+/**
+ * What Station knows about one foreground send, by the idempotency key it
+ * carried (`clientTurnId`) into `conversationId`. Read-only: it never sends,
+ * claims or releases anything, so a device can ask after losing its
+ * connection, or after a restart, whether resending the same key is safe.
+ * See `TurnDeliveryInspection` for each outcome. A Station without this
+ * lookup answers 404, which surfaces as a refusal, never as `not-received`.
+ */
+export async function getTurnDelivery(
+  apiBase: string,
+  conversationId: string,
+  clientTurnId: string,
+  opts?: ClientRequestOptions,
+): Promise<TurnDeliveryInspection> {
+  const response = await getJson(
+    `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/turn-deliveries/${encodeURIComponent(clientTurnId)}`,
+    opts,
+  );
+  const result = (await readExecutionBody(response)) as {
+    success?: boolean;
+    data?: TurnDeliveryInspection;
+    error?: string;
+    code?: string;
+  };
+  if (!response.ok || !result.success || !result.data) {
+    throw chatRefusal(response, result, 'Message delivery is unavailable.');
   }
   return result.data;
 }

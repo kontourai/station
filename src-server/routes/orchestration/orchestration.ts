@@ -37,6 +37,7 @@ import {
 import type {
   TerminalProcessDetail,
   TerminalProcessSummary,
+  TurnDeliveryInspection,
 } from '@kontourai/station-contracts/orchestration';
 import {
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
@@ -186,6 +187,10 @@ import {
   scopeDispatch,
   withCanonicalCwd,
 } from './dispatch-scope.js';
+import {
+  ForegroundDeliveryReceiptCapacityError,
+  ForegroundDeliveryReceipts,
+} from './foreground-delivery-receipts.js';
 
 // These are intentional public projections. The typed code/outcome and, when
 // available, the receipt/session below give callers evidence to observe; a
@@ -1802,6 +1807,9 @@ export function createOrchestrationRoutes(
 ): Hono {
   const app = new Hono();
   const presence = deps.presence ?? new OrchestrationStreamPresence();
+  // The keyed /chat requests this route is handling now: the `received`
+  // answer of the delivery lookup below.
+  const deliveryReceipts = new ForegroundDeliveryReceipts();
   const readAuthorityFor = (c: PrincipalResolutionContext) =>
     sessionReadAuthorityFromRequest(
       resolveActorPrincipal(deps, c).userId,
@@ -2044,6 +2052,7 @@ export function createOrchestrationRoutes(
       | { threadId: string; clientTurnId: string }
       | undefined;
     let releasePrincipal: PrincipalRef | undefined;
+    let releaseDeliveryReceipt: (() => void) | undefined;
     try {
       const {
         delegation: claimedDelegation,
@@ -2242,6 +2251,15 @@ export function createOrchestrationRoutes(
         ...(scoped.spawn ? { dispatchCwdAdmission: scoped.spawn } : {}),
         clientOrigin: resolveClientOriginForRequest(c.req.raw),
       } as ForegroundMessageRequest;
+      // Admitted: from here until the route answers, the delivery lookup says
+      // Station has this send (a cold session start can take a long time
+      // before the turn ledger holds anything).
+      if (body.conversationId && body.clientTurnId)
+        releaseDeliveryReceipt = deliveryReceipts.begin({
+          callerKey: mutationIdentity(c).ownerKey,
+          conversationId: body.conversationId,
+          clientTurnId: body.clientTurnId,
+        });
       const data = await deps.executeForegroundMessage(foregroundRequest);
       if (!isForegroundDispatchHandle(data)) {
         // The foreground Interface cannot honestly call this accepted without
@@ -2289,6 +2307,15 @@ export function createOrchestrationRoutes(
         fullAccessRefusalFor(c, error) ??
         dispatchCwdRefusalFor(c, error);
       if (refused) return refused;
+      if (error instanceof ForegroundDeliveryReceiptCapacityError)
+        return c.json(
+          {
+            success: false,
+            error: error.message,
+            code: 'foreground_delivery_capacity',
+          },
+          503,
+        );
       if (error instanceof ForegroundMessageIndeterminateError) {
         return c.json(
           {
@@ -2371,6 +2398,8 @@ export function createOrchestrationRoutes(
             ? 409
             : 400,
       );
+    } finally {
+      releaseDeliveryReceipt?.();
     }
   };
   app.post('/chat', validate(foregroundMessageSchema), handleForegroundMessage);
@@ -2495,6 +2524,53 @@ export function createOrchestrationRoutes(
           409,
         );
       }
+    },
+  );
+
+  /**
+   * Foreground delivery lookup (`TurnDeliveryInspection`): what this Station
+   * knows about the send that carried `clientTurnId` into the conversation.
+   * Read-only. A conversation the caller may not read answers `not-received`
+   * like a key nothing holds, never 404, so the lookup reveals nothing about
+   * other callers' conversations. Not on any Station Control tool's route
+   * table: it is a device's recovery read, not an agent capability.
+   */
+  app.get(
+    '/conversations/:conversationId/turn-deliveries/:clientTurnId',
+    (c) => {
+      const conversationId = param(c, 'conversationId');
+      const clientTurnId = param(c, 'clientTurnId');
+      // The same bounds the send schemas put on these ids.
+      if (
+        conversationId.length === 0 ||
+        conversationId.length > 512 ||
+        clientTurnId.length === 0 ||
+        clientTurnId.length > 200
+      )
+        return c.json(
+          { success: false, error: 'Invalid conversation or turn key' },
+          400,
+        );
+      const answer = (data: TurnDeliveryInspection) =>
+        c.json({ success: true, data });
+      const durable = orchestrationService.inspectTurnDelivery(
+        conversationId,
+        clientTurnId,
+        readAuthorityFor(c),
+      );
+      // A turn the ledger settled outranks the request still being answered.
+      if (durable && durable.outcome !== 'not-received')
+        return answer({ ...durable, conversationId, clientTurnId });
+      const inFlight = deliveryReceipts.has({
+        callerKey: mutationIdentity(c).ownerKey,
+        conversationId,
+        clientTurnId,
+      });
+      return answer({
+        outcome: inFlight ? 'received' : 'not-received',
+        conversationId,
+        clientTurnId,
+      });
     },
   );
 

@@ -7,6 +7,7 @@ import {
   type OwnerLiveness,
   ownerLivenessFromProbe,
   type ProcessIdentityProbe,
+  turnClaimIsReclaimable,
 } from '@kontourai/monument';
 import {
   exactProcessIdentity,
@@ -63,6 +64,15 @@ type TurnIdempotencyClaim =
       value?: undefined;
       indeterminate?: undefined;
     };
+
+/** {@link TurnIdempotencyStore.inspect}'s answer; see there. */
+export type TurnClaimInspection =
+  | { state: 'absent' }
+  | { state: 'resolved'; value: string }
+  | { state: 'in-flight' }
+  | { state: 'reclaimable' }
+  | { state: 'indeterminate' }
+  | { state: 'expired' };
 
 export class TurnIdempotencyStore {
   private readonly owner: OwnerIdentity;
@@ -165,6 +175,33 @@ export class TurnIdempotencyStore {
       },
       this.liveness,
     );
+  }
+  /**
+   * Read-only: what a claim of `key` would meet, decided by the same rules
+   * {@link claim} applies, without writing anything (no claim, no reclaim, no
+   * retention pass). `in-flight` is an unresolved claim whose owner is live or
+   * cannot be proven dead; `reclaimable` is one whose owner died before it
+   * began its effect, which the next claim of the key takes over.
+   */
+  inspect(key: string): TurnClaimInspection {
+    const result = this.persistence.execute(
+      { type: 'turnDedup.read', key },
+      this.liveness,
+    );
+    if (result.kind === 'absent') return { state: 'absent' };
+    if (result.kind === 'expired') return { state: 'expired' };
+    if (result.kind === 'refused')
+      throw new Error(
+        `Turn claim read refused by ${result.participant}: ${result.reason}`,
+      );
+    const record = result.record;
+    if (record.value !== null)
+      return { state: 'resolved', value: record.value };
+    if (record.owner && this.liveness(record.owner) === 'dead')
+      return turnClaimIsReclaimable(record)
+        ? { state: 'reclaimable' }
+        : { state: 'indeterminate' };
+    return { state: 'in-flight' };
   }
   read(key: string): string | undefined {
     const result = this.persistence.execute(

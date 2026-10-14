@@ -1,5 +1,6 @@
 import {
   awaitTurnResolution,
+  type TurnClaimInspection,
   type TurnIdempotencyStore,
 } from '../turn-idempotency.js';
 
@@ -54,6 +55,15 @@ export interface TurnDeduplicator {
     timeoutMs?: number;
     intervalMs?: number;
   }): Promise<string | undefined>;
+  /**
+   * Read-only: what {@link claim} would meet for this pair, without claiming,
+   * reclaiming or touching retention. For the delivery lookup a client uses
+   * to decide whether resending the same key is safe.
+   */
+  inspect(input: {
+    threadId: string;
+    clientTurnId: string;
+  }): TurnClaimInspection;
 }
 
 export function createTurnDeduplicator(options: {
@@ -113,6 +123,8 @@ export function createTurnDeduplicator(options: {
         },
       };
     },
+    inspect: ({ threadId, clientTurnId }) =>
+      options.store.inspect(options.keyFor(threadId, clientTurnId)),
     awaitResolution: ({ threadId, clientTurnId, timeoutMs, intervalMs }) =>
       awaitTurnResolution(
         options.store,
