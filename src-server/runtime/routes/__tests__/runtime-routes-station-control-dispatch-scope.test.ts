@@ -61,7 +61,7 @@ const support = vi.hoisted(() => ({
   /** The account member's actions in project-acct. */
   accountActions: ['view', 'discuss', 'edit', 'execute'] as string[],
   /** Projects with a working directory, for a folder's scope. */
-  projectDirs: [] as { id: string; slug: string; workingDirectory: string }[],
+  projectDirs: [] as { id: string; slug: string; workingDirectory?: string }[],
   /** The working directory each session recorded. */
   cwds: new Map<string, string>(),
   /** Each conversation's lineage, oldest first (reserved sessions too). */
@@ -1568,7 +1568,7 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
           [{ id: 'project-a', slug: 'project-b-slug', workingDirectory: root }],
         ],
       ] as const) {
-        support.projectDirs = projectDirs as typeof support.projectDirs;
+        support.projectDirs = [...projectDirs];
         for (const route of ['POST /chat', 'POST /delegations']) {
           const request = ROUTES[route]!({ kind: 'new' })!;
           // A caller that is not bound runs as sent: the global space.
