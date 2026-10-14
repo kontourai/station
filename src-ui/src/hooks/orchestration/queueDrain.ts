@@ -1,5 +1,8 @@
 import {
+  CLIENT_TURN_IN_FLIGHT_CODE,
   MUSE_TURN_SLOT_RELEASING_CODE,
+  PROVIDER_SESSION_START_FAILED_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
@@ -64,6 +67,16 @@ const RETRYABLE_REJECTION_CODES: ReadonlySet<string> = new Set([
   // #2324: a send that arrived while the engine was running a turn it opened
   // on its own. The same send succeeds once that turn ends.
   PROVIDER_TURN_IN_PROGRESS_CODE,
+  // A send that outwaited its session's engine start (an ACP reattach). The
+  // same send succeeds once the session is ready.
+  PROVIDER_SESSION_STARTING_CODE,
+  // A send whose session failed to start while it waited. Nothing was sent;
+  // it stays queued with the reason and Retry (no automatic re-send: the
+  // same failure would likely repeat).
+  PROVIDER_SESSION_START_FAILED_CODE,
+  // An earlier attempt of this same message still held its key or released
+  // it unsent. Re-sent with the same key.
+  CLIENT_TURN_IN_FLIGHT_CODE,
 ]);
 
 /**
@@ -161,10 +174,31 @@ const providerTurnRedrainTimers = new Map<
  * Station is not where this message was headed — and a newer schedule for
  * the same chat replaces an older one.
  */
-function scheduleProviderTurnRedrain(apiBase: string, threadId: string): void {
+function scheduleProviderTurnRedrain(
+  apiBase: string,
+  threadId: string,
+  code: string,
+): void {
   const attempts = providerTurnRedrainAttempts.get(threadId) ?? 0;
   if (attempts >= PROVIDER_TURN_REDRAIN_MAX_ATTEMPTS) {
     providerTurnRedrainAttempts.delete(threadId);
+    // Out of automatic retries: nothing else would send this message, so
+    // say so beside it and offer Retry rather than leaving it silently
+    // queued. The message itself stays at the head of the queue.
+    if (activeChatsStore.getSnapshot()[threadId]?.queuedMessages?.length) {
+      activeChatsStore.updateChat(threadId, {
+        queuedMessageFailure: {
+          message:
+            code === PROVIDER_SESSION_STARTING_CODE
+              ? 'The session is still starting. Your message is still queued; retry to send it.'
+              : code === CLIENT_TURN_IN_FLIGHT_CODE
+                ? 'An earlier attempt of this message has not finished. It is still queued; retry to send it.'
+                : 'The agent is still replying. Your message is still queued; retry to send it.',
+          code,
+          at: Date.now(),
+        },
+      });
+    }
     return;
   }
   providerTurnRedrainAttempts.set(threadId, attempts + 1);
@@ -679,8 +713,13 @@ export function drainQueuedMessageOnTurnCompleted(
         // turn is visibly open (it ended while this send was in flight, or
         // has not published its start yet) nothing else would drain it, so
         // the drain is retried after a short delay, a bounded number of
-        // times.
-        if (code === PROVIDER_TURN_IN_PROGRESS_CODE) {
+        // times. A send that outwaited its session's start (an ACP
+        // reattach) waits the same way.
+        if (
+          code === PROVIDER_TURN_IN_PROGRESS_CODE ||
+          code === PROVIDER_SESSION_STARTING_CODE ||
+          code === CLIENT_TURN_IN_FLIGHT_CODE
+        ) {
           activeChatsStore.updateChat(threadId, {
             status: 'idle',
             error: undefined,
@@ -694,7 +733,7 @@ export function drainQueuedMessageOnTurnCompleted(
               ? { messages: messagesAfterRollback }
               : {}),
           });
-          scheduleProviderTurnRedrain(apiBase, threadId);
+          scheduleProviderTurnRedrain(apiBase, threadId, code);
           return;
         }
         // A permanent Station-side refusal of a QUEUED follow-up is not an

@@ -2354,6 +2354,49 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     ]);
   });
 
+  it('a send refused because its session is still starting moves into the queue instead of failing', async () => {
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new CodedOrchestrationError(
+        400,
+        'The session is still starting. Nothing was sent; try again in a moment.',
+        'provider_session_starting',
+      ),
+    );
+    // A turn is open by the time the refusal lands, so the queue waits for
+    // its end rather than draining at once (the same shape as #2324 below).
+    activeChatsStore.updateChat(sessionId, {
+      conversationId: 'conversation-start',
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    const sent = act(async () => {
+      await result.current(sessionId, 'claude', sessionId, 'during start');
+    });
+    activeChatsStore.updateChat(sessionId, {
+      conversationActivity: {
+        conversationId: 'conversation-start',
+        asOfSequence: 9,
+        openTurn: {
+          turnId: 'turn:start',
+          threadId: sessionId,
+          startedAt: '2026-09-23T00:00:00.000Z',
+        },
+      },
+    });
+    await sent;
+
+    const chat = activeChatsStore.getSnapshot()[sessionId];
+    expect(chat.queuedMessages).toEqual(['during start']);
+    expect(chat.status).not.toBe('error');
+    expect(chat.error).toBeUndefined();
+    expect(chat.ephemeralMessages ?? []).toEqual([]);
+    expect(
+      chat.messages?.some(
+        (message) =>
+          message.role === 'user' && message.content === 'during start',
+      ),
+    ).toBe(false);
+  });
+
   it('#2324 (D4): a send refused because the engine began its own turn moves into the queue instead of failing', async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(
       new CodedOrchestrationError(
