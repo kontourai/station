@@ -195,6 +195,63 @@ function currentBinding(
   };
 }
 
+describe('withdrawing a held follow-up (#3568)', () => {
+  test('a reader of the conversation who did not send the message cannot withdraw it', async () => {
+    const cancel = vi.fn();
+    let caller = OWNER;
+    const app = new Hono();
+    app.route(
+      '/api/orchestration',
+      createOrchestrationRoutes(
+        // Everyone here may read the conversation.
+        { readSession: async () => ({ session: {} }) } as never,
+        {
+          eventBus: new EventBus(),
+          logger: { debug: vi.fn() },
+          getUserId: () => caller,
+          threadInbox: {
+            mustQueue: () => false,
+            submit: vi.fn(),
+            list: () => [],
+            deliveryOutcome: () => undefined,
+            entry: () => ({
+              conversationId: CONVERSATION,
+              clientTurnId: 'follow',
+              kind: 'follow-up',
+              state: 'queued',
+              message: 'then summarize',
+              createdAt: new Date(0).toISOString(),
+              updatedAt: new Date(0).toISOString(),
+              userId: OWNER,
+            }),
+            cancel: (...args: unknown[]) => {
+              cancel(...args);
+              return { kind: 'cancelled' } as never;
+            },
+          } as never,
+        },
+      ),
+    );
+    const withdraw = () =>
+      app.request(
+        `/api/orchestration/conversations/${encodeURIComponent(CONVERSATION)}/inbox/follow`,
+        { method: 'DELETE' },
+      );
+    caller = STRANGER;
+    expect((await withdraw()).status).toBe(404);
+    expect(cancel).not.toHaveBeenCalled();
+    caller = OWNER;
+    const own = await withdraw();
+    expect(own.status).toBe(200);
+    expect(cancel).toHaveBeenCalledWith(CONVERSATION, 'follow');
+    // The sender's id is not part of the answer.
+    expect(
+      ((await own.json()) as { data: { entry: Record<string, unknown> } }).data
+        .entry,
+    ).not.toHaveProperty('userId');
+  });
+});
+
 describe('POST /chat whenBusy queue (#3568)', () => {
   const tempDir = trackTempDirs();
   const cleanup: Array<() => Promise<void> | void> = [];
@@ -486,18 +543,22 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       setApprovalModeBasedOn: null,
     });
     expect(withPick.status).not.toBe(202);
-    const background = await world.send('bg', 'needs its attachment', {
+    // A valid attachment (the route reaches the inbox check with it); this
+    // engine takes no files, so the direct dispatch refuses it.
+    const withFile = await world.send('file', 'needs its attachment', {
       whenBusy: 'queue',
       attachments: [
         {
           kind: 'file',
           name: 'notes.txt',
           mimeType: 'text/plain',
+          size: 2,
           dataUrl: 'data:text/plain;base64,aGk=',
         },
       ],
     });
-    expect(background.status).not.toBe(202);
+    expect(withFile.status, await withFile.clone().text()).not.toBe(202);
+    expect(await withFile.json()).toMatchObject({ success: false });
     expect(world.inbox.list(CONVERSATION)).toEqual([]);
   });
 

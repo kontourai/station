@@ -1602,7 +1602,12 @@ export interface ConversationInboxEntry {
   reason?: string;
 }
 
-/** What `POST /chat` answers when it held the message (`whenBusy: 'queue'`). */
+/**
+ * What `POST /chat` answers when the conversation's inbox has the message
+ * (`whenBusy: 'queue'`). `entry` is where it stands now: the same send made
+ * again after Station already sent it answers its `sent` entry, with the
+ * `turnId` it started, and is not sent again.
+ */
 export interface ConversationInboxQueuedReceipt {
   outcome: 'queued';
   conversationId: string;

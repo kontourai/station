@@ -303,6 +303,20 @@ describe('thread inbox (#3568)', () => {
     await settle(second);
     expect(followUpSends()).toEqual([FOLLOW_UP]);
     expect(second.inbox.list(THREAD)).toHaveLength(1);
+    await crash(second);
+
+    // Once it was sent, the same submission after another restart answers
+    // the sent entry: it is never queued, or sent, again.
+    const third = boot(file);
+    expect(queueFollowUp(third)).toMatchObject({
+      outcome: 'queued',
+      entry: { state: 'sent' },
+    });
+    await startSession(third);
+    await third.inbox.reconcile();
+    await settle(third);
+    expect(third.inbox.list(THREAD)).toMatchObject([{ state: 'sent' }]);
+    expect(followUpSends()).toEqual([FOLLOW_UP]);
   });
 
   test('a follow-up submitted after its turn already ended is placed at once', async () => {

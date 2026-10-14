@@ -651,10 +651,23 @@ export class ThreadInboxDelivery {
 
   private async place(conversationId: string, redrive: boolean): Promise<void> {
     const store = this.ports.store;
+    // Each entry is attempted at most once per drive. The inbox settles or
+    // releases every attempt, so a head met twice means its state did not
+    // move: stop rather than start it again in a loop.
+    const attemptedKeys = new Set<string>();
     for (;;) {
       if (this.stopped) return;
       const head = inboxHead(store.list(conversationId));
       if (!head || head.state === 'unconfirmed') return;
+      if (attemptedKeys.has(head.key)) {
+        this.ports.logger.warn('thread inbox entry did not settle', {
+          conversationId,
+          clientTurnId: head.key,
+          state: head.state,
+        });
+        return;
+      }
+      attemptedKeys.add(head.key);
       // An entry placed before (a re-drive, or a key another attempt held)
       // keeps its pinned Session whatever this attempt meets.
       const attempted = head.state === 'placing' || head.placement !== null;
