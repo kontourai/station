@@ -545,6 +545,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/message-delivery-recovery.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Chat / Orchestration',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "A composer send whose page is reloaded (the app closed) while its request is still open: once after Station started the turn and the answer was lost, once before Station received it. The reloaded app must ask the delivery lookup about the same key and end with exactly one turn in the conversation's durable event window: no resend after started, one same-key resend after not-received. Live because the turn ledger, the in-flight record and the event window are the real server's.",
+    exceptions: [],
+  },
+  {
     path: 'tests/chat-multi-turn-context.spec.ts',
     bucket: 'smoke-live',
     surface: 'Chat / Orchestration',
