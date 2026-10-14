@@ -188,6 +188,7 @@ import {
   withCanonicalCwd,
 } from './dispatch-scope.js';
 import {
+  FOREGROUND_DELIVERY_CAPACITY_MESSAGE,
   ForegroundDeliveryReceiptCapacityError,
   ForegroundDeliveryReceipts,
 } from './foreground-delivery-receipts.js';
@@ -2312,7 +2313,7 @@ export function createOrchestrationRoutes(
         return c.json(
           {
             success: false,
-            error: error.message,
+            error: FOREGROUND_DELIVERY_CAPACITY_MESSAGE,
             code: 'foreground_delivery_capacity',
           },
           503,

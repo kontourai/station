@@ -22,11 +22,13 @@
  */
 export const FOREGROUND_DELIVERY_RECEIPTS_MAX = 1024;
 
+/** The refusal's fixed public text (never an internal error's message). */
+export const FOREGROUND_DELIVERY_CAPACITY_MESSAGE =
+  'Station is handling too many messages at once. Nothing was sent; try again shortly.';
+
 export class ForegroundDeliveryReceiptCapacityError extends Error {
   constructor() {
-    super(
-      'Station is handling too many messages at once. Nothing was sent; try again shortly.',
-    );
+    super(FOREGROUND_DELIVERY_CAPACITY_MESSAGE);
     this.name = 'ForegroundDeliveryReceiptCapacityError';
   }
 }
