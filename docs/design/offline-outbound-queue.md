@@ -27,10 +27,12 @@ a refusal removes it and hands the text back to the composer; Station's
 longer holds back later messages in the chat); anything else, including a
 proxy's or tunnel's 502/503/504 or no answer at all, releases the row for
 Station's [delivery lookup](../reference/session-api.md#find-out-what-became-of-a-send).
-While it waits, the message reads "waiting for Station to confirm" on its bubble
-and in the outbox list, and its chat notice and the list's Discard… withdraw it
-only explicitly, saying that a message which already arrived cannot be taken
-back.
+While it waits, the message reads "No answer yet · sends once Station confirms
+it never arrived" on its bubble and in the outbox list, and its chat notice's and
+the list's Discard… withdraw it only after the shared confirmation, which says
+that a message which already arrived cannot be taken back. Every open window
+re-reads the queue's finished keys on the cross-window change channel and when it
+comes back into view, so a discard in one window removes the bubble in all.
 The lookup settles released rows, and rows whose app was closed, at the next
 launch or reconnect: never received → sent again with the same key; started →
 done; received → asked again later; possibly started, or the conversation runs

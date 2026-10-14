@@ -448,16 +448,16 @@ short label:
 - **Received**, which adds **safe to close** when Station keeps running without
   the app, or **keep the app open** when the app's own Station stops with it
 - **Saved on this device · sends when connected**
-- **Saved on this device · waiting for Station to confirm**, after a send that
-  got no answer: when Station can be reached it is asked about the message, which
-  is sent once only if it never arrived
+- **No answer yet · sends once Station confirms it never arrived**, after a send
+  that got no answer: when Station can be reached it is asked about the message,
+  which is sent once only if it never arrived
 - **Waiting behind an unsent message**: messages in a chat go in order, so a
   message waits until an earlier one that was not sent is retried or discarded
 - **Saved on this device · waits for its Station**, for a message written for
   another Station
 - **Not sent**, with **Retry** (the same message again, never a second copy) and
   **Edit** (the text goes back to the composer); **Discard unsent message** is in
-  the message's **⋯** menu
+  the message's **⋯** menu (on a phone, listed in its sheet)
 - **May have reached the agent**, with **Check**, which asks Station again and
   never resends
 - **Not confirmed**, for a message this device sent with no answer from Station
@@ -465,8 +465,9 @@ short label:
 
 A message that may have reached the agent, or got no answer, is never discarded
 automatically:
-**Discard…** states the risk and removes it only after **I checked, discard
-it**, in every open window. It does not hold back the messages written after
+**Discard…**, on the message, in the queued-message notice or in the outbox
+list, states the risk and removes it only after **I checked, discard it**, in
+every open window. It does not hold back the messages written after
 it.
 
 Quiet turns show elapsed silence without guessing that an engine retried. Retry
