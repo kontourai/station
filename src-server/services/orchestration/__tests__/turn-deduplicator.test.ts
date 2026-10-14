@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ORCHESTRATION_EVENT_STORE_MIGRATION } from '../../../domain/migrations/003-orchestration-events.js';
 import { TurnIdempotencyStore } from '../../turn-idempotency.js';
 import { EventStore } from '../event-store.js';
@@ -56,6 +56,57 @@ describe('TurnDeduplicator', () => {
         .claim({ threadId: 'thread', clientTurnId: 'client' }),
     ).toEqual({ kind: 'contended', turnId: 'provider-turn' });
     restarted.close();
+  });
+
+  test('inspect: a claim whose owner cannot be proven live or dead reads in flight only for a bounded time', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const directory = mkdtempSync(join(tmpdir(), 'station-turn-dedup-'));
+      directories.push(directory);
+      const store = new EventStore(
+        join(directory, 'orchestration.sqlite'),
+        512,
+        {
+          exact: () => ({ pid: process.pid, start: 'unknowable' }),
+          probe: () => ({ state: 'unavailable' }),
+        },
+      );
+      const ledger = store.createTurnDeduplicator();
+      expect(ledger.claim({ threadId: 't', clientTurnId: 'k' }).kind).toBe(
+        'owner',
+      );
+      vi.setSystemTime(Date.now() + 14 * 60_000);
+      expect(ledger.inspect({ threadId: 't', clientTurnId: 'k' })).toEqual({
+        state: 'in-flight',
+      });
+      vi.setSystemTime(Date.now() + 2 * 60_000);
+      expect(ledger.inspect({ threadId: 't', clientTurnId: 'k' })).toEqual({
+        state: 'indeterminate',
+      });
+      store.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('inspect: an owner that gave its claim up after a possible effect reads indeterminate, never in flight', () => {
+    const { store, ledger } = open();
+    const owner = ledger.claim({ threadId: 't', clientTurnId: 'gave-up' });
+    if (owner.kind !== 'owner') throw new Error('expected owner');
+    owner.claim.beginInvocation();
+    expect(ledger.inspect({ threadId: 't', clientTurnId: 'gave-up' })).toEqual({
+      state: 'in-flight',
+    });
+    owner.claim.retain();
+    expect(ledger.inspect({ threadId: 't', clientTurnId: 'gave-up' })).toEqual({
+      state: 'indeterminate',
+    });
+    // Still never claimable: retain writes nothing durable.
+    expect(ledger.claim({ threadId: 't', clientTurnId: 'gave-up' })).toEqual({
+      kind: 'contended',
+      turnId: undefined,
+    });
+    store.close();
   });
 
   test('releases only an unresolved owner claim so a failed turn can retry', () => {

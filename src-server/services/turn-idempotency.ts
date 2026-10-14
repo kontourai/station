@@ -65,6 +65,16 @@ type TurnIdempotencyClaim =
       indeterminate?: undefined;
     };
 
+/**
+ * How long an unresolved claim whose owner's liveness cannot be proven either
+ * way still reads as in flight. A provider accepts a turn in seconds; past
+ * this, an owner nobody can see is treated as one that may have started the
+ * effect and stopped (`indeterminate`), never as safe to resend.
+ */
+export const TURN_CLAIM_UNPROVABLE_IN_FLIGHT_MS = 15 * 60 * 1000;
+/** Bound on this owner's remembered abandoned claims (oldest dropped first). */
+export const TURN_CLAIM_RETAINED_MAX = 4096;
+
 /** {@link TurnIdempotencyStore.inspect}'s answer; see there. */
 export type TurnClaimInspection =
   | { state: 'absent' }
@@ -190,7 +200,7 @@ export class TurnIdempotencyStore {
    * cannot be proven dead; `reclaimable` is one whose owner died before it
    * began its effect, which the next claim of the key takes over.
    */
-  inspect(key: string): TurnClaimInspection {
+  inspect(key: string, now = Date.now()): TurnClaimInspection {
     const result = this.persistence.execute(
       { type: 'turnDedup.read', key },
       this.liveness,
@@ -206,10 +216,16 @@ export class TurnIdempotencyStore {
       return { state: 'resolved', value: record.value };
     if (record.owner?.id === this.owner.id && this.retained.has(key))
       return { state: 'indeterminate' };
-    if (record.owner && this.liveness(record.owner) === 'dead')
+    const liveness = record.owner ? this.liveness(record.owner) : 'unknown';
+    if (liveness === 'dead')
       return turnClaimIsReclaimable(record)
         ? { state: 'reclaimable' }
         : { state: 'indeterminate' };
+    if (
+      liveness === 'unknown' &&
+      now - record.createdAt > TURN_CLAIM_UNPROVABLE_IN_FLIGHT_MS
+    )
+      return { state: 'indeterminate' };
     return { state: 'in-flight' };
   }
   /**
@@ -219,7 +235,12 @@ export class TurnIdempotencyStore {
    * of `in-flight`.
    */
   retain(key: string): void {
+    this.retained.delete(key);
     this.retained.add(key);
+    if (this.retained.size > TURN_CLAIM_RETAINED_MAX) {
+      const oldest = this.retained.values().next().value;
+      if (oldest !== undefined) this.retained.delete(oldest);
+    }
   }
   read(key: string): string | undefined {
     const result = this.persistence.execute(
