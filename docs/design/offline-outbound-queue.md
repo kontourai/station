@@ -38,8 +38,8 @@ Follow-ups held behind a running turn stay in the tab's session storage, and
 each keeps a durable copy in the queue under the key the queue will send it
 with. The flush never sends that copy while its app lives; a reload's restored
 queue takes the copies back (so an edit or a delete there is what counts); if
-the app closes first, it becomes an ordinary queued message and is sent with
-its key. A message whose row is already on its way or possibly started is
+the app closes first, it becomes an ordinary queued message a minute later
+(time for a reloading tab to take it back) and is sent with its key. A message whose row is already on its way or possibly started is
 never sent again from the composer or the queue. A send
 refused because the engine is busy joins that queue with its own key and
 copy, and the queue's drain writes the same before-the-request row as a
