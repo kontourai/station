@@ -261,14 +261,8 @@ function ChatMessageListComponent({
             (approvalEvents ?? [])
               .map((item) => item.event)
               .filter((event) => Boolean(event.eventId)),
-          ).filter(
-            (request) =>
-              !request.inputRequest &&
-              !activeSession.answeredApprovals?.includes(
-                request.approvalId ?? '',
-              ),
-          ),
-    [activeSession.replay, activeSession.answeredApprovals, approvalEvents],
+          ).filter((request) => !request.inputRequest),
+    [activeSession.replay, approvalEvents],
   );
   // The store is already live at the shell; reading its scalar snapshot here
   // avoids adding a second subscription/allocation to every streaming row.
@@ -1313,8 +1307,15 @@ function ChatMessageListComponent({
           requestId: request.approvalId,
           requestEventId: request.approvalEventId,
         });
+        const current = activeChatsStore.getSnapshot()[activeSession.id];
+        if (outcome === 'pending' && current) {
+          activeChatsStore.updateChat(activeSession.id, {
+            answeredApprovals: current.answeredApprovals?.filter(
+              (id) => id !== request.approvalId,
+            ),
+          });
+        }
         if (outcome === 'already-settled') {
-          const current = activeChatsStore.getSnapshot()[activeSession.id];
           if (current)
             activeChatsStore.updateChat(activeSession.id, {
               pendingApprovals: current.pendingApprovals?.filter(

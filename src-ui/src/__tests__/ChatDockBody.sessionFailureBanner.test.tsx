@@ -1230,6 +1230,11 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       expect(
         screen.getByRole('button', { name: 'Start new chat' }),
       ).toBeTruthy();
+      expect(
+        screen.getByText(
+          'This conversation is taking longer to load. Waiting for Station.',
+        ),
+      ).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }
