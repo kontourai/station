@@ -1554,7 +1554,7 @@ describe('environment-security verbs honor saved Stations (station#4515)', () =>
         revokedAt: null,
       };
       const fetcher = vi.fn(
-        async (input: RequestInfo | URL, init?: RequestInit) => {
+        async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
           calls.push({ url: String(input), init });
           if (new URL(String(input)).pathname === '/api/pairing/devices')
             return Response.json({ devices: [device] });
