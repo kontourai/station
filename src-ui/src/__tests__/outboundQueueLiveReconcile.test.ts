@@ -16,13 +16,18 @@ import type {
 type QueueModule = typeof import('../lib/outboundQueue');
 
 let value: unknown;
+/** Other keys of the same IndexedDB store (the retired-key list). */
+const otherKeys = new Map<string, unknown>();
+const QUEUE_KEY = 'station-outbound-queue-v1';
 const storage: OutboundQueueStorage = {
-  getItem: async () => value,
-  setItem: async (_key, next) => {
-    value = next;
+  getItem: async (key) => (key === QUEUE_KEY ? value : otherKeys.get(key)),
+  setItem: async (key, next) => {
+    if (key === QUEUE_KEY) value = next;
+    else otherKeys.set(key, next);
   },
-  updateItem: async (_key, updater) => {
-    value = updater(value);
+  updateItem: async (key, updater) => {
+    if (key === QUEUE_KEY) value = updater(value);
+    else otherKeys.set(key, updater(otherKeys.get(key)));
   },
 };
 /** Renderer locks currently held, by name. */
@@ -55,7 +60,12 @@ function stubLocks() {
 async function freshRenderer(): Promise<QueueModule> {
   vi.resetModules();
   const queue = await import('../lib/outboundQueue');
-  queue._setOutboundQueueStorage(storage);
+  queue._setOutboundQueueStorage(storage, {
+    get: async () => otherKeys.get('station-outbound-retired-v1'),
+    set: async (next) => {
+      otherKeys.set('station-outbound-retired-v1', next);
+    },
+  });
   return queue;
 }
 
@@ -94,6 +104,7 @@ function lookupAnswering(outcome: TurnDeliveryOutcome) {
 describe('live outbox rows survive a killed app and settle by the delivery lookup', () => {
   beforeEach(() => {
     value = undefined;
+    otherKeys.clear();
     heldLocks.clear();
     stubLocks();
     vi.useFakeTimers({ toFake: ['Date'] });
@@ -559,5 +570,85 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     ]);
     queue._forgetKnownBootId();
     expect((await queue.outboundDispatch.open())[0]?.heldHere).toBe(true);
+  });
+
+  it('the retired list survives a build that rewrites the queue without knowing it', async () => {
+    const queue = await freshRenderer();
+    await queue.outboundDispatch.syncHeld([
+      { ...intent, clientTurnId: 'gone', content: 'discard me' },
+    ]);
+    await queue.outboundDispatch.discard('gone');
+    // An older build's write: the queue record alone, as it knows it.
+    const record = value as Record<string, unknown>;
+    value = {
+      version: 2,
+      turns: record.turns,
+      terminalEvidence: record.terminalEvidence,
+      completedTerminals: record.completedTerminals,
+    };
+    await queue.outboundDispatch.syncHeld([
+      { ...intent, clientTurnId: 'gone', content: 'discard me' },
+    ]);
+    expect(await queue.outboundDispatch.snapshot()).toEqual([]);
+  });
+
+  it('an unreadable or unknown retired entry never stops the outbox, and still retires its key', async () => {
+    otherKeys.set('station-outbound-retired-v1', [
+      { clientTurnId: 'future', reason: 'some-later-reason', at: 1 },
+      { nonsense: true },
+    ]);
+    const queue = await freshRenderer();
+    await expect(queue.outboundDispatch.open()).resolves.toEqual([]);
+    await expect(
+      queue.outboundDispatch.beginLive({ ...intent, clientTurnId: 'future' }),
+    ).rejects.toMatchObject({ name: 'OutboundKeyRetiredError' });
+  });
+
+  it('many deliveries never push a Discard out of the retired list', async () => {
+    const queue = await freshRenderer();
+    await queue.outboundDispatch.syncHeld([
+      { ...intent, clientTurnId: 'discarded-early', content: 'x' },
+    ]);
+    await queue.outboundDispatch.discard('discarded-early');
+    for (let index = 0; index < 600; index += 1) {
+      const live = await queue.outboundDispatch.beginLive({
+        ...intent,
+        clientTurnId: `delivered-${index}`,
+      });
+      await live.accepted();
+    }
+    await queue.outboundDispatch.syncHeld([
+      { ...intent, clientTurnId: 'discarded-early', content: 'x' },
+    ]);
+    expect(await queue.outboundDispatch.snapshot()).toEqual([]);
+  });
+
+  it("Station's lookup answering started retires the key, and a retired key is never queued again", async () => {
+    const second = await killedMidSend();
+    await second.outboundDispatch.reconcile(lookupAnswering('started'));
+    await expect(
+      second.outboundDispatch.beginLive({ ...intent }),
+    ).rejects.toMatchObject({ reason: 'accepted' });
+    await expect(
+      second.outboundDispatch.enqueue({ ...intent }),
+    ).rejects.toMatchObject({ reason: 'accepted' });
+  });
+
+  it("a refused re-send never clears the flag of this renderer's attempt that still holds the key", async () => {
+    const queue = await freshRenderer();
+    const first = await queue.outboundDispatch.beginLive({
+      ...intent,
+      clientTurnId: 'still-mine',
+    });
+    await first.indeterminate('Station could not confirm the start.');
+    await expect(
+      queue.outboundDispatch.beginLive({
+        ...intent,
+        clientTurnId: 'still-mine',
+      }),
+    ).rejects.toMatchObject({ name: 'OutboundRowInFlightError' });
+    expect((await queue.outboundDispatch.snapshot())[0]?.liveInFlight).toBe(
+      true,
+    );
   });
 });

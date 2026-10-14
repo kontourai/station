@@ -75,14 +75,14 @@ import { messageDeliveryStateFor } from '../utils/messageDeliveryState';
 const chat = 'chat-delivery-1';
 
 function memoryStorage() {
-  let value: unknown;
+  const values = new Map<string, unknown>();
   _setOutboundQueueStorage({
-    getItem: async () => value,
-    setItem: async (_key, next) => {
-      value = next;
+    getItem: async (key) => values.get(key),
+    setItem: async (key, next) => {
+      values.set(key, next);
     },
-    updateItem: async (_key, updater) => {
-      value = updater(value);
+    updateItem: async (key, updater) => {
+      values.set(key, updater(values.get(key)));
     },
   });
 }
@@ -415,6 +415,61 @@ describe('useSendMessage: durable before the request', () => {
     expect(onAdmission).not.toHaveBeenCalledWith('not-invoked');
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
     expect(activeChatsStore.getSnapshot()[chat]?.input).toBe('');
+  });
+
+  it('sending a message that was discarded puts its text back in the composer, never loses it, and sends nothing', async () => {
+    await outboundDispatch.syncHeld([
+      {
+        clientTurnId: 'discarded-key',
+        sessionId: chat,
+        agentSlug: 'codex',
+        content: 'changed my mind',
+      },
+    ]);
+    await outboundDispatch.discard('discarded-key');
+    const onAdmission = vi.fn();
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(
+        chat,
+        'codex',
+        undefined,
+        'changed my mind',
+        undefined,
+        undefined,
+        'discarded-key',
+        { onAdmission },
+      );
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[chat]?.input).toBe('changed my mind');
+    expect(onAdmission).toHaveBeenCalledWith('not-invoked');
+  });
+
+  it('sending a message already delivered sends nothing and says it was delivered', async () => {
+    const delivered = await outboundDispatch.beginLive({
+      clientTurnId: 'delivered-key',
+      sessionId: chat,
+      agentSlug: 'codex',
+      content: 'done already',
+    });
+    await delivered.accepted();
+    const onAdmission = vi.fn();
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(
+        chat,
+        'codex',
+        undefined,
+        'done already',
+        undefined,
+        undefined,
+        'delivered-key',
+        { onAdmission },
+      );
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(onAdmission).toHaveBeenCalledWith('accepted');
   });
 
   it('a slow answer: Station is asked, and the bubble reads received while the request is still out', async () => {

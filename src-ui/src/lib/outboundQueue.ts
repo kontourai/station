@@ -392,42 +392,66 @@ interface OutboundQueueState {
 
 interface RetiredKey {
   clientTurnId: string;
-  reason: 'discarded' | 'accepted';
+  /** `discarded` or `accepted`; any other value still means retired. */
+  reason: string;
   at: number;
 }
 
-const RETIRED_KEYS_MAX = 512;
+/**
+ * Kept apart from the queue's own record, under its own key: a build that
+ * predates retirement rewrites the queue record without knowing this list,
+ * and must not erase it.
+ */
+const RETIRED_STORAGE_KEY = 'station-outbound-retired-v1';
+/** Per reason, newest kept: many deliveries never push out a Discard. */
+const RETIRED_KEYS_PER_REASON_MAX = 512;
 
-function isRetiredKey(value: unknown): value is RetiredKey {
-  if (typeof value !== 'object' || value === null) return false;
-  const key = value as Partial<RetiredKey>;
-  return (
-    typeof key.clientTurnId === 'string' &&
-    (key.reason === 'discarded' || key.reason === 'accepted') &&
-    typeof key.at === 'number'
+function parseRetired(stored: unknown): RetiredKey[] {
+  if (!Array.isArray(stored)) return [];
+  // Unreadable entries are skipped, never a reason to stop the outbox.
+  return stored.filter(
+    (entry): entry is RetiredKey =>
+      typeof entry === 'object' &&
+      entry !== null &&
+      typeof (entry as RetiredKey).clientTurnId === 'string' &&
+      typeof (entry as RetiredKey).reason === 'string' &&
+      typeof (entry as RetiredKey).at === 'number',
   );
 }
 
 function withRetired(
   state: OutboundQueueState,
   clientTurnId: string,
-  reason: RetiredKey['reason'],
+  reason: 'discarded' | 'accepted',
 ): OutboundQueueState {
-  const retired = [
-    ...(state.retired ?? []).filter(
-      (entry) => entry.clientTurnId !== clientTurnId,
+  const others = (state.retired ?? []).filter(
+    (entry) => entry.clientTurnId !== clientTurnId,
+  );
+  const sameReason = others.filter((entry) => entry.reason === reason);
+  const dropped = new Set(
+    sameReason.slice(
+      0,
+      Math.max(0, sameReason.length + 1 - RETIRED_KEYS_PER_REASON_MAX),
     ),
-    { clientTurnId, reason, at: Date.now() },
-  ].slice(-RETIRED_KEYS_MAX);
-  return { ...state, retired };
+  );
+  return {
+    ...state,
+    retired: [
+      ...others.filter((entry) => !dropped.has(entry)),
+      { clientTurnId, reason, at: Date.now() },
+    ],
+  };
 }
 
 function retiredReason(
   state: OutboundQueueState,
   clientTurnId: string,
-): RetiredKey['reason'] | undefined {
-  return state.retired?.find((entry) => entry.clientTurnId === clientTurnId)
-    ?.reason;
+): 'discarded' | 'accepted' | undefined {
+  const reason = state.retired?.find(
+    (entry) => entry.clientTurnId === clientTurnId,
+  )?.reason;
+  if (reason === undefined) return undefined;
+  return reason === 'discarded' ? 'discarded' : 'accepted';
 }
 
 /** Legacy array reads remain supported; all writes use this private state. */
@@ -590,6 +614,34 @@ function createIdbOutboundQueueStorage(): OutboundQueueStorage {
 }
 
 let storage: OutboundQueueStorage = createIdbOutboundQueueStorage();
+
+/** Where the retired-key list is kept (see RETIRED_STORAGE_KEY). */
+export interface OutboundRetiredStorage {
+  get(): Promise<unknown>;
+  set(value: unknown): Promise<void>;
+}
+
+/** The same IndexedDB store as the queue, under the list's own key. */
+function storeRetiredBeside(
+  queue: OutboundQueueStorage,
+): OutboundRetiredStorage {
+  return {
+    get: () => queue.getItem(RETIRED_STORAGE_KEY),
+    set: (value) => queue.setItem(RETIRED_STORAGE_KEY, value),
+  };
+}
+
+function memoryRetiredStorage(): OutboundRetiredStorage {
+  let value: unknown;
+  return {
+    get: async () => value,
+    set: async (next) => {
+      value = next;
+    },
+  };
+}
+
+let retiredStorage: OutboundRetiredStorage = storeRetiredBeside(storage);
 let mutationTail: Promise<void> = Promise.resolve();
 const listeners = new Set<() => void>();
 /** A same-renderer safety net when a post-effect IndexedDB transition fails. */
@@ -638,9 +690,7 @@ function queueState(stored: unknown): OutboundQueueState {
     if (
       !state.turns.every(isStoredTurn) ||
       !state.terminalEvidence.every(isTerminalEvidence) ||
-      !(state.completedTerminals ?? []).every(isTerminalEvidence) ||
-      (state.retired !== undefined &&
-        (!Array.isArray(state.retired) || !state.retired.every(isRetiredKey)))
+      !(state.completedTerminals ?? []).every(isTerminalEvidence)
     ) {
       throw new OutboundQueueStateError();
     }
@@ -649,7 +699,6 @@ function queueState(stored: unknown): OutboundQueueState {
       turns: state.turns.map(normalizeEntry),
       terminalEvidence: state.terminalEvidence,
       completedTerminals: state.completedTerminals ?? [],
-      ...(state.retired ? { retired: state.retired } : {}),
     };
   }
   throw new OutboundQueueStateError();
@@ -994,28 +1043,37 @@ async function mutateState<T>(
 ): Promise<T> {
   let result!: T;
   let changed = false;
-  const apply = () =>
-    storage.updateItem!(STORAGE_KEY, (stored) => {
-      const outcome = operation(queueState(stored));
+  // The retired list is read and written beside the queue record, inside
+  // the same lock (see RETIRED_STORAGE_KEY).
+  const persisted = (state: OutboundQueueState) => {
+    const { retired: _retired, ...rest } = state;
+    void _retired;
+    return { ...rest, turns: prune(state.turns, Date.now()) };
+  };
+  const apply = async () => {
+    const retired = parseRetired(await retiredStorage.get());
+    let nextRetired = retired;
+    await storage.updateItem!(STORAGE_KEY, (stored) => {
+      const outcome = operation({ ...queueState(stored), retired });
       result = outcome.result;
       changed = outcome.changed;
-      return {
-        ...outcome.state,
-        turns: prune(outcome.state.turns, Date.now()),
-      };
+      nextRetired = outcome.state.retired ?? retired;
+      return persisted(outcome.state);
     });
+    if (nextRetired !== retired) await retiredStorage.set(nextRetired);
+  };
   if (storage.updateItem) {
     await withQueueLock(apply);
   } else {
     await serialize(async () => {
-      const outcome = operation(await readState());
+      const retired = parseRetired(await retiredStorage.get());
+      const outcome = operation({ ...(await readState()), retired });
       result = outcome.result;
       changed = outcome.changed;
       if (changed) {
-        await storage.setItem(STORAGE_KEY, {
-          ...outcome.state,
-          turns: prune(outcome.state.turns, Date.now()),
-        });
+        await storage.setItem(STORAGE_KEY, persisted(outcome.state));
+        if ((outcome.state.retired ?? retired) !== retired)
+          await retiredStorage.set(outcome.state.retired ?? retired);
       }
     });
   }
@@ -1323,7 +1381,11 @@ async function enqueue(
   const { providerTurnId: _ignoredProviderTurnId, ...safeIntent } =
     intent as OutboundDispatchIntent & { providerTurnId?: unknown };
   const now = safeIntent.createdAt ?? Date.now();
-  return mutate((entries) => {
+  return mutateState((state) => {
+    // A message already delivered or discarded is not queued again.
+    const retired = retiredReason(state, safeIntent.clientTurnId);
+    if (retired) throw new OutboundKeyRetiredError(retired);
+    const entries = prune(state.turns, Date.now());
     const index = entries.findIndex(
       (entry) => entry.clientTurnId === safeIntent.clientTurnId,
     );
@@ -1359,11 +1421,15 @@ async function enqueue(
         lastError,
         lastAttemptAt: now,
       };
-      return { entries: [...retained, next], result: next, changed: true };
+      return {
+        state: { ...state, turns: [...retained, next] },
+        result: next,
+        changed: true,
+      };
     }
     const existing = entries[index]!;
     if (protectedEvidence(existing)) {
-      return { entries, result: existing, changed: false };
+      return { state, result: existing, changed: false };
     }
     const attempts = existing.attempts + 1;
     const next: QueuedOutboundTurn = {
@@ -1380,7 +1446,11 @@ async function enqueue(
     };
     const replacement = [...entries];
     replacement[index] = next;
-    return { entries: replacement, result: next, changed: true };
+    return {
+      state: { ...state, turns: replacement },
+      result: next,
+      changed: true,
+    };
   }).then(publicTurn);
 }
 
@@ -1412,22 +1482,6 @@ async function discard(clientTurnId: string): Promise<void> {
       changed: true,
     };
   });
-}
-
-/** Records that a key's message is finished with (see `retired`). */
-async function retireKey(
-  clientTurnId: string,
-  reason: RetiredKey['reason'],
-): Promise<void> {
-  try {
-    await mutateState((state) => ({
-      state: withRetired(state, clientTurnId, reason),
-      result: undefined,
-      changed: true,
-    }));
-  } catch {
-    // Best effort: the send itself is settled; only the guard is missing.
-  }
 }
 
 async function edit(
@@ -1884,8 +1938,25 @@ async function beginLive(
   return {
     clientTurnId,
     accepted: async () => {
-      await transition(() => undefined);
-      await retireKey(clientTurnId, 'accepted');
+      // One write: the row goes and its key is retired together, so no
+      // window can see the message gone yet still sendable.
+      try {
+        await mutateState((state) => ({
+          state: withRetired(
+            {
+              ...state,
+              turns: state.turns.filter((entry) => !exact(entry, claimed)),
+            },
+            clientTurnId,
+            'accepted',
+          ),
+          result: undefined,
+          changed: true,
+        }));
+      } catch {
+        // Best effort, as every live transition: a row left `invoking` is
+        // settled by the delivery lookup, which answers `started`.
+      }
       releaseLive();
     },
     refused: async () => {
@@ -1970,7 +2041,8 @@ async function applyDeliveryAnswer(
   outcome: TurnDeliveryOutcome,
   notReceived: 'resend' | 'stop',
 ): Promise<void> {
-  await mutate((entries) => {
+  await mutateState((state) => {
+    const entries = state.turns;
     const index = entries.findIndex(
       (entry) =>
         entry.clientTurnId === observed.clientTurnId &&
@@ -1978,11 +2050,11 @@ async function applyDeliveryAnswer(
         entry.dispatchBootId === observed.dispatchBootId &&
         entry.claimedAt === observed.claimedAt,
     );
-    if (index === -1) return { entries, result: undefined, changed: false };
+    if (index === -1) return { state, result: undefined, changed: false };
     const entry = entries[index]!;
     // The same answer again changes nothing (and wakes no observer).
     if (outcome === 'received' && entry.deliveryCheck?.outcome === 'received')
-      return { entries, result: undefined, changed: false };
+      return { state, result: undefined, changed: false };
     const deliveryCheck = { outcome, checkedAt: Date.now() };
     const released = {
       ...entry,
@@ -2021,14 +2093,23 @@ async function applyDeliveryAnswer(
         // An answer this build does not know proves nothing: change nothing.
         const unhandled: never = outcome;
         void unhandled;
-        return { entries, result: undefined, changed: false };
+        return { state, result: undefined, changed: false };
       }
     }
     const replaced = [...entries];
     if (next) replaced[index] = next;
     else replaced.splice(index, 1);
     unavailableClaims.delete(entry.clientTurnId);
-    return { entries: replaced, result: undefined, changed: true };
+    const settled = { ...state, turns: replaced };
+    return {
+      // Station started it: delivered, so never sent again from anywhere.
+      state:
+        outcome === 'started'
+          ? withRetired(settled, entry.clientTurnId, 'accepted')
+          : settled,
+      result: undefined,
+      changed: true,
+    };
   });
 }
 
@@ -2247,8 +2328,13 @@ export const outboundDispatch: OutboundDispatchModule = {
 };
 
 /** Test-only private-Adapter composition seam. */
-export function _setOutboundQueueStorage(next: OutboundQueueStorage): void {
+export function _setOutboundQueueStorage(
+  next: OutboundQueueStorage,
+  /** A test's shared retired list (several renderers); else a fresh one. */
+  retired: OutboundRetiredStorage = memoryRetiredStorage(),
+): void {
   storage = next;
+  retiredStorage = retired;
   mutationTail = Promise.resolve();
   unavailableClaims.clear();
   liveOwned.clear();
@@ -2264,6 +2350,7 @@ export function _resetOutboundQueueChangeChannel(): void {
 /** Test-only reset to the production IndexedDB Adapter. */
 export function _resetOutboundQueueStorage(): void {
   storage = createIdbOutboundQueueStorage();
+  retiredStorage = storeRetiredBeside(storage);
   mutationTail = Promise.resolve();
   unavailableClaims.clear();
   liveOwned.clear();

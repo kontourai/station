@@ -761,16 +761,37 @@ export function useSendMessage(
                   }
                 : {}),
             });
+            const retiredAs =
+              refusal === 'OutboundKeyRetiredError'
+                ? (error as { reason?: unknown }).reason
+                : undefined;
+            if (retiredAs === 'discarded') {
+              // The user discarded this message (in some window) and is now
+              // sending it again: the text goes back to the composer, never
+              // lost, and a new send of it is a new message.
+              const latest = activeChatsStore.getSnapshot()[sessionId];
+              if ((latest?.input ?? '') === '')
+                updateChat(sessionId, { input: submittedDraft });
+              addEphemeralMessage(sessionId, {
+                role: 'system',
+                content:
+                  'This message was discarded, so it was not sent. Its text is back in the composer.',
+              });
+              options?.onAdmission?.('not-invoked');
+              return false;
+            }
             addEphemeralMessage(sessionId, {
               role: 'system',
               content:
-                refusal === 'OutboundKeyRetiredError'
-                  ? `${(error as Error).message} It was not sent again.`
+                retiredAs === 'accepted'
+                  ? 'This message was already delivered, so it was not sent again.'
                   : 'This message is already on its way or may have reached the agent, so it was not sent again. Check it in the outbox list.',
             });
-            // Not "not sent": the message may well arrive. A caller told it
-            // was not sent would offer to send it again under a new key.
-            options?.onAdmission?.('indeterminate');
+            // Never "not sent": it was delivered, or may well arrive. A
+            // caller told it was not sent would offer it again under a new key.
+            options?.onAdmission?.(
+              retiredAs === 'accepted' ? 'accepted' : 'indeterminate',
+            );
             return false;
           }
           // Storage unavailable: send as before, and the composer keeps its
