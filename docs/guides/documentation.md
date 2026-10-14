@@ -37,7 +37,9 @@ Run `npm run gen:decisions-index` to regenerate `docs/decisions/index.md`, and
 `npm run check:decisions` to validate the records and the index. `ci:fast` runs
 that check in the required `fast-checks` lane against the pull request's or
 merge group's base, so a file added under `docs/adr/` fails there. Locally the
-base is `origin/main`, and only committed files are compared.
+base is `origin/main`, and only committed files are compared. Corpus is not on
+npm: both commands fetch it with `npm exec` from the commit that
+`scripts/corpus-decisions.mjs` pins, the same one the Docs kit gate uses.
 
 ## Make authority explicit
 
