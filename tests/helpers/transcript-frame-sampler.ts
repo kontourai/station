@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import type { Page, TestInfo } from '@playwright/test';
 
 /** One rAF sample of the conversation transcript's geometry. */
@@ -44,8 +45,9 @@ export interface TranscriptTimeline {
 const MAX_FRAMES = 20_000;
 
 /**
- * Installs a per-animation-frame transcript sampler before any page script
- * runs. It reads geometry only; it never writes scroll positions.
+ * Installs a per-frame transcript sampler before any page script runs. Each
+ * sample is taken after the frame has rendered. It reads geometry only; it
+ * never writes scroll positions.
  */
 export async function installTranscriptFrameSampler(page: Page) {
   await page.addInitScript((maxFrames: number) => {
@@ -125,8 +127,11 @@ export async function installTranscriptFrameSampler(page: Page) {
       };
       if (log) {
         const bounds = log.getBoundingClientRect();
+        // One per transcript row: a bubble nests its own keyed element.
         const rows = [
-          ...log.querySelectorAll<HTMLElement>('[data-chat-message-key]'),
+          ...log.querySelectorAll<HTMLElement>(
+            '.chat-message-anchor[data-chat-message-key]',
+          ),
         ];
         let first: { key: string; offset: number } | null = null;
         let inViewport = 0;
@@ -163,9 +168,26 @@ export async function installTranscriptFrameSampler(page: Page) {
         timeline.droppedFrames += 1;
       }
       timeline.frames.push(frame);
-      requestAnimationFrame(sample);
     };
-    requestAnimationFrame(sample);
+    // Sample what the frame paints. requestAnimationFrame runs BEFORE the
+    // frame's layout and the page's ResizeObserver corrections, and a task
+    // after the frame can already hold the next commit. A ResizeObserver
+    // created inside rAF is newer than every observer the page owns, so its
+    // first notification runs after theirs in the same frame, just before
+    // paint.
+    const probe = document.createElement('div');
+    probe.style.cssText =
+      'position:fixed;left:-2px;top:-2px;width:1px;height:1px;pointer-events:none';
+    const frameLoop = () => {
+      if (!probe.isConnected) document.documentElement.append(probe);
+      const observer = new ResizeObserver(() => {
+        observer.disconnect();
+        sample();
+        requestAnimationFrame(frameLoop);
+      });
+      observer.observe(probe);
+    };
+    requestAnimationFrame(frameLoop);
     (window as unknown as Record<string, unknown>).__transcriptTimeline = {
       read: () => timeline,
       mark: (label: string) =>
@@ -214,10 +236,29 @@ export async function attachTimeline(
   name: string,
 ): Promise<TranscriptTimeline> {
   const timeline = await readTimeline(page);
+  const path = testInfo.outputPath(`${name}.json`);
+  writeFileSync(path, JSON.stringify(timeline, null, 1));
   await testInfo.attach(`${name}.json`, {
     contentType: 'application/json',
-    body: JSON.stringify(timeline, null, 1),
+    path,
   });
+  // The product tracer's records, when the page enabled it.
+  const trace = await page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          __stationTranscriptTrace?: { dump(): unknown };
+        }
+      ).__stationTranscriptTrace?.dump() ?? null,
+  );
+  if (trace) {
+    const tracePath = testInfo.outputPath(`${name}-layout-trace.json`);
+    writeFileSync(tracePath, JSON.stringify(trace, null, 1));
+    await testInfo.attach(`${name}-layout-trace.json`, {
+      contentType: 'application/json',
+      path: tracePath,
+    });
+  }
   return timeline;
 }
 

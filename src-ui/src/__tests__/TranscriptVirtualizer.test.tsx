@@ -5,19 +5,30 @@ import { createRef } from 'react';
 import { describe, expect, test, vi } from 'vitest';
 import { TranscriptVirtualizer } from '../components/chat/TranscriptVirtualizer';
 
-const { scrollToIndex } = vi.hoisted(() => ({ scrollToIndex: vi.fn() }));
+const { scrollToIndex, instances, renderedOptions } = vi.hoisted(() => ({
+  scrollToIndex: vi.fn(),
+  instances: [] as Array<Record<string, unknown>>,
+  renderedOptions: [] as Array<Record<string, unknown>>,
+}));
 
 vi.mock('@tanstack/react-virtual', () => ({
-  useVirtualizer: () => ({
-    getVirtualItems: () => [{ index: 0, key: 'message-0', start: 0, size: 88 }],
-    getTotalSize: () => 88,
-    getVirtualItemForOffset: () => ({ index: 0, start: 0 }),
-    measure: vi.fn(),
-    measureElement: vi.fn(),
-    scrollOffset: 0,
-    scrollToIndex,
-    scrollToOffset: vi.fn(),
-  }),
+  useVirtualizer: (options: Record<string, unknown>) => {
+    renderedOptions.push(options);
+    const instance = {
+      getVirtualItems: () => [
+        { index: 0, key: 'message-0', start: 0, size: 88 },
+      ],
+      getTotalSize: () => 88,
+      getVirtualItemForOffset: () => ({ index: 0, start: 0 }),
+      measure: vi.fn(),
+      measureElement: vi.fn(),
+      scrollOffset: 0,
+      scrollToIndex,
+      scrollToOffset: vi.fn(),
+    };
+    instances.push(instance);
+    return instance;
+  },
 }));
 
 describe('TranscriptVirtualizer (station#1238)', () => {
@@ -106,5 +117,91 @@ describe('TranscriptVirtualizer (station#1238)', () => {
     await waitFor(() => {
       expect(scrollToIndex).toHaveBeenCalledWith(73, { align: 'center' });
     });
+  });
+
+  // @tanstack/virtual-core 3.x reads this hook from the INSTANCE; passed among
+  // the options it is never called and TanStack's default compensation runs.
+  test('installs keyed size compensation on the virtualizer instance', () => {
+    instances.length = 0;
+    const scrollElement = createRef<HTMLDivElement>();
+    const rows = Array.from({ length: 100 }, (_, index) => ({
+      id: `message-${index}`,
+      kind: 'message:user',
+    }));
+    render(
+      <div ref={scrollElement}>
+        <TranscriptVirtualizer
+          rows={rows}
+          scrollElement={scrollElement}
+          renderRow={(row) => <article>{row.id}</article>}
+          followTail
+        />
+      </div>,
+    );
+    const shouldAdjust = instances.at(-1)
+      ?.shouldAdjustScrollPositionOnItemSizeChange as
+      | ((
+          item: { index: number; start: number },
+          delta: number,
+          instance: { scrollOffset: number },
+        ) => boolean)
+      | undefined;
+    expect(shouldAdjust, 'an instance hook').toBeTypeOf('function');
+    // Following the tail, a row that starts above the viewport is compensated
+    // and one below it is not.
+    expect(
+      shouldAdjust!({ index: 3, start: 200 }, 40, { scrollOffset: 500 }),
+    ).toBe(true);
+    expect(
+      shouldAdjust!({ index: 9, start: 900 }, 40, { scrollOffset: 500 }),
+    ).toBe(false);
+  });
+
+  test("mounting under a reader starts its first range at the reader's row", () => {
+    // The handed-over row is then held by the keyed reconcile's observers.
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const scrollElement = createRef<HTMLDivElement>();
+    const rows = Array.from({ length: 60 }, (_, index) => ({
+      id: `message-${index}`,
+      kind: index % 2 === 0 ? 'message:user' : 'message:assistant',
+    }));
+    // The direct-layout transcript being replaced: scrolled, its first row
+    // 68px below the content top (history controls).
+    const view = render(
+      <div ref={scrollElement}>
+        <div data-chat-message-key="old-row" />
+      </div>,
+    );
+    const container = scrollElement.current!;
+    container.scrollTop = 500;
+    container.getBoundingClientRect = () => ({ top: 0 }) as DOMRect;
+    container.querySelector<HTMLElement>(
+      '[data-chat-message-key]',
+    )!.getBoundingClientRect = () => ({ top: 68 - 500 }) as DOMRect;
+    renderedOptions.length = 0;
+    view.rerender(
+      <div ref={scrollElement}>
+        <TranscriptVirtualizer
+          rows={rows}
+          scrollElement={scrollElement}
+          renderRow={(row) => <article>{row.id}</article>}
+          initialAnchor={{ key: 'message-41', offset: -320 }}
+        />
+      </div>,
+    );
+    // TanStack evaluates `initialOffset` once, on the mounting render's first
+    // range; later renders refine the margin from the mounted spacer.
+    const initialOffset = renderedOptions[0]?.initialOffset as () => number;
+    // TanStack's own coordinates: the history margin, then 21 user (88px)
+    // and 20 assistant (176px) estimates before row 41, less the reader's
+    // offset into the viewport. Not 0, which attached at the top of history.
+    expect(initialOffset()).toBe(68 + 21 * 88 + 20 * 176 + 320);
+    vi.unstubAllGlobals();
   });
 });

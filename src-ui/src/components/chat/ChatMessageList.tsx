@@ -33,6 +33,10 @@ import {
   type RevealApprovalDetail,
 } from '../status/approvalReveal';
 import { ApprovalSheetProvider } from './ApprovalSheetProvider';
+import {
+  animateScrollToBottom,
+  type ScrollToBottomAnimation,
+} from './animateScrollToBottom';
 import { ChatEmptyState } from './ChatEmptyState';
 import {
   CHAT_READER_RESTORE_EVENT,
@@ -54,6 +58,11 @@ import { SmoothStreamingMessage } from './SmoothStreamingMessage';
 import { StreamingMessage } from './StreamingMessage';
 import { ToolCallDisplay } from './ToolCallDisplay';
 import { TranscriptVirtualizer } from './TranscriptVirtualizer';
+import {
+  markTranscriptPhase,
+  noteTranscriptProgrammaticScroll,
+} from './transcriptLayoutTrace';
+import { useTranscriptLayoutTrace } from './transcriptLayoutTracer';
 import {
   projectTranscriptMessages,
   type TranscriptRow,
@@ -168,6 +177,13 @@ const OLDER_AUTO_LOAD_BAND_PX = 96;
 // many consecutive frames.
 const OLDER_RESTORE_STABLE_FRAMES = 4;
 const VIRTUALIZE_AFTER_MESSAGE_COUNT = 40;
+// A pinned transcript counts a scroll this close to its end as still pinned
+// (a dock/keyboard transition can land it a little short).
+const PINNED_TOLERANCE_PX = 32;
+// Scrolls this soon after wheel/key input, or while a touch or pointer is
+// down, are the reader's. A released press needs no grace: momentum that
+// carries the reader more than PINNED_TOLERANCE_PX is reader movement anyway.
+const READER_INPUT_GRACE_MS = 400;
 const EMPTY_MESSAGES: ChatMessage[] = [];
 const NO_PENDING_APPROVALS: ReturnType<typeof unansweredApprovalRequests> = [];
 function ChatMessageListComponent({
@@ -287,6 +303,19 @@ function ChatMessageListComponent({
   const olderRestoreFrameRef = useRef<number | undefined>(undefined);
   const [olderCommitEpoch, setOlderCommitEpoch] = useState(0);
   const previousTranscriptRows = useRef<readonly TranscriptRow[]>([]);
+  // The running "Scroll to bottom" glide. While it runs the reader is still
+  // treated as scrolled up (nothing else may snap the transcript), every
+  // frame is our own write, and reader input cancels it. The control itself
+  // is gone for the glide and returns if the reader cancels it.
+  const scrollAnimationRef = useRef<ScrollToBottomAnimation | null>(null);
+  const scrollAnimationTokenRef = useRef<object | null>(null);
+  const [scrollingToBottom, setScrollingToBottom] = useState(false);
+  // Reader input that can move the transcript: a pointer or touch still down,
+  // or wheel/key input within the grace window.
+  const readerInputRef = useRef({ down: false, until: 0 });
+  useTranscriptLayoutTrace(messagesContainerRef, activeSession.id, () => ({
+    isUserScrolledUp: isUserScrolledUpRef.current,
+  }));
 
   // Every programmatic scrollTop write goes through these so the scroll
   // handler can tell our own echoes apart from reader movement. The recorded
@@ -296,6 +325,7 @@ function ChatMessageListComponent({
       top: el.scrollTop,
       at: performance.now(),
     };
+    noteTranscriptProgrammaticScroll(el.scrollTop);
   }, []);
   const writeProgrammaticScroll = useCallback(
     (el: HTMLDivElement, top: number) => {
@@ -530,6 +560,10 @@ function ChatMessageListComponent({
     ).find((node) => node.dataset.chatMessageKey === requestedMessageRowId);
     if (!target) return;
     target.scrollIntoView({ block: 'center' });
+    // The reveal is the reader's position now: a later content resize keeps
+    // this row, not the one they were on before the link opened.
+    const element = messagesContainerRef.current;
+    if (element) visibleAnchorRef.current = captureChatScrollAnchor(element);
   }, [messages, requestedMessageRowId]);
   const agent = agents.find((a) => a.slug === activeSession.agentSlug);
 
@@ -554,11 +588,13 @@ function ChatMessageListComponent({
     const el = messagesContainerRef.current;
     if (!el || isUserScrolledUp) return;
     writeProgrammaticScroll(el, el.scrollHeight);
+    markTranscriptPhase('pin-layout');
     const raf = requestAnimationFrame(() => {
       // Read the ref, not the state closed over above: the reader may have
       // scrolled up between the layout write and this frame, and a stale
       // `false` would yank them back down after they asked to read.
       if (messagesContainerRef.current && !isUserScrolledUpRef.current) {
+        markTranscriptPhase('pin-raf');
         writeProgrammaticScroll(
           messagesContainerRef.current,
           messagesContainerRef.current.scrollHeight,
@@ -630,6 +666,52 @@ function ChatMessageListComponent({
     return () => observer.disconnect();
   }, [noteProgrammaticScroll, writeProgrammaticScroll]);
 
+  // The scroller's own box does not change when its CONTENT grows, and most
+  // growth arrives after the pin above has run: the Markdown renderer, code
+  // highlighting and turn footers are code-split and replace a row's readable
+  // source frames later. Observe the content itself. A pinned transcript
+  // follows that growth to the end; a reader keeps the row they were on, which
+  // matters because native scroll anchoring is disabled for this scroller.
+  const messagesLengthRef = useRef(messages.length);
+  messagesLengthRef.current = messages.length;
+  useLayoutEffect(() => {
+    const el = messagesContainerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      // A running glide aims at the live end on every frame already.
+      if (scrollAnimationRef.current) return;
+      if (!isUserScrolledUpRef.current) {
+        if (el.scrollHeight - el.scrollTop - el.clientHeight > 0) {
+          writeProgrammaticScroll(el, el.scrollHeight);
+          markTranscriptPhase('content-repin');
+        }
+        return;
+      }
+      // The virtualizer owns keyed row correction for long transcripts.
+      if (messagesLengthRef.current > VIRTUALIZE_AFTER_MESSAGE_COUNT) return;
+      const anchor = visibleAnchorRef.current;
+      if (anchor && restoreChatScrollAnchor(el, anchor)) {
+        noteProgrammaticScroll(el);
+        markTranscriptPhase('content-reanchor', { key: anchor.key });
+      }
+      visibleAnchorRef.current = captureChatScrollAnchor(el);
+    });
+    for (const child of el.children) observer.observe(child);
+    const children = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        for (const node of mutation.removedNodes)
+          if (node instanceof Element) observer.unobserve(node);
+        for (const node of mutation.addedNodes)
+          if (node instanceof Element) observer.observe(node);
+      }
+    });
+    children.observe(el, { childList: true });
+    return () => {
+      observer.disconnect();
+      children.disconnect();
+    };
+  }, [noteProgrammaticScroll, writeProgrammaticScroll]);
+
   // Ends the scroll-load suppression a press's restoration holds. Genuine
   // reader input, a session switch and the settle loop all end it the same way.
   const endOlderRestoreSuppression = useCallback(() => {
@@ -659,6 +741,7 @@ function ChatMessageListComponent({
     olderRestoringRef.current = true;
     const element = messagesContainerRef.current;
     olderRequestHeightRef.current = element?.scrollHeight ?? 0;
+    markTranscriptPhase('older-request');
     if (element) {
       visibleAnchorRef.current = captureChatScrollAnchor(element);
       isUserScrolledUpRef.current = true;
@@ -696,6 +779,7 @@ function ChatMessageListComponent({
     if (!olderCommitPendingRef.current) return;
     olderCommitPendingRef.current = false;
     loadingOlderRef.current = false;
+    markTranscriptPhase('older-commit');
     const requestHeight = olderRequestHeightRef.current;
     let stableFrames = 0;
     let frames = 0;
@@ -746,6 +830,9 @@ function ChatMessageListComponent({
       Math.abs(target.clientHeight - previousClientHeight) >=
         RESIZE_REANCHOR_THRESHOLD_PX;
     lastClientHeightRef.current = target.clientHeight;
+    // Every frame of a "Scroll to bottom" glide is our own write, and reader
+    // input cancels the glide before its own scroll arrives.
+    if (scrollAnimationRef.current) return;
     // A dock/keyboard resize can dispatch `scroll` before ResizeObserver gets
     // its turn. Preserve the reader's prior intent during that event: an
     // already-pinned transcript stays pinned, while an intentionally scrolled
@@ -761,14 +848,42 @@ function ChatMessageListComponent({
     // scroll events too. A write always targets the position the current
     // reader state already implies, so an event landing on the last write is
     // its echo — not the reader moving. Anything else is reader movement, no
-    // matter the device: wheel, touch, keyboard and scrollbar drags all just
-    // move scrollTop, and none of them needs a separate intent signal.
+    // matter the device (wheel, touch, keyboard and scrollbar drags all just
+    // move scrollTop), with one exception: the layout clamp below.
     const echo = lastProgrammaticScrollRef.current;
     if (
       echo &&
       performance.now() - echo.at <= PROGRAMMATIC_SCROLL_ECHO_MS &&
       Math.abs(target.scrollTop - echo.top) <= PROGRAMMATIC_SCROLL_ECHO_PX
     ) {
+      return;
+    }
+    // A pinned transcript that lands a little short with no reader input was
+    // clamped by layout, not scrolled: a sibling measuring itself (the
+    // composer collapses its draft to one row to size it) briefly hands the
+    // transcript more height, the browser clamps scrollTop to the new end, and
+    // the height comes back within the same frame — no resize is ever
+    // observed. Without this the newest message stayed that many pixels short.
+    const readerInput = readerInputRef.current;
+    const readerActing =
+      readerInput.down || performance.now() < readerInput.until;
+    // An "Earlier messages" commit restores the reader's row over several
+    // frames (the virtualizer measures rows above it and compensates, and a
+    // compensation written before the spacer grows is clamped to the old end).
+    // Those scrolls are the restoration, not the reader: they must not
+    // re-capture the anchor or, landing at the clamped end, hand the
+    // transcript to tail-follow.
+    if (olderRestoringRef.current && !readerActing) return;
+    const shortBy =
+      target.scrollHeight - target.scrollTop - target.clientHeight;
+    if (
+      !isUserScrolledUpRef.current &&
+      !readerActing &&
+      shortBy > 0 &&
+      shortBy <= PINNED_TOLERANCE_PX
+    ) {
+      writeProgrammaticScroll(target, target.scrollHeight);
+      markTranscriptPhase('clamp-repin', { shortBy });
       return;
     }
     setReaderRestoreRequest(null);
@@ -782,8 +897,7 @@ function ChatMessageListComponent({
     // Resize animations can emit a scroll event between two ResizeObserver
     // frames. Treat a small transient gap as still pinned so a dock/keyboard
     // transition cannot be mistaken for deliberate reader navigation.
-    const isAtBottom =
-      target.scrollHeight - target.scrollTop - target.clientHeight <= 32;
+    const isAtBottom = shortBy <= PINNED_TOLERANCE_PX;
     isUserScrolledUpRef.current = !isAtBottom;
     setIsUserScrolledUp(!isAtBottom);
     visibleAnchorRef.current = isAtBottom
@@ -791,18 +905,77 @@ function ChatMessageListComponent({
       : captureChatScrollAnchor(target);
   };
 
+  const cancelScrollToBottom = useCallback(() => {
+    scrollAnimationRef.current?.cancel();
+  }, []);
+  const onReaderInput = useCallback(
+    (event: React.SyntheticEvent) => {
+      if (event.type === 'touchstart' || event.type === 'pointerdown')
+        readerInputRef.current.down = true;
+      else
+        readerInputRef.current.until =
+          performance.now() + READER_INPUT_GRACE_MS;
+      endOlderRestoreSuppression();
+      cancelScrollToBottom();
+    },
+    [endOlderRestoreSuppression, cancelScrollToBottom],
+  );
+  // A press can end outside the transcript, so its end is observed globally.
+  useEffect(() => {
+    const release = () => {
+      readerInputRef.current.down = false;
+    };
+    const ends = ['pointerup', 'pointercancel', 'touchend', 'touchcancel'];
+    for (const type of ends) window.addEventListener(type, release, true);
+    return () => {
+      for (const type of ends) window.removeEventListener(type, release, true);
+    };
+  }, []);
+
+  // Glide to the newest message, then hand back to tail-follow. The reader
+  // stays "scrolled up" for the glide so the pin and the virtualizer's
+  // follow cannot snap it; reader input cancels and leaves them in control.
   const handleScrollToBottom = () => {
-    if (messagesContainerRef.current) {
-      setReaderRestoreRequest(null);
-      visibleAnchorRef.current = null;
-      writeProgrammaticScroll(
-        messagesContainerRef.current,
-        messagesContainerRef.current.scrollHeight,
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    setReaderRestoreRequest(null);
+    visibleAnchorRef.current = null;
+    scrollAnimationRef.current?.cancel();
+    const token = {};
+    scrollAnimationTokenRef.current = token;
+    setScrollingToBottom(true);
+    markTranscriptPhase('scroll-to-bottom-start');
+    const finish = (completed: boolean) => {
+      if (scrollAnimationTokenRef.current !== token) return;
+      scrollAnimationTokenRef.current = null;
+      scrollAnimationRef.current = null;
+      setScrollingToBottom(false);
+      markTranscriptPhase(
+        completed ? 'scroll-to-bottom-end' : 'scroll-to-bottom-cancel',
       );
+      if (!completed) return;
       isUserScrolledUpRef.current = false;
       setIsUserScrolledUp(false);
-    }
+    };
+    const animation = animateScrollToBottom(el, {
+      write: (top) => writeProgrammaticScroll(el, top),
+      onFinish: finish,
+    });
+    // An instant jump (reduced motion) has already finished.
+    if (scrollAnimationTokenRef.current === token)
+      scrollAnimationRef.current = animation;
   };
+  // A glide belongs to the chat it started in; a switch or unmount ends it
+  // where the reader asked to be — following the tail.
+  useEffect(() => {
+    void activeSession.id;
+    return () => {
+      if (!scrollAnimationRef.current) return;
+      scrollAnimationRef.current.cancel();
+      isUserScrolledUpRef.current = false;
+      setIsUserScrolledUp(false);
+    };
+  }, [activeSession.id]);
 
   const handleStreamingContentChange = useCallback(() => {
     setStreamingContentRevision((revision) => revision + 1);
@@ -1070,10 +1243,10 @@ function ChatMessageListComponent({
           aria-live="polite"
           style={{ fontSize: `${fontSize}px` }}
           onScroll={handleScroll}
-          onWheel={endOlderRestoreSuppression}
-          onTouchStart={endOlderRestoreSuppression}
-          onPointerDown={endOlderRestoreSuppression}
-          onKeyDown={endOlderRestoreSuppression}
+          onWheel={onReaderInput}
+          onTouchStart={onReaderInput}
+          onPointerDown={onReaderInput}
+          onKeyDown={onReaderInput}
         >
           {hasOlderMessages && (
             <div className="session-history-controls">
@@ -1115,6 +1288,11 @@ function ChatMessageListComponent({
                     }
                     restoreAnchor={currentReaderRestoreRequest?.anchor}
                     restoreAnchorVersion={currentReaderRestoreRequest?.version}
+                    // Read at mount only: a reader already in the transcript
+                    // when it crosses into virtualization keeps their row.
+                    initialAnchor={
+                      isUserScrolledUp ? visibleAnchorRef.current : null
+                    }
                   />
                 ) : (
                   transcriptRows.map((row) => (
@@ -1231,6 +1409,7 @@ function ChatMessageListComponent({
           )}
         </div>
         {isUserScrolledUp &&
+          !scrollingToBottom &&
           (scrollControlsTarget ? (
             createPortal(
               <ScrollToBottomButton onClick={handleScrollToBottom} />,

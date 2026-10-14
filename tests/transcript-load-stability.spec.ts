@@ -96,6 +96,11 @@ async function openThrottledConversation(page: Page) {
   const conversationOpen = gate();
   const lateChunks = gate();
   await installTranscriptFrameSampler(page);
+  // The product's own opt-in layout tracer runs alongside the sampler, so its
+  // dump explains a failing frame (who scrolled, what resized, which phase).
+  await page.addInitScript(() =>
+    localStorage.setItem('debug', 'app:transcript-layout'),
+  );
   await mockChatShell(page);
   await installMockOrchestrationSse(page);
   const turns = buildLongSessionTurns({
@@ -194,6 +199,24 @@ test('a cold open on a throttled phone settles pinned to the newest message', as
   await page.screenshot({ path: testInfo.outputPath('03-settled.png') });
 
   const timeline = await attachTimeline(page, testInfo, 'cold-open-timeline');
+  // The product's opt-in tracer (enabled above) attached to the real
+  // transcript and saw its rows resize.
+  const trace = await page.evaluate(
+    () =>
+      (
+        window as unknown as {
+          __stationTranscriptTrace?: {
+            dump(): { records: Array<{ kind: string; target?: string }> };
+          };
+        }
+      ).__stationTranscriptTrace?.dump() ?? null,
+  );
+  expect(trace?.records.some((record) => record.kind === 'attach')).toBe(true);
+  expect(
+    trace?.records.some(
+      (record) => record.kind === 'resize' && record.target?.startsWith('row:'),
+    ),
+  ).toBe(true);
   const settled = phaseFrames(timeline.frames, timeline.marks, 'settled');
   const loaded = phaseFrames(timeline.frames, timeline.marks, 'rows-visible');
   expect(timeline.inputs, 'the journey has no reader input').toEqual([]);
@@ -208,6 +231,32 @@ test('a cold open on a throttled phone settles pinned to the newest message', as
     'no reader moved, so no Scroll to bottom control',
   ).toBe(false);
   expect(blankViewportFrames(loaded)).toEqual([]);
+  // The open read landing changes nothing about the transcript's frame: its
+  // wait is announced, not drawn as a panel under the newest message.
+  const heights = loaded.map((frame) => frame.clientHeight);
+  expect(
+    Math.max(...heights) - Math.min(...heights),
+    'the transcript kept its height while the conversation finished loading',
+  ).toBeLessThanOrEqual(2);
+  // From the first frame the chat body shows a transcript-shaped region (the
+  // loading filler, then the list), it never drops it: without one the
+  // composer loses the flex fill that holds it at the bottom and jumps.
+  const firstRegion = timeline.frames.findIndex(
+    (frame) => frame.log || frame.filler,
+  );
+  expect(firstRegion, 'the loading filler was sampled').toBeGreaterThanOrEqual(
+    0,
+  );
+  expect(
+    timeline.frames
+      .slice(firstRegion)
+      .filter((frame) => !frame.log && !frame.filler)
+      .map((frame) => ({
+        t: frame.t,
+        loadingSkeletons: frame.loadingSkeletons,
+      })),
+    'frames with no transcript region',
+  ).toEqual([]);
 });
 
 test('a reader scrolled up keeps their row while late content renders', async ({
@@ -226,14 +275,18 @@ test('a reader scrolled up keeps their row while late content renders', async ({
     page.getByRole('button', { name: 'Scroll to bottom' }),
   ).toBeVisible();
   await waitForStableTranscript(page);
+  // The row the transcript keeps: the first one still showing at the top of
+  // the viewport (`captureChatScrollAnchor`). A row below it moves whenever
+  // this one grows, and that movement is the content, not a jump.
   const anchor = await transcript.evaluate((element) => {
     const bounds = element.getBoundingClientRect();
     const row = [
-      ...element.querySelectorAll<HTMLElement>('[data-chat-message-key]'),
-    ].find((candidate) => {
-      const rect = candidate.getBoundingClientRect();
-      return rect.top >= bounds.top && rect.bottom < bounds.bottom;
-    });
+      ...element.querySelectorAll<HTMLElement>(
+        '.chat-message-anchor[data-chat-message-key]',
+      ),
+    ].find(
+      (candidate) => candidate.getBoundingClientRect().bottom > bounds.top,
+    );
     return row
       ? {
           key: row.dataset.chatMessageKey ?? '',
@@ -241,7 +294,7 @@ test('a reader scrolled up keeps their row while late content renders', async ({
         }
       : null;
   });
-  expect(anchor, 'a fully visible row to keep').not.toBeNull();
+  expect(anchor, 'a row to keep').not.toBeNull();
   await trackTimelineRow(page, anchor!.key);
   await markTimeline(page, 'reader-anchored');
   await page.screenshot({
@@ -265,13 +318,19 @@ test('a reader scrolled up keeps their row while late content renders', async ({
     contentType: 'application/json',
     body: JSON.stringify({ anchor, drift }),
   });
-  expect(drift.frames, 'the kept row was compared across frames').toBeGreaterThan(
-    10,
-  );
+  expect(
+    drift.frames,
+    'the kept row was compared across frames',
+  ).toBeGreaterThan(10);
   expect(drift.unmounted, 'the kept row stayed mounted').toBe(0);
-  expect(drift.max, 'the kept row moved between input-free frames').toBeLessThanOrEqual(2);
+  expect(
+    drift.max,
+    'the kept row moved between input-free frames',
+  ).toBeLessThanOrEqual(2);
   const final = after.at(-1)!;
-  expect(Math.abs(final.tracked!.offset - anchor!.offset)).toBeLessThanOrEqual(2);
+  expect(Math.abs(final.tracked!.offset - anchor!.offset)).toBeLessThanOrEqual(
+    2,
+  );
   expect(blankViewportFrames(after)).toEqual([]);
 });
 
@@ -286,24 +345,90 @@ test('loading earlier history into the virtualized transcript never blanks the v
   await expect(transcript.locator('pre').first()).toBeAttached();
   await waitForStableTranscript(page, 30);
   const earlier = page.getByRole('button', { name: 'Earlier messages' });
-  // Two pages cross the 40-message virtualization threshold (20 → 40 → 60).
-  for (const expectedRows of ['40', '60']) {
-    await earlier.evaluate((button) =>
-      (button as HTMLElement).focus({ preventScroll: true }),
+  await expect(
+    transcript.getByTestId('virtualized-transcript-spacer'),
+  ).toHaveCount(0);
+  // The first window is ten turns (20 messages); one page adds twenty turns,
+  // crossing the 40-message virtualization threshold. The reader is up in
+  // the history, clear of the auto-load band at the top, when they ask for
+  // the page before it.
+  const scrollTop = await transcript.evaluate((element) => element.scrollTop);
+  await transcript.hover();
+  await page.mouse.wheel(0, -(scrollTop - 500));
+  await expect(
+    page.getByRole('button', { name: 'Scroll to bottom' }),
+  ).toBeVisible();
+  await waitForStableTranscript(page);
+  const anchor = await transcript.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const row = [
+      ...element.querySelectorAll<HTMLElement>(
+        '.chat-message-anchor[data-chat-message-key]',
+      ),
+    ].find(
+      (candidate) => candidate.getBoundingClientRect().bottom > bounds.top,
     );
-    await markTimeline(page, `earlier-${expectedRows}`);
-    await page.keyboard.press('Enter');
-    await expect(earlier).toBeEnabled();
-    await waitForStableTranscript(page, 30);
-  }
+    return row
+      ? {
+          key: row.dataset.chatMessageKey ?? '',
+          offset: row.getBoundingClientRect().top - bounds.top,
+          scrollTop: element.scrollTop,
+        }
+      : null;
+  });
+  expect(anchor, 'a row to keep').not.toBeNull();
+  expect(anchor!.scrollTop, 'clear of the 96px auto-load band').toBeGreaterThan(
+    200,
+  );
+  await trackTimelineRow(page, anchor!.key);
+  await earlier.evaluate((button) =>
+    (button as HTMLElement).focus({ preventScroll: true }),
+  );
+  await markTimeline(page, 'earlier-pressed');
+  await page.keyboard.press('Enter');
   await expect(
     transcript.getByTestId('virtualized-transcript-spacer'),
   ).toHaveAttribute('data-transcript-row-count', '60');
+  await waitForStableTranscript(page, 30);
   await markTimeline(page, 'virtualized');
   await page.screenshot({ path: testInfo.outputPath('01-virtualized.png') });
   const timeline = await attachTimeline(page, testInfo, 'earlier-timeline');
-  const frames = phaseFrames(timeline.frames, timeline.marks, 'earlier-40');
+  const frames = phaseFrames(
+    timeline.frames,
+    timeline.marks,
+    'earlier-pressed',
+  );
+  expect(
+    frames.some((frame) => frame.rows > 0),
+    'the handoff was sampled',
+  ).toBe(true);
   expect(blankViewportFrames(frames)).toEqual([]);
+  // Twenty turns land above the reader and the list becomes virtualized
+  // under them; the row they were reading stays where it was.
+  const pressedAt = timeline.marks.find(
+    (mark) => mark.label === 'earlier-pressed',
+  )!.t;
+  const drift = trackedRowDrift(
+    inputFreeFramesAfter(timeline, pressedAt),
+    timeline.inputs,
+  );
+  await testInfo.attach('earlier-drift.json', {
+    contentType: 'application/json',
+    body: JSON.stringify({ anchor, drift }),
+  });
+  expect(
+    drift.frames,
+    'the kept row was compared across frames',
+  ).toBeGreaterThan(10);
+  expect(
+    drift.max,
+    'the kept row moved between input-free frames',
+  ).toBeLessThanOrEqual(2);
+  const final = frames.at(-1)!;
+  expect(final.tracked, 'the kept row is still mounted').not.toBeNull();
+  expect(Math.abs(final.tracked!.offset - anchor!.offset)).toBeLessThanOrEqual(
+    2,
+  );
 });
 
 test('Scroll to bottom glides to the newest message and hands back to follow', async ({
@@ -340,7 +465,9 @@ test('Scroll to bottom glides to the newest message and hands back to follow', a
   // Frames after the key press: the press itself is the only input.
   const travel = inputFreeFramesAfter(timeline, jumpAt);
   const tops = travel.map((frame) => frame.scrollTop);
-  const moving = tops.filter((top, index) => index > 0 && top !== tops[index - 1]);
+  const moving = tops.filter(
+    (top, index) => index > 0 && top !== tops[index - 1],
+  );
   await testInfo.attach('jump-travel.json', {
     contentType: 'application/json',
     body: JSON.stringify(tops),

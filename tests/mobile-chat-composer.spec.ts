@@ -17,13 +17,13 @@ import {
   installJourneyProfile,
   profileJourney,
 } from './helpers/journey-profile';
+import { mockLongTranscriptConversation } from './helpers/long-transcript-conversation';
 import {
   dismissSetupLauncher,
   emitMockOrchestrationEvent,
   installMockOrchestrationSse,
   seedActiveChats,
 } from './helpers/orchestration';
-import { mockLongTranscriptConversation } from './helpers/long-transcript-conversation';
 import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 import { setVisualViewport } from './helpers/visual-viewport';

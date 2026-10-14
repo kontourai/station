@@ -85,6 +85,7 @@ import { durableMentionAuthority } from '../chat/composer-mentions';
 import { EphemeralMessage } from '../chat/EphemeralMessage';
 import type { ForkTurnSource } from '../chat/fork-turn-source';
 import { SystemEventMessage } from '../chat/SystemEventMessage';
+import { markTranscriptPhase } from '../chat/transcriptLayoutTrace';
 import { ConversationStats } from '../conversation-stats/ConversationStats';
 import ProgressSilenceObservation from '../home/ProgressSilenceObservation';
 import { LazyBoundary } from '../LazyBoundary';
@@ -150,6 +151,20 @@ const loadChatMessageList = () =>
   import('../chat/ChatMessageList').then(({ ChatMessageList }) => ({
     default: ChatMessageList,
   }));
+
+/*
+ * The list chunk's pending state takes the transcript's flex fill, exactly
+ * like the empty-transcript filler below. A bare skeleton list here left the
+ * dock with no filler for the frames between the filler unmounting and the
+ * list chunk resolving, and the composer jumped up under the header and back
+ * (recorded as a layout shift on `.chat-input` by
+ * tests/transcript-load-stability.spec.ts).
+ */
+const CHAT_MESSAGE_LIST_PENDING = (
+  <div className="chat-messages chat-messages--empty" role="status">
+    <SkeletonList count={4} label="Loading chat" />
+  </div>
+);
 
 const loadOutboundQueuedMessages = () =>
   import('../chat/OutboundQueuedMessages').then(
@@ -585,6 +600,23 @@ export function ChatDockBody({
   const transcriptLoaded = stickyTranscriptRef.current.messages.length > 0;
   const conversationLoading =
     resolvingOpen || (transcriptPending && !transcriptLoaded);
+  const transcriptDisplayed = displayedTranscriptMessages.length > 0;
+  // Loading-phase boundaries for the opt-in transcript layout tracer.
+  useEffect(() => {
+    markTranscriptPhase('dock-loading', {
+      resolvingOpen,
+      transcriptPending,
+      catchingUp: transcript.catchingUp,
+      conversationLoading,
+      transcriptDisplayed,
+    });
+  }, [
+    resolvingOpen,
+    transcriptPending,
+    transcript.catchingUp,
+    conversationLoading,
+    transcriptDisplayed,
+  ]);
   // D3: the escape joins the skeleton only once a load has run long; a load
   // that lands in the ordinary second or two shows one state, the skeleton.
   const [loadingLong, setLoadingLong] = useState(false);
@@ -1264,7 +1296,7 @@ export function ChatDockBody({
       {displayedTranscriptMessages.length > 0 && (
         <LazyBoundary
           load={loadChatMessageList}
-          pending={<SkeletonList count={4} label="Loading chat" />}
+          pending={CHAT_MESSAGE_LIST_PENDING}
           componentProps={{
             activeSession: renderedSession,
             suppressStreamingRow: transcript.openTurnProjected,
@@ -1808,16 +1840,17 @@ export function ChatDockBody({
         It renders only when the transcript already has messages: with an empty
         transcript the filler above carries the same wait, and two skeletons
         for one wait is the multiplicity this change exists to remove.
-
-        A SIBLING of the control row below, not a child of it. Inside
-        `.session-history-controls` (`display: flex; justify-content: center`)
-        the skeleton becomes a shrink-to-fit flex item, and `.skeleton--block`
-        is `width: 100%` OF that item — it measured 2px wide in Chrome against
-        600px here, and jsdom, which lays nothing out, called both green
-        (delta-review M1).
       */}
       {conversationLoading && displayedTranscriptMessages.length > 0 ? (
-        <SkeletonBlock count={1} label="Loading chat" />
+        /*
+         * Announced, not drawn. The transcript above is already on screen; an
+         * in-flow block here was an empty panel under the newest message that
+         * shrank the transcript while the open read was pending and handed the
+         * space back when it landed — "space appears below while the
+         * conversation loads". The disabled composer is the visible state; the
+         * long-wait escape below stays visible.
+         */
+        <SkeletonBlock count={1} label="Loading chat" className="sr-only" />
       ) : null}
       {/*
         The one way out of the wait. `.session-history-controls` is this pane's
