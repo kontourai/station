@@ -115,7 +115,10 @@ Calls made by a station-control Agent also pass the
 [dispatch authority checks](../guides/self-configuring-agent.md#dispatch-authority):
 owner and Project scope constrain local work, and remote reach requires a bound
 operator caller. These checks also cover input replies and follow-ups. They do
-not replace the operator UI or paired Device's own request authorization.
+not replace the operator UI or paired Device's own request authorization. A new
+Session such an Agent starts on this Station with no `workspace` runs in the
+calling Session's own Project when that Project has a working directory, and a
+refusal for scope is `station_control_out_of_scope` with a `reason`.
 For a new Session, Station repeats the folder decision immediately before it
 starts the engine. If the folder no longer resolves to the admitted canonical
 path, or the directory the engine would start in belongs to another scope, the

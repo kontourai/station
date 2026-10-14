@@ -1191,6 +1191,10 @@ action and whether the Conversation lineage includes host execution. A
 Conversation target uses its newest started Session. Directory scope uses the
 deepest containing canonical Project directory; missing or unreadable paths
 cannot establish a target. This does not rewrite a Session's stored Project.
+`ownProjectSlug(caller)` names the slug of the caller's own session-record
+Project when that Project has a working directory and the slug still leads
+back to it; a caller in the global space or with an unconfirmed Project gets
+none.
 
 **Admission.** A bound operator retains operator reach under ordinary route
 authorization. Other callers must target the same recorded owner, stay local
@@ -1198,13 +1202,19 @@ and satisfy the required Project action. A caller without bound assurance must
 also stay within its own Session's Project/global scope and avoid host
 execution. Approving a global target requires the operator. These are verified
 Station-control caller rules, not additional restrictions on every paired
-person UI request.
+person UI request. A refusal for scope, as opposed to an unreadable or
+another owner's target, is `station_control_out_of_scope` with a `reason` and
+fixed copy that names no Project.
 
 **Composition and evidence.** [Runtime routes](../../src-server/runtime/routes/runtime-routes.ts)
 supply record readers and Project authorization. The
 [dispatch route helper](../../src-server/routes/orchestration/dispatch-scope.ts)
 applies the shared rule before privileged downstream hops and passes the
-resolved directory rather than the caller's original alias. The
+resolved directory rather than the caller's original alias. Before that, for
+`/chat` and its siblings and `/delegations`, it gives a new Session on this
+Station that names no workspace the caller's own Project
+(`withCallerProjectWorkspace`), so the rule, the dispatch and the start-time
+repeat all see that Project's workspace. The
 [execution-target resolver](../../src-server/services/execution-target/execution-target-resolver.ts)
 also requires local Project cwd overrides to exist inside that Project when
 there is no separately verified remote path. Source tests include the
