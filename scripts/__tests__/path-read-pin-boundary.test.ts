@@ -533,6 +533,8 @@ const DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS: Readonly<
     'lists .github/workflows; the .github/workflows/** edge selects it',
   'scripts/__tests__/android-firebase-workflow-env.test.ts':
     'lists .github/workflows; the .github/workflows/** edge selects it',
+  'scripts/__tests__/monument-import-boundary-gate.test.ts':
+    'the match is fixture source text (`import.meta.glob(...)`) written into a scratch repository; the suite itself walks no directory',
   'scripts/__tests__/basis-mcp-apps.test.ts':
     'git ls-files over its own generated outputs, to prove they are untracked',
   'scripts/__tests__/desktop-runtime-port-lease.test.ts':

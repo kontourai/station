@@ -1,0 +1,17 @@
+{
+  "revision": "1ae1a59a2446820464b95f978148d6c4f6c68e9f",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Re-reviewed against the #3564 change: it adds one OTel counter declaration (station.memory.transcript_tail_recoveries) and nothing in the overview names station-agent transcript storage, tail repair or the metric inventory. Searched for FileMemory, memory-adapter, torn and quarantine; no claim affected.","inputs":["docs/architecture.md","src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Changed input is the regenerated metrics reference only (one new counter row, line numbers shifted). The review's findings do not cite metric line numbers or this counter; no claim affected.","inputs":["docs/architecture/abstraction-review.md","docs/reference/metrics.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked the #3564 change: a new counter is declared in telemetry/metrics.ts and memory-adapter-messages.ts now emits it on a read or append that finds an unterminated transcript tail. The guide's NDJSON sections describe the daily monitoring event store, not station-agent transcripts; it does not enumerate individual counters, so no prose changes. Producer semantics for the new counter live in its declaration and the adapter.","inputs":["docs/guides/monitoring.md","src-server/adapters/file/memory-adapter-messages.ts","src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Changed input is telemetry/metrics.ts, which gained one unrelated counter. The guide covers push registration and delivery and names none of the changed instruments; no claim affected.","inputs":["docs/guides/web-push-notifications.md","src-server/telemetry/metrics.ts"]},
+
+    {"path":"docs/reference/api.md","note":"memory-adapter-messages.ts now reports a torn transcript tail from the read path (telemetry and log only) and the reader's returned messages are unchanged; no route request, response or error shape changed. Searched the reference for FileMemory, getMessages, torn and working memory; no claim affected.","inputs":["docs/reference/api.md","src-server/adapters/file/memory-adapter-messages.ts"]},
+
+    {"path":"docs/reference/metrics.md","note":"Generated catalog regenerated with npm run docs:metrics:generate; docs:metrics:check passes. The only delta is the new station.memory.transcript_tail_recoveries counter and the shifted source hash and line anchors.","inputs":["docs/reference/metrics.md","src-server/telemetry/metrics.ts"]}
+  ]
+}

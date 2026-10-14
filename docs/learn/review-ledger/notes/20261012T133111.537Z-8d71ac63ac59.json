@@ -1,0 +1,7 @@
+{
+  "revision": "2352d690311789376e772e77d1eca520f1dfcd30",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"#2823 scan-latch fix: station-docs-content.ts changed only by regeneration (npm run docs:mcp:generate) from the edited RecoveryLedger and CredentialRecoveryModule module-map sections; topic IDs, tool surface, and the version/digest semantics this reference describes are unchanged (the digest value is not quoted here). Claims unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

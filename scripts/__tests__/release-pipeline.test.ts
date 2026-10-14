@@ -3,11 +3,15 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { describe, expect, it } from 'vitest';
+import { JSON_SCHEMA, load } from 'js-yaml';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { main as decideMain } from '../nightly-qualification-decide.mjs';
 import {
+  ADMISSION_OBSERVE_INTERVAL_MS,
+  ADMISSION_WAIT_CEILING_MS,
   finalPublicationDecision,
+  main as pipelineMain,
   publicationInterval,
   recoveryDisposition,
   runnerProfile,
@@ -146,7 +150,13 @@ it('the real CLI observes configured peer jobs before admitting fanout and retai
   const root = makeTempDir('station-release-admission-');
   const output = join(root, 'output');
   let count = 0;
+  let failing = false;
   const server = createServer((request, response) => {
+    if (failing) {
+      response.statusCode = 502;
+      response.end('{}');
+      return;
+    }
     response.setHeader('content-type', 'application/json');
     response.end(
       JSON.stringify(
@@ -187,14 +197,20 @@ it('the real CLI observes configured peer jobs before admitting fanout and retai
       repositories: ['owner/station', 'owner/peer'],
     });
     expect(readFileSync(output, 'utf8')).toContain('admitted=true');
-    count = 8;
+    // An unobservable repository fails closed at once; it is never waited on.
+    writeFileSync(output, '');
+    failing = true;
     await expect(
       exec(
         process.execPath,
         [resolve(import.meta.dirname, '../release-pipeline.mjs'), 'admission'],
-        { env, windowsHide: true },
+        { env, windowsHide: true, timeout: 30_000 },
       ),
-    ).rejects.toMatchObject({ code: 1 });
+    ).rejects.toMatchObject({
+      code: 1,
+      stderr: expect.stringContaining('HTTP 502'),
+    });
+    expect(readFileSync(output, 'utf8')).toBe('');
   } finally {
     await new Promise<void>((done) => server.close(() => done()));
   }
@@ -312,4 +328,166 @@ it('checks the current provider pointers without requiring retired ledger histor
       now,
     }),
   ).toMatchObject({ androidNeeded: false });
+});
+
+describe('qualification admission waits for capacity instead of failing (#3612)', () => {
+  const capacity = (occupied: number, macosOccupied = 0) => ({
+    ...runnerProfile({}),
+    repositories: ['owner/station'],
+    occupied,
+    macosOccupied,
+    admitted: occupied + 6 <= 20 && macosOccupied < 5,
+    observedAt: '2026-10-12T09:26:20.800Z',
+    scope:
+      'configured repository snapshot; omitted organization workloads are not certified',
+  });
+  const makeTempDir = trackTempDirs();
+  const workflowFiles = () => {
+    const root = makeTempDir('station-admission-wait-');
+    const env = {
+      GITHUB_OUTPUT: join(root, 'output'),
+      GITHUB_STEP_SUMMARY: join(root, 'summary'),
+    };
+    writeFileSync(env.GITHUB_OUTPUT, '');
+    writeFileSync(env.GITHUB_STEP_SUMMARY, '');
+    return env;
+  };
+  const quiet = () => vi.spyOn(console, 'log').mockImplementation(() => {});
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('pins the ceiling and the observation interval', () => {
+    expect(ADMISSION_WAIT_CEILING_MS).toBe(15 * 60_000);
+    expect(ADMISSION_OBSERVE_INTERVAL_MS).toBe(60_000);
+  });
+
+  it('gives the resolve job room to reach the ceiling and report it', () => {
+    type Step = { name?: string; run?: string; 'timeout-minutes'?: number };
+    const workflow = load(
+      readFileSync(
+        resolve(
+          import.meta.dirname,
+          '../../.github/workflows/full-regression.yml',
+        ),
+        'utf8',
+      ),
+      { schema: JSON_SCHEMA },
+    ) as {
+      jobs: { resolve: { 'timeout-minutes': number; steps: Step[] } };
+    };
+    const job = workflow.jobs.resolve;
+    const admission = job.steps.find((step) =>
+      step.run?.includes('node scripts/release-pipeline.mjs admission'),
+    );
+    const ceilingMinutes = ADMISSION_WAIT_CEILING_MS / 60_000;
+    // A backstop that fires first kills the step without the explicit
+    // timeout message, so both must outlast the ceiling.
+    expect(admission?.['timeout-minutes']).toBe(18);
+    expect(admission?.['timeout-minutes']).toBeGreaterThan(ceilingMinutes);
+    expect(job['timeout-minutes']).toBe(30);
+    expect(job['timeout-minutes']).toBeGreaterThan(
+      admission?.['timeout-minutes'] ?? Infinity,
+    );
+  });
+
+  it('admits on a later observation, writes the outputs and summarizes every observation', async () => {
+    quiet();
+    // The production clock and sleep run on fake timers: no real waiting.
+    vi.useFakeTimers();
+    const env = workflowFiles();
+    const observations = [capacity(18, 4), capacity(15, 5), capacity(14, 4)];
+    const observe = vi.fn(async () => {
+      const next = observations.shift();
+      if (!next) throw new Error('observed past admission');
+      return next;
+    });
+    const run = pipelineMain(['admission'], { env, observe });
+    await vi.advanceTimersByTimeAsync(ADMISSION_OBSERVE_INTERVAL_MS - 1);
+    expect(observe).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(2 * ADMISSION_OBSERVE_INTERVAL_MS);
+    await run;
+    expect(observe).toHaveBeenCalledTimes(3);
+    expect(readFileSync(env.GITHUB_OUTPUT, 'utf8')).toBe(
+      'admitted=true\nordinary=2\nheavy=1\n',
+    );
+    const summary = readFileSync(env.GITHUB_STEP_SUMMARY, 'utf8')
+      .trim()
+      .split('\n');
+    expect(summary).toHaveLength(3);
+    expect(summary[0]).toContain('observation 1 (waiting for capacity)');
+    expect(summary[0]).toContain('"occupied":18');
+    expect(summary[1]).toContain('"macosOccupied":5');
+    expect(summary[2]).toContain('observation 3 (admitted)');
+    expect(summary[2]).toContain(
+      `"waitedMs":${2 * ADMISSION_OBSERVE_INTERVAL_MS}`,
+    );
+  });
+
+  it('fails with an explicit timeout and the last observed capacity once the ceiling elapses', async () => {
+    quiet();
+    const env = workflowFiles();
+    let clock = 0;
+    const wakes: number[] = [];
+    // Each observation takes 7 s of wall clock, which counts against the
+    // ceiling: 13 full one-minute sleeps, then a short one that lands on it.
+    const observe = vi.fn(async () => {
+      clock += 7_000;
+      return capacity(18, 5);
+    });
+    await expect(
+      pipelineMain(['admission'], {
+        env,
+        observe,
+        now: () => clock,
+        sleep: async (ms: number) => {
+          // A broken ceiling would loop on microtasks forever; fail instead.
+          if (wakes.length > 100) throw new Error('admission never timed out');
+          clock += ms;
+          wakes.push(clock);
+        },
+      }),
+    ).rejects.toThrow(
+      /timed out after 15 minutes without repository capacity \(15 observations\); last observed at 2026-10-12T09:26:20\.800Z: occupied 18 \+ background 6 exceeds total 20, or macOS occupied 5 is not below 5/,
+    );
+    expect(observe).toHaveBeenCalledTimes(15);
+    // The last re-observation starts exactly at the ceiling, never past it.
+    expect(wakes).toHaveLength(14);
+    expect(Math.max(...wakes)).toBe(ADMISSION_WAIT_CEILING_MS);
+    expect(readFileSync(env.GITHUB_OUTPUT, 'utf8')).toBe('');
+    const summary = readFileSync(env.GITHUB_STEP_SUMMARY, 'utf8');
+    expect(summary.match(/waiting for capacity/g)).toHaveLength(15);
+    expect(summary).toContain(
+      'Qualification admission failed: qualification admission timed out',
+    );
+  });
+
+  it('fails closed at once when an observation throws, without retrying or sleeping', async () => {
+    quiet();
+    const env = workflowFiles();
+    const slept: number[] = [];
+    let calls = 0;
+    const observe = vi.fn(async () => {
+      calls++;
+      if (calls === 1) return capacity(18);
+      throw new Error('GitHub GET actions/runs: HTTP 502');
+    });
+    await expect(
+      pipelineMain(['admission'], {
+        env,
+        observe,
+        now: () => slept.reduce((sum, ms) => sum + ms, 0),
+        sleep: async (ms: number) => {
+          slept.push(ms);
+        },
+      }),
+    ).rejects.toThrow('GitHub GET actions/runs: HTTP 502');
+    expect(observe).toHaveBeenCalledTimes(2);
+    expect(slept).toEqual([ADMISSION_OBSERVE_INTERVAL_MS]);
+    expect(readFileSync(env.GITHUB_OUTPUT, 'utf8')).toBe('');
+    expect(readFileSync(env.GITHUB_STEP_SUMMARY, 'utf8')).toContain(
+      'Qualification admission failed: GitHub GET actions/runs: HTTP 502',
+    );
+  });
 });

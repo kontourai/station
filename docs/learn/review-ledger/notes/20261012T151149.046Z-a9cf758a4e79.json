@@ -1,0 +1,7 @@
+{
+  "revision": "cb435260ac749b919f0d398939a94658eb40f536",
+
+  "notes": [
+    {"path":"docs/guides/self-hosted-broker.md","note":"#561 (fix round): releaseOwnedChildAfterGroupExit now logs instead of throwing when a record cannot be removed after the group exits; registerDetachedOwnedChild and the null-birth sweep drop are as previously reviewed. Re-read the settled-owned-processes receipt claim; a dated receipt, unaffected. No prose change.","inputs":["docs/guides/self-hosted-broker.md","src-server/services/infra/process-utils.ts"]}
+  ]
+}

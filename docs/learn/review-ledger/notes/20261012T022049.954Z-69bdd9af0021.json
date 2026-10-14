@@ -1,0 +1,7 @@
+{
+  "revision": "a5377fc768c0d424783c2c494bed6eb7cbeda2fd",
+
+  "notes": [
+    {"path":"packaging/homebrew/README.md","note":"Upstream packaging/manifest/README.md delta: the ecosystem-manifest path is also selected by STATION_CHANNEL=nightly (default rolling portable-nightly manifest) and the nightly.md anchor was renamed. This README covers cask rendering, schema-v1/macOS admission and fixture/dry-run key overrides; none of those claims depend on the installer's nightly default. No prose change.","inputs":["packaging/homebrew/README.md","packaging/manifest/README.md"]}
+  ]
+}

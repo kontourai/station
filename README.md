@@ -1,6 +1,10 @@
 # Station
 
-**An agent workspace for projects, execution, and evidence.**
+**The agent workspace where work ships with receipts.**
+
+[![Docs](https://img.shields.io/badge/docs-kontourai.github.io-blue)](https://kontourai.github.io/station/)
+[![Site](https://img.shields.io/badge/site-station.kontourai.io-blue)](https://station.kontourai.io)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 Station is Kontour's open-source, local-first workspace for agent work. Bring
 your agents, projects, and devices together, hand a Task to the agent you

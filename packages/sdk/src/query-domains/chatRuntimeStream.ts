@@ -1,3 +1,4 @@
+import { FOREGROUND_MESSAGE_INDETERMINATE_CODE } from '@kontourai/station-contracts/orchestration';
 import { readWithStallWatchdog } from '@kontourai/station-contracts/stall-watchdog';
 import type { UIBlock } from '@kontourai/station-contracts/ui-block';
 import { StationHttpError } from '../client/api-error-message';
@@ -20,6 +21,7 @@ async function buildChatHttpError(response: Response): Promise<ChatHttpError> {
       error?: unknown;
       code?: unknown;
       details?: unknown;
+      outcome?: unknown;
     } | null;
     const serverMessage =
       body && typeof body.error === 'string' && body.error.length > 0
@@ -32,13 +34,22 @@ async function buildChatHttpError(response: Response): Promise<ChatHttpError> {
     // The failure form, so the envelope's `details` ride on the one field
     // `StationHttpError` carries them in (#1796's full-access refusal is
     // rendered from them, never from the prose).
-    return new ChatHttpError(
+    const error = new ChatHttpError(
       new StationHttpError(response.status, serverMessage, {
         code,
         details: body?.details ?? undefined,
       }),
       isStationAnswer(response, body),
     );
+    // #3581: a keyed turn the agent may already have run. Callers branch on
+    // `outcome` (the same marker the foreground send uses) and must not
+    // resend it; every other refusal leaves `outcome` unset.
+    if (
+      code === FOREGROUND_MESSAGE_INDETERMINATE_CODE &&
+      body?.outcome === 'indeterminate'
+    )
+      return Object.assign(error, { outcome: 'indeterminate' as const });
+    return error;
   } catch (error) {
     rethrowDeadline(error);
     // Body isn't JSON (or is empty) — fall back to a generic status message
