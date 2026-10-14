@@ -193,54 +193,17 @@ export function OutboundQueuedMessages({
                   </button>
                 </div>
               ) : null}
-              {turn.waitingForStation ? (
-                <span className="queued-messages__label">
-                  Waiting for {turn.waitingForStation}; it is only sent there
-                </span>
-              ) : null}
-              {turn.heldElsewhere ? (
-                <span className="queued-messages__label">
-                  Held for after a reply, in another window or one that closed.
-                  Not sent yet; messages after it are not held back by it.{' '}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void import('../../lib/outboundQueue')
-                        .then(({ outboundDispatch }) =>
-                          outboundDispatch.sendHeld(turn.clientTurnId),
-                        )
-                        .catch((error: unknown) =>
-                          onError(
-                            `Could not send this message: ${error instanceof Error ? error.message : String(error)}`,
-                          ),
-                        )
-                    }
-                  >
-                    Send
-                  </button>
-                </span>
-              ) : null}
+              <StationWaitNote waitingForStation={turn.waitingForStation} />
+              <HeldCopyNotice turn={turn} onError={onError} />
               {turn.status === 'may-have-started' ||
               turn.status === 'invoking' ? (
                 <span className="queued-messages__label">
                   May have started; inspect this session before sending again{' '}
                   {turn.waitingForStation ? null : (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void import('../../lib/deliveryLookup')
-                          .then(({ recheckOutboundTurn }) =>
-                            recheckOutboundTurn(turn.clientTurnId),
-                          )
-                          .catch((error: unknown) =>
-                            onError(
-                              `Could not check this message: ${error instanceof Error ? error.message : String(error)}`,
-                            ),
-                          )
-                      }
-                    >
-                      Check
-                    </button>
+                    <RecheckDeliveryButton
+                      clientTurnId={turn.clientTurnId}
+                      onError={onError}
+                    />
                   )}
                 </span>
               ) : turn.status === 'failed' ? (
@@ -417,5 +380,82 @@ export function OutboundQueuedMessages({
       </div>
       <span className="sr-only">Offline queue for session {sessionId}</span>
     </div>
+  );
+}
+
+/**
+ * A copy held for after a reply by another window, or by one that closed: it
+ * is sent only when the user says so (`sendHeld`), with its own key.
+ */
+function HeldCopyNotice({
+  turn,
+  onError,
+}: {
+  turn: { clientTurnId: string; heldElsewhere?: true };
+  onError: (message: string) => void;
+}) {
+  if (!turn.heldElsewhere) return null;
+  const { clientTurnId } = turn;
+  return (
+    <span className="queued-messages__label">
+      Held for after a reply, in another window or one that closed. Not sent
+      yet; messages after it are not held back by it.{' '}
+      <button
+        type="button"
+        onClick={() =>
+          void import('../../lib/outboundQueue')
+            .then(({ outboundDispatch }) =>
+              outboundDispatch.sendHeld(clientTurnId),
+            )
+            .catch((error: unknown) =>
+              onError(
+                `Could not send this message: ${error instanceof Error ? error.message : String(error)}`,
+              ),
+            )
+        }
+      >
+        Send
+      </button>
+    </span>
+  );
+}
+
+/** Asks Station again what became of a possibly-started message; never resends. */
+function RecheckDeliveryButton({
+  clientTurnId,
+  onError,
+}: {
+  clientTurnId: string;
+  onError: (message: string) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        void import('../../lib/deliveryLookup')
+          .then(({ recheckOutboundTurn }) => recheckOutboundTurn(clientTurnId))
+          .catch((error: unknown) =>
+            onError(
+              `Could not check this message: ${error instanceof Error ? error.message : String(error)}`,
+            ),
+          )
+      }
+    >
+      Check
+    </button>
+  );
+}
+
+/** A row written for another Station waits for that one; it is never sent elsewhere. */
+function StationWaitNote({
+  waitingForStation,
+}: {
+  waitingForStation?: string;
+}) {
+  if (!waitingForStation) return null;
+  return (
+    <span className="queued-messages__label">
+      Waiting for {waitingForStation}; it is only sent there
+    </span>
   );
 }
