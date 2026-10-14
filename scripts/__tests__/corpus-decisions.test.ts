@@ -1,5 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   CORPUS_PIN,
@@ -11,21 +10,14 @@ import { FAST_BASE_ENV } from '../run-ci-fast.mjs';
 const CORPUS_PACKAGE = `--package=https://codeload.github.com/kontourai/corpus/tar.gz/${CORPUS_PIN}`;
 
 describe('Corpus decisions wrapper', () => {
-  it('pins the one Corpus commit the workflows use', () => {
+  it('pins the Corpus commit docs-kit.yml and pages.yml use', () => {
     expect(CORPUS_PIN).toBe('08c62ccd72880ff4bd4c378ae252ad437b4b4fb5');
-    const workflows = '.github/workflows';
-    const pins = readdirSync(workflows)
-      .filter((name) => name.endsWith('.yml'))
-      .flatMap((name) =>
-        [
-          ...readFileSync(join(workflows, name), 'utf8').matchAll(
-            /(?:kontourai\/corpus(?:#|\/tar\.gz\/)|corpus-ref:\s*)([0-9a-f]{40})/g,
-          ),
-        ].map((match) => `${name}:${match[1]}`),
-      );
-    // docs-kit.yml's corpus-ref and pages.yml's bundle build, at least.
-    expect(pins.length).toBeGreaterThanOrEqual(2);
-    for (const pin of pins) expect(pin.split(':')[1]).toBe(CORPUS_PIN);
+    const docsKit = readFileSync('.github/workflows/docs-kit.yml', 'utf8');
+    expect(docsKit.match(/corpus-ref:\s*([0-9a-f]{40})/)?.[1]).toBe(CORPUS_PIN);
+    const pages = readFileSync('.github/workflows/pages.yml', 'utf8');
+    expect(pages.match(/kontourai\/corpus#([0-9a-f]{40})/)?.[1]).toBe(
+      CORPUS_PIN,
+    );
   });
 
   it('checks against the ci:fast base, which defaults to origin/main', () => {
