@@ -141,31 +141,64 @@ describe('TranscriptVirtualizer (station#1238)', () => {
     const shouldAdjust = instances.at(-1)
       ?.shouldAdjustScrollPositionOnItemSizeChange as
       | ((
-          item: { index: number; start: number },
+          item: { index: number; start: number; size: number; key: string },
           delta: number,
-          instance: { scrollOffset: number; scrollAdjustments: number },
+          instance: {
+            scrollOffset: number;
+            scrollAdjustments: number;
+            itemSizeCache: Map<string, number>;
+            scrollDirection: 'forward' | 'backward' | null;
+          },
         ) => boolean)
       | undefined;
     expect(shouldAdjust, 'an instance hook').toBeTypeOf('function');
     // Following the tail, a row that starts above the viewport is compensated
     // and one below it is not.
     expect(
-      shouldAdjust!({ index: 3, start: 200 }, 40, {
+      shouldAdjust!({ index: 3, start: 200, size: 100, key: 'message-3' }, 40, {
         scrollOffset: 500,
         scrollAdjustments: 0,
+        itemSizeCache: new Map(),
+        scrollDirection: null,
       }),
     ).toBe(true);
     expect(
-      shouldAdjust!({ index: 9, start: 900 }, 40, {
+      shouldAdjust!({ index: 9, start: 900, size: 100, key: 'message-9' }, 40, {
         scrollOffset: 500,
         scrollAdjustments: 0,
+        itemSizeCache: new Map(),
+        scrollDirection: null,
       }),
     ).toBe(false);
+    // A re-measured row that spans the fold (a streaming answer growing
+    // below the reader) is not compensated; one entirely above it is.
+    const measured = new Map([
+      ['message-4', 100],
+      ['message-2', 100],
+    ]);
+    expect(
+      shouldAdjust!({ index: 4, start: 450, size: 100, key: 'message-4' }, 40, {
+        scrollOffset: 500,
+        scrollAdjustments: 0,
+        itemSizeCache: measured,
+        scrollDirection: 'forward',
+      }),
+    ).toBe(false);
+    expect(
+      shouldAdjust!({ index: 2, start: 300, size: 100, key: 'message-2' }, 40, {
+        scrollOffset: 500,
+        scrollAdjustments: 0,
+        itemSizeCache: measured,
+        scrollDirection: 'forward',
+      }),
+    ).toBe(true);
     // Earlier measurements in the same batch already moved the fold.
     expect(
-      shouldAdjust!({ index: 6, start: 600 }, 40, {
+      shouldAdjust!({ index: 6, start: 600, size: 100, key: 'message-6' }, 40, {
         scrollOffset: 500,
         scrollAdjustments: 150,
+        itemSizeCache: new Map(),
+        scrollDirection: null,
       }),
     ).toBe(true);
   });
