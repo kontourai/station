@@ -241,6 +241,21 @@ describe('cross-platform release channel matrix', () => {
         expect(
           readFileSync(join(resources, 'values/strings.xml'), 'utf8'),
         ).toContain(`>${identity.appName}<`);
+        const adaptive = readFileSync(
+          join(resources, 'mipmap-anydpi-v33/ic_launcher.xml'),
+          'utf8',
+        );
+        expect(adaptive).toContain(
+          '<monochrome android:drawable="@drawable/station_launcher_monochrome"',
+        );
+        expect(adaptive).toContain('@mipmap/ic_launcher_foreground');
+        const monochrome = readFileSync(
+          join(resources, 'drawable/station_launcher_monochrome.xml'),
+          'utf8',
+        );
+        expect(monochrome).toContain('android:fillType="evenOdd"');
+        expect(monochrome).toContain('android:scaleX="0.75"');
+        expect(monochrome).toMatch(/android:pathData="M[^"]+Z"/);
         expect(
           readFileSync(
             join(resources, 'values/ic_launcher_background.xml'),

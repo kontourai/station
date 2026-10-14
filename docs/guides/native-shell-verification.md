@@ -43,6 +43,11 @@ device, TestFlight, or App Store package. The command prints the resulting
 `.app` path. Archive that app only for a workspace or service that accepts iOS
 simulator artifacts; it cannot be installed on a physical iPhone or iPad.
 
+Post-init resource staging restores the amber Dev app-icon set from the
+generated project's identity. The completion command checks the input catalog
+and compares the packaged iPhone @2x icon pixels with that set. This does not
+prove every compiled asset rendition or an installed home-screen update.
+
 ## Qualify native relay link intake
 
 The [iOS intake implementation](../../src-desktop/src/native_relay_ios_launch.rs)

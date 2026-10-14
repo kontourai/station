@@ -184,8 +184,9 @@ The delivery workflow therefore runs
 `src-desktop/icons/nightly/ios/`, named by `iosIconSet` in the channel
 identity table in `scripts/ios-testflight-channel.mjs` and by `iosIconSource`
 in `config/channel-platform-matrix.json` — over the catalog. It fails closed when
-the set lacks a file the catalog's `Contents.json` references or when any file
-the template wrote survives. After the build,
+the set lacks a file the catalog's `Contents.json` references or its bytes differ
+from `assets/brand/station-icon-manifest.json`. A valid set may be applied again
+when init preserves an existing catalog. After the build,
 `node scripts/ios-channel-icons.mjs verify <channel> --app <Payload/*.app> --receipt provider-receipts/channel-icon-receipt.json`
 compares the generated input catalog to the set byte for byte and the loose
 `AppIcon60x60@2x.png` inside the `.app` to the set pixel for pixel (Xcode
@@ -201,8 +202,15 @@ does not compare every compiled catalog rendition to its source pixels.
 
 The sets are generated, not hand-edited: `node scripts/generate-app-icons.mjs`
 emits them from each channel's opaque square master (iOS rejects alpha; the
-committed `gen/apple` catalog is the stable set, which local and simulator
-builds reuse as is). See `src-desktop/icons/README.md`.
+committed `gen/apple` catalog is the stable set). The Dev set is for local
+simulator builds and does not enable store delivery. The common
+`write-ios-build-manifest.mjs` step selects the set from the generated project's
+bundle identifier and restores it after init for every maintained build route.
+CI and release simulator packaging verify the shipped icon with channel
+`project`, which resolves that same identifier; local development completion
+verifies the Dev icon. These comparisons cover the source catalog and the loose
+iPhone @2x icon, not every rendition in `Assets.car` or the installed home-screen
+appearance. See `src-desktop/icons/README.md`.
 
 ## Runtime privacy permissions
 

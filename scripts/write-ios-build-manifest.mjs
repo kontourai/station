@@ -1,6 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  applyIosChannelIcons,
+  iosIconChannelForProject,
+} from './ios-channel-icons.mjs';
+import {
   BUILD_MANIFEST_FILENAME,
   readNativeClientBuildManifest,
 } from './lib/desktop-build-manifest.mjs';
@@ -15,6 +19,9 @@ if (!existsSync(appleProjectDir)) {
     `Cannot stage iOS build provenance: ${assetsDir} does not exist. Run \`npx tauri ios init\` first.`,
   );
 }
+applyIosChannelIcons(iosIconChannelForProject(projectRoot), {
+  root: projectRoot,
+});
 stageIosLaunchScreen(projectRoot);
 
 if (!manifest) {

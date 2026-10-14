@@ -151,6 +151,7 @@ jobs:
           simulator_app=$(find src-desktop/gen/apple -type d -name '*.app' -print -quit)
           test -n "$simulator_app"
           simulator_app=$(cd "$simulator_app" && pwd -P)
+          node scripts/ios-channel-icons.mjs verify project --app "$simulator_app" --receipt "$RUNNER_TEMP/ios-simulator-icon-receipt.json"
           packaged_manifest=$(find "$simulator_app" -type f -name station-build.json -print)
           test "$(printf '%s\n' "$packaged_manifest" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
           cmp "src-desktop/station-client-build.json" "$packaged_manifest"
