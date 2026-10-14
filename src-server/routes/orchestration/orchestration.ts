@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
 import {
   parseStationAnswerNarrativePublishInput,
   parseStationAnswerNarrativeRemoveInput,
@@ -25,6 +28,7 @@ import type {
 } from '@kontourai/station-contracts/conversation-context-boundary';
 import {
   type EnvironmentRef,
+  EXECUTION_ENGINE_CHANGED_CODE,
   type ExecutionModelRequest,
   type ExecutionTarget,
   environmentId,
@@ -617,6 +621,19 @@ const executionTargetSchema = z.object({
     })
     .optional(),
   workspace: workspaceTargetSchema.optional(),
+  // A precondition the resolver can only refuse on (never a selector). The
+  // inner objects are strict so a field that would read as one is rejected.
+  expectedEngine: z
+    .discriminatedUnion('kind', [
+      z.object({ kind: z.literal('station') }).strict(),
+      z
+        .object({
+          kind: z.literal('connection'),
+          connectionId: z.string().min(1).max(256),
+        })
+        .strict(),
+    ])
+    .optional(),
 });
 
 function normalizeExecutionTarget(
@@ -624,8 +641,20 @@ function normalizeExecutionTarget(
   defaultEnvironment: EnvironmentRef = { kind: 'current' },
 ): ExecutionTarget {
   const selectedEnvironment = target.environment ?? defaultEnvironment;
+  const { expectedEngine, ...rest } = target;
   return {
-    ...target,
+    ...rest,
+    ...(expectedEngine
+      ? {
+          expectedEngine:
+            expectedEngine.kind === 'station'
+              ? { kind: 'station' as const }
+              : {
+                  kind: 'connection' as const,
+                  connectionId: engineConnectionId(expectedEngine.connectionId),
+                },
+        }
+      : {}),
     environment:
       selectedEnvironment.kind === 'saved'
         ? { kind: 'saved', id: environmentId(selectedEnvironment.id) }
@@ -2334,7 +2363,13 @@ export function createOrchestrationRoutes(
           error: errorMessage(error),
           ...(errorCode(error) ? { code: errorCode(error) } : {}),
         },
-        unreachableWorkspace ? 503 : 400,
+        unreachableWorkspace
+          ? 503
+          : // The caller's view of the Agent is stale: a conflict with the
+            // current binding, not malformed input.
+            errorCode(error) === EXECUTION_ENGINE_CHANGED_CODE
+            ? 409
+            : 400,
       );
     }
   };
@@ -3072,6 +3107,14 @@ export function createOrchestrationRoutes(
             code: wrappedCode,
           },
           403,
+        );
+      // The caller's stated engine no longer holds: a conflict with the
+      // current binding, carrying its code so a delegating caller can tell it
+      // from malformed input. Nothing was started.
+      if (wrappedCode === EXECUTION_ENGINE_CHANGED_CODE)
+        return c.json(
+          { success: false, error: errorMessage(error), code: wrappedCode },
+          409,
         );
       return c.json(
         {

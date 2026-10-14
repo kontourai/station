@@ -396,6 +396,14 @@ export interface TurnCompletedEvent extends CanonicalRuntimeEventBase {
   method: 'turn.completed';
   turnId: string;
   finishReason?: 'stop' | 'tool-calls' | 'max-tokens' | 'cancelled' | 'other';
+  /**
+   * #354: the engine's own stop reason, carried only when `finishReason`'s
+   * shared vocabulary cannot express it (it then reads `'other'`). Opaque
+   * engine text: an ACP agent reports `refusal` or `max_turn_requests` here,
+   * which would otherwise be indistinguishable from any other `'other'`
+   * stop. It does not change the turn's outcome: the turn still completed.
+   */
+  stopReason?: string;
   outputText?: string;
   /**
    * station#1182: additive, back-compat (absent on every event persisted

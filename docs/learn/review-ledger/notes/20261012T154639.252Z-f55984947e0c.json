@@ -1,0 +1,7 @@
+{
+  "revision": "ea68139b73a1767f7fd5126debfb042d6ead8815",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"#561 review fix round: vitest-resource-manifest.mjs adds owned-process-owner-birth.test.ts to the process-heavy group. Re-read the worker policy and resource groups; still accurate. No prose change.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

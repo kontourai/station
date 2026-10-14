@@ -150,3 +150,30 @@ test('the Station control remains inside the picker dismissal and focus boundary
     screen.getByRole('dialog', { name: 'Choose model' }).contains(station),
   ).toBe(true);
 });
+
+test('the Station-scoped reset never reads a bare "Use" when the default source is unknown', async () => {
+  const onReset = vi.fn();
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <StartModelPicker
+        anchor={null}
+        layer="dialog"
+        models={models}
+        loading={false}
+        modelConnections={[]}
+        profile={{ slug: agentId('reviewer'), name: 'Reviewer' }}
+        onEnvironmentChange={vi.fn()}
+        choice={{ modelId: 'fast-model', providerOptions: {} }}
+        defaultModel={{ id: 'deep-model', source: 'unknown' }}
+        onSelect={vi.fn()}
+        onReset={onReset}
+        onRuntimeOptionChange={vi.fn()}
+        onClose={vi.fn()}
+      />
+    </QueryClientProvider>,
+  );
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Use Agent defaults' }),
+  );
+  expect(onReset).toHaveBeenCalledTimes(1);
+});

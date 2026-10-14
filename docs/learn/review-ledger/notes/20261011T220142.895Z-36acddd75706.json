@@ -1,0 +1,11 @@
+{
+  "revision": "9c348f796e793c7735af41548cdf6c04891dd948",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Re-reviewed after the #3560 edit to docs/reference/contracts.md, which adds sentences about the bounded SQLITE_BUSY retry before adapter-consumer observation loss. This document cites contracts.md only as a route/link and makes no claim about adapter event publication; its Interrupted status word is the boot-recovery banner, whose meaning is unchanged. No prose change.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-reviewed after the #3560 edit to docs/reference/contracts.md, which adds sentences about the bounded SQLITE_BUSY retry before adapter-consumer observation loss. This document cites contracts.md only as a route/link and makes no claim about adapter event publication; the routing table row is unaffected. No prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Re-reviewed after the #3560 edit to docs/reference/contracts.md, which adds sentences about the bounded SQLITE_BUSY retry before adapter-consumer observation loss. This document cites contracts.md only as a route/link and makes no claim about adapter event publication; its routing and domain-module rules are unaffected. No prose change.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

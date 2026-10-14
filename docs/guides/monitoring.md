@@ -10,8 +10,11 @@ Station has three separate measurement paths:
 
 Product observations use the disclosed v1 envelope: stable retry IDs, producer
 times, inventory revision and allowlisted immutable build attribution on every
-event. Source authentication/durable deduplication remain receiver work; these
-observations are separate from canonical personal receipts. Acknowledgements
+event. The optional [product receiver](../../packages/telemetry-broker/README.md)
+authenticates separate product source keys, durably commits PostgreSQL observations,
+and deduplicates retained source/event UUIDs. Its operator queries describe received
+observations with unknown delivery coverage; these observations are separate from
+canonical personal receipts. Acknowledgements
 must name the displayed inventory revision, so stale/older UIs cannot silently
 approve newly exported fields. See the [usage inventory](../reference/usage-telemetry.md).
 
@@ -734,7 +737,13 @@ Station-agent streams feed the emitter through their streaming pipeline.
 External canonical engine events are projected by
 [OrchestrationMonitoringBridge](../../src-server/services/orchestration/orchestration-monitoring-bridge.ts),
 which excludes Station-agent to avoid a duplicate projection. The bridge does
-not own lifetime usage accounting; that has its own canonical usage fold.
+not own lifetime usage accounting; that has its own canonical usage fold. On an
+external engine's agent-complete span, token usage is that turn's own figure
+only for a provider declared `per-turn` in
+[usage semantics](../../packages/shared/src/usage-semantics.ts), summed across
+the turn's frames. A session-cumulative provider (Codex) or an undeclared one
+leaves the span's usage absent, because its frames are session totals, not that
+turn's usage. Spans written before this change can carry a Codex session total.
 
 The emitter redacts content, emits the live event, and tracks an asynchronous
 persistence promise. Persistence rejection is contained; `flush()` waits for
@@ -764,8 +773,8 @@ GenAI attributes (set per operation type):
 |-----------|--------|-------------|
 | `gen_ai.request.model` | agent start/end | Model ID |
 | `gen_ai.conversation.id` | when reported | Optional Conversation ID |
-| `gen_ai.usage.input_tokens` | agent complete | Input token count |
-| `gen_ai.usage.output_tokens` | agent complete | Output token count |
+| `gen_ai.usage.input_tokens` | agent complete | That turn's input token count; absent when not reported or not attributable to the turn |
+| `gen_ai.usage.output_tokens` | agent complete | That turn's output token count; absent when not reported or not attributable to the turn |
 | `gen_ai.tool.name` | tool call/result | Tool name. **Omitted when the producer reported none** (archive#3073) — absence is absence, never a tool named `unknown`. Events written before that change carry the literal string, so the two eras stay distinguishable; `/api/insights` buckets the omitted case as `(unnamed)`. |
 | `gen_ai.provider.name` | tool call/result | The engine that ran the tool (archive#3074): `station` for Station's own runtime, the dispatch provider for external engines. Absent on events written before that change, so any engine grouping must handle a pre-change window rather than fill it with a fallback. |
 | `gen_ai.request.model` | tool call/result | Session-configured model at dispatch — not observed per call. |
@@ -821,7 +830,8 @@ records that reached the monitoring files.
 ### Insights API
 
 `GET /api/insights` returns aggregates, not raw events: tool/Agent/model buckets,
-hourly activity and totals. Its default window is 14 days. The route applies
+hourly activity and totals. Agent buckets count chats only; there is no
+per-Agent token figure. Its default window is 14 days. The route applies
 user and Session/tenant checks and optional Agent/tool/engine filters; health
 probes are excluded. A tool filter removes non-tool rows too, and an engine
 filter cannot recover provider attribution missing from older or differently

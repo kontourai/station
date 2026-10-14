@@ -384,7 +384,38 @@ export function projectOrchestrationEventToReadModel(options: {
   sessionReadModel: Map<string, ProviderSession>;
   eventStore?: EventStore;
 }): void {
-  const { event, threadProviders, sessionReadModel, eventStore } = options;
+  const { threadProviders, sessionReadModel, eventStore } = options;
+  const session = deriveReadModelSession(options);
+  if (!session) return;
+  trackOrchestrationSession({ threadProviders, sessionReadModel, session });
+  persistReadModelSession(eventStore, session);
+}
+
+/**
+ * #3561: the durable half of {@link projectOrchestrationEventToReadModel}. The
+ * live publish path runs it as a co-commit participant of the event's own
+ * append, so the session row changes only with the event that justifies it.
+ */
+export function persistReadModelSession(
+  eventStore: EventStore | undefined,
+  session: ProviderSession,
+): void {
+  if (session.status === 'closed') {
+    eventStore?.markSessionClosed(session.threadId, session.provider);
+    return;
+  }
+  eventStore?.upsertSession(session);
+}
+
+/**
+ * #3561: the session an event would project, read from the current read
+ * model and changing nothing. `null` when the event projects no session.
+ */
+export function deriveReadModelSession(options: {
+  event: CanonicalRuntimeEvent;
+  sessionReadModel: ReadonlyMap<string, ProviderSession>;
+}): ProviderSession | null {
+  const { event, sessionReadModel } = options;
   const existing = sessionReadModel.get(event.threadId);
   const baseSession: ProviderSession = existing ?? {
     provider: event.provider,
@@ -459,17 +490,7 @@ export function projectOrchestrationEventToReadModel(options: {
       break;
   }
 
-  if (!nextSession) return;
-  trackOrchestrationSession({
-    threadProviders,
-    sessionReadModel,
-    session: nextSession,
-  });
-  if (nextSession.status === 'closed') {
-    eventStore?.markSessionClosed(nextSession.threadId, nextSession.provider);
-    return;
-  }
-  eventStore?.upsertSession(nextSession);
+  return nextSession;
 }
 
 export function buildOrchestrationSessionSummary(options: {

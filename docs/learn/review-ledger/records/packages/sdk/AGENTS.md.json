@@ -12,9 +12,13 @@
   "sources": [
     "docs/reference/sdk.md",
 
-    "packages/sdk/package.json",
+    "packages/sdk/src/query-core.ts",
 
-    "packages/sdk/src/query-core.ts"
+    "packages/sdk/package.json#/name",
+
+    "packages/sdk/package.json#/exports",
+
+    "packages/sdk/package.json#/scripts"
   ],
 
   "checks": [

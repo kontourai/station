@@ -31,6 +31,7 @@ installVisualViewportInset();
 
 import App from './App';
 import './components/editor-controls.css';
+import './components/NewChatAction.css';
 import './index.css';
 import './tailwind.css';
 import {

@@ -4,7 +4,10 @@ import { join } from 'node:path';
 import { agentId, engineId } from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
 import { PORTABLE_EXECUTION_CONSENT_METADATA_KEY } from '@kontourai/station-contracts/provider';
-import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import type {
+  CanonicalRuntimeEvent,
+  TokenUsageUpdatedEvent,
+} from '@kontourai/station-contracts/runtime-events';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -2805,19 +2808,21 @@ describe('Station Control canonical Environment + Agent execution', () => {
         ),
       ).rejects.toThrow('no provider call was made');
       expect(stationAgent.startSession).toHaveBeenCalledTimes(1);
-      // The existing trusted lifecycle observer supplies the missing terminal
-      // evidence; elapsed time or the start exception is not enough.
-      expect(
-        eventStore.sessionTurnBoundaryAuthority().observe({
-          eventId: 'confirmed-start-terminal',
-          provider: 'claude',
-          threadId: reservedChildId,
-          sessionId: reservedChildId,
-          method: 'session.exited',
-          exitCode: 0,
-          createdAt: new Date().toISOString(),
-        }),
-      ).toEqual({ kind: 'applied' });
+      // Production observes terminal evidence only after its append commits;
+      // a failed exit is retryable, while exit code 0 would mark this child completed.
+      const exited: CanonicalRuntimeEvent = {
+        eventId: 'confirmed-start-terminal',
+        provider: stationAgent.provider,
+        threadId: reservedChildId,
+        sessionId: reservedChildId,
+        method: 'session.exited',
+        exitCode: 1,
+        createdAt: new Date().toISOString(),
+      };
+      eventStore.appendEvent(exited);
+      expect(eventStore.sessionTurnBoundaryAuthority().observe(exited)).toEqual(
+        { kind: 'applied' },
+      );
 
       // The retry must look through the reserved-unstarted tail to the
       // predecessor's binding and REUSE the same reserved child identity,
@@ -4814,6 +4819,75 @@ describe('#2324 a delegated task event carries a provider-triggered turn’s tri
         ...trigger,
       }),
     ).not.toHaveProperty('trigger');
+  });
+});
+
+describe('#225 a delegated task usage event keeps every canonical usage field', () => {
+  test('projects all ten TokenUsageUpdatedEvent usage fields and bounds the opaque tier', async () => {
+    const { projectDelegatedTaskEvent } = await import(
+      '../station-control-delegation.js'
+    );
+    const usageEvent = {
+      eventId: 'usage-1',
+      provider: 'claude',
+      threadId: 'task:t',
+      createdAt: '2026-10-11T00:00:00.000Z',
+      turnId: 'turn-1',
+      method: 'token-usage.updated',
+      promptTokens: 1200,
+      completionTokens: 300,
+      totalTokens: 1500,
+      cacheReadTokens: 900,
+      cacheWriteTokens: 44785,
+      cacheWriteTokens5m: 40000,
+      cacheWriteTokens1h: 4785,
+      serviceTier: 'standard',
+      contextTokens: 62000,
+      contextWindowTokens: 200000,
+      reportedCostUsd: 0.42,
+      pricingSnapshot: {
+        id: 'catalog-1',
+        capturedAt: '2026-10-11T00:00:00.000Z',
+        currency: 'USD',
+        provider: 'anthropic',
+        model: 'claude-x',
+      },
+    } satisfies TokenUsageUpdatedEvent;
+
+    expect(projectDelegatedTaskEvent(7, usageEvent)).toEqual({
+      sequence: 7,
+      method: 'token-usage.updated',
+      eventId: 'usage-1',
+      kind: 'usage',
+      createdAt: '2026-10-11T00:00:00.000Z',
+      turnId: 'turn-1',
+      promptTokens: 1200,
+      completionTokens: 300,
+      totalTokens: 1500,
+      cacheReadTokens: 900,
+      cacheWriteTokens: 44785,
+      cacheWriteTokens5m: 40000,
+      cacheWriteTokens1h: 4785,
+      serviceTier: 'standard',
+      contextTokens: 62000,
+      contextWindowTokens: 200000,
+    });
+
+    const longTier = projectDelegatedTaskEvent(8, {
+      ...usageEvent,
+      serviceTier: 't'.repeat(500),
+    });
+    expect(longTier).not.toHaveProperty('serviceTier');
+    const firstDroppedTier = projectDelegatedTaskEvent(10, {
+      ...usageEvent,
+      serviceTier: 't'.repeat(65),
+    });
+    expect(firstDroppedTier).not.toHaveProperty('serviceTier');
+    const boundaryTier = projectDelegatedTaskEvent(9, {
+      ...usageEvent,
+      serviceTier: 't'.repeat(64),
+    });
+    expect(boundaryTier.serviceTier).toBe('t'.repeat(64));
   });
 });
 

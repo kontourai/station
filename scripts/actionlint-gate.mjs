@@ -280,6 +280,39 @@ export const REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA =
   '28deabbf24f0ab55911d311df5372d30bea0dba4';
 const SECRET_SCAN_WORKFLOW = '.github/workflows/secret-scan.yml';
 export const SECRET_SCAN_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflows/secret-scan.yml@${REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA}`;
+/** The reviewed revision of the org's docs-kit gate reusable workflow:
+ * kontourai/.github ac67c2a, Corpus v2 gate retaining #55's isolated npm
+ * configuration, #52's repository/ref inputs, and #50's disabled cache.
+ * Reviewed at that SHA
+ * for a pull_request_target and merge_group caller:
+ * - one hosted job (ubuntu-latest, 10-minute timeout) with
+ *   `permissions: contents: read`; it declares no secrets and no cache-mode;
+ * - actions/checkout@df4cb1c (v6.0.3) of `inputs.repository || github.repository`
+ *   at `inputs.ref || github.sha`, `fetch-depth: 0`,
+ *   `persist-credentials: false`;
+ * - actions/setup-node@2499707 (v6) with `package-manager-cache: false` and no
+ *   `cache`, so it neither restores nor saves an Actions cache;
+ * - one run step, `npx -y github:kontourai/corpus#<corpus-ref> check`, plus
+ *   `--base` on pull requests and merge-queue entries. The inputs reach the
+ *   shell only through `env`, never by expression interpolation.
+ * The run step does not execute the candidate: it `cd`s to `$RUNNER_TEMP`,
+ * which is not inside the checkout, so the checkout is not on npm's
+ * project-config lookup path from the working directory; it points
+ * `NPM_CONFIG_USERCONFIG` and `NPM_CONFIG_GLOBALCONFIG` at fresh empty files,
+ * and passes the checkout only as `--root "$GITHUB_WORKSPACE"`. So no
+ * candidate `.npmrc` or package.json reaches npm (the 091ffab revision ran npx
+ * inside the checkout, where a pull request's `.npmrc` steered it), and
+ * Corpus, pinned by `corpus-ref`, only reads the checked-out files. The
+ * remaining controls still apply: a read-only contents token that is not
+ * persisted, no secrets, a GitHub-hosted runner, and GitHub's read-only cache
+ * token for pull_request_target (see UNTRUSTED_ACTION_CACHE_POLICY).
+ * The callee accepts `corpus-ref` and defaults to Corpus 0.7.0; docs-kit.yml
+ * passes the org-wide pin explicitly. A bump re-opens this review. */
+export const REVIEWED_DOCS_GATE_REUSABLE_WORKFLOW_SHA =
+  'ac67c2a7484cc79cc51f81fa8b68c855c3879f94';
+export const DOCS_GATE_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflows/docs-gate.yml@${REVIEWED_DOCS_GATE_REUSABLE_WORKFLOW_SHA}`;
+const DOCS_KIT_WORKFLOW = '.github/workflows/docs-kit.yml';
+const DOCS_KIT_GATE_JOB = 'gate';
 /**
  * `owner-lifetime-seconds` is part of the host manifest, so it is one shared
  * physical-host setting rather than a per-job tuning knob. The pinned action
@@ -553,6 +586,7 @@ const BASE_CONTROLLED_PR_WORKFLOWS = new Set([
   '.github/workflows/ci.yml',
   '.github/workflows/desktop-clean-checkout.yml',
   '.github/workflows/desktop-rust.yml',
+  '.github/workflows/docs-kit.yml',
   '.github/workflows/ecosystem-packaging.yml',
   '.github/workflows/gallery-pr-check.yml',
   '.github/workflows/install-smoke.yml',
@@ -718,10 +752,13 @@ const UNTRUSTED_ACTION_CACHE_POLICY = Object.freeze({
  * Remote reusable workflows a pull-request or merge-queue job may call. The
  * gate cannot read them offline, so each is reviewed at its pinned SHA:
  * kontourai/.github secret-scan.yml@28deabb uses only actions/checkout, the
- * physical-host-capacity action and run steps (no cache).
+ * physical-host-capacity action and run steps (no cache). docs-gate.yml@246be34
+ * uses checkout and setup-node with package-manager-cache: false and no
+ * `cache` (reviewed above REVIEWED_DOCS_GATE_REUSABLE_WORKFLOW_SHA).
  */
 const UNTRUSTED_REVIEWED_REMOTE_WORKFLOWS = new Set([
   SECRET_SCAN_REUSABLE_WORKFLOW,
+  DOCS_GATE_REUSABLE_WORKFLOW,
 ]);
 const MERGE_QUEUE_WORKFLOWS = new Set([
   '.github/workflows/build-ios.yml',
@@ -816,6 +853,30 @@ function isExactMergeQueueFullRegressionCall(file, jobId, job) {
     hasExactKeys(job.with, ['source_sha', 'allow_reuse']) &&
     job.with.source_sha === `\${{ github.sha }}` &&
     job.with.allow_reuse === true
+  );
+}
+
+/**
+ * docs-kit.yml's one job: the reviewed org docs gate (see
+ * REVIEWED_DOCS_GATE_REUSABLE_WORKFLOW_SHA). A reusable call has no steps and
+ * no runner of its own, so the base-controlled checkout and hosted-runner
+ * rules are met inside the reviewed callee instead: these inputs make it
+ * check out exactly the pull request's head repository and SHA, the same
+ * expressions every other base-controlled job's checkout must use. Any other
+ * callee, input, guard, secret or permission loses the exemption.
+ */
+function isExactDocsGateCall(file, jobId, job) {
+  return (
+    file === DOCS_KIT_WORKFLOW &&
+    jobId === DOCS_KIT_GATE_JOB &&
+    hasExactKeys(job, ['name', 'uses', 'with', 'permissions']) &&
+    job.uses === DOCS_GATE_REUSABLE_WORKFLOW &&
+    hasExactKeys(job.permissions, ['contents']) &&
+    job.permissions.contents === 'read' &&
+    hasExactKeys(job.with, ['corpus-ref', 'repository', 'ref']) &&
+    /^[0-9a-f]{40}$/.test(String(job.with['corpus-ref'])) &&
+    job.with.repository === FAST_CHECKOUT_REPOSITORY &&
+    job.with.ref === FAST_CHECKOUT_REF
   );
 }
 
@@ -2766,10 +2827,12 @@ function baseControlledPrWorkflowFindings(file, document) {
         message:
           'base-controlled PR job permission overrides must declare only permissions: { contents: read }',
       });
+    const exactDocsGateCall = isExactDocsGateCall(file, jobId, job);
     const runner = classifyRunner(job);
-    // The exact call has no runner of its own. This rule does not follow
-    // it into full-regression.yml, whose jobs run on ubuntu-22.04 today.
-    if (!runner.hosted && !exactFullRegressionCall)
+    // The exact calls have no runner of their own. This rule does not follow
+    // them into full-regression.yml, whose jobs run on ubuntu-22.04 today, or
+    // the reviewed remote docs-gate.yml, which runs on ubuntu-latest.
+    if (!runner.hosted && !exactFullRegressionCall && !exactDocsGateCall)
       findings.push({
         file,
         jobId,
@@ -2786,6 +2849,7 @@ function baseControlledPrWorkflowFindings(file, document) {
             ? false
             : isExactMergeQueueRegressionAggregate(file, jobId, job) ||
               exactFullRegressionCall ||
+              exactDocsGateCall ||
               hasExplicitCheckout(
                 job,
                 FAST_CHECKOUT_REPOSITORY,

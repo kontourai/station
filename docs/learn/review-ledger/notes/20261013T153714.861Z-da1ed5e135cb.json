@@ -1,0 +1,9 @@
+{
+  "revision": "a4e4db27f5c759314b1c0440a9fb242c81828004",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Read the sqlite-turn-dedup-persistence.ts delta since the last review (createSqliteTurnDedupPersistence now calls Monument's resolveKernelLimits when it is built, so an invalid retention limit throws at construction; the adapter now leaves a host connection's pragmas alone, which the file relies on by passing EventStore's connection). The TurnDeduplicator paragraphs describe the binding, the chat: rule, the 30-day bound and deleteThread, all unchanged; they make no claim about limit validation or connection pragmas, so the prose stays accurate.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/sqlite-turn-dedup-persistence.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Read the sqlite-turn-dedup-persistence.ts delta since the last review (limit validation at construction; the adapter no longer reconfigures EventStore's connection). The TurnDeduplicator row and the /chat facade row claim neither, so the prose stays accurate.","inputs":["docs/design/event-store-ledger-migration.md","src-server/services/orchestration/sqlite-turn-dedup-persistence.ts"]}
+  ]
+}

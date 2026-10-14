@@ -1,0 +1,7 @@
+{
+  "revision": "15f61bdb4bc2e1a7ce0a65954a526813e776c7f8",
+
+  "notes": [
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Reviewed atlas addition against the documented derived Knowledge graph exporter: one product receiver module and linked private guide join the existing background branch. Export remains a derived reading map with independent byte hashes; it does not infer runtime call graphs, test results, deployment or business value. Existing import/isolation/ownership instructions remain accurate.","inputs":["examples/repository-knowledge-graph/README.md","docs/learn/atlas.json"]}
+  ]
+}

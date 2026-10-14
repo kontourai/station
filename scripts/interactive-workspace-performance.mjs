@@ -1325,6 +1325,41 @@ export function createNotVerifiedReport(
   };
 }
 
+/**
+ * Opt-in for running the reference bridge on a host that cannot produce
+ * reference evidence, to debug the bridge itself. Its verdict there is still
+ * NOT_VERIFIED; the variable only buys the diagnostic workload.
+ */
+export const NON_REFERENCE_DIAGNOSTIC_ENV =
+  'STATION_PERFORMANCE_NON_REFERENCE_DIAGNOSTIC';
+
+/**
+ * Decides, before any Station or browser exists, whether this host can
+ * produce reference evidence (#577). The evaluator only learns the platform
+ * from the adapter's metadata after the whole workload has run, so on any
+ * other OS the full fixture loop used to run just to report
+ * REFERENCE_OS_MISMATCH. Hardware (CPU, GPU, display, RAM) is still judged
+ * from that runtime metadata; only the OS is knowable up front.
+ *
+ * Returns `{ runs: true }` on the reference platform or with the diagnostic
+ * opt-in, otherwise `{ runs: false, reason, report }` where `report` is the
+ * NOT_VERIFIED report the skipped run stands for.
+ */
+export function referenceHostGate(
+  config,
+  { platform: hostPlatform = process.platform, env = process.env } = {},
+) {
+  const expected = config.referenceEnvironment.platform;
+  if (hostPlatform === expected) return { runs: true, diagnostic: false };
+  if (env[NON_REFERENCE_DIAGNOSTIC_ENV] === '1')
+    return { runs: true, diagnostic: true };
+  return {
+    runs: false,
+    reason: `REFERENCE_OS_MISMATCH: the interactive workspace performance reference runs only on ${expected}, and this host is ${hostPlatform}. Set ${NON_REFERENCE_DIAGNOSTIC_ENV}=1 to run the bridge as a non-reference diagnostic.`,
+    report: createNotVerifiedReport(config, ['REFERENCE_OS_MISMATCH']),
+  };
+}
+
 export function evaluateInteractiveWorkspacePerformance(config, run, options) {
   const reasons = evidenceReasons(config, run, options);
   if (options.mode === 'reference' && reasons.length > 0)

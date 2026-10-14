@@ -14,7 +14,11 @@
 
     "scripts/build-github-pages.mjs",
 
-    "scripts/check-generated-pages-links.mjs"
+    "scripts/check-generated-pages-links.mjs",
+
+    ".github/workflows/pages.yml",
+
+    "corpus.json"
   ],
 
   "checks": [

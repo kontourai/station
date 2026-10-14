@@ -1,0 +1,13 @@
+{
+  "revision": "371bcf14430ba67a4b405b82eeaca1850df708c5",
+
+  "notes": [
+    {"path":"README.md","note":"#554 cascade: cli.md gained two sentences on the station-dev installer's symlink refusal and 128+signal exit. README only links the CLI reference for target and credential setup; no claim affected. No prose change.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"#554 cascade: cli.md's station-dev section gained installer refusal and signal-exit sentences; this page cites cli.md only for command availability, which is unchanged. No prose change.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"#554 cascade: cli.md's station-dev section gained installer refusal and signal-exit sentences; the triage design does not depend on station-dev install behavior. No prose change.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#554 cascade: cli.md's station-dev section gained installer refusal and signal-exit sentences; this guide cites cli.md for commands, exit status and retries, none of which changed for the station CLI itself. No prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/cli.md"]}
+  ]
+}

@@ -57,6 +57,9 @@ export function prettifyModelId(modelId: string): string {
   return label.trim() || id;
 }
 
+/** The label for no model id: a gap to hide, never a model to show. */
+export const MODEL_NOT_REPORTED = 'Model not reported';
+
 /**
  * The one derivation of "what do we call this model id" (archive#3391).
  *
@@ -76,7 +79,7 @@ export function modelDisplayLabel(
   catalog: readonly SelectableModel[] = [],
 ): string {
   const id = modelId?.trim();
-  if (!id) return 'Model not reported';
+  if (!id) return MODEL_NOT_REPORTED;
   const known = catalog.find(
     (model) => model.id === id || model.originalId === id,
   );
@@ -150,7 +153,7 @@ export function modelIdentityLabel(
   catalog: readonly SelectableModel[] = [],
 ): string {
   const id = modelId?.trim();
-  if (!id) return 'Model not reported';
+  if (!id) return MODEL_NOT_REPORTED;
   const entry = catalog.find(
     (model) => model.id === id || model.originalId === id,
   );

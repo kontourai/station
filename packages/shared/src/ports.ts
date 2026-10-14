@@ -15,6 +15,18 @@ export const STATION_RELEASE_RINGS = STATION_RELEASE_RINGS_DATA;
 export type StationReleaseRing = keyof typeof STATION_RELEASE_RINGS;
 export const DEFAULT_STATION_CHANNEL: StationChannel = 'development';
 
+/**
+ * The operator CLI command for a Station on a runtime channel, as
+ * docs/reference/cli.md names it: the published package through `npx`, which
+ * needs no global install. Only the `nightly` and `latest` npm dist-tags are
+ * published (nightly.yml, publish-packages.yml), so every other channel gets
+ * `latest`.
+ */
+export function operatorCliCommand(runtimeChannel?: string): string {
+  const tag = runtimeChannel === 'nightly' ? 'nightly' : 'latest';
+  return `npx @kontourai/station-cli@${tag}`;
+}
+
 export function resolveStationChannel(raw?: string): StationChannel {
   const candidate = raw?.trim();
   if (!candidate) return DEFAULT_STATION_CHANNEL;

@@ -14,8 +14,6 @@
 
     "packages/connect/src/core/nativeRelayLink.ts",
 
-    "packages/contracts/package.json",
-
     "packages/contracts/src/__tests__/learning-review.test.ts",
 
     "packages/contracts/src/agent.ts",
@@ -174,7 +172,15 @@
 
     "packages/contracts/src/enriched-agent.ts",
 
-    "packages/contracts/src/product-telemetry.ts"
+    "packages/contracts/src/product-telemetry.ts",
+
+    "src-server/services/orchestration/delta-coalescer.ts",
+
+    "packages/contracts/package.json#/name",
+
+    "packages/contracts/package.json#/exports",
+
+    "packages/contracts/package.json#/files"
   ],
 
   "checks": [

@@ -11,6 +11,7 @@ import {
 } from '../../services/orchestration/orchestration-session-state.js';
 import { applyWalJournalMode } from '../../utils/sqlite-wal.js';
 import { PROJECT_TASK_ROOM_RUNTIME_MIGRATION } from './006-project-task-room-runtime.js';
+import { ensureTurnBoundarySequenceFence } from './014-turn-boundary-sequence-fence.js';
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require('node:sqlite') as {
@@ -266,6 +267,16 @@ CREATE TABLE IF NOT EXISTS orchestration_turn_dedup (
   created_at INTEGER NOT NULL,
   owner_json TEXT
 );
+
+-- #3559: keys whose resolved dedup row capacity retention evicted. A retry of
+-- one answers expired instead of claiming the key afresh: a chat: key for 30
+-- days, a thread key until its thread is deleted.
+CREATE TABLE IF NOT EXISTS orchestration_turn_dedup_expired (
+  dedup_key TEXT PRIMARY KEY,
+  expired_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS orchestration_turn_dedup_expired_at
+  ON orchestration_turn_dedup_expired(expired_at);
 
 CREATE TABLE IF NOT EXISTS provider_session_adoptions (
   source_thread_id TEXT PRIMARY KEY,
@@ -1458,6 +1469,7 @@ export function runOrchestrationEventMigration(projectHomeDir: string): void {
   ensureOrchestrationTurnDedupColumns(db);
   ensureOrchestrationEventStoreColumns(db);
   ensureOrchestrationAdoptionColumns(db);
+  ensureTurnBoundarySequenceFence(db);
   db.close();
 }
 

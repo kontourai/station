@@ -40,7 +40,12 @@ describe('createCodexProcess real spawn TMPDIR (station#1908)', () => {
         _options: { env: NodeJS.ProcessEnv },
       ) => new EventEmitter(),
     );
-    vi.doMock('node:child_process', () => ({ spawn: spawnMock }));
+    // Partial: the owned-process registration (#561) probes the owner's
+    // birth with the real `execFileSync`; only the app-server spawn is faked.
+    vi.doMock('node:child_process', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('node:child_process')>()),
+      spawn: spawnMock,
+    }));
     vi.doMock('../auth/cli-auth.js', () => ({
       findCliBinary: () => '/usr/local/bin/codex',
       resolveAugmentedPathSync: () => '/usr/bin:/bin',
@@ -69,7 +74,12 @@ describe('createCodexProcess real spawn TMPDIR (station#1908)', () => {
         _options: { env: NodeJS.ProcessEnv },
       ) => new EventEmitter(),
     );
-    vi.doMock('node:child_process', () => ({ spawn: spawnMock }));
+    // Partial: the owned-process registration (#561) probes the owner's
+    // birth with the real `execFileSync`; only the app-server spawn is faked.
+    vi.doMock('node:child_process', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('node:child_process')>()),
+      spawn: spawnMock,
+    }));
     vi.doMock('../auth/cli-auth.js', () => ({
       findCliBinary: () => '/usr/local/bin/codex',
       resolveAugmentedPathSync: () => '/usr/bin:/bin',
@@ -101,7 +111,12 @@ describe('createCodexProcess real spawn TMPDIR (station#1908)', () => {
         _options: { env: NodeJS.ProcessEnv },
       ) => new EventEmitter(),
     );
-    vi.doMock('node:child_process', () => ({ spawn: spawnMock }));
+    // Partial: the owned-process registration (#561) probes the owner's
+    // birth with the real `execFileSync`; only the app-server spawn is faked.
+    vi.doMock('node:child_process', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('node:child_process')>()),
+      spawn: spawnMock,
+    }));
     vi.doMock('../auth/cli-auth.js', () => ({
       findCliBinary: () => '/usr/local/bin/codex',
       resolveAugmentedPathSync: () => '/augmented/by-test:/usr/bin',

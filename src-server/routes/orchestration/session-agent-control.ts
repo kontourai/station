@@ -308,7 +308,7 @@ function keyRefusal(
               success: false,
               code: 'request_key_caller_capacity',
               error:
-                'This session has too many requests still unresolved (indeterminate). Repeat those calls with their original requestKeys to resolve them before sending more.',
+                'This session has too many recent requests whose outcome is unknown (indeterminate). Repeat those calls with their original requestKeys to re-check them. A request that stays indeterminate stops counting against this limit seven days after it was first sent.',
             },
             429,
           )
@@ -316,7 +316,8 @@ function keyRefusal(
             {
               success: false,
               code: 'request_key_capacity',
-              error: 'Station is holding too many unexpired request keys.',
+              error:
+                'Station is holding too many recent request keys. Completed keys and indeterminate ones older than seven days do not count; try again later.',
             },
             429,
           );

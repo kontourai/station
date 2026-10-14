@@ -1,0 +1,7 @@
+{
+  "revision": "cb435260ac749b919f0d398939a94658eb40f536",
+
+  "notes": [
+    {"path":"src-server/services/connections/pion-peer/README.md","note":"#561 (fix round): releaseOwnedChildAfterGroupExit now logs instead of throwing when a record cannot be removed after the group exits; registerDetachedOwnedChild and the null-birth sweep drop are as previously reviewed. Re-read the peer cleanup claim; pion's spawnOwnedChild release is not routed through the changed helper. No prose change.","inputs":["src-server/services/connections/pion-peer/README.md","src-server/services/infra/process-utils.ts"]}
+  ]
+}

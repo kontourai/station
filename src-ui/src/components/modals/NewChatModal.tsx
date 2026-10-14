@@ -40,7 +40,7 @@ import type { SkillExperienceDraft } from '../../lib/skill-experience-draft';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import {
   type EffectiveModelSource,
-  modelSourceLabel,
+  modelResetSourceLabel,
 } from '../../utils/execution';
 import {
   type NewChatModelChoice,
@@ -798,19 +798,23 @@ export function NewChatModal({
       return;
     }
     // A Model chosen before this dialog (Home's chip, or before a setup
-    // journey) can have gone meanwhile: check it before starting on it.
+    // journey) can have gone meanwhile: check it before starting on it. A
+    // choice kept from earlier in this tab goes the same way when the engine
+    // reconnects with another catalog, so it is refused when the catalog is
+    // known and no longer lists it. Availability is not checked there: an
+    // engine that is merely not ready is reported by its own setup repair.
+    const startModels = selectionModel.executionModelsForAgent(agent);
+    const isChosen = (model: (typeof startModels)[number]) =>
+      model.id === choice?.modelId &&
+      (!choice?.providerId || model.providerId === choice.providerId) &&
+      model.executionAgentId === choice?.executionAgentId;
     if (
-      (returnedFromSetup || options.choice !== undefined) &&
       choice?.modelId &&
-      !selectionModel
-        .executionModelsForAgent(agent)
-        .some(
-          (model) =>
-            model.id === choice.modelId &&
-            model.available !== false &&
-            (!choice.providerId || model.providerId === choice.providerId) &&
-            model.executionAgentId === choice.executionAgentId,
-        )
+      (returnedFromSetup || options.choice !== undefined
+        ? !startModels.some(
+            (model) => isChosen(model) && model.available !== false,
+          )
+        : startModels.length > 0 && !startModels.some(isChosen))
     ) {
       setSelectFeedback(
         'The Model you selected is no longer available. Choose a Model to continue.',
@@ -1845,9 +1849,30 @@ export function NewChatModal({
           {/* setupError covers the project list too: a failed read is said,
               never shown as a guessed project chip. */}
           {(selectFeedback || returnError || setupError) && (
-            <p role="alert">
-              {selectFeedback?.text ??
-                describeReadFailure(returnError ?? setupError)}
+            // The same alert the Home composer draws: warning tone, and a
+            // retry for a failed read (a choice's own feedback has none).
+            <p role="alert" className="start-composer__alert">
+              <span>
+                {selectFeedback?.text ??
+                  describeReadFailure(returnError ?? setupError)}
+              </span>
+              {!selectFeedback && refreshSetup && (
+                <Button
+                  variant="link"
+                  onClick={() => {
+                    if (returnedFromSetup) {
+                      if (!setupReturn.retry())
+                        setSelectFeedback(
+                          'Reconnect to this Station before checking setup.',
+                        );
+                      return;
+                    }
+                    void refreshSetup().catch(() => undefined);
+                  }}
+                >
+                  Try again
+                </Button>
+              )}
             </p>
           )}
           {runtimeLoading || modelsLoading ? (
@@ -2147,11 +2172,7 @@ export function NewChatModal({
                   modelPickerAgent.slug === mode.preferredAgentSlug &&
                   mode.sourceModel
                     ? 'source turn'
-                    : (modelPickerDefault?.source &&
-                        modelSourceLabel(
-                          modelPickerDefault.source,
-                        ).toLowerCase()) ||
-                      'default model'
+                    : modelResetSourceLabel(modelPickerDefault?.source)
                 }
                 runtimeOptions={
                   pickerChoiceFor(modelPickerAgent)?.providerOptions

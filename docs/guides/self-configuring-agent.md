@@ -287,20 +287,26 @@ Session by its `sessionId`, without creating a task.
   (`replayed: true`) without acting again; the same key with different arguments
   is `request_key_conflict`. A refusal that did nothing (`session_busy`,
   `no_active_turn`) frees the key, so the same call may be repeated once the
-  Session is ready. Keys belong to the verified calling Session and expire after
-  seven days. A calling Session keeps at most 300 keys: past that its own oldest
-  completed keys are dropped (they no longer replay), and it is refused
+  Session is ready. Keys belong to the verified calling Session. Completed keys
+  expire after seven days; an unresolved `indeterminate` key never expires by
+  age, so a late repeat still re-checks it instead of sending again. A calling
+  Session keeps at most 300 keys: past that its own oldest completed keys are
+  dropped (they no longer replay), and it is refused
   (`request_key_caller_capacity`) only while every one of its keys is an
-  unresolved `indeterminate` request. An `indeterminate` answer means the
-  message may have been delivered, so repeat the same call to re-check rather
-  than sending under a new key. A re-driven request keeps the branch (steer or
-  start) and Session its first attempt chose, even if the re-drive is refused.
-  Two limits are accepted: once a completed key has been dropped (more than 300
-  later sends from that session) a retry under it is not guaranteed to be
-  deduplicated downstream, because the chat-turn claim table holds 2,000 entries
-  Station-wide and a retry from another branch of the work is not caught at all;
-  and unresolved claims are never dropped, so 300 stuck ones leave that session
-  unable to use new requestKeys until the seven-day expiry. A re-driven attempt
+  unresolved `indeterminate` request less than seven days old. An
+  `indeterminate` key older than that stops counting against the limit but is
+  kept. An `indeterminate` answer means the message may have been delivered,
+  so repeat the same call to re-check rather than sending under a new key. A
+  re-driven request keeps the branch (steer or start) and Session its first
+  attempt chose, even if the re-drive is refused. Three limits are accepted.
+  Once a completed key has been dropped (more than 300 later sends from that
+  session, or seven days), a retry under it acts again unless the downstream
+  client-turn claim still answers it: a start's claim is kept as a replay row
+  or, once evicted from the 2,000-row table, as an `expired` tombstone that
+  refuses the resend until the target Session is deleted; a retry from another
+  branch of the work is not caught at all. A start whose turn may already have reached the engine can
+  stay `indeterminate` on every repeat, so 300 such keys block that session's
+  new requestKeys until the oldest passes seven days. A re-driven attempt
   that is refused answers with `pinned: true`; its key stays tied to its first
   attempt, so check the Session before using a new key. A re-driven interrupt
   that finds nothing running also keeps its claim, so a later re-drive could

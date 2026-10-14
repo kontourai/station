@@ -1,20 +1,19 @@
 /** Durable, cross-process turn ownership. */
 import { randomUUID } from 'node:crypto';
 import {
+  type KernelCommand,
+  type KernelResult,
+  type OwnerIdentity,
+  type OwnerLiveness,
+  ownerLivenessFromProbe,
+  type ProcessIdentityProbe,
+} from '@kontourai/monument';
+import {
   exactProcessIdentity,
   probeExactProcessIdentity,
 } from '@kontourai/station-shared/process-identity';
 import { turnDedupClaims } from '../telemetry/metrics.js';
 
-export type TurnClaimOwner =
-  | { pid: number; birth: string; token: string; identityKind: 'exact' }
-  | { pid: number; token: string; identityKind: 'unverified' };
-export type ProcessIdentityProbe = (
-  pid: number,
-) =>
-  | { state: 'dead' }
-  | { state: 'unavailable' }
-  | { state: 'exact'; identity: { pid: number; start: string } };
 export interface TurnIdempotencyProcessIdentity {
   exact(pid: number): { pid: number; start: string } | null;
   probe: ProcessIdentityProbe;
@@ -23,127 +22,158 @@ const defaultProcessIdentity: TurnIdempotencyProcessIdentity = {
   exact: exactProcessIdentity,
   probe: probeExactProcessIdentity,
 };
-export interface TurnIdempotencyRecord {
-  value: string | null;
-  createdAt: number;
-  owner?: TurnClaimOwner;
-}
-export interface TurnIdempotencyPersistence {
-  read(key: string): TurnIdempotencyRecord | undefined;
-  /** One serializable read-decide-write transaction. */
-  update<T>(
-    key: string,
-    updater: (current: TurnIdempotencyRecord | undefined) => {
-      record?: TurnIdempotencyRecord;
-      result: T;
-    },
-  ): T;
-}
-type TurnIdempotencyClaim =
-  | { claimed: true }
-  | { claimed: false; value?: string };
 
 /**
- * A claim may be RECLAIMED only when its owner cannot still be executing it.
- *
- * This is the claim path's predicate. Capacity pruning deliberately does NOT
- * consult it: pruning evicts resolved rows only and never inspects owner
- * liveness, because probing every unresolved candidate under the write
- * transaction could block for minutes and could not converge. A live
- * unresolved turn is therefore never discarded for being old -- it is never
- * a pruning candidate at all.
+ * Where the claims live. Each call is one Monument command, run as one atomic
+ * transaction: the rules for claiming, resolving and retaining a key belong to
+ * `@kontourai/monument`, and this seam only says where its rows are kept.
  */
-function ownerIsProvablyDead(
-  owner: TurnClaimOwner | undefined,
-  probe: ProcessIdentityProbe = probeExactProcessIdentity,
-): boolean {
-  if (!owner) return false;
-  const observed = probe(owner.pid);
-  return (
-    observed.state === 'dead' ||
-    (owner.identityKind === 'exact' &&
-      observed.state === 'exact' &&
-      observed.identity.start !== owner.birth)
-  );
-}
-function copy(
-  record: TurnIdempotencyRecord | undefined,
-): TurnIdempotencyRecord | undefined {
-  return (
-    record && {
-      ...record,
-      ...(record.owner ? { owner: { ...record.owner } } : {}),
-    }
-  );
+export interface TurnIdempotencyPersistence {
+  execute<C extends KernelCommand>(
+    command: C,
+    liveness: OwnerLiveness,
+  ): KernelResult<C>;
 }
 
+type TurnIdempotencyClaim =
+  | { claimed: true }
+  | {
+      claimed: false;
+      value?: string;
+      indeterminate?: undefined;
+      expired?: undefined;
+    }
+  /**
+   * The owner is dead but may already have started the effect: never
+   * reclaimed, never replayed, and never resolvable by this caller.
+   */
+  | {
+      claimed: false;
+      indeterminate: true;
+      value?: undefined;
+      expired?: undefined;
+    }
+  /**
+   * #3559: the key's resolved row was evicted. The effect ran, but its result
+   * is gone; the key is never claimable again.
+   */
+  | {
+      claimed: false;
+      expired: true;
+      value?: undefined;
+      indeterminate?: undefined;
+    };
+
 export class TurnIdempotencyStore {
-  private readonly owner: TurnClaimOwner;
+  private readonly owner: OwnerIdentity;
+  private readonly liveness: OwnerLiveness;
   constructor(
     private readonly persistence: TurnIdempotencyPersistence,
-    private readonly processIdentity: TurnIdempotencyProcessIdentity = defaultProcessIdentity,
+    processIdentity: TurnIdempotencyProcessIdentity = defaultProcessIdentity,
   ) {
     const identity = processIdentity.exact(process.pid);
     this.owner = identity
       ? {
+          id: randomUUID(),
           pid: process.pid,
-          birth: identity.start,
-          token: randomUUID(),
           identityKind: 'exact',
+          birth: identity.start,
         }
-      : { pid: process.pid, token: randomUUID(), identityKind: 'unverified' };
+      : { id: randomUUID(), pid: process.pid, identityKind: 'unverified' };
+    // A claim may be RECLAIMED only when its owner cannot still be executing
+    // it, and (#3559) only when that owner provably never began its effect.
+    // Capacity pruning never asks: it evicts resolved rows only, so a live
+    // unresolved turn is never a candidate however old it is.
+    this.liveness = ownerLivenessFromProbe(processIdentity.probe);
   }
-  claim(key: string, now = Date.now()): TurnIdempotencyClaim {
-    let metric: 'claimed' | 'reclaimed' | 'contended' | undefined;
-    const result = this.persistence.update<TurnIdempotencyClaim>(key, (raw) => {
-      const current = copy(raw);
-      if (!current) {
-        metric = 'claimed';
-        return {
-          record: { value: null, createdAt: now, owner: this.owner },
-          result: { claimed: true },
-        };
-      }
-      if (current.value !== null)
-        return {
-          record: current,
-          result: { claimed: false, value: current.value },
-        };
-      if (ownerIsProvablyDead(current.owner, this.processIdentity.probe)) {
-        metric = 'reclaimed';
-        return {
-          record: { value: null, createdAt: now, owner: this.owner },
-          result: { claimed: true },
-        };
-      }
-      metric = 'contended';
-      return { record: current, result: { claimed: false } };
-    });
-    if (metric) turnDedupClaims.add(1, { outcome: metric });
-    return result;
+  /**
+   * `tracking: 'tracked'` promises that this claimant calls
+   * {@link beginInvocation} before its effect, which is what lets a later
+   * claimant reclaim the key after this owner dies before that point.
+   */
+  claim(
+    key: string,
+    now = Date.now(),
+    tracking: 'tracked' | 'untracked' = 'untracked',
+  ): TurnIdempotencyClaim {
+    const result = this.persistence.execute(
+      { type: 'turnDedup.claim', key, owner: this.owner, now, tracking },
+      this.liveness,
+    );
+    switch (result.kind) {
+      case 'claimed':
+        turnDedupClaims.add(1, {
+          outcome: result.reclaimed ? 'reclaimed' : 'claimed',
+        });
+        return { claimed: true };
+      case 'resolved':
+        return { claimed: false, value: result.value };
+      case 'contended':
+        turnDedupClaims.add(1, { outcome: 'contended' });
+        return { claimed: false };
+      case 'indeterminate':
+        turnDedupClaims.add(1, { outcome: 'indeterminate' });
+        return { claimed: false, indeterminate: true };
+      case 'expired':
+        turnDedupClaims.add(1, { outcome: 'expired' });
+        return { claimed: false, expired: true };
+      case 'refused':
+        throw new Error(
+          `Turn claim refused by ${result.participant}: ${result.reason}`,
+        );
+    }
+  }
+  /**
+   * #3559: durably records that this owner may now start its effect. Call it
+   * before the effect and do not start the effect if it throws. Idempotent
+   * for the owner; refuses any claim this store does not own as `pending`.
+   */
+  beginInvocation(key: string): void {
+    const result = this.persistence.execute(
+      {
+        type: 'turnDedup.beginInvocation',
+        key,
+        ownerId: this.owner.id,
+        now: Date.now(),
+      },
+      this.liveness,
+    );
+    if (result.kind !== 'applied')
+      throw new Error(
+        'Turn claim is not owned and pending; its invocation cannot begin.',
+      );
   }
   resolve(key: string, value: string): void {
-    this.persistence.update(key, (raw) => {
-      const current = copy(raw);
-      return !current ||
-        current.value !== null ||
-        current.owner?.token !== this.owner.token
-        ? { record: current, result: undefined }
-        : { record: { ...current, value }, result: undefined };
-    });
+    this.persistence.execute(
+      {
+        type: 'turnDedup.resolve',
+        key,
+        ownerId: this.owner.id,
+        value,
+        now: Date.now(),
+      },
+      this.liveness,
+    );
   }
   release(key: string): void {
-    this.persistence.update(key, (raw) => {
-      const current = copy(raw);
-      return !current ||
-        current.value !== null ||
-        current.owner?.token !== this.owner.token
-        ? { record: current, result: undefined }
-        : { result: undefined };
-    });
+    this.persistence.execute(
+      {
+        type: 'turnDedup.release',
+        key,
+        ownerId: this.owner.id,
+        now: Date.now(),
+      },
+      this.liveness,
+    );
   }
   read(key: string): string | undefined {
-    return this.persistence.read(key)?.value ?? undefined;
+    const result = this.persistence.execute(
+      { type: 'turnDedup.read', key },
+      this.liveness,
+    );
+    return result.kind === 'found'
+      ? (result.record.value ?? undefined)
+      : undefined;
   }
 }
 export async function awaitTurnResolution(

@@ -40,9 +40,11 @@ import {
   type SessionCapabilityDeliveryMetadata,
 } from '@kontourai/station-contracts/provider';
 import {
+  type CanonicalRuntimeEventBase,
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
   PROVIDER_TURN_TRIGGER,
+  type TokenUsageUpdatedEvent,
 } from '@kontourai/station-contracts/runtime-events';
 import {
   isSessionLifecycleState,
@@ -815,6 +817,11 @@ export interface DelegatedTaskEvent {
   totalTokens?: number;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
+  cacheWriteTokens5m?: number;
+  cacheWriteTokens1h?: number;
+  serviceTier?: string;
+  contextTokens?: number;
+  contextWindowTokens?: number;
   verdict?: string;
   gateId?: string;
   runId?: string;
@@ -3731,6 +3738,44 @@ function optionalNumber(value: unknown): number | undefined {
     : undefined;
 }
 
+/**
+ * #225: the usage fields a delegated-task event carries, keyed by the
+ * canonical `TokenUsageUpdatedEvent` so a field added to the contract is a
+ * compile error here instead of a silent drop. Two fields are excluded on
+ * purpose: `pricingSnapshot` is ingestion-time catalog provenance, and
+ * `reportedCostUsd` has a per-provider scope (per-turn versus cumulative)
+ * that this per-event projection cannot state.
+ */
+type DelegatedUsageField = Exclude<
+  keyof TokenUsageUpdatedEvent,
+  | keyof CanonicalRuntimeEventBase
+  | 'method'
+  | 'pricingSnapshot'
+  | 'reportedCostUsd'
+>;
+
+const DELEGATED_USAGE_FIELD_PROJECTORS: {
+  readonly [K in DelegatedUsageField]-?: (
+    value: unknown,
+  ) => TokenUsageUpdatedEvent[K];
+} = {
+  promptTokens: optionalNumber,
+  completionTokens: optionalNumber,
+  totalTokens: optionalNumber,
+  cacheReadTokens: optionalNumber,
+  cacheWriteTokens: optionalNumber,
+  cacheWriteTokens5m: optionalNumber,
+  cacheWriteTokens1h: optionalNumber,
+  // Opaque provider text, never enumerated. Over-long text is omitted, not
+  // cut: a truncated tier would read as a different, plausible tier.
+  serviceTier: (value) => {
+    const tier = optionalString(value, 65);
+    return tier && tier.length <= 64 ? tier : undefined;
+  },
+  contextTokens: optionalNumber,
+  contextWindowTokens: optionalNumber,
+};
+
 function optionalCount(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
     ? value
@@ -3911,13 +3956,11 @@ export function projectDelegatedTaskEvent(
         text: 'The delegated runtime reported a warning.',
       };
     case 'token-usage.updated': {
-      const usage = {
-        promptTokens: optionalNumber(event.promptTokens),
-        completionTokens: optionalNumber(event.completionTokens),
-        totalTokens: optionalNumber(event.totalTokens),
-        cacheReadTokens: optionalNumber(event.cacheReadTokens),
-        cacheWriteTokens: optionalNumber(event.cacheWriteTokens),
-      };
+      const usage = Object.fromEntries(
+        Object.entries(DELEGATED_USAGE_FIELD_PROJECTORS).map(
+          ([field, project]) => [field, project(event[field])],
+        ),
+      );
       return {
         ...common,
         kind: 'usage',

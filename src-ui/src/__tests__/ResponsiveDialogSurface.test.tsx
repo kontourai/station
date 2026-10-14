@@ -134,6 +134,24 @@ describe('ResponsiveDialogSurface', () => {
     });
   });
 
+  test('marks the overlay as a sheet only where it presents as one', () => {
+    for (const mobile of [true, false]) {
+      setMobileViewport(mobile);
+      const { unmount } = render(
+        <ResponsiveDialogSurface
+          layer="dialog"
+          ariaLabel="Presentation"
+          onClose={vi.fn()}
+        >
+          <p>Body</p>
+        </ResponsiveDialogSurface>,
+      );
+      const overlay = document.querySelector('.responsive-surface-overlay');
+      expect(overlay?.hasAttribute('data-sheet')).toBe(mobile);
+      unmount();
+    }
+  });
+
   test('owns desktop focus, keyboard containment, Escape, and backdrop dismissal', () => {
     setMobileViewport(false);
     const onClose = vi.fn();

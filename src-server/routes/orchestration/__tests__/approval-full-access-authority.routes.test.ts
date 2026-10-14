@@ -323,7 +323,7 @@ const UI_STEPS = [
   "Open the Station desktop app on the Station's host.",
   'Select the Station name (top right), then Paired devices.',
   'Select the device by its name, then Change access.',
-  'Turn on Allow full access, then Apply.',
+  'Turn on Skip approval prompts, then Apply.',
 ];
 
 /**

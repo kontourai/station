@@ -1,0 +1,7 @@
+{
+  "revision": "a96e8191bec0f1faa0f26b45a52c00dc79e0fa18",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed formatting-only wrapping of the finite status animation assertion after f45f4206f5. No expression, assertion, capture, fixture or deadline behavior changed. The preceding local capture and exact-pixel limits remain as recorded; read-only lint passed.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]}
+  ]
+}

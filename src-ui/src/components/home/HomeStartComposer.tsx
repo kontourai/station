@@ -25,7 +25,6 @@ import {
   dispatchNewChatIntent,
   type NewChatHandoff,
 } from '../../lib/newChatIntent';
-import { userFacingErrorMessage } from '../../utils/errorText';
 import type { AgentFixRoute } from '../AgentReadinessCell';
 import { agentRunnability } from '../agent-runnability';
 import { Button } from '../Button';
@@ -621,7 +620,22 @@ export function HomeStartComposer({
           </fieldset>
         )}
         {(feedback || setupError) && (
-          <p role="alert">{feedback ?? describeReadFailure(setupError)}</p>
+          // A failed setup read offers its own retry beside the sentence; it
+          // used to be bare text under the composer with no way forward.
+          <p role="alert" className="start-composer__alert">
+            <span>{feedback ?? describeReadFailure(setupError)}</span>
+            {!feedback && (
+              <Button
+                variant="link"
+                // A retry that fails again leaves `setupError` saying so; the
+                // rethrown error's own message is the parser text this
+                // alert exists to hide.
+                onClick={() => void refreshSetup().catch(() => undefined)}
+              >
+                Try again
+              </Button>
+            )}
+          </p>
         )}
         {!loading && agent && !agentRunnability(agent).runnable && (
           <React.Suspense
@@ -651,11 +665,9 @@ export function HomeStartComposer({
                   route: 'models',
                 })
               }
-              onCheck={() =>
-                void refreshSetup().catch((error) =>
-                  setFeedback(userFacingErrorMessage(error)),
-                )
-              }
+              // A failed check leaves `setupError` saying so (with its own
+              // retry); feedback here would outlive a later success.
+              onCheck={() => void refreshSetup().catch(() => undefined)}
             />
           </React.Suspense>
         )}
