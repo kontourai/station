@@ -8,8 +8,12 @@ export interface TranscriptFrame {
   log: boolean;
   /** The empty/loading filler (`.chat-messages--empty`) is mounted instead. */
   filler: boolean;
-  /** "Loading chat" skeletons anywhere in the chat body. */
-  loadingSkeletons: number;
+  /**
+   * What the dock's loading announcement region says this frame ('' when no
+   * load is in progress). The skeletons no longer carry the wait over a
+   * displayed transcript, so counting them would miss it.
+   */
+  loadingAnnouncement: string;
   scrollTop: number;
   scrollHeight: number;
   clientHeight: number;
@@ -26,6 +30,12 @@ export interface TranscriptFrame {
   logBottom: number;
   /** Offset of the row named by `trackTimelineRow`, when it is mounted. */
   tracked: { key: string; offset: number } | null;
+  /**
+   * The composer (`.chat-input`) in viewport coordinates, and the bottom edge
+   * of the region above it (the transcript scroller or the loading filler).
+   * `null` while either is unmounted.
+   */
+  composer: { top: number; height: number; regionBottom: number } | null;
 }
 
 export interface TranscriptTimeline {
@@ -109,9 +119,10 @@ export async function installTranscriptFrameSampler(page: Page) {
         t: performance.now(),
         log: Boolean(log),
         filler: Boolean(filler),
-        loadingSkeletons: document.querySelectorAll(
-          '[aria-label="Loading chat"]',
-        ).length,
+        loadingAnnouncement:
+          document.querySelector(
+            '[data-testid="chat-dock-loading-announcement"]',
+          )?.textContent ?? '',
         scrollTop: 0,
         scrollHeight: 0,
         clientHeight: 0,
@@ -124,7 +135,18 @@ export async function installTranscriptFrameSampler(page: Page) {
         ),
         logBottom: 0,
         tracked: null,
+        composer: null,
       };
+      const composer = document.querySelector<HTMLElement>('.chat-input');
+      const region = log ?? filler;
+      if (composer && region) {
+        const box = composer.getBoundingClientRect();
+        frame.composer = {
+          top: box.top,
+          height: box.height,
+          regionBottom: region.getBoundingClientRect().bottom,
+        };
+      }
       if (log) {
         const bounds = log.getBoundingClientRect();
         // One per transcript row: a bubble nests its own keyed element.

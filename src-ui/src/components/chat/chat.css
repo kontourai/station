@@ -1261,6 +1261,14 @@
   background: var(--bg-primary);
 }
 
+/* The dock's own wait rows (the long-load sentence with Start new chat, the
+   stale-busy check) sit beside the transcript, not in it, so they do not get
+   its gutter: on a phone the sentence ran into the screen edge. Same inset as
+   `.chat-messages`' `--chat-message-gutter`. */
+.chat-dock__body > .session-history-controls {
+  padding-inline: clamp(12px, 4vw, 20px);
+}
+
 /* In a short dock everything above the composer yields before its draft:
    the failed-session banner (it scrolls; the send notice carries the same
    failure in full) and the transcript, down to zero. (The stream status line
