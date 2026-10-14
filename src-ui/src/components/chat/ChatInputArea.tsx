@@ -693,17 +693,24 @@ export function ChatInputArea({
         root.style.minHeight,
         root.style.flexShrink,
         root.style.maxHeight,
-        textarea.style.height,
       ] as const;
+      // The draft's floor is applied by arithmetic, not by shrinking the
+      // textarea to it: a layout with the composer even one line shorter
+      // hands that line to the transcript above, and the browser clamps a
+      // transcript pinned to its newest message to the taller box. Restoring
+      // the textarea does not restore the scroll position, so the frame
+      // painted with a one-line gap under the newest message.
       const measure = () => {
         root.style.minHeight = '';
         root.style.flexShrink = '0';
         root.style.maxHeight = 'none';
-        textarea.style.height = `${floor}px`;
-        const height = Math.ceil(root.getBoundingClientRect().height);
+        const height = Math.ceil(
+          root.getBoundingClientRect().height -
+            textarea.getBoundingClientRect().height +
+            floor,
+        );
         root.style.flexShrink = saved[1];
         root.style.maxHeight = saved[2];
-        textarea.style.height = saved[3];
         return height;
       };
       if (!body?.classList.contains('chat-dock__body')) {

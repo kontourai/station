@@ -267,6 +267,66 @@ test('a cold open on a throttled phone settles pinned to the newest message', as
   ).toEqual([]);
 });
 
+/*
+ * The composer re-measures the room it reserves whenever a row beside it
+ * appears or leaves: the long-load controls, the loading announcement, the
+ * filler. That measurement used to lay the composer out one line shorter for
+ * a moment; the transcript took the line, the browser clamped its pinned
+ * scroll position to the taller box, and the next painted frame showed a
+ * one-line gap under the newest message.
+ */
+test('the composer measuring itself never opens a gap under the newest message', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  const { conversationOpen, lateChunks, transcript } =
+    await openThrottledConversation(page, { holdMarkdownRenderer: false });
+  lateChunks.release();
+  conversationOpen.release();
+  await expect(page.getByLabel('Loading chat')).toHaveCount(0);
+  await waitForStableTranscript(page, 30);
+  await markTimeline(page, 'loaded');
+  await page.screenshot({ path: testInfo.outputPath('composer-loaded.png') });
+  // A draft that grows past one line, then is cleared again.
+  const draft = page.locator('.chat-input textarea');
+  await draft.click();
+  await page.keyboard.type('first line', { delay: 30 });
+  await page.keyboard.press('Shift+Enter');
+  await page.keyboard.type('second line', { delay: 30 });
+  await page.keyboard.press('Shift+Enter');
+  await page.keyboard.type('third', { delay: 30 });
+  await waitForStableTranscript(page, 10);
+  await markTimeline(page, 'typed');
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.press('Backspace');
+  await waitForStableTranscript(page, 10);
+  await markTimeline(page, 'cleared');
+  const timeline = await attachTimeline(page, testInfo, 'composer-timeline');
+  const rowsVisible = timeline.marks.find(
+    (mark) => mark.label === 'rows-visible',
+  )!.t;
+  const framed = timeline.frames.filter(
+    (frame) => frame.t >= rowsVisible && frame.log && frame.composer,
+  );
+  expect(framed.length).toBeGreaterThan(0);
+  expect(
+    framed
+      .filter((frame) => frame.distanceFromBottom > 1)
+      .map((frame) => ({ t: frame.t, gap: frame.distanceFromBottom })),
+    'frames that painted space under the newest message',
+  ).toEqual([]);
+  expect(
+    framed
+      .filter(
+        (frame) =>
+          Math.abs(frame.composer!.top - frame.composer!.regionBottom) > 0.5,
+      )
+      .map((frame) => frame.t),
+    'frames where the composer came loose from the transcript',
+  ).toEqual([]);
+  await expect(transcript).toBeVisible();
+});
+
 test('a reader scrolled up keeps their row while late content renders', async ({
   page,
 }, testInfo) => {
