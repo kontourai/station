@@ -25,8 +25,9 @@ import {
  * the live `child-work.updated` stream takes.
  */
 
-const SESSION_ID = 'session-notice-1';
-const CONVERSATION_ID = 'conv-notice-1';
+// The shared orchestration fixture's conversation (DEFAULT_CONVERSATION_LOOKUPS).
+const SESSION_ID = 'session-1';
+const CONVERSATION_ID = 'conv-1';
 const PHONE = { width: 390, height: 844 } as const;
 const DESKTOP = { width: 1280, height: 800 } as const;
 
@@ -79,14 +80,42 @@ async function seedChat(page: Page) {
     (conversationId) =>
       conversationId === CONVERSATION_ID ? [SESSION_ID] : [],
   );
+  await page.route('**/api/orchestration/sessions/read-model', (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: [
+          {
+            threadId: SESSION_ID,
+            provider: 'codex',
+            status: 'running',
+            lifecycleState: 'running',
+            hasActiveTurn: false,
+            controlMode: 'station-owned',
+            answerability: { answerable: true },
+            isLoaded: true,
+            isPersisted: true,
+            eventCount: 2,
+            createdAt: '2026-10-14T08:00:00.000Z',
+            updatedAt: '2026-10-14T08:00:01.000Z',
+          },
+        ],
+      },
+    }),
+  );
 }
 
-async function openChat(page: Page) {
-  await page.goto(
-    `/projects/dev/layouts/code?chat=${encodeURIComponent(CONVERSATION_ID)}`,
-  );
-  await dismissSetupLauncher(page);
-  await openChatRegion(page);
+async function openChat(page: Page, viewport: { width: number }) {
+  const chat = encodeURIComponent(CONVERSATION_ID);
+  if (viewport.width === PHONE.width) {
+    // A phone holds Chat in the maximized dock, not a layout region.
+    await page.goto(`/?dock=open&maximize=true&chat=${chat}`);
+    await dismissSetupLauncher(page);
+  } else {
+    await page.goto(`/projects/dev/layouts/code?chat=${chat}`);
+    await dismissSetupLauncher(page);
+    await openChatRegion(page);
+  }
   await waitForMockOrchestrationSse(page);
 }
 
@@ -159,7 +188,7 @@ for (const [label, viewport] of [
     test('Done stays visible and hittable while the settings panel is scrolled anywhere', async ({
       page,
     }, testInfo) => {
-      await openChat(page);
+      await openChat(page, viewport);
       const dialog = await openChatSettings(page);
       const done = dialog.getByRole('button', { name: 'Done' });
 
@@ -216,7 +245,7 @@ for (const [label, viewport] of [
     test('settled background tasks read as compact, distinct status lines', async ({
       page,
     }, testInfo) => {
-      await openChat(page);
+      await openChat(page, viewport);
       const transcript = page.getByRole('log', {
         name: 'Conversation transcript',
       });

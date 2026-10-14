@@ -342,7 +342,7 @@ test.describe('New chat start sheet scroll regions (390x560)', () => {
 
   test('scrolls the body only; the header keeps its full height', async ({
     page,
-  }) => {
+  }, testInfo) => {
     const modal = await openNewChat(page);
     const header = modal.locator('.new-chat-modal__header');
     const body = modal.locator('.chat-start__body');
@@ -359,6 +359,9 @@ test.describe('New chat start sheet scroll regions (390x560)', () => {
     const bodyBox = await metrics(body);
     expect(bodyBox.scrollHeight).toBeGreaterThan(bodyBox.clientHeight);
     const headerBox = await metrics(header);
+    await page.screenshot({
+      path: testInfo.outputPath('new-chat-start-390x560.png'),
+    });
     expect(headerBox.scrollHeight).toBeLessThanOrEqual(headerBox.clientHeight);
 
     // Scrolling the body moves it and leaves the header where it was.

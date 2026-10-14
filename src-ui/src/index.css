@@ -3821,8 +3821,11 @@ button:hover {
 /* Done stays on screen however far the panel has scrolled: a sticky footer
    at the panel's bottom edge, drawn over the content it covers. The negative
    margins carry its background across the panel's padding so scrolled text
-   never shows beside or below it. */
-.chat-settings-modal__actions {
+   never shows beside or below it. Two classes, and `max-width: none`, because
+   the phone rules for `.responsive-surface-actions` cap an action row at
+   100% of its container, which would cancel the right-hand margin. */
+.chat-settings-modal > .chat-settings-modal__actions {
+  max-width: none;
   position: sticky;
   bottom: calc(-1 * var(--chat-settings-padding));
   z-index: 1;

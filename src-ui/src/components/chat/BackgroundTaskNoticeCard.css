@@ -5,18 +5,14 @@
   line-height: var(--k-leading-normal);
 }
 
+/* Inline text, not a flex row: a long title wraps word by word right after
+   the status, instead of dropping to its own line and leaving the separator
+   dangling at the end of the first. */
 .task-notice__line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0 var(--k-space-2);
   margin: 0;
 }
 
 .task-notice__status {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--k-space-1);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -24,6 +20,7 @@
 .task-notice__glyph {
   display: inline-block;
   width: 1em;
+  margin-right: var(--k-space-1);
   font-family: var(--font-mono);
   text-align: center;
 }
@@ -45,11 +42,11 @@
 }
 
 .task-notice__separator {
+  margin: 0 var(--k-space-2);
   color: var(--k-text-muted);
 }
 
 .task-notice__title {
-  min-width: 0;
   overflow-wrap: anywhere;
 }
 
