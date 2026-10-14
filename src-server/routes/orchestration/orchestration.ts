@@ -2997,7 +2997,12 @@ export function createOrchestrationRoutes(
       return c.json({ success: false, error: 'Conversation not found' }, 404);
     return c.json({
       success: true,
-      data: { entries: deps.threadInbox.list(conversationId) },
+      data: {
+        entries: deps.threadInbox.list(
+          conversationId,
+          resolveDispatchActor(deps, c).userId,
+        ),
+      },
     });
   });
 

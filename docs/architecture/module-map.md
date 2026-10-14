@@ -1371,7 +1371,8 @@ and on bounded re-checks (the schedule, then two-minute checks up to 30 while
 entries wait, and after a drive that failed mid-placement). It is not this
 module: a follow-up is a start, never a steer. Before each start it re-checks
 the sender with the live continuation's rule (`mayContinue`) and the sending
-device's `orchestration:operate` (`deviceMaySendChat`), then reads the turn
+device's or personal access token's route scope (`deviceMaySendChat`, one
+by-id lookup in the pairing service, `credentialHoldsScope`), then reads the turn
 ledger for the key across the whole conversation
 (`startUnlessDelivered`, `inspectTurnDelivery`): `started` is settled
 `placed` without a send, `indeterminate`/`expired` is `unconfirmed`, a live
@@ -1379,7 +1380,10 @@ claim waits, and only a key no Session holds is started, through the same
 `continueExecutionTargetMessage` continuation delegated results use, as the
 recorded sender. Delegated results use `startUnlessDelivered` too, so neither
 can send twice into a successor Session a continuation reserves. A start that
-has not answered within ten minutes is `unconfirmed`. An `unconfirmed` entry
+has not answered within ten minutes is `unconfirmed` (`start_deadline`) until
+a later drive reads the ledger: `started` settles it `placed`, a key no
+Session holds queues it again (Monument's `inbox.resolveUnconfirmed`).
+Someone else's entry that may still be sent is listed without its key. An `unconfirmed` entry
 is never sent again and holds the ones behind it until someone who may send to
 the conversation dismisses it; only the sender withdraws a waiting one.
 Refusal reasons are stable codes with fixed messages. The delivery lookup

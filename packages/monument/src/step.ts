@@ -8,6 +8,7 @@ import {
   decideInboxCancel,
   decideInboxClaimNext,
   decideInboxRelease,
+  decideInboxResolveUnconfirmed,
   decideInboxSettle,
   decideInboxSubmit,
 } from './decisions/inbox.js';
@@ -376,6 +377,14 @@ function dispatch(
       if (decision.put) tx.inbox.put(decision.put);
       return decision.result;
     }
+    case 'inbox.resolveUnconfirmed': {
+      const decision = decideInboxResolveUnconfirmed(
+        tx.inbox.get(command.inboxId, command.key),
+        command,
+      );
+      if (decision.put) tx.inbox.put(decision.put);
+      return decision.result;
+    }
     case 'inbox.cancel': {
       const decision = decideInboxCancel(
         tx.inbox.get(command.inboxId, command.key),
@@ -435,6 +444,7 @@ export const KERNEL_COMMAND_READ_ONLY: Readonly<
   'inbox.list': true,
   'inbox.listOpen': true,
   'inbox.forget': false,
+  'inbox.resolveUnconfirmed': false,
 });
 
 /** Commands that write nothing, whatever their result. */

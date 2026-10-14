@@ -25,17 +25,22 @@
  *   the append), after each submit (the turn may have ended before it
  *   committed), at startup, and on bounded re-checks for a live "busy" flag
  *   that outlives its terminal.
- * - What a placement did. The pinned Session is recorded before the effect
+ * - What a placement did. The Session targeted is recorded before the effect
  *   (`placing`), and the start carries the entry's key as its `clientTurnId`.
- *   Turn deduplication is per Session (Monument's `turnDedup`, #3559), so a
- *   re-drive after a crash lands on the same claim:
- *     - resolved: `placed`, and nothing is sent again;
- *     - a dead owner that never began invoking: sent, once;
- *     - begun, or unknown: the start answers indeterminate, and the entry is
- *       `unconfirmed`: surfaced, never placed again, and later entries wait
- *       behind it until the sender dismisses it.
- *   A pinned Session the conversation has since left is also `unconfirmed`:
- *   a start into the new Session could not see the old claim.
+ *   Turn deduplication is per Session (Monument's `turnDedup`, #3559), and a
+ *   continuation can reserve a successor Session when the one it targeted has
+ *   ended, so before every start the turn ledger is read for the key across
+ *   the whole conversation (`startUnlessDelivered`):
+ *     - `started` on any Session: `placed`, and nothing is sent again;
+ *     - begun or unknown (`indeterminate`, `expired`): `unconfirmed`:
+ *       surfaced, never placed again, and later entries wait behind it until
+ *       someone who may send dismisses it;
+ *     - a live claim (`received`): back to the queue, looked at again later;
+ *     - no Session holds it (including a dead owner that never began): sent,
+ *       once, wherever the conversation continues now.
+ *   A start that has not answered by its deadline is `unconfirmed`
+ *   (`start_deadline`); the next drive reads the ledger again and settles it
+ *   `placed` if it started, or queues it again if no Session took it.
  *
  * Steer and display-only entries, and a stale-head check, are not here yet.
  */
@@ -58,6 +63,7 @@ import {
   isClientOrigin,
 } from '@kontourai/station-contracts/client-origin';
 import type { ExecutionModelRequest } from '@kontourai/station-contracts/execution-target';
+import { EXECUTION_ENGINE_CHANGED_CODE } from '@kontourai/station-contracts/execution-target';
 import type {
   ConversationInboxEntry,
   ConversationInboxEntryState,
@@ -69,10 +75,13 @@ import {
 } from '@kontourai/station-contracts/principal';
 import {
   CLIENT_TURN_IN_FLIGHT_CODE,
+  MODEL_NOT_ADVERTISED_CODE,
   MUSE_TURN_SLOT_RELEASING_CODE,
+  PROVIDER_SESSION_START_FAILED_CODE,
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
+import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
 import {
   type ConversationKeyInspection,
   type SessionStartResult,
@@ -361,6 +370,21 @@ export function createSqliteThreadInboxStore(db: SqliteDatabase) {
         now,
       });
     },
+    resolveUnconfirmed(
+      entry: InboxEntryRecord,
+      to: 'placed' | 'queued',
+      outcome: PlacementOutcome,
+      now: number,
+    ) {
+      return run({
+        type: 'inbox.resolveUnconfirmed',
+        inboxId: entry.inboxId,
+        key: entry.key,
+        to,
+        outcome: JSON.stringify(outcome),
+        now,
+      });
+    },
     cancel(
       conversationId: string,
       clientTurnId: string,
@@ -479,16 +503,31 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-const STABLE_CODE = /^[a-z][a-z0-9_.-]{0,63}$/;
+/**
+ * The refusal codes an entry may record as its `reasonCode`, a closed list:
+ * the start refusals a continuation can answer with, by their contract
+ * names. Anything else is `start_refused`, so a reader never sees a code
+ * nobody documented. The inbox's own codes are set where they arise:
+ * `not_permitted`, `device_not_permitted`, `may_have_been_sent`,
+ * `start_deadline` and `unreadable_entry`.
+ */
+const START_REFUSAL_CODES: ReadonlySet<string> = new Set([
+  SESSION_ENDED_REJECTION_CODE,
+  EXECUTION_ENGINE_CHANGED_CODE,
+  PROVIDER_SESSION_START_FAILED_CODE,
+  MODEL_NOT_ADVERTISED_CODE,
+  'continuation_workspace_unbound',
+  'continuation_workspace_direct_mismatch',
+]);
 
 /**
- * What a refused start records: a stable code and a fixed message, never the
- * error's own text (which every reader of the inbox would see).
+ * What a refused start records: an allowed code and a fixed message, never
+ * the error's own text (which every reader of the inbox would see).
  */
 function refusalOf(error: unknown): PlacementOutcome {
   const code = errorCodeOf(error);
   return {
-    reasonCode: code && STABLE_CODE.test(code) ? code : 'start_refused',
+    reasonCode: code && START_REFUSAL_CODES.has(code) ? code : 'start_refused',
     reason: 'Station could not send this message. Nothing was sent.',
   };
 }
@@ -506,9 +545,18 @@ export class ThreadInboxDelivery {
     string,
     { run: Promise<void>; again: boolean }
   >();
+  /**
+   * The periodic re-check per conversation: `fired` counts timer firings
+   * only, and survives until a placement clears it, so a call past the cap
+   * never starts the count again.
+   */
   private readonly retries = new Map<
     string,
-    { attempt: number; timer: ReturnType<typeof setTimeout> }
+    {
+      fired: number;
+      redrive: boolean;
+      timer: ReturnType<typeof setTimeout> | undefined;
+    }
   >();
   private unsubscribe: (() => void) | undefined;
   private stopped = false;
@@ -542,7 +590,8 @@ export class ThreadInboxDelivery {
     this.stopped = true;
     this.unsubscribe?.();
     this.unsubscribe = undefined;
-    for (const { timer } of this.retries.values()) clearTimeout(timer);
+    for (const { timer } of this.retries.values())
+      if (timer) clearTimeout(timer);
     this.retries.clear();
   }
 
@@ -610,13 +659,32 @@ export class ThreadInboxDelivery {
     };
   }
 
-  /** Every retained entry of the conversation, in the order they are sent. */
-  list(conversationId: string): ConversationInboxEntry[] {
+  /**
+   * Every retained entry of the conversation, in the order they are sent.
+   * The key of someone else's entry that may still be sent (`queued`,
+   * `sending`) is left out for `viewerUserId`: knowing it, a send under the
+   * same key would take the turn the entry is waiting for.
+   */
+  list(
+    conversationId: string,
+    viewerUserId?: string,
+  ): ConversationInboxEntry[] {
     const entries = this.ports.store.list(this.inboxOf(conversationId));
     const positions = waitingPositions(entries);
-    return entries.map((entry) =>
-      projectThreadInboxEntry(entry, positions.get(entry.key)),
-    );
+    return entries.map((entry) => {
+      const projected = projectThreadInboxEntry(
+        entry,
+        positions.get(entry.key),
+      );
+      if (
+        viewerUserId === undefined ||
+        (entry.state !== 'queued' && entry.state !== 'placing') ||
+        decodePayload(entry.payload)?.actor.userId === viewerUserId
+      )
+        return projected;
+      const { clientTurnId: _hidden, ...withoutKey } = projected;
+      return withoutKey;
+    });
   }
 
   /** One entry as `list` shows it. */
@@ -776,6 +844,7 @@ export class ThreadInboxDelivery {
 
   /** The start, bounded: past the deadline it may still reach the engine. */
   private async startWithin(
+    conversationId: string,
     work: Promise<SessionStartResult>,
   ): Promise<SessionStartResult | typeof DEADLINE> {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -789,10 +858,46 @@ export class ThreadInboxDelivery {
     // An abandoned start may still settle; its answer is the ledger's now.
     work.catch(() => undefined);
     try {
-      return await Promise.race([work, deadline]);
+      const answer = await Promise.race([work, deadline]);
+      // Abandoned at its deadline: when it does answer, read the ledger again.
+      if (answer === DEADLINE)
+        void work.then(
+          () => this.drive(conversationId, false),
+          () => this.drive(conversationId, false),
+        );
+      return answer;
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  /**
+   * An entry abandoned at its start deadline, judged again from the ledger:
+   * `started` anywhere settles it `placed`; no Session holding the key (the
+   * abandoned start never claimed it, or was refused cleanly) queues it
+   * again. Anything else leaves it `unconfirmed`. Returns whether it moved.
+   */
+  private resolveAbandoned(
+    conversationId: string,
+    head: InboxEntryRecord,
+  ): boolean {
+    if (decodeOutcome(head.outcome).reasonCode !== 'start_deadline')
+      return false;
+    const held = this.ports.inspectDelivery(conversationId, head.key);
+    if (held?.outcome === 'started') {
+      this.ports.store.resolveUnconfirmed(
+        head,
+        'placed',
+        { turnId: held.turnId, sessionId: held.sessionId },
+        this.now(),
+      );
+      return true;
+    }
+    if (held?.outcome === 'not-received') {
+      this.ports.store.resolveUnconfirmed(head, 'queued', {}, this.now());
+      return true;
+    }
+    return false;
   }
 
   private async place(conversationId: string, redrive: boolean): Promise<void> {
@@ -804,7 +909,11 @@ export class ThreadInboxDelivery {
     for (;;) {
       if (this.stopped) return;
       const head = inboxHead(store.list(conversationId));
-      if (!head || head.state === 'unconfirmed') return;
+      if (!head) return;
+      if (head.state === 'unconfirmed') {
+        if (this.resolveAbandoned(conversationId, head)) continue;
+        return;
+      }
       if (attemptedKeys.has(head.key)) {
         this.ports.logger.warn('thread inbox entry did not settle', {
           conversationId,
@@ -859,6 +968,7 @@ export class ThreadInboxDelivery {
         // attempt took on any Session is answered from there, never sent
         // again into a successor Session.
         started = await this.startWithin(
+          conversationId,
           startUnlessDelivered({
             conversationId,
             inspect: () =>
@@ -935,39 +1045,57 @@ export class ThreadInboxDelivery {
   }
 
   /**
-   * A re-check: the bounded schedule, then its last delay again, up to
-   * `maxRetries`, while the inbox still holds waiting entries. It covers a
-   * busy flag that outlives its terminal, a start that ends with no terminal
-   * event, and a drive that failed mid-placement (`redrive`).
+   * The periodic re-check, one pending per conversation: the delays in
+   * order, then the last one again, at most `max(delays, maxRetries)` firings
+   * in all until a placement resets the count. It runs only while the inbox
+   * still holds a waiting entry. It covers a busy flag that outlives its
+   * terminal, a start that ends with no terminal event, and a drive that
+   * failed mid-placement (`redrive`).
    */
   private scheduleRetry(conversationId: string, redrive = false): void {
     if (this.stopped) return;
     const delays = this.ports.retryDelaysMs ?? RETRY_DELAYS_MS;
-    const previous = this.retries.get(conversationId);
-    if (previous) clearTimeout(previous.timer);
-    const attempt = (previous?.attempt ?? 0) + 1;
-    const waiting = this.ports.store
-      .list(conversationId)
-      .some((entry) => entry.state === 'queued' || entry.state === 'placing');
+    if (delays.length === 0) return;
+    const state = this.retries.get(conversationId) ?? {
+      fired: 0,
+      redrive: false,
+      timer: undefined,
+    };
+    this.retries.set(conversationId, state);
+    state.redrive ||= redrive;
+    if (state.timer) return;
     if (
-      delays.length === 0 ||
-      attempt > Math.max(delays.length, this.ports.maxRetries ?? MAX_RETRIES) ||
-      !waiting
-    ) {
-      this.retries.delete(conversationId);
+      state.fired >=
+      Math.max(delays.length, this.ports.maxRetries ?? MAX_RETRIES)
+    )
       return;
+    let waiting = false;
+    try {
+      waiting = this.ports.store
+        .list(conversationId)
+        .some((entry) => entry.state === 'queued' || entry.state === 'placing');
+    } catch {
+      // The store is failing: look again on schedule.
+      waiting = true;
     }
+    if (!waiting) return;
     const timer = setTimeout(
-      () => this.drive(conversationId, redrive),
-      delays[Math.min(attempt, delays.length) - 1],
+      () => {
+        state.timer = undefined;
+        state.fired += 1;
+        const again = state.redrive;
+        state.redrive = false;
+        this.drive(conversationId, again);
+      },
+      delays[Math.min(state.fired, delays.length - 1)],
     );
     timer.unref?.();
-    this.retries.set(conversationId, { attempt, timer });
+    state.timer = timer;
   }
 
   private clearRetry(conversationId: string): void {
     const retry = this.retries.get(conversationId);
-    if (retry) clearTimeout(retry.timer);
+    if (retry?.timer) clearTimeout(retry.timer);
     this.retries.delete(conversationId);
   }
 }

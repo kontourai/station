@@ -355,6 +355,21 @@ export interface InboxReleaseCommand {
 }
 
 /**
+ * Resolve an `unconfirmed` entry once the host can prove what its effect did
+ * (station#3568): `placed` when the effect is known to have happened, or back
+ * to `queued` when it is known not to have (its placement cleared). Only an
+ * `unconfirmed` entry moves; the host owns the proof.
+ */
+export interface InboxResolveUnconfirmedCommand {
+  readonly type: 'inbox.resolveUnconfirmed';
+  readonly inboxId: string;
+  readonly key: string;
+  readonly to: 'placed' | 'queued';
+  readonly outcome: string | null;
+  readonly now: number;
+}
+
+/**
  * Withdraw a queued entry, or dismiss an unconfirmed or refused one. A
  * `placing` entry cannot be withdrawn: its effect may be under way.
  */
@@ -434,6 +449,7 @@ export interface KernelResults {
   'inbox.list': InboxListResult;
   'inbox.listOpen': InboxListResult;
   'inbox.forget': InboxForgetResult;
+  'inbox.resolveUnconfirmed': InboxWriteResult;
 }
 
 export type KernelCommand =
@@ -464,7 +480,8 @@ export type KernelCommand =
   | InboxReadCommand
   | InboxListCommand
   | InboxListOpenCommand
-  | InboxForgetCommand;
+  | InboxForgetCommand
+  | InboxResolveUnconfirmedCommand;
 
 /** A participant refused the command before any write. Nothing changed. */
 export interface ParticipantRefusal {

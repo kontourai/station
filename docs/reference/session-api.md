@@ -209,13 +209,15 @@ another device and a restart.
   messages; past that a send is refused `409` with
   `code: "conversation_inbox_full"`.
 - Only a plain continuation can be held: no attachments, approval pick, input
-  reply, visual skill start, engine precondition, delegated or background
+  reply, visual skill start, engine or Agent-definition precondition
+  (`expectedEngine`, `expectedDefinitionFingerprint`), delegated or background
   send, and no target on another Station. Its `target.agent` and
   `target.workspace` must name exactly the conversation's binding, since that
   binding is what the message is sent through later. The sender must be one
   Station would let send it then: the conversation's owner, or a reader the
-  personal Station lets continue it, from a device that still holds
-  `orchestration:operate`. Any other busy send, and every send to a Station
+  personal Station lets continue it, from a paired device or personal access
+  token that is still live and still holds the scope `POST /chat` requires
+  (`orchestration:operate`). Any other busy send, and every send to a Station
   without an inbox (a hosted Station, or one that predates it, which ignores
   the field), is answered as before.
 
@@ -232,11 +234,14 @@ reads that same ledger, across every Session of the conversation, before each
 send: a message an earlier attempt already started is settled `sent` without
 sending it again, even when the conversation has since moved to a new
 Session. A message that may have reached the agent without Station being able
-to prove it (it stopped mid-send, or the agent did not take it within ten
-minutes) is `unconfirmed`: it is never sent again, and the messages behind it
-wait until someone dismisses it. While a held message waits on a Session that
-is starting, Station looks again when the Session reports a change, and every
-two minutes for up to an hour.
+to prove it (it stopped mid-send) is `unconfirmed`: it is never sent again,
+and the messages behind it wait until someone dismisses it. One whose send
+did not answer within ten minutes is `unconfirmed` with `start_deadline`
+until Station can tell: it becomes `sent` if the ledger shows its turn
+started, or waits again if no Session took its key. While a held message
+waits on a Session that is starting, Station looks again when the Session
+reports a change, and on a schedule (2, 10, 30 and 120 seconds, then every two
+minutes): at most 30 such re-checks until a message is sent.
 
 ```
 GET    /api/orchestration/conversations/<conversationId>/inbox
@@ -246,8 +251,15 @@ DELETE /api/orchestration/conversations/<conversationId>/inbox/<clientTurnId>
 `GET` lists the conversation's held messages (`ConversationInboxEntry`:
 `state` is `queued`, `sending`, `sent`, `unconfirmed`, `refused` or
 `cancelled`, with `position` among those still waiting, and for a `refused`
-or `unconfirmed` one a stable `reasonCode` and a fixed `reason`, never the
-refusal's own text). Every client of the conversation sees the same list. A
+or `unconfirmed` one a `reasonCode` and a fixed `reason`, never the refusal's
+own text). `reasonCode` is one of `not_permitted`, `device_not_permitted`,
+`may_have_been_sent`, `start_deadline`, `unreadable_entry`, `session_ended`,
+`execution_engine_changed`, `provider_session_start_failed`,
+`model_not_advertised`, `continuation_workspace_unbound`,
+`continuation_workspace_direct_mismatch`, or `start_refused` for any other
+refusal. Every client of the conversation sees the same list, except that
+someone else's message that may still be sent (`queued`, `sending`) is shown
+without its `clientTurnId`. A
 conversation you may not read, or a Station without an inbox, answers `404`.
 `DELETE` withdraws a waiting message (its sender only), or dismisses an
 `unconfirmed` or `refused` one (anyone who may send to the conversation, so

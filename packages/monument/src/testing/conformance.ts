@@ -1883,6 +1883,48 @@ const inbox: KernelConformanceCase[] = [
       }),
   },
   {
+    name: 'inbox: only an unconfirmed entry is resolved, to placed or back to the queue',
+    areas: ['inbox'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const resolve = (key: string, to: 'placed' | 'queued') =>
+          session.run({
+            type: 'inbox.resolveUnconfirmed',
+            inboxId: 'conversation',
+            key,
+            to,
+            outcome: `{"by":"${to}"}`,
+            now: 9,
+          });
+        await session.run(submit('a'));
+        await session.run(submit('b'));
+        assert.deepEqual(await resolve('a', 'placed'), { kind: 'stale' });
+        await session.run(claimNext('session-a'));
+        await session.run(settle('a', 'unconfirmed'));
+        assert.equal(
+          claimedKey(await session.run(claimNext())),
+          'blocked:a:unconfirmed',
+        );
+        const requeued = await resolve('a', 'queued');
+        assert.equal(
+          requeued.kind === 'applied' && requeued.entry.placement,
+          null,
+        );
+        assert.equal(
+          claimedKey(await session.run(claimNext('session-b'))),
+          'claimed:a:placing',
+        );
+        await session.run(settle('a', 'unconfirmed'));
+        const placed = await resolve('a', 'placed');
+        assert.equal(placed.kind === 'applied' && placed.entry.state, 'placed');
+        assert.equal(
+          claimedKey(await session.run(claimNext())),
+          'claimed:b:placing',
+        );
+        assert.deepEqual(await resolve('missing', 'queued'), { kind: 'stale' });
+      }),
+  },
+  {
     name: 'inbox: forget removes one inbox, settled entries included, and no other',
     areas: ['inbox'],
     run: (harness) =>

@@ -1584,8 +1584,12 @@ export type ConversationInboxEntryState =
 
 export interface ConversationInboxEntry {
   conversationId: string;
-  /** The send's idempotency key; resending the same body answers this entry. */
-  clientTurnId: string;
+  /**
+   * The send's idempotency key; resending the same body answers this entry.
+   * Absent on someone else's entry that may still be sent (`queued`,
+   * `sending`): a send under the same key would take its turn.
+   */
+  clientTurnId?: string;
   /** Only follow-ups today; steer and display-only kinds may follow. */
   kind: 'follow-up';
   state: ConversationInboxEntryState;
@@ -1599,10 +1603,13 @@ export interface ConversationInboxEntry {
   /** The execution Session it was sent to, once Station picked one. */
   sessionId?: string;
   /**
-   * Why it was `refused` or is `unconfirmed`, as a stable code:
+   * Why it was `refused` or is `unconfirmed`, one of a closed set:
    * `not_permitted`, `device_not_permitted`, `may_have_been_sent`,
-   * `start_deadline`, `unreadable_entry`, or the send's own refusal code
-   * (`start_refused` when it had none).
+   * `start_deadline`, `unreadable_entry`, `session_ended`,
+   * `execution_engine_changed`, `provider_session_start_failed`,
+   * `model_not_advertised`, `continuation_workspace_unbound`,
+   * `continuation_workspace_direct_mismatch`, or `start_refused` for any
+   * other refusal.
    */
   reasonCode?: string;
   /** A fixed message for `reasonCode`; never the raw refusal text. */

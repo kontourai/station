@@ -43,7 +43,6 @@ import {
 import {
   CLIENT_PROTOCOL_HEADER_CAPABILITY,
   PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
-  PAIRING_SCOPE_ORCHESTRATION_OPERATE,
 } from '@kontourai/station-contracts/environment-security';
 import {
   PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_CAPABILITY,
@@ -62,6 +61,7 @@ import {
 import {
   isPairingApprovalLeaf,
   matchPairingScopeRule,
+  requiredPairingScope,
 } from '../../security/pairing-route-scopes.js';
 
 export { EnvironmentSecurityRecordError } from '@kontourai/station-shared/environment-security-record';
@@ -392,16 +392,20 @@ export class EnvironmentSecurityService {
   }
 
   /**
-   * #3568: whether a paired device may still send a chat message: unrevoked,
-   * enrolled, and holding `orchestration:operate` after its person's group
-   * cap (#3557), which is what a live `POST /api/orchestration/chat` needs.
+   * #3568: whether the device or personal access token that queued a chat
+   * message may still send one: live (not revoked, not expired) and holding,
+   * after its person's group cap (#3557), the scope the live route itself
+   * requires, read from the route table rather than restated here.
    */
-  deviceMaySendChat(deviceId: string): boolean {
+  deviceMaySendChat(credentialId: string): boolean {
+    const required = requiredPairingScope('POST', '/api/orchestration/chat');
     return (
-      this.#devicePairingService?.deviceHoldsScope(
-        deviceId,
-        PAIRING_SCOPE_ORCHESTRATION_OPERATE,
-      ) ?? false
+      required !== undefined &&
+      (this.#devicePairingService?.credentialHoldsScope(
+        credentialId,
+        required,
+      ) ??
+        false)
     );
   }
 

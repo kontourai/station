@@ -133,6 +133,14 @@ const SAMPLES: Record<KernelCommand['type'], KernelCommand> = {
   'inbox.list': { type: 'inbox.list', inboxId: 'i' },
   'inbox.listOpen': { type: 'inbox.listOpen' },
   'inbox.forget': { type: 'inbox.forget', inboxId: 'i' },
+  'inbox.resolveUnconfirmed': {
+    type: 'inbox.resolveUnconfirmed',
+    inboxId: 'i',
+    key: 'k',
+    to: 'placed',
+    outcome: null,
+    now: 6,
+  },
 };
 
 const READS = [

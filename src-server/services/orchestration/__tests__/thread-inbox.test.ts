@@ -873,4 +873,102 @@ describe('thread inbox (#3568)', () => {
     world.store.deleteThread(THREAD);
     expect(world.inbox.list(THREAD)).toEqual([]);
   });
+
+  test('R2-3a: an entry abandoned at its deadline that the engine did take settles sent at the next drive', async () => {
+    const world = boot(path(), { placementDeadlineMs: 50 });
+    await runningFirstTurn(world);
+    // The engine takes it, and the answer never reaches the inbox.
+    world.afterStart.hang = true;
+    queueFollowUp(world);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    // The start never answers, so only the deadline (`unconfirmed`,
+    // `start_deadline`) and a later drive reading the ledger can make it
+    // `sent`.
+    await eventuallyTrue(
+      () => world.inbox.list(THREAD)[0]?.state === 'sent',
+      3_000,
+    );
+    expect(followUpSends()).toEqual([FOLLOW_UP]);
+  });
+
+  test('R2-3b: an entry abandoned at its deadline whose start was then refused cleanly is queued and sent once', async () => {
+    let calls = 0;
+    const world = boot(path(), {
+      placementDeadlineMs: 50,
+      start: async ({ payload: sent }) => {
+        calls += 1;
+        if (calls === 1) {
+          // Answers only after the deadline, with a clean refusal: nothing
+          // reached the engine and no Session took the key.
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          throw Object.assign(new Error('starting'), {
+            code: 'provider_session_starting',
+          });
+        }
+        sends.push(sent.message);
+        return {
+          outcome: 'started',
+          conversationId: THREAD,
+          sessionId: THREAD,
+          turnId: 'turn-next',
+        };
+      },
+    });
+    await runningFirstTurn(world);
+    queueFollowUp(world);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await eventuallyTrue(
+      () => world.inbox.list(THREAD)[0]?.state === 'sent',
+      3_000,
+    );
+    expect(followUpSends()).toEqual([FOLLOW_UP]);
+  });
+
+  test('R2-4: the re-check budget counts firings, and a call past it schedules nothing more', async () => {
+    let calls = 0;
+    const world = boot(path(), {
+      retryDelaysMs: [5],
+      maxRetries: 3,
+      start: async () => {
+        calls += 1;
+        throw Object.assign(new Error('starting'), {
+          code: 'provider_session_starting',
+        });
+      },
+    });
+    await runningFirstTurn(world);
+    queueFollowUp(world);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await settle(world);
+    // The terminal's drive, then exactly three timer firings.
+    expect(calls).toBe(4);
+    // A later event drives once; its refusal schedules no further re-check.
+    await emit(world, 'session.state-changed', {
+      sessionId: THREAD,
+      state: 'ready',
+    });
+    await settle(world);
+    expect(calls).toBe(5);
+  });
+
+  test('R2-9: a refusal code outside the documented set is recorded as start_refused', async () => {
+    const world = boot(path(), {
+      start: async () => {
+        throw Object.assign(new Error('secret internal detail'), {
+          code: 'some_internal_code',
+        });
+      },
+    });
+    await runningFirstTurn(world);
+    queueFollowUp(world);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await settle(world);
+    expect(world.inbox.list(THREAD)).toMatchObject([
+      {
+        state: 'refused',
+        reasonCode: 'start_refused',
+        reason: 'Station could not send this message. Nothing was sent.',
+      },
+    ]);
+  });
 });

@@ -76,6 +76,8 @@ class ScriptedAdapter implements ProviderAdapterShape {
   holdTurns = false;
   /** Refuse the next send as a turn the engine opened itself. */
   refuseNextAsBusy = false;
+  /** Take the next send and never answer it (the engine may have it). */
+  hangNextSend = false;
   private readonly sessions = new Set<string>();
   private open: { threadId: string; turnId: string } | undefined;
 
@@ -107,6 +109,10 @@ class ScriptedAdapter implements ProviderAdapterShape {
       throw new ProviderTurnInProgressError();
     }
     this.turns.push(input);
+    if (this.hangNextSend) {
+      this.hangNextSend = false;
+      return new Promise<never>(() => {});
+    }
     const turnId = `inbox-turn-${this.turns.length}`;
     this.events.push({
       provider: this.provider,
@@ -206,9 +212,34 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     for (const close of cleanup.splice(0).reverse()) await close();
   });
 
-  function station(options: { inbox?: boolean } = {}) {
-    const root = tempDir('station-inbox-');
-    const store = new EventStore(join(root, 'orchestration.sqlite'), 512);
+  function station(
+    options: {
+      inbox?: boolean;
+      /** Reopen another process's home (a restart). */
+      root?: string;
+      /** This process's birth: an earlier birth's claims read as dead. */
+      birth?: string;
+      /** The inbox's start deadline (default: production's). */
+      placementDeadlineMs?: number;
+    } = {},
+  ) {
+    const root = options.root ?? tempDir('station-inbox-');
+    const birth = options.birth;
+    const store = new EventStore(
+      join(root, 'orchestration.sqlite'),
+      512,
+      ...(birth
+        ? [
+            {
+              exact: () => ({ pid: process.pid, start: birth }),
+              probe: () => ({
+                state: 'exact' as const,
+                identity: { pid: process.pid, start: birth },
+              }),
+            },
+          ]
+        : []),
+    );
     const adapter = new ScriptedAdapter();
     const bus = new EventBus();
     const service = new OrchestrationService({
@@ -386,6 +417,9 @@ describe('POST /chat whenBusy queue (#3568)', () => {
           }),
         logger: { warn: vi.fn() },
         retryDelaysMs: [20, 50, 100],
+        ...(options.placementDeadlineMs
+          ? { placementDeadlineMs: options.placementDeadlineMs }
+          : {}),
       });
     const inbox = makeInbox();
     inbox.start();
@@ -466,6 +500,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     };
     const prompts = () => adapter.turns.map((turn) => turn.input);
     return {
+      root,
       adapter,
       store,
       service,
@@ -738,6 +773,120 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       },
     });
     expect(otherWorkspace.status).not.toBe(202);
+    expect(world.inbox.list(CONVERSATION)).toEqual([]);
+  });
+
+  test('R2-1: a send the engine may have taken, then a crash and the Session ending, is unconfirmed, never sent into a successor', async () => {
+    // A short deadline only so this dead process's abandoned call can end
+    // for teardown; a stopped inbox records nothing at it.
+    const first = station({ birth: 'boot-1', placementDeadlineMs: 300 });
+    await first.busy();
+    expect(
+      (await first.send('follow', 'then summarize', { whenBusy: 'queue' }))
+        .status,
+    ).toBe(202);
+    // The engine is handed the follow-up (its claim records the invocation)
+    // and never answers; the process then dies.
+    first.adapter.hangNextSend = true;
+    first.adapter.holdTurns = false;
+    first.adapter.complete();
+    await eventually(() =>
+      expect(first.prompts()).toEqual(['read the file', 'then summarize']),
+    );
+    first.inbox.stop();
+    // The Session the claim is on ends, so continuing would reserve a
+    // successor with a fresh claim of its own.
+    const session = first.service.currentConversationSessionId(CONVERSATION);
+    first.adapter.events.push({
+      eventId: `${session}:exited`,
+      provider: 'claude',
+      threadId: session,
+      sessionId: session,
+      createdAt: new Date().toISOString(),
+      method: 'session.exited',
+      exitKind: 'error',
+    } as unknown as CanonicalRuntimeEvent);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const second = station({ root: first.root, birth: 'boot-2' });
+    await second.inbox.reconcile();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await second.inbox.idle();
+    expect(
+      [...first.prompts(), ...second.prompts()].filter(
+        (prompt) => prompt === 'then summarize',
+      ),
+    ).toHaveLength(1);
+    expect(second.inbox.list(CONVERSATION)).toMatchObject([
+      { state: 'unconfirmed', reasonCode: 'may_have_been_sent' },
+    ]);
+  });
+
+  test('R2-2: a live claim on the ended Session holds the entry back from a successor', async () => {
+    const world = station();
+    await world.busy();
+    expect(
+      (await world.send('follow', 'then summarize', { whenBusy: 'queue' }))
+        .status,
+    ).toBe(202);
+    const session = world.service.currentConversationSessionId(CONVERSATION);
+    // Another attempt of the same key holds a live claim on this Session
+    // and has not begun invoking.
+    const claim = world.store
+      .createTurnDeduplicator()
+      .claim({ threadId: session, clientTurnId: 'follow' });
+    expect(claim).toMatchObject({ kind: 'owner' });
+    world.adapter.events.push({
+      eventId: `${session}:exited`,
+      provider: 'claude',
+      threadId: session,
+      sessionId: session,
+      createdAt: new Date().toISOString(),
+      method: 'session.exited',
+      exitKind: 'error',
+    } as unknown as CanonicalRuntimeEvent);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(world.prompts()).toEqual(['read the file']);
+    expect(world.inbox.list(CONVERSATION)).toMatchObject([{ state: 'queued' }]);
+  });
+
+  test("R2-8: a reader sees no key for someone else's message that may still be sent", async () => {
+    const world = station();
+    await world.busy();
+    await world.send('owner-key', 'then summarize', { whenBusy: 'queue' });
+    await world.as(READER, () =>
+      world.send('reader-key', 'from the reader', { whenBusy: 'queue' }),
+    );
+    const read = async (who: string) =>
+      (
+        (await (await world.listInbox(who)).json()) as {
+          data: { entries: Array<Record<string, unknown>> };
+        }
+      ).data.entries;
+    const asReader = await read(READER);
+    expect(asReader[0]).not.toHaveProperty('clientTurnId');
+    expect(asReader[1]).toMatchObject({ clientTurnId: 'reader-key' });
+    const asOwner = await read(OWNER);
+    expect(asOwner[0]).toMatchObject({ clientTurnId: 'owner-key' });
+    expect(asOwner[1]).not.toHaveProperty('clientTurnId');
+  });
+
+  test('R2-7: a send carrying an Agent-definition precondition takes the live path', async () => {
+    const world = station();
+    await world.busy();
+    const fingerprinted = await world.send('fp', 'with a precondition', {
+      whenBusy: 'queue',
+      target: {
+        environment: { kind: 'current' },
+        agent: {
+          kind: 'agent-execution-override',
+          agent: AGENT,
+          executionAgent: AGENT,
+          expectedDefinitionFingerprint: 'sha256-stale',
+        },
+      },
+    });
+    expect(fingerprinted.status).not.toBe(202);
     expect(world.inbox.list(CONVERSATION)).toEqual([]);
   });
 });

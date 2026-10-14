@@ -2187,6 +2187,38 @@ export class DevicePairingService {
   }
 
   /**
+   * #3568: whether the credential with id `credentialId` is still live and
+   * still holds `scope` after its person's group cap (#3557), whatever kind
+   * it is: a paired device (not revoked, not pending enrolment) or a personal
+   * access token (not revoked, not expired, its account still current). The
+   * one by-id lookup for an action recorded earlier and performed later, so
+   * revoking or narrowing either kind stops it. A device is judged by its own
+   * grant, not an alias's: an id names the device, not the credential used.
+   */
+  credentialHoldsScope(credentialId: string, scope: PairingScope): boolean {
+    const device = this.#registry.devices.find(
+      (item) => item.id === credentialId,
+    );
+    if (device)
+      return (
+        device.revokedAt === null &&
+        device.pendingEnrollmentId === undefined &&
+        pairingScopeIncludes(this.#capScope(publicDevice(device)), scope)
+      );
+    const token = this.#tokens
+      .list()
+      .find(
+        (candidate) =>
+          candidate.id === credentialId &&
+          this.#accountStandingCurrent(candidate.binding, candidate.createdAt),
+      );
+    return (
+      token !== undefined &&
+      pairingScopeIncludes(this.#capScope(personalTokenDevice(token)), scope)
+    );
+  }
+
+  /**
    * #3557: the scope `candidate` may actually use: its granted scope (an
    * alias's own), capped by its person's Station group. `undefined` for an
    * invalid or revoked credential. Device lists and every authorization

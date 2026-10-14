@@ -4,6 +4,7 @@ import type {
   InboxClaimNextCommand,
   InboxClaimNextResult,
   InboxReleaseCommand,
+  InboxResolveUnconfirmedCommand,
   InboxSettleCommand,
   InboxSubmitCommand,
   InboxSubmitResult,
@@ -141,6 +142,29 @@ export function decideInboxRelease(
     placement: command.keepPlacement ? existing.placement : null,
     updatedAt: command.now,
   };
+  return { put: entry, result: { kind: 'applied', entry } };
+}
+
+export function decideInboxResolveUnconfirmed(
+  existing: InboxEntryRecord | undefined,
+  command: InboxResolveUnconfirmedCommand,
+): InboxDecision<InboxWriteResult> {
+  if (existing?.state !== 'unconfirmed') return { result: { kind: 'stale' } };
+  const entry: InboxEntryRecord =
+    command.to === 'placed'
+      ? {
+          ...existing,
+          state: 'placed',
+          outcome: command.outcome,
+          updatedAt: command.now,
+        }
+      : {
+          ...existing,
+          state: 'queued',
+          placement: null,
+          outcome: command.outcome,
+          updatedAt: command.now,
+        };
   return { put: entry, result: { kind: 'applied', entry } };
 }
 

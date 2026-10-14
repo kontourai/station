@@ -491,6 +491,32 @@ describe('configureRuntimeRoutes: delegated result delivery wiring (#3158)', () 
     );
     expect(support.continued).toHaveLength(0);
   });
+
+  test('#3568 R2-1: a delivery whose key a Session of the parent may have taken is never continued', async () => {
+    const { base, emit, store } = await setup();
+    support.inspect = () => ({ outcome: 'indeterminate' });
+    await delegate(base, 'sdk-in-process');
+    settleChild(emit);
+    await vi.waitFor(() =>
+      expect(
+        store.delegationResultStore().listForChild(CHILD)[0],
+      ).toMatchObject({ state: 'claimed', unconfirmed: `start:${PARENT}` }),
+    );
+    expect(support.continued).toHaveLength(0);
+  });
+
+  test('#3568 R2-2: a delivery whose key a live attempt holds on another Session is not continued', async () => {
+    const { base, emit, store } = await setup();
+    support.inspect = () => ({ outcome: 'received' });
+    await delegate(base, 'sdk-in-process');
+    settleChild(emit);
+    await vi.waitFor(() =>
+      expect(
+        store.delegationResultStore().listForChild(CHILD)[0]?.attempts,
+      ).toBeGreaterThan(0),
+    );
+    expect(support.continued).toHaveLength(0);
+  });
 });
 
 describe('configureRuntimeRoutes: conversation inbox wiring (#3568)', () => {

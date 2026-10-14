@@ -6917,7 +6917,8 @@ export function resumedWorkspaceBinding(
 /**
  * #3568 fix round (A4): whether a `/chat` follow-up's target names exactly
  * what continuing this conversation will use: its bound Agent (and execution
- * Agent) and its bound workspace, with no engine precondition. The inbox
+ * Agent) and its bound workspace, with no engine or Agent-definition
+ * precondition. The inbox
  * replays a held follow-up through {@link continueExecutionTargetMessage},
  * which rebuilds the target from the binding, so a body that names anything
  * else must take the live path, which checks it while the sender waits.
@@ -6950,6 +6951,9 @@ export async function followUpTargetMatchesBinding(
   const bound = delegationTargetBinding(currentMetadata);
   if (!bound || !metadata) return false;
   const agent = target.agent;
+  // A stale-definition precondition is checked only by the live path.
+  if (typeof agent !== 'string' && agent.expectedDefinitionFingerprint)
+    return false;
   const requestedAgent = typeof agent === 'string' ? agent : agent.agent;
   const requestedExecution =
     typeof agent === 'string' ? undefined : agent.executionAgent;

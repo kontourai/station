@@ -14,6 +14,7 @@ export {
   decideInboxCancel,
   decideInboxClaimNext,
   decideInboxRelease,
+  decideInboxResolveUnconfirmed,
   decideInboxSettle,
   decideInboxSubmit,
   inboxHead,
