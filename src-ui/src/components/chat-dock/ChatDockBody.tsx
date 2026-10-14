@@ -92,7 +92,7 @@ import ProgressSilenceObservation from '../home/ProgressSilenceObservation';
 import { LazyBoundary } from '../LazyBoundary';
 import { resolveNewChatAgentEnable } from '../modals/new-chat-agent-enable';
 import { SessionFailureAlert } from '../session-failure/SessionFailureAlert';
-import { ErrorState, SkeletonList } from '../state';
+import { ErrorState, SkeletonBlock, SkeletonList } from '../state';
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
 import {
   type RetryAttachment,
@@ -1855,16 +1855,16 @@ export function ChatDockBody({
 
         With messages on screen the wait is shown by the disabled composer,
         whose placeholder reads "Loading chat…" (`loadingConversation`), and
-        announced here as text, in the same words the skeletons use. An
+        announced here through the loading vocabulary, visually hidden. (The
+        skeleton primitives announce through `aria-label` alone; making their
+        label readable text is a change to the shared primitive.) An
         in-flow block under the newest message used to shrink the transcript
         while the open read was pending and hand the space back when it landed
         ("space appears below while the conversation loads"). With an empty
         transcript the filler above carries the same wait.
       */}
       {conversationLoading && displayedTranscriptMessages.length > 0 ? (
-        <p className="sr-only" role="status">
-          Loading chat
-        </p>
+        <SkeletonBlock count={1} label="Loading chat" className="sr-only" />
       ) : null}
       {/*
         The one way out of the wait. `.session-history-controls` is this pane's

@@ -1126,16 +1126,13 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     await waitFor(() =>
       expect(chatInputPropsMock.current?.loadingConversation).toBe(true),
     );
-    // The skeleton's own label is hidden text; this region's text is not.
     const announcement = screen
-      .getAllByRole('status')
-      .find(
-        (node) =>
-          node.classList.contains('sr-only') &&
-          node.textContent?.trim() === 'Loading chat',
-      );
-    expect(announcement, 'a status region whose text is the wait').toBeTruthy();
-    expect(document.querySelector('.skeleton-block')).toBeNull();
+      .getAllByLabelText('Loading chat')
+      .find((node) => node.classList.contains('skeleton-block'));
+    expect(announcement, 'the wait is announced').toBeTruthy();
+    expect(announcement!.getAttribute('role')).toBe('status');
+    // ...and not drawn: no visible panel under the rows.
+    expect(announcement!.classList.contains('sr-only')).toBe(true);
     // No status region nests another.
     for (const region of screen.getAllByRole('status'))
       expect(region.querySelector('[role="status"]')).toBeNull();
