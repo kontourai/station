@@ -1616,7 +1616,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'kontourai/station#689, then the one start composer — proves the start composer project chip opens its project list as a contained bottom sheet (not a clipped anchored dropdown) at 390x844, and covers open, list-owned scroll with 44px rows, filter, pick, outside-tap, and Escape dismissal of the sheet alone.',
+      'kontourai/station#689, then the one start composer — proves the start composer project chip opens its project list as a contained bottom sheet (not a clipped anchored dropdown) at 390x844, and covers open, list-owned scroll with 44px rows, filter, pick, outside-tap, and Escape dismissal of the sheet alone. At a keyboard-height 390x560 viewport it proves the start sheet scrolls only its body, never a squeezed header.',
     exceptions: [],
   },
   {

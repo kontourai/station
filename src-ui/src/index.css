@@ -9553,8 +9553,12 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     border-radius: 0;
   }
 
+  /* The header keeps its content height up to its 62% cap and scrolls only
+     past it. With `flex-shrink: 1` it shared every overflow with the body in
+     proportion to height, so a long recent-chats list squeezed it a few
+     pixels short of its title row and the sheet showed two scrollbars. */
   .new-chat-modal__header {
-    flex: 0 1 auto;
+    flex: 0 0 auto;
     max-height: 62%;
     min-height: 0;
     overflow-y: auto;
