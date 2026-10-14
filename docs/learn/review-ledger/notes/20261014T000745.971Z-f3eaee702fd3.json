@@ -1,0 +1,7 @@
+{
+  "revision": "7fda2eee6d29d9c0b4993ce8510cc9fd637f28c9",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Reviewed after a comment-only edit to station-control-policy.ts (the list_project_activity/get_session_digest block now says the caller's own conversation is its own whatever its scope). Searched this document for list_project_activity, get_session_digest, project activity and self-row claims: none; no policy table, refusal code or route mapping changed, so no prose change is needed.","inputs":["docs/reference/cli.md","src-server/tools/station-control-policy.ts"]}
+  ]
+}
