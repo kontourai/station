@@ -36,6 +36,17 @@ export function corpusDecisionsNpmArgs(subcommand, env = process.env) {
   );
 }
 
+/**
+ * @param {string | undefined} subcommand
+ * @param {{
+ *   env?: NodeJS.ProcessEnv,
+ *   spawn?: (
+ *     command: string,
+ *     args: string[],
+ *     options: import('node:child_process').SpawnSyncOptions,
+ *   ) => { status: number | null, signal?: NodeJS.Signals | null, error?: Error },
+ * }} [options]
+ */
 export function runCorpusDecisions(
   subcommand,
   { env = process.env, spawn = spawnSync } = {},
