@@ -254,6 +254,24 @@ async function observeSendAdmission<T>(
  * How long a send waits for its durable outbox row before going without one
  * (the composer then keeps its saved draft until Station answers).
  */
+
+/**
+ * The notice for a send of a message the user already discarded. It claims
+ * the text is back only when it was put back; otherwise it carries the text,
+ * so the words are never lost behind a draft the user has since typed.
+ */
+export function discardedMessageNotice(
+  restored: boolean,
+  text: string,
+): { role: 'system'; content: string } {
+  return {
+    role: 'system',
+    content: restored
+      ? 'This message was discarded, so it was not sent. Its text is back in the composer.'
+      : `This message was discarded, so it was not sent. Its text was:\n\n${text}`,
+  };
+}
+
 export const LIVE_DURABILITY_TIMEOUT_MS = 3_000;
 
 /**
@@ -770,13 +788,12 @@ export function useSendMessage(
               // sending it again: the text goes back to the composer, never
               // lost, and a new send of it is a new message.
               const latest = activeChatsStore.getSnapshot()[sessionId];
-              if ((latest?.input ?? '') === '')
-                updateChat(sessionId, { input: submittedDraft });
-              addEphemeralMessage(sessionId, {
-                role: 'system',
-                content:
-                  'This message was discarded, so it was not sent. Its text is back in the composer.',
-              });
+              const restored = (latest?.input ?? '') === '';
+              if (restored) updateChat(sessionId, { input: submittedDraft });
+              addEphemeralMessage(
+                sessionId,
+                discardedMessageNotice(restored, submittedDraft),
+              );
               options?.onAdmission?.('not-invoked');
               return false;
             }
@@ -1215,6 +1232,35 @@ export function useSendMessage(
               );
           } catch (queueError) {
             clearStreamingMessage(sessionId);
+            const retiredAs =
+              (queueError as { name?: unknown })?.name ===
+              'OutboundKeyRetiredError'
+                ? (queueError as { reason?: unknown }).reason
+                : undefined;
+            if (retiredAs !== undefined) {
+              // Settled already: never "Send unavailable", which invites a
+              // resend of a message that was delivered or that the user
+              // threw away. A discarded text still goes back to the user.
+              const latest = activeChatsStore.getSnapshot()[sessionId];
+              const restored =
+                retiredAs === 'discarded' && (latest?.input ?? '') === '';
+              updateChat(sessionId, {
+                status: 'idle',
+                abortController: undefined,
+                ...(restored ? { input: submittedDraft } : {}),
+              });
+              addEphemeralMessage(
+                sessionId,
+                retiredAs === 'discarded'
+                  ? discardedMessageNotice(restored, submittedDraft)
+                  : {
+                      role: 'system',
+                      content:
+                        'This message was already delivered, so it was not sent again.',
+                    },
+              );
+              return false;
+            }
             updateChat(sessionId, {
               status: 'error',
               error:

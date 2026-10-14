@@ -20,7 +20,7 @@ import type {
   TurnDeliveryOutcome,
 } from '@kontourai/station-contracts/orchestration';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { createStore, get, set, update } from 'idb-keyval';
+import { createStore, get, promisifyRequest, set, update } from 'idb-keyval';
 import type { FileAttachment } from '../types';
 
 export type OutboundDispatchStatus =
@@ -368,6 +368,52 @@ export interface OutboundQueueStorage {
   getItem(key: string): Promise<unknown>;
   setItem(key: string, value: unknown): Promise<void>;
   updateItem?(key: string, updater: (value: unknown) => unknown): Promise<void>;
+  /**
+   * Reads and writes the queue record and the retired-key list in ONE
+   * transaction, so neither can be saved without the other.
+   */
+  updateWithRetired?(
+    updater: (
+      record: unknown,
+      retired: unknown,
+    ) => { record: unknown; retired: unknown },
+  ): Promise<void>;
+}
+
+/**
+ * One readwrite transaction over the queue's object store: both keys are
+ * read, the updater decides, and both are put before the transaction
+ * commits. An updater that throws writes nothing.
+ */
+export function updateRecordAndRetired(
+  objectStore: Pick<IDBObjectStore, 'get' | 'put' | 'transaction'>,
+  updater: (
+    record: unknown,
+    retired: unknown,
+  ) => { record: unknown; retired: unknown },
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const record = objectStore.get(STORAGE_KEY);
+    const retired = objectStore.get(RETIRED_STORAGE_KEY);
+    let pending = 2;
+    const both = () => {
+      pending -= 1;
+      if (pending > 0) return;
+      try {
+        const next = updater(record.result, retired.result);
+        objectStore.put(next.record, STORAGE_KEY);
+        if (next.retired !== retired.result)
+          objectStore.put(next.retired, RETIRED_STORAGE_KEY);
+        resolve(promisifyRequest(objectStore.transaction));
+      } catch (error) {
+        reject(error);
+      }
+    };
+    record.onsuccess = both;
+    retired.onsuccess = both;
+    record.onerror = () => reject(record.error);
+    retired.onerror = () => reject(retired.error);
+  });
 }
 
 interface TerminalEvidence {
@@ -610,6 +656,10 @@ function createIdbOutboundQueueStorage(): OutboundQueueStorage {
     getItem: (key) => get<OutboundQueuePersisted>(key, store),
     setItem: (key, value) => set(key, value, store),
     updateItem: (key, updater) => update(key, updater, store),
+    updateWithRetired: (updater) =>
+      store('readwrite', (objectStore) =>
+        updateRecordAndRetired(objectStore, updater),
+      ),
   };
 }
 
@@ -1050,6 +1100,18 @@ async function mutateState<T>(
     void _retired;
     return { ...rest, turns: prune(state.turns, Date.now()) };
   };
+  const applyAtomic = () =>
+    storage.updateWithRetired!((stored, storedRetired) => {
+      const retired = parseRetired(storedRetired);
+      const outcome = operation({ ...queueState(stored), retired });
+      result = outcome.result;
+      changed = outcome.changed;
+      const nextRetired = outcome.state.retired ?? retired;
+      return {
+        record: persisted(outcome.state),
+        retired: nextRetired === retired ? storedRetired : nextRetired,
+      };
+    });
   const apply = async () => {
     const retired = parseRetired(await retiredStorage.get());
     let nextRetired = retired;
@@ -1062,7 +1124,9 @@ async function mutateState<T>(
     });
     if (nextRetired !== retired) await retiredStorage.set(nextRetired);
   };
-  if (storage.updateItem) {
+  if (storage.updateWithRetired) {
+    await withQueueLock(applyAtomic);
+  } else if (storage.updateItem) {
     await withQueueLock(apply);
   } else {
     await serialize(async () => {
@@ -1938,8 +2002,9 @@ async function beginLive(
   return {
     clientTurnId,
     accepted: async () => {
-      // One write: the row goes and its key is retired together, so no
-      // window can see the message gone yet still sendable.
+      // One operation: the row goes and its key is retired together (one
+      // IndexedDB transaction in production), so no window can see the
+      // message gone yet still sendable.
       try {
         await mutateState((state) => ({
           state: withRetired(

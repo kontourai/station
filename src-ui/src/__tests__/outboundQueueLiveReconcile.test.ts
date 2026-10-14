@@ -652,3 +652,127 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     );
   });
 });
+
+/**
+ * The queue record and the retired-key list are two keys of ONE IndexedDB
+ * object store, written in one readwrite transaction: a delivered row can
+ * never be gone from the queue while its key is still sendable, nor the
+ * other way round. The fake object store fires its requests asynchronously
+ * and commits only when told, like IndexedDB.
+ */
+function fakeObjectStore(initial: Record<string, unknown>) {
+  const data = new Map(Object.entries(initial));
+  const puts: Array<[string, unknown]> = [];
+  const transaction = {} as {
+    oncomplete?: () => void;
+    onsuccess?: () => void;
+    onerror?: () => void;
+    onabort?: () => void;
+    result?: unknown;
+    error?: unknown;
+  };
+  const objectStore = {
+    get(key: string) {
+      const request = {} as {
+        result?: unknown;
+        error?: unknown;
+        onsuccess?: () => void;
+        onerror?: () => void;
+      };
+      queueMicrotask(() => {
+        request.result = data.get(key);
+        request.onsuccess?.();
+      });
+      return request;
+    },
+    put(next: unknown, key: string) {
+      puts.push([key, next]);
+      return {};
+    },
+    transaction,
+  };
+  return {
+    objectStore: objectStore as unknown as Pick<
+      IDBObjectStore,
+      'get' | 'put' | 'transaction'
+    >,
+    puts,
+    commit: () => (transaction.oncomplete ?? transaction.onsuccess)?.(),
+  };
+}
+
+describe('the queue and its retired list are written together', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('reads both keys, puts both in the one transaction, and settles only when it commits', async () => {
+    const { updateRecordAndRetired } = await import('../lib/outboundQueue');
+    const fake = fakeObjectStore({
+      [QUEUE_KEY]: { turns: ['row'] },
+      'station-outbound-retired-v1': ['old'],
+    });
+    const seen: unknown[] = [];
+    let settled = false;
+    const done = updateRecordAndRetired(fake.objectStore, (record, retired) => {
+      seen.push(record, retired);
+      return { record: { turns: [] }, retired: ['old', 'new'] };
+    }).then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(seen).toEqual([{ turns: ['row'] }, ['old']]);
+    expect(fake.puts).toEqual([
+      [QUEUE_KEY, { turns: [] }],
+      ['station-outbound-retired-v1', ['old', 'new']],
+    ]);
+    expect(settled).toBe(false);
+    fake.commit();
+    await done;
+    expect(settled).toBe(true);
+  });
+
+  it('an updater that refuses writes neither key', async () => {
+    const { updateRecordAndRetired } = await import('../lib/outboundQueue');
+    const fake = fakeObjectStore({ [QUEUE_KEY]: { turns: ['row'] } });
+    await expect(
+      updateRecordAndRetired(fake.objectStore, () => {
+        throw new Error('retired');
+      }),
+    ).rejects.toThrow('retired');
+    expect(fake.puts).toEqual([]);
+  });
+
+  it('the outbox uses the one-transaction write when its storage offers it, never two separate writes', async () => {
+    stubLocks();
+    vi.resetModules();
+    const queue = await import('../lib/outboundQueue');
+    let record: unknown;
+    let retired: unknown;
+    const separateWrite = async () => {
+      throw new Error('a separate write was made');
+    };
+    queue._setOutboundQueueStorage(
+      {
+        getItem: async (key) => (key === QUEUE_KEY ? record : retired),
+        setItem: separateWrite,
+        updateItem: separateWrite,
+        updateWithRetired: async (updater) => {
+          const next = updater(record, retired);
+          record = next.record;
+          retired = next.retired;
+        },
+      },
+      { get: async () => retired, set: separateWrite },
+    );
+    const live = await queue.outboundDispatch.beginLive({
+      ...intent,
+      clientTurnId: 'atomic-1',
+    });
+    await live.accepted();
+    expect(await queue.outboundDispatch.snapshot()).toEqual([]);
+    await expect(
+      queue.outboundDispatch.beginLive({ ...intent, clientTurnId: 'atomic-1' }),
+    ).rejects.toMatchObject({ reason: 'accepted' });
+  });
+});

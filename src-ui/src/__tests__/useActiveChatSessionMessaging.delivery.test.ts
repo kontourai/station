@@ -446,6 +446,116 @@ describe('useSendMessage: durable before the request', () => {
     expect(onAdmission).toHaveBeenCalledWith('not-invoked');
   });
 
+  /** An in-memory outbox whose next write runs `before` first, once. */
+  function armableStorage() {
+    const values = new Map<string, unknown>();
+    let before: (() => Promise<void> | void) | undefined;
+    _setOutboundQueueStorage({
+      getItem: async (key) => values.get(key),
+      setItem: async (key, next) => {
+        values.set(key, next);
+      },
+      updateItem: async (key, updater) => {
+        const hook = before;
+        before = undefined;
+        await hook?.();
+        values.set(key, updater(values.get(key)));
+      },
+    });
+    return {
+      arm: (hook: () => Promise<void> | void) => {
+        before = hook;
+      },
+    };
+  }
+
+  it('a discarded message resent over a newer draft keeps that draft and carries the text in the notice', async () => {
+    const storage = armableStorage();
+    await outboundDispatch.syncHeld([
+      {
+        clientTurnId: 'discarded-over-draft',
+        sessionId: chat,
+        agentSlug: 'codex',
+        content: 'the old words',
+      },
+    ]);
+    await outboundDispatch.discard('discarded-over-draft');
+    // The user starts a new draft while the outbox is being written.
+    storage.arm(() => {
+      activeChatsStore.updateChat(chat, { input: 'a newer draft' });
+    });
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    await act(async () => {
+      await result.current(
+        chat,
+        'codex',
+        undefined,
+        'the old words',
+        undefined,
+        undefined,
+        'discarded-over-draft',
+      );
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    const state = activeChatsStore.getSnapshot()[chat];
+    expect(state?.input).toBe('a newer draft');
+    const notice = state?.ephemeralMessages?.find(
+      (message) =>
+        message.role === 'system' &&
+        String(message.content).includes('discarded'),
+    );
+    expect(String(notice?.content)).toContain('the old words');
+    expect(String(notice?.content)).not.toContain('back in the composer');
+  });
+
+  it('an offline send of a discarded message is not reported as "Send unavailable"; its text comes back', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const storage = armableStorage();
+    await outboundDispatch.syncHeld([
+      {
+        clientTurnId: 'discarded-offline',
+        sessionId: chat,
+        agentSlug: 'codex',
+        content: 'once more',
+      },
+    ]);
+    await outboundDispatch.discard('discarded-offline');
+    // The durable write outlasts its bound, so the send goes without a row
+    // and, offline, reaches the queue's enqueue, which refuses the key.
+    storage.arm(
+      () => new Promise<void>((resolve) => setTimeout(resolve, 10_000)),
+    );
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new TypeError('Failed to fetch'),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    let pending!: Promise<unknown>;
+    await act(async () => {
+      pending = result.current(
+        chat,
+        'codex',
+        undefined,
+        'once more',
+        undefined,
+        undefined,
+        'discarded-offline',
+      );
+      await vi.advanceTimersByTimeAsync(3_500);
+    });
+    await act(async () => {
+      await pending;
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+    const state = activeChatsStore.getSnapshot()[chat];
+    expect(state?.error ?? '').not.toContain('Send unavailable');
+    expect(state?.status).toBe('idle');
+    expect(state?.input).toBe('once more');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(await outboundDispatch.snapshot()).toEqual([]);
+  });
+
   it('sending a message already delivered sends nothing and says it was delivered', async () => {
     const delivered = await outboundDispatch.beginLive({
       clientTurnId: 'delivered-key',
