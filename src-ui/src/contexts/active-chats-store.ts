@@ -9,6 +9,7 @@ import {
   appendInputHistory,
   assignConversationIdState,
   type BackendTimestampMessage,
+  type BackgroundTaskNotice,
   type ChatUIState,
   clearEphemeralMessagesState,
   clearInputState,
@@ -481,6 +482,7 @@ export class ActiveChatsStore {
       action?: { label: string; handler: () => void };
       sendFailure?: boolean;
       queuedRetry?: boolean;
+      backgroundTaskNotice?: BackgroundTaskNotice;
     },
   ) {
     const chat = this.chats[sessionId];

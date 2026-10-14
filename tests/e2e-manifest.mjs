@@ -351,6 +351,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
       'read-only Connections UI against the runner-owned temporary Station; trust refusal occurs before server enrollment, with only this browser context’s request observation and local page state',
     'tests/buffered-answer-delivery.spec.ts':
       'browser-local orchestration SSE and API fixtures installed before navigation; the only write is this browser context’s device-local Answer delivery preference',
+    'tests/chat-settings-and-task-notices.spec.ts':
+      'browser-local orchestration SSE and API fixtures installed before navigation; the only write is this browser context’s device-local developer-tools preference',
   },
   parallelSafe: [
     'tests/branding-theme-boot.spec.ts',
@@ -418,6 +420,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/orchestration-recovery.spec.ts',
     'tests/new-chat-provider-managed.spec.ts',
     'tests/new-chat-mobile-context-sheet.spec.ts',
+    'tests/chat-settings-and-task-notices.spec.ts',
     'tests/cross-runtime-chat-switching.spec.ts',
     'tests/daily-driver-scenarios.spec.ts',
     'tests/daily-driver-switching.spec.ts',
@@ -1614,6 +1617,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'kontourai/station#689, then the one start composer — proves the start composer project chip opens its project list as a contained bottom sheet (not a clipped anchored dropdown) at 390x844, and covers open, list-owned scroll with 44px rows, filter, pick, outside-tap, and Escape dismissal of the sheet alone.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-settings-and-task-notices.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'At a phone and a desktop width through the real dock: Chat Settings keeps Done inside the panel and hittable at any scroll position, its replay import is a styled button, and backgrounded-task settles arriving over the orchestration SSE seam render as compact, distinct status lines that name their title once.',
     exceptions: [],
   },
   {

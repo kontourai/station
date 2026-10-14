@@ -1,4 +1,7 @@
-import type { ChildWorkModel } from '@kontourai/station-contracts/child-work';
+import type {
+  ChildWorkModel,
+  ChildWorkTerminalStatus,
+} from '@kontourai/station-contracts/child-work';
 import type { InputRequestRecord } from '@kontourai/station-contracts/input-request';
 import type {
   ConversationHandoffProjection,
@@ -193,11 +196,28 @@ export type ChatMessage = {
   changedFiles?: TurnChangedFiles;
 };
 
+/**
+ * A backgrounded child's settle, as the announcement that reports it. The
+ * fields are the child-work registry's own, never derived prose: `title` is
+ * the child's title and `summary` its engine-reported result, each absent
+ * when the registry has none.
+ */
+export interface BackgroundTaskNotice {
+  status: ChildWorkTerminalStatus;
+  title?: string;
+  summary?: string;
+}
+
 export type EphemeralMessage = ChatMessage & {
   action?: { label: string; handler: () => void };
   terminalSession?: boolean;
   /** #1796: rendered by `FullAccessRefusalCard`, never as Markdown. */
   fullAccessRefusal?: FullAccessRefusalNotice;
+  /**
+   * Rendered by `BackgroundTaskNoticeCard`. `content` keeps the plain-text
+   * form of the same notice for every reader that takes text.
+   */
+  backgroundTaskNotice?: BackgroundTaskNotice;
   /**
    * This notice says why a SEND did not go (a refused or failed send, a queued
    * message dropped), as opposed to slash-command output or a status line. The
@@ -1673,6 +1693,7 @@ export function createEphemeralMessageState(
     action?: { label: string; handler: () => void };
     sendFailure?: boolean;
     queuedRetry?: boolean;
+    backgroundTaskNotice?: BackgroundTaskNotice;
   },
   now: () => number,
   randomId: () => string,
