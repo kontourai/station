@@ -135,6 +135,39 @@ The response is a foreground handle containing `conversationId`, `sessionId`,
 resolved Agent target, and an `ExecutionResolutionReceipt` describing the Environment,
 Agent, engine kind, provider, and honest model launch plan.
 
+### Find out what became of a send
+
+A send that names its own idempotency key (`clientTurnId`, up to 200
+characters) and its `conversationId` can be looked up afterwards, for example
+by a device whose connection dropped before the answer arrived, or that was
+closed mid-send:
+
+```
+GET /api/orchestration/conversations/<conversationId>/turn-deliveries/<clientTurnId>
+```
+
+The answer is read-only (it never sends, claims or releases anything) and is
+always `200` with `data.outcome`:
+
+| `outcome` | Meaning | Send the same key again? |
+| --- | --- | --- |
+| `not-received` | Nothing on this Station holds the key for you: no request carrying it is being handled, and no turn was claimed in any Session of the conversation. | Yes — the same key can only ever make one turn. |
+| `received` | A request carrying the key is being handled now (its Session may still be starting), or a live owner holds its turn claim. | No — wait and ask again. |
+| `started` | The engine accepted the turn; `data.sessionId` and `data.turnId` name it. | No. |
+| `indeterminate` | The turn may have reached the engine and nothing can prove it either way. | No — inspect the conversation. |
+| `expired` | The turn was sent and retention evicted its record. | No. |
+
+A conversation you may not read answers `not-received`, exactly like a key
+nothing holds, so the lookup reveals nothing about other callers'
+conversations. `received` comes from the request being handled in this Station
+process, so a Station that restarted answers from the turn ledger alone. The
+lookup covers conversations whose Sessions run on this Station; it is on no
+Station Control tool's route table (an Agent cannot call it). The SDK exposes
+it as `getTurnDelivery(apiBase, conversationId, clientTurnId)`.
+
+The `turn.started` event a keyed send produces carries that send's
+`clientTurnId`, stamped by Station; an engine cannot supply it.
+
 ### State the engine you expect
 
 A client that shows an Agent to a user knows which engine the Agent ran on *when

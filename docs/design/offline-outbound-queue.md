@@ -16,6 +16,21 @@ server can deduplicate a request that landed immediately before disconnect.
 The queue survives restart and is projected back into the chat dock before a
 reconnect flush begins.
 
+The same queue keeps a text send from the composer durable while it is in
+flight. The send is written as `invoking` before its request goes out, and the
+composer's saved draft is let go only once that row is written, so closing the
+app mid-send loses nothing and leaves no second copy to send under a new key.
+Station's answer settles the row: a response removes it (a refusal hands the
+text back to the composer); no response returns it to pending for replay with
+the same key. A row whose app was closed is settled at the next launch or
+reconnect by asking Station about its key
+([delivery lookup](../reference/session-api.md#find-out-what-became-of-a-send)):
+never received → sent again with the same key; started → done; received → asked
+again later; possibly started → kept as evidence and never resent. Sends with
+attachments or a visual skill are not written there (their draft is kept until
+Station answers, as before), and follow-ups held behind a running turn stay in
+the tab's session storage.
+
 Configuration edits are excluded by default. Station has no single
 configuration-mutation protocol: agent, connection, plugin, and system edits
 have different authority and concurrency rules, and the current write routes
