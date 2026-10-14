@@ -61,7 +61,7 @@ The [store search route](../../src-server/routes/knowledge/knowledge-index-route
 rechecks access and record existence, but returns the index's old excerpt
 beside the record's current title/category. It does not compare a record-body
 revision. This differs from the older document API's content-hash validation
-through [KnowledgeFileTransactions](module-map.md#knowledgefiletransactions).
+through [ProjectFileTransactions](module-map.md#projectfiletransactions)' document capability.
 
 Tracked separately in [#2728: source-content freshness](https://github.com/kontourai/station/issues/2728).
 
