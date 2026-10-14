@@ -1,5 +1,50 @@
 [
   {
+    "timestampUtc": "2026-10-14T09:35:49Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2478.5",
+    "sha": "59ff630e0e832be3e5c6400776411a9dae06a6b9",
+    "artifactBuiltAt": "2026-10-14T08:49:32.681Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38529818593",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 38529818593)"
+    ],
+    "changelog": {
+      "previousSha": "2479f38b1ab062e2d9cd6df9f8fa2cdbeee1d136",
+      "groups": {
+        "feat": [
+          "[#3585](https://github.com/kontourai/station/pull/3585) feat(access): personal access tokens act as their person, never as more (#3557)",
+          "[#3649](https://github.com/kontourai/station/pull/3649) feat(chat): inline copy beside the phone ⋯, one copy icon, and a compact message sheet",
+          "[#3624](https://github.com/kontourai/station/pull/3624) feat(brand): ship the River app icon, channel palettes and square-tile marks",
+          "[#3635](https://github.com/kontourai/station/pull/3635) feat(delegation): deliver a delegated task's result to its parent conversation, exactly once (#3158)",
+          "[#3584](https://github.com/kontourai/station/pull/3584) feat(access): Station groups cap what a person's devices may use (#3557)"
+        ],
+        "fix": [
+          "[#3650](https://github.com/kontourai/station/pull/3650) fix(acp): keep a resumed session's replay out of the transcript; sends wait for a starting session",
+          "[#3645](https://github.com/kontourai/station/pull/3645) fix(status): release completed pill animation effects",
+          "[#3651](https://github.com/kontourai/station/pull/3651) fix(chat): stable transcript while loading, animated scroll-to-bottom, opt-in layout tracer",
+          "[#3648](https://github.com/kontourai/station/pull/3648) fix(station-control): start an agent's unscoped Session in its own Project; say why a scope refusal happened",
+          "[#3646](https://github.com/kontourai/station/pull/3646) fix(station-control): list the caller's own conversation in list_project_activity",
+          "[#3644](https://github.com/kontourai/station/pull/3644) fix: order session-terminal retirement by event sequence",
+          "[#3643](https://github.com/kontourai/station/pull/3643) fix(docs): bind release reviews to relevant manifest and lock values",
+          "[#3641](https://github.com/kontourai/station/pull/3641) fix(orchestration): retry a failed interrupted-turn recovery within the boot and surface exhaustion",
+          "[#3640](https://github.com/kontourai/station/pull/3640) fix(memory): report a torn transcript tail on read and write state files atomically"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#3642](https://github.com/kontourai/station/pull/3642) chore(docs): declare Corpus v2 purpose and building blocks"
+        ]
+      },
+      "note": null,
+      "commitCount": 15
+    }
+  },
+  {
     "timestampUtc": "2026-10-14T08:49:57Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2478.38529818593",

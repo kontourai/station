@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-14T09:35:49Z | nightly-android | 0.1.11-nightly.2478.5 | `59ff630` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/38529818593) |
 | 2026-10-14T08:49:57Z | nightly-npm | 0.7.0-nightly.2478.38529818593 | `59ff630` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38529818593) |
 | 2026-10-14T07:48:13Z | nightly-npm | 0.7.0-nightly.2478.38522577676 | `bbc2538` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38522577676) |
 | 2026-10-14T06:53:48Z | nightly-npm | 0.7.0-nightly.2478.38521861278 | `f72f8ad` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38521861278) |
@@ -259,6 +260,41 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-14T09:35:49Z · nightly-android · 0.1.11-nightly.2478.5
+
+- Ship SHA: `59ff630e0e832be3e5c6400776411a9dae06a6b9`
+- Artifact built at: `2026-10-14T08:49:32.681Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 38529818593)
+
+### Changelog
+
+Commits since `2479f38` ([full sha](https://github.com/kontourai/station/commit/2479f38b1ab062e2d9cd6df9f8fa2cdbeee1d136)):
+
+**Features**
+
+- [#3585](https://github.com/kontourai/station/pull/3585) feat(access): personal access tokens act as their person, never as more (#3557)
+- [#3649](https://github.com/kontourai/station/pull/3649) feat(chat): inline copy beside the phone ⋯, one copy icon, and a compact message sheet
+- [#3624](https://github.com/kontourai/station/pull/3624) feat(brand): ship the River app icon, channel palettes and square-tile marks
+- [#3635](https://github.com/kontourai/station/pull/3635) feat(delegation): deliver a delegated task's result to its parent conversation, exactly once (#3158)
+- [#3584](https://github.com/kontourai/station/pull/3584) feat(access): Station groups cap what a person's devices may use (#3557)
+
+**Fixes**
+
+- [#3650](https://github.com/kontourai/station/pull/3650) fix(acp): keep a resumed session's replay out of the transcript; sends wait for a starting session
+- [#3645](https://github.com/kontourai/station/pull/3645) fix(status): release completed pill animation effects
+- [#3651](https://github.com/kontourai/station/pull/3651) fix(chat): stable transcript while loading, animated scroll-to-bottom, opt-in layout tracer
+- [#3648](https://github.com/kontourai/station/pull/3648) fix(station-control): start an agent's unscoped Session in its own Project; say why a scope refusal happened
+- [#3646](https://github.com/kontourai/station/pull/3646) fix(station-control): list the caller's own conversation in list_project_activity
+- [#3644](https://github.com/kontourai/station/pull/3644) fix: order session-terminal retirement by event sequence
+- [#3643](https://github.com/kontourai/station/pull/3643) fix(docs): bind release reviews to relevant manifest and lock values
+- [#3641](https://github.com/kontourai/station/pull/3641) fix(orchestration): retry a failed interrupted-turn recovery within the boot and surface exhaustion
+- [#3640](https://github.com/kontourai/station/pull/3640) fix(memory): report a torn transcript tail on read and write state files atomically
+
+**Other**
+
+- [#3642](https://github.com/kontourai/station/pull/3642) chore(docs): declare Corpus v2 purpose and building blocks
 
 ## 2026-10-14T08:49:57Z · nightly-npm · 0.7.0-nightly.2478.38529818593
 
