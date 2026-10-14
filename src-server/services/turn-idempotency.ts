@@ -66,10 +66,10 @@ type TurnIdempotencyClaim =
     };
 
 /**
- * How long an unresolved claim whose owner's liveness cannot be proven either
- * way still reads as in flight. A provider accepts a turn in seconds; past
- * this, an owner nobody can see is treated as one that may have started the
- * effect and stopped (`indeterminate`), never as safe to resend.
+ * How long an unresolved claim whose owner is not proven dead still reads as
+ * in flight. A provider accepts a turn in seconds; past this, the owner is
+ * treated as one that may have started the effect and stopped
+ * (`indeterminate`), never as safe to resend.
  */
 export const TURN_CLAIM_UNPROVABLE_IN_FLIGHT_MS = 15 * 60 * 1000;
 /** Bound on this owner's remembered abandoned claims (oldest dropped first). */
@@ -221,10 +221,10 @@ export class TurnIdempotencyStore {
       return turnClaimIsReclaimable(record)
         ? { state: 'reclaimable' }
         : { state: 'indeterminate' };
-    if (
-      liveness === 'unknown' &&
-      now - record.createdAt > TURN_CLAIM_UNPROVABLE_IN_FLIGHT_MS
-    )
+    // A provider accepts a turn in seconds: an unresolved claim this old is
+    // not a send in flight, whoever owns it (and an abandoned claim the
+    // bounded `retained` memory has forgotten still lands here).
+    if (now - record.createdAt > TURN_CLAIM_UNPROVABLE_IN_FLIGHT_MS)
       return { state: 'indeterminate' };
     return { state: 'in-flight' };
   }

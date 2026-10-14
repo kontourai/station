@@ -549,7 +549,14 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
     app.route(
       '/api/orchestration',
       createOrchestrationRoutes(
-        { inspectTurnDelivery: () => null } as never,
+        {
+          // A conversation with Sessions here, whose ledger holds nothing for
+          // the key, as for one with none.
+          inspectTurnDelivery: (conversationId: string) =>
+            conversationId === 'local-history'
+              ? { outcome: 'not-received' }
+              : null,
+        } as never,
         {
           eventBus: new EventBus(),
           logger: { debug: vi.fn() },
@@ -570,6 +577,15 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
         ).json()) as { data: TurnDeliveryInspection }
       ).data.outcome;
     expect(await ask('?projectSlug=remote-project')).toBe('unknown');
+    expect(
+      (
+        (await (
+          await app.request(
+            '/api/orchestration/conversations/local-history/turn-deliveries/k?projectSlug=remote-project',
+          )
+        ).json()) as { data: TurnDeliveryInspection }
+      ).data.outcome,
+    ).toBe('unknown');
     expect(await ask('?projectSlug=local-project')).toBe('not-received');
     expect(await ask('')).toBe('not-received');
   });

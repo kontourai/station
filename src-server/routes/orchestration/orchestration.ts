@@ -2575,18 +2575,20 @@ export function createOrchestrationRoutes(
       // another one, or a send was forwarded while this process ran) keeps
       // its turn ledger there, out of sight.
       const projectSlug = c.req.query('projectSlug');
+      // Reached with no ledger record here (`durable` null or not-received):
+      // a conversation that started on this Station can still have its later
+      // sends forwarded elsewhere.
       const projectEnvironment =
-        durable === null && projectSlug && projectSlug.length <= 512
+        projectSlug && projectSlug.length <= 512
           ? deps.projectDefaultEnvironment?.(projectSlug)
           : undefined;
       const forwarded =
-        durable === null &&
-        ((projectEnvironment !== undefined &&
+        (projectEnvironment !== undefined &&
           projectEnvironment.kind !== 'current') ||
-          deliveryReceipts.forwarded({
-            callerKey: mutationIdentity(c).ownerKey,
-            conversationId,
-          }));
+        deliveryReceipts.forwarded({
+          callerKey: mutationIdentity(c).ownerKey,
+          conversationId,
+        });
       return answer({
         outcome: forwarded ? 'unknown' : 'not-received',
         conversationId,

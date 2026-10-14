@@ -83,6 +83,16 @@ describe('TurnDeduplicator', () => {
       expect(ledger.inspect({ threadId: 't', clientTurnId: 'k' })).toEqual({
         state: 'indeterminate',
       });
+      // A live owner's claim is bounded the same way.
+      const live = open();
+      expect(
+        live.ledger.claim({ threadId: 't', clientTurnId: 'live' }).kind,
+      ).toBe('owner');
+      vi.setSystemTime(Date.now() + 16 * 60_000);
+      expect(
+        live.ledger.inspect({ threadId: 't', clientTurnId: 'live' }),
+      ).toEqual({ state: 'indeterminate' });
+      live.store.close();
       store.close();
     } finally {
       vi.useRealTimers();
