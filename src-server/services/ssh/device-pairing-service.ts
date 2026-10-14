@@ -448,6 +448,12 @@ interface DevicePairingServiceOptions {
    * global: no self-declared client field is an authority key.
    */
   maxActiveCredentialsWithoutVerifiedIdentity?: number;
+  /**
+   * #3557: the scope a device may actually use, given its granted scope.
+   * Station groups cap a device tied to a person; the caller decides who is
+   * capped. Omitted, a device uses exactly what it was granted.
+   */
+  capScope?: (device: PairedDevice) => string;
 }
 
 export class DevicePairingError extends Error {
@@ -1101,6 +1107,7 @@ export class DevicePairingService {
   readonly #maxActiveOffers: number;
   readonly #maxActiveCredentialsPerVerifiedIdentity: number;
   readonly #maxActiveCredentialsWithoutVerifiedIdentity: number;
+  readonly #capScope: NonNullable<DevicePairingServiceOptions['capScope']>;
   readonly #offers = new Map<string, PairingOfferState>();
   #registry: DeviceRegistry;
   #pendingRegistryMigrationPersist = false;
@@ -1113,6 +1120,7 @@ export class DevicePairingService {
   readonly #accessListeners = new Set<(deviceId: string) => void>();
 
   constructor(options: DevicePairingServiceOptions) {
+    this.#capScope = options.capScope ?? ((device) => device.scope);
     this.#registryPath = join(options.homeDir, 'security', REGISTRY_FILE);
     this.#nativePush = new NativePushRegistrationStore(options.homeDir);
     this.#nativePushIos = new NativePushIosRegistrationStore(
@@ -2127,8 +2135,27 @@ export class DevicePairingService {
     return (
       device?.revokedAt === null &&
       device.pendingEnrollmentId === undefined &&
-      pairingScopeIncludes(device.scope, scope)
+      pairingScopeIncludes(this.#capScope(publicDevice(device)), scope)
     );
+  }
+
+  /**
+   * #3557: the scope `candidate` may actually use: its granted scope (an
+   * alias's own), capped by its person's Station group. `undefined` for an
+   * invalid or revoked credential. Device lists and every authorization
+   * read this, never the raw stored scope.
+   */
+  effectiveScope(candidate: string): string | undefined {
+    const device = this.identifyDevice(candidate);
+    return device ? this.#capScope(device) : undefined;
+  }
+
+  /** #3557: a live device's effective scope, by id (device lists). */
+  effectiveScopeOfDevice(deviceId: string): string | undefined {
+    const device = this.#registry.devices.find((item) => item.id === deviceId);
+    return device?.revokedAt === null
+      ? this.#capScope(publicDevice(device))
+      : undefined;
   }
 
   /** Private current incarnation for an explicitly promoted home-control grant. */
@@ -2547,9 +2574,9 @@ export class DevicePairingService {
    * and nothing else in the `/api/pairing` family.
    */
   credentialMayApprovePairing(candidate: string): boolean {
-    const device = this.identifyDevice(candidate);
-    if (!device) return false;
-    return (parsePairingScope(device.scope) ?? []).includes(
+    const scope = this.effectiveScope(candidate);
+    if (scope === undefined) return false;
+    return (parsePairingScope(scope) ?? []).includes(
       PAIRING_SCOPE_ACCESS_APPROVE,
     );
   }

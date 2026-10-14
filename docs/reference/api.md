@@ -3086,7 +3086,8 @@ Project (or the global space), newest activity first, one per conversation, each
 turnRunning, lastActivityAt, workingDirectory?, worktree?, self?}`. `status` is
 the status ladder's word. `limit` is 1 to 50 (default 25); anything else is
 `project_activity_limit_out_of_range`, and a `cursor` the list did not return is
-`project_activity_cursor_invalid`.
+`project_activity_cursor_invalid`. The caller's own conversation (its current
+Session, marked `self`) is listed whatever its scope, as its digest is read.
 
 The digest returns `{session, turns, page, nextCursor, delegatedChildrenIncomplete?}`,
 folded from recorded events only: `session` is `{sessionId, conversationId, title?,
@@ -3515,6 +3516,29 @@ sealing, activation, cancellation, recovery and evidence limits.
 ---
 
 
+## People and Station groups
+
+Like the device list, `GET` is admitted by the pairing family's boundary (the
+operator credential or the desktop's own local grant); changing a group needs
+the operator credential itself, as changing a device's access does:
+
+- `GET /api/pairing/people` returns `{ people: StationPerson[] }`: everyone
+  with a group assignment or a live device tied to them, each with `group`,
+  `assigned`, and their tied devices' granted `scope` and `effectiveScope`
+  (the scope capped by the group).
+- `PUT /api/pairing/people/:principalId/group` with `{ "group": "admin" |
+  "member" }` places a person (a `human:` principal id) in a group; Member
+  removes the assignment. Live connections of the person's devices
+  re-authenticate, and a full access the group no longer allows is reset
+  (`revocations`, keyed by device id). `400 invalid_group` or
+  `invalid_principal` refuses anything else.
+
+Device lists (`GET /api/pairing/devices`) also carry `effectiveScope` on each
+live device: its granted `scope` capped by its person's group, equal to `scope`
+for a device tied to no person. See the
+[threat model](../security/remote-access-threat-model.md#scope-model)
+for what each group allows.
+
 ## Decide a pending paired-device request
 
 A current operator, qualifying local-grant credential, or Device explicitly
@@ -3525,7 +3549,8 @@ promoted with `access:approve` can use these exact routes:
 - `DELETE /api/pairing/requests/:requestId`
 
 The promotion satisfies the pending-request route scope without granting
-`access:manage`. Authority is rechecked before publishing a decision. It does
+`access:manage`. A Device tied to a person uses it only while that person's
+Station group (Admin) allows it. Authority is rechecked before publishing a decision. It does
 not admit other Device-management routes or verified-person/account binding.
 Ordinary Device presets do not include the promotion.
 

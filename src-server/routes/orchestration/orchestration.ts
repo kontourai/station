@@ -80,7 +80,10 @@ import {
   ORCHESTRATION_STREAM_REPLAY_MAX_SERIALIZED_BYTES,
   ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD,
 } from '../../constants.js';
-import type { RequestDelegationResolver } from '../../runtime/agents/request-delegation.js';
+import type {
+  RequestDelegationResolver,
+  ResolvedRequestDelegation,
+} from '../../runtime/agents/request-delegation.js';
 import {
   getTenantRequestContext,
   tenantExecutionContextForRequest,
@@ -88,6 +91,7 @@ import {
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
 import type { FullAccessGrant } from '../../security/coding-authority.js';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
+import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import {
   AnswerAssessmentConflictError,
   AnswerAssessmentModule,
@@ -121,6 +125,10 @@ import {
   DelegationAttemptPendingError,
   type DelegationAttemptProjection,
 } from '../../services/orchestration/delegation-attempt-claim-store.js';
+import type {
+  DelegationResultCanceller,
+  DelegationResultDelivery,
+} from '../../services/orchestration/delegation-result-delivery.js';
 import type { DispatchCwdAdmission } from '../../services/orchestration/dispatch-cwd-admission.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import {
@@ -161,7 +169,10 @@ import {
   orchestrationStreamResumeGap,
   sseOps,
 } from '../../telemetry/metrics.js';
-import { PeerDelegationAttemptDuplicateError } from '../../tools/station-control-delegation.js';
+import {
+  type DelegatedTaskInterruptResult,
+  PeerDelegationAttemptDuplicateError,
+} from '../../tools/station-control-delegation.js';
 import { sessionCorrelationBindings } from '../../utils/logger-correlation.js';
 import { assertBoundedJsonResponse } from '../chat/bounded-response.js';
 import { errorMessage, getBody, param, validate } from '../schemas/schemas.js';
@@ -1224,9 +1235,11 @@ type RespondToDelegatedTaskRequest = z.infer<
   clientOrigin?: ClientOrigin;
 };
 
-type InterruptDelegatedTaskRequest = z.infer<
+type InterruptDelegatedTaskBody = z.infer<
   typeof interruptDelegatedTaskBodySchema
-> & {
+>;
+
+type InterruptDelegatedTaskRequest = InterruptDelegatedTaskBody & {
   taskId: string;
   userId: string;
   principal?: PrincipalRef;
@@ -1515,6 +1528,151 @@ export function resolveDispatchActor(
   };
 }
 
+/**
+ * #3158: record that the calling agent's conversation receives this child's
+ * results. Only a context Station DERIVED from the station-control caller
+ * (`caller-derived`) arms delivery, and only for a child this Station runs:
+ * the parent is the caller's own conversation, never an id the body or the
+ * model named. Delivery acts exactly as this dispatch did: its user, its
+ * owner attribution (`verified-bound` for a bound caller only, otherwise
+ * `unattributed-agent`) and its principal. A request with no owner
+ * attribution (not an agent dispatch) arms nothing.
+ */
+function armDelegationResult(
+  c: Context,
+  delivery: Pick<DelegationResultDelivery, 'arm'> | undefined,
+  resolved: ResolvedRequestDelegation | undefined,
+  dispatched: {
+    handle: unknown;
+    actor: {
+      userId: string;
+      principal: PrincipalRef | undefined;
+      ownerAttribution: StartOwnerAttribution | undefined;
+    };
+  },
+): void {
+  if (!delivery || resolved?.provenance !== 'caller-derived') return;
+  const authority = stationControlRequestAuthority(c.req.raw);
+  if (authority?.kind !== 'caller') return;
+  const callerConversationId =
+    authority.caller.conversationId ?? authority.caller.sessionId;
+  if (resolved.context.parentConversationId !== callerConversationId) return;
+  const { actor } = dispatched;
+  const child = localDelegatedChild(dispatched.handle);
+  if (!child || !actor.ownerAttribution) return;
+  delivery.arm({
+    ...child,
+    parentConversationId: callerConversationId,
+    actor: {
+      userId: actor.userId,
+      attribution: actor.ownerAttribution,
+      ...(actor.principal ? { principal: actor.principal } : {}),
+    },
+  });
+}
+
+/**
+ * The child a dispatch started on THIS Station, read from the route's
+ * dispatch result. `delegateTask` is typed `unknown` at this seam because its
+ * Task-room callers return only `{ sessionId }`; anything that is not a
+ * current-environment handle with string identities is not armed.
+ */
+function localDelegatedChild(
+  handle: unknown,
+):
+  | { childConversationId: string; taskId: string; childAgent?: string }
+  | undefined {
+  if (!handle || typeof handle !== 'object') return undefined;
+  const { conversationId, taskId, environment, target } = handle as Record<
+    string,
+    unknown
+  >;
+  const environmentKind =
+    environment && typeof environment === 'object'
+      ? (environment as { kind?: unknown }).kind
+      : undefined;
+  if (
+    environmentKind !== 'current' ||
+    typeof conversationId !== 'string' ||
+    typeof taskId !== 'string'
+  )
+    return undefined;
+  const agent =
+    target && typeof target === 'object'
+      ? (target as { id?: unknown }).id
+      : undefined;
+  return {
+    childConversationId: conversationId,
+    taskId,
+    ...(typeof agent === 'string' ? { childAgent: agent } : {}),
+  };
+}
+
+/**
+ * #3158: delivery bookkeeping never fails the request it rides on. The child
+ * is already started, the read already answered, the interrupt still owed:
+ * an error here is logged, and at worst a result is delivered that a read
+ * already showed, or not delivered automatically at all.
+ */
+function bestEffortDelegationResult<T>(
+  logger: { warn?(message: string, meta?: Record<string, unknown>): void },
+  step: 'arm' | 'read' | 'cancel' | 'settle' | 'reopen',
+  run: () => T,
+): T | undefined {
+  try {
+    return run();
+  } catch (error) {
+    logger.warn?.('delegation result bookkeeping failed', {
+      step,
+      error: errorMessage(error),
+    });
+    return undefined;
+  }
+}
+
+/**
+ * #3158: who an `interrupt_task` request cancels a pending result for: an
+ * agent caller only as its own conversation (the recorded parent is checked
+ * by `beginCancel`), a person or device credential as its user. Station's
+ * own server code and caller-less internal requests cancel nothing.
+ */
+function delegationResultCanceller(
+  c: Context,
+  userId: string,
+): DelegationResultCanceller | undefined {
+  const authority = stationControlRequestAuthority(c.req.raw);
+  if (authority?.kind === 'caller')
+    return {
+      kind: 'conversation',
+      conversationId:
+        authority.caller.conversationId ?? authority.caller.sessionId,
+    };
+  return authority === undefined ? { kind: 'person', userId } : undefined;
+}
+
+/** #3158: a verified caller's `get_task` read of a child; see `recordRead`. */
+function recordDelegationResultRead(
+  c: Context,
+  delivery: Pick<DelegationResultDelivery, 'recordRead'> | undefined,
+  snapshot: unknown,
+): void {
+  if (!delivery) return;
+  const authority = stationControlRequestAuthority(c.req.raw);
+  if (authority?.kind !== 'caller') return;
+  const read = snapshot as { conversationId?: unknown; status?: unknown };
+  if (
+    typeof read?.conversationId !== 'string' ||
+    typeof read.status !== 'string'
+  )
+    return;
+  delivery.recordRead({
+    taskReference: read.conversationId,
+    readerConversationId:
+      authority.caller.conversationId ?? authority.caller.sessionId,
+    status: read.status,
+  });
+}
+
 export function createOrchestrationRoutes(
   orchestrationService: OrchestrationService,
   deps: {
@@ -1720,7 +1878,21 @@ export function createOrchestrationRoutes(
     ) => Promise<unknown>;
     interruptDelegatedTask?: (
       input: InterruptDelegatedTaskRequest,
-    ) => Promise<unknown>;
+    ) => Promise<DelegatedTaskInterruptResult>;
+    /**
+     * #3158: automatic delivery of a delegated child's results to its parent
+     * conversation (`delegation-result-delivery.ts`). The routes only report
+     * what they verified: a dispatch's caller-derived ownership, a parent's
+     * read of its own child at rest, an interrupt.
+     */
+    delegationResults?: Pick<
+      DelegationResultDelivery,
+      | 'arm'
+      | 'recordRead'
+      | 'beginCancel'
+      | 'settleCancellation'
+      | 'reopenCancellation'
+    >;
     /**
      * archive#4075 stage 2: DEPRECATED legacy test-only escape hatch. Never
      * wired by production runtime composition (production sets
@@ -3014,6 +3186,12 @@ export function createOrchestrationRoutes(
         );
       }
       const data = await dispatch();
+      bestEffortDelegationResult(deps.logger, 'arm', () =>
+        armDelegationResult(c, deps.delegationResults, resolvedDelegation, {
+          handle: data,
+          actor: { userId, principal, ownerAttribution },
+        }),
+      );
       return c.json({ success: true, data });
     } catch (error) {
       const refused =
@@ -3284,6 +3462,12 @@ export function createOrchestrationRoutes(
         taskId: param(c, 'taskId'),
         userId: resolveActorPrincipal(deps, c).userId,
       });
+      // #3158: the parent read its own child at rest; that result is not
+      // delivered to it again. Only for a task this Station serves.
+      if (parsed.data.environmentId === undefined)
+        bestEffortDelegationResult(deps.logger, 'read', () =>
+          recordDelegationResultRead(c, deps.delegationResults, data),
+        );
       // Only for a task this Station serves: a forwarded read carries the
       // serving Station's own answer about this Station's credential.
       return c.json({
@@ -3585,14 +3769,50 @@ export function createOrchestrationRoutes(
           deps,
           c,
         );
-        const data = await deps.interruptDelegatedTask({
-          ...getBody(c),
-          taskId: param(c, 'taskId'),
-          userId,
-          principal,
-          ownerAttribution,
-          clientOrigin: resolveClientOriginForRequest(c.req.raw),
-        });
+        // #3158: the recorded parent's interrupt fences the turn it stops and
+        // cancels results not yet delivered. Fenced before the effect (the
+        // stopped turn's settlement is delivered synchronously from the
+        // event), and undone below if the interrupt is refused or the
+        // service reports it stopped nothing. A named turn is the only turn
+        // the service will stop, so it is the only one fenced.
+        const body = getBody(c) as InterruptDelegatedTaskBody;
+        const canceller =
+          body.environmentId === undefined
+            ? delegationResultCanceller(c, userId)
+            : undefined;
+        const cancellation = canceller
+          ? bestEffortDelegationResult(deps.logger, 'cancel', () =>
+              deps.delegationResults?.beginCancel(
+                param(c, 'taskId'),
+                canceller,
+                body.turnId,
+              ),
+            )
+          : undefined;
+        let data: DelegatedTaskInterruptResult;
+        try {
+          data = await deps.interruptDelegatedTask({
+            ...getBody(c),
+            taskId: param(c, 'taskId'),
+            userId,
+            principal,
+            ownerAttribution,
+            clientOrigin: resolveClientOriginForRequest(c.req.raw),
+          });
+        } catch (error) {
+          if (cancellation)
+            bestEffortDelegationResult(deps.logger, 'reopen', () =>
+              deps.delegationResults?.reopenCancellation(cancellation),
+            );
+          throw error;
+        }
+        if (cancellation)
+          bestEffortDelegationResult(deps.logger, 'settle', () =>
+            deps.delegationResults?.settleCancellation(
+              cancellation,
+              data.interruptOutcome,
+            ),
+          );
         return c.json({ success: true, data });
       } catch (error) {
         return c.json({ success: false, error: errorMessage(error) }, 400);

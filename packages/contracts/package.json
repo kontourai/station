@@ -48,6 +48,7 @@
     "./agent-plugin": "./src/agent-plugin.ts",
     "./skill-experience": "./src/skill-experience.ts",
     "./plugin-visibility": "./src/plugin-visibility.ts",
+    "./station-groups": "./src/station-groups.ts",
     "./agent-identity": "./src/agent-identity.ts",
     "./agent-validation": "./src/agent-validation.ts",
     "./answer-share": "./src/answer-share.ts",
