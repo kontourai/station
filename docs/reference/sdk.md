@@ -3375,6 +3375,13 @@ Station no longer keeps, with a `ChatHttpError` whose `code` is
 `foreground_message_indeterminate` and whose `outcome` is `'indeterminate'`.
 Do not resend that turn automatically; open the conversation instead. Other
 refusals leave `outcome` unset.
+`getTurnDelivery(apiBase, conversationId, clientTurnId, { projectSlug? })`
+asks Station what became of one send by its `clientTurnId`, for example after
+the connection dropped before the answer arrived. It is read-only and returns a
+`TurnDeliveryInspection`; only `not-received` means the same key may be sent
+again. A Station without the lookup answers `404`, which throws a refusal
+rather than reading as `not-received`. The
+[Session API](session-api.md) defines each outcome.
 
 `ProjectTaskRoomProtocolError` remains a plain `Error` subclass. Its
 HTTP/envelope failure form carries `status`, `code`, `details` and

@@ -434,6 +434,13 @@ currently they wait until the turn finishes. Each pending row shows its mode.
 **Send now** deliberately stops the active turn immediately and sends the
 selected message after Station confirms the stop. **Stop** remains separate.
 
+A text message is saved on this device before it is sent. If the app closes or
+the connection drops before Station answers, the app asks Station what happened
+at its next launch or reconnect: a message Station never received is sent once,
+with the same identity, and one Station may have started is kept and marked,
+never sent twice. A message with attachments or a visual skill keeps its draft
+until Station answers instead.
+
 Quiet turns show elapsed silence without guessing that an engine retried. Retry
 status appears only when the engine reports it. The Drafts icon saves and restores
 unsent composer content; the trash icon clears the current message. Hold or focus

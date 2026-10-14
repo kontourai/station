@@ -1007,11 +1007,9 @@ export function useSendMessage(
       } catch (error) {
         stopDeliveryWatch?.();
         // The outbox row follows what the answer proves. Any response is
-        // Station's own answer and Station keeps its own record of it: a
-        // refusal started nothing (the composer gets the text back below),
-        // and a may-have-started answer is said in the chat and held by
-        // Station's session record, so the row is let go either way (a kept
-        // possible-effect row would block this chat's later queued sends).
+        // Station's own answer: a refusal started nothing (the composer gets
+        // the text back below), and a may-have-started answer keeps the row
+        // as unconfirmed evidence, never resent, and says so in the chat.
         // No response: kept for replay with the same key (the queue notice
         // below). No response and not a transport failure: kept as
         // evidence, never resent.
