@@ -1,0 +1,7 @@
+{
+  "revision": "9b0f7ecbb0a33c1d8ef9768b105a4b1552d2426e",
+
+  "notes": [
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"re-reviewed after keying the read-model refresh schedule by apiBase; ADR0018's stream dedupe-by-apiBase and connection-budget claims are unchanged","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts"]}
+  ]
+}
