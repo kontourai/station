@@ -363,7 +363,8 @@ terminal carry `metadata.trigger: 'provider'`; `isProviderTriggeredTurn` in
 the session lifecycle like any turn (reasons `provider_turn_started` /
 `provider_turn_completed`), and notifies "Your agent replied" when the owner
 is offline. A send while it runs is refused with the retryable code
-`provider_turn_in_progress`, and the client queues the message until it ends.
+`provider_turn_in_progress`, and the client queues the message until it ends,
+unless the send asked Station to hold it (`whenBusy: 'queue'`, below).
 A send to an ACP session that is still starting (for a restored session,
 reattaching to the engine's stored session) waits for the start, up to 15
 seconds, through the optional adapter method `whenSessionReady`. Orchestration
@@ -381,6 +382,11 @@ re-sends it. A retry whose idempotency key an earlier attempt still holds, or
 released without sending, is refused with the retryable code
 `client_turn_in_flight` and re-sent with the same key. When the client's
 automatic re-sends run out, the message stays queued with a reason and Retry.
+A follow-up sent with `whenBusy: 'queue'` is held by Station instead, in the
+conversation's durable inbox (#3568): `POST /chat` answers `202` with a
+`ConversationInboxQueuedReceipt`, its `ConversationInboxEntry` says where the
+message stands, and the delivery lookup answers `queued` while it waits. See
+the [Session API](session-api.md#let-station-hold-a-follow-up).
 A Claude send's own `turn.started` is published when the engine starts
 running it, so a send queued behind such a turn starts after it ends. That
 ordering relies on the CLI's per-message lifecycle frames (`msg_lifecycle_v1`,
