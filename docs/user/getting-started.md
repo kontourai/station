@@ -448,6 +448,9 @@ short label:
 - **Received**, which adds **safe to close** when Station keeps running without
   the app, or **keep the app open** when the app's own Station stops with it
 - **Saved on this device · sends when connected**
+- **Saved on this device · waiting for Station to confirm**, after a send that
+  got no answer: when Station can be reached it is asked about the message, which
+  is sent once only if it never arrived
 - **Waiting behind an unsent message**: messages in a chat go in order, so a
   message waits until an earlier one that was not sent is retried or discarded
 - **Saved on this device · waits for its Station**, for a message written for
@@ -460,7 +463,8 @@ short label:
 - **Not confirmed**, for a message this device sent with no answer from Station
   (for example a send that was stopped)
 
-A message that may have reached the agent is never discarded automatically:
+A message that may have reached the agent, or got no answer, is never discarded
+automatically:
 **Discard…** states the risk and removes it only after **I checked, discard
 it**, in every open window. It does not hold back the messages written after
 it.
