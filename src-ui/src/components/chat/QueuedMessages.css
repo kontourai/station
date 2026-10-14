@@ -1,3 +1,13 @@
+/* No queued row may widen the panel (and the composer under it) past its
+   column: every box in the chain may shrink below its content's width. */
+.queued-messages,
+.queued-messages__content,
+.queued-messages__list,
+.queued-message {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .queued-messages {
   margin-bottom: 12px;
   padding: 8px 12px;
@@ -195,6 +205,20 @@
   margin-left: auto;
   text-transform: none;
   letter-spacing: normal;
+}
+
+/* A pending follow-up's text wraps (long unbroken strings too) and shows at
+   most two lines; the row's title and its Edit carry the full text. */
+.queued-messages--pending .queued-message__text {
+  white-space: normal;
+}
+.queued-messages--pending .queued-message__body {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
 }
 
 .queued-messages--pending .queued-message__status {
