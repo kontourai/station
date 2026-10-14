@@ -873,20 +873,37 @@ describe('POST /chat whenBusy queue (#3568)', () => {
 
   test('R2-7: a send carrying an Agent-definition precondition takes the live path', async () => {
     const world = station();
-    await world.busy();
+    const override = {
+      kind: 'agent-execution-override' as const,
+      agent: AGENT,
+      executionAgent: AGENT,
+    };
+    // The conversation is bound through an execution override, so a
+    // follow-up naming the same override matches its binding.
+    world.adapter.holdTurns = true;
+    const first = await world.send('first', 'read the file', {
+      target: { environment: { kind: 'current' }, agent: override },
+    });
+    expect(first.status, await first.clone().text()).toBe(200);
+    await eventually(() =>
+      expect(world.inbox.mustQueue(CONVERSATION)).toBe(true),
+    );
+    // Control: the same target without a precondition is held.
+    const plain = await world.send('plain', 'no precondition', {
+      whenBusy: 'queue',
+      target: { environment: { kind: 'current' }, agent: override },
+    });
+    expect(plain.status, await plain.clone().text()).toBe(202);
     const fingerprinted = await world.send('fp', 'with a precondition', {
       whenBusy: 'queue',
       target: {
         environment: { kind: 'current' },
-        agent: {
-          kind: 'agent-execution-override',
-          agent: AGENT,
-          executionAgent: AGENT,
-          expectedDefinitionFingerprint: 'sha256-stale',
-        },
+        agent: { ...override, expectedDefinitionFingerprint: 'sha256-stale' },
       },
     });
     expect(fingerprinted.status).not.toBe(202);
-    expect(world.inbox.list(CONVERSATION)).toEqual([]);
+    expect(world.inbox.list(CONVERSATION)).toMatchObject([
+      { clientTurnId: 'plain' },
+    ]);
   });
 });
