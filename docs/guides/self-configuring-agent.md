@@ -154,7 +154,12 @@ outside station-control.
 
 A refusal of a caller that is not bound for its scope is
 `station_control_out_of_scope`, with a `reason` beside the code and fixed copy
-that says what to do instead:
+that says what to do instead. The tool result carries all three: the
+delegation tools (`send_message`, `delegate_task`, `continue_task`,
+`interrupt_task`, `respond_to_task_request`, `get_task`, `get_task_events`,
+`list_delegated_tasks`) relay this Station's own `code` and `reason`, and the
+Session-control tools, `declare_pull_request` and `rename_session` return the
+route's answer as it was sent:
 
 | `reason` | Meaning |
 | --- | --- |

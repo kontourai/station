@@ -53,7 +53,12 @@ import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
 import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../../services/orchestration/session-project-identity.js';
-import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../../tools/station-control-shared.js';
+import { createStationControlMcpServer } from '../../../tools/station-control-mcp-server.js';
+import {
+  STATION_CONTROL_CALLER_TOKEN_HEADER,
+  stationControlCallerPrincipal,
+  withStationControlCallerContext,
+} from '../../../tools/station-control-shared.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
@@ -89,6 +94,8 @@ const support = vi.hoisted(() => ({
   beforeSpawn: undefined as (() => void) | undefined,
   /** A composition that never wired the connection's default directory. */
   withoutConnectionReader: false,
+  /** The real routes' address, for a tool's request to this Station's API. */
+  routeBase: undefined as string | undefined,
 }));
 
 vi.mock('../runtime-route-support.js', () => {
@@ -293,6 +300,7 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
     support.afterAdmission = undefined;
     support.beforeSpawn = undefined;
     support.withoutConnectionReader = false;
+    support.routeBase = undefined;
     for (const close of closers.splice(0)) await close();
     vi.unstubAllGlobals();
     if (previousApiBase === undefined) delete process.env.STATION_API_BASE;
@@ -375,6 +383,10 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
     vi.stubGlobal('fetch', (async (input, init) => {
       const url = String(input instanceof Request ? input.url : input);
       if (!url.startsWith(CURRENT_API)) return realFetch(input, init);
+      // A station-control tool's dispatch reaches the real routes.
+      const path = url.slice(CURRENT_API.length);
+      if (support.routeBase && path.startsWith('/api/orchestration/'))
+        return realFetch(`${support.routeBase}${path}`, init);
       if (url === `${CURRENT_API}/.well-known/station/v1`)
         return json({ environmentId: 'environment-current' });
       if (url === `${CURRENT_API}/api/agents/writer`) {
@@ -710,6 +722,93 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
         started?.[SESSION_LOCAL_PROJECT_ID_METADATA_KEY],
         started?.projectSlug,
       ]).toEqual(['project-a', 'project-a-slug']);
+    },
+  );
+
+  // A tool's refusal carries the route's code AND reason to the agent, so
+  // an agent can tell "outside your Project" from a credential problem.
+  test.each([
+    ['send_message', { agent: 'writer', message: 'go' }],
+    ['delegate_task', { agent: 'writer', prompt: 'go' }],
+  ] as const)(
+    '%s: a scope refusal reaches the agent with its code and reason',
+    async (name, args) => {
+      const { base, adapter } = await setup();
+      const { root } = layout();
+      mkdirSync(join(root, 'other'));
+      support.projectDirs = [
+        ...support.projectDirs,
+        {
+          id: 'project-b',
+          slug: 'project-b-slug',
+          workingDirectory: join(root, 'other'),
+        },
+      ];
+      support.routeBase = base;
+      const mcp = createStationControlMcpServer();
+      const sent: { id?: number; result?: unknown }[] = [];
+      const transport = {
+        start: async () => {},
+        close: async () => {},
+        send: async (message: { id?: number; result?: unknown }) => {
+          sent.push(message);
+        },
+        onmessage: undefined as undefined | ((message: unknown) => void),
+      };
+      await mcp.connect(transport as never);
+      closers.unshift(() => mcp.close());
+      let nextId = 0;
+      const rpc = async (method: string, params: object) => {
+        nextId += 1;
+        const id = nextId;
+        setImmediate(() =>
+          transport.onmessage?.({ jsonrpc: '2.0', id, method, params }),
+        );
+        for (let i = 0; i < 2_000; i += 1) {
+          const found = sent.find((message) => message.id === id);
+          if (found) return found;
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        throw new Error(`no response for ${method}`);
+      };
+      await rpc('initialize', {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'engine', version: '1' },
+      });
+      const { token } = mintStationControlMcpToken('op-caller-a', 'url-token');
+      const response = (await withStationControlCallerContext(
+        {
+          token,
+          resolve: () => ({
+            sessionId: 'op-caller-a',
+            assurance: 'bearer-exposed',
+            principal: stationControlCallerPrincipal(
+              LOCAL_OPERATOR_PRINCIPAL_ID,
+              'session-owner',
+            ),
+          }),
+        },
+        () =>
+          rpc('tools/call', {
+            name,
+            arguments: { ...args, projectSlug: 'project-b-slug' },
+          }),
+      )) as {
+        result?: { isError?: boolean; content?: { text?: string }[] };
+      };
+      const body = JSON.parse(response.result?.content?.[0]?.text ?? '{}') as {
+        code?: string;
+        reason?: string;
+        error?: string;
+      };
+      expect([response.result?.isError, body.code, body.reason]).toEqual([
+        true,
+        'station_control_out_of_scope',
+        'other-project',
+      ]);
+      expect(body.error).toContain('omit projectSlug and projectPath');
+      expect(adapter.starts).toEqual([]);
     },
   );
 
