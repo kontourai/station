@@ -130,6 +130,26 @@ describe('TurnDeduplicator', () => {
     store.close();
   });
 
+  test('a key claimed afresh after its thread was deleted is in flight, not the old given-up claim', () => {
+    const { store, ledger } = open();
+    const owner = ledger.claim({ threadId: 't', clientTurnId: 'reused' });
+    if (owner.kind !== 'owner') throw new Error('expected owner');
+    owner.claim.beginInvocation();
+    owner.claim.retain();
+    store.deleteThread('t');
+    // The same thread id and key, used again: a new attempt owns it.
+    const again = ledger.claim({ threadId: 't', clientTurnId: 'reused' });
+    expect(again.kind).toBe('owner');
+    expect(ledger.inspect({ threadId: 't', clientTurnId: 'reused' })).toEqual({
+      state: 'in-flight',
+    });
+    expect(ledger.claim({ threadId: 't', clientTurnId: 'reused' })).toEqual({
+      kind: 'contended',
+      turnId: undefined,
+    });
+    store.close();
+  });
+
   test('releases only an unresolved owner claim so a failed turn can retry', () => {
     const { store, ledger } = open();
     const owner = ledger.claim({ threadId: 'thread', clientTurnId: 'retry' });

@@ -16958,6 +16958,71 @@ describe('OrchestrationService', () => {
       await retainedService.shutdown();
     });
 
+    test('a same-key resend already waiting when the first attempt retains its claim is refused as may-have-started at once', async () => {
+      const ledger = eventStore.createTurnDeduplicator();
+      const awaitResolution = vi.fn(ledger.awaitResolution);
+      const waitingService = new OrchestrationService({
+        adapterRegistry: createRegistry([claude]),
+        eventBus: new EventBus(),
+        eventStore,
+        turnDeduplicator: { ...ledger, awaitResolution },
+        listProjects: () => [],
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      await waitingService.dispatch({
+        type: 'startSession',
+        input: { threadId: 'thread-retained-waiter', provider: 'claude' },
+      });
+      claude.sendTurn.mockClear();
+      const engineFails = deferred<void>();
+      const providerEntered = deferred<void>();
+      claude.sendTurn.mockImplementationOnce(async () => {
+        providerEntered.resolve();
+        await engineFails.promise;
+        throw new Error('response lost');
+      });
+      const send = () =>
+        waitingService
+          .dispatch({
+            type: 'sendTurn',
+            input: {
+              threadId: 'thread-retained-waiter',
+              input: 'hello',
+              clientTurnId: 'client-retained-waiter',
+            },
+          })
+          .then(
+            () => undefined,
+            (error: unknown) => error,
+          );
+      const first = send();
+      await providerEntered.promise;
+      // The resend arrives while the engine call is pending, and waits.
+      const resend = send();
+      await vi.waitFor(() => expect(awaitResolution).toHaveBeenCalledTimes(1));
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      // Only now does the engine call fail after invocation: the first
+      // attempt retains its claim of the key.
+      engineFails.resolve();
+      expect(await first).toMatchObject({
+        code: 'foreground_message_indeterminate',
+      });
+      const settled = await Promise.race([
+        resend.then(() => 'settled' as const),
+        new Promise<'pending'>((resolve) =>
+          setTimeout(() => resolve('pending'), 2_000),
+        ),
+      ]);
+      expect(settled).toBe('settled');
+      const refusal = (await resend) as OrchestrationCommandDispatchError;
+      expect(refusal).toBeInstanceOf(OrchestrationCommandDispatchError);
+      expect(refusal.code).toBe('foreground_message_indeterminate');
+      expect(refusal.outcome).toBe('indeterminate');
+      expect(refusal.retryable).not.toBe(true);
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+      await waitingService.shutdown();
+    });
+
     test('station#1224 CRITICAL fix — the missing test: a still-running turn resolves AFTER a concurrent replay has already started polling, and the adapter executes EXACTLY ONCE', async () => {
       await service.dispatch({
         type: 'startSession',

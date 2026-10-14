@@ -59,6 +59,11 @@ export interface TurnDeduplicator {
      * id can no longer be replayed. Never send this turn again.
      */
     | { kind: 'expired' };
+  /**
+   * Waits (bounded) for the pair's turn id. Returns nothing early when the
+   * claim is released, or when its owner in this process retained it after a
+   * possible effect; {@link inspect} tells the two apart.
+   */
   awaitResolution(input: {
     threadId: string;
     clientTurnId: string;

@@ -7142,6 +7142,21 @@ export class OrchestrationService {
                   ).catch(() => undefined));
                 if (!existingTurnId) {
                   throwIfAborted(turnInput.signal);
+                  // The other attempt gave the key up after it may have
+                  // reached the engine: the possible-effect refusal the
+                  // delivery lookup also gives, never a resend.
+                  if (
+                    turnDeduplicator!.inspect({
+                      threadId: turnInput.threadId,
+                      clientTurnId,
+                    }).state === 'indeterminate'
+                  ) {
+                    orchestrationTurnDedup.add(1, {
+                      provider: adapter.provider,
+                      outcome: 'indeterminate',
+                    });
+                    throw new SessionTurnStartIndeterminateError();
+                  }
                   // The other attempt still holds the key, or released it
                   // without sending (its own refusal). Nothing new was sent:
                   // retryable, so the client re-sends with the same key.

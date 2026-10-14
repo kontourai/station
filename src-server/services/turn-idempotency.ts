@@ -129,6 +129,10 @@ export class TurnIdempotencyStore {
     );
     switch (result.kind) {
       case 'claimed':
+        // A fresh claim is a new attempt: a retained marker left from an
+        // earlier row of this key (one its thread's deletion removed) must not
+        // make the new, genuinely in-flight claim read as given up.
+        this.retained.delete(key);
         turnDedupClaims.add(1, {
           outcome: result.reclaimed ? 'reclaimed' : 'claimed',
         });
@@ -140,10 +144,7 @@ export class TurnIdempotencyStore {
         // unresolved in the row, so the kernel calls it contended, but no
         // owner will ever resolve it. Answer it as {@link inspect} does, so a
         // same-key resend is refused at once instead of waiting it out.
-        if (
-          this.retained.has(key) &&
-          this.inspect(key, now).state === 'indeterminate'
-        ) {
+        if (this.givenUp(key, now)) {
           turnDedupClaims.add(1, { outcome: 'indeterminate' });
           return { claimed: false, indeterminate: true };
         }
@@ -253,6 +254,17 @@ export class TurnIdempotencyStore {
       if (oldest !== undefined) this.retained.delete(oldest);
     }
   }
+  /**
+   * Whether this owner retained its still-unresolved claim of `key` after a
+   * possible effect, so no owner will ever resolve it. The marker is checked
+   * first: {@link inspect} is reached only for a retained key, where it
+   * answers from this owner's own record without probing any process.
+   */
+  givenUp(key: string, now = Date.now()): boolean {
+    return (
+      this.retained.has(key) && this.inspect(key, now).state === 'indeterminate'
+    );
+  }
   /** Whether any row (pending or resolved) still holds the key. */
   held(key: string): boolean {
     return (
@@ -283,6 +295,9 @@ export async function awaitTurnResolution(
     // Released without a result (its owner refused before any effect):
     // nothing will resolve it, so stop waiting rather than run out the clock.
     if (!store.held(key)) return undefined;
+    // Given up by its owner in this process after a possible effect: it will
+    // never resolve either. The caller tells this apart with `inspect`.
+    if (store.givenUp(key)) return undefined;
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
   return store.read(key);
