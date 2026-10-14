@@ -39,7 +39,9 @@ each keeps a durable copy in the queue under the key the queue will send it
 with. Nothing sends that copy automatically: the window's own queue sends it
 when the turn ends, a reload's restored queue takes the copies back (so an
 edit or a delete there is what counts), and a copy whose window closed, or
-another window's, is listed with Send, Edit and Discard for the user. A
+another window's, is listed first with Send and Discard for the user (it does
+not hold back later messages). A discarded or delivered message is never sent
+again from any window. A
 message whose row is already on its way or possibly started is never sent
 again from the composer or the queue. A send refused because the engine is
 busy joins that queue with its own key and copy, and the queue's drain writes
