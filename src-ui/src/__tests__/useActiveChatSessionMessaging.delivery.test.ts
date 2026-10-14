@@ -386,6 +386,32 @@ describe('useSendMessage: durable before the request', () => {
     });
   });
 
+  it('a resend of a key the outbox holds as possibly started is not sent', async () => {
+    const earlier = await outboundDispatch.beginLive({
+      clientTurnId: 'possibly-started',
+      sessionId: chat,
+      agentSlug: 'codex',
+      content: 'once only',
+    });
+    await earlier.indeterminate('Station could not confirm the start.');
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    let sent: unknown;
+    await act(async () => {
+      sent = await result.current(
+        chat,
+        'codex',
+        undefined,
+        'once only',
+        undefined,
+        undefined,
+        'possibly-started',
+      );
+    });
+    expect(sent).toBe(false);
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[chat]?.input).toBe('');
+  });
+
   it('a slow answer: Station is asked, and the bubble reads received while the request is still out', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     let answer!: (value: unknown) => void;

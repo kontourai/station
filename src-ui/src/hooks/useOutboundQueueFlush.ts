@@ -122,6 +122,16 @@ export function useOutboundQueueFlush(apiBase: string): void {
           // Sends a closed or crashed app left `invoking`: ask Station what
           // became of each key before anything is sent. Not-received rows
           // become pending and go out below, with their original key.
+          // This tab's held follow-ups first: a queue restored by a reload
+          // takes its messages' earlier copies back before `reconcile` could
+          // release them to the flush (one message, one sender).
+          await outboundDispatch
+            .syncHeld(
+              heldOutboundIntents(activeChatsStore.getSnapshot()).map(
+                (intent) => ({ ...intent, station: stationRef.current }),
+              ),
+            )
+            .catch(() => undefined);
           const { received } = await outboundDispatch.reconcile(
             delivery.lookupTurnDelivery(apiBase),
             { station: stationRef.current },

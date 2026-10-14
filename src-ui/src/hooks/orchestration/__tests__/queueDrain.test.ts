@@ -126,6 +126,87 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     );
   });
 
+  test('a queued message the outbox already holds as possibly started is not sent again by the drain', async () => {
+    const queue = await import('../../../lib/outboundQueue');
+    let stored: unknown;
+    queue._setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, next) => {
+        stored = next;
+      },
+      updateItem: async (_key, updater) => {
+        stored = updater(stored);
+      },
+    });
+    const earlier = await queue.outboundDispatch.beginLive({
+      clientTurnId: 'queue-key-2',
+      sessionId: threadId,
+      agentSlug: 'claude',
+      content: 'maybe already started',
+    });
+    await earlier.indeterminate('Station could not confirm the start.');
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['maybe already started'],
+      queuedMessageMetadata: [{ id: 'queue-key-2', mode: 'queue' }],
+    });
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.waitFor(() =>
+      expect(
+        activeChatsStore.getSnapshot()[threadId]?.ephemeralMessages?.at(-1)
+          ?.content,
+      ).toMatch(/not sent again/),
+    );
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[threadId]?.queuedMessages).toEqual(
+      [],
+    );
+  });
+
+  test('a durable write that lands after the drain sent without it is let go, never left to be resent', async () => {
+    const queue = await import('../../../lib/outboundQueue');
+    let stored: unknown;
+    let releaseWrite!: () => void;
+    const slow = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    let first = true;
+    queue._setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, next) => {
+        stored = next;
+      },
+      updateItem: async (_key, updater) => {
+        if (first) {
+          first = false;
+          await slow;
+        }
+        stored = updater(stored);
+      },
+    });
+    sendExecutionMessageMock.mockResolvedValueOnce({
+      conversationId: threadId,
+      sessionId: threadId,
+      providerTurnId: 'provider-late',
+      target: { kind: 'agent', id: 'claude' },
+      resolution: {},
+    });
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['late write'],
+      queuedMessageMetadata: [{ id: 'queue-key-3', mode: 'queue' }],
+    });
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.advanceTimersByTimeAsync(3_100);
+    await vi.waitFor(() =>
+      expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1),
+    );
+    releaseWrite();
+    await vi.waitFor(async () =>
+      expect(await queue.outboundDispatch.snapshot()).toEqual([]),
+    );
+  });
+
   test('Send now coalesces repeated clicks, stops once, and preserves remaining FIFO messages', async () => {
     let settle!: (value: unknown) => void;
     interruptMock.mockImplementationOnce(

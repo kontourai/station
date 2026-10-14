@@ -48,6 +48,28 @@ describe('outboundQueueProjection (station#1224 restart hydration)', () => {
     expect(chat?.status).toBe('sending');
   });
 
+  it('lists a refused queued follow-up once: the chat already shows it as not sent', () => {
+    activeChatsStore.initChat('session-unsent', {
+      agentSlug: 'assistant',
+      agentName: 'Assistant',
+      title: 'Chat',
+    });
+    activeChatsStore.updateChat('session-unsent', {
+      unsentMessages: [
+        { id: 'refused-1', content: 'refused', reason: 'No.', at: 1 },
+      ],
+    });
+    projectOutboundQueueEntries([
+      { ...turn('refused-1', 'session-unsent', 'refused'), status: 'failed' },
+      { ...turn('other-1', 'session-unsent', 'other'), status: 'failed' },
+    ]);
+    expect(
+      activeChatsStore
+        .getSnapshot()
+        ['session-unsent']?.outboundQueuedTurns?.map((row) => row.clientTurnId),
+    ).toEqual(['other-1']);
+  });
+
   it('restores the Project a chat was sending in when only its row survived', () => {
     projectOutboundQueueEntries([
       {

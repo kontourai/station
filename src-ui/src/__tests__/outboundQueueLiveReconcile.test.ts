@@ -350,4 +350,65 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
       ),
     ).toBe(false);
   });
+
+  it('after a reload, the restored queue takes its messages back: an edit is what gets sent, a delete is never sent', async () => {
+    const before = await freshRenderer();
+    await before.outboundDispatch.syncHeld([
+      { ...intent, clientTurnId: 'held-edit', content: 'original text' },
+      { ...intent, clientTurnId: 'held-delete', content: 'delete me' },
+    ]);
+    kill(); // the reload: a new renderer, the same session-storage queue
+    const after = await freshRenderer();
+    // The restored queue holds both again.
+    await after.outboundDispatch.syncHeld([
+      { ...intent, clientTurnId: 'held-edit', content: 'original text' },
+      { ...intent, clientTurnId: 'held-delete', content: 'delete me' },
+    ]);
+    await after.outboundDispatch.reconcile(lookupAnswering('not-received'));
+    const transport = vi.fn(async (turn: Readonly<OutboundDispatchTurn>) => ({
+      kind: 'accepted' as const,
+      providerTurnId: `turn-for-${turn.clientTurnId}`,
+    }));
+    // Held by this renderer's queue again: the flush leaves both alone.
+    await after.outboundDispatch.flush(transport);
+    expect(transport).not.toHaveBeenCalled();
+    // The user edits one and deletes the other.
+    await after.outboundDispatch.syncHeld([
+      { ...intent, clientTurnId: 'held-edit', content: 'edited text' },
+    ]);
+    expect(await after.outboundDispatch.snapshot()).toEqual([
+      expect.objectContaining({
+        clientTurnId: 'held-edit',
+        content: 'edited text',
+      }),
+    ]);
+    // Closed before the turn ended: only the edited text is ever sent.
+    kill();
+    const later = await freshRenderer();
+    await later.outboundDispatch.reconcile(lookupAnswering('not-received'));
+    await later.outboundDispatch.flush(transport);
+    expect(transport.mock.calls.map(([turn]) => turn.content)).toEqual([
+      'edited text',
+    ]);
+  });
+
+  it('a Station is recognised by its verified identity even at a new address', async () => {
+    const queue = await freshRenderer();
+    await queue.outboundDispatch.beginLive({
+      ...intent,
+      clientTurnId: 'moved',
+      station: { apiBase: 'http://127.0.0.1:4100', environmentId: 'env-a' },
+    });
+    kill();
+    const later = await freshRenderer();
+    const lookup = lookupAnswering('started');
+    await later.outboundDispatch.reconcile(lookup, {
+      station: {
+        apiBase: 'http://station.tailnet:4100',
+        environmentId: 'env-a',
+      },
+    });
+    expect(lookup).toHaveBeenCalledTimes(1);
+    expect(await later.outboundDispatch.snapshot()).toEqual([]);
+  });
 });

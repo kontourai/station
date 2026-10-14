@@ -735,7 +735,27 @@ export function useSendMessage(
           ]);
           if (!live && timedOut)
             void durable.then((late) => late.refused()).catch(() => undefined);
-        } catch {
+        } catch (error) {
+          if (
+            (error as { name?: unknown })?.name === 'OutboundRowInFlightError'
+          ) {
+            // This exact message is already on its way, or may already have
+            // reached the agent: its outbox row is where it is settled.
+            // Sending it from here would bypass that record.
+            updateChat(sessionId, {
+              status: 'idle',
+              abortController: undefined,
+              pendingClientTurnId: undefined,
+              sendAwaitingTurnStart: undefined,
+            });
+            addEphemeralMessage(sessionId, {
+              role: 'system',
+              content:
+                'This message is already on its way or may have reached the agent, so it was not sent again. Check it in the outbox list.',
+            });
+            options?.onAdmission?.('not-invoked');
+            return false;
+          }
           // Storage unavailable: send as before, and the composer keeps its
           // saved draft until Station answers.
           live = undefined;
@@ -963,9 +983,9 @@ export function useSendMessage(
               ),
             );
           } else if (providerBusy) {
-            // Moved into the local queue below, under the same key: its row
-            // stays durable as a held follow-up.
-            await live.hold();
+            // Moved into the local queue below, under the same key; its row
+            // becomes the held copy only once the queue holds it (below), so
+            // a held-copy sync in between cannot drop it.
           } else if (stationAnswered(error) || userStopped) {
             // Station refused it (nothing started): the composer gets the
             // text back below.
@@ -1247,6 +1267,7 @@ export function useSendMessage(
               { id: resolvedTurnId, mode: 'queue' as const },
             ],
           });
+          await live?.hold();
           // The turn it waited on may already have ended while this refusal
           // was in flight; its end was the queue's only trigger.
           if (

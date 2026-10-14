@@ -48,6 +48,22 @@ export function projectOutboundQueueEntries(
     });
   }
 
+  // A refused queued follow-up the chat already shows as "Not sent" (same
+  // key) is listed once, there; its durable row stays behind it.
+  for (const [sessionId, queued] of [...groups]) {
+    const unsent = new Set(
+      (activeChatsStore.getSnapshot()[sessionId]?.unsentMessages ?? []).map(
+        (record) => record.id,
+      ),
+    );
+    if (unsent.size === 0) continue;
+    const visible = queued.filter(
+      (entry) => !(entry.status === 'failed' && unsent.has(entry.clientTurnId)),
+    );
+    if (visible.length) groups.set(sessionId, visible);
+    else groups.delete(sessionId);
+  }
+
   for (const [sessionId, queued] of groups) {
     if (!activeChatsStore.getSnapshot()[sessionId]) {
       const first = queued[0]!;

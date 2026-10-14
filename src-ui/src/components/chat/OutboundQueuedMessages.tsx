@@ -196,22 +196,24 @@ export function OutboundQueuedMessages({
               turn.status === 'invoking' ? (
                 <span className="queued-messages__label">
                   May have started; inspect this session before sending again{' '}
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void import('../../lib/deliveryLookup')
-                        .then(({ recheckOutboundTurn }) =>
-                          recheckOutboundTurn(turn.clientTurnId),
-                        )
-                        .catch((error: unknown) =>
-                          onError(
-                            `Could not check this message: ${error instanceof Error ? error.message : String(error)}`,
-                          ),
-                        )
-                    }
-                  >
-                    Check
-                  </button>
+                  {turn.waitingForStation ? null : (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void import('../../lib/deliveryLookup')
+                          .then(({ recheckOutboundTurn }) =>
+                            recheckOutboundTurn(turn.clientTurnId),
+                          )
+                          .catch((error: unknown) =>
+                            onError(
+                              `Could not check this message: ${error instanceof Error ? error.message : String(error)}`,
+                            ),
+                          )
+                      }
+                    >
+                      Check
+                    </button>
+                  )}
                 </span>
               ) : turn.status === 'failed' ? (
                 <span className="queued-messages__label">

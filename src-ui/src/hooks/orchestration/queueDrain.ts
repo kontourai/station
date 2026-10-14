@@ -615,9 +615,40 @@ export function drainQueuedMessageOnTurnCompleted(
           setTimeout(() => resolve(undefined), DRAIN_DURABILITY_TIMEOUT_MS),
         ),
       ]);
+      // A row that lands after the send went without it describes nothing
+      // this drain will settle: let it go (the queue or the transcript holds
+      // the message), never leave it to be resent.
       if (!live)
-        void durable.then((late) => late.hold()).catch(() => undefined);
-    } catch {
+        void durable.then((late) => late.refused()).catch(() => undefined);
+    } catch (error) {
+      const { OutboundRowInFlightError } = await import(
+        '../../lib/outboundQueue'
+      ).catch(() => ({ OutboundRowInFlightError: undefined }));
+      if (
+        OutboundRowInFlightError &&
+        error instanceof OutboundRowInFlightError
+      ) {
+        // The outbox already holds this message on its way, or as possibly
+        // started: sending it again from here would bypass that record. It
+        // leaves the queue; its outbox row is where it is checked.
+        const latest = activeChatsStore.getSnapshot()[threadId];
+        activeChatsStore.updateChat(threadId, {
+          status: 'idle',
+          sendAwaitingTurnStart: undefined,
+          ...(latest?.pendingClientTurnId === clientId
+            ? { pendingClientTurnId: undefined }
+            : {}),
+          messages: latest?.messages?.filter(
+            (message) => message.clientId !== clientId,
+          ),
+        });
+        activeChatsStore.addEphemeralMessage(threadId, {
+          role: 'system',
+          content:
+            'This queued message is already on its way or may have reached the agent. It was not sent again; check it in the outbox list.',
+        });
+        return;
+      }
       // Storage unavailable: the drain sends as it always has.
       live = undefined;
     }
@@ -693,7 +724,9 @@ export function drainQueuedMessageOnTurnCompleted(
               error instanceof Error ? error.message : String(error),
             );
           else if (indeterminate)
-            await live.indeterminate('Station could not confirm the start.');
+            await live.indeterminate('Station could not confirm the start.', {
+              listed: true,
+            });
           else await live.hold();
         }
         // A failed drain must never strand the session at 'sending' with the
@@ -714,6 +747,31 @@ export function drainQueuedMessageOnTurnCompleted(
         // archive#3027: a definitive 4xx refusal is dropped instead
         // of requeued — retrying a permanent rejection forever is queue
         // poison. Transient/network failures keep the requeue-at-head path.
+        // Kept by the outbox as possibly started: it is not requeued (the
+        // queue would send it again); its listed row offers the check.
+        if (
+          live &&
+          (error as { outcome?: unknown })?.outcome === 'indeterminate'
+        ) {
+          const failed = activeChatsStore.getSnapshot()[threadId];
+          activeChatsStore.updateChat(threadId, {
+            status: 'idle',
+            error: undefined,
+            sendAwaitingTurnStart: undefined,
+            ...(failed?.pendingClientTurnId === clientId
+              ? { pendingClientTurnId: undefined }
+              : {}),
+            messages: failed?.messages?.filter(
+              (message) => message.clientId !== clientId,
+            ),
+          });
+          activeChatsStore.addEphemeralMessage(threadId, {
+            role: 'system',
+            content:
+              'Station could not confirm whether your queued message reached the agent. It was not sent again; check it in the outbox list.',
+          });
+          return;
+        }
         const dropPermanentlyRejected = isDefinitiveClientRejection(error);
         // A validation refusal reads as its reasons, not schema keys (#2708).
         const reason =
@@ -789,7 +847,10 @@ export function drainQueuedMessageOnTurnCompleted(
                     // `at` orders and displays; `id` is the dismiss/React
                     // key — Date.now is not an identity (two drains can
                     // settle in one millisecond; archive#3706).
-                    id: randomCorrelationId(),
+                    // The send's key: its durable not-sent row has the same
+                    // identity, so the two are one message (shown once,
+                    // dismissed together).
+                    id: clientId,
                     content: nextMessage,
                     reason: sessionEnded
                       ? 'This chat had already ended when Station tried to send it.'

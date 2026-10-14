@@ -274,11 +274,13 @@ export function rowBelongsToStation(
 ): boolean {
   if (!row.station) return true;
   if (!current) return false;
-  if (normalizedBase(row.station.apiBase) !== normalizedBase(current.apiBase))
-    return false;
+  // A verified Station identity decides, whatever address reaches it now (a
+  // tunnel port or host can change); an address alone decides only when the
+  // row never learned which Station it was.
+  if (row.station.environmentId !== undefined)
+    return row.station.environmentId === current.environmentId;
   return (
-    row.station.environmentId === undefined ||
-    row.station.environmentId === current.environmentId
+    normalizedBase(row.station.apiBase) === normalizedBase(current.apiBase)
   );
 }
 
@@ -312,8 +314,12 @@ export interface LiveOutboundDispatch {
   refused(): Promise<void>;
   /** No answer came back: keep it for replay with the same key. */
   undeliverable(error: unknown): Promise<void>;
-  /** It may have reached the agent: keep it as evidence, never resend. */
-  indeterminate(reason: string): Promise<void>;
+  /**
+   * It may have reached the agent: keep it as evidence, never resend. With
+   * `listed`, the row is shown in the chat's outbox list at once (the caller
+   * has no message of its own on screen for it).
+   */
+  indeterminate(reason: string, options?: { listed?: boolean }): Promise<void>;
   /** Records a lookup answer observed while the request is still out. */
   observed(outcome: TurnDeliveryOutcome): Promise<void>;
   /**
@@ -1642,6 +1648,18 @@ function admitOne(entries: QueuedOutboundTurn[]): QueuedOutboundTurn[] {
   return entries.filter((entry) => !evicted.has(entry.clientTurnId));
 }
 
+/**
+ * `beginLive` refused: a row with this key is already on its way, or may
+ * already have reached the agent. Sending it now would bypass that row; the
+ * caller must not send.
+ */
+export class OutboundRowInFlightError extends Error {
+  constructor() {
+    super('This message is already on its way.');
+    this.name = 'OutboundRowInFlightError';
+  }
+}
+
 async function beginLive(
   intent: OutboundDispatchIntent,
 ): Promise<LiveOutboundDispatch> {
@@ -1661,7 +1679,7 @@ async function beginLive(
         (entry) => entry.clientTurnId === clientTurnId,
       );
       if (existing && protectedEvidence(existing))
-        throw new Error('This message is already on its way.');
+        throw new OutboundRowInFlightError();
       const { heldBy: _held, ...withoutHold } = existing ?? {};
       void _held;
       const next: QueuedOutboundTurn = {
@@ -1724,9 +1742,10 @@ async function beginLive(
         claimedAt: undefined,
       }));
     },
-    indeterminate: async (reason) => {
-      // Still this renderer's: the chat already says so, and the row is only
-      // listed once this renderer is gone.
+    indeterminate: async (reason, options) => {
+      // Still this renderer's unless listed: the chat already says so, and
+      // the row is otherwise listed once this renderer is gone.
+      if (options?.listed) liveOwned.delete(clientTurnId);
       await transition((entry) => ({
         ...entry,
         status: 'may-have-started',
@@ -1958,8 +1977,30 @@ async function syncHeld(intents: readonly HeldOutboundIntent[]): Promise<void> {
     }
     let retained = next;
     for (const intent of wanted.values()) {
-      if (retained.some((entry) => entry.clientTurnId === intent.clientTurnId))
+      const index = retained.findIndex(
+        (entry) => entry.clientTurnId === intent.clientTurnId,
+      );
+      if (index !== -1) {
+        const existing = retained[index]!;
+        // The same message held again here, typically by the queue this tab
+        // restored after a reload: its earlier copy (another renderer's held
+        // row, or one already released to pending) becomes this renderer's,
+        // with the queue's current text. One message, one sender. A row
+        // that is on its way or settled is left alone.
+        if (
+          existing.status === 'pending' &&
+          existing.heldBy?.bootId !== bootId
+        ) {
+          retained = [...retained];
+          retained[index] = {
+            ...existing,
+            ...intent,
+            heldBy: { bootId, heldAt: now },
+          };
+          changed = true;
+        }
         continue;
+      }
       retained = admitOne(retained);
       retained.push({
         ...(currentStation ? { station: currentStation } : {}),
