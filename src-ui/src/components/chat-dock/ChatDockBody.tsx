@@ -2067,7 +2067,6 @@ export function ChatDockBody({
             textareaRef={chatInput.textareaRef}
             disabled={!agent || recoveryOpen || resolvingOpen || busyOpen}
             allowDraftWhileDisabled={busyOpen && !!agent}
-            isSending={isExecutionActive}
             turnInFlight={isTurnInFlight(activeSession)}
             busyFollowUp={busyFollowUp}
             busySteeringKind={nativeSteering ? 'native' : 'safe-stop'}
@@ -2112,14 +2111,14 @@ export function ChatDockBody({
                 ? undefined
                 : secondaryActions
             }
-            agentLabel={[
-              agent?.name ?? activeSession.agentName ?? activeSession.agentSlug,
+            agentLabel={
+              agent?.name ?? activeSession.agentName ?? activeSession.agentSlug
+            }
+            agentRoute={
               activeOrchestrationSession?.modelRoute
                 ? `via ${activeOrchestrationSession.modelRoute.label}`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(' · ')}
+                : undefined
+            }
             onOpenAgentHandoff={
               onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff
             }

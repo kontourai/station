@@ -433,6 +433,8 @@ native steering. Other engines hold steering until a safe boundary can be proven
 currently they wait until the turn finishes. Each pending row shows its mode.
 **Send now** deliberately stops the active turn immediately and sends the
 selected message after Station confirms the stop. **Stop** remains separate.
+Steer and Queue carry text only. You can still attach files or dictate during a
+turn: files wait in the draft, which says why, and send once the turn ends.
 
 A text message is saved on this device before it is sent. If the app closes or
 the connection drops before Station answers, the app asks Station what happened

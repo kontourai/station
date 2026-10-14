@@ -465,8 +465,13 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // stable across renders for the inbox panel's `memo()`.
   const [pendingGoalSend, setPendingGoalSend] = useState<{
     sessionId: string;
-    prompt: string;
+    /** Absent: only stage `files` into the new chat's composer. */
+    prompt?: string;
     authority: typeof requestAuthority;
+    /** Start's files: staged by this chat's own intake before the send. */
+    files?: File[];
+    /** `staging` while the intake reads them, `staged` once it has. */
+    filesPhase?: 'staging' | 'staged';
   } | null>(null);
   const { captureCredentialEvidence } = useConnections();
   const mentionCredentialEvidence = captureCredentialEvidence();
@@ -790,6 +795,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     newChatRequestEpoch,
     newChatStartWithDefault,
     newChatInitialPrompt,
+    newChatInitialFiles,
     newChatSelection,
     newChatHandoff,
     newChatSelectionInvalid,
@@ -1068,6 +1074,51 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       setPendingGoalSend(null);
       return;
     }
+    // Start's files go through the same intake as a file picked in this
+    // chat: its engine's image answer, the attachment limits, and staging.
+    // The first send waits for that, so it carries them.
+    if (pendingGoalSend.files) {
+      const { files, sessionId } = pendingGoalSend;
+      setPendingGoalSend({
+        ...pendingGoalSend,
+        files: undefined,
+        filesPhase: 'staging',
+      });
+      void chatInput
+        .selectAttachmentFiles(files)
+        .finally(() =>
+          setPendingGoalSend((current) =>
+            current?.sessionId === sessionId && current.filesPhase === 'staging'
+              ? { ...current, filesPhase: 'staged' }
+              : current,
+          ),
+        );
+      return;
+    }
+    if (pendingGoalSend.filesPhase === 'staging') return;
+    if (pendingGoalSend.filesPhase === 'staged') {
+      const stages = chatInput.attachmentStages;
+      if (
+        stages.some(
+          (stage) => stage.state === 'queued' || stage.state === 'uploading',
+        )
+      )
+        return;
+      // A file this engine refused, or that did not stage, stays in the
+      // composer with its reason; the message waits for the person.
+      if (
+        chatInput.attachmentError ||
+        chatInput.sendBlockedReason ||
+        stages.some((stage) => stage.state !== 'complete')
+      ) {
+        setPendingGoalSend(null);
+        return;
+      }
+    }
+    if (pendingGoalSend.prompt === undefined) {
+      setPendingGoalSend(null);
+      return;
+    }
     if (chatInput.sendBlockedReason) return;
     setPendingGoalSend(null);
     if (chatInput.input !== pendingGoalSend.prompt) return;
@@ -1078,6 +1129,9 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     chatInput.input,
     chatInput.handleSend,
     chatInput.sendBlockedReason,
+    chatInput.selectAttachmentFiles,
+    chatInput.attachmentStages,
+    chatInput.attachmentError,
   ]);
 
   // The enriched catalog row for the chat the dock is showing, resolved once
@@ -2980,6 +3034,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           newChatRequestEpoch,
           newChatStartWithDefault,
           newChatInitialPrompt,
+          newChatInitialFiles,
           newChatSelection,
           newChatHandoff,
           newChatSelectionInvalid,
@@ -3065,6 +3120,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             executionAgentId,
             expectedDefinitionFingerprint,
             executionOnCurrentStation,
+            initialFiles,
           ) => {
             // station#4525: an explicit project choice inside the New Chat
             // modal is exactly as deliberate as a picker pick (#4524's
@@ -3110,6 +3166,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 skillExperienceMode:
                   experienceDraft.definition.presentation.defaultMode,
               });
+            const files = initialFiles?.length ? initialFiles : undefined;
             if (
               sessionId &&
               ((newChatStartWithDefault && newChatInitialPrompt?.trim()) ||
@@ -3121,6 +3178,15 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                   ? initialMessage
                   : newChatInitialPrompt)!,
                 authority: requestAuthority,
+                files,
+              });
+            } else if (sessionId && files) {
+              // Nothing to send yet (context or a visual skill): the files
+              // still land in the new chat's composer, beside its draft.
+              setPendingGoalSend({
+                sessionId,
+                authority: requestAuthority,
+                files,
               });
             }
             if (!sessionId)
