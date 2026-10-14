@@ -367,12 +367,19 @@ A send to an ACP session that is still starting (for a restored session,
 reattaching to the engine's stored session) waits for the start, up to 15
 seconds, through the optional adapter method `whenSessionReady`. Orchestration
 awaits it before taking the thread's turn-start claim, so Stop and End are not
-held behind a slow start, and the request's abort signal ends the wait. If the
-start fails or the session is stopped, the send is refused definitively in
-plain words; if it is still starting after the wait, the send is refused with
-the retryable code `provider_session_starting`, and the client queues the
-message and re-sends it. When the client's automatic re-sends run out, the
-message stays queued with a reason and Retry.
+held behind a slow start. The send's cancellation signal ends the wait; that
+signal comes only from an explicit Stop or cancel or a server deadline, never
+from the client's connection, so a client may close once Station has the
+message. If the session is stopped before it is ready, the send is refused
+definitively and the client offers the text back. If the start fails, the
+send is refused with `provider_session_start_failed`, and the client keeps the
+message queued with the reason and Retry without re-sending it on its own. If
+it is still starting after the wait, the send is refused with the retryable
+code `provider_session_starting`, and the client queues the message and
+re-sends it. A retry whose idempotency key an earlier attempt still holds, or
+released without sending, is refused with the retryable code
+`client_turn_in_flight` and re-sent with the same key. When the client's
+automatic re-sends run out, the message stays queued with a reason and Retry.
 A Claude send's own `turn.started` is published when the engine starts
 running it, so a send queued behind such a turn starts after it ends. That
 ordering relies on the CLI's per-message lifecycle frames (`msg_lifecycle_v1`,
