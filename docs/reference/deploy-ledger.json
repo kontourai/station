@@ -1,5 +1,39 @@
 [
   {
+    "timestampUtc": "2026-10-14T17:00:00Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2478.38590998947",
+    "sha": "fcc314b44f6936c2b280c42c522a552d7cbb7359",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38590998947",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2478.38590998947 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "59ff630e0e832be3e5c6400776411a9dae06a6b9",
+      "groups": {
+        "feat": [
+          "[#3652](https://github.com/kontourai/station/pull/3652) feat(chat): never lose or double-send a message when the app closes mid-send"
+        ],
+        "fix": [],
+        "ci": [
+          "[#3653](https://github.com/kontourai/station/pull/3653) ci(docs): run Corpus with v1 manifests refused and the decisions gate"
+        ],
+        "docs": [],
+        "other": [
+          "[#3656](https://github.com/kontourai/station/pull/3656) build(deps): bump @kontourai/veritas from 1.7.6 to 1.11.2",
+          "[#3657](https://github.com/kontourai/station/pull/3657) chore(decisions): check decision records with Corpus"
+        ]
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
     "timestampUtc": "2026-10-14T09:35:52Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2478.5",
