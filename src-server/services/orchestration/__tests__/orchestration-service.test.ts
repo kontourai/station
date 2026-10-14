@@ -1253,7 +1253,8 @@ describe('OrchestrationService', () => {
     });
 
     test('a send waiting for its session start holds no workspace turn-start reservation', async () => {
-      const cwd = mkdtempSync(join(tmp, 'waiting-start-'));
+      const cwd = join(tmp, 'waiting-start');
+      mkdirSync(cwd);
       await service.dispatch({
         type: 'startSession',
         input: { threadId: 'waiting-start', provider: 'bedrock', cwd },
