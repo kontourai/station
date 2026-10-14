@@ -29,7 +29,8 @@ import {
 export type KernelConformanceArea =
   | 'turnDedup'
   | 'turnBoundary'
-  | 'requestKeys';
+  | 'requestKeys'
+  | 'inbox';
 
 export interface KernelConformanceCase {
   readonly name: string;
@@ -1555,7 +1556,418 @@ const requestKeys: KernelConformanceCase[] = [
  * Crash points. Each one stops the "process" at a commit boundary, reopens
  * the location, and checks the decision the restarted process gets.
  */
+const submit = (
+  key: string,
+  options: { inboxId?: string; digest?: string; now?: number } = {},
+) =>
+  ({
+    type: 'inbox.submit',
+    inboxId: options.inboxId ?? 'conversation',
+    key,
+    kind: 'follow-up',
+    digest: options.digest ?? `digest-${key}`,
+    payload: `payload-${key}`,
+    now: options.now ?? 1,
+  }) as const;
+
+const claimNext = (placement = 'session-a', inboxId = 'conversation') =>
+  ({ type: 'inbox.claimNext', inboxId, placement, now: 2 }) as const;
+
+const settle = (
+  key: string,
+  to: 'placed' | 'unconfirmed' | 'refused',
+  outcome: string | null = null,
+) =>
+  ({
+    type: 'inbox.settle',
+    inboxId: 'conversation',
+    key,
+    to,
+    outcome,
+    now: 3,
+  }) as const;
+
+async function inboxEntries(session: Session, inboxId = 'conversation') {
+  const listed = await session.run({ type: 'inbox.list', inboxId });
+  assert.equal(listed.kind, 'entries');
+  return listed.kind === 'entries' ? listed.entries : [];
+}
+
+/** The `kind` and the entry's key and state, for compact assertions. */
+function claimedKey(result: KernelResult<KernelCommand>): string {
+  assert.ok('entry' in result, `expected an entry, got ${result.kind}`);
+  const { entry } = result as { entry: { key: string; state: string } };
+  return `${result.kind}:${entry.key}:${entry.state}`;
+}
+
+const inbox: KernelConformanceCase[] = [
+  {
+    name: 'inbox: a submission is idempotent by key, and a different digest conflicts',
+    areas: ['inbox'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const first = await session.run(submit('k'));
+        assert.equal(first.kind, 'accepted');
+        assert.equal(first.kind === 'accepted' && first.requeued, false);
+        assert.equal(claimedKey(first), 'accepted:k:queued');
+        const again = await session.run(submit('k', { now: 5 }));
+        assert.equal(claimedKey(again), 'existing:k:queued');
+        assert.deepEqual(await session.run(submit('k', { digest: 'other' })), {
+          kind: 'conflict',
+        });
+        const entries = await inboxEntries(session);
+        assert.equal(entries.length, 1);
+        assert.equal(entries[0]?.payload, 'payload-k');
+        assert.equal(entries[0]?.updatedAt, 1);
+      }),
+  },
+  {
+    name: 'inbox: the head is placed first, and one entry is in flight at a time',
+    areas: ['inbox'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        await session.run(submit('a'));
+        await session.run(submit('b'));
+        assert.deepEqual(await session.run(claimNext('other', 'empty')), {
+          kind: 'empty',
+        });
+        const claimed = await session.run(claimNext());
+        assert.equal(claimedKey(claimed), 'claimed:a:placing');
+        assert.equal(
+          claimed.kind === 'claimed' && claimed.entry.placement,
+          'session-a',
+        );
+        assert.equal(
+          claimedKey(await session.run(claimNext())),
+          'in-flight:a:placing',
+        );
+        assert.equal(
+          (await session.run(settle('a', 'placed', 'turn-1'))).kind,
+          'applied',
+        );
+        assert.equal(
+          claimedKey(await session.run(claimNext())),
+          'claimed:b:placing',
+        );
+        const entries = await inboxEntries(session);
+        assert.deepEqual(
+          entries.map((entry) => [entry.key, entry.state, entry.outcome]),
+          [
+            ['a', 'placed', 'turn-1'],
+            ['b', 'placing', null],
+          ],
+        );
+      }),
+  },
+  {
+    name: 'inbox: only a placing entry settles or releases; release keeps the pin only when asked',
+    areas: ['inbox'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        await session.run(submit('a'));
+        assert.deepEqual(await session.run(settle('a', 'placed')), {
+          kind: 'stale',
+        });
+        const release = (keepPlacement: boolean) =>
+          session.run({
+            type: 'inbox.release',
+            inboxId: 'conversation',
+            key: 'a',
+            keepPlacement,
+            now: 4,
+          });
+        assert.deepEqual(await release(false), { kind: 'stale' });
+        await session.run(claimNext('session-a'));
+        const kept = await release(true);
+        assert.equal(kept.kind === 'applied' && kept.entry.state, 'queued');
+        assert.equal(
+          kept.kind === 'applied' && kept.entry.placement,
+          'session-a',
+        );
+        // A pinned head keeps its own placement, not the claimant's.
+        const reclaimed = await session.run(claimNext('session-b'));
+        assert.equal(
+          reclaimed.kind === 'claimed' && reclaimed.entry.placement,
+          'session-a',
+        );
+        const cleared = await release(false);
+        assert.equal(
+          cleared.kind === 'applied' && cleared.entry.placement,
+          null,
+        );
+        const fresh = await session.run(claimNext('session-b'));
+        assert.equal(
+          fresh.kind === 'claimed' && fresh.entry.placement,
+          'session-b',
+        );
+        assert.equal(
+          (await session.run(settle('a', 'refused', 'no'))).kind,
+          'applied',
+        );
+        assert.deepEqual(await session.run(settle('a', 'placed')), {
+          kind: 'stale',
+        });
+      }),
+  },
+  {
+    name: 'inbox: an unconfirmed head blocks the inbox until it is cancelled',
+    areas: ['inbox'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        await session.run(submit('a'));
+        await session.run(submit('b'));
+        await session.run(claimNext());
+        await session.run(settle('a', 'unconfirmed'));
+        assert.equal(
+          claimedKey(await session.run(claimNext())),
+          'blocked:a:unconfirmed',
+        );
+        const cancel = (key: string) =>
+          session.run({
+            type: 'inbox.cancel',
+            inboxId: 'conversation',
+            key,
+            now: 9,
+          });
+        assert.equal(claimedKey(await cancel('a')), 'cancelled:a:cancelled');
+        assert.equal(
+          claimedKey(await session.run(claimNext())),
+          'claimed:b:placing',
+        );
+      }),
+  },
+  {
+    name: 'inbox: a refused entry does not block, and cancel answers by state',
+    areas: ['inbox'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const cancel = (key: string) =>
+          session.run({
+            type: 'inbox.cancel',
+            inboxId: 'conversation',
+            key,
+            now: 9,
+          });
+        await session.run(submit('a'));
+        await session.run(submit('b'));
+        await session.run(submit('c'));
+        await session.run(claimNext());
+        await session.run(settle('a', 'refused', 'gone'));
+        assert.equal(
+          claimedKey(await session.run(claimNext())),
+          'claimed:b:placing',
+        );
+        assert.equal(claimedKey(await cancel('b')), 'in-flight:b:placing');
+        await session.run(settle('b', 'placed', 'turn'));
+        assert.equal(claimedKey(await cancel('b')), 'placed:b:placed');
+        assert.equal(claimedKey(await cancel('c')), 'cancelled:c:cancelled');
+        assert.equal(claimedKey(await cancel('c')), 'cancelled:c:cancelled');
+        assert.equal(claimedKey(await cancel('a')), 'cancelled:a:cancelled');
+        assert.deepEqual(await cancel('missing'), { kind: 'missing' });
+        assert.deepEqual(await session.run(claimNext()), { kind: 'empty' });
+      }),
+  },
+  {
+    name: 'inbox: a refused or cancelled key submitted again is queued again at the tail',
+    areas: ['inbox'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        await session.run(submit('a'));
+        await session.run(submit('b'));
+        await session.run({
+          type: 'inbox.cancel',
+          inboxId: 'conversation',
+          key: 'a',
+          now: 3,
+        });
+        const again = await session.run(submit('a', { now: 4 }));
+        assert.equal(again.kind === 'accepted' && again.requeued, true);
+        assert.equal(claimedKey(again), 'accepted:a:queued');
+        assert.equal(
+          claimedKey(await session.run(claimNext())),
+          'claimed:b:placing',
+        );
+        await session.run(settle('b', 'placed'));
+        // A placed key is never queued again.
+        assert.equal(
+          claimedKey(await session.run(submit('b'))),
+          'existing:b:placed',
+        );
+        assert.equal(
+          claimedKey(await session.run(claimNext())),
+          'claimed:a:placing',
+        );
+      }),
+  },
+  {
+    name: 'inbox: an inbox past its unsettled limit refuses; settled entries do not count',
+    areas: ['inbox'],
+    run: (harness) =>
+      withSession(
+        harness,
+        async (session) => {
+          await session.run(submit('a'));
+          await session.run(submit('b'));
+          assert.deepEqual(await session.run(submit('c')), {
+            kind: 'capacity',
+            limit: 2,
+          });
+          // Another inbox has its own limit.
+          assert.equal(
+            (await session.run(submit('c', { inboxId: 'elsewhere' }))).kind,
+            'accepted',
+          );
+          await session.run(claimNext());
+          await session.run(settle('a', 'placed'));
+          assert.equal((await session.run(submit('c'))).kind, 'accepted');
+          assert.equal((await inboxEntries(session)).length, 3);
+        },
+        { limits: { inboxMaxUnsettled: 2 } },
+      ),
+  },
+  {
+    name: 'inbox: a settled entry past retention is forgotten on the next submit',
+    areas: ['inbox'],
+    run: (harness) =>
+      withSession(
+        harness,
+        async (session) => {
+          await session.run(submit('old', { now: 0 }));
+          await session.run(submit('waiting', { now: 0 }));
+          await session.run(claimNext());
+          await session.run(settle('old', 'placed'));
+          await session.run(submit('new', { now: 100 }));
+          assert.deepEqual(
+            (await inboxEntries(session)).map((entry) => entry.key),
+            ['waiting', 'new'],
+          );
+        },
+        { limits: { inboxSettledRetentionMs: 10 } },
+      ),
+  },
+  {
+    name: 'inbox: listOpen returns every unsettled entry of every inbox, in order',
+    areas: ['inbox'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        await session.run(submit('z1', { inboxId: 'z' }));
+        await session.run(submit('a1', { inboxId: 'a' }));
+        await session.run(submit('a2', { inboxId: 'a' }));
+        await session.run(submit('a3', { inboxId: 'a' }));
+        await session.run(claimNext('s', 'a'));
+        await session.run({
+          type: 'inbox.settle',
+          inboxId: 'a',
+          key: 'a1',
+          to: 'placed',
+          outcome: null,
+          now: 3,
+        });
+        await session.run({
+          type: 'inbox.cancel',
+          inboxId: 'a',
+          key: 'a3',
+          now: 3,
+        });
+        const open = await session.run({ type: 'inbox.listOpen' });
+        assert.deepEqual(
+          open.kind === 'entries'
+            ? open.entries.map((entry) => `${entry.inboxId}/${entry.key}`)
+            : [],
+          ['a/a2', 'z/z1'],
+        );
+        assert.deepEqual(
+          await session.run({ type: 'inbox.read', inboxId: 'a', key: 'nope' }),
+          { kind: 'absent' },
+        );
+      }),
+  },
+  {
+    name: 'inbox: forget removes one inbox, settled entries included, and no other',
+    areas: ['inbox'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        await session.run(submit('a'));
+        await session.run(submit('b'));
+        await session.run(claimNext());
+        await session.run(settle('a', 'placed'));
+        await session.run(submit('x', { inboxId: 'other' }));
+        assert.deepEqual(
+          await session.run({ type: 'inbox.forget', inboxId: 'conversation' }),
+          { kind: 'applied', removed: 2 },
+        );
+        assert.deepEqual(await inboxEntries(session), []);
+        assert.equal((await inboxEntries(session, 'other')).length, 1);
+        // A forgotten key is new again.
+        assert.equal(
+          (await session.run(submit('a', { digest: 'new' }))).kind,
+          'accepted',
+        );
+      }),
+  },
+];
+
 const crashPoints: KernelConformanceCase[] = [
+  {
+    name: 'crash: the same inbox key submitted across a restart is one entry',
+    areas: ['inbox'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        assert.equal((await session.run(submit('k'))).kind, 'accepted');
+        await session.store.crash();
+        await session.store.reopen();
+        assert.equal(
+          claimedKey(await session.run(submit('k', { now: 7 }))),
+          'existing:k:queued',
+        );
+        assert.equal((await inboxEntries(session)).length, 1);
+      }),
+  },
+  {
+    name: 'crash: an inbox submit that never committed leaves nothing (control)',
+    areas: ['inbox'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        session.store.failNextCommit();
+        await assert.rejects(
+          session.run(submit('k')),
+          /Injected commit failure/,
+        );
+        await session.store.reopen();
+        assert.deepEqual(await inboxEntries(session), []);
+        assert.equal((await session.run(submit('k'))).kind, 'accepted');
+      }),
+  },
+  {
+    name: 'crash: an entry claimed before a crash is in flight after it, never claimed afresh',
+    areas: ['inbox'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        await session.run(submit('a'));
+        await session.run(submit('b'));
+        await session.run(claimNext('session-a'));
+        await session.store.crash();
+        await session.store.reopen();
+        const open = await session.run({ type: 'inbox.listOpen' });
+        assert.deepEqual(
+          open.kind === 'entries'
+            ? open.entries.map((entry) => [
+                entry.key,
+                entry.state,
+                entry.placement,
+              ])
+            : [],
+          [
+            ['a', 'placing', 'session-a'],
+            ['b', 'queued', null],
+          ],
+        );
+        assert.equal(
+          claimedKey(await session.run(claimNext('session-b'))),
+          'in-flight:a:placing',
+        );
+      }),
+  },
   {
     name: 'crash: after a dedup claim is begun, the retry is indeterminate',
     areas: ['turnDedup'],
@@ -1871,13 +2283,14 @@ export const kernelConformanceCases: readonly KernelConformanceCase[] =
     ...turnDedup,
     ...turnBoundary,
     ...requestKeys,
+    ...inbox,
     ...crashPoints,
   ]);
 
 /**
  * The cases that use only the given machines, for a storage that keeps only
  * those (a host that binds its own tables for them and has no turn boundaries,
- * say). An adapter that keeps all three runs every case.
+ * say). An adapter that keeps every machine runs every case.
  */
 export function kernelConformanceCasesFor(
   areas: readonly KernelConformanceArea[],

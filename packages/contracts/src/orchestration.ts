@@ -1522,6 +1522,10 @@ export interface ConversationHandoffStatusProjection {
  * - `received`: a request carrying the key is being handled now (the session
  *   may still be starting), or a live owner holds its claim. Wait; do not send
  *   again.
+ * - `queued` (#3568): Station holds the message in the conversation's inbox
+ *   (`ConversationInboxEntry`) behind a running turn, and sends it itself when
+ *   that turn ends. It is safe to close the app. Do not send again; cancel it
+ *   through the inbox instead.
  * - `started`: the engine accepted the turn. `turnId` is the provider turn and
  *   `sessionId` the execution Session that holds it.
  * - `indeterminate`: the owner died after it may have handed the turn to the
@@ -1538,6 +1542,7 @@ export type TurnDeliveryInspection =
       outcome:
         | 'not-received'
         | 'received'
+        | 'queued'
         | 'indeterminate'
         | 'expired'
         | 'unknown';
@@ -1553,6 +1558,57 @@ export type TurnDeliveryInspection =
     };
 
 export type TurnDeliveryOutcome = TurnDeliveryInspection['outcome'];
+
+/**
+ * #3568: where one message held in a conversation's inbox stands. The inbox
+ * keeps a follow-up sent while the conversation's turn was running and sends
+ * it itself when that turn ends, one at a time, in the order received.
+ *
+ * - `queued`: waiting for the running turn to end.
+ * - `sending`: Station is sending it now (or was, when it last stopped).
+ * - `sent`: the agent has it; `turnId` is the turn it started.
+ * - `unconfirmed`: it may have reached the agent and nothing can prove which
+ *   way. Never sent again. Later messages wait behind it until it is
+ *   dismissed (cancelled).
+ * - `refused`: Station could not send it, and nothing was sent; `reason`
+ *   says why. Later messages are not held behind it.
+ * - `cancelled`: withdrawn before it was sent, or dismissed.
+ */
+export type ConversationInboxEntryState =
+  | 'queued'
+  | 'sending'
+  | 'sent'
+  | 'unconfirmed'
+  | 'refused'
+  | 'cancelled';
+
+export interface ConversationInboxEntry {
+  conversationId: string;
+  /** The send's idempotency key; resending the same body answers this entry. */
+  clientTurnId: string;
+  /** Only follow-ups today; steer and display-only kinds may follow. */
+  kind: 'follow-up';
+  state: ConversationInboxEntryState;
+  /** 1 for the next to be sent, among entries still waiting; absent once settled. */
+  position?: number;
+  message: string;
+  createdAt: string;
+  updatedAt: string;
+  /** The turn it started, once `sent`. */
+  turnId?: string;
+  /** The execution Session it was sent to, once Station picked one. */
+  sessionId?: string;
+  /** Why it was `refused` or is `unconfirmed`. */
+  reason?: string;
+}
+
+/** What `POST /chat` answers when it held the message (`whenBusy: 'queue'`). */
+export interface ConversationInboxQueuedReceipt {
+  outcome: 'queued';
+  conversationId: string;
+  clientTurnId: string;
+  entry: ConversationInboxEntry;
+}
 
 /** Bounded agent-facing transcript rows; missing attribution stays unknown. */
 export interface ConversationReadMessage {

@@ -40,6 +40,7 @@ import type {
   TurnDeliveryInspection,
 } from '@kontourai/station-contracts/orchestration';
 import {
+  type ConversationInboxQueuedReceipt,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type OrchestrationQuoteSource,
   QUOTE_SOURCE_MAX_BYTES,
@@ -53,6 +54,8 @@ import {
   type ApprovalMode,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   type DelegationProvenance,
+  PROVIDER_SESSION_STARTING_CODE,
+  PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 import {
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
@@ -148,6 +151,7 @@ import {
   UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
 } from '../../services/orchestration/session-owner-attribution.js';
 import { parseExperienceIdentity } from '../../services/orchestration/skill-experience-model.js';
+import type { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import { MAX_TOOL_RESULT_DESCRIPTOR_ID_BYTES } from '../../services/orchestration/thread-tool-result-adapter.js';
 import type { ReceiverExecutionAdmission } from '../../services/projects/project-contribution-service.js';
 import {
@@ -847,6 +851,62 @@ export const foregroundMessageObjectSchema = z.object({
   setApprovalModeBasedOn: z.number().int().nonnegative().nullable().optional(),
 });
 
+/**
+ * #3568: the follow-up a `/chat` send hands to its conversation's inbox when
+ * the conversation is busy, or undefined when this send cannot be held there.
+ * Only a plain continuation can: the inbox replays it through the
+ * conversation's persisted binding later, without this request. Attachments,
+ * a visual skill start, an input reply, an approval pick, a delegated or
+ * background send and another Station's target all need this request's own
+ * authority or bytes, so they are refused when busy, as before.
+ */
+function inboxFollowUpOf(
+  body: z.infer<typeof foregroundMessageObjectSchema> & {
+    whenBusy?: 'queue';
+    automaticBackground?: true;
+  },
+  options: { delegated: boolean; remote: boolean },
+):
+  | {
+      conversationId: string;
+      clientTurnId: string;
+      message: string;
+      ambientContext?: string;
+      model?: ExecutionModelRequest;
+    }
+  | undefined {
+  if (
+    body.whenBusy !== 'queue' ||
+    !body.conversationId ||
+    !body.clientTurnId ||
+    options.delegated ||
+    options.remote ||
+    body.automaticBackground ||
+    body.attachments?.length ||
+    body.attachmentRefs?.length ||
+    body.skillExperience ||
+    body.expectedInputRequest ||
+    body.setApprovalMode !== undefined ||
+    requestedApprovalMode(body.target.model?.options) !== undefined
+  )
+    return undefined;
+  return {
+    conversationId: body.conversationId,
+    clientTurnId: body.clientTurnId,
+    message: body.message,
+    ...(body.ambientContext ? { ambientContext: body.ambientContext } : {}),
+    ...(body.target.model
+      ? { model: body.target.model as ExecutionModelRequest }
+      : {}),
+  };
+}
+
+/** A refusal that only says the conversation is busy: the inbox can hold it. */
+const INBOX_BUSY_REFUSAL_CODES: ReadonlySet<string> = new Set([
+  PROVIDER_TURN_IN_PROGRESS_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
+]);
+
 function requireMessageOrAttachment(
   value: {
     message: string;
@@ -909,9 +969,12 @@ function requireForegroundBody(
   requireMessageOrAttachment(value, ctx);
 }
 
-const foregroundMessageSchema = foregroundMessageObjectSchema.superRefine(
-  requireForegroundBody,
-);
+// #3568: only POST /chat (and its /background sibling, which never queues)
+// takes `whenBusy`. An older Station strips the unknown key and refuses a busy
+// send as it always did, so the client keeps holding the message.
+const foregroundMessageSchema = foregroundMessageObjectSchema
+  .extend({ whenBusy: z.literal('queue').optional() })
+  .superRefine(requireForegroundBody);
 const delegatedForegroundMessageSchema = foregroundMessageObjectSchema
   .extend({
     delegation: agentDelegationContextSchema,
@@ -1893,6 +1956,15 @@ export function createOrchestrationRoutes(
      * what they verified: a dispatch's caller-derived ownership, a parent's
      * read of its own child at rest, an interrupt.
      */
+    /**
+     * #3568: the durable inbox of follow-ups a busy conversation holds
+     * (`thread-inbox.ts`). Absent on a hosted Station: `/chat` then refuses a
+     * busy send as before.
+     */
+    threadInbox?: Pick<
+      ThreadInboxDelivery,
+      'mustQueue' | 'submit' | 'list' | 'entry' | 'cancel' | 'deliveryOutcome'
+    >;
     delegationResults?: Pick<
       DelegationResultDelivery,
       | 'arm'
@@ -2211,6 +2283,40 @@ export function createOrchestrationRoutes(
     }
   });
 
+  /** #3568: what `/chat` answers for a follow-up it handed to the inbox. */
+  const queuedFollowUpResponse = (
+    c: Context,
+    submitted: ReturnType<ThreadInboxDelivery['submit']>,
+    followUp: { conversationId: string; clientTurnId: string },
+  ) => {
+    if (submitted.outcome === 'conflict')
+      return c.json(
+        {
+          success: false,
+          error:
+            'This message key was already used for a different queued message.',
+          code: 'inbox_key_conflict',
+        },
+        409,
+      );
+    if (submitted.outcome === 'capacity')
+      return c.json(
+        {
+          success: false,
+          error: `This conversation already holds ${submitted.limit} queued messages. Nothing was queued; send it after some of them go.`,
+          code: 'conversation_inbox_full',
+        },
+        409,
+      );
+    const data: ConversationInboxQueuedReceipt = {
+      outcome: 'queued',
+      conversationId: followUp.conversationId,
+      clientTurnId: followUp.clientTurnId,
+      entry: submitted.entry,
+    };
+    return c.json({ success: true, data }, 202);
+  };
+
   const handleForegroundMessage = async (c: Context) => {
     if (!deps.executeForegroundMessage) {
       return c.json(
@@ -2228,6 +2334,9 @@ export function createOrchestrationRoutes(
       | undefined;
     let releasePrincipal: PrincipalRef | undefined;
     let releaseDeliveryReceipt: (() => void) | undefined;
+    // #3568: set once this send may wait in its conversation's inbox; a
+    // busy refusal from the dispatch below then queues it instead.
+    let queueOnBusyRefusal: (() => Response) | undefined;
     try {
       const {
         delegation: claimedDelegation,
@@ -2237,6 +2346,7 @@ export function createOrchestrationRoutes(
         delegation?: z.infer<typeof agentDelegationContextSchema>;
         delegationAttestation?: string;
         automaticBackground?: true;
+        whenBusy?: 'queue';
       };
       // #2377 slice C3b: an agent sends without an approval posture.
       const postureRefused = refuseCarriedPosture(c, [
@@ -2446,6 +2556,48 @@ export function createOrchestrationRoutes(
         ...(scoped.spawn ? { dispatchCwdAdmission: scoped.spawn } : {}),
         clientOrigin: resolveClientOriginForRequest(c.req.raw),
       } as ForegroundMessageRequest;
+      // #3568: a follow-up to a busy conversation waits in its inbox rather
+      // than being refused. Only for a caller that may read the conversation;
+      // any other send goes on to the dispatch, which refuses it as before.
+      const followUp = deps.threadInbox
+        ? inboxFollowUpOf(body, {
+            delegated: Boolean(claimedDelegation || delegation),
+            remote: resolvedTarget.environment.kind !== 'current',
+          })
+        : undefined;
+      if (
+        followUp &&
+        (await orchestrationService.readSession(
+          followUp.conversationId,
+          readAuthorityFor(c),
+        ))
+      ) {
+        const inbox = deps.threadInbox!;
+        queueOnBusyRefusal = () =>
+          queuedFollowUpResponse(
+            c,
+            inbox.submit({
+              conversationId: followUp.conversationId,
+              clientTurnId: followUp.clientTurnId,
+              payload: {
+                message: followUp.message,
+                ...(followUp.ambientContext
+                  ? { ambientContext: followUp.ambientContext }
+                  : {}),
+                ...(followUp.model ? { model: followUp.model } : {}),
+                actor: {
+                  userId,
+                  ...(principal ? { principal } : {}),
+                  ...(ownerAttribution ? { ownerAttribution } : {}),
+                },
+                clientOrigin: foregroundRequest.clientOrigin,
+              },
+            }),
+            followUp,
+          );
+        if (inbox.mustQueue(followUp.conversationId))
+          return queueOnBusyRefusal();
+      }
       // Admitted: from here until the route answers, the delivery lookup says
       // Station has this send (a cold session start can take a long time
       // before the turn ledger holds anything).
@@ -2498,6 +2650,13 @@ export function createOrchestrationRoutes(
       }
       return c.json({ success: true, data });
     } catch (error) {
+      const busyCode = errorCode(error);
+      if (
+        queueOnBusyRefusal &&
+        busyCode &&
+        INBOX_BUSY_REFUSAL_CODES.has(busyCode)
+      )
+        return queueOnBusyRefusal();
       const refused =
         delegationRefusal(c, error) ??
         fullAccessRefusalFor(c, error) ??
@@ -2757,6 +2916,13 @@ export function createOrchestrationRoutes(
       // A turn the ledger settled outranks the request still being answered.
       if (durable && durable.outcome !== 'not-received')
         return answer({ ...durable, conversationId, clientTurnId });
+      // #3568: a follow-up the conversation's inbox holds for this caller.
+      const held = deps.threadInbox?.deliveryOutcome(
+        conversationId,
+        clientTurnId,
+        resolveDispatchActor(deps, c).userId,
+      );
+      if (held) return answer({ outcome: held, conversationId, clientTurnId });
       const inFlight = deliveryReceipts.has({
         callerKey: mutationIdentity(c).ownerKey,
         conversationId,
@@ -2789,6 +2955,88 @@ export function createOrchestrationRoutes(
         conversationId,
         clientTurnId,
       });
+    },
+  );
+
+  /**
+   * #3568: a conversation's inbox, the follow-ups Station holds for it and
+   * sends when its turn ends. Every client of the conversation reads the
+   * same list. A conversation the caller may not read answers 404, like one
+   * that does not exist.
+   */
+  app.get('/conversations/:conversationId/inbox', async (c) => {
+    const conversationId = param(c, 'conversationId');
+    if (!deps.threadInbox)
+      return c.json(
+        { success: false, error: 'This Station keeps no conversation inbox.' },
+        404,
+      );
+    if (
+      conversationId.length > 512 ||
+      !(await orchestrationService.readSession(
+        conversationId,
+        readAuthorityFor(c),
+      ))
+    )
+      return c.json({ success: false, error: 'Conversation not found' }, 404);
+    return c.json({
+      success: true,
+      data: { entries: deps.threadInbox.list(conversationId) },
+    });
+  });
+
+  /**
+   * #3568: withdraw a held follow-up, or dismiss one that is unconfirmed or
+   * refused. Only its sender may; anyone else, like a key the inbox does not
+   * hold, gets 404. One being sent right now cannot be withdrawn.
+   */
+  app.delete(
+    '/conversations/:conversationId/inbox/:clientTurnId',
+    async (c) => {
+      const conversationId = param(c, 'conversationId');
+      const clientTurnId = param(c, 'clientTurnId');
+      const notFound = () =>
+        c.json({ success: false, error: 'Queued message not found' }, 404);
+      if (
+        !deps.threadInbox ||
+        conversationId.length > 512 ||
+        clientTurnId.length > 200
+      )
+        return notFound();
+      const held = deps.threadInbox.entry(conversationId, clientTurnId);
+      if (
+        !held ||
+        held.userId !== resolveDispatchActor(deps, c).userId ||
+        !(await orchestrationService.readSession(
+          conversationId,
+          readAuthorityFor(c),
+        ))
+      )
+        return notFound();
+      const result = deps.threadInbox.cancel(conversationId, clientTurnId);
+      if (result.kind === 'missing') return notFound();
+      if (result.kind === 'in-flight')
+        return c.json(
+          {
+            success: false,
+            error:
+              'Station is sending this message now; it cannot be withdrawn.',
+            code: 'inbox_entry_sending',
+          },
+          409,
+        );
+      if (result.kind === 'placed')
+        return c.json(
+          {
+            success: false,
+            error: 'This message was already sent.',
+            code: 'inbox_entry_sent',
+          },
+          409,
+        );
+      const { userId: _sender, ...entry } =
+        deps.threadInbox.entry(conversationId, clientTurnId) ?? held;
+      return c.json({ success: true, data: { entry } });
     },
   );
 

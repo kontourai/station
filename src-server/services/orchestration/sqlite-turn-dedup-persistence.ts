@@ -89,6 +89,7 @@ export const STATION_TURN_DEDUP_KERNEL_TABLES: SqliteKernelTables = {
   },
   requestKeys: 'unused',
   turnBoundary: 'unused',
+  inbox: 'unused',
 };
 
 const LONE_SURROGATE =

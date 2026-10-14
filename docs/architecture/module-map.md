@@ -1351,6 +1351,38 @@ use recorded start and steer effects, not a real engine; the integration test
 runs its interrupt-outcome cases through the real orchestration service with a
 test adapter.
 
+**Held follow-ups (#3568).**
+[ThreadInboxDelivery](../../src-server/services/orchestration/thread-inbox.ts)
+holds a person's follow-up for a busy conversation, so it is sent even if the
+app that wrote it closes. `POST /chat` with `whenBusy: 'queue'` submits it when
+the conversation's current Session has a turn open (the persisted fold or the
+live coordinator) or earlier follow-ups are still waiting, and also when the
+dispatch is refused `provider_turn_in_progress` or `provider_session_starting`.
+Only a plain continuation the caller may read qualifies. The entry is a
+[`@kontourai/monument`](../../packages/monument/CONTEXT.md) inbox entry on
+`EventStore`'s connection: idempotent by `clientTurnId` with a digest of the
+sender and input, FIFO, one `placing` at a time. Placement runs after a fold
+event on the conversation, after each submit, at startup, and on four bounded
+re-checks. It is not this module: a follow-up is a start, never a steer. It
+records the pinned Session before the effect, then continues the conversation
+as the recorded sender through the same `continueExecutionTargetMessage`
+continuation delegated results use, with the entry's key as `clientTurnId`.
+After a crash a `placing` entry is re-driven under that key into its pinned
+Session, so the turn claim decides: resolved is `placed`, a dead owner that never
+began is sent once, and begun or unknown is `unconfirmed`. An `unconfirmed`
+entry is never sent again and holds the ones behind it until its sender
+dismisses it. A Session the conversation left since the pin is also
+`unconfirmed`. The delivery lookup answers `queued` for a waiting entry.
+`GET`/`DELETE /conversations/:id/inbox` list it and withdraw it.
+`deleteThread` forgets a conversation's entries. Hosted Stations have no inbox.
+Steer and display-only entries, a stale-head check and the UI's switch from
+its own per-tab queue are not built yet. The
+[service test](../../src-server/services/orchestration/__tests__/thread-inbox.test.ts)
+restarts a real `OrchestrationService` and `EventStore` around a counting
+adapter. The
+[route test](../../src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts)
+runs `/chat` through the production foreground execution with a scripted engine.
+
 ## SessionDigest
 
 An agent deciding whether a peer Session is worth a full transcript read needs

@@ -1,5 +1,7 @@
 import type { OwnerIdentity, OwnerLivenessVerdict } from './owner.js';
 import type {
+  InboxEntryKind,
+  InboxEntryRecord,
   RequestKeyId,
   TurnBoundaryPurpose,
   TurnBoundaryRecord,
@@ -271,6 +273,137 @@ export type RequestKeyReleaseResult =
   | { readonly kind: 'missing' };
 
 // ---------------------------------------------------------------------------
+// Inbox (station#3568)
+// ---------------------------------------------------------------------------
+
+/**
+ * Accept one entry into an inbox, durable once this commits. Idempotent by
+ * `key`: the same key with the same digest answers the entry already stored,
+ * a different digest is a conflict and writes nothing.
+ */
+export interface InboxSubmitCommand {
+  readonly type: 'inbox.submit';
+  readonly inboxId: string;
+  readonly key: string;
+  readonly kind: InboxEntryKind;
+  readonly digest: string;
+  readonly payload: string;
+  readonly now: number;
+}
+export type InboxSubmitResult =
+  /**
+   * Stored at the inbox's tail. `requeued` when the key's earlier entry had
+   * been refused or cancelled, so nothing of it ran: it is queued again.
+   */
+  | {
+      readonly kind: 'accepted';
+      readonly entry: InboxEntryRecord;
+      readonly requeued: boolean;
+    }
+  /** The same submission again: the entry as it stands now. */
+  | { readonly kind: 'existing'; readonly entry: InboxEntryRecord }
+  /** The key names a different input. Nothing was written. */
+  | { readonly kind: 'conflict' }
+  /** The inbox holds its limit of unsettled entries. Nothing was written. */
+  | { readonly kind: 'capacity'; readonly limit: number };
+
+/**
+ * Take the inbox's head for placement, recording `placement` before the
+ * effect. A head that kept the placement of an earlier attempt keeps it: the
+ * host must use the entry's, not its own.
+ */
+export interface InboxClaimNextCommand {
+  readonly type: 'inbox.claimNext';
+  readonly inboxId: string;
+  readonly placement: string;
+  readonly now: number;
+}
+export type InboxClaimNextResult =
+  | { readonly kind: 'claimed'; readonly entry: InboxEntryRecord }
+  /** The head is already being placed (or was, before a crash). */
+  | { readonly kind: 'in-flight'; readonly entry: InboxEntryRecord }
+  /** The head is unconfirmed; nothing behind it is placed until it is cancelled. */
+  | { readonly kind: 'blocked'; readonly entry: InboxEntryRecord }
+  | { readonly kind: 'empty' };
+
+/** Settle a `placing` entry with what its effect did. */
+export interface InboxSettleCommand {
+  readonly type: 'inbox.settle';
+  readonly inboxId: string;
+  readonly key: string;
+  readonly to: 'placed' | 'unconfirmed' | 'refused';
+  readonly outcome: string | null;
+  readonly now: number;
+}
+export type InboxWriteResult =
+  | { readonly kind: 'applied'; readonly entry: InboxEntryRecord }
+  /** The entry is missing or not `placing`. Nothing was written. */
+  | { readonly kind: 'stale' };
+
+/**
+ * Return a `placing` entry to the queue: its effect was refused before it
+ * ran, for a reason that passes (the target was busy). `keepPlacement` keeps
+ * the pinned target, for a refusal that cannot rule out an earlier attempt's
+ * effect landing on it.
+ */
+export interface InboxReleaseCommand {
+  readonly type: 'inbox.release';
+  readonly inboxId: string;
+  readonly key: string;
+  readonly keepPlacement: boolean;
+  readonly now: number;
+}
+
+/**
+ * Withdraw a queued entry, or dismiss an unconfirmed or refused one. A
+ * `placing` entry cannot be withdrawn: its effect may be under way.
+ */
+export interface InboxCancelCommand {
+  readonly type: 'inbox.cancel';
+  readonly inboxId: string;
+  readonly key: string;
+  readonly now: number;
+}
+export type InboxCancelResult =
+  | { readonly kind: 'cancelled'; readonly entry: InboxEntryRecord }
+  | { readonly kind: 'in-flight'; readonly entry: InboxEntryRecord }
+  | { readonly kind: 'placed'; readonly entry: InboxEntryRecord }
+  | { readonly kind: 'missing' };
+
+export interface InboxReadCommand {
+  readonly type: 'inbox.read';
+  readonly inboxId: string;
+  readonly key: string;
+}
+export type InboxReadResult =
+  | { readonly kind: 'found'; readonly entry: InboxEntryRecord }
+  | { readonly kind: 'absent' };
+
+/** Every retained entry of one inbox, in placement order. */
+export interface InboxListCommand {
+  readonly type: 'inbox.list';
+  readonly inboxId: string;
+}
+/** Every `queued`, `placing` or `unconfirmed` entry of every inbox (recovery). */
+export interface InboxListOpenCommand {
+  readonly type: 'inbox.listOpen';
+}
+/** Forget every entry of one inbox, settled or not (its conversation is gone). */
+export interface InboxForgetCommand {
+  readonly type: 'inbox.forget';
+  readonly inboxId: string;
+}
+export type InboxForgetResult = {
+  readonly kind: 'applied';
+  readonly removed: number;
+};
+
+export type InboxListResult = {
+  readonly kind: 'entries';
+  readonly entries: readonly InboxEntryRecord[];
+};
+
+// ---------------------------------------------------------------------------
 
 export interface KernelResults {
   'turnDedup.claim': TurnDedupClaimResult;
@@ -292,6 +425,15 @@ export interface KernelResults {
   'requestKeys.recordDecision': RequestKeyWriteResult;
   'requestKeys.complete': RequestKeyWriteResult;
   'requestKeys.release': RequestKeyReleaseResult;
+  'inbox.submit': InboxSubmitResult;
+  'inbox.claimNext': InboxClaimNextResult;
+  'inbox.settle': InboxWriteResult;
+  'inbox.release': InboxWriteResult;
+  'inbox.cancel': InboxCancelResult;
+  'inbox.read': InboxReadResult;
+  'inbox.list': InboxListResult;
+  'inbox.listOpen': InboxListResult;
+  'inbox.forget': InboxForgetResult;
 }
 
 export type KernelCommand =
@@ -313,7 +455,16 @@ export type KernelCommand =
   | RequestKeyClaimCommand
   | RequestKeyRecordDecisionCommand
   | RequestKeyCompleteCommand
-  | RequestKeyReleaseCommand;
+  | RequestKeyReleaseCommand
+  | InboxSubmitCommand
+  | InboxClaimNextCommand
+  | InboxSettleCommand
+  | InboxReleaseCommand
+  | InboxCancelCommand
+  | InboxReadCommand
+  | InboxListCommand
+  | InboxListOpenCommand
+  | InboxForgetCommand;
 
 /** A participant refused the command before any write. Nothing changed. */
 export interface ParticipantRefusal {

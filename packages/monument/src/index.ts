@@ -11,6 +11,15 @@
  */
 export type * from './commands.js';
 export {
+  decideInboxCancel,
+  decideInboxClaimNext,
+  decideInboxRelease,
+  decideInboxSettle,
+  decideInboxSubmit,
+  inboxEntryIsUnsettled,
+  inboxHead,
+} from './decisions/inbox.js';
+export {
   decideRequestKeyClaim,
   type RequestKeyClaimDecision,
   type RequestKeyClaimInputs,

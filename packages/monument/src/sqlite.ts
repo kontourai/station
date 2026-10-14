@@ -13,6 +13,8 @@ import {
   type KernelTransaction,
 } from './port.js';
 import type {
+  InboxEntryRecord,
+  InboxEntryState,
   RequestKeyRecord,
   TurnBoundaryPurpose,
   TurnBoundaryRecord,
@@ -88,6 +90,7 @@ export interface SqliteKernelTables {
   readonly turnDedup?: SqliteTurnDedupTables | 'unused';
   readonly requestKeys?: SqliteRequestKeyTable | 'unused';
   readonly turnBoundary?: 'unused';
+  readonly inbox?: 'unused';
 }
 
 export interface SqliteKernelStorageOptions {
@@ -224,6 +227,27 @@ CREATE INDEX IF NOT EXISTS monument_request_keys_caller
   ON monument_request_keys (caller_session_id, created_at);
 `;
 
+const INBOX_SCHEMA = `
+CREATE TABLE IF NOT EXISTS monument_inbox_entries (
+  inbox_id TEXT NOT NULL,
+  entry_key TEXT NOT NULL,
+  sequence INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  digest TEXT NOT NULL,
+  payload TEXT NOT NULL,
+  state TEXT NOT NULL,
+  placement TEXT,
+  outcome TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (inbox_id, entry_key)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS monument_inbox_entries_order
+  ON monument_inbox_entries (inbox_id, sequence);
+CREATE INDEX IF NOT EXISTS monument_inbox_entries_state
+  ON monument_inbox_entries (state);
+`;
+
 /** The tables an area uses: the kernel's own, or the host's bound ones. */
 interface ResolvedTables {
   readonly turnDedup:
@@ -233,6 +257,7 @@ interface ResolvedTables {
     | (SqliteRequestKeyTable & { readonly owned: boolean })
     | 'unused';
   readonly turnBoundary: 'owned' | 'unused';
+  readonly inbox: 'owned' | 'unused';
 }
 
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -293,6 +318,7 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
               owned: true,
             },
     turnBoundary: tables.turnBoundary ?? 'owned',
+    inbox: tables.inbox ?? 'owned',
   };
 }
 
@@ -462,6 +488,7 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
       tables.requestKeys !== 'unused' && tables.requestKeys.owned
         ? REQUEST_KEYS_SCHEMA
         : '',
+      tables.inbox === 'owned' ? INBOX_SCHEMA : '',
     ].join('');
     // With nothing of its own to version, the kernel leaves no table behind.
     if (!owned) return;
@@ -606,6 +633,40 @@ function decodeRequestKey(row: Record<string, unknown>): RequestKeyRecord {
     createdAt: Number(row.created_at),
   };
 }
+
+const INBOX_STATES: ReadonlySet<string> = new Set<InboxEntryState>([
+  'queued',
+  'placing',
+  'placed',
+  'unconfirmed',
+  'refused',
+  'cancelled',
+]);
+
+function decodeInboxEntry(row: Record<string, unknown>): InboxEntryRecord {
+  const state = String(row.state);
+  if (!INBOX_STATES.has(state))
+    throw new Error(`Invalid monument inbox state: ${state}`);
+  const kind = String(row.kind);
+  if (kind !== 'follow-up')
+    throw new Error(`Invalid monument inbox kind: ${kind}`);
+  return {
+    inboxId: String(row.inbox_id),
+    key: String(row.entry_key),
+    sequence: Number(row.sequence),
+    kind,
+    digest: String(row.digest),
+    payload: String(row.payload),
+    state: state as InboxEntryState,
+    placement: typeof row.placement === 'string' ? row.placement : null,
+    outcome: typeof row.outcome === 'string' ? row.outcome : null,
+    createdAt: Number(row.created_at),
+    updatedAt: Number(row.updated_at),
+  };
+}
+
+const INBOX_COLUMNS =
+  'inbox_id, entry_key, sequence, kind, digest, payload, state, placement, outcome, created_at, updated_at';
 
 const BOUNDARY_COLUMNS =
   'boundary_id, thread_id, state, purpose, provider_turn_id, owner_json, created_at, updated_at';
@@ -844,6 +905,61 @@ function sqliteTransaction(
         );
       },
     },
+    inbox: {
+      get: (inboxId, key) => {
+        const row = one(
+          `SELECT ${INBOX_COLUMNS} FROM monument_inbox_entries WHERE inbox_id = ? AND entry_key = ?`,
+          inboxId,
+          key,
+        );
+        return row ? decodeInboxEntry(row) : undefined;
+      },
+      listInbox: (inboxId) =>
+        all(
+          `SELECT ${INBOX_COLUMNS} FROM monument_inbox_entries WHERE inbox_id = ? ORDER BY sequence ASC`,
+          inboxId,
+        ).map(decodeInboxEntry),
+      listOpen: () =>
+        all(
+          `SELECT ${INBOX_COLUMNS} FROM monument_inbox_entries
+            WHERE state IN ('queued', 'placing', 'unconfirmed')
+            ORDER BY inbox_id ASC, sequence ASC`,
+        ).map(decodeInboxEntry),
+      put: (record) => {
+        run(
+          `INSERT INTO monument_inbox_entries (${INBOX_COLUMNS})
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(inbox_id, entry_key) DO UPDATE SET
+             sequence = excluded.sequence, kind = excluded.kind,
+             digest = excluded.digest, payload = excluded.payload,
+             state = excluded.state, placement = excluded.placement,
+             outcome = excluded.outcome, created_at = excluded.created_at,
+             updated_at = excluded.updated_at`,
+          record.inboxId,
+          record.key,
+          record.sequence,
+          record.kind,
+          record.digest,
+          record.payload,
+          record.state,
+          record.placement,
+          record.outcome,
+          record.createdAt,
+          record.updatedAt,
+        );
+      },
+      deleteSettledBefore: (inboxId, cutoff) => {
+        run(
+          `DELETE FROM monument_inbox_entries
+            WHERE inbox_id = ? AND updated_at < ?
+              AND state IN ('placed', 'refused', 'cancelled')`,
+          inboxId,
+          cutoff,
+        );
+      },
+      deleteInbox: (inboxId) =>
+        run('DELETE FROM monument_inbox_entries WHERE inbox_id = ?', inboxId),
+    },
   };
 }
 
@@ -891,7 +1007,8 @@ export function openSqliteKernelStorage(
     const area = command.type.slice(0, command.type.indexOf('.')) as
       | 'turnDedup'
       | 'turnBoundary'
-      | 'requestKeys';
+      | 'requestKeys'
+      | 'inbox';
     if (tables[area] === 'unused')
       throw new SqliteKernelConfigurationError(
         `${command.type}: this storage keeps no ${area} tables.`,
