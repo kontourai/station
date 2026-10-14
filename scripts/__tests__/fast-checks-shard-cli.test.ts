@@ -631,7 +631,8 @@ describe('fast-checks shard execution verdicts', () => {
       },
     );
     const retained = failed.executions[0].retainedReports.find(
-      (artifact) => !artifact.path.endsWith('.errors.json'),
+      (artifact: { path: string; sha256: string }) =>
+        !artifact.path.endsWith('.errors.json'),
     );
     expect(retained).toBeDefined();
     const kept = readFileSync(resolve(root, retained!.path), 'utf8');
