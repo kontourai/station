@@ -1141,7 +1141,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       expect(region.querySelector('[role="status"]')).toBeNull();
   });
 
-  test('an empty resolving reload keeps one status region that outlives the skeleton', async () => {
+  test('an empty resolving reload is one status region, the filler itself', async () => {
     renderDock({
       orchestrationSession: buildOrchestrationSession({
         status: 'idle',
@@ -1152,15 +1152,12 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
         conversationOpenPending: true,
       }),
     });
-    await screen.findByLabelText('Loading chat');
-    const filler = document.querySelector('.chat-messages--empty')!;
-    const regions = [...filler.querySelectorAll('[role="status"]')];
-    // The filler's own region already exists, empty, beside the skeleton's.
-    expect(regions.some((region) => !region.getAttribute('aria-label'))).toBe(
-      true,
-    );
-    for (const region of regions)
-      expect(region.querySelector('[role="status"]')).toBeNull();
+    const notice = await screen.findByLabelText('Loading chat');
+    // The persistent filler names the wait (it later announces the empty
+    // state or notice); the skeleton inside is not a second region.
+    expect(notice.classList.contains('chat-messages--empty')).toBe(true);
+    expect(notice.getAttribute('role')).toBe('status');
+    expect(notice.querySelector('[role="status"]')).toBeNull();
   });
 
   // The three simultaneous claims E3 recorded, each asserted absent by the
