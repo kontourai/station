@@ -721,6 +721,13 @@ export function useSendMessage(
         pendingClientTurnId: resolvedTurnId,
         attachments: [],
         attachmentStages: [],
+        // A new attempt for this key: a lookup answer about an earlier one
+        // (a `received` whose refusal was lost in transit, before the
+        // lookup-driven resend) describes nothing in flight now.
+        deliveryChecks: withoutDeliveryCheck(
+          activeChatsStore.getSnapshot()[sessionId]?.deliveryChecks,
+          resolvedTurnId,
+        ),
       });
 
       // Durable BEFORE the request: from here until Station answers, the

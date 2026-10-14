@@ -211,6 +211,15 @@ export interface OutboundDispatchModule {
   ): Promise<void>;
   discard(clientTurnId: string): Promise<void>;
   /**
+   * The user's explicit "I checked, discard it" for a row that may have
+   * reached the agent (`may-have-started`). Never automatic: `discard`
+   * refuses such a row, and nothing else removes it. The row goes and its
+   * key is retired in one write, so no window can send it again. Refuses
+   * every other status (a send still in flight, an accepted one, or a row
+   * whose dispatch state this renderer could not record).
+   */
+  dismissUnconfirmed(clientTurnId: string): Promise<void>;
+  /**
    * Records a live send `invoking` before its request is made, so its text is
    * durable while it is in flight. Rejects when storage is unavailable; the
    * caller then sends without the durability (and keeps the draft).
@@ -1555,6 +1564,37 @@ async function discard(clientTurnId: string): Promise<void> {
   });
 }
 
+async function dismissUnconfirmed(clientTurnId: string): Promise<void> {
+  await mutateState((state) => {
+    const entry = state.turns.find(
+      (candidate) => candidate.clientTurnId === clientTurnId,
+    );
+    if (!entry) return { state, result: undefined, changed: false };
+    if (
+      entry.status !== 'may-have-started' ||
+      unavailableClaims.has(clientTurnId)
+    ) {
+      throw new Error(
+        'Only a message that may have reached the agent can be dismissed this way.',
+      );
+    }
+    return {
+      state: withRetired(
+        {
+          ...state,
+          turns: state.turns.filter(
+            (candidate) => candidate.clientTurnId !== clientTurnId,
+          ),
+        },
+        clientTurnId,
+        'discarded',
+      ),
+      result: undefined,
+      changed: true,
+    };
+  });
+}
+
 async function edit(
   clientTurnId: string,
   content: string,
@@ -2390,6 +2430,7 @@ export const outboundDispatch: OutboundDispatchModule = {
   flush,
   completeAcceptedTurn,
   discard,
+  dismissUnconfirmed,
   beginLive,
   reconcile,
   syncHeld,

@@ -138,7 +138,11 @@ export function OutboundQueuedMessages({
           const showingMergePreview =
             mergePreviewId === turn.clientTurnId && canMergeWithNext;
           return (
-            <div className="queued-message" key={turn.clientTurnId}>
+            <div
+              className="queued-message"
+              data-status={turn.status}
+              key={turn.clientTurnId}
+            >
               <span className="queued-message__order">{index + 1}</span>
               {editingId === turn.clientTurnId ? (
                 <input
@@ -206,7 +210,17 @@ export function OutboundQueuedMessages({
                     />
                   )}
                 </span>
-              ) : turn.status === 'failed' ? (
+              ) : null}
+              {turn.status === 'may-have-started' ? (
+                <DiscardUnconfirmed
+                  sessionId={sessionId}
+                  clientTurnId={turn.clientTurnId}
+                  onDiscarded={() => onDiscarded?.(turns.length - 1)}
+                  onError={onError}
+                />
+              ) : null}
+              {turn.status === 'may-have-started' ||
+              turn.status === 'invoking' ? null : turn.status === 'failed' ? (
                 <span className="queued-messages__label">
                   {workspaceRefused ? (
                     <>
@@ -443,6 +457,67 @@ function RecheckDeliveryButton({
     >
       Check
     </button>
+  );
+}
+
+/**
+ * The user's explicit way out of a message that may have reached the agent
+ * (#3596): never automatic, and only after the risk is stated. A row still
+ * `invoking` has no such action: its send may still be under way.
+ */
+function DiscardUnconfirmed({
+  sessionId,
+  clientTurnId,
+  onDiscarded,
+  onError,
+}: {
+  sessionId: string;
+  clientTurnId: string;
+  onDiscarded: () => void;
+  onError: (message: string) => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  if (!confirming)
+    return (
+      <button
+        type="button"
+        aria-expanded={false}
+        onClick={() => setConfirming(true)}
+      >
+        Discard…
+      </button>
+    );
+  return (
+    <fieldset
+      className="queued-message__merge-preview queued-message__confirm"
+      aria-label="Discard this message?"
+    >
+      <span>
+        It may already have reached the agent. Discarding removes it from this
+        device only: it does not stop anything the agent started, and it is
+        never sent again.
+      </span>
+      <button type="button" onClick={() => setConfirming(false)}>
+        Keep it
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          void import('../../lib/messageDeliveryActions')
+            .then(({ discardMessage }) =>
+              discardMessage(sessionId, clientTurnId, 'unconfirmed'),
+            )
+            .then(onDiscarded)
+            .catch((error: unknown) =>
+              onError(
+                `Could not discard this message: ${error instanceof Error ? error.message : String(error)}`,
+              ),
+            )
+        }
+      >
+        I checked, discard it
+      </button>
+    </fieldset>
   );
 }
 

@@ -4,6 +4,7 @@ import type { AgentData } from '../../contexts/AgentsContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { isReplayThread } from '../../hooks/orchestration/replay/replay-registry';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { useMessageDeliveryState } from '../../hooks/useMessageDeliveryState';
 import type { ChatMessage } from '../../types';
 import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
@@ -21,6 +22,7 @@ import { type ForkTurnSource, forkTurnSource } from './fork-turn-source';
 import { MessageDetails } from './MessageDetails';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { MessageContent } from './message-bubble/MessageContent';
+import { MessageDeliveryNote } from './message-bubble/MessageDeliveryNote';
 import { MessageRating } from './message-bubble/MessageRating';
 import {
   resolveTurnEngine,
@@ -180,6 +182,16 @@ function MessageBubbleComponent({
   const { developerToolsEnabled } = useDeviceSettings();
   const isMobile = useIsMobile();
   const textContent = typeof msg.content === 'string' ? msg.content : '';
+  // The user's own message until the agent has it (`messageDeliveryState`).
+  // Hoisted above the early returns below: hooks run unconditionally.
+  const deliveryState = useMessageDeliveryState(activeSession.id, msg);
+  const undelivered =
+    msg.role === 'user' &&
+    msg.clientId !== undefined &&
+    deliveryState !== undefined &&
+    deliveryState !== 'delivered'
+      ? deliveryState
+      : undefined;
 
   // Hoisted above the flowPart early-return (hooks can't be called
   // conditionally) and stabilized so the memoized MessageContent below
@@ -860,7 +872,12 @@ function MessageBubbleComponent({
               : undefined
             : '70%',
         }}
-        className={`message ${msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}`}
+        className={`message ${msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}${
+          // Outlined, not filled, until the agent has the message.
+          undelivered
+            ? ` message--undelivered message--delivery-${undelivered}`
+            : ''
+        }`}
       >
         {!isMobile && metadataControls}
         {!isMobile && metadataIdentity}
@@ -893,6 +910,14 @@ function MessageBubbleComponent({
             Sent by stopping the step that was running
           </div>
         )}
+        {undelivered && msg.clientId ? (
+          <MessageDeliveryNote
+            chatKey={activeSession.id}
+            clientTurnId={msg.clientId}
+            state={undelivered}
+            text={textContent}
+          />
+        ) : null}
 
         {!isMobile && metadataAfter}
         {msg.role === 'assistant' && isLastMessage && (

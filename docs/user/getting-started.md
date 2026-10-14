@@ -441,6 +441,17 @@ with the same identity, and one Station may have started is kept and marked,
 never sent twice. A message with attachments or a visual skill keeps its draft
 until Station answers instead.
 
+Until the agent has a message, its bubble is outlined rather than filled, with a
+short label: **Sending…**; **Received**, which adds **safe to close** when
+Station keeps running without the app, or **keep the app open** when the app's
+own Station stops with it; **Saved on this device · sends when connected**; **Not
+sent**, with **Retry** (the same message again, never a second copy), **Edit**
+(the text goes back to the composer) and **Discard**; or **May have reached the
+agent**, with **Check**, which asks Station again and never resends. A message
+that may have reached the agent is never discarded automatically: **Discard…**
+states the risk and removes it only after **I checked, discard it**. Messages
+written after it still send.
+
 Quiet turns show elapsed silence without guessing that an engine retried. Retry
 status appears only when the engine reports it. The Drafts icon saves and restores
 unsent composer content; the trash icon clears the current message. Hold or focus

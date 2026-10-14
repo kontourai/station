@@ -14,6 +14,7 @@ const reorderOutboundTurnMock = vi.fn();
 const mergeOutboundTurnsMock = vi.fn();
 const unmergeOutboundTurnMock = vi.fn();
 const sendHeldMock = vi.fn();
+const dismissUnconfirmedMock = vi.fn();
 
 vi.mock('../lib/outboundQueue', () => ({
   isWorkspaceRefusedTurn: (turn: { status: string; lastError?: string }) =>
@@ -26,6 +27,7 @@ vi.mock('../lib/outboundQueue', () => ({
     merge: (...args: unknown[]) => mergeOutboundTurnsMock(...args),
     unmerge: (...args: unknown[]) => unmergeOutboundTurnMock(...args),
     sendHeld: (...args: unknown[]) => sendHeldMock(...args),
+    dismissUnconfirmed: (...args: unknown[]) => dismissUnconfirmedMock(...args),
   },
 }));
 
@@ -344,6 +346,59 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Edit message' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Delete message' })).toBeNull();
+  });
+
+  it('#3596: an unconfirmed message can be discarded only after the risk is stated and the user confirms', async () => {
+    dismissUnconfirmedMock.mockResolvedValue(undefined);
+    const onDiscarded = vi.fn();
+    render(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={[
+          {
+            clientTurnId: 'turn-1',
+            content: 'may have gone',
+            status: 'may-have-started',
+          },
+          { clientTurnId: 'turn-2', content: 'after it', status: 'pending' },
+        ]}
+        onError={vi.fn()}
+        onDiscarded={onDiscarded}
+        onRetry={vi.fn()}
+        onStartNewChat={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Discard…' }));
+    const confirm = screen.getByRole('group', {
+      name: 'Discard this message?',
+    });
+    expect(confirm.textContent).toContain(
+      'It may already have reached the agent.',
+    );
+    expect(dismissUnconfirmedMock).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'I checked, discard it' }),
+    );
+    await waitFor(() =>
+      expect(dismissUnconfirmedMock).toHaveBeenCalledWith('turn-1'),
+    );
+    expect(discardOutboundTurnMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(onDiscarded).toHaveBeenCalledWith(1));
+  });
+
+  it('#3596: a row still invoking offers no discard; its send may be under way', () => {
+    render(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={[
+          { clientTurnId: 'turn-1', content: 'in flight', status: 'invoking' },
+        ]}
+        onError={vi.fn()}
+        onRetry={vi.fn()}
+        onStartNewChat={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Discard…' })).toBeNull();
   });
 
   it('offers workspace recovery without a Retry for a permanent refusal', () => {

@@ -756,4 +756,95 @@ describe('useSendMessage: durable before the request', () => {
     });
     expect(row?.deliveryCheck).toBeUndefined();
   });
+
+  it('a resend of a key drops the earlier "received": a refusal lost in transit does not label the lookup-driven resend', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let lose!: (error: unknown) => void;
+    sendExecutionMessageMock.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          lose = reject;
+        }),
+    );
+    getTurnDeliveryMock.mockImplementation(
+      async (_apiBase, conversationId, clientTurnId) => ({
+        outcome: 'received',
+        conversationId,
+        clientTurnId,
+      }),
+    );
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    let first!: Promise<unknown>;
+    await act(async () => {
+      first = result.current(chat, 'codex', undefined, 'refusal lost');
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    const body = sendExecutionMessageMock.mock.calls[0]?.[1] as {
+      clientTurnId: string;
+    };
+    // Station's refusal never arrives: the request just fails.
+    await act(async () => {
+      lose(new TypeError('Failed to fetch'));
+      await first;
+    });
+    const bubble = () =>
+      activeChatsStore
+        .getSnapshot()
+        [chat]!.messages!.find(
+          (message) =>
+            message.role === 'user' && message.clientId === body.clientTurnId,
+        )!;
+    // The earlier attempt's answer is still on record.
+    expect(
+      activeChatsStore.getSnapshot()[chat]?.deliveryChecks?.[body.clientTurnId],
+    ).toBe('received');
+    // Station says it never got it: the outbox resends it under the same key.
+    await outboundDispatch.reconcile(
+      async (turn) => ({
+        outcome: 'not-received',
+        conversationId: turn.conversationId!,
+        clientTurnId: turn.clientTurnId,
+      }),
+      { station: { apiBase: 'http://api.test' } },
+    );
+    let answer!: (value: unknown) => void;
+    sendExecutionMessageMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    let resend!: Promise<unknown>;
+    await act(async () => {
+      resend = result.current(
+        chat,
+        'codex',
+        undefined,
+        'refusal lost',
+        undefined,
+        undefined,
+        body.clientTurnId,
+        {
+          skipInMemoryQueueOnBusy: true,
+          dispatch: { indeterminate: async () => 'applied' as const },
+        },
+      );
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2);
+    // The resend is on its way, not something Station already has.
+    expect(
+      activeChatsStore.getSnapshot()[chat]?.deliveryChecks?.[body.clientTurnId],
+    ).toBeUndefined();
+    expect(
+      messageDeliveryStateFor(activeChatsStore.getSnapshot()[chat], bubble()),
+    ).toBe('sending');
+    await act(async () => {
+      answer(receipt());
+      await resend;
+    });
+    expect(
+      messageDeliveryStateFor(activeChatsStore.getSnapshot()[chat], bubble()),
+    ).toBe('delivered');
+  });
 });

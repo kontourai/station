@@ -1,9 +1,5 @@
 import type { TurnDeliveryOutcome } from '@kontourai/station-contracts/orchestration';
-import { useCallback } from 'react';
-import {
-  useActiveChatActions,
-  useActiveChatSelector,
-} from '../contexts/ActiveChatsContext';
+import { useCallback, useSyncExternalStore } from 'react';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import {
   type MessageDeliveryState,
@@ -13,16 +9,27 @@ import {
 /**
  * One transcript message's delivery state, kept current with its chat. The
  * render seam for a bubble: `useMessageDeliveryState(chatKey, message)`.
+ *
+ * Reads the chat store directly rather than through `ActiveChatsProvider`:
+ * a bubble renders on surfaces (and in tests) without that provider, and a
+ * chat the store does not hold simply has no delivery facts. The selected
+ * value is a string, so a store update that leaves it unchanged re-renders
+ * nothing.
  */
 export function useMessageDeliveryState(
   chatKey: string,
   message: { role: string; clientId?: string; turnId?: string },
 ): MessageDeliveryState | undefined {
-  return useActiveChatSelector(
-    chatKey,
-    (chat) => messageDeliveryStateFor(chat, message),
-    Object.is,
-  );
+  const { role, clientId, turnId } = message;
+  const select = () =>
+    role === 'user'
+      ? messageDeliveryStateFor(activeChatsStore.getSnapshot()[chatKey], {
+          role,
+          clientId,
+          turnId,
+        })
+      : undefined;
+  return useSyncExternalStore(activeChatsStore.subscribe, select, select);
 }
 
 /**
@@ -34,14 +41,13 @@ export function useMessageDeliveryState(
 export function useRecheckMessageDelivery(
   chatKey: string,
 ): (clientTurnId: string) => Promise<TurnDeliveryOutcome | undefined> {
-  const { updateChat } = useActiveChatActions();
   return useCallback(
     async (clientTurnId: string) => {
       const { recheckOutboundTurn } = await import('../lib/deliveryLookup');
       const outcome = await recheckOutboundTurn(clientTurnId);
       if (outcome) {
         const chat = activeChatsStore.getSnapshot()[chatKey];
-        updateChat(chatKey, {
+        activeChatsStore.updateChat(chatKey, {
           deliveryChecks: {
             ...(chat?.deliveryChecks ?? {}),
             [clientTurnId]: outcome,
@@ -50,6 +56,6 @@ export function useRecheckMessageDelivery(
       }
       return outcome;
     },
-    [chatKey, updateChat],
+    [chatKey],
   );
 }

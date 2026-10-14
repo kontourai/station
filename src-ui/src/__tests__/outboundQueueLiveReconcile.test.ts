@@ -379,6 +379,71 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     ).toBe(false);
   });
 
+  it('#3596: an unconfirmed row is never discarded by the ordinary Discard; only an explicit dismissal removes it', async () => {
+    const queue = await freshRenderer();
+    const live = await queue.outboundDispatch.beginLive({
+      ...intent,
+      clientTurnId: 'unconfirmed-2',
+    });
+    await live.indeterminate('Station could not confirm the start.');
+    await expect(
+      queue.outboundDispatch.discard('unconfirmed-2'),
+    ).rejects.toThrow('may have started');
+    expect(
+      (await queue.outboundDispatch.snapshot()).map((row) => row.status),
+    ).toEqual(['may-have-started']);
+
+    await queue.outboundDispatch.dismissUnconfirmed('unconfirmed-2');
+
+    expect(await queue.outboundDispatch.snapshot()).toEqual([]);
+    // Retired with it: no window can send it again, or queue it again.
+    await expect(
+      queue.outboundDispatch.beginLive({
+        ...intent,
+        clientTurnId: 'unconfirmed-2',
+      }),
+    ).rejects.toMatchObject({
+      name: 'OutboundKeyRetiredError',
+      reason: 'discarded',
+    });
+    await expect(
+      queue.outboundDispatch.enqueue({
+        ...intent,
+        clientTurnId: 'unconfirmed-2',
+      }),
+    ).rejects.toMatchObject({ name: 'OutboundKeyRetiredError' });
+  });
+
+  it('#3596: the explicit dismissal refuses any row that is not unconfirmed, and changes nothing', async () => {
+    const queue = await freshRenderer();
+    await queue.outboundDispatch.beginLive({
+      ...intent,
+      clientTurnId: 'still-sending',
+    });
+    await queue.outboundDispatch.enqueue({
+      ...intent,
+      clientTurnId: 'waiting',
+    });
+    for (const key of ['still-sending', 'waiting']) {
+      await expect(
+        queue.outboundDispatch.dismissUnconfirmed(key),
+      ).rejects.toThrow('Only a message that may have reached the agent');
+    }
+    expect(
+      (await queue.outboundDispatch.snapshot()).map((row) => [
+        row.clientTurnId,
+        row.status,
+      ]),
+    ).toEqual([
+      ['still-sending', 'invoking'],
+      ['waiting', 'pending'],
+    ]);
+    // A key with no row is nothing to dismiss.
+    await expect(
+      queue.outboundDispatch.dismissUnconfirmed('no-such-key'),
+    ).resolves.toBeUndefined();
+  });
+
   it('after a reload, the restored queue takes its messages back: an edit is what gets sent, a delete is never sent', async () => {
     const before = await freshRenderer();
     await before.outboundDispatch.syncHeld([
