@@ -3,7 +3,7 @@ import { Empty } from '../state';
 import './people.css';
 
 /** At this many people the list offers a filter. */
-export const PEOPLE_FILTER_THRESHOLD = 6;
+const PEOPLE_FILTER_THRESHOLD = 6;
 
 /** The list's filter: shown at `PEOPLE_FILTER_THRESHOLD` people or more. */
 export interface PersonListFilter<T> {

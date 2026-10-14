@@ -52,7 +52,7 @@ import './PeopleSection.css';
  */
 
 /** A refused group change, said as what to do next. */
-export function groupChangeMessage(error: unknown): string {
+function groupChangeMessage(error: unknown): string {
   if (isOperatorCredentialRequired(error))
     return OPERATOR_CREDENTIAL_REQUIRED_MESSAGE;
   if (error instanceof StationAccessError) {
