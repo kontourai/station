@@ -27,6 +27,7 @@ import {
   parsePairingScope,
   STATION_PROOF_PROTOCOL_VERSION,
 } from '@kontourai/station-contracts/environment-security';
+import { authenticatedFetch } from '@kontourai/station-sdk/client';
 import { readExistingEnvironmentSecurityRecord } from '@kontourai/station-shared/environment-security-record';
 import QRCode from 'qrcode';
 import {
@@ -243,11 +244,11 @@ const USAGE = `Usage:
   station environment access list [--api-base=<loopback-url>|--station=<name>]
   station environment access approve [<request-id-or-offer-id>|--latest] [--scope=<scope,…>] [--force] [--bind-person|--bind-account|--personal-device] [--api-base=<loopback-url>|--station=<name>]
   station environment access deny [<request-id-or-offer-id>|--latest] [--force] [--api-base=<loopback-url>|--station=<name>]
-  station environment access devices [--json] [--api-base=<loopback-url>|--station=<name>]
-  station environment access scope <device-id|id-prefix|name> (--add=<scope,…>|--remove=<scope,…>|--set=<scope,…>) [--dry-run] [--api-base=<loopback-url>|--station=<name>]
+  station environment access devices [--json] [--api-base=<url>|--station=<name>]
+  station environment access scope <device-id|id-prefix|name> (--add=<scope,…>|--remove=<scope,…>|--set=<scope,…>) [--dry-run] [--api-base=<url>|--station=<name>]
   station environment access scopes [--json]
-  station environment access revoke <device-id|id-prefix|name> [--force] [--api-base=<loopback-url>|--station=<name>]
-  station environment access remove <device-id|id-prefix|name> [--force] [--api-base=<loopback-url>|--station=<name>]
+  station environment access revoke <device-id|id-prefix|name> [--force] [--api-base=<url>|--station=<name>]
+  station environment access remove <device-id|id-prefix|name> [--force] [--api-base=<url>|--station=<name>]
   station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
   station environment operator passkeys [list] [--json] [--api-base=<loopback-url>|--station=<name>]
   station environment operator passkeys approve <code> [--device=<id-prefix>] [--api-base=<loopback-url>|--station=<name>]
@@ -836,8 +837,9 @@ async function requestBareJson<T>(
   apiBase: string,
   path: string,
   init?: RequestInit,
+  fetcher: typeof fetch = fetch,
 ): Promise<T> {
-  const response = await fetch(
+  const response = await fetcher(
     `${apiBase}${path}`,
     withRequestTimeout({ ...init, redirect: 'error' }),
   );
@@ -1560,11 +1562,10 @@ async function openLocalOperatorChannel(
     throw new Error(
       targetProfile
         ? `Station "${targetProfile.name}" targets ${apiBase}, which is not a loopback address. ` +
-            'Environment-security commands (access list/approve/deny/devices/scope/revoke/remove) operate only on a Station ' +
-            'running on this same machine, so a script can never approve device access on a Station ' +
-            "it merely has network reach to. Run this command directly on that Station's host, " +
+            'Environment-security commands (access list/approve/deny and operator passkeys) operate only on a Station ' +
+            "running on this same machine. Run this host-operator command directly on that Station's host, " +
             `or pass a Station saved with a loopback (127.0.0.1 or [::1]) endpoint.`
-        : `Operator access commands (access list/approve/deny/devices/scope/revoke/remove) require a loopback --api-base, but this resolved to ${apiBase}. ` +
+        : `Operator access commands (access list/approve/deny and operator passkeys) require a loopback --api-base, but this resolved to ${apiBase}. ` +
             'Run this command on the Station host or over SSH, and pass an explicit ' +
             `--api-base=http://127.0.0.1:${DEFAULT_SERVER_PORT} if a remote Station is your default.`,
     );
@@ -1907,6 +1908,51 @@ async function runOperatorPasskeysCommand(
   }
 }
 
+async function openDeviceAccessChannel(
+  parsed: ReturnType<typeof parseCoreArgs>,
+  action: string,
+  dependencies: EnvironmentCommandDependencies,
+): Promise<DeviceAccessOperatorChannel> {
+  const resolved = resolveApiBaseDetailed(parsed);
+  const profile = resolved.station ? findProfile(resolved.station) : undefined;
+  if (
+    isLoopbackApiBase(resolved.apiBase) &&
+    (!profile || profile.localService?.baseDir)
+  ) {
+    const local = await openLocalOperatorChannel(parsed, action, dependencies);
+    return {
+      request: local.requestOperatorJson,
+      target: describeResolvedTargetForHuman(local.resolved),
+    };
+  }
+  // The paired channel uses only the selected principal's credential. It
+  // never reads or sends this machine's unrelated operator credential.
+  if (!configureApiCredential(parsed, resolved.apiBase))
+    throw new Error(
+      'This Station needs a paired CLI credential. Pair with it first; its operator must explicitly grant this device access:devices to administer device access.',
+    );
+  const request =
+    dependencies.request ??
+    ((apiBase: string, path: string, init?: RequestInit) =>
+      requestBareJson(apiBase, path, init, authenticatedFetch));
+  return {
+    target: describeResolvedTargetForHuman(resolved),
+    request: async (path, init) => {
+      try {
+        return await request(resolved.apiBase, path, init);
+      } catch (error) {
+        const { status } = pairingErrorSignal(error);
+        if (status === 403)
+          throw new Error(
+            'Station refused this device-access action. Administration requires an explicit access:devices grant. Only the Station operator can grant or remove access:devices itself; other device permissions and legacy access:manage do not authorize administration.',
+            { cause: error },
+          );
+        throw error;
+      }
+    },
+  };
+}
+
 async function runLocalAccessCommand(
   args: string[],
   dependencies: EnvironmentCommandDependencies,
@@ -1952,15 +1998,7 @@ async function runLocalAccessCommand(
         ? dependencies.confirm
         : null;
     requireDeviceRemovalApproval(removalArgs, action, confirm);
-    const { requestOperatorJson, resolved } = await openLocalOperatorChannel(
-      parsed,
-      action,
-      dependencies,
-    );
-    const channel: DeviceAccessOperatorChannel = {
-      request: requestOperatorJson,
-      target: describeResolvedTargetForHuman(resolved),
-    };
+    const channel = await openDeviceAccessChannel(parsed, action, dependencies);
     await (action === 'revoke'
       ? runDeviceRevokeCommand
       : runDeviceRemoveCommand)(
@@ -1981,15 +2019,7 @@ async function runLocalAccessCommand(
       throw usageError();
     const scopeArgs =
       action === 'scope' ? parseDeviceScopeArgs(parsed, usageError) : undefined;
-    const { requestOperatorJson, resolved } = await openLocalOperatorChannel(
-      parsed,
-      action,
-      dependencies,
-    );
-    const channel: DeviceAccessOperatorChannel = {
-      request: requestOperatorJson,
-      target: describeResolvedTargetForHuman(resolved),
-    };
+    const channel = await openDeviceAccessChannel(parsed, action, dependencies);
     const write = dependencies.stdout ?? console.log;
     if (scopeArgs) await runDeviceScopeCommand(channel, scopeArgs, write);
     else

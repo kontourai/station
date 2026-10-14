@@ -498,7 +498,8 @@ reads as a Station that never ran groups, and seeds again; whoever can remove
 them from the owner-only security directory can rewrite the device registry
 too. The operator, or the desktop's own local
 grant, lists people (`GET /api/pairing/people`, the pairing family's boundary);
-only the operator credential changes a group, as for a device's access.
+only the operator credential changes a group. Device scopes may also be changed
+by an explicitly granted `access:devices` administrator.
 
 **Personal access tokens act as their person, never as more (#3557).** A
 person mints a token for a script from their own paired device tied to them
@@ -560,6 +561,12 @@ There are explicit exceptions in
 [`EnvironmentSecurityService.authorizeCredential`](../../src-server/services/ssh/environment-security-service.ts):
 a Device separately promoted with `access:approve` may list, confirm, and deny
 pending requests, but cannot create offers, enumerate Devices, or revoke them.
+A Device separately granted `access:devices` may enumerate already-paired
+Devices, change their scopes, revoke them and remove revoked records. Admission
+is an exact method/path allowlist, not the whole pairing family; personal tokens,
+delegation credentials and inherited `access:manage` do not qualify. The group
+ceiling is applied on each request. Only the operator may grant or remove
+`access:devices` itself, so device administration cannot delegate itself.
 A credential minted by proving local Station-home possession has a separate
 pairing-family exception, still subject to the current route scope. The chosen
 scope is shown before the grant is created and again on the resulting offer.
@@ -593,18 +600,29 @@ default to the historical four-token grant rather than Standard:
 Beyond the presets, the operator adds elevated scopes to an already-paired
 device, never silently at pairing (a device may ask for `coding:exec` or
 `approval:full-access`, and only the operator may keep them when approving),
-on the Station host with `station environment access
-scope <device> --add|--remove|--set <scope>` (#1796). That uses
-`POST /api/pairing/devices/:id/scope`, which only the operator credential
-reaches; the CLI verbs additionally refuse any non-loopback target before
-reading a credential, so a paired remote CLI cannot run them, and there is no
-remote operator authentication. The **Paired devices** panel offers **Change
-access**, but the host desktop app presents its local-grant device credential,
-not the operator credential, so the route answers it 401. From the panel,
-only a browser that presents the operator credential itself, as its saved
-connection credential or pasted for the write, reaches it
+using `station environment access scope <device> --add|--remove|--set <scope>`
+(#1796). `POST /api/pairing/devices/:id/scope` accepts the operator credential
+or a device deliberately granted `access:devices`. Remote CLI and UI calls use
+their authenticated principal; the host CLI still proves Station-home possession
+before sending its operator credential. Holding `approval:full-access` permits
+using full access, not changing device grants. Legacy `access:manage` remains
+ungrantable and confers no device administration.
+
+`access:devices` is powerful: its holder can grant other device permissions,
+including full access, even when it does not hold those use permissions itself.
+The operator deliberately delegates administration, not a subset-copy operation.
+A stolen credential with this explicit grant can therefore change device access
+until the grant is removed or the credential revoked. There is no passkey
+step-up on this scoped path. Operator passkey enrollment remains separate;
+remote operator sessions and fresh per-action verification are still proposed
 ([operator device access](../design/operator-device-access.md), #2894).
-`access:manage` is not grantable this way.
+Scope, revoke and remove check current authority before their commit. The service
+also revalidates the administrative credential; scope parsing that yields cannot
+keep a grant after its holder has been revoked or demoted. Administrative changes
+emit a credential-free audit event naming the actor Device and target Device,
+and durable revocation provenance records `device-access` rather than claiming
+the raw operator credential performed it.
+
 Each change is sent with the scope it replaces (`expectedScope`) and a
 concurrent change returns 409 `scope_changed` instead of being overwritten;
 the change drops the device's live terminal and voice leases. One such scope,
