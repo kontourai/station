@@ -379,7 +379,11 @@ it is still starting after the wait, the send is refused with the retryable
 code `provider_session_starting`, and the client queues the message and
 re-sends it. A retry whose idempotency key an earlier attempt still holds, or
 released without sending, is refused with the retryable code
-`client_turn_in_flight` and re-sent with the same key. When the client's
+`client_turn_in_flight` and re-sent with the same key. A retry whose earlier
+attempt may already have reached the engine (its engine call failed after it
+began, or its owner died after it began invoking) is refused at once with the
+non-retryable `foreground_message_indeterminate`, the answer the delivery
+lookup gives for that key, and nothing is sent again. When the client's
 automatic re-sends run out, the message stays queued with a reason and Retry.
 A Claude send's own `turn.started` is published when the engine starts
 running it, so a send queued behind such a turn starts after it ends. That
