@@ -619,7 +619,19 @@ export function drainQueuedMessageOnTurnCompleted(
       // this drain will settle: let it go (the queue or the transcript holds
       // the message), never leave it to be resent.
       if (!live)
-        void durable.then((late) => late.refused()).catch(() => undefined);
+        void durable
+          .then((late) =>
+            // Back in the queue (a transient failure requeued it): the late
+            // row becomes its held copy. Otherwise nothing will settle it.
+            activeChatsStore
+              .getSnapshot()
+              [threadId]?.queuedMessageMetadata?.some(
+                (entry) => entry.id === clientId,
+              )
+              ? late.hold()
+              : late.refused(),
+          )
+          .catch(() => undefined);
     } catch (error) {
       const { OutboundRowInFlightError } = await import(
         '../../lib/outboundQueue'
@@ -647,6 +659,8 @@ export function drainQueuedMessageOnTurnCompleted(
           content:
             'This queued message is already on its way or may have reached the agent. It was not sent again; check it in the outbox list.',
         });
+        // It left the queue: the next one may go.
+        dispatchAccepted = true;
         return;
       }
       // Storage unavailable: the drain sends as it always has.
@@ -770,6 +784,7 @@ export function drainQueuedMessageOnTurnCompleted(
             content:
               'Station could not confirm whether your queued message reached the agent. It was not sent again; check it in the outbox list.',
           });
+          dispatchAccepted = true;
           return;
         }
         const dropPermanentlyRejected = isDefinitiveClientRejection(error);

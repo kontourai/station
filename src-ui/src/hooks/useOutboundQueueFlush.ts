@@ -122,9 +122,15 @@ export function useOutboundQueueFlush(apiBase: string): void {
           // Sends a closed or crashed app left `invoking`: ask Station what
           // became of each key before anything is sent. Not-received rows
           // become pending and go out below, with their original key.
-          // This tab's held follow-ups first: a queue restored by a reload
-          // takes its messages' earlier copies back before `reconcile` could
-          // release them to the flush (one message, one sender).
+          const { received } = await outboundDispatch.reconcile(
+            delivery.lookupTurnDelivery(apiBase),
+            { station: stationRef.current },
+          );
+          // Then this tab's held follow-ups: a reconcile can release a row
+          // this tab's queue holds (a held copy past its reload grace, or a
+          // send that was mid-drain at a reload), and the restored queue must
+          // take it back before the flush could send it too (one message,
+          // one sender).
           await outboundDispatch
             .syncHeld(
               heldOutboundIntents(activeChatsStore.getSnapshot()).map(
@@ -132,10 +138,6 @@ export function useOutboundQueueFlush(apiBase: string): void {
               ),
             )
             .catch(() => undefined);
-          const { received } = await outboundDispatch.reconcile(
-            delivery.lookupTurnDelivery(apiBase),
-            { station: stationRef.current },
-          );
           if (reconcileRetryTimer) clearTimeout(reconcileRetryTimer);
           reconcileRetryTimer = undefined;
           if (received > 0) {
@@ -314,15 +316,16 @@ export function useOutboundQueueFlush(apiBase: string): void {
   }, [status, triggerFlush]);
 
   // Rows are written for, and only ever sent to, the Station this renderer
-  // talks to now.
+  // talks to now. Learning which Station that is can make rows sendable.
   useEffect(() => {
-    void import('../lib/outboundQueue').then(({ noteCurrentStation }) =>
+    void import('../lib/outboundQueue').then(({ noteCurrentStation }) => {
       noteCurrentStation({
         apiBase,
         ...(environmentId ? { environmentId } : {}),
-      }),
-    );
-  }, [apiBase, environmentId]);
+      });
+      if (environmentId && status === 'connected') triggerFlushRef.current();
+    });
+  }, [apiBase, environmentId, status]);
 
   // Held follow-ups live in the tab's session storage; their durable copy is
   // kept in the outbox, so closing the app does not lose them. One write at a

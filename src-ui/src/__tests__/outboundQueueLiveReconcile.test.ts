@@ -91,13 +91,26 @@ function lookupAnswering(outcome: TurnDeliveryOutcome) {
   );
 }
 
+/**
+ * A held copy whose renderer is gone is released only after a grace period
+ * (a reloading tab takes it back first): the first reconcile notes the
+ * orphan, the one after the grace releases it.
+ */
+async function reconcileAfterHeldGrace(queue: QueueModule) {
+  await queue.outboundDispatch.reconcile(lookupAnswering('not-received'));
+  vi.setSystemTime(Date.now() + 61_000);
+  await queue.outboundDispatch.reconcile(lookupAnswering('not-received'));
+}
+
 describe('live outbox rows survive a killed app and settle by the delivery lookup', () => {
   beforeEach(() => {
     value = undefined;
     heldLocks.clear();
     stubLocks();
+    vi.useFakeTimers({ toFake: ['Date'] });
   });
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -271,6 +284,11 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     ]);
     kill();
     const second = await freshRenderer();
+    // Not at once: a reloading tab gets the grace period to take it back.
+    await second.outboundDispatch.reconcile(lookupAnswering('not-received'));
+    await second.outboundDispatch.flush(transport);
+    expect(transport).not.toHaveBeenCalled();
+    vi.setSystemTime(Date.now() + 61_000);
     await second.outboundDispatch.reconcile(lookupAnswering('not-received'));
     await second.outboundDispatch.flush(transport);
     expect(transport).toHaveBeenCalledTimes(1);
@@ -385,7 +403,7 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     // Closed before the turn ended: only the edited text is ever sent.
     kill();
     const later = await freshRenderer();
-    await later.outboundDispatch.reconcile(lookupAnswering('not-received'));
+    await reconcileAfterHeldGrace(later);
     await later.outboundDispatch.flush(transport);
     expect(transport.mock.calls.map(([turn]) => turn.content)).toEqual([
       'edited text',

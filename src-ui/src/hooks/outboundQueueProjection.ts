@@ -38,16 +38,6 @@ export function projectOutboundQueueEntries(
     groups.set(entry.sessionId, group);
   }
 
-  for (const [sessionId, chat] of Object.entries(
-    activeChatsStore.getSnapshot(),
-  )) {
-    if (!chat.outboundQueuedTurns?.length || groups.has(sessionId)) continue;
-    activeChatsStore.updateChat(sessionId, {
-      outboundQueuedTurns: [],
-      ...(chat.status === 'queued' ? { status: 'idle' } : {}),
-    });
-  }
-
   // A refused queued follow-up the chat already shows as "Not sent" (same
   // key) is listed once, there; its durable row stays behind it.
   for (const [sessionId, queued] of [...groups]) {
@@ -62,6 +52,16 @@ export function projectOutboundQueueEntries(
     );
     if (visible.length) groups.set(sessionId, visible);
     else groups.delete(sessionId);
+  }
+
+  for (const [sessionId, chat] of Object.entries(
+    activeChatsStore.getSnapshot(),
+  )) {
+    if (!chat.outboundQueuedTurns?.length || groups.has(sessionId)) continue;
+    activeChatsStore.updateChat(sessionId, {
+      outboundQueuedTurns: [],
+      ...(chat.status === 'queued' ? { status: 'idle' } : {}),
+    });
   }
 
   for (const [sessionId, queued] of groups) {

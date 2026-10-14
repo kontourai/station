@@ -185,6 +185,107 @@ describe('useOutboundQueueFlush', () => {
     );
   });
 
+  describe('a reload while messages were held or mid-drain', () => {
+    function storedRows(turns: unknown[]) {
+      let stored: unknown = {
+        version: 2,
+        terminalEvidence: [],
+        completedTerminals: [],
+        turns,
+      };
+      _setOutboundQueueStorage({
+        getItem: async () => stored,
+        setItem: async (_key, value) => {
+          stored = value;
+        },
+        updateItem: async (_key, updater) => {
+          stored = updater(stored);
+        },
+      });
+    }
+    const longAgo = Date.now() - 10 * 60_000;
+
+    it("the restored queue takes back a held copy before the flush could send it, so the queue's edit is the only sender", async () => {
+      storedRows([
+        {
+          clientTurnId: 'held-key',
+          sessionId: 'session-1',
+          conversationId: 'session-1',
+          agentSlug: 'codex',
+          content: 'original text',
+          createdAt: longAgo,
+          attempts: 0,
+          status: 'pending',
+          // The previous page's renderer, gone well past the grace period.
+          heldBy: {
+            bootId: 'renderer-before-reload',
+            heldAt: longAgo,
+            orphanSince: longAgo,
+          },
+        },
+      ]);
+      activeChatsStore.updateChat('session-1', {
+        queuedMessages: ['edited text'],
+        queuedMessageMetadata: [{ id: 'held-key', mode: 'queue' }],
+      });
+      renderHook(() => useOutboundQueueFlush('http://api.test'));
+      await waitFor(async () =>
+        expect(await outboundDispatch.snapshot()).toEqual([
+          expect.objectContaining({
+            clientTurnId: 'held-key',
+            content: 'edited text',
+            heldBy: expect.objectContaining({
+              bootId: expect.not.stringMatching(/^renderer-before-reload$/),
+            }),
+          }),
+        ]),
+      );
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('a send that was mid-drain at the reload is taken back by the restored queue when Station never received it, not also flushed', async () => {
+      storedRows([
+        {
+          clientTurnId: 'drained-key',
+          sessionId: 'session-1',
+          conversationId: 'session-1',
+          agentSlug: 'codex',
+          content: 'mid drain',
+          createdAt: longAgo,
+          attempts: 1,
+          status: 'invoking',
+          origin: 'live',
+          dispatchBootId: 'renderer-before-reload',
+          claimedAt: longAgo,
+        },
+      ]);
+      // The reload restored it to the head of the chat's queue.
+      activeChatsStore.updateChat('session-1', {
+        queuedMessages: ['mid drain'],
+        queuedMessageMetadata: [{ id: 'drained-key', mode: 'queue' }],
+      });
+      getTurnDelivery.mockImplementation(
+        async (_apiBase, conversationId, clientTurnId) => ({
+          outcome: 'not-received',
+          conversationId,
+          clientTurnId,
+        }),
+      );
+      renderHook(() => useOutboundQueueFlush('http://api.test'));
+      await waitFor(() => expect(getTurnDelivery).toHaveBeenCalled());
+      await waitFor(async () =>
+        expect(await outboundDispatch.snapshot()).toEqual([
+          expect.objectContaining({
+            clientTurnId: 'drained-key',
+            status: 'pending',
+            heldBy: expect.objectContaining({ bootId: expect.any(String) }),
+          }),
+        ]),
+      );
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
+  });
+
   describe('a send the app was closed during', () => {
     function orphanedLiveRow() {
       let stored: unknown = {

@@ -396,6 +396,7 @@ describe('useSendMessage: durable before the request', () => {
     await earlier.indeterminate('Station could not confirm the start.');
     const { result } = renderHook(() => useSendMessage('http://api.test'));
     let sent: unknown;
+    const onAdmission = vi.fn();
     await act(async () => {
       sent = await result.current(
         chat,
@@ -405,9 +406,13 @@ describe('useSendMessage: durable before the request', () => {
         undefined,
         undefined,
         'possibly-started',
+        { onAdmission },
       );
     });
     expect(sent).toBe(false);
+    // Never "not sent": a caller told that would offer a second send.
+    expect(onAdmission).toHaveBeenCalledWith('indeterminate');
+    expect(onAdmission).not.toHaveBeenCalledWith('not-invoked');
     expect(sendExecutionMessageMock).not.toHaveBeenCalled();
     expect(activeChatsStore.getSnapshot()[chat]?.input).toBe('');
   });

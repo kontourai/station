@@ -85,7 +85,16 @@ export interface QueuedOutboundTurn {
    * under the same key); once the renderer is gone it becomes an ordinary
    * pending row and is sent with its key.
    */
-  heldBy?: { bootId: string; heldAt: number };
+  heldBy?: {
+    bootId: string;
+    heldAt: number;
+    /**
+     * When a reconcile first found the holder gone. The copy is released only
+     * a grace period later, so a reloading tab (whose queue comes back under a
+     * new renderer) takes it back first instead of another tab sending it.
+     */
+    orphanSince?: number;
+  };
   /**
    * The original pending rows collapsed into this opt-in text merge. Keeping
    * their complete pre-send records makes the merge reversible until this row
@@ -335,6 +344,11 @@ export interface LiveOutboundDispatch {
 
 /** How long, without Web Locks, a held row's renderer is presumed alive. */
 export const OUTBOUND_HELD_ORPHAN_GRACE_MS = 10 * 60 * 1000;
+/**
+ * How long a held copy whose renderer is gone waits before it is released:
+ * long enough for a reloading tab to restore its queue and take it back.
+ */
+export const OUTBOUND_HELD_RELOAD_GRACE_MS = 60 * 1000;
 
 /**
  * How long another renderer's `invoking` row is presumed alive when the
@@ -1906,6 +1920,12 @@ async function reconcile(
           now - row.heldBy.heldAt < OUTBOUND_HELD_ORPHAN_GRACE_MS)
       )
         continue;
+      if (row.heldBy.orphanSince === undefined) {
+        await markHeldOrphan(row, now);
+        continue;
+      }
+      if (now - row.heldBy.orphanSince < OUTBOUND_HELD_RELOAD_GRACE_MS)
+        continue;
       await releaseHeld(row);
       continue;
     }
@@ -1930,6 +1950,28 @@ async function reconcile(
     if (outcome === 'received') received += 1;
   }
   return { received };
+}
+
+async function markHeldOrphan(
+  row: QueuedOutboundTurn,
+  now: number,
+): Promise<void> {
+  await mutate((entries) => {
+    const index = entries.findIndex(
+      (entry) =>
+        entry.clientTurnId === row.clientTurnId &&
+        entry.heldBy?.bootId === row.heldBy?.bootId &&
+        entry.heldBy?.orphanSince === undefined,
+    );
+    if (index === -1) return { entries, result: undefined, changed: false };
+    const entry = entries[index]!;
+    const replaced = [...entries];
+    replaced[index] = {
+      ...entry,
+      heldBy: { ...entry.heldBy!, orphanSince: now },
+    };
+    return { entries: replaced, result: undefined, changed: true };
+  });
 }
 
 async function releaseHeld(row: QueuedOutboundTurn): Promise<void> {
@@ -1995,6 +2037,11 @@ async function syncHeld(intents: readonly HeldOutboundIntent[]): Promise<void> {
           retained[index] = {
             ...existing,
             ...intent,
+            // A verified Station identity is never traded for an address.
+            ...(existing.station?.environmentId &&
+            !intent.station?.environmentId
+              ? { station: existing.station }
+              : {}),
             heldBy: { bootId, heldAt: now },
           };
           changed = true;

@@ -747,13 +747,26 @@ export function useSendMessage(
               abortController: undefined,
               pendingClientTurnId: undefined,
               sendAwaitingTurnStart: undefined,
+              // A bubble this call added goes; the outbox list shows the row.
+              ...(transaction.optimisticMessages !==
+              transaction.originalMessages
+                ? {
+                    messages: activeChatsStore
+                      .getSnapshot()
+                      [sessionId]?.messages?.filter(
+                        (message) => message.clientId !== resolvedTurnId,
+                      ),
+                  }
+                : {}),
             });
             addEphemeralMessage(sessionId, {
               role: 'system',
               content:
                 'This message is already on its way or may have reached the agent, so it was not sent again. Check it in the outbox list.',
             });
-            options?.onAdmission?.('not-invoked');
+            // Not "not sent": the message may well arrive. A caller told it
+            // was not sent would offer to send it again under a new key.
+            options?.onAdmission?.('indeterminate');
             return false;
           }
           // Storage unavailable: send as before, and the composer keeps its

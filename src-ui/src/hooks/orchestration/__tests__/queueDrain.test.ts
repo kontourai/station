@@ -146,8 +146,11 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     });
     await earlier.indeterminate('Station could not confirm the start.');
     activeChatsStore.updateChat(threadId, {
-      queuedMessages: ['maybe already started'],
-      queuedMessageMetadata: [{ id: 'queue-key-2', mode: 'queue' }],
+      queuedMessages: ['maybe already started', 'the next one'],
+      queuedMessageMetadata: [
+        { id: 'queue-key-2', mode: 'queue' },
+        { id: 'queue-key-next', mode: 'queue' },
+      ],
     });
     drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
     await vi.advanceTimersByTimeAsync(200);
@@ -157,9 +160,67 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
           ?.content,
       ).toMatch(/not sent again/),
     );
-    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    // The queue moves on to the next message, which is sent once; the
+    // possibly-started one never is.
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.waitFor(() =>
+      expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1),
+    );
+    expect(
+      (
+        sendExecutionMessageMock.mock.calls[0]?.[1] as
+          | { clientTurnId: string }
+          | undefined
+      )?.clientTurnId,
+    ).toBe('queue-key-next');
     expect(activeChatsStore.getSnapshot()[threadId]?.queuedMessages).toEqual(
       [],
+    );
+  });
+
+  test('a late durable row of a send that went back into the queue becomes its held copy', async () => {
+    const queue = await import('../../../lib/outboundQueue');
+    let stored: unknown;
+    let releaseWrite!: () => void;
+    const slow = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    let first = true;
+    queue._setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, next) => {
+        stored = next;
+      },
+      updateItem: async (_key, updater) => {
+        if (first) {
+          first = false;
+          await slow;
+        }
+        stored = updater(stored);
+      },
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(new TypeError('offline'));
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['requeued late'],
+      queuedMessageMetadata: [{ id: 'queue-key-4', mode: 'queue' }],
+    });
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.advanceTimersByTimeAsync(3_100);
+    await vi.waitFor(() =>
+      expect(activeChatsStore.getSnapshot()[threadId]?.queuedMessages).toEqual([
+        'requeued late',
+      ]),
+    );
+    releaseWrite();
+    await vi.waitFor(async () =>
+      expect(await queue.outboundDispatch.snapshot()).toEqual([
+        expect.objectContaining({
+          clientTurnId: 'queue-key-4',
+          status: 'pending',
+          heldBy: expect.objectContaining({ bootId: expect.any(String) }),
+        }),
+      ]),
     );
   });
 
