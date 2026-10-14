@@ -134,10 +134,50 @@ Station checks an Agent's dispatch against its verified Session caller:
 Here, `bound` describes verified caller assurance, not a selected approval mode.
 A plain folder target belongs to the deepest Project whose canonical working
 directory contains it; otherwise it is global. A missing or unreadable folder
-does not establish a scope. With no workspace, Station checks the default
-Session directory. Conversation follow-ups use the newest started Session's
-scope and check unconfined execution across the conversation's lineage,
-including reserved successors.
+does not establish a scope. Conversation follow-ups use the newest started
+Session's scope and check unconfined execution across the conversation's
+lineage, including reserved successors.
+
+A new Session on this Station that names no workspace (`send_message` or
+`delegate_task` with neither `projectSlug` nor `projectPath`, and no
+`environmentId`) starts in the calling Session's own Project, as if the Agent
+had named that Project's slug. This applies to every verified caller, bound or
+not. The Project is the one the calling Session's start record names, never
+anything in the request, and only when that Project has a working directory:
+the new Session runs in the Project's working directory with the Project's
+workspace mode, not in the folder or worktree the calling Session runs in, and
+its start records the Project. A follow-up or input reply continues its
+conversation instead. A caller in the global space, one whose Project Station
+cannot confirm, and one whose Project has no working directory get no default:
+Station checks the default Session directory, as it does for a request from
+outside station-control.
+
+A refusal of a caller that is not bound for its scope is
+`station_control_out_of_scope`, with a `reason` beside the code and fixed copy
+that says what to do instead:
+
+| `reason` | Meaning |
+| --- | --- |
+| `other-project` | The caller runs in a Project and the target is in another one. |
+| `global-space` | The caller runs in a Project and the target is in the global space. |
+| `project-from-global` | The caller runs in the global space and the target is in a Project. |
+| `unreadable-target` | Station cannot confirm the target's Project: the Project named does not exist, or the folder is missing or outside it. |
+| `unreadable-caller` | Station cannot confirm the calling Session's own Project. |
+| `host` | The target, or a Session of its conversation, runs unconfined (`host`). |
+| `remote` | The target is on another Station; only a bound operator reaches one. |
+
+The copy names no Project. `unreadable-target` also refuses a bound caller
+that is not acting for the operator. `remote` is given only to a caller acting
+for the operator; any other caller is refused another Station with
+`station_control_role_required`. A target Station cannot read at all, or one
+another person owns, keeps `station_control_assurance_insufficient` (or
+`station_control_role_required` for a caller not acting for the operator), so
+it reads the same as a Session that does not exist. Reads keep their own
+answers: `read_conversation` answers `conversation_out_of_scope` or
+`conversation_not_found`, and `list_project_activity` and `get_session_digest`
+answer `session_not_found`. `station_control_assurance_insufficient` otherwise remains the code of the
+assurance checks themselves, such as a tool that needs a bound caller or an
+approval command.
 
 For every caller except a bound operator, Station makes the folder decision a
 second time immediately before it starts the engine for a new Session:
@@ -156,10 +196,12 @@ second time immediately before it starts the engine for a new Session:
   directory as well as the default Session directory, so a connection
   configured inside a Project is not reachable from the global scope.
 
-These refusals use the same codes as the admission check:
-`station_control_role_required` when the folder is no longer the one admitted,
-and `station_control_assurance_insufficient` when it is in another scope. The
-check runs before Station calls the engine adapter. The adapter then starts
+These refusals use `station_control_out_of_scope`, whether the folder is no
+longer the one admitted or is now in another scope. The refusal crosses the
+dispatch as a code only, so it carries that code's general copy and no
+`reason`. A composition that cannot tell where an engine connection would start
+the Session refuses with `station_control_role_required`. The check runs
+before Station calls the engine adapter. The adapter then starts
 the process with the same path string, so the check narrows the interval in
 which a folder can be swapped; it does not pin the directory. Other uses of a
 Session's folder, such as terminals, are not covered. A follow-up to a Session

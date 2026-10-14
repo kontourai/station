@@ -70,6 +70,9 @@ const CURRENT_API = 'http://station-dispatch-spawn.test';
 const OPERATOR_CREDENTIAL = 'test-only-operator-credential-dispatch-spawn';
 const ASSURANCE = 'station_control_assurance_insufficient';
 const ROLE = 'station_control_role_required';
+// The spawn-side refusal crosses the dispatch as a code only, so it carries
+// the code's general copy and no reason.
+const OUT_OF_SCOPE = 'station_control_out_of_scope';
 const CONNECTION = 'writer-connection';
 
 const support = vi.hoisted(() => ({
@@ -401,6 +404,14 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
             config: { provider: 'acp' },
           },
         });
+      // The executor reads a Project workspace's record from this Station.
+      const projectRead = url.match(/\/api\/projects\/([^/?]+)$/);
+      const project =
+        projectRead &&
+        support.projectDirs.find(
+          (entry) => entry.slug === decodeURIComponent(projectRead[1]!),
+        );
+      if (project) return json({ success: true, data: project });
       throw new Error(`Unexpected Station API read in test: ${url}`);
     }) as typeof fetch);
 
@@ -666,6 +677,42 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
     },
   );
 
+  // Owner decision 2026-10-13: an agent in a Project that starts a session
+  // and names no workspace starts it in its own Project. Started for real:
+  // the session runs in the Project's working directory and its start
+  // stamps the Project, so it is a Project session everywhere else too.
+  test.each(ROUTES)(
+    '%s: a Project agent’s session with no workspace starts in its own Project',
+    async (route) => {
+      const { base, adapter, eventStore } = await setup();
+      const { root } = layout();
+      const request = DISPATCH[route]();
+      const response = await post(
+        base,
+        request.path,
+        as('bearer-exposed', 'op-caller-a'),
+        request.body,
+      );
+      expect([response.status, response.code]).toEqual([200, undefined]);
+      expect(adapter.starts.map((start) => start.cwd)).toEqual([
+        join(root, 'proj'),
+      ]);
+      const threadId = adapter.starts[0]!.input.threadId;
+      const started = await waitFor(
+        () =>
+          (
+            eventStore.latestEventByMethod(threadId, 'session.started')
+              ?.payload as { metadata?: Record<string, unknown> } | undefined
+          )?.metadata,
+        (metadata) => metadata !== undefined,
+      );
+      expect([
+        started?.[SESSION_LOCAL_PROJECT_ID_METADATA_KEY],
+        started?.projectSlug,
+      ]).toEqual(['project-a', 'project-a-slug']);
+    },
+  );
+
   test.each(ROUTES)(
     '%s: the operator UI is not a station-control caller: nothing is decided or recorded for it',
     async (route) => {
@@ -702,7 +749,7 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
       );
       // The swap happened after the route admitted the request.
       expect(swapped).toBe(true);
-      expect([response.status, response.code]).toEqual([403, ROLE]);
+      expect([response.status, response.code]).toEqual([403, OUT_OF_SCOPE]);
       expect(adapter.starts).toEqual([]);
     },
   );
@@ -725,7 +772,7 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
         request.body,
       );
       expect(swapped).toBe(true);
-      expect([response.status, response.code]).toEqual([403, ROLE]);
+      expect([response.status, response.code]).toEqual([403, OUT_OF_SCOPE]);
       expect(adapter.starts).toEqual([]);
     },
   );
@@ -758,7 +805,7 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
         request.body,
       );
       expect(swapped).toBe(true);
-      expect([response.status, response.code]).toEqual([403, ROLE]);
+      expect([response.status, response.code]).toEqual([403, OUT_OF_SCOPE]);
       expect(adapter.starts).toEqual([]);
     },
   );
@@ -786,7 +833,7 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
       as('delegated-custody', 'op-caller-global'),
       request.body,
     );
-    expect([response.status, response.code]).toEqual([403, ASSURANCE]);
+    expect([response.status, response.code]).toEqual([403, OUT_OF_SCOPE]);
     expect(adapter.starts).toEqual([]);
   });
 
@@ -804,7 +851,7 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
       as('delegated-custody', 'op-caller-global'),
       request.body,
     );
-    expect([response.status, response.code]).toEqual([403, ROLE]);
+    expect([response.status, response.code]).toEqual([403, OUT_OF_SCOPE]);
     expect(adapter.starts).toEqual([]);
   });
 
@@ -991,12 +1038,13 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
         );
         expect([globalCaller.status, globalCaller.code]).toEqual([
           403,
-          ASSURANCE,
+          OUT_OF_SCOPE,
         ]);
         expect(adapter.starts).toEqual([]);
-        // The in-scope control is the global-space connection below: a
-        // Project's own agent is refused a no-workspace dispatch at
-        // admission, which still reads the default session directory.
+        // The in-scope control is the global-space connection below. A
+        // Project's own agent with no workspace starts in its Project's
+        // workspace instead (owner decision 2026-10-13), never the
+        // connection's directory.
       },
     );
 
@@ -1074,7 +1122,7 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
         as('delegated-custody', 'op-caller-global'),
         request.body,
       );
-      expect([response.status, response.code]).toEqual([403, ASSURANCE]);
+      expect([response.status, response.code]).toEqual([403, OUT_OF_SCOPE]);
       expect(adapter.starts).toEqual([]);
     });
 

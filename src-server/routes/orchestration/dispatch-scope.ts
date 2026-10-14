@@ -147,8 +147,9 @@ function dispatchCwdAdmission(
 /**
  * #2873: the 403 for a dispatch the spawn-side scope check refused. The
  * refusal crosses the dispatch as an error carrying its station-control
- * code; the body is that code's fixed copy, never the error's own text.
- * Only a station-control caller's request is answered this way.
+ * code; the body is that code's fixed copy, never the error's own text (so
+ * an out-of-scope refusal here carries the code's general copy, not a
+ * reason). Only a station-control caller's request is answered this way.
  */
 export function dispatchCwdRefusalFor(
   c: Context,
@@ -162,7 +163,8 @@ export function dispatchCwdRefusalFor(
       : undefined;
   if (
     code !== 'station_control_role_required' &&
-    code !== 'station_control_assurance_insufficient'
+    code !== 'station_control_assurance_insufficient' &&
+    code !== 'station_control_out_of_scope'
   )
     return undefined;
   return c.json(stationControlRefusalBody(stationControlRefusal(code)), 403);
@@ -292,6 +294,68 @@ export function namesAnotherStation(
 }
 
 /**
+ * Owner decision 2026-10-13: a station-control caller that starts a NEW
+ * session on this Station and names no workspace starts it in its own
+ * Project, as if it had named that Project's slug. The Project is the one
+ * the caller's own session record names (`ownProjectSlug`), never anything
+ * the request says, and it is dispatched as the Project's workspace: the
+ * Project's working directory and workspace mode, not the folder or
+ * worktree the caller's own session happens to run in. The environment is
+ * pinned to this Station, so a Project whose default Environment is
+ * another Station is never reached implicitly.
+ *
+ * Every caller, bound or not: an agent working in a Project that names no
+ * workspace means "here". A caller in the global space, one whose Project
+ * Station cannot confirm, or one whose Project has no working directory
+ * gets no default, and the request is decided as it was sent.
+ *
+ * `startsSession` is the route's own reading of the body: false for a
+ * follow-up or an input reply, which continue their conversation's binding.
+ */
+export function withCallerProjectWorkspace<
+  T extends {
+    readonly environment?: { readonly kind: string };
+    readonly workspace?: unknown;
+  },
+>(
+  c: Context,
+  scope: StationControlDispatchScope | undefined,
+  target: T,
+  startsSession: boolean,
+): T {
+  if (!startsSession || target.workspace !== undefined) return target;
+  if (target.environment && target.environment.kind !== 'current')
+    return target;
+  const authority = stationControlRequestAuthority(c.req.raw);
+  if (authority?.kind !== 'caller') return target;
+  const projectSlug = scope?.ownProjectSlug(authority.caller);
+  if (projectSlug === undefined) return target;
+  return {
+    ...target,
+    environment: { kind: 'current' },
+    workspace: { kind: 'project', projectSlug },
+  };
+}
+
+/**
+ * Whether a foreground send starts a session: not an input reply, and not a
+ * conversation that already has one (unknown reads as existing).
+ */
+export function foregroundStartsSession(
+  scope: StationControlDispatchScope | undefined,
+  send: {
+    readonly conversationId?: string;
+    readonly inputReplyThreadId?: string;
+  },
+): boolean {
+  if (send.inputReplyThreadId !== undefined) return false;
+  return (
+    send.conversationId === undefined ||
+    scope?.conversationExists(send.conversationId) === false
+  );
+}
+
+/**
  * What a foreground send (`/chat` and its siblings) aims at: an input reply
  * names its thread; a conversation that already has a session is a
  * follow-up; anything else starts a session, owned by the caller's owner,
@@ -314,7 +378,7 @@ export function foregroundDispatchTarget(
     return { kind: 'thread', threadId: send.inputReplyThreadId, remote };
   if (
     send.conversationId !== undefined &&
-    scope?.conversationExists(send.conversationId) !== false
+    !foregroundStartsSession(scope, send)
   )
     return {
       kind: 'conversation',

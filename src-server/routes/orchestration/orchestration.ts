@@ -178,12 +178,14 @@ import {
 import {
   dispatchCwdRefusalFor,
   foregroundDispatchTarget,
+  foregroundStartsSession,
   namesAnotherStation,
   newSessionFacts,
   refuseCarriedPosture,
   refuseOutOfScopeDispatch,
   refuseRemoteForStationControlCaller,
   scopeDispatch,
+  withCallerProjectWorkspace,
   withCanonicalCwd,
 } from './dispatch-scope.js';
 
@@ -2088,9 +2090,23 @@ export function createOrchestrationRoutes(
           },
           400,
         );
+      const conversation = {
+        ...(body.conversationId ? { conversationId: body.conversationId } : {}),
+        ...(body.expectedInputRequest
+          ? { inputReplyThreadId: body.expectedInputRequest.threadId }
+          : {}),
+      };
+      // A station-control caller's new session with no workspace starts in
+      // its own Project (owner decision 2026-10-13).
+      const target = withCallerProjectWorkspace(
+        c,
+        deps.stationControlDispatchScope,
+        body.target,
+        foregroundStartsSession(deps.stationControlDispatchScope, conversation),
+      );
       const projectSlug =
-        body.target.workspace?.kind === 'project'
-          ? body.target.workspace.projectSlug
+        target.workspace?.kind === 'project'
+          ? target.workspace.projectSlug
           : undefined;
       // #2377 slice C2a: a station-control caller stays in its scope. An
       // input reply names its thread, a known conversation is a follow-up,
@@ -2101,19 +2117,14 @@ export function createOrchestrationRoutes(
         (ownerId) =>
           foregroundDispatchTarget(deps.stationControlDispatchScope, {
             ownerId,
-            ...newSessionFacts(body.target, deps.projectDefaultEnvironment),
-            ...(body.conversationId
-              ? { conversationId: body.conversationId }
-              : {}),
-            ...(body.expectedInputRequest
-              ? { inputReplyThreadId: body.expectedInputRequest.threadId }
-              : {}),
+            ...newSessionFacts(target, deps.projectDefaultEnvironment),
+            ...conversation,
           }),
       );
       if ('refused' in scoped) return scoped.refused;
       const resolvedTarget = normalizeExecutionTarget(
-        withCanonicalCwd(body.target, scoped.canonicalCwd),
-        !body.target.environment && projectSlug
+        withCanonicalCwd(target, scoped.canonicalCwd),
+        !target.environment && projectSlug
           ? deps.projectDefaultEnvironment?.(projectSlug)
           : undefined,
       );
@@ -2740,7 +2751,19 @@ export function createOrchestrationRoutes(
       );
     }
     try {
-      const body = getBody(c);
+      const sent = getBody(c);
+      // A station-control caller's new task with no workspace starts in its
+      // own Project (owner decision 2026-10-13): decided before every check
+      // below, so each one reads the target that is dispatched.
+      const body = {
+        ...sent,
+        target: withCallerProjectWorkspace(
+          c,
+          deps.stationControlDispatchScope,
+          sent.target,
+          true,
+        ),
+      };
       // #2377 slice C3b: an agent delegates without an approval posture.
       const postureRefused = refuseCarriedPosture(c, [
         {
