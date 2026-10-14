@@ -3701,13 +3701,19 @@ button:hover {
 }
 
 .chat-settings-modal {
+  --chat-settings-padding: 16px;
   position: relative;
+  box-sizing: border-box;
   background: var(--bg-primary);
   border: 1px solid var(--border-primary);
   border-radius: 8px;
-  padding: 16px;
+  padding: var(--chat-settings-padding);
   min-width: 340px;
   max-width: 440px;
+  /* The panel scrolls rather than outgrowing a short window; the phone sheet
+     rule (`.responsive-surface-panel`) sets its own bound and scroll. */
+  max-height: calc(100dvh - 2 * var(--chat-settings-padding));
+  overflow-y: auto;
 }
 
 .chat-settings-modal__title {
@@ -3741,6 +3747,7 @@ button:hover {
 
 .chat-settings-modal__control {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
 }
@@ -3753,6 +3760,8 @@ button:hover {
   padding: 4px 10px;
   border-radius: 4px;
   font-size: var(--text-base);
+  /* A row wraps whole buttons; a label never breaks inside its button. */
+  white-space: nowrap;
 }
 
 .chat-settings-modal__btn:disabled {
@@ -3809,11 +3818,22 @@ button:hover {
   cursor: pointer;
 }
 
+/* Done stays on screen however far the panel has scrolled: a sticky footer
+   at the panel's bottom edge, drawn over the content it covers. The negative
+   margins carry its background across the panel's padding so scrolled text
+   never shows beside or below it. */
 .chat-settings-modal__actions {
+  position: sticky;
+  bottom: calc(-1 * var(--chat-settings-padding));
+  z-index: 1;
   display: flex;
   justify-content: flex-end;
   gap: 6px;
-  margin-top: 16px;
+  margin: 16px calc(-1 * var(--chat-settings-padding))
+    calc(-1 * var(--chat-settings-padding));
+  padding: 12px var(--chat-settings-padding) var(--chat-settings-padding);
+  border-top: 1px solid var(--border-primary);
+  background: var(--bg-primary);
 }
 
 .chat-settings-modal__done {
@@ -3825,6 +3845,13 @@ button:hover {
   font-size: var(--text-base);
   cursor: pointer;
   font-weight: 500;
+}
+
+@media (pointer: coarse) {
+  .chat-settings-modal__btn,
+  .chat-settings-modal__done {
+    min-height: 44px;
+  }
 }
 
 .chat-messages--empty {
