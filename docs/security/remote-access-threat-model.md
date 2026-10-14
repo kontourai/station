@@ -472,6 +472,34 @@ the tokens held rather than call it "full access," which is why
 management" and reserves "Full access" for a grant that genuinely carries
 every token.
 
+**Station groups cap a device tied to a person (#3557).** A paired device
+bound to a person (a verified Tailscale identity or an account) may use only
+what that person's Station group allows: **Member** (the default) keeps
+Standard, and **Admin** may also keep `access:approve`, `consent:decide`,
+`coding:exec` and `approval:full-access`. The cap applies to those seven
+governed tokens only; every other token passes through, and no group ever
+includes `access:manage`. It is computed per read in
+`EnvironmentSecurityService.resolveGrantedScope` and every reader that does
+not go through it (pairing approval, consent decisions, full-access grantor
+liveness, native-device admission), so a demotion takes effect on the next
+request, re-authenticates live terminal and voice connections, and resets
+any full access the device had granted. The stored grant is never rewritten,
+so a promotion restores it without re-pairing. Uncapped: a device tied to no
+person (the operator's own, which includes every home-possession credential,
+since those are never tied to a person), a peer Station delegation and the
+operator credential. An unreadable groups record places everyone in Member
+(fail closed). The first time a Station runs with groups, a person whose
+tied device already held a governed token Member would remove starts as
+Admin, so turning groups on takes nothing away. That groups have applied is
+marked in a separate file, so a lost record is never reseeded: everyone sits
+in Member until the operator reassigns them, rather than a stored grant
+raised or capped since re-promoting someone. Accepted gap: losing both files
+reads as a Station that never ran groups, and seeds again; whoever can remove
+them from the owner-only security directory can rewrite the device registry
+too. The operator, or the desktop's own local
+grant, lists people (`GET /api/pairing/people`, the pairing family's boundary);
+only the operator credential changes a group, as for a device's access.
+
 The pairing UI offers two presets when creating an offer: **Read-only**
 (`orchestration:read` alone) and **Standard** (`orchestration:read
 orchestration:operate terminal:operate`), the default *radio selection* in
@@ -1439,7 +1467,9 @@ than left to inspection.
 
 **Detection for off-host operator-credential use (#2894 S1).** The four
 device-admin routes (`GET /api/pairing/devices`, scope change, revoke and
-record removal) record each raw operator-credential use with its host position.
+record removal), and the Station group change
+(`PUT /api/pairing/people/:principalId/group`, #3557, recorded once the
+change is applied), record each raw operator-credential use with its host position.
 A use that is visibly off-host (a non-loopback peer, a non-loopback `Host`, or
 any forwarding header, including Station's UI proxy reporting that its client
 sent one) is still allowed. It is logged at warn with the message `Operator
