@@ -1612,7 +1612,8 @@ expiry—never a bearer credential. Manual entry uses the same flow with a
 host before exchange. An authenticated host may instead deny it; denial is
 final for that offer and returns only a fixed error code to the requester. An
 issued device credential can use ordinary HTTP, SSE, and WebSocket surfaces up
-to whatever scope its grant carries (see "Scope model" above). Ordinary
+to whatever scope its grant carries (see "Scope model" above), except that an
+account-bound device never opens the terminal or voice WebSocket (#3586). Ordinary
 presets do not admit pairing management. An explicit `access:approve` promotion
 opens only pending-request list/confirm/deny, while local-home minted credentials
 have their separate route-scoped exception. Neither exception follows merely
