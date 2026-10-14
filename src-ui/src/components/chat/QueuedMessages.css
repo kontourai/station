@@ -68,17 +68,19 @@
 /* A message that may have reached the agent keeps its text on a line of its
    own, with its notice, Check and Discard… wrapping below; an open
    confirmation takes a row of its own under them. */
-.queued-message[data-status="may-have-started"] {
+.queued-message:has(
+  > :is(.queued-message__unconfirmed-discard, .queued-message__confirm)
+) {
   flex-wrap: wrap;
 }
-.queued-message[data-status="may-have-started"] > .queued-message__text {
+.queued-message:has(
+    > :is(.queued-message__unconfirmed-discard, .queued-message__confirm)
+  )
+  > .queued-message__text {
   flex-basis: calc(100% - 16px - 6px);
 }
-.queued-message:has(> .queued-message__confirm) {
-  flex-wrap: wrap;
-}
 /* Discard… reads at the size of the Check beside it. */
-.queued-message[data-status="may-have-started"] > button {
+.queued-message__unconfirmed-discard {
   font-size: var(--text-sm);
 }
 /* The list's three-row window would clip the risk it must state. */

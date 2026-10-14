@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useRecheckMessageDelivery } from '../../../hooks/useMessageDeliveryState';
 import { useStationOutlivesApp } from '../../../hooks/useStationOutlivesApp';
 import type { MessageDeliveryState } from '../../../utils/messageDeliveryState';
+import { ActionRow } from '../../ActionRow';
 
 /** Every state a bubble labels: all but `delivered`, which is a plain bubble. */
 export type UndeliveredState = Exclude<MessageDeliveryState, 'delivered'>;
@@ -97,50 +98,56 @@ export function MessageDeliveryNote({
       <div className="message-delivery__line">
         <span role={state === 'sending' ? undefined : 'status'}>{label}</span>
         {state === 'not-sent' ? (
-          <span className="message-delivery__actions">
-            <button
-              type="button"
-              className="message-delivery__action"
-              disabled={busy}
-              onClick={() =>
-                void run(async () => {
-                  const { retryNotSentMessage } = await loadActions();
-                  await retryNotSentMessage(clientTurnId);
-                  return null;
-                })
-              }
-            >
-              Retry
-            </button>
-            <button
-              type="button"
-              className="message-delivery__action"
-              disabled={busy}
-              onClick={() =>
-                void run(async () => {
-                  const { editMessageInComposer } = await loadActions();
-                  await editMessageInComposer(chatKey, clientTurnId, text);
-                  return null;
-                })
-              }
-            >
-              Edit
-            </button>
-            <button
-              type="button"
-              className="message-delivery__action"
-              disabled={busy}
-              onClick={() =>
-                void run(async () => {
-                  const { discardMessage } = await loadActions();
-                  await discardMessage(chatKey, clientTurnId, 'not-sent');
-                  return null;
-                })
-              }
-            >
-              Discard
-            </button>
-          </span>
+          <ActionRow
+            className="message-delivery__actions"
+            overflowLabel="More actions for this unsent message"
+            primary={
+              <button
+                type="button"
+                className="message-delivery__action"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    const { retryNotSentMessage } = await loadActions();
+                    await retryNotSentMessage(clientTurnId);
+                    return null;
+                  })
+                }
+              >
+                Retry
+              </button>
+            }
+            secondary={
+              <button
+                type="button"
+                className="message-delivery__action"
+                disabled={busy}
+                onClick={() =>
+                  void run(async () => {
+                    const { editMessageInComposer } = await loadActions();
+                    await editMessageInComposer(chatKey, clientTurnId, text);
+                    return null;
+                  })
+                }
+              >
+                Edit
+              </button>
+            }
+            overflow={[
+              {
+                key: 'discard',
+                label: 'Discard',
+                tone: 'danger',
+                disabled: busy,
+                onSelect: () =>
+                  void run(async () => {
+                    const { discardMessage } = await loadActions();
+                    await discardMessage(chatKey, clientTurnId, 'not-sent');
+                    return null;
+                  }),
+              },
+            ]}
+          />
         ) : state === 'unconfirmed' ? (
           <span className="message-delivery__actions">
             <button

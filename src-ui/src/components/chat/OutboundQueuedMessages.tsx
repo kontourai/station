@@ -138,11 +138,7 @@ export function OutboundQueuedMessages({
           const showingMergePreview =
             mergePreviewId === turn.clientTurnId && canMergeWithNext;
           return (
-            <div
-              className="queued-message"
-              data-status={turn.status}
-              key={turn.clientTurnId}
-            >
+            <div className="queued-message" key={turn.clientTurnId}>
               <span className="queued-message__order">{index + 1}</span>
               {editingId === turn.clientTurnId ? (
                 <input
@@ -210,17 +206,7 @@ export function OutboundQueuedMessages({
                     />
                   )}
                 </span>
-              ) : null}
-              {turn.status === 'may-have-started' ? (
-                <DiscardUnconfirmed
-                  sessionId={sessionId}
-                  clientTurnId={turn.clientTurnId}
-                  onDiscarded={() => onDiscarded?.(turns.length - 1)}
-                  onError={onError}
-                />
-              ) : null}
-              {turn.status === 'may-have-started' ||
-              turn.status === 'invoking' ? null : turn.status === 'failed' ? (
+              ) : turn.status === 'failed' ? (
                 <span className="queued-messages__label">
                   {workspaceRefused ? (
                     <>
@@ -273,6 +259,12 @@ export function OutboundQueuedMessages({
                   Accepted; waiting for completion
                 </span>
               ) : null}
+              <DiscardUnconfirmed
+                sessionId={sessionId}
+                turn={turn}
+                onDiscarded={() => onDiscarded?.(turns.length - 1)}
+                onError={onError}
+              />
               {turn.status !== 'accepted' &&
               turn.status !== 'invoking' &&
               turn.status !== 'may-have-started' &&
@@ -467,20 +459,23 @@ function RecheckDeliveryButton({
  */
 function DiscardUnconfirmed({
   sessionId,
-  clientTurnId,
+  turn,
   onDiscarded,
   onError,
 }: {
   sessionId: string;
-  clientTurnId: string;
+  turn: { clientTurnId: string; status: OutboundQueuedTurn['status'] };
   onDiscarded: () => void;
   onError: (message: string) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
+  if (turn.status !== 'may-have-started') return null;
+  const { clientTurnId } = turn;
   if (!confirming)
     return (
       <button
         type="button"
+        className="queued-message__unconfirmed-discard"
         aria-expanded={false}
         onClick={() => setConfirming(true)}
       >

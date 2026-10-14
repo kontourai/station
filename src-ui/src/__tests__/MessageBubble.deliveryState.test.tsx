@@ -218,6 +218,30 @@ describe('MessageBubble delivery state', () => {
     );
   });
 
+  it('not-sent: Discard drops its outbox row and its unsent bubble', async () => {
+    setChat({
+      outboundQueuedTurns: [
+        { clientTurnId: KEY, content: TEXT, createdAt: 1, status: 'failed' },
+      ],
+    });
+    const { bubble } = renderBubble();
+    fireEvent.click(
+      within(bubble).getByRole('button', {
+        name: 'More actions for this unsent message',
+      }),
+    );
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Discard' }));
+    await waitFor(() =>
+      expect(
+        activeChatsStore
+          .getSnapshot()
+          [CHAT]?.messages?.some((message) => message.clientId === KEY),
+      ).toBe(false),
+    );
+    expect(outbox.discard).toHaveBeenCalledWith(KEY);
+    expect(outbox.dismissUnconfirmed).not.toHaveBeenCalled();
+  });
+
   it('not-sent: a Discard the outbox refuses keeps the bubble and says why', async () => {
     outbox.discard.mockRejectedValueOnce(new Error('storage is unavailable'));
     setChat({
@@ -226,7 +250,14 @@ describe('MessageBubble delivery state', () => {
       ],
     });
     const { bubble } = renderBubble();
-    fireEvent.click(within(bubble).getByRole('button', { name: 'Discard' }));
+    // Discard is the row's third action, behind its overflow menu.
+    fireEvent.click(
+      within(bubble).getByRole('button', {
+        name: 'More actions for this unsent message',
+      }),
+    );
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Discard' }));
+    await waitFor(() => expect(outbox.discard).toHaveBeenCalledWith(KEY));
     expect((await within(bubble).findByRole('alert')).textContent).toContain(
       'storage is unavailable',
     );
