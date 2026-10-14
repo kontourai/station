@@ -180,10 +180,16 @@ const VIRTUALIZE_AFTER_MESSAGE_COUNT = 40;
 // A pinned transcript counts a scroll this close to its end as still pinned
 // (a dock/keyboard transition can land it a little short).
 const PINNED_TOLERANCE_PX = 32;
-// Scrolls this soon after wheel/key input, or while a touch or pointer is
-// down, are the reader's. A released press needs no grace: momentum that
-// carries the reader more than PINNED_TOLERANCE_PX is reader movement anyway.
+// Scrolls this soon after wheel/key input or a mouse/pen press are the
+// reader's, as are scrolls while a finger is down.
 const READER_INPUT_GRACE_MS = 400;
+// A lifted finger leaves momentum that emits scrolls and no input events (iOS
+// especially); each such scroll extends the window by READER_SCROLL_EXTEND_MS.
+const TOUCH_MOMENTUM_GRACE_MS = 1_000;
+const READER_SCROLL_EXTEND_MS = 200;
+// Growth this soon after a press or key inside the transcript is the reader's
+// own doing (a tool card or details they opened): it stays where it opened.
+const READER_INTERACTION_GRACE_MS = 1_000;
 const EMPTY_MESSAGES: ChatMessage[] = [];
 const NO_PENDING_APPROVALS: ReturnType<typeof unansweredApprovalRequests> = [];
 function ChatMessageListComponent({
@@ -312,7 +318,20 @@ function ChatMessageListComponent({
   const [scrollingToBottom, setScrollingToBottom] = useState(false);
   // Reader input that can move the transcript: a pointer or touch still down,
   // or wheel/key input within the grace window.
-  const readerInputRef = useRef({ down: false, until: 0 });
+  const readerInputRef = useRef({
+    /** A finger is on the screen (touch events, not pointer events). */
+    touching: false,
+    /** A mouse or pen button is down. */
+    pressing: false,
+    /** Scrolls before this time are the reader's. */
+    until: 0,
+    /** Content growth before this time follows the reader's own interaction. */
+    interactedUntil: 0,
+  });
+  const readerActing = useCallback(() => {
+    const input = readerInputRef.current;
+    return input.touching || input.pressing || performance.now() < input.until;
+  }, []);
   useTranscriptLayoutTrace(messagesContainerRef, activeSession.id, () => ({
     isUserScrolledUp: isUserScrolledUpRef.current,
   }));
@@ -681,6 +700,13 @@ function ChatMessageListComponent({
       // A running glide aims at the live end on every frame already.
       if (scrollAnimationRef.current) return;
       if (!isUserScrolledUpRef.current) {
+        // Growth the reader caused (opening a tool card near the end) or that
+        // lands while they are scrolling stays where it is.
+        if (
+          readerActing() ||
+          performance.now() < readerInputRef.current.interactedUntil
+        )
+          return;
         if (el.scrollHeight - el.scrollTop - el.clientHeight > 0) {
           writeProgrammaticScroll(el, el.scrollHeight);
           markTranscriptPhase('content-repin');
@@ -710,7 +736,7 @@ function ChatMessageListComponent({
       observer.disconnect();
       children.disconnect();
     };
-  }, [noteProgrammaticScroll, writeProgrammaticScroll]);
+  }, [noteProgrammaticScroll, readerActing, writeProgrammaticScroll]);
 
   // Ends the scroll-load suppression a press's restoration holds. Genuine
   // reader input, a session switch and the settle loop all end it the same way.
@@ -831,8 +857,15 @@ function ChatMessageListComponent({
         RESIZE_REANCHOR_THRESHOLD_PX;
     lastClientHeightRef.current = target.clientHeight;
     // Every frame of a "Scroll to bottom" glide is our own write, and reader
-    // input cancels the glide before its own scroll arrives.
-    if (scrollAnimationRef.current) return;
+    // input cancels the glide before its own scroll arrives. Momentum the
+    // reader started before tapping emits no input event: a scroll that moves
+    // against the glide is theirs and ends it.
+    if (scrollAnimationRef.current) {
+      const glide = lastProgrammaticScrollRef.current;
+      if (!glide || target.scrollTop >= glide.top - PROGRAMMATIC_SCROLL_ECHO_PX)
+        return;
+      scrollAnimationRef.current.cancel();
+    }
     // A dock/keyboard resize can dispatch `scroll` before ResizeObserver gets
     // its turn. Preserve the reader's prior intent during that event: an
     // already-pinned transcript stays pinned, while an intentionally scrolled
@@ -864,14 +897,19 @@ function ChatMessageListComponent({
     // transcript more height, the browser clamps scrollTop to the new end, and
     // the height comes back within the same frame — no resize is ever
     // observed. Without this the newest message stayed that many pixels short.
-    const readerInput = readerInputRef.current;
-    const readerActing =
-      readerInput.down || performance.now() < readerInput.until;
+    const acting = readerActing();
+    // Momentum keeps scrolling after the finger lifts; while it does, the
+    // reader's window stays open.
+    if (acting)
+      readerInputRef.current.until = Math.max(
+        readerInputRef.current.until,
+        performance.now() + READER_SCROLL_EXTEND_MS,
+      );
     const shortBy =
       target.scrollHeight - target.scrollTop - target.clientHeight;
     if (
       !isUserScrolledUpRef.current &&
-      !readerActing &&
+      !acting &&
       shortBy > 0 &&
       shortBy <= PINNED_TOLERANCE_PX
     ) {
@@ -903,11 +941,22 @@ function ChatMessageListComponent({
   }, []);
   const onReaderInput = useCallback(
     (event: React.SyntheticEvent) => {
-      if (event.type === 'touchstart' || event.type === 'pointerdown')
-        readerInputRef.current.down = true;
-      else
-        readerInputRef.current.until =
-          performance.now() + READER_INPUT_GRACE_MS;
+      const input = readerInputRef.current;
+      const now = performance.now();
+      if (event.type === 'touchstart') {
+        input.touching = true;
+        input.interactedUntil = now + READER_INTERACTION_GRACE_MS;
+      } else if (event.type === 'pointerdown') {
+        // A touch is tracked by its touch events: the browser cancels the
+        // pointer as soon as the finger starts panning.
+        if ((event as React.PointerEvent).pointerType !== 'touch')
+          input.pressing = true;
+        input.interactedUntil = now + READER_INTERACTION_GRACE_MS;
+      } else {
+        input.until = now + READER_INPUT_GRACE_MS;
+        if (event.type === 'keydown')
+          input.interactedUntil = now + READER_INTERACTION_GRACE_MS;
+      }
       endOlderRestoreSuppression();
       cancelScrollToBottom();
     },
@@ -915,13 +964,36 @@ function ChatMessageListComponent({
   );
   // A press can end outside the transcript, so its end is observed globally.
   useEffect(() => {
-    const release = () => {
-      readerInputRef.current.down = false;
+    const releaseTouch = () => {
+      const input = readerInputRef.current;
+      if (!input.touching) return;
+      input.touching = false;
+      input.until = Math.max(
+        input.until,
+        performance.now() + TOUCH_MOMENTUM_GRACE_MS,
+      );
     };
-    const ends = ['pointerup', 'pointercancel', 'touchend', 'touchcancel'];
-    for (const type of ends) window.addEventListener(type, release, true);
+    const releasePress = (event: Event) => {
+      const input = readerInputRef.current;
+      if ((event as PointerEvent).pointerType === 'touch' || !input.pressing)
+        return;
+      input.pressing = false;
+      input.until = Math.max(
+        input.until,
+        performance.now() + READER_INPUT_GRACE_MS,
+      );
+    };
+    const listeners: Array<[string, (event: Event) => void]> = [
+      ['touchend', releaseTouch],
+      ['touchcancel', releaseTouch],
+      ['pointerup', releasePress],
+      ['pointercancel', releasePress],
+    ];
+    for (const [type, listener] of listeners)
+      window.addEventListener(type, listener, true);
     return () => {
-      for (const type of ends) window.removeEventListener(type, release, true);
+      for (const [type, listener] of listeners)
+        window.removeEventListener(type, listener, true);
     };
   }, []);
 

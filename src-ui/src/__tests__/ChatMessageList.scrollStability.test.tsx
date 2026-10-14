@@ -250,22 +250,38 @@ describe('Scroll to bottom', () => {
     expect(scrollToBottomButton()).not.toBeNull();
   });
 
-  test("a scroll that is not the glide's own write, mid-glide, is not the reader: no history load at the top", () => {
+  test("a scroll past the glide's own write is not the reader: no history load, the glide carries on", () => {
     stubMotion(false);
     const onLoadOlder = vi.fn(async () => {});
     const { scroller } = renderList({ hasOlderMessages: true, onLoadOlder });
     readerScrollsTo(scroller, 150);
     advanceFrames(1_000);
-    expect(onLoadOlder).not.toHaveBeenCalled();
     fireEvent.click(scrollToBottomButton()!);
     advanceFrames(16);
-    // A layout correction moves the transcript into the 96px history band
-    // while the glide runs, with no reader input.
-    scroller.scrollTop = 40;
+    // A layout correction (virtualizer compensation) moves the transcript
+    // further along the glide's direction, with no reader input.
+    scroller.scrollTop += 40;
     fireEvent.scroll(scroller);
     advanceFrames(500);
     expect(onLoadOlder).not.toHaveBeenCalled();
     expect(scroller.scrollTop).toBe(2_000);
+    expect(scrollToBottomButton()).toBeNull();
+  });
+
+  test('a scroll against the glide (momentum the reader started) ends it and is theirs', () => {
+    stubMotion(false);
+    const { scroller } = renderList();
+    readerScrollsTo(scroller, 1_300);
+    advanceFrames(1_000);
+    fireEvent.click(scrollToBottomButton()!);
+    advanceFrames(32);
+    const glided = scroller.scrollTop;
+    // No input event: iOS momentum keeps moving up after the tap.
+    scroller.scrollTop = glided - 120;
+    fireEvent.scroll(scroller);
+    advanceFrames(500);
+    expect(scroller.scrollTop).toBe(glided - 120);
+    expect(scrollToBottomButton()).not.toBeNull();
   });
 
   test('reduced motion lands at once', () => {
@@ -322,5 +338,64 @@ describe('a pinned transcript clamped by layout', () => {
     fireEvent.scroll(scroller);
     readerScrollsTo(scroller, 1_579);
     expect(scroller.scrollTop).toBe(1_579);
+  });
+});
+
+describe('a finger on the transcript', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['performance'] });
+  });
+
+  /**
+   * The order a browser dispatches for a touch drag: the pointer is
+   * cancelled as soon as the finger starts panning, long before it lifts.
+   */
+  function fingerDown(scroller: HTMLElement) {
+    fireEvent.pointerDown(scroller, { pointerType: 'touch' });
+    fireEvent.touchStart(scroller);
+    fireEvent.pointerCancel(window, { pointerType: 'touch' });
+  }
+
+  test('dragging up from the pinned end is the reader, not a clamp, while the finger is down', () => {
+    const { scroller } = renderList();
+    vi.advanceTimersByTime(2_000);
+    fingerDown(scroller);
+    for (const top of [1_595, 1_588, 1_580]) {
+      scroller.scrollTop = top;
+      fireEvent.scroll(scroller);
+      expect(scroller.scrollTop).toBe(top);
+    }
+  });
+
+  test('momentum after the finger lifts is still the reader', () => {
+    const { scroller } = renderList();
+    vi.advanceTimersByTime(2_000);
+    fingerDown(scroller);
+    fireEvent.touchEnd(window);
+    // Momentum frames: scrolls with no input event, inside the 32px band.
+    for (const top of [1_590, 1_582, 1_576]) {
+      vi.advanceTimersByTime(150);
+      scroller.scrollTop = top;
+      fireEvent.scroll(scroller);
+      expect(scroller.scrollTop).toBe(top);
+    }
+  });
+
+  test('a row the reader opens near the end opens in place', () => {
+    const { scroller, geometry } = renderList();
+    vi.advanceTimersByTime(2_000);
+    scroller.scrollTop = 1_600;
+    fireEvent.scroll(scroller);
+    // A press inside the transcript expands a tool card: content grows below.
+    fireEvent.pointerDown(scroller, { pointerType: 'mouse' });
+    fireEvent.pointerUp(window, { pointerType: 'mouse' });
+    geometry.scrollHeight = 2_300;
+    deliverResize(scroller.querySelector('.chat-message-anchor')!);
+    expect(scroller.scrollTop).toBe(1_600);
+    // Growth well after the interaction is the content's own: followed.
+    vi.advanceTimersByTime(2_000);
+    geometry.scrollHeight = 2_400;
+    deliverResize(scroller.querySelector('.chat-message-anchor')!);
+    expect(scroller.scrollTop).toBe(2_400);
   });
 });
