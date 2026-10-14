@@ -30,7 +30,9 @@ const PROJECT = {
 const AGENTS = [
   {
     slug: 'claude',
-    name: 'Claude Runtime',
+    // Long on purpose: the composer's Agent chip must end it in an ellipsis
+    // inside the chip on a phone, not run it under the caret.
+    name: 'Claude Runtime for the workspace review lane',
     description: 'Direct chat using Claude Runtime.',
     source: 'local',
     execution: {
@@ -374,6 +376,19 @@ for (const [label, viewport] of [
     await expect(stop).toBeVisible();
     await evidence(page, testInfo, `running-turn-empty-${label}.png`);
 
+    // The Agent chip's name ends before its caret, in an ellipsis.
+    const agentChip = page.locator('.chat-input__agent-btn');
+    const [nameBox, caretBox, nameClipped] = await Promise.all([
+      agentChip.locator('.chat-input__agent-name').boundingBox(),
+      agentChip.locator('.choice-caret').boundingBox(),
+      agentChip
+        .locator('.chat-input__agent-name')
+        .evaluate((element) => element.scrollWidth > element.clientWidth),
+    ]);
+    expect(nameBox!.x + nameBox!.width).toBeLessThanOrEqual(caretBox!.x);
+    if (label === 'phone')
+      expect(nameClipped, 'clipped, not wrapped').toBe(true);
+
     // Stop sits at the end of the controls row, before and after a draft
     // reveals Send: nothing to its right, and it does not move.
     const row = page.locator('.chat-controls-row');
@@ -460,4 +475,34 @@ test("an image the new chat's engine cannot see keeps the message for the person
   await evidence(page, testInfo, 'start-composer-image-refused-desktop.png');
   expect(prepared.size).toBe(0);
   expect(executionRequests).toHaveLength(0);
+});
+
+test.describe('on a touch phone', () => {
+  test.use({ hasTouch: true, isMobile: true });
+
+  test('the start composer field shows one focus ring and no resize grip', async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const executionRequests: Array<Record<string, unknown>> = [];
+    await installMockOrchestrationSse(page);
+    await seedRoutes(page, executionRequests);
+    const { composer } = await openHomeStartComposer(page);
+    const field = composer.getByRole('textbox', {
+      name: 'What would you like done?',
+    });
+    await field.tap();
+    await field.fill('Fix the flaky upload test');
+    const style = await field.evaluate((element) => {
+      const computed = getComputedStyle(element);
+      return {
+        focused: document.activeElement === element,
+        outline: computed.outlineStyle,
+        resize: computed.resize,
+      };
+    });
+    // The box's own focus border is the ring; the field draws none inside it.
+    expect(style).toEqual({ focused: true, outline: 'none', resize: 'none' });
+    await evidence(page, testInfo, 'touch-start-composer-focus-phone.png');
+  });
 });

@@ -749,7 +749,9 @@ test.describe('wheeling back to the newest message', () => {
       // Back down in wheel notches, past the end, the way a person does.
       for (let notch = 0; notch < 30; notch += 1) {
         await page.mouse.wheel(0, 120);
-        await page.waitForTimeout(30);
+        await page.evaluate(
+          () => new Promise((resolve) => requestAnimationFrame(resolve)),
+        );
       }
       await waitForStableTranscript(page, 30);
       await expect.poll(shortBy).toBeLessThanOrEqual(1);
