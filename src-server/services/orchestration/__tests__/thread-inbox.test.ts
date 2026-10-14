@@ -803,9 +803,11 @@ describe('thread inbox (#3568)', () => {
       }),
     );
     await runningFirstTurn(stuck);
-    queueFollowUp(stuck);
+    // Queued once the turn has ended, so no busy wait left a re-check
+    // pending: only the one the guard schedules can settle it now.
     await emit(stuck, 'turn.completed', { turnId: 'turn-1' });
-    // Only the re-check the guard schedules can settle it now.
+    await settle(stuck);
+    queueFollowUp(stuck);
     await eventuallyTrue(
       () => stuck.inbox.list(THREAD)[0]?.state === 'refused',
       3_000,
