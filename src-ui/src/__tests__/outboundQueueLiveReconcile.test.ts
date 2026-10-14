@@ -660,10 +660,17 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
  * other way round. The fake object store fires its requests asynchronously
  * and commits only when told, like IndexedDB.
  */
-function fakeObjectStore(initial: Record<string, unknown>) {
+function fakeObjectStore(initial: Record<string, unknown>, failPutOf?: string) {
   const data = new Map(Object.entries(initial));
   const puts: Array<[string, unknown]> = [];
-  const transaction = {} as {
+  const transaction = {
+    aborted: false,
+    abort() {
+      transaction.aborted = true;
+    },
+  } as {
+    aborted: boolean;
+    abort: () => void;
     oncomplete?: () => void;
     onsuccess?: () => void;
     onerror?: () => void;
@@ -686,6 +693,7 @@ function fakeObjectStore(initial: Record<string, unknown>) {
       return request;
     },
     put(next: unknown, key: string) {
+      if (failPutOf === key) throw new Error(`cannot store ${key}`);
       puts.push([key, next]);
       return {};
     },
@@ -697,6 +705,7 @@ function fakeObjectStore(initial: Record<string, unknown>) {
       'get' | 'put' | 'transaction'
     >,
     puts,
+    transaction,
     commit: () => (transaction.oncomplete ?? transaction.onsuccess)?.(),
   };
 }
@@ -743,6 +752,21 @@ describe('the queue and its retired list are written together', () => {
     expect(fake.puts).toEqual([]);
   });
 
+  it('a retired list that cannot be stored aborts the transaction, so the record is not kept alone', async () => {
+    const { updateRecordAndRetired } = await import('../lib/outboundQueue');
+    const fake = fakeObjectStore(
+      { [QUEUE_KEY]: { turns: ['row'] } },
+      'station-outbound-retired-v1',
+    );
+    await expect(
+      updateRecordAndRetired(fake.objectStore, () => ({
+        record: { turns: [] },
+        retired: ['new'],
+      })),
+    ).rejects.toThrow('cannot store');
+    expect(fake.transaction.aborted).toBe(true);
+  });
+
   it('the outbox uses the one-transaction write when its storage offers it, never two separate writes', async () => {
     stubLocks();
     vi.resetModules();
@@ -774,5 +798,83 @@ describe('the queue and its retired list are written together', () => {
     await expect(
       queue.outboundDispatch.beginLive({ ...intent, clientTurnId: 'atomic-1' }),
     ).rejects.toMatchObject({ reason: 'accepted' });
+  });
+
+  it('the production IndexedDB storage writes a delivery and its retired key in one transaction', async () => {
+    stubLocks();
+    const data = new Map<string, unknown>();
+    /** Keys put by each readwrite transaction, in order. */
+    const transactions: string[][] = [];
+    const db = {
+      transaction(_store: string, mode: string) {
+        const keys: string[] = [];
+        if (mode === 'readwrite') transactions.push(keys);
+        const transaction = {
+          abort() {},
+        } as {
+          abort: () => void;
+          oncomplete?: () => void;
+          onsuccess?: () => void;
+        };
+        // Commits once its requests have run, like IndexedDB.
+        setTimeout(() => (transaction.oncomplete ?? transaction.onsuccess)?.());
+        return {
+          objectStore: () => ({
+            transaction,
+            get(key: string) {
+              const request = {} as {
+                result?: unknown;
+                onsuccess?: () => void;
+              };
+              queueMicrotask(() => {
+                request.result = data.get(key);
+                request.onsuccess?.();
+              });
+              return request;
+            },
+            put(next: unknown, key: string) {
+              keys.push(key);
+              data.set(key, next);
+              const request = {} as { onsuccess?: () => void };
+              queueMicrotask(() => request.onsuccess?.());
+              return request;
+            },
+          }),
+        };
+      },
+    };
+    vi.stubGlobal('indexedDB', {
+      open() {
+        const request = { result: db } as {
+          result: unknown;
+          onsuccess?: () => void;
+          onupgradeneeded?: () => void;
+        };
+        queueMicrotask(() => request.onsuccess?.());
+        return request;
+      },
+    });
+    vi.resetModules();
+    const queue = await import('../lib/outboundQueue');
+    queue._resetOutboundQueueStorage();
+    const live = await queue.outboundDispatch.beginLive({
+      ...intent,
+      clientTurnId: 'idb-atomic',
+    });
+    transactions.length = 0;
+    await live.accepted();
+    expect(
+      transactions.some(
+        (keys) =>
+          keys.includes(QUEUE_KEY) &&
+          keys.includes('station-outbound-retired-v1'),
+      ),
+    ).toBe(true);
+    expect(
+      transactions.some(
+        (keys) =>
+          keys.length === 1 && keys[0] === 'station-outbound-retired-v1',
+      ),
+    ).toBe(false);
   });
 });

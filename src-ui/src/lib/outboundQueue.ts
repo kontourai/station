@@ -406,6 +406,13 @@ export function updateRecordAndRetired(
           objectStore.put(next.retired, RETIRED_STORAGE_KEY);
         resolve(promisifyRequest(objectStore.transaction));
       } catch (error) {
+        // Neither key is kept: a record put before a failing retired put
+        // would otherwise commit alone.
+        try {
+          objectStore.transaction.abort();
+        } catch {
+          // Already finished: nothing of this call was committed.
+        }
         reject(error);
       }
     };

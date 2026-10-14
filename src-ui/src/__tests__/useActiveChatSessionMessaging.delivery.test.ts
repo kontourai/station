@@ -528,6 +528,7 @@ describe('useSendMessage: durable before the request', () => {
     sendExecutionMessageMock.mockRejectedValueOnce(
       new TypeError('Failed to fetch'),
     );
+    const onAdmission = vi.fn();
     const { result } = renderHook(() => useSendMessage('http://api.test'));
     let pending!: Promise<unknown>;
     await act(async () => {
@@ -539,6 +540,7 @@ describe('useSendMessage: durable before the request', () => {
         undefined,
         undefined,
         'discarded-offline',
+        { onAdmission },
       );
       await vi.advanceTimersByTimeAsync(3_500);
     });
@@ -550,6 +552,64 @@ describe('useSendMessage: durable before the request', () => {
     expect(state?.error ?? '').not.toContain('Send unavailable');
     expect(state?.status).toBe('idle');
     expect(state?.input).toBe('once more');
+    // Not shown as sent: no bubble for it, and no turn awaited.
+    expect(
+      state?.messages?.some(
+        (message) => message.clientId === 'discarded-offline',
+      ),
+    ).toBe(false);
+    expect(state?.pendingClientTurnId).toBeUndefined();
+    expect(onAdmission).toHaveBeenCalledWith('not-invoked');
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(await outboundDispatch.snapshot()).toEqual([]);
+  });
+
+  it('an offline send of a message already delivered says so, is not "Send unavailable", and is not queued', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const storage = armableStorage();
+    const delivered = await outboundDispatch.beginLive({
+      clientTurnId: 'delivered-offline',
+      sessionId: chat,
+      agentSlug: 'codex',
+      content: 'done already',
+    });
+    await delivered.accepted();
+    storage.arm(
+      () => new Promise<void>((resolve) => setTimeout(resolve, 10_000)),
+    );
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new TypeError('Failed to fetch'),
+    );
+    const onAdmission = vi.fn();
+    const { result } = renderHook(() => useSendMessage('http://api.test'));
+    let pending!: Promise<unknown>;
+    await act(async () => {
+      pending = result.current(
+        chat,
+        'codex',
+        undefined,
+        'done already',
+        undefined,
+        undefined,
+        'delivered-offline',
+        { onAdmission },
+      );
+      await vi.advanceTimersByTimeAsync(3_500);
+    });
+    await act(async () => {
+      await pending;
+    });
+    const state = activeChatsStore.getSnapshot()[chat];
+    expect(state?.error ?? '').not.toContain('Send unavailable');
+    expect(state?.status).toBe('idle');
+    expect(
+      state?.ephemeralMessages?.some((message) =>
+        String(message.content).includes('already delivered'),
+      ),
+    ).toBe(true);
+    expect(onAdmission).toHaveBeenCalledWith('accepted');
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10_000);
     });

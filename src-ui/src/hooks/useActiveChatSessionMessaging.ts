@@ -1247,7 +1247,18 @@ export function useSendMessage(
               updateChat(sessionId, {
                 status: 'idle',
                 abortController: undefined,
+                pendingClientTurnId: undefined,
+                sendAwaitingTurnStart: undefined,
                 ...(restored ? { input: submittedDraft } : {}),
+                // Not sent from here: the bubble this call added goes.
+                ...(transaction.optimisticMessages !==
+                transaction.originalMessages
+                  ? {
+                      messages: latest?.messages?.filter(
+                        (message) => message.clientId !== resolvedTurnId,
+                      ),
+                    }
+                  : {}),
               });
               addEphemeralMessage(
                 sessionId,
@@ -1258,6 +1269,9 @@ export function useSendMessage(
                       content:
                         'This message was already delivered, so it was not sent again.',
                     },
+              );
+              options?.onAdmission?.(
+                retiredAs === 'discarded' ? 'not-invoked' : 'accepted',
               );
               return false;
             }
