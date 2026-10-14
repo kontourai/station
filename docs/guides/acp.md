@@ -84,14 +84,20 @@ When Station resolves a new execution for an ACP-bound Agent, the adapter:
 2. Spawns the configured command as a subprocess via `ACPProcess`
 3. Calls `connection.initialize()` with `clientCapabilities` (fs read/write, terminal)
 4. For a fresh start, calls `connection.newSession()`. A restored Session uses
-   its persisted resume cursor only after validating the connection identity,
-   execution fingerprint and live `agentCapabilities.loadSession` capability;
-   then the adapter calls `connection.loadSession()` for that native session.
-   ACP has the agent replay the whole conversation as `session/update`
-   notifications before it answers the load. Station already stored that
-   history, so the adapter does not publish the replayed message, thought,
-   tool and plan updates; commands, mode, config and usage updates still
-   apply.
+   its persisted resume cursor only after validating the connection identity
+   and execution fingerprint, and that the engine advertises a way to
+   reattach. When the engine advertises `sessionCapabilities.resume`, the
+   adapter calls `session/resume`, which restores the native session without
+   replaying it. It falls back to `connection.loadSession()` when `resume` is
+   not advertised, or when the engine answers it with method-not-found and
+   advertises `loadSession`; any other resume failure fails the start.
+   On `session/load`, ACP has the agent replay the whole conversation as
+   `session/update` notifications before it answers. Station already stored
+   that history, so while the session reattaches the adapter does not publish
+   message, thought, tool or plan updates; commands, mode, config and usage
+   updates still apply. A turn sent before reattaching finishes is refused.
+   Station's restore eligibility upstream of the adapter still requires
+   `loadSession` (`src-server/runtime/bootstrap/acp-resume-cursor-support.ts`).
 
 `OrchestrationService` reconstructs the start input with `existing.resumeCursor`
 when it must re-establish an adapter Session. A malformed cursor, changed
