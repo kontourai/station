@@ -1251,6 +1251,52 @@ describe('OrchestrationService', () => {
       expect(bedrock.sendTurn).toHaveBeenCalledTimes(1);
     });
 
+    test('a send waiting for its session start holds no workspace turn-start reservation', async () => {
+      const cwd = mkdtempSync(join(tmp, 'waiting-start-'));
+      await service.dispatch({
+        type: 'startSession',
+        input: { threadId: 'waiting-start', provider: 'bedrock', cwd },
+      });
+      bedrock.sendTurn.mockClear();
+      let rejectReady!: (error: Error) => void;
+      const whenSessionReady = vi.fn(
+        () =>
+          new Promise<void>((_, reject) => {
+            rejectReady = reject;
+          }),
+      );
+      (bedrock as ProviderAdapterShape).whenSessionReady = whenSessionReady;
+      const send = service
+        .dispatch({
+          type: 'sendTurn',
+          input: { threadId: 'waiting-start', input: 'early message' },
+        })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      await vi.waitFor(() =>
+        expect(whenSessionReady).toHaveBeenCalledTimes(1),
+      );
+
+      // The wait runs before the turn-start claim, so an exclusive workspace
+      // operation is not refused as busy because of it.
+      await expect(
+        service.runWorkspaceRestore(
+          await workspaceKey(cwd),
+          async () => 'restored',
+        ),
+      ).resolves.toBe('restored');
+
+      rejectReady(
+        new SendTurnRefusedError(
+          "The agent's session ended before it was ready. Nothing was sent.",
+        ),
+      );
+      expect(await send).toBeInstanceOf(OrchestrationCommandDispatchError);
+      expect(bedrock.sendTurn).not.toHaveBeenCalled();
+    });
+
     test('a restarted service refuses restore from the durable possible-effect boundary', async () => {
       const cwd = mkdtempSync(join(tmp, 'durable-active-'));
       await startAndSend('durable-active', cwd);
@@ -15776,7 +15822,7 @@ describe('OrchestrationService', () => {
       ),
     ]);
 
-  test('a send waiting for its session start holds no turn-start claim: Stop completes meanwhile', async () => {
+  test('Stop completes while a send waits for its session start, and the send never reaches the engine', async () => {
     await service.dispatch({
       type: 'startSession',
       input: {
