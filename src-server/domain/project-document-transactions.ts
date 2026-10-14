@@ -34,7 +34,7 @@ const JOURNAL_VERSION = 1;
 const JOURNAL_FILE = '.station-knowledge-transaction.json';
 const LEGACY_LOCK_FILE = '.station-knowledge-mutation';
 /** Relative to the Station home; the lock name is the root's identity. */
-export const DOCUMENT_ROOT_COORDINATION_DIRECTORY = join(
+const DOCUMENT_ROOT_COORDINATION_DIRECTORY = join(
   'coordination',
   'knowledge-file-transactions',
 );

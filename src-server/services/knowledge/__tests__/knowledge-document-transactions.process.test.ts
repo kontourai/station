@@ -1,11 +1,11 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { KnowledgeDocumentMeta } from '@kontourai/station-contracts/knowledge';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ProjectFileTransactions } from '../../../domain/project-file-transactions.js';
 import { KnowledgeStoreCorruptionError } from '../../../knowledge-store/errors.js';
 import {
@@ -45,12 +45,13 @@ function metadataBytes(docs: KnowledgeDocumentMeta[]): string {
   return `${JSON.stringify(docs, null, 2)}\n`;
 }
 
+const makeTempDir = trackTempDirs();
 let home: string;
 let storageDir: string;
 let previousStationHome: string | undefined;
 
 beforeEach(async () => {
-  home = await mkdtemp(join(tmpdir(), 'knowledge-document-transactions-'));
+  home = makeTempDir('knowledge-document-transactions-');
   storageDir = defaultKnowledgeStorageDir(home, SLUG, NAMESPACE);
   previousStationHome = process.env.STATION_HOME;
   process.env.STATION_HOME = home;
@@ -62,10 +63,9 @@ beforeEach(async () => {
   );
 });
 
-afterEach(async () => {
+afterEach(() => {
   if (previousStationHome === undefined) delete process.env.STATION_HOME;
   else process.env.STATION_HOME = previousStationHome;
-  await rm(home, { recursive: true, force: true });
 });
 
 function runWriter(mode: string, content: string, metadata: string) {

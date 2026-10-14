@@ -23,7 +23,7 @@ import {
   type ProjectDocumentTransactionFaults,
 } from './project-document-transactions.js';
 
-export type { ProjectDocumentFiles, ProjectDocumentTransactionFaults };
+export type { ProjectDocumentFiles };
 
 export class FileStorageConflictError extends Error {
   readonly code = 'file_storage_conflict';
