@@ -88,6 +88,13 @@
       "route": "/settings?view=device-hosts&highlight=device-hosts"
     },
     {
+      "id": "people",
+      "label": "People",
+      "scope": "station",
+      "section": "people",
+      "route": "/settings?view=people&highlight=people"
+    },
+    {
       "id": "host-runtime",
       "label": "Station host",
       "scope": "informational",
