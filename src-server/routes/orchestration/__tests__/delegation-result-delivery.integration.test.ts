@@ -261,6 +261,8 @@ function routes(
             remote: false,
           }),
           conversationExists: () => true,
+          // The caller's session records no Project: no default workspace.
+          ownProjectSlug: () => undefined,
         },
         // What `request-delegation.ts` derives for a verified caller: the
         // caller's own conversation is the parent.

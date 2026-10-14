@@ -1904,9 +1904,13 @@ function localRefusalOf(
   message: string,
 ): LocalStationRefusal | undefined {
   if (target.kind !== 'current') return undefined;
-  const code = (payload as { code?: unknown } | null | undefined)?.code;
+  const body = payload as
+    | { code?: unknown; reason?: unknown }
+    | null
+    | undefined;
+  const code = body?.code;
   return typeof code === 'string' && code
-    ? new LocalStationRefusal(code, message)
+    ? new LocalStationRefusal(code, message, body?.reason)
     : undefined;
 }
 
