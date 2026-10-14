@@ -36,15 +36,16 @@ only ever sent to, or settled by, that Station; for another it waits, listed.
 
 Follow-ups held behind a running turn stay in the tab's session storage, and
 each keeps a durable copy in the queue under the key the queue will send it
-with. The flush never sends that copy while its app lives; a reload's restored
-queue takes the copies back (so an edit or a delete there is what counts); if
-the app closes first, it becomes an ordinary queued message a minute later
-(time for a reloading tab to take it back) and is sent with its key. A message whose row is already on its way or possibly started is
-never sent again from the composer or the queue. A send
-refused because the engine is busy joins that queue with its own key and
-copy, and the queue's drain writes the same before-the-request row as a
-composer send. Sends with attachments or a visual skill are not written to
-the queue (their draft is kept until Station answers, as before).
+with. Nothing sends that copy automatically: the window's own queue sends it
+when the turn ends, a reload's restored queue takes the copies back (so an
+edit or a delete there is what counts), and a copy whose window closed, or
+another window's, is listed with Send, Edit and Discard for the user. A
+message whose row is already on its way or possibly started is never sent
+again from the composer or the queue. A send refused because the engine is
+busy joins that queue with its own key and copy, and the queue's drain writes
+the same before-the-request row as a composer send. Sends with attachments or
+a visual skill are not written to the queue (their draft is kept until
+Station answers, as before).
 
 Configuration edits are excluded by default. Station has no single
 configuration-mutation protocol: agent, connection, plugin, and system edits
