@@ -829,12 +829,18 @@ export function ChatDockBody({
    * It goes quiet when the load ends: the rows arriving are the news, and
    * "loaded" is not a convention this app announces anywhere else. React
    * writes the text only when it changes, so re-renders announce nothing.
+   *
+   * The long-wait sentence uses the visible long-wait row's own condition, so
+   * the two cannot disagree (a history failure hides the skeleton, not the
+   * row).
    */
-  const loadingAnnouncement = showLoadingSkeleton
-    ? loadingLong && !recoveryOpen
-      ? LOADING_LONG_MESSAGE
-      : loadingLabel
-    : '';
+  const showLoadingLongRow =
+    conversationLoading && loadingLong && !recoveryOpen;
+  const loadingAnnouncement = showLoadingLongRow
+    ? LOADING_LONG_MESSAGE
+    : showLoadingSkeleton
+      ? loadingLabel
+      : '';
   const [announcedLoading, setAnnouncedLoading] = useState('');
   useEffect(() => {
     setAnnouncedLoading(loadingAnnouncement);
@@ -1903,7 +1909,7 @@ export function ChatDockBody({
         BEFORE the transcript's first read satisfies both conditions at once,
         and rendered the control twice (delta-review L1).
       */}
-      {conversationLoading && loadingLong && !recoveryOpen ? (
+      {showLoadingLongRow ? (
         <div className="session-history-controls">
           {/* Announced by the persistent region above, not by this span. */}
           <span>{LOADING_LONG_MESSAGE}</span>

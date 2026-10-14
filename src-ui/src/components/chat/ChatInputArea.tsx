@@ -738,7 +738,14 @@ export function ChatInputArea({
       for (const child of body.children) {
         if (child === root || !(child instanceof HTMLElement)) continue;
         const style = getComputedStyle(child);
-        if (style.display === 'none') continue;
+        // Out of flow (the dock's visually hidden status region, an overlay):
+        // it takes no room from the composer.
+        if (
+          style.display === 'none' ||
+          style.position === 'absolute' ||
+          style.position === 'fixed'
+        )
+          continue;
         const edge = (name: string) =>
           Number.parseFloat(style.getPropertyValue(name)) || 0;
         const margins = edge('margin-top') + edge('margin-bottom');

@@ -8,8 +8,12 @@ export interface TranscriptFrame {
   log: boolean;
   /** The empty/loading filler (`.chat-messages--empty`) is mounted instead. */
   filler: boolean;
-  /** "Loading chat" skeletons anywhere in the chat body. */
-  loadingSkeletons: number;
+  /**
+   * What the dock's loading announcement region says this frame ('' when no
+   * load is in progress). The skeletons no longer carry the wait over a
+   * displayed transcript, so counting them would miss it.
+   */
+  loadingAnnouncement: string;
   scrollTop: number;
   scrollHeight: number;
   clientHeight: number;
@@ -115,9 +119,10 @@ export async function installTranscriptFrameSampler(page: Page) {
         t: performance.now(),
         log: Boolean(log),
         filler: Boolean(filler),
-        loadingSkeletons: document.querySelectorAll(
-          '[aria-label="Loading chat"]',
-        ).length,
+        loadingAnnouncement:
+          document.querySelector(
+            '[data-testid="chat-dock-loading-announcement"]',
+          )?.textContent ?? '',
         scrollTop: 0,
         scrollHeight: 0,
         clientHeight: 0,

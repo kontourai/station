@@ -42,6 +42,7 @@ const transcriptMock = vi.hoisted(() => ({
   enabled: false,
   settled: true,
   messages: [] as any[],
+  error: null as Error | null,
 }));
 const chatInputPropsMock = vi.hoisted(() => ({
   current: null as Record<string, any> | null,
@@ -181,6 +182,7 @@ vi.mock('../hooks/orchestration/useActiveChatTranscript', () => ({
     // matches the settled reader every other test in this file assumes.
     settled: transcriptMock.settled,
     upgradeRequired: false,
+    error: transcriptMock.error,
     loadOlder: vi.fn(async () => {}),
     reload: vi.fn(async () => {}),
   }),
@@ -361,6 +363,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     transcriptMock.enabled = false;
     transcriptMock.settled = true;
     transcriptMock.messages = [];
+    transcriptMock.error = null;
     chatInputPropsMock.current = null;
     queuedMessagesPropsMock.current = null;
     realControlsMock.enabled = false;
@@ -1278,7 +1281,38 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     }
   });
 
-  test('an empty resolving reload is one status region, the filler itself', async () => {
+  // The history read failing during a long load hides the skeleton but not
+  // the visible long-wait row; the announcement follows the row.
+  test('a history failure during a long load still announces the longer wait', async () => {
+    transcriptMock.enabled = true;
+    transcriptMock.settled = false;
+    transcriptMock.error = new Error('history read failed');
+    renderDock({
+      orchestrationSession: buildOrchestrationSession({
+        status: 'idle',
+        lifecycleState: 'idle',
+      }),
+      session: buildSession({
+        conversationId: 'cool',
+        conversationOpenPending: true,
+        messages: [],
+      }),
+      onNewChat: vi.fn(),
+    });
+    const row = document.querySelector('.session-history-controls');
+    expect(row?.textContent).toContain(
+      'This conversation is taking longer to load. Waiting for Station.',
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('chat-dock-loading-announcement').textContent,
+      ).toBe(
+        'This conversation is taking longer to load. Waiting for Station.',
+      ),
+    );
+  });
+
+  test('an empty resolving reload: the filler is one region with no skeleton region inside, and the wait is spoken by the separate announcement region', async () => {
     renderDock({
       orchestrationSession: buildOrchestrationSession({
         status: 'idle',
@@ -1295,6 +1329,11 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     expect(notice.classList.contains('chat-messages--empty')).toBe(true);
     expect(notice.getAttribute('role')).toBe('status');
     expect(notice.querySelector('[role="status"]')).toBeNull();
+    // The pair: the words are spoken by the dock's announcement region, which
+    // is not nested in the filler.
+    const announcer = screen.getByTestId('chat-dock-loading-announcement');
+    expect(notice.contains(announcer)).toBe(false);
+    await waitFor(() => expect(announcer.textContent).not.toBe(''));
   });
 
   // The three simultaneous claims E3 recorded, each asserted absent by the
