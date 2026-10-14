@@ -522,7 +522,7 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
       'Project → unreadable Project (new)',
       'op-caller-a',
       { kind: 'new', workspace: UNREADABLE },
-      OUT('unreadable-target'),
+      OUT('target-unavailable'),
     ],
     [
       'Project → remote (new)',
@@ -576,7 +576,7 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
       'Project → unreadable-Project thread',
       'op-caller-a',
       { kind: 'thread', threadId: 'op-thread-slug' },
-      OUT('unreadable-target'),
+      OUT('target-unavailable'),
     ],
     [
       'unreadable caller → Project thread',
@@ -1033,13 +1033,13 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
         'caller in P → unresolvable folder',
         'op-caller-a',
         join(project, 'missing'),
-        OUT('unreadable-target'),
+        OUT('target-unavailable'),
       ],
       [
         'global caller → unresolvable folder',
         'op-caller-global',
         join(root, 'missing'),
-        OUT('unreadable-target'),
+        OUT('target-unavailable'),
       ],
     ];
     for (const [label, caller, cwd, expected] of cases) {
@@ -1106,8 +1106,8 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
     ];
     const caller = as('bearer-exposed', 'op-caller-a');
     for (const [route, cwd, expected] of [
-      ['POST /chat', pb, OUT('unreadable-target')],
-      ['POST /delegations', pb, OUT('unreadable-target')],
+      ['POST /chat', pb, OUT('target-unavailable')],
+      ['POST /delegations', pb, OUT('target-unavailable')],
       ['POST /chat', join(pa, 'sub'), 'reached'],
       ['POST /delegations', join(pa, 'sub'), 'reached'],
     ] as const) {
@@ -1449,7 +1449,7 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
   // record's, with a working directory), as if it had named the Project's
   // slug; every other request is decided as it was sent.
   describe('a new session with no workspace starts in the caller’s own Project', () => {
-    /** Project a and b with working directories; Project n has none. */
+    /** Project a and b, each with a working directory. */
     function projects() {
       const root = realpathSync(makeTempDir('dispatch-own-project-'));
       for (const dir of ['pa', 'pb']) mkdirSync(join(root, dir));
@@ -1555,6 +1555,50 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
         ]);
       },
     );
+
+    test('no default without a working directory, or when the Project’s slug now names another Project', async () => {
+      const { base } = await setup();
+      const root = realpathSync(makeTempDir('dispatch-own-project-'));
+      for (const [label, projectDirs] of [
+        // Project a is listed with no folder to run in.
+        ['no working directory', [{ id: 'project-a', slug: 'project-a-slug' }]],
+        // Project a is listed under a slug that now leads to Project b.
+        [
+          'slug names another Project',
+          [{ id: 'project-a', slug: 'project-b-slug', workingDirectory: root }],
+        ],
+      ] as const) {
+        support.projectDirs = projectDirs as typeof support.projectDirs;
+        for (const route of ['POST /chat', 'POST /delegations']) {
+          const request = ROUTES[route]!({ kind: 'new' })!;
+          // A caller that is not bound runs as sent: the global space.
+          expect([
+            label,
+            route,
+            await outcome(
+              base,
+              request.path,
+              as('bearer-exposed', 'op-caller-a')(),
+              request.body,
+            ),
+          ]).toEqual([label, route, OUT('global-space')]);
+          support.dispatchedTargets.length = 0;
+          expect(
+            await outcome(
+              base,
+              request.path,
+              as('bound', 'op-caller-a')(),
+              request.body,
+            ),
+          ).toBe('reached');
+          expect([
+            label,
+            route,
+            (support.dispatchedTargets[0] as { workspace?: unknown }).workspace,
+          ]).toEqual([label, route, undefined]);
+        }
+      }
+    });
 
     test('a caller whose Project Station cannot confirm gets no default: refused, saying why', async () => {
       const { base } = await setup();

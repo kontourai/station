@@ -466,7 +466,7 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
           'bearer slug-lookup Project',
           bearer,
           'op-thread-slug',
-          'station_control_out_of_scope:unreadable-target',
+          'station_control_out_of_scope:target-unavailable',
         ],
         // A host thread needs a bound caller.
         [

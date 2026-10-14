@@ -556,7 +556,7 @@ describe('station-control authority: route matching and refusals', () => {
       'other-project',
       'global-space',
       'project-from-global',
-      'unreadable-target',
+      'target-unavailable',
       'unreadable-caller',
       'host',
       'remote',
@@ -652,7 +652,7 @@ describe('station-control authority: route matching and refusals', () => {
           inP(caller),
           target(OPERATOR, UNREADABLE, { ownerHoldsAction: false }),
         ),
-      ).toBe(OUT('unreadable-target'));
+      ).toBe(OUT('target-unavailable'));
       expect(
         decide(
           {
@@ -703,7 +703,7 @@ describe('station-control authority: route matching and refusals', () => {
         inP(boundOther),
         target(OTHER, UNREADABLE, { ownerHoldsAction: false }),
       ),
-    ).toBe(OUT('unreadable-target'));
+    ).toBe(OUT('target-unavailable'));
     // An inferred owner owns nothing.
     expect(
       decide(inP(CALLERS['bound-operator-inferred']), target(OPERATOR, P)),

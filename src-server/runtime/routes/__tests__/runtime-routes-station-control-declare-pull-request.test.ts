@@ -382,7 +382,7 @@ describe('configureRuntimeRoutes: declare_pull_request', () => {
       expect(notBound.status).toBe(403);
       expect([notBound.json.code, notBound.json.reason]).toEqual([
         'station_control_out_of_scope',
-        'unreadable-target',
+        'target-unavailable',
       ]);
       expect(support.declared).toEqual([]);
     });

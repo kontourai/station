@@ -143,14 +143,17 @@ A new Session on this Station that names no workspace (`send_message` or
 `environmentId`) starts in the calling Session's own Project, as if the Agent
 had named that Project's slug. This applies to every verified caller, bound or
 not. The Project is the one the calling Session's start record names, never
-anything in the request, and only when that Project has a working directory:
-the new Session runs in the Project's working directory with the Project's
-workspace mode, not in the folder or worktree the calling Session runs in, and
-its start records the Project. A follow-up or input reply continues its
-conversation instead. A caller in the global space, one whose Project Station
-cannot confirm, and one whose Project has no working directory get no default:
-Station checks the default Session directory, as it does for a request from
-outside station-control.
+anything in the request, and only when that Project has a working directory
+and the Session's owner holds `execute` there. The new Session runs in the
+Project's working directory with the Project's normal workspace mode (a new
+worktree, when the Project isolates Sessions in worktrees), not in the folder
+or worktree the calling Session runs in, and its start records the Project. A
+follow-up or input reply continues its conversation instead. To run somewhere
+else, name it: `projectPath` alone names a plain folder, which opts out of the
+default and is scoped by the Project that contains it, if any. A caller in the global space, one whose Project
+Station cannot confirm, one whose Project has no working directory, and one
+whose owner may not dispatch there get no default: Station checks the default
+Session directory, as it does for a request from outside station-control.
 
 A refusal of a caller that is not bound for its scope is
 `station_control_out_of_scope`, with a `reason` beside the code and fixed copy
@@ -166,12 +169,12 @@ route's answer as it was sent:
 | `other-project` | The caller runs in a Project and the target is in another one. |
 | `global-space` | The caller runs in a Project and the target is in the global space. |
 | `project-from-global` | The caller runs in the global space and the target is in a Project. |
-| `unreadable-target` | Station cannot confirm the target's Project: the Project named does not exist, or the folder is missing or outside it. |
+| `target-unavailable` | The target's Project is not one this Session can use: the Project named does not exist, the Session's owner may not dispatch in it (a new Session's named Project reads the same either way), or the folder is missing, moved or outside it. |
 | `unreadable-caller` | Station cannot confirm the calling Session's own Project. |
 | `host` | The target, or a Session of its conversation, runs unconfined (`host`). |
 | `remote` | The target is on another Station; only a bound operator reaches one. |
 
-The copy names no Project. `unreadable-target` also refuses a bound caller
+The copy names no Project. `target-unavailable` also refuses a bound caller
 that is not acting for the operator. `remote` is given only to a caller acting
 for the operator; any other caller is refused another Station with
 `station_control_role_required`. A target Station cannot read at all, or one

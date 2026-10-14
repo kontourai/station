@@ -1192,9 +1192,9 @@ Conversation target uses its newest started Session. Directory scope uses the
 deepest containing canonical Project directory; missing or unreadable paths
 cannot establish a target. This does not rewrite a Session's stored Project.
 `ownProjectSlug(caller)` names the slug of the caller's own session-record
-Project when that Project has a working directory and the slug still leads
-back to it; a caller in the global space or with an unconfirmed Project gets
-none.
+Project when that Project has a working directory, the slug still leads
+back to it and the caller's owner holds `execute` there; any other caller
+gets none.
 
 **Admission.** A bound operator retains operator reach under ordinary route
 authorization. Other callers must target the same recorded owner, stay local
@@ -1202,9 +1202,12 @@ and satisfy the required Project action. A caller without bound assurance must
 also stay within its own Session's Project/global scope and avoid host
 execution. Approving a global target requires the operator. These are verified
 Station-control caller rules, not additional restrictions on every paired
-person UI request. A refusal for scope, as opposed to an unreadable or
-another owner's target, is `station_control_out_of_scope` with a `reason` and
-fixed copy that names no Project.
+person UI request. A scope refusal of the caller's own owner's target,
+including one whose Project Station cannot confirm, is
+`station_control_out_of_scope` with a `reason` and fixed copy that names no
+Project; a target Station cannot read at all, or another owner's, keeps the
+refusal that reads like a missing Session. For a new Session, a named Project
+the owner may not dispatch in reads as one Station cannot confirm.
 
 **Composition and evidence.** [Runtime routes](../../src-server/runtime/routes/runtime-routes.ts)
 supply record readers and Project authorization. The

@@ -127,11 +127,20 @@ export interface StationControlDispatchScope {
   /**
    * The slug a new session in the caller's own Project is dispatched with:
    * the Project its session record names (never a slug looked up now), when
-   * that Project has a working directory to run in and its slug still names
-   * it. `undefined` for a caller in the global space, one whose Project
-   * Station cannot confirm, or one whose Project has no folder.
+   * that Project has a working directory to run in, its slug still names
+   * it, and the caller's recorded owner holds `execute` there. `undefined`
+   * for a caller in the global space, one whose Project Station cannot
+   * confirm, one with no recorded owner, or one whose Project has no folder
+   * or whose owner may not dispatch there.
    */
-  ownProjectSlug(caller: StationControlSessionProjectFacts): string | undefined;
+  ownProjectSlug(
+    caller: StationControlSessionProjectFacts & {
+      readonly principal?: {
+        readonly id: string;
+        readonly elevationEligible: boolean;
+      };
+    },
+  ): string | undefined;
 }
 
 /**
@@ -340,7 +349,17 @@ export function createStationControlDispatchScope(
     ref: Extract<StationControlDispatchTargetRef, { kind: 'new' }>,
     action: StationControlProjectAction,
   ): StationControlResolvedDispatchTarget => {
-    const { scope, canonicalCwd } = newScope(ref);
+    const { scope: located, canonicalCwd } = newScope(ref);
+    const may = mayAct(ref.ownerId, located, action);
+    // A Project the owner may not act in reads as one Station cannot
+    // confirm: to that owner, a Project it is not a member of must not be
+    // told apart from one that does not exist (the Project routes' own
+    // opaque 404). Only a new Session names its Project; a started Session
+    // is the owner's own, so its Project is no secret to it.
+    const scope: StationControlScope =
+      located.kind === 'project' && may.ownerHoldsAction === false
+        ? { kind: 'unreadable' }
+        : located;
     // A new session starts confined: no station-control caller carries the
     // full-access grant (`fullAccessGrantFor` refuses an agent).
     return {
@@ -348,7 +367,7 @@ export function createStationControlDispatchScope(
       scope,
       host: false,
       remote: ref.remote,
-      ...mayAct(ref.ownerId, scope, action),
+      ...may,
       ...(canonicalCwd !== undefined ? { canonicalCwd } : {}),
     };
   };
@@ -388,7 +407,15 @@ export function createStationControlDispatchScope(
     ownProjectSlug(caller) {
       const own = stationControlSessionScope(caller);
       if (own.kind !== 'project') return undefined;
+      const ownerId = caller.principal?.elevationEligible
+        ? caller.principal.id
+        : undefined;
       try {
+        // An owner who may not dispatch in its own Project keeps the request
+        // as sent (the default session directory), rather than being refused
+        // a Project it never named.
+        if (!ownerId || !sources.ownerMay(ownerId, own.id, 'execute'))
+          return undefined;
         const project = sources
           .projectDirectories()
           .find((entry) => entry.id === own.id);

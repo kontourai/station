@@ -926,8 +926,14 @@ export const STATION_CONTROL_OUT_OF_SCOPE_REASONS = [
   'global-space',
   /** The caller runs in the global space; the target is in a Project. */
   'project-from-global',
-  /** Station cannot confirm the target's Project (or its folder). */
-  'unreadable-target',
+  /**
+   * The target's Project is not one the caller's owner can use here: Station
+   * cannot confirm it (no such Project, a folder missing, moved or outside
+   * it), or, for a new Session, the owner may not dispatch in the Project
+   * named. One reason for both, so a refusal never tells whether a Project
+   * the owner is not a member of exists.
+   */
+  'target-unavailable',
   /** Station cannot confirm the caller's own Project. */
   'unreadable-caller',
   /** The target, or a Session of its conversation, runs unconfined. */
@@ -987,7 +993,8 @@ const OUT_OF_SCOPE_MESSAGES: Record<StationControlOutOfScopeReason, string> = {
   'other-project': `That Session is outside your Project: it runs in another Project. ${SCOPE_RULE} To start a new Session in your own Project, omit projectSlug and projectPath. Otherwise ask the person to do it in Station.`,
   'global-space': `That Session is outside your Project: it runs in the global space (no Project). ${SCOPE_RULE} To start a new Session in your own Project, omit projectSlug and projectPath. Otherwise ask the person to do it in Station.`,
   'project-from-global': `You run in the global space (no Project), and that Session is in a Project. ${SCOPE_RULE} From the global space, name a folder that no Project contains, or omit projectSlug and projectPath. Otherwise ask the person to do it in Station.`,
-  'unreadable-target': `Station cannot confirm which Project that Session is in: the Project named does not exist on this Station, the folder does not exist or is not inside that Project, or the folder is no longer the one that was admitted. Check projectSlug and projectPath, or omit both to use your own Project. Otherwise ask the person to do it in Station.`,
+  'target-unavailable':
+    "That Session's Project isn't one this Session can use: it doesn't exist on this Station, the person this Session acts for may not do this there, or the folder is missing, moved or outside that Project. Omit projectSlug and projectPath to use your own Project, or ask the person to do it in Station.",
   'unreadable-caller': `Station cannot confirm which Project your own Session belongs to, so it cannot tell whether that Session is in your scope. ${SCOPE_RULE} Ask the person to do it in Station.`,
   host: 'That Session runs unconfined (host), so only the person, or an agent Station hosts in-process, can steer it. Ask the person to do it in Station.',
   remote:
@@ -1142,12 +1149,16 @@ export function stationControlScopeRefusal(
       ? stationControlOutOfScopeRefusal('remote')
       : notOperatorEnough;
   // A Project Station cannot confirm holds no action for anyone (bound or
-  // not), so it is refused here rather than as a missing Project role.
+  // not). A new Session in a named Project the owner may not dispatch in
+  // arrives here as unreadable too (`newTarget`), so the two read alike.
   if (target.scope.kind === 'unreadable')
-    return stationControlOutOfScopeRefusal('unreadable-target');
+    return stationControlOutOfScopeRefusal('target-unavailable');
   if (target.ownerHoldsAction === false)
     return stationControlRefusal('station_control_role_required');
   if (bound) return undefined;
+  // `host` is decided before the scope comparison, so a Session that runs
+  // unconfined reads as `host` even in the caller's own scope (and a host
+  // Session in another scope reads as `host`, not as another Project).
   if (target.host) return stationControlOutOfScopeRefusal('host');
   const own = stationControlSessionScope(caller);
   if (sameScope(own, target.scope)) return undefined;
