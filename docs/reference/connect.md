@@ -625,7 +625,8 @@ not a guarantee that revocation closes every already admitted socket. It does
 not recall data already delivered or guarantee cancellation of effects already
 dispatched. Ordinary paired
 credentials cannot create pairing offers or revoke other devices. A device
-explicitly granted `access:approve` can list and decide pending requests; that
+explicitly granted `access:approve` can list and decide pending requests (a
+device tied to a person only while that person's Station group is Admin); that
 does not grant device-inventory or offer-management access. The native desktop's
 local grant, minted using proof of Station-home possession, can manage pairing
 within its current scope. Browser launcher grants do not inherit that authority.

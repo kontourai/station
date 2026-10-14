@@ -159,6 +159,7 @@ with two explicit, structurally identical exceptions, both off by default and ne
 - **Tool** — one callable: a function from an integration, or a `station-control` platform function.
 - **Command** — a slash command.
 - **Plugin** — an installable platform extension (layouts, agents, integrations, providers, …).
+- **Station group** — Admin or Member: what any device tied to a person may do at most, Station-wide (#3557). Not a Project role: Project roles (Viewer, Contributor, Admin, Owner) say what a person may do in one Project, and neither grants the other. The operator is the Owner, outside both.
 - **Plugin visibility** — which installed plugins one principal may see and compose a Board or a personal agent from (#2067). Installation stays instance-wide: visibility is a *projection* of that one installed set onto one person, derived from the operator's grant record plus the live inventory, never a stored `visible` label. The operator sees everything; anybody else sees only what they have been granted, and a plugin outside their projection is absent from their plugin list rather than flagged. It is a listing and composition projection only — the execution authority for a plugin remains its permission grants, which every invocation rechecks.
 
 > **MCP passthrough (exception 1):** an ACP-connected External agent's connection can

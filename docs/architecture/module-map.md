@@ -1264,7 +1264,7 @@ An agent that messages another Session must not deliver twice when it retries,
 and must not start a second turn on a Session that is already running one.
 [SessionMessageDelivery](../../src-server/services/orchestration/session-message-delivery.ts)
 is the one place that decides which of those a message becomes, for Station
-Control's `send_to_session` and later for delegation result delivery.
+Control's `send_to_session` and for delegated task result delivery.
 
 **Interface.** `deliverSessionMessage(ports, { threadId, text, mode, deliveryId,
 decided?, recordDecision? })` returns `started`, `steered`, `session_busy`,
@@ -1297,6 +1297,46 @@ and the [mounted boundary matrix](../../src-server/runtime/routes/__tests__/runt
 Their presence is not an executed receipt against a real engine. See
 [agent configuration](../guides/self-configuring-agent.md#session-control) for the
 tool-level behavior.
+
+**Delegated task results (#3158).**
+[DelegationResultDelivery](../../src-server/services/orchestration/delegation-result-delivery.ts)
+delivers a local child's result to the conversation that delegated it through
+this module in `auto` mode. The `POST /delegations` route records ownership
+only from a `caller-derived` delegation context, so the parent is the calling
+Station Control session's own conversation, never an id the request names.
+`caller-derived` covers every caller channel, including a copied or app-held
+token. The route therefore also records the owner attribution the dispatch
+carried: `verified-bound` only for a bound caller acting for an authenticated
+owner, otherwise `unattributed-agent`. Delivery replays exactly that attribution
+and principal, which is no more than `send_to_session` allows the same caller.
+A child transition (today `settled`) is read from the persisted lifecycle fold
+after the event bus publishes it, and again at startup. Each transition is one
+durable row in `EventStore`, holding the text composed from the child's stored
+output. That row is the consumption record shared with `get_task`: the recorded
+parent's read of its own child at rest consumes it. `interrupt_task` from the
+recorded parent, or from the delegating owner in person, cancels it and
+suppresses the one turn it stops. An interrupt that names a turn suppresses only
+that turn, whether or not the log shows it yet, and it is suppressed even
+if it completed normally. A turn not yet in the log when the interrupt arrived
+is matched as the service matches its one pending interrupt (the next turn to
+start, until a completion, abort or Session exit on the child's Session, or the
+pending-interrupt TTL), and is suppressed only
+if it did not complete normally. A transition found after a restart, rather
+than as its terminal landed, never takes a suppression made since, and a turn
+that runs after a restart never takes one made before it. A refused
+interrupt, or one the orchestration service reports stopped nothing
+(`no-active-turn`, for example a `turnId` that is not the running turn), undoes
+only its own records: a row a read consumed or another interrupt also cancelled
+stays closed. An engine without mid-turn steer leaves the row pending
+until the parent's turn ends. A start is re-driven only into the Session it
+named, and a row that keeps failing or stays unconfirmed is settled
+`undeliverable` after five attempts. Remote and SSH children, hosted Stations,
+and `needs_input`/`blocked` transitions are not delivered. The
+[route-level integration test](../../src-server/routes/orchestration/__tests__/delegation-result-delivery.integration.test.ts)
+and the [runtime composition test](../../src-server/runtime/routes/__tests__/runtime-routes-delegation-result-delivery.test.ts)
+use recorded start and steer effects, not a real engine; the integration test
+runs its interrupt-outcome cases through the real orchestration service with a
+test adapter.
 
 ## SessionDigest
 
