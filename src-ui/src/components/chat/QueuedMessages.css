@@ -115,6 +115,11 @@
   letter-spacing: normal;
   text-transform: none;
 }
+.queued-messages__label.queued-messages__label--sending {
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
 .queued-messages__label.queued-messages__label--unconfirmed {
   color: var(--k-caution);
   font-weight: 500;

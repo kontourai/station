@@ -214,7 +214,14 @@ export function OutboundQueuedMessages({
               <HeldCopyNotice turn={turn} onError={onError} />
               {turn.status === 'may-have-started' ||
               turn.status === 'invoking' ? (
-                <span className="queued-messages__label queued-messages__label--unconfirmed">
+                <span
+                  className={`queued-messages__label${
+                    // Another window's send under way is not a caution.
+                    turn.status === 'invoking' && !turn.awaitingLookup
+                      ? ' queued-messages__label--sending'
+                      : ' queued-messages__label--unconfirmed'
+                  }`}
+                >
                   {turn.awaitingLookup
                     ? AWAITING_CONFIRMATION_LABEL
                     : turn.status === 'invoking'
