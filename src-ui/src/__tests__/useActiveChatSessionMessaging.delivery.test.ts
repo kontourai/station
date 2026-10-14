@@ -610,6 +610,13 @@ describe('useSendMessage: durable before the request', () => {
       ),
     ).toBe(true);
     expect(onAdmission).toHaveBeenCalledWith('accepted');
+    // Not shown as a fresh send: its bubble goes and no turn is awaited.
+    expect(
+      state?.messages?.some(
+        (message) => message.clientId === 'delivered-offline',
+      ),
+    ).toBe(false);
+    expect(state?.pendingClientTurnId).toBeUndefined();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10_000);
     });
