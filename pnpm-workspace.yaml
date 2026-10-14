@@ -60,6 +60,7 @@ overrides:
   micromatch>picomatch: ^2.3.2
   gray-matter>js-yaml: ^3.15.2
   read-yaml-file>js-yaml: ^3.15.2
+  "js-yaml@3.15.2>argparse": 2.0.1
   readdirp>picomatch: ^2.3.2
   socket.io-parser: ^4.2.7
   minimatch@^10.0.0>brace-expansion: ^5.0.12
@@ -76,7 +77,7 @@ overrides:
   socks>ip-address: ^10.5.1
   "@kontourai/bearing>csv-parse": ^7.0.2
 patchedDependencies:
-  "sprintf-js@1.0.3": patches/sprintf-js-1.0.3.patch
+  "js-yaml@3.15.2": patches/js-yaml-3.15.2-argparse2-cli.patch
   "@voltagent/core@2.10.0": patches/voltagent-core-2.10.0.patch
   "@voltagent/server-hono@2.0.14": patches/voltagent-server-hono-2.0.14.patch
 strictPeerDependencies: true

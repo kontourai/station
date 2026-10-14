@@ -516,17 +516,17 @@ describe('SessionTurnBoundaryAuthority', () => {
           '2026-09-05T00:05:00.000Z',
         ),
       ).toEqual({ kind: 'busy' });
-      expect(
-        authority.observe({
-          eventId: 'terminal:uncertain-start',
-          provider: 'claude',
-          threadId: 'uncertain-start',
-          sessionId: 'uncertain-start',
-          method: 'session.exited',
-          createdAt: '2026-09-05T00:05:01.000Z',
-          exitCode: 0,
-        }),
-      ).toEqual({ kind: 'applied' });
+      const exited: CanonicalRuntimeEvent = {
+        eventId: 'terminal:uncertain-start',
+        provider: 'claude',
+        threadId: 'uncertain-start',
+        sessionId: 'uncertain-start',
+        method: 'session.exited',
+        createdAt: '2026-09-05T00:05:01.000Z',
+        exitCode: 0,
+      };
+      restarted.appendEvent(exited);
+      expect(authority.observe(exited)).toEqual({ kind: 'applied' });
       expect(authority.hasPossibleEffect('uncertain-start')).toEqual({
         kind: 'available',
         active: false,
@@ -599,17 +599,17 @@ describe('SessionTurnBoundaryAuthority', () => {
     expect(
       authority.claim('thread-restart', '2026-08-16T00:00:03.000Z'),
     ).toEqual({ kind: 'busy' });
-    expect(
-      authority.observe({
-        eventId: 'session-exited:thread-restart',
-        provider: 'claude',
-        threadId: 'thread-restart',
-        sessionId: 'thread-restart',
-        createdAt: '2026-08-16T00:00:04.000Z',
-        method: 'session.exited',
-        exitCode: 1,
-      }),
-    ).toEqual({ kind: 'applied' });
+    const exited: CanonicalRuntimeEvent = {
+      eventId: 'session-exited:thread-restart',
+      provider: 'claude',
+      threadId: 'thread-restart',
+      sessionId: 'thread-restart',
+      createdAt: '2026-08-16T00:00:04.000Z',
+      method: 'session.exited',
+      exitCode: 1,
+    };
+    restarted.appendEvent(exited);
+    expect(authority.observe(exited)).toEqual({ kind: 'applied' });
     expect(authority.hasPossibleEffect('thread-restart')).toEqual({
       kind: 'available',
       active: false,

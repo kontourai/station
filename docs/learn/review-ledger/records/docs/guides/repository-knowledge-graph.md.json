@@ -18,15 +18,15 @@
 
     "examples/repository-knowledge-graph/ingest.mjs",
 
-    "package.json",
-
     "packages/contracts/src/knowledge-store.ts",
 
     "packages/sdk/src/client/knowledge.ts",
 
     "src-server/knowledge-store/adapters/default-store.ts",
 
-    "src-server/knowledge-store/adapters/shared/frontmatter.ts"
+    "src-server/knowledge-store/adapters/shared/frontmatter.ts",
+
+    "package.json#/scripts"
   ],
 
   "checks": [

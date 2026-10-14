@@ -12,8 +12,6 @@
   "sources": [
     "examples/fieldwork-review/layout.json",
 
-    "examples/fieldwork-review/package.json",
-
     "examples/fieldwork-review/plugin.json",
 
     "examples/fieldwork-review/server/__tests__/plugin-server.test.ts",
@@ -28,8 +26,6 @@
 
     "examples/fieldwork-review/src/index.tsx",
 
-    "pnpm-lock.yaml",
-
     "src-server/routes/plugins/plugin-lifecycle-routes.ts",
 
     "src-server/routes/plugins/plugin-public-routes.ts",
@@ -42,7 +38,25 @@
 
     "src-server/services/plugins/plugin-permissions.ts",
 
-    "src-server/services/plugins/plugin-public-server.ts"
+    "src-server/services/plugins/plugin-public-server.ts",
+
+    "examples/fieldwork-review/package.json#/name",
+
+    "examples/fieldwork-review/package.json#/private",
+
+    "examples/fieldwork-review/package.json#/main",
+
+    "examples/fieldwork-review/package.json#/scripts",
+
+    "examples/fieldwork-review/package.json#/dependencies/@kontourai~1fieldwork",
+
+    "examples/fieldwork-review/package.json#/peerDependencies/react",
+
+    "examples/fieldwork-review/package.json#/peerDependencies/@tanstack~1react-query",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots"
   ],
 
   "checks": [

@@ -26,10 +26,6 @@
 
     "packages/sdk/src/queryFactories.ts",
 
-    "packages/shared/package.json",
-
-    "pnpm-lock.yaml",
-
     "scripts/mobile-css-ratchet.mjs",
 
     "scripts/responsive-surface-ratchet.mjs",
@@ -90,7 +86,17 @@
 
     "src-ui/index.html",
 
-    "src-ui/src/lib/startup-mark-geometry.ts"
+    "src-ui/src/lib/startup-mark-geometry.ts",
+
+    "packages/shared/package.json#/name",
+
+    "packages/shared/package.json#/exports",
+
+    "packages/shared/package.json#/files",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots"
   ],
 
   "checks": [

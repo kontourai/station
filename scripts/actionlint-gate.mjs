@@ -281,9 +281,9 @@ export const REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA =
 const SECRET_SCAN_WORKFLOW = '.github/workflows/secret-scan.yml';
 export const SECRET_SCAN_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflows/secret-scan.yml@${REVIEWED_SECRET_SCAN_REUSABLE_WORKFLOW_SHA}`;
 /** The reviewed revision of the org's docs-kit gate reusable workflow:
- * kontourai/.github 246be34, "fix(docs-gate): run docs-kit outside the
- * checkout with npm config isolated (#55)", on top of #52's repository and
- * ref inputs and #50's `package-manager-cache: false`. Reviewed at that SHA
+ * kontourai/.github ac67c2a, Corpus v2 gate retaining #55's isolated npm
+ * configuration, #52's repository/ref inputs, and #50's disabled cache.
+ * Reviewed at that SHA
  * for a pull_request_target and merge_group caller:
  * - one hosted job (ubuntu-latest, 10-minute timeout) with
  *   `permissions: contents: read`; it declares no secrets and no cache-mode;
@@ -292,7 +292,7 @@ export const SECRET_SCAN_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflow
  *   `persist-credentials: false`;
  * - actions/setup-node@2499707 (v6) with `package-manager-cache: false` and no
  *   `cache`, so it neither restores nor saves an Actions cache;
- * - one run step, `npx -y github:kontourai/docs-kit#<docs-kit-ref> check`, plus
+ * - one run step, `npx -y github:kontourai/corpus#<corpus-ref> check`, plus
  *   `--base` on pull requests and merge-queue entries. The inputs reach the
  *   shell only through `env`, never by expression interpolation.
  * The run step does not execute the candidate: it `cd`s to `$RUNNER_TEMP`,
@@ -302,14 +302,14 @@ export const SECRET_SCAN_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflow
  * and passes the checkout only as `--root "$GITHUB_WORKSPACE"`. So no
  * candidate `.npmrc` or package.json reaches npm (the 091ffab revision ran npx
  * inside the checkout, where a pull request's `.npmrc` steered it), and
- * docs-kit, pinned by `docs-kit-ref`, only reads the checked-out files. The
+ * Corpus, pinned by `corpus-ref`, only reads the checked-out files. The
  * remaining controls still apply: a read-only contents token that is not
  * persisted, no secrets, a GitHub-hosted runner, and GitHub's read-only cache
  * token for pull_request_target (see UNTRUSTED_ACTION_CACHE_POLICY).
- * The callee's own `docs-kit-ref` default moved to v0.5.0 here; docs-kit.yml
- * passes its pin explicitly. A bump re-opens this review. */
+ * The callee accepts `corpus-ref` and defaults to Corpus 0.7.0; docs-kit.yml
+ * passes the org-wide pin explicitly. A bump re-opens this review. */
 export const REVIEWED_DOCS_GATE_REUSABLE_WORKFLOW_SHA =
-  '246be3494a5cfde4b76fb2e3dc0a84db44218893';
+  'ac67c2a7484cc79cc51f81fa8b68c855c3879f94';
 export const DOCS_GATE_REUSABLE_WORKFLOW = `kontourai/.github/.github/workflows/docs-gate.yml@${REVIEWED_DOCS_GATE_REUSABLE_WORKFLOW_SHA}`;
 const DOCS_KIT_WORKFLOW = '.github/workflows/docs-kit.yml';
 const DOCS_KIT_GATE_JOB = 'gate';
@@ -873,8 +873,8 @@ function isExactDocsGateCall(file, jobId, job) {
     job.uses === DOCS_GATE_REUSABLE_WORKFLOW &&
     hasExactKeys(job.permissions, ['contents']) &&
     job.permissions.contents === 'read' &&
-    hasExactKeys(job.with, ['docs-kit-ref', 'repository', 'ref']) &&
-    /^[0-9a-f]{40}$/.test(String(job.with['docs-kit-ref'])) &&
+    hasExactKeys(job.with, ['corpus-ref', 'repository', 'ref']) &&
+    /^[0-9a-f]{40}$/.test(String(job.with['corpus-ref'])) &&
     job.with.repository === FAST_CHECKOUT_REPOSITORY &&
     job.with.ref === FAST_CHECKOUT_REF
   );
