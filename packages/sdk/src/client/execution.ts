@@ -420,11 +420,19 @@ export async function getTurnDelivery(
   apiBase: string,
   conversationId: string,
   clientTurnId: string,
-  opts?: ClientRequestOptions,
+  opts?: ClientRequestOptions & {
+    /**
+     * The Project the send named, if any. A Project whose default
+     * Environment is another Station keeps its turns there, so Station then
+     * answers `unknown` rather than claiming the key was never received.
+     */
+    projectSlug?: string;
+  },
 ): Promise<TurnDeliveryInspection> {
+  const { projectSlug, ...requestOptions } = opts ?? {};
   const response = await getJson(
-    `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/turn-deliveries/${encodeURIComponent(clientTurnId)}`,
-    opts,
+    `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/turn-deliveries/${encodeURIComponent(clientTurnId)}${projectSlug ? `?projectSlug=${encodeURIComponent(projectSlug)}` : ''}`,
+    requestOptions,
   );
   const result = (await readExecutionBody(response)) as {
     success?: boolean;

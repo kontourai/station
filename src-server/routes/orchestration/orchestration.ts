@@ -2259,6 +2259,7 @@ export function createOrchestrationRoutes(
           callerKey: mutationIdentity(c).ownerKey,
           conversationId: body.conversationId,
           clientTurnId: body.clientTurnId,
+          forwarded: resolvedTarget.environment.kind !== 'current',
         });
       const data = await deps.executeForegroundMessage(foregroundRequest);
       if (!isForegroundDispatchHandle(data)) {
@@ -2566,8 +2567,28 @@ export function createOrchestrationRoutes(
         conversationId,
         clientTurnId,
       });
+      if (inFlight)
+        return answer({ outcome: 'received', conversationId, clientTurnId });
+      // Nothing here holds the key. That proves the send never reached the
+      // engine only when the conversation runs on THIS Station: one this
+      // Station forwards elsewhere (its Project's default Environment is
+      // another one, or a send was forwarded while this process ran) keeps
+      // its turn ledger there, out of sight.
+      const projectSlug = c.req.query('projectSlug');
+      const projectEnvironment =
+        durable === null && projectSlug && projectSlug.length <= 512
+          ? deps.projectDefaultEnvironment?.(projectSlug)
+          : undefined;
+      const forwarded =
+        durable === null &&
+        ((projectEnvironment !== undefined &&
+          projectEnvironment.kind !== 'current') ||
+          deliveryReceipts.forwarded({
+            callerKey: mutationIdentity(c).ownerKey,
+            conversationId,
+          }));
       return answer({
-        outcome: inFlight ? 'received' : 'not-received',
+        outcome: forwarded ? 'unknown' : 'not-received',
         conversationId,
         clientTurnId,
       });

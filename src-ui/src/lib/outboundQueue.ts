@@ -1673,6 +1673,7 @@ async function applyDeliveryAnswer(
         break;
       case 'indeterminate':
       case 'expired':
+      case 'unknown':
         next = {
           ...released,
           status: 'may-have-started',
@@ -1689,6 +1690,12 @@ async function applyDeliveryAnswer(
                 lastError: NOT_RECEIVED_STOPPED,
               };
         break;
+      default: {
+        // An answer this build does not know proves nothing: change nothing.
+        const unhandled: never = outcome;
+        void unhandled;
+        return { entries, result: undefined, changed: false };
+      }
     }
     const replaced = [...entries];
     if (next) replaced[index] = next;

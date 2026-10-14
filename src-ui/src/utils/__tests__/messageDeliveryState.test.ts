@@ -55,6 +55,11 @@ const TABLE: Array<
   ],
   ['lookup indeterminate', { lookup: 'indeterminate' }, 'unconfirmed'],
   ['lookup expired', { lookup: 'expired' }, 'unconfirmed'],
+  [
+    'Station cannot see the conversation (forwarded elsewhere)',
+    { requestInFlight: true, lookup: 'unknown' },
+    'unconfirmed',
+  ],
   ['outbox may have started', { outbox: 'may-have-started' }, 'unconfirmed'],
   [
     'a possible effect is never shown as retryable',

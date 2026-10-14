@@ -1463,10 +1463,19 @@ export interface ConversationHandoffStatusProjection {
  *   engine. Never send again; inspect the conversation.
  * - `expired`: the turn was sent, and retention evicted its record. Never send
  *   again.
+ * - `unknown`: this Station cannot see where the conversation's turns are
+ *   recorded (it forwards them to another Station or Environment), so it can
+ *   prove nothing either way. Never send again on this answer; treat it like
+ *   `indeterminate`.
  */
 export type TurnDeliveryInspection =
   | {
-      outcome: 'not-received' | 'received' | 'indeterminate' | 'expired';
+      outcome:
+        | 'not-received'
+        | 'received'
+        | 'indeterminate'
+        | 'expired'
+        | 'unknown';
       conversationId: string;
       clientTurnId: string;
     }

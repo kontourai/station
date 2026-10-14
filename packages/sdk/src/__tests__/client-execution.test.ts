@@ -250,12 +250,6 @@ describe('client execution', () => {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }),
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ success: false, error: 'Not found' }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' },
-        }),
       );
     vi.stubGlobal('fetch', fetchMock);
     await expect(
@@ -264,6 +258,25 @@ describe('client execution', () => {
     expect(fetchMock).toHaveBeenCalledWith(
       'http://station.test/api/orchestration/conversations/conversation%2Fa/turn-deliveries/turn%2Fkey',
       expect.anything(),
+    );
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: true, data }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await getTurnDelivery('http://station.test', 'c', 'k', {
+      projectSlug: 'my project',
+    });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://station.test/api/orchestration/conversations/c/turn-deliveries/k?projectSlug=my%20project',
+      expect.anything(),
+    );
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: false, error: 'Not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      }),
     );
     // An older Station has no lookup: that must not read as "safe to resend".
     await expect(

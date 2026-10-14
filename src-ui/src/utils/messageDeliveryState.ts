@@ -78,6 +78,7 @@ export function deriveMessageDeliveryState(
   if (
     signals.lookup === 'indeterminate' ||
     signals.lookup === 'expired' ||
+    signals.lookup === 'unknown' ||
     signals.outbox === 'may-have-started'
   )
     return 'unconfirmed';

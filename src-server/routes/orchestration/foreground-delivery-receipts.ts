@@ -35,11 +35,22 @@ export interface ForegroundDeliveryReceipt {
   callerKey: string;
   conversationId: string;
   clientTurnId: string;
+  /** The send goes to another Station or Environment, not this one. */
+  forwarded?: boolean;
 }
+
+/** Bound on remembered forwarded conversations (oldest dropped first). */
+export const FORWARDED_CONVERSATIONS_MAX = 4096;
 
 export class ForegroundDeliveryReceipts {
   /** Key → number of requests carrying it (a retry can overlap the original). */
   readonly #inFlight = new Map<string, number>();
+  /**
+   * Conversations this process forwarded a keyed send for, per caller: their
+   * turn ledger is on another Station, so nothing here proves a key unsent.
+   * Process memory, bounded; the Project-default check covers a restart.
+   */
+  readonly #forwarded = new Set<string>();
   readonly #max: number;
 
   constructor(max = FOREGROUND_DELIVERY_RECEIPTS_MAX) {
@@ -57,6 +68,15 @@ export class ForegroundDeliveryReceipts {
     if (count === 0 && this.#inFlight.size >= this.#max)
       throw new ForegroundDeliveryReceiptCapacityError();
     this.#inFlight.set(key, count + 1);
+    if (receipt.forwarded) {
+      const conversation = forwardedKey(receipt);
+      this.#forwarded.delete(conversation);
+      this.#forwarded.add(conversation);
+      if (this.#forwarded.size > FORWARDED_CONVERSATIONS_MAX) {
+        const oldest = this.#forwarded.values().next().value;
+        if (oldest !== undefined) this.#forwarded.delete(oldest);
+      }
+    }
     let released = false;
     return () => {
       if (released) return;
@@ -70,6 +90,17 @@ export class ForegroundDeliveryReceipts {
   has(receipt: ForegroundDeliveryReceipt): boolean {
     return this.#inFlight.has(receiptKey(receipt));
   }
+
+  forwarded(input: { callerKey: string; conversationId: string }): boolean {
+    return this.#forwarded.has(forwardedKey(input));
+  }
+}
+
+function forwardedKey(input: {
+  callerKey: string;
+  conversationId: string;
+}): string {
+  return JSON.stringify([input.callerKey, input.conversationId]);
 }
 
 function receiptKey(receipt: ForegroundDeliveryReceipt): string {

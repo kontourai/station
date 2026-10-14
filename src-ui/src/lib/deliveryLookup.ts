@@ -20,6 +20,7 @@ export function lookupTurnDelivery(apiBase: string): OutboundDeliveryLookup {
       apiBase,
       turn.conversationId ?? turn.sessionId,
       turn.clientTurnId,
+      turn.projectSlug ? { projectSlug: turn.projectSlug } : undefined,
     );
   };
 }
@@ -36,6 +37,7 @@ export function watchInFlightDelivery(input: {
   apiBase: string;
   conversationId: string;
   clientTurnId: string;
+  projectSlug?: string;
   onAnswer: (outcome: TurnDeliveryOutcome) => void;
   firstCheckMs?: number;
 }): () => void {
@@ -51,6 +53,7 @@ export function watchInFlightDelivery(input: {
           clientTurnId: input.clientTurnId,
           conversationId: input.conversationId,
           sessionId: input.conversationId,
+          projectSlug: input.projectSlug,
         } as Parameters<OutboundDeliveryLookup>[0]);
         if (answer.clientTurnId === input.clientTurnId)
           outcome = answer.outcome;
@@ -62,7 +65,8 @@ export function watchInFlightDelivery(input: {
       if (
         outcome === 'started' ||
         outcome === 'indeterminate' ||
-        outcome === 'expired'
+        outcome === 'expired' ||
+        outcome === 'unknown'
       )
         return;
       schedule(Math.min(delay * 2, DELIVERY_CHECK_MAX_INTERVAL_MS));

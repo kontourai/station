@@ -544,6 +544,36 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
     expect(adapter.turns).toHaveLength(2);
   });
 
+  test('a conversation whose Project runs on another Environment answers unknown, never not-received', async () => {
+    const app = new Hono();
+    app.route(
+      '/api/orchestration',
+      createOrchestrationRoutes(
+        { inspectTurnDelivery: () => null } as never,
+        {
+          eventBus: new EventBus(),
+          logger: { debug: vi.fn() },
+          getUserId: () => OWNER,
+          projectDefaultEnvironment: (slug: string) =>
+            slug === 'remote-project'
+              ? { kind: 'saved' as const, id: 'peer-station' }
+              : { kind: 'current' as const },
+        } as never,
+      ),
+    );
+    const ask = async (query: string) =>
+      (
+        (await (
+          await app.request(
+            `/api/orchestration/conversations/c/turn-deliveries/k${query}`,
+          )
+        ).json()) as { data: TurnDeliveryInspection }
+      ).data.outcome;
+    expect(await ask('?projectSlug=remote-project')).toBe('unknown');
+    expect(await ask('?projectSlug=local-project')).toBe('not-received');
+    expect(await ask('')).toBe('not-received');
+  });
+
   test('refuses an over-long key rather than truncating it', async () => {
     const app = new Hono();
     app.route(

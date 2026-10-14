@@ -166,7 +166,7 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     expect(transport).not.toHaveBeenCalled();
   });
 
-  it.each(['indeterminate', 'expired'] as const)(
+  it.each(['indeterminate', 'expired', 'unknown'] as const)(
     '%s: kept as possible-effect evidence, never resent',
     async (outcome) => {
       const second = await killedMidSend();

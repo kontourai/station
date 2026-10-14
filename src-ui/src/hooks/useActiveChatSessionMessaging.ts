@@ -700,6 +700,7 @@ export function useSendMessage(
             apiBase,
             conversationId: sentConversationId,
             clientTurnId: resolvedTurnId,
+            projectSlug: currentState?.projectSlug,
             onAnswer: (outcome) => {
               updateChat(
                 sessionId,
