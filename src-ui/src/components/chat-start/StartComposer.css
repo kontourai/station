@@ -1,8 +1,8 @@
 /* The start composer (Home, inline, and the dock's draft). No viewport
    query: the bar is one flex line that wraps. On a desktop the chips and
-   [⋯ Start] share one line. When they do not fit (a phone), the chips keep
-   row one, on one line, each shrinking to an ellipsis, and [⋯ … Start]
-   takes row two. Every target is 44px. */
+   [attach mic ⋯ Start] share one line. When they do not fit (a phone), the
+   chips keep row one, on one line, each shrinking to an ellipsis, and
+   [attach mic ⋯ … Start] takes row two. Every target is 44px. */
 .start-composer {
   display: flex;
   flex-direction: column;
