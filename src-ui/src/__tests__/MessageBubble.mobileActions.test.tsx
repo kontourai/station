@@ -9,6 +9,7 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -461,15 +462,9 @@ describe('MessageBubble phone copy and details actions', () => {
     it('draws no desktop ⋯ whose menu would be empty', async () => {
       mobile.current = false;
       try {
-        renderRow(question, { userForkSource: forkSource });
-        expect(
-          screen.getByRole('button', { name: 'Copy your message' }),
-        ).toBeTruthy();
-        expect(
-          screen.queryByRole('button', { name: 'More message actions' }),
-        ).toBeNull();
-        cleanup();
-        // Positive control: the same row with the handler offers the menu.
+        // Positive control first: with the handler the menu loads (and its
+        // lazy chunk is now cached, so the absence below is not just a
+        // menu that has not loaded yet).
         renderRow(question, {
           userForkSource: forkSource,
           onForkFromTurn: () => {},
@@ -477,6 +472,18 @@ describe('MessageBubble phone copy and details actions', () => {
         expect(
           await screen.findByRole('button', { name: 'More message actions' }),
         ).toBeTruthy();
+        cleanup();
+
+        renderRow(question, { userForkSource: forkSource });
+        await act(async () => {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        });
+        expect(
+          screen.getByRole('button', { name: 'Copy your message' }),
+        ).toBeTruthy();
+        expect(
+          screen.queryByRole('button', { name: 'More message actions' }),
+        ).toBeNull();
       } finally {
         mobile.current = true;
       }
