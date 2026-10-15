@@ -102,6 +102,8 @@ and the tested narrow-desktop recovery route.
 
 ## Round four
 
+[Before/after and recovery evidence](../strategy/onboarding-20261015/round-four.html).
+
 - Coding names the conversation once; composer controls own Agent and engine/model.
 - Global setup reminders stay on Home without an open conversation. Coding-engine
   repair belongs to that Agent choice, never an unrelated global reminder.
