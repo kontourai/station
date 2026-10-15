@@ -76,7 +76,7 @@ describe('agent-editor utils', () => {
       tools,
     );
     expect(next.tools.autoApprove).toEqual(['github_get_issue']);
-    expect(next.tools.askBeforeUse).toEqual(['mcp__filesystem__write_file']);
+    expect(next.tools.askBeforeUse).toEqual(['mcp/filesystem/write_file']);
   });
   test('including future tools saves an ask default with a reviewed read exception', () => {
     const previous = buildForm();
@@ -100,19 +100,32 @@ describe('agent-editor utils', () => {
       'station',
     );
     const saved = buildAgentPayload(next);
-    expect(saved.tools?.askBeforeUse).toEqual(['mcp__reports__*']);
-    expect(saved.tools?.autoApprove).toEqual(['mcp__reports__read']);
+    expect(saved.tools?.askBeforeUse).toEqual(['mcp/reports/*']);
+    expect(saved.tools?.autoApprove).toEqual(['mcp/reports/read']);
   });
 
   test('narrowing future selections preserves the exact Always exception', () => {
     const form = buildForm();
-    form.tools.askBeforeUse = ['mcp__github__*'];
-    form.tools.autoApprove = ['mcp__github__find'];
+    form.tools.askBeforeUse = ['mcp/github/*'];
+    form.tools.autoApprove = ['mcp/github/find'];
     const next = selectIntegrationTools(form, 'github', ['github_find'], {
       github: toolList,
     });
-    expect(next.tools.askBeforeUse).toEqual(['mcp__github__*']);
-    expect(next.tools.autoApprove).toEqual(['mcp__github__find']);
+    expect(next.tools.askBeforeUse).toEqual(['mcp/github/*']);
+    expect(next.tools.autoApprove).toEqual(['mcp/github/find']);
+  });
+
+  test('narrowing a catalog retains explicit approval for a selected action missing from discovery', () => {
+    const form = buildForm();
+    form.tools.askBeforeUse = ['mcp/github/missing'];
+    form.tools.autoApprove = ['*'];
+    const next = selectIntegrationTools(
+      form,
+      'github',
+      ['github_missing', 'github_find'],
+      { github: toolList },
+    );
+    expect(next.tools.askBeforeUse).toEqual(['mcp/github/missing']);
   });
 
   test('narrowing an ask-all source preserves prompts for retained actions', () => {

@@ -1,4 +1,3 @@
-import { mcpToolApprovalKey } from '@kontourai/station-shared/mcp-tool-selection';
 import type {
   MCPToolLoaderProvenance,
   MCPToolProvenanceGeneration,
@@ -175,23 +174,4 @@ export function getNormalizedToolName(
   toolNameReverseMapping: Map<string, string>,
 ): string {
   return toolNameReverseMapping.get(originalName) || originalName;
-}
-
-export function authoredToolApprovalIdentities(
-  toolName: string,
-  mapping: ReadonlyMap<string, MCPToolNameMappingEntry>,
-): string[] {
-  const entry = mapping.get(toolName);
-  return [
-    toolName,
-    ...(entry ? [entry.original] : []),
-    ...(entry?.provenance
-      ? [
-          mcpToolApprovalKey(
-            entry.provenance.integrationId,
-            entry.provenance.originalToolName,
-          ),
-        ]
-      : []),
-  ];
 }

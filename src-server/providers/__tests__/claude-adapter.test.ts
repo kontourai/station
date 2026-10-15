@@ -4995,9 +4995,19 @@ describe('ClaudeAdapter', () => {
         asks: ['reports_write'],
       },
       {
+        toolName: 'mcp__mcp___reports__read',
+        allows: ['mcp/reports/read', 'mcp__reports__read'],
+        asks: ['mcp/mcp/*'],
+      },
+      {
+        toolName: 'mcp__reports__safe__read',
+        allows: ['mcp/reports/safe__read', 'mcp/reports__safe/read'],
+        asks: ['mcp/reports/*'],
+      },
+      {
         toolName: 'mcp__reports_safe__read',
-        allows: ['mcp__reports__safe_read', 'reports_safe_read'],
-        asks: ['mcp__reports_safe__*'],
+        allows: ['mcp/reports/safe_read', 'reports_safe_read'],
+        asks: ['mcp/reports_safe/*'],
       },
     ])(
       'explicit Ask forces the hook and repeated prompts for $toolName',

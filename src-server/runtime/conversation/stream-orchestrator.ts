@@ -1,4 +1,7 @@
-import { resolveAuthoredToolApproval } from '@kontourai/station-shared/mcp-tool-selection';
+import {
+  mcpToolApprovalKey,
+  resolveAuthoredToolApproval,
+} from '@kontourai/station-shared/mcp-tool-selection';
 /**
  * Streaming orchestration functions
  * Handles streaming pipeline setup, handler creation, and SSE output
@@ -28,10 +31,7 @@ import { ReasoningHandler } from '../streaming/handlers/ReasoningHandler.js';
 import { ToolCallHandler } from '../streaming/handlers/ToolCallHandler.js';
 import type { InjectableStream } from '../streaming/InjectableStream.js';
 import { StreamPipeline } from '../streaming/StreamPipeline.js';
-import {
-  authoredToolApprovalIdentities,
-  type MCPToolNameMappingEntry,
-} from '../tools/mcp-tool-names.js';
+import type { MCPToolNameMappingEntry } from '../tools/mcp-tool-names.js';
 import {
   isAutoApproved,
   isIntrinsicStationEngineGrant,
@@ -171,21 +171,26 @@ export function createElicitationCallback(
       const toolName = request.toolName;
 
       // Check if auto-approved (check both normalized and original names)
-      const isApproved = authoredToolApprovalIdentities(
-        toolName,
-        toolNameMapping,
-      )
-        .filter(
-          (identity) => identity === toolName || identity.startsWith('mcp__'),
-        )
-        .some((identity) => isAutoApproved(identity, autoApprove));
+      const source = toolNameMapping.get(toolName)?.provenance;
+      const sourceKey = source
+        ? mcpToolApprovalKey(source.integrationId, source.originalToolName)
+        : undefined;
+      const isApproved =
+        isAutoApproved(
+          toolName,
+          autoApprove.filter((pattern) => !pattern.startsWith('mcp/')),
+        ) ||
+        (sourceKey !== undefined && isAutoApproved(sourceKey, autoApprove));
 
       // Also check if the original (non-normalized) name matches
       const toolMapping = Array.from(toolNameMapping.values()).find(
         (m) => m.normalized === toolName,
       );
       const isApprovedOriginal = toolMapping
-        ? isAutoApproved(toolMapping.original, autoApprove)
+        ? isAutoApproved(
+            toolMapping.original,
+            autoApprove.filter((pattern) => !pattern.startsWith('mcp/')),
+          )
         : false;
 
       // #2584: the built-in's bounded-write tools, by exact loader identity.
@@ -196,9 +201,10 @@ export function createElicitationCallback(
 
       const explicitAsk =
         resolveAuthoredToolApproval(
-          authoredToolApprovalIdentities(toolName, toolNameMapping),
+          [toolName, toolMapping?.original ?? toolName],
           autoApprove,
           agentSpec?.tools?.askBeforeUse,
+          sourceKey,
         ) === 'ask';
       if (!explicitAsk && (isApproved || isApprovedOriginal || isIntrinsic)) {
         logger.info('[Elicitation] Auto-approved, returning true immediately', {

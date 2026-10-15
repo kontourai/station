@@ -299,7 +299,7 @@ test('adding an undiscovered source asks before its future actions despite a glo
   fireEvent.click(picker.getByRole('button', { name: 'Add source' }));
   const saved = buildAgentPayload({ ...latest, slug: 'reviewer' });
   expect(saved.tools?.available).toEqual(['reports_*']);
-  expect(saved.tools?.askBeforeUse).toEqual(['mcp__reports__*']);
+  expect(saved.tools?.askBeforeUse).toEqual(['mcp/reports/*']);
 });
 
 test('refresh uses an unpersisted discovery result and reports a failed probe even on HTTP success', async () => {
@@ -469,27 +469,27 @@ test('shows origin and descriptions on demand, and defaults new reviewed reads a
   fireEvent.click(picker.getByRole('button', { name: 'Station' }));
   fireEvent.click(picker.getByRole('checkbox', { name: 'Read' }));
   fireEvent.click(picker.getByRole('checkbox', { name: 'Write' }));
-  expect(latest.tools.autoApprove).toEqual(['mcp__station-control__read']);
-  expect(latest.tools.askBeforeUse).toEqual(['mcp__station-control__write']);
+  expect(latest.tools.autoApprove).toEqual(['mcp/station-control/read']);
+  expect(latest.tools.askBeforeUse).toEqual(['mcp/station-control/write']);
   fireEvent.change(
     picker.getByRole('combobox', { name: 'Approval for read' }),
     { target: { value: 'ask' } },
   );
   expect(latest.tools.autoApprove).toEqual([]);
   expect(latest.tools.askBeforeUse).toEqual([
-    'mcp__station-control__write',
-    'mcp__station-control__read',
+    'mcp/station-control/write',
+    'mcp/station-control/read',
   ]);
   fireEvent.click(picker.getByRole('button', { name: 'Vendor' }));
   const vendor = within(picker.getByRole('region', { name: 'Vendor' }));
   fireEvent.click(vendor.getByRole('checkbox', { name: 'Read' }));
-  expect(latest.tools.askBeforeUse).toContain('mcp__vendor__read');
+  expect(latest.tools.askBeforeUse).toContain('mcp/vendor/read');
   expect(vendor.getByText('Details · Company catalog')).toBeTruthy();
   expect(vendor.getByText('1.2.3')).toBeTruthy();
   expect(vendor.getByText('Vendor-reported read')).toBeTruthy();
   expect(
     buildAgentPayload({ ...latest, slug: 'reviewer' }).tools?.askBeforeUse,
-  ).toContain('mcp__vendor__read');
+  ).toContain('mcp/vendor/read');
 });
 
 test('adds Station tools to a Claude agent and saves read-only, empty and custom choices', () => {

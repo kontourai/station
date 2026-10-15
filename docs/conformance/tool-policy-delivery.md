@@ -101,10 +101,13 @@ intercepts or blocks all of that engine's tool calls.
 ## Explicit per-tool Ask
 
 `tools.askBeforeUse` is delivered by Station and Claude. New picker choices
-use `mcp__<server>__<action>` approval keys and source defaults use
-`mcp__<server>__*`. Station derives these from loader provenance; Claude uses
-the SDK-owned MCP identity. Legacy flattened Always rules cannot override a
-source-qualified Ask default. Matching exact choices
+use `mcp/<server>/<action>` approval keys and source defaults use
+`mcp/<server>/*`. Station derives these from loader provenance; Claude uses
+an unambiguous SDK-owned MCP identity. Ambiguous SDK names with additional
+double-underscore separators require approval when the Agent has Ask rules.
+Both key components are percent-encoded, including literal `*` as `%2A`; only
+a source default's terminal `*` is a wildcard. Legacy flattened Always rules cannot override a
+source-qualified Ask default. Matching source-qualified exact choices
 in either approval list override wildcard defaults; Ask wins at equal
 specificity. A source-level Ask default therefore covers newly discovered
 actions while exact reviewed-read grants remain allowed. An effective Ask runs

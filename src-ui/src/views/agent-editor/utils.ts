@@ -50,8 +50,7 @@ export function removeIntegration(
       ),
       askBeforeUse: form.tools.askBeforeUse?.filter(
         (entry) =>
-          !entry.startsWith(prefix) &&
-          !entry.startsWith(`mcp__${integrationId}__`),
+          !entry.startsWith(prefix) && !entry.startsWith(approvalPrefix),
       ),
     },
   };
@@ -175,11 +174,14 @@ export function selectIntegrationTools(
     (!entry.startsWith(prefix) &&
       !entry.startsWith(mcpToolApprovalKey(integrationId, ''))) ||
     names.includes(entry) ||
-    (catalogs[integrationId] ?? []).some(
-      (tool) =>
-        names.includes(getIntegrationToolKey(integrationId, tool)) &&
-        mcpToolApprovalKey(integrationId, tool.toolName || tool.name) === entry,
-    );
+    (entry.startsWith(mcpToolApprovalKey(integrationId, '')) &&
+      names.some(
+        (name) =>
+          name.startsWith(prefix) &&
+          mcpToolApprovalKey(integrationId, name.slice(prefix.length)) ===
+            entry,
+      ));
+
   return {
     ...added,
     toolsAvailableEdited: true,
@@ -190,7 +192,7 @@ export function selectIntegrationTools(
         if (
           names !== 'all' &&
           (entry === `${prefix}*` ||
-            entry === mcpToolApprovalKey(integrationId, '*'))
+            entry === mcpToolApprovalKey(integrationId))
         )
           return names.length ? [entry] : [];
         return retainedApproval(entry) ? [entry] : [];
@@ -276,7 +278,7 @@ export function applyNewToolApprovalDefaults(
             askBeforeUse: [
               ...new Set([
                 ...(form.tools.askBeforeUse ?? []),
-                mcpToolApprovalKey(integrationId, '*'),
+                mcpToolApprovalKey(integrationId),
               ]),
             ],
           },

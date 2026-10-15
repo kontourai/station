@@ -130,12 +130,13 @@ External policy delivery follows the [engine policy contract](../conformance/too
 - `available` — allowlist of tool names exposed to the agent; omit or set `["*"]` to expose all tools from connected servers; an empty list exposes none from these integrations
 - `autoApprove` — patterns consulted for automatic approval; they do not override earlier runtime-generation, delegation or configuration-protection refusals. A pattern covers plain calls to a tool and never an escalation or a plan exit, even `*` (see [below](#what-autoapprove-never-covers))
 - `askBeforeUse` — requires a person on Station and Claude, even after a session grant or guardian allow. Exact choices override wildcard defaults; Ask wins equally specific conflicts. Earlier refusals and guardian denies still apply. Without an approval channel the call is denied
-The picker writes approval keys as `mcp__<server>__<action>`, with
-`mcp__<server>__*` for future-tool Ask defaults. Legacy names remain readable;
-legacy flattened Always grants cannot override these source Ask defaults.
-These approval keys are separate from `available` selections.
-
 - `unattendedAutoApprove` — explicit opt-in for tools the agent may run when nobody is there to confirm (see [Unattended runs](#unattended-runs))
+
+The picker writes approval keys as `mcp/<server>/<action>`, with
+`mcp/<server>/*` for future-tool Ask defaults. Legacy names remain readable;
+legacy flattened Always grants cannot override these source Ask defaults.
+Server and action components are percent-encoded; literal `*` becomes `%2A`
+except the terminal source wildcard. These approval keys are separate from `available` selections.
 
 `tools.aliases` is retired. Older files still load because the loader removes
 that key before validation, and the next save omits it. It did not rename tools
@@ -318,7 +319,7 @@ both the original MCP tool name (`station-control_delete_agent`) and the runtime
 name the model calls (`stationControl_deleteAgent`). Unattended runs match
 legacy `autoApprove` against the runtime name only, so the usual
 `station-control_*` pattern does not apply there. Exact loader-qualified
-`mcp__station-control__list_agents` keys also apply unattended. Existing patterns
+`mcp/station-control/list_agents` keys also apply unattended. Existing patterns
 that match the runtime name, including `*`, keep working as before. Effective
 Ask rules still require a person.
 

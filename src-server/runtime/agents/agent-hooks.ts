@@ -1,4 +1,4 @@
-import { authoredToolApprovalIdentities } from '../tools/mcp-tool-names.js';
+import { mcpToolApprovalKey } from '@kontourai/station-shared/mcp-tool-selection';
 /**
  * Framework-agnostic agent lifecycle hooks.
  *
@@ -130,19 +130,24 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
       : undefined,
     resolveUnattendedGrant: deps.resolveUnattendedGrant,
     toolNameMapping: deps.toolNameMapping,
-    isGranted: (tool) =>
-      authoredToolApprovalIdentities(tool.toolName, deps.toolNameMapping)
-        .filter(
-          (identity) =>
-            identity === tool.toolName || identity.startsWith('mcp__'),
-        )
-        .some((identity) => isAutoApproved(identity, autoApprove)) ||
-      // #2584: the built-in's bounded-write tools, for every agent and run
-      // (attended, unattended, delegated), by exact loader identity.
-      isIntrinsicStationEngineGrant(tool.toolName, deps.toolNameMapping),
+    isGranted: (tool) => {
+      const source = deps.toolNameMapping.get(tool.toolName)?.provenance;
+      return (
+        isAutoApproved(
+          tool.toolName,
+          autoApprove.filter((pattern) => !pattern.startsWith('mcp/')),
+        ) ||
+        (source !== undefined &&
+          isAutoApproved(
+            mcpToolApprovalKey(source.integrationId, source.originalToolName),
+            autoApprove,
+          )) ||
+        isIntrinsicStationEngineGrant(tool.toolName, deps.toolNameMapping)
+      );
+    },
     // #2613: the explicit unattended opt-in, matched like attended chat
     // matches `autoApprove` (runtime OR original MCP name). `isGranted` above
-    // stays runtime-name-only so no existing agent gains unattended authority.
+    // keeps legacy names runtime-only; qualified keys use loader provenance.
     isUnattendedGranted: (tool) =>
       isAuthoredToolPatternMatch(
         tool.toolName,

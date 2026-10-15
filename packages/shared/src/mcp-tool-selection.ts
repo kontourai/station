@@ -76,8 +76,10 @@ export function originalMcpToolName(
     : recordedName;
 }
 
-export function mcpToolApprovalKey(serverId: string, name: string): string {
-  return `mcp__${serverId}__${name}`;
+export function mcpToolApprovalKey(serverId: string, name?: string): string {
+  const encode = (value: string) =>
+    encodeURIComponent(value).replaceAll('*', '%2A');
+  return `mcp/${encode(serverId)}/${name === undefined ? '*' : encode(name)}`;
 }
 
 export function mcpToolIdentities(serverId: string, name: string): string[] {
@@ -165,26 +167,41 @@ export function canonicalDisabledMcpTools(
   ];
 }
 
+/** The SDK's separator is ambiguous when either name contains a double underscore. */
+export function externalMcpToolApprovalIdentity(toolName: string): {
+  key?: string;
+  ambiguous: boolean;
+} {
+  if (!toolName.startsWith('mcp__')) return { ambiguous: false };
+  const parts = toolName.slice(5).split('__');
+  if (parts.length !== 2) return { ambiguous: true };
+  return { key: mcpToolApprovalKey(parts[0], parts[1]), ambiguous: false };
+}
+
 /** Exact choices override source defaults; Ask wins equally specific rules. */
 export function resolveAuthoredToolApproval(
   identities: readonly string[],
   autoApprove: readonly string[] = [],
   askBeforeUse: readonly string[] = [],
+  sourceIdentity?: string,
 ): 'always' | 'ask' | undefined {
   const matches = (pattern: string) => {
     const expression = pattern
       .split('*')
       .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
       .join('.*');
-    return identities.some((identity) =>
+    const candidates = pattern.startsWith('mcp/')
+      ? sourceIdentity
+        ? [sourceIdentity]
+        : []
+      : identities;
+    return candidates.some((identity) =>
       new RegExp(`^${expression}$`).test(identity),
     );
   };
   const sourceAsk = askBeforeUse.some(
     (pattern) =>
-      pattern.startsWith('mcp__') &&
-      pattern.endsWith('__*') &&
-      matches(pattern),
+      pattern.startsWith('mcp/') && pattern.endsWith('/*') && matches(pattern),
   );
   for (const wildcard of [false, true]) {
     if (
@@ -197,7 +214,7 @@ export function resolveAuthoredToolApproval(
       autoApprove.some(
         (pattern) =>
           pattern.includes('*') === wildcard &&
-          (!sourceAsk || pattern.startsWith('mcp__')) &&
+          (!sourceAsk || pattern.startsWith('mcp/')) &&
           matches(pattern),
       )
     )

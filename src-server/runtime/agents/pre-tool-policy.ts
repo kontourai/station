@@ -1,13 +1,14 @@
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
-import { resolveAuthoredToolApproval } from '@kontourai/station-shared/mcp-tool-selection';
+import {
+  externalMcpToolApprovalIdentity,
+  mcpToolApprovalKey,
+  resolveAuthoredToolApproval,
+} from '@kontourai/station-shared/mcp-tool-selection';
 import type { AgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import type { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import { toolDenials } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
-import {
-  authoredToolApprovalIdentities,
-  type MCPToolNameMappingEntry,
-} from '../tools/mcp-tool-names.js';
+import type { MCPToolNameMappingEntry } from '../tools/mcp-tool-names.js';
 import type {
   InvocationContext,
   ToolCallContext,
@@ -450,14 +451,24 @@ export function createStagedPreToolPolicyEvaluator(
     }
 
     const approvalName = options.identity?.delegationToolName ?? tool.toolName;
+    const mapping = deps.toolNameMapping.get(approvalName);
+    const external =
+      options.interaction === 'external'
+        ? externalMcpToolApprovalIdentity(tool.toolName)
+        : { ambiguous: false, key: undefined };
+    const sourceKey = mapping?.provenance
+      ? mcpToolApprovalKey(
+          mapping.provenance.integrationId,
+          mapping.provenance.originalToolName,
+        )
+      : external.key;
     const explicitAsk =
+      (external.ambiguous && !!deps.spec.tools?.askBeforeUse?.length) ||
       resolveAuthoredToolApproval(
-        [
-          tool.toolName,
-          ...authoredToolApprovalIdentities(approvalName, deps.toolNameMapping),
-        ],
+        [tool.toolName, approvalName, mapping?.original ?? approvalName],
         deps.spec.tools?.autoApprove,
         deps.spec.tools?.askBeforeUse,
+        sourceKey,
       ) === 'ask';
     if (explicitAsk) {
       const review = await reviewWithGuardian(deps, tool, invocation);

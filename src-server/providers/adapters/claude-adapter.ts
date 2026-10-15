@@ -45,7 +45,10 @@ import type {
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
 import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
-import { resolveAuthoredToolApproval } from '@kontourai/station-shared/mcp-tool-selection';
+import {
+  externalMcpToolApprovalIdentity,
+  resolveAuthoredToolApproval,
+} from '@kontourai/station-shared/mcp-tool-selection';
 import {
   type ClaudeAskReason,
   sessionGrantPermissionUpdates,
@@ -3205,12 +3208,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           ...askFlags,
           claudeAsk,
         };
+        const sourceApproval = externalMcpToolApprovalIdentity(toolName);
+        const authoredApproval = resolveAuthoredToolApproval(
+          [toolName, canonicalizeExternalToolName(toolName)],
+          input.agent?.autoApprove,
+          input.agent?.askBeforeUse,
+          sourceApproval.key,
+        );
         const explicitAsk =
-          resolveAuthoredToolApproval(
-            [toolName, canonicalizeExternalToolName(toolName)],
-            input.agent?.autoApprove,
-            input.agent?.askBeforeUse,
-          ) === 'ask';
+          authoredApproval === 'ask' ||
+          (sourceApproval.ambiguous && !!input.agent?.askBeforeUse?.length);
         // Fix (external autoApprove parity): match Station's own
         // engine — which honors the session agent's
         // `tools.autoApprove` via `isAutoApproved` (agent-hooks.ts,
@@ -3237,7 +3244,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           toolRequestIsPlainCall(request) &&
           isAutoApprovedExternalTool(
             toolName,
-            input.agent?.autoApprove,
+            authoredApproval === 'always' && sourceApproval.key
+              ? [...(input.agent?.autoApprove ?? []), toolName]
+              : input.agent?.autoApprove,
             input.agent?.toolServers,
             // The Agent SDK generates this name from the actual mcpServers
             // config key, in Station's own process — authentically bound to

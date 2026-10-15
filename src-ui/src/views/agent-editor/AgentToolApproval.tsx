@@ -29,12 +29,10 @@ export function AgentToolApproval({
   const name = tool.toolName || tool.name;
   const value =
     resolveAuthoredToolApproval(
-      [
-        ...mcpToolIdentities(integrationId, name),
-        mcpToolApprovalKey(integrationId, name),
-      ],
+      mcpToolIdentities(integrationId, name),
       form.tools.autoApprove,
       form.tools.askBeforeUse,
+      mcpToolApprovalKey(integrationId, name),
     ) ?? 'default';
   return (
     <select
