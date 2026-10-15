@@ -3410,6 +3410,7 @@ and [proposal card](../../src-ui/src/components/chat/TaskProposalCard.tsx) own
 Station's conversational intake. [Task routes](../../src-server/routes/orchestration/tasks.ts)
 authorize the exact completed source turn; `TaskGraphService.createTask`
 commits the Goal sentence and source Session link in one store mutation. The room runtime then seeds the complete proposal markdown through its human edit-plan/batch authority. A failed seed returns a visible recovery error; retrying reuses the Task and preserves populated documents. The normal shared start composer owns New Task's existing project/agent chips and removable mode; Turn into Task sends immediately in the source conversation.
+The [VoltAgent adapter](../../src-server/runtime/frameworks/voltagent-adapter.ts) binds model-only input composition to the registered Agent as well as its wrapper, so shaping instructions reach the model while authored messages remain unchanged in storage. The real Agent/model/file-store proof lives in `src-server/runtime/frameworks/__tests__/voltagent-model-input.test.ts`.
 The source link also deduplicates repeated acceptance. Tests in
 `task-proposal-acceptance.test.ts`, `TaskProposalFlow.test.tsx` and
 `TaskShapingComposer.test.tsx` cover those separate boundaries. This Station

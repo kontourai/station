@@ -47,9 +47,13 @@ function renderUserInput() {
   );
 }
 
-function renderAnswer() {
+function renderAnswer(projectId?: string) {
   return render(
-    <ConnectedAttachAnswerToTaskButton sessionId="session-1" turnId="turn-1" />,
+    <ConnectedAttachAnswerToTaskButton
+      sessionId="session-1"
+      turnId="turn-1"
+      projectId={projectId}
+    />,
   );
 }
 
@@ -97,14 +101,18 @@ describe('Task attachment affordances follow the Task catalog', () => {
       tasksQuery.state = { data: [], isSuccess: true };
       const listener = vi.fn();
       window.addEventListener('station:shape-task', listener);
-      if (kind === 'answer') renderAnswer();
+      if (kind === 'answer') renderAnswer('alpha');
       else renderUserInput();
       fireEvent.click(
         screen.getByRole('button', {
           name: kind === 'answer' ? /Add this answer/ : 'Add input to Task',
         }),
       );
-      expect(await screen.findByText('No Tasks yet.')).toBeTruthy();
+      expect(
+        await screen.findByText(
+          kind === 'answer' ? 'No Tasks in this project yet.' : 'No Tasks yet.',
+        ),
+      ).toBeTruthy();
       expect(screen.queryByText('Tasks are not available')).toBeNull();
       fireEvent.click(
         await screen.findByRole('button', { name: 'New Task from this…' }),
