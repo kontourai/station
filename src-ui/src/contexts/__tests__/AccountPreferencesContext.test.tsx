@@ -19,13 +19,14 @@ import {
 } from '../../settings/modelPickerPreferences';
 import { AccountPreferencesSection } from '../../views/settings/AccountPreferencesSection';
 import { AccountPreferencesProvider } from '../AccountPreferencesContext';
+import { activeChatsStore } from '../active-chats-store';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../DeviceSettingsContext';
 
 const fixture = vi.hoisted(() => ({
-  namespace: 'person-a',
+  namespace: 'person-a' as string | null,
   get: vi.fn<(...args: unknown[]) => Promise<AccountPreferencesView>>(),
   patch: vi.fn<(...args: unknown[]) => Promise<AccountPreferencesView>>(),
   scope: { isCurrent: () => true, apiBase: 'https://station.test' },
@@ -41,7 +42,7 @@ vi.mock('../ApiBaseContext', () => ({
 }));
 vi.mock('../AuthorityPersistenceContext', () => ({
   useAuthorityPersistence: () => ({
-    status: 'verified',
+    status: fixture.namespace ? 'verified' : 'unverified',
     namespace: fixture.namespace,
     observation: {
       principal: { kind: 'human', id: `human:fixture:${fixture.namespace}` },
@@ -245,5 +246,25 @@ test('a cached mount re-reads saved preferences even when the app default disabl
   await waitFor(() =>
     expect(screen.getByLabelText('Current theme').textContent).toBe('dark'),
   );
+  view.unmount();
+});
+
+test('unknown authority holds an inherited choice; a different verified account retires it', async () => {
+  activeChatsStore.initChat('inherited-default', {
+    queuedApprovalMode: 'never',
+    queuedApprovalDefaultNamespace: 'person-a',
+  });
+  fixture.namespace = null;
+  const qc = client();
+  const view = render(tree(qc));
+  expect(
+    activeChatsStore.getSnapshot()['inherited-default']?.queuedApprovalMode,
+  ).toBe('never');
+  fixture.namespace = 'person-b';
+  view.rerender(tree(qc));
+  await screen.findByRole('button', { name: 'Choose light' });
+  expect(
+    activeChatsStore.getSnapshot()['inherited-default']?.queuedApprovalMode,
+  ).toBeUndefined();
   view.unmount();
 });

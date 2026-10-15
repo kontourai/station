@@ -1408,7 +1408,7 @@ export function mergeChatUpdates(
    */
   droppedQueuedMessages: string[];
 } {
-  const nextUpdates =
+  let nextUpdates =
     'input' in updates && !('historyIndex' in updates)
       ? { ...updates, historyIndex: -1 }
       : updates;
@@ -1416,7 +1416,7 @@ export function mergeChatUpdates(
     'queuedApprovalMode' in nextUpdates &&
     !('queuedApprovalDefaultNamespace' in nextUpdates)
   )
-    nextUpdates.queuedApprovalDefaultNamespace = undefined;
+    nextUpdates = { ...nextUpdates, queuedApprovalDefaultNamespace: undefined };
   const bounded =
     nextUpdates.queuedMessages !== undefined
       ? boundQueuedMessages(nextUpdates.queuedMessages)

@@ -105,6 +105,7 @@
         "docs/learn/walkthroughs.md#connections"
       ],
       "modules": [
+        "AccountPreferences",
         "DeploymentAuthentication",
         "VirtualApplicationIngress",
         "NativeRelayGrantRenewalSupervisor",

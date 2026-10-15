@@ -456,6 +456,21 @@ export function useSendMessage(
       let currentState = allChats[sessionId];
       if (
         currentState?.queuedApprovalDefaultNamespace &&
+        (!experienceNamespace || experienceAuthorityStatus !== 'verified')
+      ) {
+        if (options?.dispatch)
+          return {
+            kind: 'deferred',
+            reason: 'Waiting for account verification.',
+          } satisfies OutboundDispatchTransportResult;
+        addEphemeralMessage(sessionId, {
+          role: 'system',
+          content: 'Connect to this chat’s account before sending.',
+        });
+        return false;
+      }
+      if (
+        currentState?.queuedApprovalDefaultNamespace &&
         currentState.queuedApprovalDefaultNamespace !== experienceNamespace
       ) {
         currentState = {

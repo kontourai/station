@@ -210,6 +210,7 @@ export function AccountPreferencesProvider({
     );
   }, [eligible, available, projected, query.isFetchedAfterMount, save, scope]);
   useLayoutEffect(() => {
+    if (authority.status !== 'verified' || !authority.namespace) return;
     for (const [sessionId, chat] of Object.entries(
       activeChatsStore.getSnapshot(),
     ))
@@ -221,7 +222,7 @@ export function AccountPreferencesProvider({
           queuedApprovalMode: undefined,
           queuedApprovalDefaultNamespace: undefined,
         });
-  }, [authority.namespace]);
+  }, [authority.namespace, authority.status]);
   useLayoutEffect(() => {
     let failureShown = false;
     const apply = () => {
