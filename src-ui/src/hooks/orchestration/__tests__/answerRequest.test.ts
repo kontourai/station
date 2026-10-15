@@ -114,6 +114,17 @@ describe('answerOrchestrationRequest', () => {
       ).toBe(sessionGrantScope);
       finish();
       await expect(first).resolves.toBe('answered');
+      await expect(
+        answerOrchestrationRequest('http://api', intent),
+      ).resolves.toBe('answered');
+      expect(resolveOrchestrationRequest).toHaveBeenCalledTimes(1);
+      inspectAttentionRequest.mockResolvedValueOnce({
+        state: 'open',
+        canRespond: true,
+      });
+      await expect(inspectApprovalAnswer('http://api', request)).resolves.toBe(
+        'pending',
+      );
 
       vi.mocked(resolveOrchestrationRequest).mockRejectedValueOnce(
         new TypeError('Reply lost'),
