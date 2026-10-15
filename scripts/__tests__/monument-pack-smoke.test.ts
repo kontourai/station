@@ -50,6 +50,21 @@ async function run(args: string[], env: NodeJS.ProcessEnv = process.env) {
   };
 }
 
+function readFixturePid(path: string): number | undefined {
+  let text: string;
+  try {
+    text = readFileSync(path, 'utf8').trim();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw error;
+  }
+  if (!/^[1-9]\d*$/.test(text)) return undefined;
+  const pid = Number(text);
+  return Number.isSafeInteger(pid) && pid > 1 && pid !== process.pid
+    ? pid
+    : undefined;
+}
+
 function tar(args: string[], cwd: string) {
   const result = spawnSync('tar', args, {
     cwd,
@@ -328,8 +343,12 @@ describe('monument pack smoke: bounds and credentials', () => {
       const step = await runStep(process.execPath, ['-e', launcher], {
         timeoutMs: Math.min(10_000, Math.floor(task.timeout / 6)),
       });
-      for (const path of [launcherPath, descendantPath])
-        pids.push(Number(readFileSync(path, 'utf8')));
+      for (const path of [launcherPath, descendantPath]) {
+        const pid = readFixturePid(path);
+        if (pid === undefined)
+          throw new Error(`fixture did not publish a complete PID: ${path}`);
+        pids.push(pid);
+      }
       expect(step.ok).toBe(false);
       expect(step.timedOut).toBe(true);
       const stopped = readFileSync(heartbeat, 'utf8');
@@ -353,7 +372,9 @@ describe('monument pack smoke: bounds and credentials', () => {
       for (const path of [launcherPath, descendantPath]) {
         let pid: number;
         try {
-          pid = Number(readFileSync(path, 'utf8'));
+          const observed = readFixturePid(path);
+          if (observed === undefined) continue;
+          pid = observed;
         } catch {
           continue;
         }
@@ -367,6 +388,33 @@ describe('monument pack smoke: bounds and credentials', () => {
     }
     expect(cleanupErrors, 'owned negative-control cleanup').toEqual([]);
   });
+
+  it.skipIf(process.platform === 'win32')(
+    'an interrupt during timeout settlement remains terminal',
+    async ({ task }) => {
+      const continued = join(scratch, 'continued-after-timeout-interrupt');
+      const target = `process.on('SIGTERM', () => {
+      process.kill(process.ppid, 'SIGTERM');
+      setTimeout(() => process.exit(0), 100);
+    }); setInterval(() => {}, 1000);`;
+      const driver = `import {run} from ${JSON.stringify(new URL('../monument-pack-smoke.mjs', import.meta.url).href)};
+      import {writeFileSync} from 'node:fs';
+      try { await run(process.execPath, ['-e', ${JSON.stringify(target)}], {timeoutMs:1000});
+        writeFileSync(${JSON.stringify(continued)}, 'continued');process.exitCode=2;
+      } catch(error) {console.log(error.code);process.exitCode=1;}`;
+      const result = await runStep(
+        process.execPath,
+        ['--input-type=module', '--eval', driver],
+        { timeoutMs: task.timeout / 2 },
+      );
+      expect(result.status, result.describe()).toBe(1);
+      expect(result.stdout).toContain('MONUMENT_PROCESS_INTERRUPTED');
+      expect(
+        existsSync(continued),
+        'interruption must stop continuation even after timeout',
+      ).toBe(false);
+    },
+  );
 
   it('removes publish credentials and loaders, and keeps ordinary variables', () => {
     const env = plainEnvironment({
@@ -507,8 +555,8 @@ describe.skipIf(process.platform === 'win32')(
       try {
         await vi.waitFor(
           () => {
-            expect(existsSync(marker)).toBe(true);
-            expect(existsSync(descendantPid)).toBe(true);
+            expect(readFixturePid(marker)).toBeDefined();
+            expect(readFixturePid(descendantPid)).toBeDefined();
           },
           { timeout: task.timeout / 3 },
         );
@@ -519,7 +567,9 @@ describe.skipIf(process.platform === 'win32')(
           'typecheck must not launch after interruption',
         ).toBe(false);
         expect(stderr).toContain('interrupted after owned tree settlement');
-        const pid = Number(readFileSync(descendantPid, 'utf8'));
+        const pid = readFixturePid(descendantPid);
+        if (pid === undefined)
+          throw new Error('descendant PID was not complete');
         expect(() => process.kill(pid, 0)).toThrowError(
           expect.objectContaining({ code: 'ESRCH' }),
         );
@@ -530,7 +580,8 @@ describe.skipIf(process.platform === 'win32')(
         for (const path of [marker, descendantPid]) {
           if (!existsSync(path)) continue;
           try {
-            process.kill(Number(readFileSync(path, 'utf8')), 'SIGKILL');
+            const pid = readFixturePid(path);
+            if (pid !== undefined) process.kill(pid, 'SIGKILL');
           } catch (error) {
             if ((error as NodeJS.ErrnoException).code !== 'ESRCH')
               cleanupErrors.push(error);

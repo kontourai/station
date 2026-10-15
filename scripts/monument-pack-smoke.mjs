@@ -208,6 +208,7 @@ export async function run(command, args, options = {}) {
       waitForSuiteSettlement,
     }).catch((error) => ({ settled: false, errors: [error] })));
   let cancellation;
+  let interrupted = false;
   let cancelled;
   const cancellationSettled = new Promise((resolve) => {
     cancelled = resolve;
@@ -220,7 +221,10 @@ export async function run(command, args, options = {}) {
     maxBytes: CAPTURE_MAX_BYTES,
     onOverflow: () => cancel('output exceeded capture bound'),
   });
-  const interrupt = () => cancel('interrupted');
+  const interrupt = () => {
+    interrupted = true;
+    cancel('interrupted');
+  };
   const timer = setTimeout(() => cancel('timeout'), timeoutMs);
   process.once('SIGINT', interrupt);
   process.once('SIGTERM', interrupt);
@@ -235,7 +239,7 @@ export async function run(command, args, options = {}) {
       error.code = 'MONUMENT_PROCESS_UNSETTLED';
       throw error;
     }
-    if (cancellation === 'interrupted') {
+    if (interrupted) {
       const error = new Error(
         `${command}: interrupted after owned tree settlement`,
       );
