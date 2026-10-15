@@ -7,8 +7,14 @@ import type {
 import {
   getAccountPreferences,
   patchAccountPreferences,
+  StationHttpError,
 } from '@kontourai/station-sdk/client';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  onlineManager,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import {
   createContext,
   type ReactNode,
@@ -31,7 +37,9 @@ import { toastStore } from './ToastContext';
 interface PreferenceState {
   status: 'loading' | 'account' | 'device' | 'error';
   saving: boolean;
+  waitingForConnection: boolean;
   error: boolean;
+  conflict: boolean;
   data?: AccountPreferencesView;
   save: (patch: AccountPreferencesPatch, onlyMissing?: boolean) => void;
   retry: () => void;
@@ -40,7 +48,9 @@ interface PreferenceState {
 const AccountPreferencesContext = createContext<PreferenceState>({
   status: 'device',
   saving: false,
+  waitingForConnection: false,
   error: false,
+  conflict: false,
   save: () => {},
   retry: () => {},
 });
@@ -128,12 +138,14 @@ export function AccountPreferencesProvider({
         publishPending();
       }
     },
-    onError: (_error, write) => {
+    onError: (error, write) => {
       write.pending.delete(write.id);
       if (write.scope.isCurrent()) {
         publishPending();
         toastStore.show(
-          'Couldn’t confirm the preference was saved. Reload it in Settings.',
+          error instanceof StationHttpError && error.status === 409
+            ? 'Preferences changed on another device. Reload them in Settings before trying again.'
+            : 'Couldn’t confirm the preference was saved. Reload it in Settings.',
           undefined,
           0,
           undefined,
@@ -144,6 +156,8 @@ export function AccountPreferencesProvider({
     },
   });
   const mutate = mutation.mutate;
+  const currentError =
+    mutation.isError && mutation.variables?.queryKey === queryKey;
   const available = eligible && query.isSuccess && query.isFetchedAfterMount;
   const save = useCallback(
     (patch: AccountPreferencesPatch, onlyMissing = false) => {
@@ -260,7 +274,13 @@ export function AccountPreferencesProvider({
               ? 'account'
               : 'loading',
         saving: pending.size > 0,
-        error: mutation.isError,
+        waitingForConnection:
+          pending.size > 0 && mutation.isPaused && !onlineManager.isOnline(),
+        error: currentError,
+        conflict:
+          currentError &&
+          mutation.error instanceof StationHttpError &&
+          mutation.error.status === 409,
         data: available ? projected : undefined,
         save,
         requestScope: scope,

@@ -64,7 +64,7 @@ export function AccountPreferencesSection() {
     >
       <p role="status">
         {account.status === 'account'
-          ? 'Synced across your devices on this Station.'
+          ? 'Your devices share these preferences on this Station.'
           : account.status === 'loading'
             ? 'Loading preferences…'
             : account.status === 'error'
@@ -81,6 +81,10 @@ export function AccountPreferencesSection() {
           <strong>Device:</strong> microphone, speakers, push permission,
           haptics, keyboard, layout, and access grants.
         </p>
+        <p>
+          Other devices refresh when you return or reconnect. Other Stations
+          keep separate preferences.
+        </p>
       </details>
       <p>Approval defaults · new chats only</p>
       <details>
@@ -90,69 +94,75 @@ export function AccountPreferencesSection() {
           and unattended jobs keep their settings.
         </p>
       </details>
-      <>
+      <PageRow
+        {...settingsRow('account-preference-sync')}
+        description="Fills account choices you haven’t saved yet."
+        control={
+          <Button
+            disabled={account.saving || account.status !== 'account'}
+            onClick={importPrevious}
+          >
+            Import previous preferences
+          </Button>
+        }
+      />
+      {(['codex', 'claude', 'muse'] as const).map((engine) => (
         <PageRow
-          {...settingsRow('account-preference-sync')}
-          description="Fills account choices you haven’t saved yet."
+          key={engine}
+          {...engineRows[engine]}
+          description={
+            defaults[engine]
+              ? approvalModeDescription(defaults[engine]!, engine)
+              : undefined
+          }
           control={
-            <Button
+            <select
+              className="editor-select"
+              aria-label={`New ${engine} chats approval mode`}
               disabled={account.saving || account.status !== 'account'}
-              onClick={importPrevious}
+              value={defaults[engine] ?? 'connection-default'}
+              onChange={(event) =>
+                event.target.value === 'never' && defaults[engine] !== 'never'
+                  ? setConfirmEngine(engine)
+                  : saveMode(engine, event.target.value)
+              }
             >
-              Import previous preferences
-            </Button>
+              {APPROVAL_MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.value === 'connection-default'
+                    ? 'Use inherited default'
+                    : option.label}
+                </option>
+              ))}
+            </select>
           }
         />
-        {(['codex', 'claude', 'muse'] as const).map((engine) => (
-          <PageRow
-            key={engine}
-            {...engineRows[engine]}
-            description={
-              defaults[engine]
-                ? approvalModeDescription(defaults[engine]!, engine)
-                : undefined
-            }
-            control={
-              <select
-                className="editor-select"
-                aria-label={`New ${engine} chats approval mode`}
-                disabled={account.saving || account.status !== 'account'}
-                value={defaults[engine] ?? 'connection-default'}
-                onChange={(event) =>
-                  event.target.value === 'never' && defaults[engine] !== 'never'
-                    ? setConfirmEngine(engine)
-                    : saveMode(engine, event.target.value)
-                }
-              >
-                {APPROVAL_MODE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.value === 'connection-default'
-                      ? 'Use existing defaults'
-                      : option.label}
-                  </option>
-                ))}
-              </select>
-            }
-          />
-        ))}
-        <ConfirmModal
-          isOpen={confirmEngine !== null}
-          title="Save full access default?"
-          message={`$New ${confirmEngine ?? ''} chats will request Full access. The agent can act without approval prompts, subject to this device’s access and Station policy.`}
-          confirmLabel="Save full access default"
-          cancelLabel="Cancel"
-          variant="danger"
-          onCancel={() => setConfirmEngine(null)}
-          onConfirm={() => {
-            if (confirmEngine) saveMode(confirmEngine, 'never');
-            setConfirmEngine(null);
-          }}
-        />
-      </>
-      {account.saving && <p role="status">Saving account preferences…</p>}
+      ))}
+      <ConfirmModal
+        isOpen={confirmEngine !== null}
+        title="Save full access default?"
+        message={`New ${confirmEngine ?? ''} chats will request Full access. The agent can act without approval prompts, subject to this device’s access and Station policy.`}
+        confirmLabel="Save full access default"
+        cancelLabel="Cancel"
+        variant="danger"
+        onCancel={() => setConfirmEngine(null)}
+        onConfirm={() => {
+          if (confirmEngine) saveMode(confirmEngine, 'never');
+          setConfirmEngine(null);
+        }}
+      />
+      {account.saving && (
+        <p role="status">
+          {account.waitingForConnection
+            ? 'Waiting for connection. Changes aren’t saved yet.'
+            : 'Saving account preferences…'}
+        </p>
+      )}
       {(account.error || account.status === 'error') && (
         <p role="alert">
-          Couldn’t confirm the save.{' '}
+          {account.conflict
+            ? 'Changed on another device. Reload before trying again.'
+            : 'Couldn’t confirm the save.'}{' '}
           <Button onClick={account.retry}>Reload saved preferences</Button>
         </p>
       )}

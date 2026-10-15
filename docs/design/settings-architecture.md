@@ -72,8 +72,11 @@ bounded schema validation and serialized atomic field patches, and reads fresh
 on requests. Composite model-picker replacements require the revision returned by
 the latest read; conflicting changes return 409 rather than overwrite another
 device. The client projects pending actions locally and rolls them back on
-failure. The client refreshes on activation, focus and reconnect. It reports
-loading and save failure separately from saved values. Account changes retire
+failure. A conflicting composite save names the other-device change and offers
+a reload. Offline mutations wait in memory and say they are not saved yet;
+closing the page can lose those pending changes. Errors belong to the authority
+that initiated the save. The client refreshes on activation, focus and reconnect.
+It reports loading and save failure separately from saved values. Account changes retire
 the in-memory overlay; late responses cannot populate the replacement authority.
 There is no cross-Station cloud synchronization.
 
@@ -82,7 +85,9 @@ General → Your account. It copies only portable choices that remain unset unde
 the server's mutation lock. It keeps the old device record and never imports
 execution permissions, grants, hardware selection or geometry. Device reset
 excludes account preferences while an account is active. Per-setting resets
-remove the account value and use the registry default.
+use **Use default** to remove the account value and use the registry default,
+including both fields of Answer delivery. Approval defaults offer **Use inherited
+default**, which resumes the Agent → Station → engine chain.
 
 Each supported engine has an optional personal approval default for new
 interactive chats. Resolution is explicit chat choice → Agent default → personal

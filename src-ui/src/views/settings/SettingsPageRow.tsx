@@ -15,6 +15,12 @@ export function SettingsPageRow(props: ComponentProps<typeof PageRow>) {
   );
   const hasAccountValue =
     key !== undefined && Object.hasOwn(account.data?.values ?? {}, key);
+  const isAnswerDelivery = entry?.id === 'smooth-answer-reveal';
+  const canReset =
+    hasAccountValue ||
+    (isAnswerDelivery &&
+      (account.data?.values.smoothReveal !== undefined ||
+        account.data?.values.bufferedDelivery !== undefined));
   const label =
     entry?.section === 'account-preferences'
       ? undefined
@@ -37,15 +43,22 @@ export function SettingsPageRow(props: ComponentProps<typeof PageRow>) {
           <>
             {props.status}
             <small>{label}</small>
-            {account.status === 'account' && hasAccountValue && key && (
+            {account.status === 'account' && canReset && (
               <Button
                 size="sm"
                 variant="link"
                 disabled={account.saving}
-                aria-label={`Reset ${entry?.title ?? key} to default`}
-                onClick={() => account.save({ [key]: null })}
+                aria-label={`Use default for ${entry?.title ?? key}`}
+                title="Remove your saved choice and use the built-in default."
+                onClick={() =>
+                  account.save(
+                    key
+                      ? { [key]: null }
+                      : { smoothReveal: null, bufferedDelivery: null },
+                  )
+                }
               >
-                Reset
+                Use default
               </Button>
             )}
           </>
