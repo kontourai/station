@@ -141,6 +141,15 @@ Agent, engine kind, provider, and honest model launch plan.
 
 ### Find out what became of a send
 
+An existing keyed send with different submitted input returns HTTP `409`,
+`success: false`, and `code: client_turn_input_conflict`; it does not accept a
+new turn. The original input can still replay its provider turn. This applies
+to the foreground, background and continue orchestration routes. Legacy rows
+without original digest proof remain unknown, and older binaries cannot enforce
+these conflicts. Keys remain optional outside surfaces that already require
+one. See [TurnDeduplicator](../architecture/module-map.md#turndeduplicator) for
+the exact submission scope, unsupported-input refusal and mixed-version limits.
+
 A send that names its own idempotency key (`clientTurnId`, up to 200
 characters) and its `conversationId` can be looked up afterwards, for example
 by a device whose connection dropped before the answer arrived, or that was

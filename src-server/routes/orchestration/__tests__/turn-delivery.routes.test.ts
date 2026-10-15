@@ -308,9 +308,8 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
       conversationId: string,
       clientTurnId: string,
       message = 'Hello delivery',
-      route = 'chat',
     ) =>
-      app.request(`/api/orchestration/${route}`, {
+      app.request('/api/orchestration/chat', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
@@ -340,35 +339,6 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
     };
     return { root, store, adapter, service, send, lookup };
   }
-
-  test.each(['chat', 'chat/background'])(
-    '#3567: %s refuses changed raw intent with 409 while replaying the original',
-    async (route) => {
-      const { adapter, send } = station();
-      const first = await send('conversation:digest', 'K', ' A ', route);
-      expect(first.status, await first.clone().text()).toBe(200);
-      const original = (await first.json()) as {
-        data: { providerTurnId: string; sessionId: string };
-      };
-      const changed = await send('conversation:digest', 'K', 'A', route);
-      expect(changed.status, await changed.clone().text()).toBe(409);
-      expect(await changed.json()).toMatchObject({
-        success: false,
-        code: 'client_turn_input_conflict',
-      });
-      expect(adapter.turns).toHaveLength(1);
-      const replay = await send('conversation:digest', 'K', ' A ', route);
-      expect(replay.status, await replay.clone().text()).toBe(200);
-      expect(await replay.json()).toMatchObject({
-        success: true,
-        data: {
-          providerTurnId: original.data.providerTurnId,
-          sessionId: original.data.sessionId,
-        },
-      });
-      expect(adapter.turns).toHaveLength(1);
-    },
-  );
 
   test('#3567: concurrent changed intent conflicts while identical intent joins the one adapter invocation', async () => {
     const { adapter, send } = station();

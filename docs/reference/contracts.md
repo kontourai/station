@@ -377,7 +377,7 @@ send is refused with `provider_session_start_failed`, and the client keeps the
 message queued with the reason and Retry without re-sending it on its own. If
 it is still starting after the wait, the send is refused with the retryable
 code `provider_session_starting`, and the client queues the message and
-re-sends it. A retry whose idempotency key an earlier attempt still holds
+re-sends it. A retry of the same submitted input whose idempotency key an earlier attempt still holds
 waits for that attempt's turn (up to five minutes). If none arrives, or the
 attempt released the key without sending, the retry is refused with the
 retryable code `client_turn_in_flight` and re-sent with the same key; that

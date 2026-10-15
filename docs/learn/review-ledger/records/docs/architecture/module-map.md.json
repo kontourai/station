@@ -980,7 +980,17 @@
 
     "src-server/services/orchestration/__tests__/monument-boundary-append.test.ts",
 
-    "src-server/services/orchestration/__tests__/monument-boundary-host.test.ts"
+    "src-server/services/orchestration/__tests__/monument-boundary-host.test.ts",
+
+    "src-server/services/orchestration/turn-submission-digest.ts",
+
+    "src-server/services/execution-target/execution-target-execution.ts",
+
+    "src-server/tools/station-control-delegation.ts",
+
+    "src-server/domain/migrations/015-turn-dedup-input-digest.ts",
+
+    "src-server/routes/orchestration/__tests__/adopted-continuation-dock.routes.test.ts"
   ],
 
   "checks": [

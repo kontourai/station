@@ -1367,6 +1367,14 @@ the current package grant; ordinary user controls omit that frame admission.
 See the [Session API](session-api.md#visual-skill-presentation) for ownership and
 unavailable-history behavior.
 
+Existing keyed foreground, background and continue sends reject a different
+submission under the same key with HTTP `409` and
+`code: client_turn_input_conflict`, before any additional engine send. This
+bounded contract retains legacy unknown-input rows and optional-key behavior;
+it does not cover the private Station-engine stream ledger. See
+[keyed send identity](session-api.md#delivery-lookup-for-a-keyed-send) and the
+[submission digest contract](../architecture/module-map.md#turndeduplicator).
+
 `POST /api/orchestration/chat` carries model selection under
 `target.model: {override?, options?}`, alongside the Agent and Environment target.
 The [route schema](../../src-server/routes/orchestration/orchestration.ts),
