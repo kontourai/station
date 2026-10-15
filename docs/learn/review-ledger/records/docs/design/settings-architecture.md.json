@@ -54,7 +54,13 @@
 
     "src-ui/src/lib/account-preference-values.ts",
 
-    "src-ui/src/hooks/useActiveChatSessionMessaging.ts"
+    "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
+
+    "src-ui/src/views/settings/SettingsPageRow.tsx",
+
+    "src-ui/src/views/settings/AccountPreferencesSection.tsx",
+
+    "src-ui/src/views/settings/AccentColorPicker.tsx"
   ],
 
   "checks": [
