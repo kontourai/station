@@ -341,7 +341,7 @@ export function ProjectTasksSection({
   }
 
   async function dispatchSelectedTask() {
-    if (!selectedTask) return;
+    if (!selectedTask?.agentId?.trim()) return;
     const result = await dispatchTaskMutation.mutateAsync({
       taskId: selectedTask.id,
       dispatch: {
@@ -642,9 +642,12 @@ export function ProjectTasksSection({
                     title={
                       taskClaim?.state === 'claimed-by-other' && taskClaim.actor
                         ? `Claimed by ${actorLabel(taskClaim.actor)}`
-                        : undefined
+                        : !selectedTask.agentId?.trim()
+                          ? 'Assign an agent to this Task before dispatching.'
+                          : undefined
                     }
                     disabled={
+                      !selectedTask.agentId?.trim() ||
                       dispatchTaskMutation.isPending ||
                       selectedTask.status === 'done' ||
                       selectedTask.status === 'canceled' ||
@@ -658,6 +661,11 @@ export function ProjectTasksSection({
                   </button>
                 </div>
               </div>
+              {!selectedTask.agentId?.trim() && (
+                <p role="status">
+                  Assign an agent to this Task before dispatching.
+                </p>
+              )}
               <dl className="project-page__task-binding">
                 <div>
                   <dt>Working directory</dt>

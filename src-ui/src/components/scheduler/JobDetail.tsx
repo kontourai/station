@@ -1,6 +1,7 @@
 import type { RunStatus, RunSummary } from '@kontourai/station-contracts/runs';
 import { MS_PER_MINUTE } from '@kontourai/station-contracts/time';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigation } from '../../contexts/NavigationContext';
 import {
   useFetchRunOutputRef,
   useResolveIndeterminateJobMonitor,
@@ -137,6 +138,7 @@ export function JobDetail({
   autoOpenRun?: string | null;
   providerId?: string;
 }) {
+  const { navigate } = useNavigation();
   const { data: runs = [] } = useRunsQuery();
   const { data: jobs = [] } = useSchedulerJobs();
   const restartMonitor = useRestartJobMonitor();
@@ -164,6 +166,9 @@ export function JobDetail({
   );
   const monitor = jobs.find((job) => job.name === name)?.monitor;
   const monitorState = jobs.find((job) => job.name === name)?.monitorState;
+  const taskHref = monitorState?.triggeredTaskId
+    ? `/tasks/${encodeURIComponent(monitorState.triggeredTaskId)}`
+    : null;
 
   const handleViewOutput = useCallback(
     async (i: number) => {
@@ -246,11 +251,23 @@ export function JobDetail({
       </p>
       <p>
         Task:{' '}
-        {monitorState?.triggeredTaskId ? (
+        {taskHref ? (
           <a
-            href={`/projects/${monitor.projectId ?? ''}/tasks/${monitorState.triggeredTaskId}`}
+            href={taskHref}
+            onClick={(event) => {
+              if (
+                event.button !== 0 ||
+                event.metaKey ||
+                event.ctrlKey ||
+                event.shiftKey ||
+                event.altKey
+              )
+                return;
+              event.preventDefault();
+              navigate(taskHref);
+            }}
           >
-            {monitorState.triggeredTaskId}
+            {monitorState?.triggeredTaskId}
           </a>
         ) : (
           'unavailable'

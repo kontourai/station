@@ -413,6 +413,25 @@ describe('ProjectTasksSection', () => {
     window.history.pushState({}, '', '/');
   });
 
+  test.each([undefined, '  '])(
+    'disables Dispatch with a reason when the Task has no agent (%s)',
+    (agentId) => {
+      tasks[0] = { ...tasks[0], agentId };
+      render(<ProjectTasksSection slug="project-alpha" />);
+
+      const button = screen.getByRole<HTMLButtonElement>('button', {
+        name: 'Dispatch',
+      });
+      expect(button.disabled).toBe(true);
+      expect(screen.getByRole('status').textContent).toContain(
+        'Assign an agent to this Task before dispatching.',
+      );
+      fireEvent.click(button);
+      expect(dispatchTask).not.toHaveBeenCalled();
+      expect(tasks[0].status).toBe('todo');
+    },
+  );
+
   test('creates a bound task, opens it, and preserves dispatch behavior', async () => {
     createTask.mockImplementation(async () => {
       const task = {
