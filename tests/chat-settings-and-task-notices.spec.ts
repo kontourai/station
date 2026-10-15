@@ -105,9 +105,13 @@ async function seedChat(page: Page) {
   );
 }
 
-async function openChat(page: Page, viewport: { width: number }) {
+async function openChat(
+  page: Page,
+  viewport: { width: number },
+  maximized = false,
+) {
   const chat = encodeURIComponent(CONVERSATION_ID);
-  if (viewport.width === PHONE.width) {
+  if (viewport.width === PHONE.width || maximized) {
     // A phone holds Chat in the maximized dock, not a layout region.
     await page.goto(`/?dock=open&maximize=true&chat=${chat}`);
     await dismissSetupLauncher(page);
@@ -331,7 +335,7 @@ for (const theme of ['light', 'dark'] as const) {
         }),
       );
     }, theme);
-    await openChat(page, DESKTOP);
+    await openChat(page, DESKTOP, true);
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     const dialog = await openChatSettings(page);
     const done = dialog.getByRole('button', { name: 'Done', exact: true });
