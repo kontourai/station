@@ -96,7 +96,7 @@ export function OutboundQueuedMessages({
       ? `${failedCount} message${failedCount === 1 ? '' : 's'} need action`
       : undefined,
     awaitingCount
-      ? `${awaitingCount} waiting for Station to confirm`
+      ? `${awaitingCount} with no answer yet`
       : undefined,
     sendingCount ? `${sendingCount} sending` : undefined,
     acceptedCount

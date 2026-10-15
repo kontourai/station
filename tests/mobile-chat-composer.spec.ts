@@ -4766,7 +4766,7 @@ async function queueSendForRetry(
   await expect(
     page
       .locator('.queued-messages')
-      .getByText(/waiting for Station to confirm/i),
+      .getByText(/with no answer yet/i),
   ).toBeVisible();
   await expect(page.locator('.chat-status-pill')).toHaveCount(0);
   return { textarea };
@@ -4974,7 +4974,7 @@ test('deleting the queued message from the queue panel clears its queued-retry n
   await expect(
     page
       .locator('.queued-messages')
-      .getByText(/waiting for Station to confirm/i),
+      .getByText(/with no answer yet/i),
   ).toHaveCount(0);
   await expect(notice).toHaveCount(0);
   await expect(noticeDiscards(page)).toHaveCount(0);

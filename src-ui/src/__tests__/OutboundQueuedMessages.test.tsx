@@ -407,7 +407,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
         onStartNewChat={vi.fn()}
       />,
     );
-    expect(screen.getByText('1 waiting for Station to confirm')).toBeTruthy();
+    expect(screen.getByText('1 with no answer yet')).toBeTruthy();
     // The same words its bubble uses.
     expect(
       screen.getByText(
