@@ -196,7 +196,8 @@ export function useTranscriptChildBlocks<P extends ToolCallLike>(
   const pending = [...children.entries()].filter(
     ([, child]) =>
       !child.toolAnchor &&
-      !renderedCalls.has(child.item.parent?.toolCallId) &&
+      (!child.item.parent?.toolCallId ||
+        !renderedCalls.has(child.item.parent.toolCallId)) &&
       child.spawn &&
       child.spawn.turnId === turn?.turnId &&
       child.item.reporterThreadId === turn?.threadId,

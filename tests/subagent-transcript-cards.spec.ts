@@ -171,6 +171,10 @@ test.describe('subagent transcript cards', () => {
     await expect(card.getByText('gpt-5.5')).toBeVisible();
     await expect(card.getByText('done', { exact: true })).toBeVisible();
     await card.scrollIntoViewIfNeeded();
+    const desktopBox = await card.boundingBox();
+    expect(desktopBox).not.toBeNull();
+    expect(desktopBox!.x).toBeGreaterThanOrEqual(0);
+    expect(desktopBox!.x + desktopBox!.width).toBeLessThanOrEqual(1280);
     await page.screenshot({
       path: testInfo.outputPath('subagent-card-codex-desktop.png'),
     });
