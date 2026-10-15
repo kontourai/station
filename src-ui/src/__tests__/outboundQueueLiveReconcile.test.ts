@@ -106,6 +106,7 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     value = undefined;
     otherKeys.clear();
     heldLocks.clear();
+    localStorage.clear();
     stubLocks();
     vi.useFakeTimers({ toFake: ['Date'] });
   });
@@ -307,20 +308,16 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     // A pass of this window's flush in its transport call: under way.
     value = [{ ...intent, createdAt: now, attempts: 0, status: 'pending' }];
     let release!: () => void;
+    let entered!: () => void;
     const inTransport = new Promise<void>((resolve) => {
-      let entered!: () => void;
-      const entry = new Promise<void>((done) => {
-        entered = done;
+      entered = resolve;
+    });
+    const flushing = queue.outboundDispatch.flush(async () => {
+      entered();
+      await new Promise<void>((done) => {
+        release = done;
       });
-      const flushing = queue.outboundDispatch.flush(async () => {
-        entered();
-        await new Promise<void>((done) => {
-          release = done;
-        });
-        return { kind: 'accepted' as const, providerTurnId: 'turn-1' };
-      });
-      void entry.then(resolve);
-      void flushing;
+      return { kind: 'accepted' as const, providerTurnId: 'turn-1' };
     });
     await inTransport;
     expect((await queue.outboundDispatch.open())[0]).toMatchObject({
@@ -329,6 +326,41 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
       sendUnderWay: true,
     });
     release();
+    await flushing;
+    // Settled: no longer this window's send under way.
+    expect((await queue.outboundDispatch.open())[0]?.sendUnderWay).toBe(
+      undefined,
+    );
+  });
+
+  it('a window whose lock request failed reads as unknown, never as gone, so its send is not offered for discard', async () => {
+    const working = navigator;
+    const request = navigator.locks.request.bind(navigator.locks) as (
+      ...args: unknown[]
+    ) => Promise<unknown>;
+    // This renderer cannot take its lock; it still sends.
+    vi.stubGlobal('navigator', {
+      ...working,
+      locks: {
+        ...working.locks,
+        request: async (name: string, ...rest: unknown[]) => {
+          if (name.startsWith('station-outbound-renderer:'))
+            throw new DOMException('lock unavailable', 'AbortError');
+          return request(name, ...rest);
+        },
+      },
+    });
+    const first = await freshRenderer();
+    await first.outboundDispatch.beginLive(intent);
+    vi.stubGlobal('navigator', working);
+    const second = await freshRenderer();
+    const [row] = await second.outboundDispatch.open();
+    expect(row).toMatchObject({ status: 'invoking' });
+    expect(row?.awaitingLookup).toBeUndefined();
+    expect(row?.sendUnderWay).toBeUndefined();
+    await expect(
+      second.outboundDispatch.dismissUnconfirmed('key-live-1'),
+    ).rejects.toThrow(/Only a message that may have reached the agent/);
   });
 
   it('a failed lookup changes nothing', async () => {

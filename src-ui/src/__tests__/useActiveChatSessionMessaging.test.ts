@@ -2879,6 +2879,64 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     );
   });
 
+  it('a durable replay into a running turn waits without spending an attempt, however often it is tried', async () => {
+    outboundQueueMode.useActual = true;
+    let entries: unknown;
+    _setOutboundQueueStorage({
+      getItem: async () => entries,
+      setItem: async (_key, next) => {
+        entries = next;
+      },
+      updateItem: async (_key, updater) => {
+        entries = updater(entries);
+      },
+    });
+    try {
+      await outboundDispatch.enqueue({
+        clientTurnId: 'waits-for-the-turn',
+        sessionId,
+        agentSlug: 'codex',
+        content: 'after the running turn',
+      });
+      const [written] = await outboundDispatch.snapshot();
+      activeChatsStore.updateChat(sessionId, { status: 'sending' });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      const replay = async (
+        turn: QueuedOutboundTurn,
+        claim: OutboundDispatchClaim,
+      ) => {
+        const outcome = await result.current(
+          turn.sessionId,
+          turn.agentSlug,
+          turn.conversationId,
+          turn.content,
+          turn.attachments,
+          turn.ambientContext,
+          turn.clientTurnId,
+          { skipInMemoryQueueOnBusy: true, dispatch: claim },
+        );
+        return outcome && typeof outcome === 'object' && 'kind' in outcome
+          ? outcome
+          : { kind: 'not-invoked' as const };
+      };
+      // More tries than OUTBOUND_QUEUE_MAX_ATTEMPTS (5) while the turn runs.
+      for (let pass = 0; pass < 6; pass += 1)
+        await act(async () => {
+          await outboundDispatch.flush(replay);
+        });
+      expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+      expect(await outboundDispatch.snapshot()).toEqual([
+        expect.objectContaining({
+          clientTurnId: 'waits-for-the-turn',
+          status: 'pending',
+          attempts: written!.attempts,
+        }),
+      ]);
+    } finally {
+      outboundQueueMode.useActual = false;
+    }
+  });
+
   it('does not steer a durable replay into the open Claude turn', async () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',

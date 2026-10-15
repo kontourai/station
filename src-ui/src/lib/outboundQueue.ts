@@ -1499,36 +1499,53 @@ async function claimNext(
   const bootId = await rendererBootId();
   await holdRendererLiveness();
   const claimedAt = Date.now();
-  return mutate((entries) => {
-    const candidate = entries.find(
-      (entry, index) =>
-        entry.status === 'pending' &&
-        !entry.heldBy &&
-        rowBelongsToStation(entry, station) &&
-        !blockedSessions.has(entry.sessionId) &&
-        !entries.slice(0, index).some(
-          (earlier) =>
-            earlier.sessionId === entry.sessionId &&
-            // An unconfirmed row is evidence, not a send in progress, and a
-            // held copy waits on its queue or on the user: neither holds back
-            // the messages written after it.
-            earlier.status !== 'may-have-started' &&
-            !earlier.heldBy,
-        ),
-    );
-    if (!candidate) return { entries, result: undefined, changed: false };
-    const index = entries.indexOf(candidate);
-    const claimed = {
-      ...candidate,
-      status: 'invoking' as const,
-      dispatchBootId: bootId,
-      claimedAt,
-      lastAttemptAt: claimedAt,
-    };
-    const next = [...entries];
-    next[index] = claimed;
-    return { entries: next, result: claimed, changed: true };
-  });
+  let marked: string | undefined;
+  try {
+    return await mutate((entries) => {
+      const candidate = entries.find(
+        (entry, index) =>
+          entry.status === 'pending' &&
+          !entry.heldBy &&
+          rowBelongsToStation(entry, station) &&
+          !blockedSessions.has(entry.sessionId) &&
+          !entries.slice(0, index).some(
+            (earlier) =>
+              earlier.sessionId === entry.sessionId &&
+              // An unconfirmed row is evidence, not a send in progress, and a
+              // held copy waits on its queue or on the user: neither holds back
+              // the messages written after it.
+              earlier.status !== 'may-have-started' &&
+              !earlier.heldBy,
+          ),
+      );
+      if (!candidate) {
+        if (marked) drainInFlight.delete(marked);
+        marked = undefined;
+        return { entries, result: undefined, changed: false };
+      }
+      const index = entries.indexOf(candidate);
+      const claimed = {
+        ...candidate,
+        status: 'invoking' as const,
+        dispatchBootId: bootId,
+        claimedAt,
+        lastAttemptAt: claimedAt,
+      };
+      const next = [...entries];
+      next[index] = claimed;
+      // In flight here before the claim's write is announced, so a projection
+      // that change prompts already reads it as this renderer's send under way.
+      if (marked !== candidate.clientTurnId) {
+        if (marked) drainInFlight.delete(marked);
+        marked = candidate.clientTurnId;
+        drainInFlight.add(marked);
+      }
+      return { entries: next, result: claimed, changed: true };
+    });
+  } catch (error) {
+    if (marked) drainInFlight.delete(marked);
+    throw error;
+  }
 }
 
 async function enqueue(
@@ -1861,7 +1878,7 @@ async function flush(
     }
     if (!claimed) return unavailable ? 'unavailable' : 'drained';
     const capability = claimCapability(claimed);
-    drainInFlight.add(claimed.clientTurnId);
+    // claimNext marked it in flight before announcing the claim.
     try {
       const result = await transport(publicTurn(claimed), capability.public);
       if (!capability.settled()) {

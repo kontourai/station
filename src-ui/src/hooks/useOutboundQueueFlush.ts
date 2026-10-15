@@ -19,6 +19,7 @@ import { activeChatsStore } from '../contexts/active-chats-store';
 import { conversationCanMutate } from '../contexts/conversation-open-policy';
 import type {
   HeldOutboundIntent,
+  OutboundDispatchTurn,
   OutboundStationIdentity,
 } from '../lib/outboundQueue';
 import { checkServerHealth, probeServerConnection } from '../lib/serverHealth';
@@ -70,15 +71,37 @@ function heldOutboundIntents(
 }
 
 /**
+ * Pending rows a flush cannot claim yet because an earlier row of the same
+ * chat goes first (the rule `claimNext` applies): a send under way, an
+ * accepted one, a not-sent one, or an earlier pending row. Held copies and
+ * unconfirmed rows hold nothing back.
+ */
+function keysBlockedByEarlierRows(
+  entries: readonly OutboundDispatchTurn[],
+): Set<string> {
+  const blocked = new Set<string>();
+  const sessionsWithBlocker = new Set<string>();
+  for (const entry of entries) {
+    if (entry.heldBy) continue;
+    if (entry.status === 'pending' && sessionsWithBlocker.has(entry.sessionId))
+      blocked.add(entry.clientTurnId);
+    if (entry.status !== 'may-have-started')
+      sessionsWithBlocker.add(entry.sessionId);
+  }
+  return blocked;
+}
+
+/**
  * A row this window would send now: pending, not held by any window, for
  * this Station, behind no unsent message, in a chat that may be written to.
  */
-function hasSendableRow(): boolean {
+function sendableHere(clientTurnId: string): boolean {
   return Object.values(activeChatsStore.getSnapshot()).some(
     (chat) =>
       conversationCanMutate(chat) &&
       chat.outboundQueuedTurns?.some(
         (turn) =>
+          turn.clientTurnId === clientTurnId &&
           turn.status === 'pending' &&
           !turn.heldElsewhere &&
           !turn.waitingForStation &&
@@ -126,7 +149,14 @@ export function useOutboundQueueFlush(apiBase: string): void {
   const previousStatusRef = useRef(status);
 
   const triggerFlush = useCallback(
-    (rerunIfBusy = false, syncHeldCopies = true) => {
+    /**
+     * `send-only`: a pass started because a row became sendable after
+     * another window's change. It neither asks Station about rows (that can
+     * release a duplicate tab's held follow-up to pending) nor re-holds this
+     * tab's follow-ups (that takes a shared key back from a duplicate tab,
+     * whose notice would come back here): it only sends.
+     */
+    (rerunIfBusy = false, mode: 'full' | 'send-only' = 'full') => {
       if (flushing) {
         // Only a request for a change the running pass cannot have seen (a
         // chat that just became writable). Queue notifications are not: the
@@ -145,18 +175,19 @@ export function useOutboundQueueFlush(apiBase: string): void {
           // Sends a closed or crashed app left `invoking`: ask Station what
           // became of each key before anything is sent. Not-received rows
           // become pending and go out below, with their original key.
-          const { received } = await outboundDispatch.reconcile(
-            lookupTurnDelivery(apiBase),
-            { station: stationRef.current },
-          );
+          // A send-only pass asks Station nothing and leaves the retry
+          // schedule as it was.
+          const reconciled =
+            mode === 'full'
+              ? await outboundDispatch.reconcile(lookupTurnDelivery(apiBase), {
+                  station: stationRef.current,
+                })
+              : undefined;
           // Then this tab's held follow-ups: a reconcile can release a send
           // that was mid-drain at a reload to pending, and the restored queue
           // must take it back before the flush could send it too (one
           // message, one sender).
-          // Not on a pass another window's change started: re-holding here
-          // would take back a key a duplicated tab also holds, and its own
-          // notice would come back and do the same.
-          if (syncHeldCopies)
+          if (mode === 'full')
             await outboundDispatch
               .syncHeld(
                 heldOutboundIntents(activeChatsStore.getSnapshot()).map(
@@ -164,19 +195,21 @@ export function useOutboundQueueFlush(apiBase: string): void {
                 ),
               )
               .catch(() => undefined);
-          if (reconcileRetryTimer) clearTimeout(reconcileRetryTimer);
-          reconcileRetryTimer = undefined;
-          if (received > 0) {
-            reconcileRetryDelayMs = Math.min(
-              Math.max(reconcileRetryDelayMs * 2, IN_FLIGHT_FIRST_CHECK_MS),
-              DELIVERY_CHECK_MAX_INTERVAL_MS,
-            );
-            reconcileRetryTimer = setTimeout(() => {
-              reconcileRetryTimer = undefined;
-              triggerFlushRef.current();
-            }, reconcileRetryDelayMs);
-          } else {
-            reconcileRetryDelayMs = 0;
+          if (reconciled) {
+            if (reconcileRetryTimer) clearTimeout(reconcileRetryTimer);
+            reconcileRetryTimer = undefined;
+            if (reconciled.received > 0) {
+              reconcileRetryDelayMs = Math.min(
+                Math.max(reconcileRetryDelayMs * 2, IN_FLIGHT_FIRST_CHECK_MS),
+                DELIVERY_CHECK_MAX_INTERVAL_MS,
+              );
+              reconcileRetryTimer = setTimeout(() => {
+                reconcileRetryTimer = undefined;
+                triggerFlushRef.current();
+              }, reconcileRetryDelayMs);
+            } else {
+              reconcileRetryDelayMs = 0;
+            }
           }
           const blockedSessionIds = new Set(
             Object.entries(activeChatsStore.getSnapshot())
@@ -274,7 +307,9 @@ export function useOutboundQueueFlush(apiBase: string): void {
     ]).then(
       ([{ outboundDispatch }, { projectOutboundQueueEntries }, reporter]) => {
         if (!active) return;
-        const refreshProjection = (afterProjection?: () => void) => {
+        // Keys the last projection showed held back by an earlier row.
+        let lastBlocked = new Set<string>();
+        const refreshProjection = () => {
           projection = projection.then(async () => {
             try {
               const entries = await outboundDispatch.open();
@@ -297,7 +332,18 @@ export function useOutboundQueueFlush(apiBase: string): void {
                   ownerRecheck = undefined;
                   if (active) refreshProjection();
                 }, OWNER_RECHECK_MS);
-              afterProjection?.();
+              // Another window's change can free a row here: the send that
+              // held it back settled there (that window may then close and
+              // never send it). Only that transition starts a pass, so a
+              // row this window cannot send yet (a turn still running) is
+              // not retried on every notice from every window.
+              const blocked = keysBlockedByEarlierRows(entries);
+              const freed = [...lastBlocked].filter(
+                (key) => !blocked.has(key) && sendableHere(key),
+              );
+              lastBlocked = blocked;
+              if (freed.length > 0 && status === 'connected')
+                triggerFlush(false, 'send-only');
             } catch (error) {
               if (!active) return;
               reporter.reportOutboundQueueUnavailable(
@@ -315,18 +361,9 @@ export function useOutboundQueueFlush(apiBase: string): void {
           outboundDispatch.subscribe(handleQueueChanged),
           // Another window's change (a Discard there, a send it settled)
           // reaches this one only through the queue's cross-window channel.
-          // It refreshes what this window shows, and sends only when that
-          // shows a message this window may send now (the send that held it
-          // back settled there, and that window may have closed). That pass
-          // never re-holds this tab's follow-ups (`syncHeld`): taking a
-          // shared key back from a duplicated tab would bring its notice
-          // back here, forever.
-          outboundDispatch.subscribeRemoteChange(() =>
-            refreshProjection(() => {
-              if (status === 'connected' && hasSendableRow())
-                triggerFlush(false, false);
-            }),
-          ),
+          // It refreshes what this window shows; a row it frees is sent by a
+          // send-only pass (see refreshProjection).
+          outboundDispatch.subscribeRemoteChange(() => refreshProjection()),
         ];
         if (typeof document !== 'undefined') {
           // A hidden window can miss a message on that channel; coming back

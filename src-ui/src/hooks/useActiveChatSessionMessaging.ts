@@ -528,9 +528,13 @@ export function useSendMessage(
           return false;
         }
         if (options?.skipInMemoryQueueOnBusy) {
+          // A turn still running is a temporary gate, not a refusal: the
+          // message waits without spending one of its attempts, so a queue
+          // replayed during a long turn never wears out to failed.
           return options?.dispatch
             ? ({
-                kind: 'not-invoked',
+                kind: 'deferred',
+                reason: 'A turn is still running in this conversation.',
               } satisfies OutboundDispatchTransportResult)
             : undefined;
         }

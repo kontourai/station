@@ -514,6 +514,7 @@ describe('useOutboundQueueFlush', () => {
       );
       await new Promise((resolve) => setTimeout(resolve, 200));
       expect(sendMessage).not.toHaveBeenCalled();
+      const reconciles = vi.spyOn(outboundDispatch, 'reconcile');
       // B's send settles there (its row leaves the outbox), B closes, and
       // B's notice is the only thing this window hears.
       const record = stored as { turns: Array<Record<string, unknown>> };
@@ -532,15 +533,92 @@ describe('useOutboundQueueFlush', () => {
       new FakeChannel('station-outbound-queue').postMessage('changed');
       await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
       expect(sendMessage.mock.calls[0]?.[6]).toBe('a-waiting');
-      // That pass did not take the shared key back from the duplicate tab.
+      // That pass did not take the shared key back from the duplicate tab,
+      // and asked Station about nothing (which can release a duplicate
+      // tab's held follow-up to pending, for this pass to send).
       expect(heldBy()?.bootId).toBe('other-tab');
+      expect(reconciles).not.toHaveBeenCalled();
     } finally {
+      vi.restoreAllMocks();
       vi.unstubAllGlobals();
       _resetOutboundQueueChangeChannel();
       activeChatsStore.updateChat('session-1', {
         queuedMessages: [],
         queuedMessageMetadata: [],
       } as never);
+    }
+  });
+
+  it("another window's notices never re-send a message this window cannot send yet, so its attempts do not wear out", async () => {
+    const channels: Array<{
+      name: string;
+      listeners: Set<(event: { data: unknown }) => void>;
+    }> = [];
+    class FakeChannel {
+      readonly listeners = new Set<(event: { data: unknown }) => void>();
+      constructor(readonly name: string) {
+        channels.push(this);
+      }
+      addEventListener(_t: string, l: (event: { data: unknown }) => void) {
+        this.listeners.add(l);
+      }
+      removeEventListener(_t: string, l: (event: { data: unknown }) => void) {
+        this.listeners.delete(l);
+      }
+      postMessage(data: unknown) {
+        for (const channel of channels)
+          if (channel !== this && channel.name === this.name)
+            for (const listener of channel.listeners) listener({ data });
+      }
+      close() {}
+    }
+    _resetOutboundQueueChangeChannel();
+    vi.stubGlobal('BroadcastChannel', FakeChannel);
+    let stored: unknown = [
+      {
+        clientTurnId: 'busy-chat-message',
+        sessionId: 'session-1',
+        conversationId: 'session-1',
+        agentSlug: 'codex',
+        content: 'waits for the running turn',
+        createdAt: Date.now(),
+        attempts: 0,
+        status: 'pending',
+      },
+    ];
+    _setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, value) => {
+        stored = value;
+      },
+      updateItem: async (_key, updater) => {
+        stored = updater(stored);
+      },
+    });
+    // The chat's turn is running: every send is refused before the provider.
+    sendMessage.mockResolvedValue({ kind: 'not-invoked' });
+    const attempts = () =>
+      ((stored as { turns?: Array<{ attempts: number; status: string }> })
+        .turns ?? [])[0];
+    try {
+      renderHook(() => useOutboundQueueFlush('http://api.test'));
+      // Whatever this window's own triggers send at mount, then it settles.
+      await waitFor(() => expect(sendMessage).toHaveBeenCalled());
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const before = { calls: sendMessage.mock.calls.length, ...attempts() };
+      // The other window notices (no-op changes there) three times.
+      for (let notice = 0; notice < 3; notice += 1) {
+        new FakeChannel('station-outbound-queue').postMessage('changed');
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      }
+      expect(sendMessage).toHaveBeenCalledTimes(before.calls);
+      expect(attempts()).toMatchObject({
+        status: 'pending',
+        attempts: before.attempts,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+      _resetOutboundQueueChangeChannel();
     }
   });
 
