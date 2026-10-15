@@ -145,9 +145,10 @@ notice and a full-run action when needed. The four-MiB/256-request journal bound
 
 Controlled transport, storage and mounted/UI tests cover retained context,
 stale references, substituted snapshots, metadata edits and late refreshes.
-Missing-check controls failed before their fixes. Browser layout, a live model
-consuming the selected brief and the complete invited/public journey remain
-unverified. SDK/composer integration does not complete those acceptance tracks.
+Missing-check controls failed before their fixes. These transport checks do not
+qualify browser geometry, a live model consuming the brief or the complete
+invited/public journey. The local #3704 diagnostics below are a separate,
+explicitly bounded evidence layer.
 
 ## Durable identity and uncertainty
 
@@ -255,3 +256,29 @@ runtime-composition authorization and browser proof; durable draft recovery;
 actual-provider consumption of the selected brief and broader thread/reference context;
 result artifacts and acceptance; multiple human principals, workspace conflict handling, remote
 execution, public publication and actual provider/device acceptance.
+
+## Local #3704 diagnostics (2026-10-15)
+
+The room/session integration fixture uses the real EventStore, Session writer,
+Task graph, room append path and delegation/continue commands. Its controlled
+adapter advances Session timestamps like the real writer. The checks cover
+canonical answer attribution to an exact Session/turn/run, bounded summaries,
+same-Session continuation, thread records, status transition and revocation
+before effects. Source mutations that remove those behaviors fail; restoring
+the committed bytes restores green. These are local diagnostic checks.
+
+The isolated `cd0080e2ac8` browser build used an explicitly labeled local ACP
+process because the empty home had no authenticated live provider. Initial
+answers, cold run opening in the dock, latest-brief attachment, Keep/Results,
+Brief autosave, cancellation, title/status edits and dark/light/narrow layouts
+were exercised. Cancellation produced a canonical `turn.aborted` event, a
+`cancelled` room record and removal of the live agent. A prior `d894c593ddd`
+walk returned a follow-up into the same thread.
+
+The repeated latest-build follow-up completed its canonical turn but did not
+publish the second answer: an approximately 5.2-second event-loop stall was
+followed by HTTP 503 `Room unavailable` from history. A fresh home did not
+eliminate this write-time failure. Latest-build end-to-end thread publication
+is therefore **NOT_VERIFIED** pending investigation/integration with #3701's
+storage lane. No history storage or worker internals were changed here. Live
+provider, complete invited/public and native acceptance remain unverified.
