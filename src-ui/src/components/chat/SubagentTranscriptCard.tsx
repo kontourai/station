@@ -81,7 +81,7 @@ function StatusGlyph({
   return <span className="subagent-card__hollow" aria-hidden="true" />;
 }
 
-export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
+function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
   const { item, provider } = child;
   const [expanded, setExpanded] = useState(false);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
