@@ -18,13 +18,17 @@ import {
   describeRecentProcessBirthProbeFailures,
   lookupProcessBirthFingerprint,
   lookupProcessBirthFingerprintAsync,
+  lookupWindowsProcessImageIdentity,
   probeExactProcessIdentity,
+  probeExactProcessIdentityAsync,
+  processBirthPredatesCurrentBoot,
   resolveOwnProcessIdentity,
   WINDOWS_OWN_PROCESS_BIRTH_DEADLINE_MS,
   WINDOWS_OWN_PROCESS_BIRTH_FIRST_TIMEOUT_MS,
   WINDOWS_OWN_PROCESS_BIRTH_RETRY_DELAY_MS,
   WINDOWS_OWN_PROCESS_BIRTH_RETRY_TIMEOUT_MS,
   WINDOWS_OWN_PROCESS_BIRTH_TIMEOUT_MS,
+  WINDOWS_PROCESS_IMAGE_IDENTITY_TIMEOUT_MS,
 } from '../process-identity.mjs';
 import { windowsPowerShell7Path } from '../windows-system-utility.mjs';
 
@@ -50,12 +54,134 @@ describe('birthProvesReuse (station#2904)', () => {
     expect(probeExactProcessIdentity(42, { kill: failure('ESRCH') })).toEqual({
       state: 'dead',
     });
-    expect(probeExactProcessIdentity(42, { kill: failure('EPERM') })).toEqual({
+    // EPERM with an unreadable birth stays unavailable: nothing proves reuse.
+    expect(
+      probeExactProcessIdentity(42, {
+        kill: failure('EPERM'),
+        lookup: () => null,
+      }),
+    ).toEqual({ state: 'unavailable' });
+    expect(
+      probeExactProcessIdentity(42, {
+        kill: failure(),
+        lookup: () => 'birth-never-read',
+      }),
+    ).toEqual({
       state: 'unavailable',
     });
-    expect(probeExactProcessIdentity(42, { kill: failure() })).toEqual({
-      state: 'unavailable',
+  });
+
+  // #3563: EPERM proves the pid EXISTS (it belongs to another user), so it is
+  // not a reason to skip the birth lookup. A dead owner's pid reused by a
+  // foreign process used to read as `unavailable`, which every birth-aware
+  // caller treats as live, so it fenced the owner's work until a later boot.
+  test('EPERM still reads the birth, so a foreign reused pid is decidable', async () => {
+    const eperm = () => {
+      const error = new Error('injected EPERM') as NodeJS.ErrnoException;
+      error.code = 'EPERM';
+      throw error;
+    };
+    const lookups: number[] = [];
+    expect(
+      probeExactProcessIdentity(42, {
+        platform: 'darwin',
+        kill: eperm,
+        lookup: (pid: number) => {
+          lookups.push(pid);
+          return 'foreign-birth';
+        },
+      }),
+    ).toEqual({
+      state: 'exact',
+      identity: { pid: 42, start: 'foreign-birth' },
     });
+    expect(lookups).toEqual([42]);
+    await expect(
+      probeExactProcessIdentityAsync(42, {
+        platform: 'darwin',
+        kill: eperm,
+        lookup: async () => 'foreign-birth',
+      }),
+    ).resolves.toEqual({
+      state: 'exact',
+      identity: { pid: 42, start: 'foreign-birth' },
+    });
+    await expect(
+      probeExactProcessIdentityAsync(42, {
+        platform: 'darwin',
+        kill: eperm,
+        lookup: async () => null,
+      }),
+    ).resolves.toEqual({ state: 'unavailable' });
+  });
+
+  // #3563 fix round 1: on Windows libuv reports EPERM for elevated,
+  // other-user and service processes, and a denied StartTime read cannot be
+  // told apart from a real birth by the caller. Until a real non-elevated
+  // caller proves the lookup there, EPERM stays `unavailable` on win32.
+  test('EPERM on win32 stays unavailable without trusting a birth lookup', async () => {
+    const eperm = () => {
+      const error = new Error('injected EPERM') as NodeJS.ErrnoException;
+      error.code = 'EPERM';
+      throw error;
+    };
+    const lookups: number[] = [];
+    expect(
+      probeExactProcessIdentity(42, {
+        platform: 'win32',
+        kill: eperm,
+        lookup: (pid: number) => {
+          lookups.push(pid);
+          return '2026-01-01T00:00:00.0000000Z';
+        },
+      }),
+    ).toEqual({ state: 'unavailable' });
+    await expect(
+      probeExactProcessIdentityAsync(42, {
+        platform: 'win32',
+        kill: eperm,
+        lookup: async (pid: number) => {
+          lookups.push(pid);
+          return '2026-01-01T00:00:00.0000000Z';
+        },
+      }),
+    ).resolves.toEqual({ state: 'unavailable' });
+    expect(lookups).toEqual([]);
+  });
+
+  // DateTime.MinValue is what a PowerShell probe prints when StartTime throws
+  // and the script carries on. It is no process's birth (FILETIME starts in
+  // 1601), so it must read as an unreadable birth, never as a reused pid.
+  test('a Windows DateTime.MinValue birth is unreadable, not a different birth', () => {
+    const exec = () => '0001-01-01T00:00:00.0000000Z\r\n';
+    expect(
+      lookupProcessBirthFingerprint(42, {
+        platform: 'win32',
+        exec,
+        env: { SystemRoot: 'C:\\Windows' },
+      }),
+    ).toBeNull();
+    expect(
+      probeExactProcessIdentity(42, {
+        platform: 'win32',
+        exec,
+        env: { SystemRoot: 'C:\\Windows' },
+        alive: () => 'alive',
+      }),
+    ).toEqual({ state: 'unavailable' });
+  });
+
+  test('the Windows birth command stops on its first error', () => {
+    let script = '';
+    lookupProcessBirthFingerprint(42, {
+      platform: 'win32',
+      exec: (_file: string, args: readonly string[]) => {
+        script = args[args.length - 1] ?? '';
+        return '2026-01-01T00:00:00.0000000Z';
+      },
+      env: { SystemRoot: 'C:\\Windows' },
+    });
+    expect(script.startsWith("$ErrorActionPreference = 'Stop'; ")).toBe(true);
   });
 
   test('a probe FAILURE is not proof of reuse — fail-open', () => {
@@ -597,5 +723,145 @@ describe('birthProvesReuse (station#2904)', () => {
       exec: () => '2026-08-29T16:16:27.1234567Z\n',
     });
     expect(describeRecentProcessBirthProbeFailures(pid)).toBe('');
+  });
+});
+
+// #561: the orphan sweep drops a dead leader's record from an earlier boot
+// without signaling. Every null below is a "cannot tell" the sweep must read
+// as retain, never as either answer.
+describe('processBirthPredatesCurrentBoot', () => {
+  const sysctl =
+    (output: string) =>
+    (file: string, args: readonly string[]): string => {
+      expect(file).toBe('sysctl');
+      expect(args).toEqual(['-n', 'kern.boottime']);
+      return output;
+    };
+  const bootOutput =
+    '{ sec = 1790526207, usec = 331171 } Sun Sep 27 10:23:27 2026\n';
+
+  test('compares an lstart birth with kern.boottime', () => {
+    // 1790526207 is 2026-09-27T16:23:27Z.
+    expect(
+      processBirthPredatesCurrentBoot('Sun Sep 27 16:23:26 2026', {
+        platform: 'darwin',
+        exec: sysctl(bootOutput),
+      }),
+    ).toBe(true);
+    expect(
+      processBirthPredatesCurrentBoot('Sun Sep 27 16:23:27 2026', {
+        platform: 'darwin',
+        exec: sysctl(bootOutput),
+      }),
+    ).toBe(false);
+  });
+
+  test('compares a Linux birth with the current boot id', () => {
+    const readFile = () => '0b6c3e9a-1f2d-4c5b-9a8e-7d6f5e4c3b2a\n';
+    expect(
+      processBirthPredatesCurrentBoot(
+        'linux:0b6c3e9a-1f2d-4c5b-9a8e-7d6f5e4c3b2a:42',
+        { platform: 'linux', readFile },
+      ),
+    ).toBe(false);
+    expect(
+      processBirthPredatesCurrentBoot(
+        'linux:00000000-0000-0000-0000-000000000000:42',
+        { platform: 'linux', readFile },
+      ),
+    ).toBe(true);
+  });
+
+  test('is null when the boot clock or the birth cannot be read', () => {
+    expect(
+      processBirthPredatesCurrentBoot('Sun Sep 27 14:23:26 2026', {
+        platform: 'darwin',
+        exec: () => {
+          throw new Error('sysctl timed out');
+        },
+      }),
+    ).toBeNull();
+    expect(
+      processBirthPredatesCurrentBoot('Sun Sep 27 14:23:26 2026', {
+        platform: 'darwin',
+        exec: sysctl('kern.boottime: unknown'),
+      }),
+    ).toBeNull();
+    expect(
+      processBirthPredatesCurrentBoot('linux:abc:1', {
+        platform: 'linux',
+        readFile: () => {
+          throw new Error('ENOENT');
+        },
+      }),
+    ).toBeNull();
+    expect(
+      processBirthPredatesCurrentBoot('not a birth', { platform: 'darwin' }),
+    ).toBeNull();
+    expect(
+      processBirthPredatesCurrentBoot('Sun Sep 27 14:23:26 2026', {
+        platform: 'win32',
+      }),
+    ).toBeNull();
+  });
+});
+
+describe('lookupWindowsProcessImageIdentity (#2675)', () => {
+  test('runs System32 PowerShell, never PATH, on the cold-start budget', () => {
+    expect(WINDOWS_PROCESS_IMAGE_IDENTITY_TIMEOUT_MS).toBe(10_000);
+    const calls: Array<{ command: string; options: Record<string, unknown> }> =
+      [];
+    const identity = lookupWindowsProcessImageIdentity(4242, {
+      env: MINIMAL_WINDOWS_ENV,
+      exec: (command, _args, options) => {
+        calls.push({ command, options: options ?? {} });
+        return `2026-10-11T09:15:02.1234560Z\r\n${Buffer.from('D:\\Station\\runtime\\node.exe').toString('base64')}\r\n`;
+      },
+    });
+    expect(identity).toEqual({
+      birth: '2026-10-11T09:15:02.1234560Z',
+      image: 'D:\\Station\\runtime\\node.exe',
+    });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].command).toBe(MINIMAL_ENV_POWERSHELL);
+    expect(calls[0].options.timeout).toBe(10_000);
+  });
+
+  test('reads the start time with exactly the birth probe statements', () => {
+    let birthScript = '';
+    lookupProcessBirthFingerprint(4244, {
+      platform: 'win32',
+      env: MINIMAL_WINDOWS_ENV,
+      exec: (_command, args) => {
+        birthScript = String(args.at(-1));
+        return '2026-10-11T09:15:02.1234560Z';
+      },
+    });
+    let imageScript = '';
+    lookupWindowsProcessImageIdentity(4244, {
+      env: MINIMAL_WINDOWS_ENV,
+      exec: (_command, args) => {
+        imageScript = String(args.at(-1));
+        return '';
+      },
+    });
+    expect(birthScript).toContain('GetProcessById(4244)');
+    expect(imageScript).toContain(
+      `function Read-StationBirth { ${birthScript} }`,
+    );
+  });
+
+  test('records why a probe produced nothing', () => {
+    expect(
+      lookupWindowsProcessImageIdentity(4243, {
+        env: MINIMAL_WINDOWS_ENV,
+        exec: () => {
+          throw Object.assign(new Error('exit 3'), { status: 3 });
+        },
+      }),
+    ).toBeNull();
+    expect(describeRecentProcessBirthProbeFailures(4243)).toContain(
+      'powershell.exe exited 3',
+    );
   });
 });

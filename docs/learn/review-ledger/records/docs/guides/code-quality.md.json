@@ -42,8 +42,6 @@
 
     "docs/plans/documentation-code-audit.md",
 
-    "package.json",
-
     "scripts/__tests__/ci-fast-checks-job-graph.test.ts",
 
     "scripts/__tests__/docs-index-reachability.test.ts",
@@ -96,7 +94,15 @@
 
     "src-server/__test-utils__/sse-helpers.ts",
 
-    "src-server/routes/spatial-board.ts"
+    "src-server/routes/spatial-board.ts",
+
+    "package.json#/scripts",
+
+    "package.json#/engines",
+
+    "package.json#/packageManager",
+
+    ".fallowrc.json#/dynamicallyLoaded"
   ],
 
   "checks": [

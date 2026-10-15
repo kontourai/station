@@ -1,0 +1,7 @@
+{
+  "revision": "652b254899febd4555ffa2166164f80d31dbc79c",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reread the static-content compilation, digest and implementation/evidence routes against the regenerated SessionTurnBoundaryAuthority topic. The generated module-map topic now describes only session-scoped sequence retirement, nullable legacy behavior and the retained turn-generation gap. The credential-free server remains static documentation, with no live-state read or operational authority; no manual prose change is needed.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

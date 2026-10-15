@@ -986,9 +986,19 @@ asks for the full default grant; it says so on screen.) A Device paired by an ol
 `access:manage` from the historical default grant; its first access change, in
 either place, removes it for good and says so.
 
+An operator can separately grant **Manage device access** (`access:devices`)
+to an already-paired Device. Its CLI and Paired devices panel can then list,
+change scopes, revoke and remove revoked records remotely, using that Device's
+own credential. Only the operator may grant or remove `access:devices`; it
+never comes from pairing defaults, legacy `access:manage` or permission to use
+full access. A person-bound Device also needs the Admin group ceiling. Account
+sign-in and transport admission remain independent requirements. See the
+[CLI setup](../reference/cli.md#environment).
+
 An operator can separately grant **Approve pairing requests** (`access:approve`).
 This allows that Device to list, approve, or deny pending requests, without
-Device-management access. A pairing notification opens the exact request in
+Device-management access. A Device tied to a person keeps it only while that
+person's Station group is Admin (#3557). A pairing notification opens the exact request in
 **Notifications**; opening it does not approve it. Devices without approval
 authority see the trusted-Station remedy instead of decision controls.
 

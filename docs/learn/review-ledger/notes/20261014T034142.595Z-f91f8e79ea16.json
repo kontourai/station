@@ -1,0 +1,7 @@
+{
+  "revision": "cde26d277b4f48d0a1f4e392a7da7a79caf66d63",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Changed inputs: ChatInputArea gained an optional loadingConversation prop that sets the placeholder to 'Loading chat…' while the conversation-open read resolves (the composer is already disabled then); tests added. The design doc makes no placeholder-copy claims and its composer structure/upload claims are untouched. No prose change.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

@@ -47,6 +47,7 @@ test('retained recovery reaches separate trusted approval without exposing pendi
     credentials: {
       verifyOperatorCredential: (candidate) => candidate === credential,
       identifyDevice: () => null,
+      resolveGrantedScope: () => undefined,
     },
   });
   const pluginsDir = join(home, 'plugins'),

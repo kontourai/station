@@ -98,8 +98,10 @@ clearly mark the stale document.
   historical lookup; GitHub issues and pull requests remain the authority for
   live work.
 - **[Patterns](patterns/)** — frontend and backend implementation conventions.
-- **[ADRs](adr/)** — numbered architecture decision records; supersession is
-  recorded inside the record or by a named successor.
+- **[Decisions](decisions/index.md)** — one living record per decision subject,
+  checked by Corpus; new decisions go here.
+- **[ADRs](adr/)** — numbered architecture decision records, frozen as history;
+  supersession is recorded inside the record or by a named successor.
 - **[Contexts](contexts/)** — per-area `CONTEXT.md` files routed from
   [../CONTEXT-MAP.md](../CONTEXT-MAP.md).
 - **[Conformance](conformance/)** — external-contract conformance notes.
@@ -139,7 +141,7 @@ source boundary is:
 
 - `docs/pages/index.html` and `docs/pages/styles.css` for the marketing home.
 - `docs/pages/public-docs.json` for the exact Markdown allowlist.
-- the root `docs-kit.json`, which mirrors that allowlist for the
+- the root `corpus.json`, which mirrors that allowlist for the
   `docs-bundle.json` the shared Kontour docs hub and docs MCP read, and adds
   the agent-facing [shipped manual](reference/station-docs.md) to the bundle
   only.

@@ -1,0 +1,7 @@
+{
+  "revision": "87d2ac375b776faebb79cc69edd082e2a77fef97",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Searched for retained-claim, client_turn_in_flight, contended and turn-delivery claims: none here. The change only makes a same-process claim of a retained key answer indeterminate (refused as foreground_message_indeterminate at once); this document's claims are unaffected.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md"]}
+  ]
+}

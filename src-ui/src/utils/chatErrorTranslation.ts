@@ -1,9 +1,11 @@
+import { EXECUTION_ENGINE_CHANGED_CODE } from '@kontourai/station-contracts/execution-target';
 import { APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE } from '@kontourai/station-contracts/orchestration';
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import {
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
+  MODEL_NOT_ADVERTISED_CODE,
   MUSE_TURN_IDLE_TIMEOUT_CODE,
   MUSE_TURN_TOTAL_TIMEOUT_CODE,
 } from '@kontourai/station-contracts/provider';
@@ -378,6 +380,37 @@ export function translateChatError(
       title: "This engine can't take these attachments",
       body: `${text || 'This engine cannot take the attached files.'} Nothing was sent.`,
       hint: 'Remove the attachments to send your text, or switch to an engine or model that accepts them.',
+      retryable: false,
+    };
+  }
+
+  // The Agent now runs on a different engine than the one the composer showed
+  // when this chat was started: refused before anything ran. The client has
+  // re-read the Agent, so the chips now show the engine it is on; resending
+  // blindly would run there without the user having looked, so there is no
+  // Retry and the hint asks for the look. Not a terminal chat: nothing started.
+  if (code === EXECUTION_ENGINE_CHANGED_CODE) {
+    return {
+      title: 'This Agent now runs somewhere else',
+      body: `${text || "The Agent's engine changed after it was shown."} Nothing was sent.`,
+      hint: 'Station has re-read the Agent. Check the engine and model shown, then send again.',
+      retryable: false,
+    };
+  }
+
+  // The engine this chat resolved to refused the model the composer showed.
+  // The adapter ended the refused session (with this as its cause), and the
+  // conversation continues in a successor session on the next send (the
+  // continuation seam starts it with the model then requested), so this is not
+  // a terminal chat: the user picks another model and sends again. Deterministic (the same model is refused
+  // again), so no "temporary" hint and no Retry. This is also what a composer
+  // working from a stale snapshot looks like once the engine behind an Agent
+  // changed; the client re-reads those snapshots.
+  if (code === MODEL_NOT_ADVERTISED_CODE) {
+    return {
+      title: "This engine doesn't offer that model",
+      body: `${text || 'The engine did not offer the selected model.'} Nothing was sent.`,
+      hint: 'Choose one of the models this engine offers and send again. The engine behind this Agent may have changed; Station has re-read its list.',
       retryable: false,
     };
   }

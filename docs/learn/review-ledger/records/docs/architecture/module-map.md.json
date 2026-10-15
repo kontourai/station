@@ -122,8 +122,6 @@
 
     "packages/shared/src/workspace-package.ts",
 
-    "pnpm-lock.yaml",
-
     "scripts/__tests__/startup-readiness-static.test.ts",
 
     "scripts/__tests__/verification-coordinator.test.ts",
@@ -988,7 +986,13 @@
 
     "packages/contracts/src/usage-export.ts",
 
-    "src-server/analytics/usage-export-reader.ts"
+    "src-server/analytics/usage-export-reader.ts",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots",
+
+    "src-server/knowledge-index/embedding-identity.ts"
   ],
 
   "checks": [

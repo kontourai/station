@@ -984,4 +984,26 @@ describe('ChatDockInboxPanel exit presentation (#3309)', () => {
     expect(panel.className).not.toContain('chat-dock-inbox--exiting');
     expect(panel.inert).toBe(false);
   });
+
+  describe('resync', () => {
+    it('says the list is the last known one when its read failed, and Refresh re-reads it', () => {
+      const onRefresh = vi.fn();
+      renderPanel({ sync: { failed: true, refreshing: false, onRefresh } });
+      expect(screen.getByRole('status').textContent).toBe(
+        "Couldn't refresh. Showing the last known list.",
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Refresh inbox' }));
+      expect(onRefresh).toHaveBeenCalledOnce();
+    });
+
+    it('shows a running resync and does not start a second one', () => {
+      const onRefresh = vi.fn();
+      renderPanel({ sync: { failed: false, refreshing: true, onRefresh } });
+      const refresh = screen.getByRole('button', { name: 'Refreshing inbox' });
+      expect(refresh).toHaveProperty('disabled', true);
+      fireEvent.click(refresh);
+      expect(onRefresh).not.toHaveBeenCalled();
+      expect(screen.queryByText(/Couldn't refresh/)).toBeNull();
+    });
+  });
 });

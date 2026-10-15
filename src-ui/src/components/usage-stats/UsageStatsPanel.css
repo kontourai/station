@@ -84,6 +84,12 @@
 }
 
 .usage-breakdown-item {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  text-align: start;
+  font: inherit;
+  cursor: pointer;
   padding: 0.75rem;
   border-radius: 0.5rem;
   background-color: var(--bg-tertiary);
@@ -121,6 +127,7 @@
 }
 
 .usage-breakdown-bar {
+  display: block;
   height: 6px;
   border-radius: 9999px;
   overflow: hidden;
@@ -128,6 +135,7 @@
 }
 
 .usage-breakdown-bar-fill {
+  display: block;
   height: 100%;
   border-radius: 9999px;
   transition: width var(--motion-slow);
@@ -421,6 +429,12 @@
 
 /* ── Mobile responsive ── */
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .usage-period-btn {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+
   .usage-stats-cards {
     grid-template-columns: 1fr;
   }
@@ -434,4 +448,9 @@
     max-width: 95vw;
     max-height: 90vh;
   }
+}
+
+.usage-breakdown-item:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
 }

@@ -156,6 +156,16 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
   // thirty other gates, and no path edge can select that for any src-ui change,
   // so #3114 first failed it in scheduled qualification. Under a second.
   Object.freeze(['npm', Object.freeze(['run', 'native-platform:ratchet'])]),
+  // #3565: @kontourai/monument is a Tier 1 package (ADR 0005) and may import
+  // nothing of Station's, and Station reaches it only through its entry
+  // points. Its cost is reading every Station source file to find the ones
+  // that name the package, then parsing those: ~1s idle, ~5-7s at load ~30.
+  // Here so a planted import fails the pull request, not only the merge
+  // queue.
+  Object.freeze([
+    'npm',
+    Object.freeze(['run', 'monument-import-boundary:gate']),
+  ]),
   Object.freeze([
     'npm',
     Object.freeze(['run', 'agent-plugin:validators:gate']),
@@ -188,6 +198,12 @@ export const FAST_STATIC_COMMANDS = Object.freeze([
     'npm',
     Object.freeze(['run', 'docs:public:contract-examples']),
   ]),
+  // Numbered ADRs in docs/adr are frozen; decisions are records in
+  // docs/decisions, checked by Corpus. This is the required lane for both:
+  // the shared Docs kit gate also runs them but is advisory. The check reads
+  // the same base as this lane, so a new ADR file fails here, and an invalid
+  // record or stale index fails with or without a base.
+  Object.freeze(['npm', Object.freeze(['run', 'check:decisions'])]),
   // PRECONDITION for the typecheck aggregate below, same shape as
   // `build:connect`: the Basis MCP app bundles are git-ignored build output
   // that `typecheck:basis-pane`, `typecheck:server-tests`, and `typecheck:ui`

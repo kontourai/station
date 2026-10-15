@@ -1,0 +1,51 @@
+{
+  "revision": "652b254899febd4555ffa2166164f80d31dbc79c",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Reread the Agent Runtime relationships and module-map routing after the SessionTurnBoundaryAuthority update. Session events still feed execution views; the change only orders SQLite boundary retirement and introduces no new context owner or Flow verdict.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"Reread the Session lifecycle and abstraction ownership paragraphs against the boundary delta. Idle/completed vocabulary and keeping storage sequencing inside its owner remain accurate; the additive internal fence changes no Session contract.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"Reread the architecture reading-path table. It still routes implementation and evidence to the module map, whose boundary section now explains the session-only fence and retained turn-clock limitation. No setup or public API claim changed.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Reread the Authority and contributor reading routes. The module map remains the canonical implementation owner and source/tests remain runtime truth. The new internal migration and regression owners fit those routes without changing publication boundaries.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reread the Session command/lifecycle observations and baseline labels. Boundary coordination remains private to EventStore and SessionTurnBoundaryAuthority; the nullable creation fence adds no caller wrapper and does not upgrade the historical investigation into current qualification.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the SessionTurnBoundaryAuthority section against migration 014, both boundary insert paths, live removeTerminal and boot/runtime reconciliation. New SQLite boundaries record the durable global head under the writer lock; session terminals compare strict sequence order. NULL rows and all turn-scoped terminals retain timestamp ordering. The 43 focused and 426 broader tests passed, including unchanged reused-ID and fail-closed tests; strict-comparison and NULL-fallback injections failed meaningful assertions and restored green. In-memory timestamp behavior and the contracts-level generation gap are explicit. No Monument move or provider/device qualification is claimed.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/session-turn-boundary.ts","src-server/domain/migrations/014-turn-boundary-sequence-fence.ts","src-server/domain/__tests__/turn-boundary-sequence-migration.test.ts","src-server/services/orchestration/__tests__/session-turn-boundary-sequence.test.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Reread Receipt, Evidence, Done and implementation routes. The EventStore change retires boundary rows from persisted session terminal order; it neither creates a gate verdict nor changes receipt attribution, Flow binding or readiness evidence.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reread Verification lane, Generated artifact and storage/delivery relationships. Migration 014 changes boundary ordering only; local tests remain scoped evidence and generated MCP documentation was regenerated from the module map. Scheduler, telemetry and notification contracts are unchanged.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reread the immutable session/room binding, Session-start and Task-dispatch barrier paragraphs against create/removeTerminal/reconcile. Sealed-room admission is unchanged, SESSION_START_INDETERMINATE diagnostics still cannot retire boundaries, and task-dispatch rows remain excluded from both retirement paths. This does not qualify home transfer or distributed fencing.","inputs":["docs/design/channel-home-authority.md","src-server/services/orchestration/session-turn-boundary.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reread Steer, transient waiting and indeterminate-status claims. This change does not alter steer receipts, engine safe-boundary capability or composer rendering; only persisted session-scoped terminals retire SQLite boundary ambiguity by sequence. The composer text makes no timestamp-retirement guarantee.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reread extraction dispositions and RecoveryLedger ownership. No Monument boundary migration occurs here; EventStore keeps transaction ownership and existing dedup/request-key bindings. Migration 014 is a database-column upgrade, distinct from this document's behavioral extraction order.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Reread the EventStore composition and independent room-local epoch/sequence paragraphs. The new orchestration boundary fence does not change room envelopes, worker persistence, cursor/retention rules or asynchronous close settlement.","inputs":["docs/design/project-task-room-history.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Reread the EventStore persistence route and immutable revision receipt identity. The changed boundary SQL does not touch revision snapshots, authority attribution or receipt resolution; the document makes no claim about session-terminal retirement time.","inputs":["docs/design/revision-bound-evidence.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/shared-working-state.md","note":"Reread causal ordering and persistence ownership claims. The new boundary high-water fence is separate from shared document causal envelopes and checkpoints; no working-state operation, synchronization or source-seal interface changed.","inputs":["docs/design/shared-working-state.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reread Session, Task, Agent run and receipt/evidence vocabulary against the new module-map paragraph. created_sequence is an internal SQLite fence, not a new product concept, Session identity or completion verdict; no vocabulary update is needed.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reread the separate canonical EventStore versus operational telemetry paths and bridge description. Boundary retirement changes no event append sequence, observer publication, persisted-event metric or usage fold. The guide's measurement and retention limits remain accurate.","inputs":["docs/guides/monitoring.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reread the clean Agent identity inventory and incompatible-home qualification. Migration 014 adds a boundary ordering column; it does not restore synthetic Agent IDs, aliases or Agent identity compatibility. The identity removal record remains unchanged.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/config.md","note":"Reread EventStore attachment bindings, log and model-dispatch receipt routes. The boundary fence adds no setting, changes no attachment authorization or configuration field, and does not alter model-dispatch receipt persistence.","inputs":["docs/reference/config.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reread catalog URL ownership and Answer delivery buffering. Session boundary sequence retirement adds no Settings control or deep link and does not change terminal-driven text flushing; generated module-map changes are not UI qualification.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Reread Station/Device and Agent/Engine/Model definitions. The boundary ordering repair introduces no user-facing identity or configuration and does not change those concepts or terminal capability readiness.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Reread the tracked module-map export and snapshot identity paragraphs. The revised boundary prose remains an attributed source excerpt; the exporter still records HEAD plus byte hashes and cannot infer test results or implemented issue status. No example contract changed.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reread server ownership and module-map routing instructions against this change. The migration and retirement logic stay in their owning server modules, no route contract or sibling-repository internals are introduced, and focused SQLite/recovery tests provide scoped evidence.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reread module-map routing and backing-runtime proof requirements. This change touches no UI state, navigation or surface; its module-map additions explicitly bound server ordering evidence and retain the turn-generation limitation.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

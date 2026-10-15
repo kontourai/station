@@ -14,7 +14,13 @@
 
     "docs/guides/integrating-station.md",
 
-    "package.json"
+    "package.json#/dependencies/@kontourai~1surface",
+
+    "package.json#/dependencies/@kontourai~1flow",
+
+    "package.json#/dependencies/@kontourai~1flow-agents",
+
+    "package.json#/dependencies/@kontourai~1veritas"
   ],
 
   "checks": [

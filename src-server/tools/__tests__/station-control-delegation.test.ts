@@ -2808,19 +2808,21 @@ describe('Station Control canonical Environment + Agent execution', () => {
         ),
       ).rejects.toThrow('no provider call was made');
       expect(stationAgent.startSession).toHaveBeenCalledTimes(1);
-      // The existing trusted lifecycle observer supplies the missing terminal
-      // evidence; elapsed time or the start exception is not enough.
-      expect(
-        eventStore.sessionTurnBoundaryAuthority().observe({
-          eventId: 'confirmed-start-terminal',
-          provider: 'claude',
-          threadId: reservedChildId,
-          sessionId: reservedChildId,
-          method: 'session.exited',
-          exitCode: 0,
-          createdAt: new Date().toISOString(),
-        }),
-      ).toEqual({ kind: 'applied' });
+      // Production observes terminal evidence only after its append commits;
+      // a failed exit is retryable, while exit code 0 would mark this child completed.
+      const exited: CanonicalRuntimeEvent = {
+        eventId: 'confirmed-start-terminal',
+        provider: stationAgent.provider,
+        threadId: reservedChildId,
+        sessionId: reservedChildId,
+        method: 'session.exited',
+        exitCode: 1,
+        createdAt: new Date().toISOString(),
+      };
+      eventStore.appendEvent(exited);
+      expect(eventStore.sessionTurnBoundaryAuthority().observe(exited)).toEqual(
+        { kind: 'applied' },
+      );
 
       // The retry must look through the reserved-unstarted tail to the
       // predecessor's binding and REUSE the same reserved child identity,
@@ -3646,6 +3648,58 @@ describe('Station Control canonical Environment + Agent execution', () => {
         String(url).includes('/api/orchestration/'),
       ),
     ).toBe(false);
+  });
+
+  // #3158 fix round 6: the stop's derived outcome reaches the route, which
+  // undoes a delegated-result cancel when nothing was interrupted.
+  test('reports the outcome the orchestration service derived for the interrupt', async () => {
+    installCurrentStationFetch();
+    const service = localDelegatedTaskService();
+    const authority = hostedAuthority('alpha');
+    const { interruptDelegatedTask } = await import(
+      '../station-control-delegation.js'
+    );
+    service.dispatchWithReceipt.mockResolvedValueOnce({
+      receipt: { commandId: 'command-1', status: 'accepted' },
+      result: { outcome: 'no-active-turn', threadId: 'task-alpha' },
+    } as never);
+    await expect(
+      interruptDelegatedTask(
+        { taskId: 'task-alpha', turnId: 'turn-old', readAuthority: authority },
+        service as never,
+      ),
+    ).resolves.toMatchObject({
+      interruptRequested: true,
+      interruptOutcome: 'no-active-turn',
+    });
+    expect(service.dispatchWithReceipt.mock.calls[0]![0]).toEqual({
+      type: 'interruptTurn',
+      threadId: 'task-alpha',
+      turnId: 'turn-old',
+    });
+
+    service.dispatchWithReceipt.mockResolvedValueOnce({
+      receipt: { commandId: 'command-2', status: 'accepted' },
+      result: { outcome: 'cooperative', threadId: 'task-alpha', turnId: 't' },
+    } as never);
+    await expect(
+      interruptDelegatedTask(
+        { taskId: 'task-alpha', readAuthority: authority },
+        service as never,
+      ),
+    ).resolves.toMatchObject({ interruptOutcome: 'cooperative' });
+
+    // A result that names no known outcome is reported as unknown, not guessed.
+    service.dispatchWithReceipt.mockResolvedValueOnce({
+      receipt: { commandId: 'command-3', status: 'accepted' },
+      result: { outcome: 'stopped-maybe' },
+    } as never);
+    const unknown = await interruptDelegatedTask(
+      { taskId: 'task-alpha', readAuthority: authority },
+      service as never,
+    );
+    expect(unknown.interruptRequested).toBe(true);
+    expect(unknown).not.toHaveProperty('interruptOutcome');
   });
 });
 

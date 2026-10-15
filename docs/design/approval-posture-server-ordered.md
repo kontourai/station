@@ -476,7 +476,14 @@ A session spawned before this change has nothing recorded.
   `station environment access scope <short-id> --add approval:full-access`,
   run through the published package for the Station's channel, such as
   `npx @kontourai/station-cli@nightly` for a nightly Station, and `grant.uiSteps`, the desktop app steps through **Paired devices** →
-  the device → **Change access**). An Agent's refusal has `grant: null`: no
+  the device → **Change access**). When the device is tied to a person in
+  the Member group (#3557), `grant.groupLimited` is `{ group: 'member' }`,
+  `grant.uiSteps` are the People steps (as the operator, Settings → Devices →
+  People, set the person to Admin), and there is no top-level `grant.cli`.
+  When the device's own grant also lacks the scope, the command travels as
+  `grant.groupLimited.cli` and is appended as a last step ("Then, on the
+  Station's host, run: …"), so even a client that predates `groupLimited`
+  reads it as the step after People, never as an alternative. An Agent's refusal has `grant: null`: no
   scope lets an Agent choose full access. The requester chooses its pairing
   name, so the name is sanitized (control, format and separator characters
   removed, 64 characters at most) and carried only in `details`; the `error`

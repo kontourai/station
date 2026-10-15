@@ -34,7 +34,21 @@
 
     "src-ui/src/index.css",
 
-    "scripts/lib/ios-launch-screen.mjs"
+    "scripts/lib/ios-launch-screen.mjs",
+
+    "scripts/lib/station-icon.mjs",
+
+    "scripts/lib/station-icon-geometry.mjs",
+
+    "scripts/__tests__/station-icon.test.ts",
+
+    "scripts/write-ios-build-manifest.mjs",
+
+    "scripts/lib/android-themed-icon.mjs",
+
+    "scripts/ios-simulator-build.mjs",
+
+    "package.json#/scripts/build:ios:simulator"
   ],
 
   "checks": [

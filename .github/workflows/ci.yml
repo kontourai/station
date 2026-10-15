@@ -527,6 +527,7 @@ jobs:
           path: |
             .kontourai/verification-receipts/
             .kontourai/verification-output/
+            .kontourai/test-impact/failed-reports/
             .kontourai/veritas/external/test-contract-review.json
             .kontourai/code-health/
             .kontourai/browser-evidence/

@@ -1,0 +1,7 @@
+{
+  "revision": "a687e68a80fc4627d228d46539ac3dd77566113f",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reviewed GET analytics usage and station-usage through the current contract, source aggregator and real event-store route regressions: Agent USD components distinguish measured zero from absence, compatibility cost remains combined, and public responses still omit byPrincipal while operator reads retain local authority. Range totals and source-scoped UTC semantics remain unchanged.","inputs":["docs/reference/api.md","packages/contracts/src/usage-stats.ts","src-server/analytics/__tests__/usage-observation-projection.test.ts","src-server/analytics/usage-aggregator-state.ts"]}
+  ]
+}

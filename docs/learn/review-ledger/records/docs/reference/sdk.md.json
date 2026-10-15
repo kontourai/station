@@ -40,8 +40,6 @@
 
     "packages/contracts/src/usage-rollup.ts",
 
-    "packages/sdk/package.json",
-
     "packages/sdk/src/__tests__/application-session-native.test.ts",
 
     "packages/sdk/src/__tests__/client-fetchers-envelope-a3a.test.ts",
@@ -281,8 +279,6 @@
     "packages/shared/src/skill-experience-reader.ts",
 
     "packages/shared/src/station-home-archive.ts",
-
-    "pnpm-lock.yaml",
 
     "src-desktop/src/native_account_operations.rs",
 
@@ -610,7 +606,27 @@
 
     "packages/sdk/src/__tests__/usage-export-query.test.tsx",
 
-    "packages/sdk/src/__tests__/usage-export.fixture.ts"
+    "packages/sdk/src/__tests__/usage-export.fixture.ts",
+
+    "packages/sdk/package.json#/name",
+
+    "packages/sdk/package.json#/exports",
+
+    "packages/sdk/package.json#/files",
+
+    "packages/sdk/package.json#/main",
+
+    "packages/sdk/package.json#/types",
+
+    "packages/sdk/package.json#/peerDependencies",
+
+    "packages/sdk/package.json#/scripts",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots",
+
+    "packages/sdk/src/client/http.ts"
   ],
 
   "checks": [

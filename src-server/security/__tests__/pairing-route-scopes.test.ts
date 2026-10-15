@@ -1309,12 +1309,14 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     ] as const;
     const standardResolver = {
       verifyCredential: vi.fn(async () => true),
+      identifyDevice: () => null,
       resolveGrantedScope: vi.fn(async () =>
         pairingScopePresetString('standard'),
       ),
     };
     const operatorResolver = {
       verifyCredential: vi.fn(async () => true),
+      identifyDevice: () => null,
       resolveGrantedScope: vi.fn(async () => DEFAULT_GRANT_PAIRING_SCOPE),
     };
 
@@ -1340,12 +1342,14 @@ describe('pairing-route-scopes: table-driven lookups', () => {
   test('standard paired credentials cannot manage host marketplace sources', async () => {
     const standardResolver = {
       verifyCredential: vi.fn(async () => true),
+      identifyDevice: () => null,
       resolveGrantedScope: vi.fn(async () =>
         pairingScopePresetString('standard'),
       ),
     };
     const operatorResolver = {
       verifyCredential: vi.fn(async () => true),
+      identifyDevice: () => null,
       resolveGrantedScope: vi.fn(async () => DEFAULT_GRANT_PAIRING_SCOPE),
     };
     for (const [method, path] of [
@@ -1623,6 +1627,7 @@ describe.each([
     test('a read-only credential is denied', async () => {
       const resolver = {
         verifyCredential: vi.fn(async () => true),
+        identifyDevice: () => null,
         resolveGrantedScope: vi.fn(async () =>
           pairingScopePresetString('read-only'),
         ),
@@ -1635,6 +1640,7 @@ describe.each([
     test('a standard credential is allowed', async () => {
       const resolver = {
         verifyCredential: vi.fn(async () => true),
+        identifyDevice: () => null,
         resolveGrantedScope: vi.fn(async () =>
           pairingScopePresetString('standard'),
         ),
@@ -1647,6 +1653,7 @@ describe.each([
     test('the full-scope (operator) credential is allowed', async () => {
       const resolver = {
         verifyCredential: vi.fn(async () => true),
+        identifyDevice: () => null,
         resolveGrantedScope: vi.fn(async () => DEFAULT_GRANT_PAIRING_SCOPE),
       };
       await expect(
@@ -1660,6 +1667,7 @@ describe.each([
       );
       const resolver = {
         verifyCredential: vi.fn(async () => false),
+        identifyDevice: () => null,
         resolveGrantedScope,
       };
       await expect(
@@ -1671,6 +1679,7 @@ describe.each([
     test('an unresolvable (undefined) scope is denied', async () => {
       const resolver = {
         verifyCredential: vi.fn(async () => true),
+        identifyDevice: () => null,
         resolveGrantedScope: vi.fn(async () => undefined),
       };
       await expect(

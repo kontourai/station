@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { bindingDigest, bindingFile } from './review-binding.mjs';
 import { readGitObjects } from './review-git.mjs';
 import {
@@ -44,6 +45,7 @@ export function reviewDecisionChanged(before, after) {
       entry.summary,
       entry.limits,
       entry.sources.map((source) => source.path).sort(),
+      [...new Set(entry.declaredChecks ?? entry.checks ?? [])].sort(),
       entry.alt,
       entry.caption,
       entry.scenario,
@@ -55,7 +57,7 @@ export function reviewDecisionChanged(before, after) {
   return decision(before) !== decision(after);
 }
 
-/** Compare cited JSON values, rather than treating every manifest edit as relevant. */
+/** Compare cited values, rather than treating every manifest edit as relevant. */
 export function touchedReviewInputs(root, paths, changedPaths, before, after) {
   const candidates = paths.filter((input) =>
     changedPaths.has(bindingFile(input)),
@@ -72,10 +74,13 @@ export function touchedReviewInputs(root, paths, changedPaths, before, after) {
     values.filter((input, index) => {
       const a = objects[index * 2];
       const b = objects[index * 2 + 1];
+      const beforeDigest =
+        a === undefined ? undefined : bindingDigest(input, a);
+      const afterDigest = b === undefined ? undefined : bindingDigest(input, b);
       return (
-        a === undefined ||
-        b === undefined ||
-        bindingDigest(input, a) !== bindingDigest(input, b)
+        beforeDigest === undefined ||
+        afterDigest === undefined ||
+        beforeDigest !== afterDigest
       );
     }),
   );
@@ -180,6 +185,26 @@ export function deriveReviewHistory(root, state, committedNotes) {
       bytes,
     ]),
   );
+  // These blobs are immutable for this replay; selectors still include format
+  // and the full pointer, and an absent digest remains a changed input.
+  const blobIdentities = new Map();
+  const valueDigests = new Map();
+  const digest = (input, spec) => {
+    if (!blobIdentities.has(spec))
+      blobIdentities.set(
+        spec,
+        createHash('sha256').update(blobs.get(spec)).digest('hex'),
+      );
+    const identity = blobIdentities.get(spec);
+    let selectors = valueDigests.get(identity);
+    if (!selectors) {
+      selectors = new Map();
+      valueDigests.set(identity, selectors);
+    }
+    if (!selectors.has(input))
+      selectors.set(input, bindingDigest(input, blobs.get(spec)));
+    return selectors.get(input);
+  };
   const json = (spec) =>
     blobs.get(spec) === undefined
       ? undefined
@@ -209,7 +234,8 @@ export function deriveReviewHistory(root, state, committedNotes) {
           input === file ||
           a === undefined ||
           b === undefined ||
-          bindingDigest(input, a) !== bindingDigest(input, b)
+          digest(input, `${commit.revision}^1:${file}`) !==
+            digest(input, `${commit.revision}:${file}`)
         )
           outstanding.add(input);
       }

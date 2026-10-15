@@ -3433,6 +3433,12 @@ export class StationRuntime {
           this.applicationSessions = undefined;
         });
         await retire(async () => {
+          // #3586: tokens stop reading the account store before it closes.
+          // Set only after security initialized, so its device pairing exists.
+          if (this.localAccounts)
+            this.environmentSecurityService.devicePairing.setAccountDirectory(
+              undefined,
+            );
           await this.deploymentAuthentication?.service.close();
           this.deploymentAuthentication = undefined;
           this.localAccounts = undefined;
@@ -3492,6 +3498,11 @@ export class StationRuntime {
         this.projectMembership.service,
       );
       this.deploymentAuthentication = this.localAccounts;
+      // #3586: account-tied personal access tokens are checked against
+      // this Station's own account standing; no other provider has one.
+      this.environmentSecurityService.devicePairing.setAccountDirectory(
+        this.localAccounts.accountDirectory,
+      );
     } else if (
       this.authenticationConfiguration &&
       !this.deploymentAuthentication
@@ -4903,6 +4914,12 @@ export class StationRuntime {
       failures.push(error);
     }
     try {
+      // #3586: tokens stop reading the account store before it closes.
+      // Set only after security initialized, so its device pairing exists.
+      if (this.localAccounts)
+        this.environmentSecurityService.devicePairing.setAccountDirectory(
+          undefined,
+        );
       await this.deploymentAuthentication?.service.close();
       this.deploymentAuthentication = undefined;
       this.localAccounts = undefined;

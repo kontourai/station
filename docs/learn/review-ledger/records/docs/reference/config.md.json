@@ -18,8 +18,6 @@
 
     "packages/contracts/src/settings-registry.ts",
 
-    "pnpm-lock.yaml",
-
     "schemas/agent.schema.json",
 
     "src-server/constants.ts",
@@ -146,7 +144,11 @@
 
     "src-server/services/usage-telemetry-service.ts",
 
-    "src-ui/src/views/integrations/TelemetryDestinationGrants.tsx"
+    "src-ui/src/views/integrations/TelemetryDestinationGrants.tsx",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots"
   ],
 
   "checks": [

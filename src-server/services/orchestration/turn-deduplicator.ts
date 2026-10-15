@@ -1,5 +1,6 @@
 import {
   awaitTurnResolution,
+  type TurnClaimInspection,
   type TurnIdempotencyStore,
 } from '../turn-idempotency.js';
 
@@ -13,7 +14,8 @@ import {
  *
  * #3559: a claim whose owner process died is taken over only if that owner
  * never called `beginInvocation`. Otherwise the provider may already have the
- * turn, so the claim answers `indeterminate` and is never replayed.
+ * turn, so the claim answers `indeterminate` and is never replayed. A key
+ * whose resolved row retention evicted answers `expired`, never a new claim.
  */
 export interface TurnClaim {
   /**
@@ -34,20 +36,55 @@ export interface TurnClaim {
    * settlement, both transition methods reject.
    */
   release(): void;
+  /**
+   * Gives up an owned claim that may have reached the provider: it stays
+   * unresolved and is never released, and both the delivery lookup and a
+   * same-key claim in this process answer it `indeterminate` rather than in
+   * flight or contended. Settles the handle.
+   */
+  retain(): void;
 }
 
 export interface TurnDeduplicator {
   claim(input: { threadId: string; clientTurnId: string }):
     | { kind: 'owner'; claim: TurnClaim }
     | { kind: 'contended'; turnId?: string }
-    /** The dead owner may have invoked the provider. Never send this turn. */
-    | { kind: 'indeterminate' };
+    /**
+     * The owner may have invoked the provider and will never resolve the
+     * claim: it died, or (in this process) retained it. Never send this turn.
+     */
+    | { kind: 'indeterminate' }
+    /**
+     * #3559: the key's resolved row was evicted. The turn was sent, and its
+     * id can no longer be replayed. Never send this turn again.
+     */
+    | { kind: 'expired' };
+  /**
+   * Waits (bounded) for the pair's turn id. Returns nothing early when the
+   * claim is released, or when its owner in this process retained it after a
+   * possible effect; {@link givenUp} tells the two apart.
+   */
   awaitResolution(input: {
     threadId: string;
     clientTurnId: string;
     timeoutMs?: number;
     intervalMs?: number;
   }): Promise<string | undefined>;
+  /**
+   * Whether this process's own owner retained the pair's unresolved claim
+   * after a possible effect, so nothing will ever resolve it. False for any
+   * other process's claim, however old.
+   */
+  givenUp(input: { threadId: string; clientTurnId: string }): boolean;
+  /**
+   * Read-only: what {@link claim} would meet for this pair, without claiming,
+   * reclaiming or touching retention. For the delivery lookup a client uses
+   * to decide whether resending the same key is safe.
+   */
+  inspect(input: {
+    threadId: string;
+    clientTurnId: string;
+  }): TurnClaimInspection;
 }
 
 export function createTurnDeduplicator(options: {
@@ -61,10 +98,11 @@ export function createTurnDeduplicator(options: {
         Date.now(),
         'tracked',
       );
-      if (!claim.claimed)
-        return claim.indeterminate
-          ? { kind: 'indeterminate' }
-          : { kind: 'contended', turnId: claim.value };
+      if (!claim.claimed) {
+        if (claim.indeterminate) return { kind: 'indeterminate' };
+        if (claim.expired) return { kind: 'expired' };
+        return { kind: 'contended', turnId: claim.value };
+      }
       let settled = false;
       let intent:
         | { kind: 'resolve'; turnId: string }
@@ -103,9 +141,18 @@ export function createTurnDeduplicator(options: {
             ),
           release: () =>
             settle({ kind: 'release' }, () => options.store.release(key)),
+          retain: () => {
+            if (settled) throw new Error('Turn claim has already settled.');
+            settled = true;
+            options.store.retain(key);
+          },
         },
       };
     },
+    givenUp: ({ threadId, clientTurnId }) =>
+      options.store.givenUp(options.keyFor(threadId, clientTurnId)),
+    inspect: ({ threadId, clientTurnId }) =>
+      options.store.inspect(options.keyFor(threadId, clientTurnId)),
     awaitResolution: ({ threadId, clientTurnId, timeoutMs, intervalMs }) =>
       awaitTurnResolution(
         options.store,

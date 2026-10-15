@@ -70,6 +70,10 @@ import {
 import { StartStationControl } from '../chat-start/StartStationControl';
 import { useAgentEnable } from '../chat-start/useAgentEnable';
 import {
+  appendDictation,
+  useStartDictation,
+} from '../chat-start/useStartDictation';
+import {
   buildCodingChatInitialMessage,
   type CodingChatContextDraft,
   composeStartMessage,
@@ -166,6 +170,8 @@ interface NewChatModalProps {
     executionAgentId?: string,
     expectedDefinitionFingerprint?: string,
     executionOnCurrentStation?: boolean,
+    /** Files for the first message (passed only when there are some). */
+    initialFiles?: File[],
   ) => void | Promise<void>;
   onClose: () => void;
   onTaskStarted?: () => void;
@@ -174,6 +180,8 @@ interface NewChatModalProps {
   requestAuthority?: NewChatSetupAuthority;
   startWithDefault?: boolean;
   initialPrompt?: string;
+  /** Files Home's composer attached with its prompt. */
+  initialFiles?: File[];
   startSurface?: boolean;
   recentChats?: Omit<ComponentProps<typeof RecentList>, 'context' | 'agents'>;
   /**
@@ -226,6 +234,7 @@ export function NewChatModal({
   requestAuthority,
   startWithDefault = false,
   initialPrompt,
+  initialFiles,
   startSurface = false,
   recentChats,
   startSelection,
@@ -275,6 +284,10 @@ export function NewChatModal({
     string | undefined
   >();
   const [prompt, setPrompt] = useState(initialPrompt ?? '');
+  const [startFiles, setStartFiles] = useState<File[]>(initialFiles ?? []);
+  const startVoice = useStartDictation((text) =>
+    setPrompt((current) => appendDictation(current, text)),
+  );
   const [taskNotice, setTaskNotice] = useState<string | null>(null);
   const reportDraft = useEffectEvent((text: string) => onDraftChange?.(text));
   useEffect(() => {
@@ -781,6 +794,13 @@ export function NewChatModal({
         ? start.modelChoiceFor(agent)
         : modelChoices[modelChoiceKey(agent)]);
     if (choice?.environmentId && choice.environmentId !== 'current') {
+      if (startFiles.length > 0) {
+        setSelectFeedback(
+          'A task on another Station takes text only. Remove the files, or choose an engine on this Station to send them.',
+        );
+        setShowChatOptions(true);
+        return;
+      }
       if (
         experience ||
         !choice.executionAgentId ||
@@ -798,19 +818,23 @@ export function NewChatModal({
       return;
     }
     // A Model chosen before this dialog (Home's chip, or before a setup
-    // journey) can have gone meanwhile: check it before starting on it.
+    // journey) can have gone meanwhile: check it before starting on it. A
+    // choice kept from earlier in this tab goes the same way when the engine
+    // reconnects with another catalog, so it is refused when the catalog is
+    // known and no longer lists it. Availability is not checked there: an
+    // engine that is merely not ready is reported by its own setup repair.
+    const startModels = selectionModel.executionModelsForAgent(agent);
+    const isChosen = (model: (typeof startModels)[number]) =>
+      model.id === choice?.modelId &&
+      (!choice?.providerId || model.providerId === choice.providerId) &&
+      model.executionAgentId === choice?.executionAgentId;
     if (
-      (returnedFromSetup || options.choice !== undefined) &&
       choice?.modelId &&
-      !selectionModel
-        .executionModelsForAgent(agent)
-        .some(
-          (model) =>
-            model.id === choice.modelId &&
-            model.available !== false &&
-            (!choice.providerId || model.providerId === choice.providerId) &&
-            model.executionAgentId === choice.executionAgentId,
-        )
+      (returnedFromSetup || options.choice !== undefined
+        ? !startModels.some(
+            (model) => isChosen(model) && model.available !== false,
+          )
+        : startModels.length > 0 && !startModels.some(isChosen))
     ) {
       setSelectFeedback(
         'The Model you selected is no longer available. Choose a Model to continue.',
@@ -907,6 +931,26 @@ export function NewChatModal({
               : experienceDraft
                 ? [experienceDraft]
                 : [];
+      // Files ride after every positional option, so those are padded only
+      // when there are files to place (callers compare exact arguments).
+      const selectTail: [
+        SkillExperienceDraft?,
+        boolean?,
+        string?,
+        string?,
+        boolean?,
+        File[]?,
+      ] =
+        startFiles.length > 0
+          ? [
+              startOptions[0],
+              startOptions[1],
+              startOptions[2],
+              startOptions[3],
+              startOptions[4],
+              startFiles,
+            ]
+          : startOptions;
       try {
         if (composer && submitInFlight.current) return;
         if (composer) {
@@ -929,7 +973,7 @@ export function NewChatModal({
             choice?.providerOptions,
             choice?.providerId,
             choice?.providerType,
-            ...startOptions,
+            ...selectTail,
           ),
         )
           .then(() => {
@@ -1804,6 +1848,16 @@ export function NewChatModal({
             onStart={() => {
               if (draftAgent) handleSelect(draftAgent, { composer: true });
             }}
+            files={{
+              list: startFiles,
+              onAdd: (files) =>
+                setStartFiles((current) => [...current, ...files]),
+              onRemove: (index) =>
+                setStartFiles((current) =>
+                  current.filter((_, position) => position !== index),
+                ),
+            }}
+            voice={startVoice}
             note={
               !prompt.trim() && contextSelected && !experience
                 ? 'With no message, Start puts this context in the new chat’s composer for you to send.'

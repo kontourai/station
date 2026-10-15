@@ -1,0 +1,7 @@
+{
+  "revision": "8eb9bc3dfa6375b9cc987a024d9c860432372dc2",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"#3565: path-read-pin-boundary.test.ts gained one DIRECTORY_WALKS_THAT_ARE_NOT_REPO_SCANS entry for scripts/__tests__/monument-import-boundary-gate.test.ts, whose `glob(` match is fixture source text written into a scratch repository. The classification rule and the repo-scan lane this guide describes are unchanged; no prose change.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts"]}
+  ]
+}

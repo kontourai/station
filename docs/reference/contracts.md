@@ -35,7 +35,8 @@ for current implementation and unexecuted acceptance limits.
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
 | `@kontourai/station-contracts/skill-experience` | Inert v1 Skill definitions and explicit stage/rich-pane declarations, host-observed inventory identity, canonical start inputs and retained Session invocation views; see [experience contract](skill-experiences.md) |
 | `@kontourai/station-contracts/attention` | Attention projections and exact approval/permission request references and inspection states |
-| `@kontourai/station-contracts/environment-security` | Public handshake and compatibility declarations, scoped Device/Station pairing, receiver-owned additive grant kind, and secret-free `PeerEnrollmentInput`/`PeerEnrollment` metadata. A missing legacy kind denotes Device access; these declarations grant no Project membership or execution consent. See [peer enrollment](sdk.md#station-peer-enrollment). |
+| `@kontourai/station-contracts/environment-security` | Public handshake and compatibility declarations, scoped Device/Station pairing, receiver-owned additive grant kind, and secret-free `PeerEnrollmentInput`/`PeerEnrollment` metadata; explicit `access:devices` administration scope and `device-access` revocation provenance. A missing legacy kind denotes Device access; these declarations grant no Project membership or execution consent. See [peer enrollment](sdk.md#station-peer-enrollment). |
+| `@kontourai/station-contracts/station-groups` | Station groups for people (#3557): the Admin/Member vocabulary and default, the governed permissions and each group's ceiling, the pure `capScopeToGroup`, and the `StationPerson`/`StationGroupAssignment` shapes `GET /api/pairing/people` returns. Groups only cap a person-tied Device's governed permissions; they grant nothing, never include `access:manage`, and are not Project roles |
 | `@kontourai/station-contracts/auth` | Auth status, renew results, user identity/detail models |
 | `@kontourai/station-contracts/secret-binding` | Metadata-only AuthRef bindings, instance/person ownership, distinct exact MCP environment, ACP header and instance telemetry destination grants; raw material is server-only |
 | `@kontourai/station-contracts/telemetry-delivery` | Current-process product acknowledgement/queue/failure and OTLP callback/probe status; collector acceptance does not prove downstream storage |
@@ -372,6 +373,34 @@ the session lifecycle like any turn (reasons `provider_turn_started` /
 `provider_turn_completed`), and notifies "Your agent replied" when the owner
 is offline. A send while it runs is refused with the retryable code
 `provider_turn_in_progress`, and the client queues the message until it ends.
+A send to an ACP session that is still starting (for a restored session,
+reattaching to the engine's stored session) waits for the start, up to 15
+seconds, through the optional adapter method `whenSessionReady`. Orchestration
+awaits it before taking the thread's turn-start claim, so Stop and End are not
+held behind a slow start. The send's cancellation signal ends the wait; that
+signal comes only from an explicit Stop or cancel or a server deadline, never
+from the client's connection, so a client may close once Station has the
+message. If the session is stopped before it is ready, the send is refused
+definitively and the client offers the text back. If the start fails, the
+send is refused with `provider_session_start_failed`, and the client keeps the
+message queued with the reason and Retry without re-sending it on its own. If
+it is still starting after the wait, the send is refused with the retryable
+code `provider_session_starting`, and the client queues the message and
+re-sends it. A retry whose idempotency key an earlier attempt still holds
+waits for that attempt's turn (up to five minutes). If none arrives, or the
+attempt released the key without sending, the retry is refused with the
+retryable code `client_turn_in_flight` and re-sent with the same key; that
+holds however long the attempt has held the key, because its turn may still
+be delivered. A retry whose earlier attempt may already have reached the
+engine and will never resolve is refused with the non-retryable
+`foreground_message_indeterminate` instead, and nothing is sent again. That
+happens at once when the attempt's owner died after it began invoking. When
+the attempt's engine call failed after it began, it happens only in the
+Station process that made the attempt: at once for a new retry, and at the
+next poll of the wait for a retry already waiting. Another Station process
+sharing the store cannot see that the attempt gave up, so there the retry is
+treated as for a held key. When the client's
+automatic re-sends run out, the message stays queued with a reason and Retry.
 A Claude send's own `turn.started` is published when the engine starts
 running it, so a send queued behind such a turn starts after it ends. That
 ordering relies on the CLI's per-message lifecycle frames (`msg_lifecycle_v1`,
@@ -393,8 +422,37 @@ An ACP send whose attachments the engine cannot take (images when its
 `initialize` handshake did not advertise `promptCapabilities.image`, or any
 non-image file) is refused before any engine effect with
 `ATTACHMENT_INPUT_UNSUPPORTED_CODE` (`attachment_input_unsupported`, from
-`provider`). Unlike the two codes above it is not retryable: the same send is
-refused again. An ACP steer delivered by the cancel + re-prompt fallback, for
+`provider`). Unlike the retryable codes above it is not retryable: the same send is
+refused again. An ACP session whose requested model the engine's own fresh
+`session/new` options did not offer (`ACP model value unsupported`, or no model
+option at all) is refused by the adapter with `SessionStartRefusedError`,
+carrying `MODEL_NOT_ADVERTISED_CODE` (`model_not_advertised`, from `provider`).
+That type is how an adapter tells the start boundary that its start is settled:
+the boundary is released and the receipt is `rejected`, where every other
+adapter failure at start stays an indeterminate start that fences the thread. An
+adapter throws it only once the engine has answered with a refusal and what it
+spawned is torn down (an unconfirmed teardown is an `AggregateError`, an
+uncertain start whose end is not announced), and it owes the service the cause and
+the end of the session it had announced: a `runtime.error` carrying the code,
+then a `session.exited` (`start-refused`, no exit code), because
+`session.started` went out before `session/new` answered and the service binds
+the thread to the adapter on it. For a fresh start the session's lifecycle then
+reads `failed` with the engine's own words, also after a reload, and its binding
+is ended, so a resend in the same conversation, whatever it names (another
+model, the same one, or no override), continues in a successor session through
+the continuation seam. The exit is consumed in order on the adapter's event
+queue like any other, so a resend that lands before it has been projected sees
+the session still open and fails at the send; the next send resolves a
+successor. A Stop that lands during `session/new` ends the session's events as
+`stopped` rather than as the refusal (the caller still receives the typed
+refusal). A
+raw start on the refused session id itself is refused (a different model is a
+`session-reattach-conflict`). A model the engine was asked to apply and
+answered differently (`ACP model application unverified`) stays an uncertain
+start. The nested start claim of a task dispatch and delegation keep their own
+conservative uncertainty handling. A refusal raised from a lazy engine start
+inside a send (a restored session with no resume cursor but a model) is a
+`failed` receipt without the code, and ends with the row `closed`. An ACP steer delivered by the cancel + re-prompt fallback, for
 an engine without a native steer method, cancels the running prompt and any
 tool it was running. Its steer `turn.started` carries
 `steerInterruptedRun: true` so a client can say why that step shows as
@@ -460,6 +518,15 @@ dropped with a warning, as before. An event that already committed is never
 replayed, and no flushed text contains the delta being offered, so a retried
 delta is never stored twice. Any other failure, and exhausted retries, are the
 observation loss described above.
+A failed append changes no shown or durable state that the event justifies.
+The session row and a provider-started turn's boundary row are written inside
+the event's own append transaction. The read model, the turn-progress and
+child-work projections of the published event, client-origin retirement, a
+pending cooperative stop and the live bus frame change only after the append
+commits. Two admission steps run once per event, before the append, by design:
+the stall watchdog observes raw text deltas as the engine produces them, and a
+turn start consumes the client origin its send reserved. A retry recomputes
+the event's lifecycle stamp from the state at that attempt.
 Muse tool results use the shared bounded output projection before persistence;
 an `outputReceipt` records truncation and whether full output is available.
 EventStore's 64 KiB ingress ceiling remains a last-resort rejection boundary.

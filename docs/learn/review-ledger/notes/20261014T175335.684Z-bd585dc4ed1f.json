@@ -1,0 +1,7 @@
+{
+  "revision": "35b6c86f016875366c4a2f6c5a5642a2d9b11c5e",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"A same-key claim of a claim this owner retained after a possible effect now answers indeterminate, matching inspect; the send is refused at once with foreground_message_indeterminate instead of waiting five minutes for client_turn_in_flight. Other processes still see contended.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

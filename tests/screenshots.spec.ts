@@ -3,9 +3,11 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { PublicStationHandshake } from '@kontourai/station-contracts/environment-security';
 import { expect, type Page, type Route } from '@playwright/test';
+import { buildLongSessionTurns } from './fixtures/long-session';
 import { contrastRatio } from './helpers/color-contrast';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import { openChooserFromToggle } from './helpers/region-placement';
+import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 import { runScreenshotCaptureSequence } from './helpers/screenshot-capture-sequence';
 
 /**
@@ -112,13 +114,17 @@ async function seedGalleryConnectionProfile(page: Page): Promise<void> {
   );
 }
 
-function fulfillGalleryStationHandshake(route: Route): Promise<void> {
+function fulfillGalleryStationHandshake(
+  route: Route,
+  boundedHistory = false,
+): Promise<void> {
   return route.fulfill({
     json: {
       schemaVersion: 1,
       environmentId: GALLERY_ENVIRONMENT_ID,
       authentication: { scheme: 'bearer', protocolVersion: 1 },
       transports: { http: 1, sse: 1, websocket: 1 },
+      ...(boundedHistory ? { capabilities: { sessionEventWindow: true } } : {}),
       compatibility: {
         serverVersion: '0.0.0-screenshot-gallery',
         protocolVersion: 1,
@@ -129,7 +135,7 @@ function fulfillGalleryStationHandshake(route: Route): Promise<void> {
           environmentProof: 1,
         },
       },
-    },
+    } satisfies PublicStationHandshake,
   });
 }
 
@@ -1076,6 +1082,245 @@ function orchestrationSessionFixture(session: {
     });
 }
 
+/** Real ChatDock wiring: failed reads recover once, with pending responses held. */
+async function verifyConversationRecovery(page: Page): Promise<void> {
+  const testInfo = test.info();
+  const width = page.viewportSize()!.width;
+  const resync = page.getByRole('button', {
+    name: 'Status unavailable — resync this conversation',
+    exact: true,
+  });
+  const box = await resync.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+  if (width === 390) expect(box!.height).toBeGreaterThanOrEqual(44);
+  await mockRuntimeConversation(page, {
+    id: 'gallery-mismatch-conversation',
+    agentSlug: 'demo-agent',
+    title: 'Mismatch demo chat',
+    provider: 'claude',
+    model: 'test-model',
+    projectSlug: 'project-b',
+    canContinue: true,
+    turns: () =>
+      buildLongSessionTurns({
+        threadId: 'gallery-mismatch-conversation',
+        provider: 'claude',
+        turnCount: 1,
+        replyText: () => 'Recovered conversation transcript',
+      }),
+  });
+  // This synthetic conversation is absent from the real server's snapshot.
+  // Keep its SSE transport open during recovery; the HTTP reads below still
+  // pass through the real SDK and ChatDock owners to explicit route fixtures.
+  await page.evaluate(() => {
+    const scope = window as Window & { __recoveryFetch?: typeof fetch };
+    scope.__recoveryFetch = window.fetch;
+    const original = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (new URL(url, location.href).pathname !== '/api/orchestration/events')
+        return original(input, init);
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            init?.signal?.addEventListener('abort', () => controller.close(), {
+              once: true,
+            });
+          },
+        }),
+        { headers: { 'Content-Type': 'text/event-stream' } },
+      );
+    };
+  });
+  try {
+    const removeHandshake = await withRoute(
+      page,
+      '**/.well-known/station/v1',
+      (route) => fulfillGalleryStationHandshake(route, true),
+    );
+    let historyFailed = true;
+    let historyReads = 0;
+    let releaseHistory!: () => void;
+    const historyPending = new Promise<void>((resolve) => {
+      releaseHistory = resolve;
+    });
+    const removeHistory = await withRoute(
+      page,
+      '**/api/orchestration/conversations/gallery-mismatch-conversation/event-window**',
+      async (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        historyReads++;
+        if (historyFailed) {
+          await route.fulfill({
+            status: 503,
+            json: {
+              success: false,
+              error: 'Recovery fixture history unavailable',
+            },
+          });
+          return;
+        }
+        await historyPending;
+        await route.fallback();
+      },
+    );
+    let releaseOpen!: () => void;
+    const openPending = new Promise<void>((resolve) => {
+      releaseOpen = resolve;
+    });
+    let openReads = 0;
+    const removeOpen = await withRoute(
+      page,
+      '**/api/conversations/gallery-mismatch-conversation/open',
+      async (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        openReads++;
+        await openPending;
+        await route.fallback();
+      },
+    );
+    try {
+      await resync.click();
+      const pending = page.getByRole('button', {
+        name: 'Resyncing conversation — resync this conversation',
+        exact: true,
+      });
+      await expect(pending).toBeDisabled();
+      await expect(pending).toHaveAttribute('aria-busy', 'true');
+      await expect(
+        page.getByRole('status').filter({ hasText: 'Resyncing conversation' }),
+      ).toBeAttached();
+      await expect.poll(() => openReads).toBe(1);
+      for (let i = 0; i < 5; i++) await page.keyboard.press('Enter');
+      expect(openReads).toBe(1);
+      await page.screenshot({
+        path: testInfo.outputPath(`resync-pending-${width}.png`),
+      });
+      releaseOpen();
+      await expect(
+        page.getByText(
+          "Station couldn't confirm Mismatch demo chat can continue.",
+          { exact: true },
+        ),
+      ).toBeHidden();
+      await expect(pending).toBeHidden();
+      expect(openReads).toBe(1);
+      await expect(
+        page.getByText('Recovery fixture history unavailable', {
+          exact: false,
+        }),
+      ).toBeVisible({ timeout: 15_000 });
+      const failedHistoryReads = historyReads;
+      expect(failedHistoryReads).toBeGreaterThan(0);
+      historyFailed = false;
+      await resync.click();
+      await expect(pending).toBeDisabled();
+      await expect.poll(() => historyReads - failedHistoryReads).toBe(1);
+      for (let i = 0; i < 5; i++) await page.keyboard.press('Enter');
+      expect(historyReads - failedHistoryReads).toBe(1);
+      releaseHistory();
+      await expect(
+        page.getByText('Recovered conversation transcript', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText('Recovery fixture history unavailable', {
+          exact: false,
+        }),
+      ).toBeHidden();
+      await expect(resync).toBeHidden();
+      await expect(
+        page.getByRole('group', { name: 'Message composer', exact: true }),
+      ).toBeFocused();
+      await expect(
+        page.getByRole('status').filter({ hasText: 'Conversation resynced.' }),
+      ).toBeAttached();
+      await page.screenshot({
+        path: testInfo.outputPath(`resync-recovered-${width}.png`),
+      });
+      expect(historyReads - failedHistoryReads).toBe(1);
+      console.log('HISTORY_RECOVERY_REQUEST_COUNTS', {
+        width,
+        failedHistoryReads,
+        replacementReads: historyReads - failedHistoryReads,
+      });
+    } finally {
+      releaseOpen();
+      releaseHistory();
+      await removeOpen();
+      await removeHistory();
+      await removeHandshake();
+    }
+    if (width > 600) {
+      let releaseInventory!: () => void;
+      const inventoryPending = new Promise<void>((resolve) => {
+        releaseInventory = resolve;
+      });
+      let inventoryReads = 0;
+      const removeInventory = await withRoute(
+        page,
+        '**/api/conversations**',
+        async (route) => {
+          if (new URL(route.request().url()).pathname !== '/api/conversations')
+            return route.fallback();
+          if (route.request().method() !== 'GET')
+            return rejectUnexpectedFixtureRequest(route);
+          inventoryReads++;
+          await inventoryPending;
+          await route.fulfill({
+            json: { success: true, data: { items: [], hasMore: false } },
+          });
+        },
+      );
+      try {
+        await expect(
+          page.getByText("Couldn't refresh. Showing the last known list."),
+        ).toBeVisible();
+        await page
+          .getByRole('button', { name: 'Refresh inbox', exact: true })
+          .click();
+        const refreshing = page.getByRole('button', {
+          name: 'Refreshing inbox',
+          exact: true,
+        });
+        await expect(refreshing).toBeDisabled();
+        await expect.poll(() => inventoryReads).toBe(1);
+        for (let i = 0; i < 5; i++) await page.keyboard.press('Enter');
+        expect(inventoryReads).toBe(1);
+        releaseInventory();
+        await expect(
+          page.getByText("Couldn't refresh. Showing the last known list."),
+        ).toBeHidden();
+        await expect(
+          page.getByRole('button', { name: 'Refresh inbox', exact: true }),
+        ).toBeEnabled();
+        expect(inventoryReads).toBe(1);
+        console.log('INBOX_RECOVERY_REQUEST_COUNTS', {
+          inventoryReads,
+          pendingActivations: 6,
+        });
+      } finally {
+        releaseInventory();
+        await removeInventory();
+      }
+    }
+    console.log('RECOVERY_REQUEST_COUNTS', {
+      width,
+      openReads,
+      pendingActivations: 6,
+    });
+  } finally {
+    await page.evaluate(() => {
+      const scope = window as Window & { __recoveryFetch?: typeof fetch };
+      if (scope.__recoveryFetch) window.fetch = scope.__recoveryFetch;
+      delete scope.__recoveryFetch;
+    });
+  }
+}
+
 type GalleryProjectFixture = {
   slug: string;
   name: string;
@@ -1134,10 +1379,9 @@ function projectDetailFixture(
  * and a plain object literal's two callbacks cannot share the `withRoute`
  * cleanup closures any other way.
  */
-function overlayDockProjectMismatchHooks(): Pick<
-  Screen,
-  'beforeGoto' | 'afterGoto'
-> {
+function overlayDockProjectMismatchHooks(
+  resyncOnly = false,
+): Pick<Screen, 'beforeGoto' | 'afterGoto'> {
   let cleanups: (() => Promise<void>)[] = [];
   return {
     beforeGoto: async (page) => {
@@ -1192,10 +1436,45 @@ function overlayDockProjectMismatchHooks(): Pick<
           }),
         ),
       ];
+      if (resyncOnly) {
+        cleanups.push(
+          await withRoute(page, '**/api/conversations**', async (route) => {
+            if (
+              new URL(route.request().url()).pathname !== '/api/conversations'
+            ) {
+              await route.fallback();
+              return;
+            }
+            if (route.request().method() !== 'GET')
+              return rejectUnexpectedFixtureRequest(route);
+            await route.fulfill({
+              status: 503,
+              json: { success: false, error: 'temporarily_unavailable' },
+            });
+          }),
+        );
+      }
     },
     afterGoto: async (page) => {
       try {
         await assertNoStrayProjectModal(page);
+        if (resyncOnly) {
+          await expect(
+            page.getByRole('button', {
+              name: 'Status unavailable — resync this conversation',
+              exact: true,
+            }),
+          ).toBeVisible();
+          if ((page.viewportSize()?.width ?? 0) > 600) {
+            await expect(
+              page.getByRole('button', { name: 'Refresh inbox', exact: true }),
+            ).toBeVisible();
+            await expect(
+              page.getByText("Couldn't refresh. Showing the last known list."),
+            ).toBeVisible({ timeout: 15_000 });
+          }
+          return;
+        }
         // The dock's own inbox "ACTIVE NOW" row resolves this fixture
         // session's title asynchronously (a live query racing the seeded
         // sessionStorage title) — waiting for its settled text here, before
@@ -1243,7 +1522,7 @@ function overlayDockProjectMismatchHooks(): Pick<
         ).toBeVisible({ timeout: 10_000 });
         await expect(
           page.getByRole('button', {
-            name: 'Status unavailable — repair the connection',
+            name: 'Status unavailable — resync this conversation',
             exact: true,
           }),
         ).toBeVisible({ timeout: 10_000 });
@@ -1251,7 +1530,7 @@ function overlayDockProjectMismatchHooks(): Pick<
           .poll(() =>
             page
               .getByRole('button', {
-                name: 'Status unavailable — repair the connection',
+                name: 'Status unavailable — resync this conversation',
                 exact: true,
               })
               .evaluate(
@@ -2449,6 +2728,18 @@ const SCREENS: Screen[] = [
     viewport: DESKTOP,
     ...overlayDockProjectMismatchHooks(),
   },
+  ...(
+    [
+      ['desktop-conversation-resync', DESKTOP],
+      ['mobile-conversation-resync', MOBILE],
+    ] as const
+  ).map(([name, viewport]) => ({
+    name,
+    title: `${name.startsWith('mobile') ? 'Mobile' : 'Desktop'} — Conversation status unavailable`,
+    path: '/?dock=open&chat=gallery-mismatch-conversation',
+    viewport,
+    ...overlayDockProjectMismatchHooks(true),
+  })),
   {
     name: 'overlay-project-switcher-populated',
     title: 'Overlay — Project switcher sheet with a real project row',
@@ -2672,6 +2963,60 @@ const SCREENS: Screen[] = [
   })(),
 ];
 
+async function statusRasterState(page: Page) {
+  return page
+    .getByRole('button', {
+      name: 'Status unavailable — resync this conversation',
+      exact: true,
+    })
+    .locator('..')
+    .evaluate((host) => {
+      const svg = host.querySelector('.live-status-glyph svg');
+      if (!(svg instanceof SVGSVGElement))
+        throw new Error('Mismatch status warning SVG is missing');
+      const matrix = svg.getScreenCTM();
+      if (!matrix) throw new Error('Mismatch status SVG has no screen matrix');
+      const rect = svg.getBoundingClientRect();
+      return {
+        devicePixelRatio,
+        rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+        matrix: [matrix.a, matrix.b, matrix.c, matrix.d, matrix.e, matrix.f],
+        strokeWidth: getComputedStyle(svg).strokeWidth,
+        color: getComputedStyle(svg).color,
+        ancestors: [
+          host,
+          ...host.querySelectorAll('button, .chat-status-pill__body'),
+        ]
+          .slice(0, 8)
+          .map((element) => {
+            const style = getComputedStyle(element);
+            return {
+              className: element.className,
+              transform: style.transform,
+              opacity: style.opacity,
+              willChange: style.willChange,
+            };
+          }),
+        animations: host
+          .getAnimations({ subtree: true })
+          .slice(0, 16)
+          .map((animation) => {
+            const timing = animation.effect?.getComputedTiming();
+            return {
+              playState: animation.playState,
+              pending: animation.pending,
+              fill: timing?.fill,
+              progress: timing?.progress,
+              iterations:
+                timing?.iterations === Infinity
+                  ? 'infinite'
+                  : timing?.iterations,
+            };
+          }),
+      };
+    });
+}
+
 interface Shot {
   screen: Screen;
   file: string;
@@ -2679,6 +3024,13 @@ interface Shot {
   error?: string;
   sha256?: string;
   controls?: Array<{ label: string; disabled: boolean }>;
+  rasterDiagnostic?: {
+    before: Awaited<ReturnType<typeof statusRasterState>>;
+    after: Awaited<ReturnType<typeof statusRasterState>>;
+    retiredCount: number;
+    file: string;
+    sha256: string;
+  };
   layout?: {
     appMainScrollTop: number;
     appMainScrollHeight: number;
@@ -2827,7 +3179,9 @@ test('build gallery — capture key screens', async ({ page }) => {
     if (typeof indexedDB !== 'undefined')
       indexedDB.deleteDatabase('station-query-cache');
   });
-  await page.route('**/.well-known/station/v1', fulfillGalleryStationHandshake);
+  await page.route('**/.well-known/station/v1', (route) =>
+    fulfillGalleryStationHandshake(route),
+  );
   await page.route('**/api/system/identity', fulfillGalleryStationIdentity);
   await page.route('**/api/system/status', fulfillGallerySystemStatus);
 
@@ -2942,6 +3296,7 @@ test('build gallery — capture key screens', async ({ page }) => {
     for (const screen of selectedScreens) {
       const file = `${screen.name}.png`;
       let layout: Shot['layout'];
+      let rasterDiagnostic: Shot['rasterDiagnostic'];
       try {
         await page.setViewportSize(screen.viewport);
         await page.emulateMedia({
@@ -3051,6 +3406,53 @@ test('build gallery — capture key screens', async ({ page }) => {
               // in-flight transition from being mid-frame at capture time.
               animations: 'disabled',
             });
+            if (screen.name === 'overlay-dock-project-mismatch') {
+              const before = await statusRasterState(page);
+              const retiredCount = await page
+                .getByRole('button', {
+                  name: 'Status unavailable — resync this conversation',
+                  exact: true,
+                })
+                .locator('..')
+                .evaluate((host) => {
+                  const finished = host
+                    .getAnimations({ subtree: true })
+                    .filter((animation) => {
+                      const timing = animation.effect?.getComputedTiming();
+                      return (
+                        animation.playState === 'finished' &&
+                        timing?.iterations !== Infinity &&
+                        (timing?.fill === 'both' || timing?.fill === 'forwards')
+                      );
+                    });
+                  for (const animation of finished) animation.cancel();
+                  return finished.length;
+                });
+              await page.evaluate(
+                () =>
+                  new Promise<void>((resolveFrame) =>
+                    requestAnimationFrame(() =>
+                      requestAnimationFrame(() => resolveFrame()),
+                    ),
+                  ),
+              );
+              const after = await statusRasterState(page);
+              const diagnosticFile = `${screen.name}.retired-effects-diagnostic.png`;
+              await page.screenshot({
+                path: join(GALLERY_DIR, diagnosticFile),
+                fullPage: true,
+                animations: 'disabled',
+              });
+              rasterDiagnostic = {
+                before,
+                after,
+                retiredCount,
+                file: diagnosticFile,
+                sha256: createHash('sha256')
+                  .update(readFileSync(join(GALLERY_DIR, diagnosticFile)))
+                  .digest('hex'),
+              };
+            }
           },
         });
         const controls = await page
@@ -3086,12 +3488,19 @@ test('build gallery — capture key screens', async ({ page }) => {
                   element.getAttribute('aria-disabled') === 'true',
               })),
           );
+        if (
+          screen.name === 'desktop-conversation-resync' ||
+          screen.name === 'mobile-conversation-resync'
+        ) {
+          await verifyConversationRecovery(page);
+        }
         shots.push({
           screen,
           file,
           ok: true,
           controls,
           layout,
+          rasterDiagnostic,
           sha256: createHash('sha256')
             .update(readFileSync(join(GALLERY_DIR, file)))
             .digest('hex'),
@@ -3139,7 +3548,16 @@ test('build gallery — capture key screens', async ({ page }) => {
           // gallery for full coverage.
           selection: requestedScreens,
           screens: shots.map(
-            ({ file, ok, screen, error, sha256, controls, layout }) => ({
+            ({
+              file,
+              ok,
+              screen,
+              error,
+              sha256,
+              controls,
+              layout,
+              rasterDiagnostic,
+            }) => ({
               file,
               ok,
               name: screen.name,
@@ -3147,6 +3565,7 @@ test('build gallery — capture key screens', async ({ page }) => {
               sha256,
               controls,
               layout,
+              rasterDiagnostic,
             }),
           ),
         },
@@ -3160,4 +3579,26 @@ test('build gallery — capture key screens', async ({ page }) => {
   expect(ok, 'every selected gallery screen should render').toBe(
     selectedScreens.length,
   );
+  if (
+    selectedScreens.some(
+      (screen) => screen.name === 'overlay-dock-project-mismatch',
+    )
+  ) {
+    const diagnostic = shots.find(
+      (shot) => shot.screen.name === 'overlay-dock-project-mismatch',
+    )?.rasterDiagnostic;
+    expect(
+      diagnostic,
+      'settled status motion should be observed',
+    ).toBeDefined();
+    expect(
+      diagnostic?.retiredCount,
+      'completed status entry/morph effects must release their fill',
+    ).toBe(0);
+    const body = diagnostic?.before.ancestors.find(
+      (ancestor) => ancestor.className === 'chat-status-pill__body',
+    );
+    expect(body?.transform).toBe('none');
+    expect(body?.opacity).toBe('1');
+  }
 });

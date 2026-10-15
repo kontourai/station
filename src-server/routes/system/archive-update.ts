@@ -2,7 +2,10 @@ import { realpathSync } from 'node:fs';
 import type { ServiceUpdateProgress } from '@kontourai/station-contracts/system-status';
 import {
   type ArchiveInstallState,
+  acceptedReleasePath,
   compareStationReleaseVersions,
+  compareWithAcceptedRelease,
+  readAcceptedRelease,
   readArchiveInstallState,
 } from '@kontourai/station-shared/prebuilt-archive';
 import {
@@ -245,6 +248,37 @@ async function fetchVerifiedReleaseManifest(
   }
 }
 
+/**
+ * Why a verified manifest offering `version` is stale for this install root
+ * (the installer's own rule, `readAcceptedRelease`), or null when it is not.
+ */
+function acceptedReleaseRefusal(
+  installRoot: string,
+  ring: string,
+  version: string,
+): { message: string; technicalDetail: string } | null {
+  const path = acceptedReleasePath(installRoot);
+  const mark = readAcceptedRelease(installRoot, ring);
+  if (mark.state === 'absent') return null;
+  if (mark.state === 'invalid')
+    return {
+      message:
+        "This install's record of the newest release it accepted is unreadable, so no update is offered. On the host, fix its owner and permissions or remove it, then check again.",
+      technicalDetail: `${path} is not a private file of this user holding a ${ring} release record`,
+    };
+  const relation = compareWithAcceptedRelease(ring, version, mark.version);
+  if (relation === 'not-older') return null;
+  return relation === 'older'
+    ? {
+        message: `The ${ring} release manifest offers ${version}, older than ${mark.version} which this install already accepted, so it is not offered.`,
+        technicalDetail: `the manifest is stale or replayed (accepted release recorded in ${path})`,
+      }
+    : {
+        message: `The ${ring} release manifest offers ${version}, which cannot be compared with ${mark.version}, the newest release this install accepted, so it is not offered.`,
+        technicalDetail: `incomparable with the accepted release recorded in ${path}`,
+      };
+}
+
 export interface ArchiveUpdateStatus {
   installKind: 'archive' | 'archive-service';
   applyMethod: ArchiveApplyMethod;
@@ -318,6 +352,22 @@ export async function archiveUpdateStatus(
           ? `Could not reach the ${ring} release manifest.`
           : `The ${ring} release manifest did not verify against Station's pinned signing keys.`,
       technicalDetail: errorMessage(error),
+      selfUpdateUnavailableReason: refusal,
+    };
+  }
+
+  // The installer refuses a manifest older than the newest release this
+  // install root accepted (a replay after a rollback), so it is not offered
+  // here either, and the operator sees why.
+  const replayRefusal = provenance.installRoot
+    ? acceptedReleaseRefusal(provenance.installRoot, ring, payload.version)
+    : null;
+  if (replayRefusal) {
+    return {
+      ...base,
+      releaseCheck: 'unverified',
+      updateAvailable: false,
+      ...replayRefusal,
       selfUpdateUnavailableReason: refusal,
     };
   }

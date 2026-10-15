@@ -933,6 +933,246 @@ describe('SchedulerLedger', () => {
     });
   });
 
+  /**
+   * #3563. A claim written by another process whose own birth probe failed
+   * carries a NULL `owner_birth`. That used to read as live without asking
+   * the kernel, so once its pid was gone the occurrence stayed fenced
+   * forever. `dead` needs no birth to decide; only a live pid without a
+   * recorded birth stays fenced.
+   */
+  describe('a foreign claim with no recorded birth', () => {
+    const FOREIGN_PID = 2_147_483_001;
+    const foreignIdentity = (state: 'dead' | 'unavailable' | 'exact') => ({
+      exact: (pid: number) => {
+        const probed = probeExactProcessIdentity(pid);
+        return probed.state === 'exact' ? probed.identity : null;
+      },
+      probe: (pid: number) => {
+        if (pid !== FOREIGN_PID) return probeExactProcessIdentity(pid);
+        return state === 'exact'
+          ? {
+              state,
+              identity: { pid: FOREIGN_PID, start: 'some-live-birth' },
+            }
+          : { state };
+      },
+    });
+
+    function strandForeignClaim(invoked: boolean) {
+      const dueAt = Date.parse('2026-01-01T01:00:00.000Z');
+      const owner = createSchedulerLedger({ directory: tempDir });
+      owner.create({
+        name: 'foreign-null-birth',
+        schedule: { kind: 'every', everyMs: 1_000 },
+        prompt: 'run',
+        enabled: true,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      });
+      const claim = read(owner.claimDue(dueAt))[0];
+      if (!claim) throw new Error('expected a due claim');
+      if (invoked) expect(claim.beginInvocation()).toEqual({ kind: 'applied' });
+      owner.close();
+      const database = new DatabaseSync(join(tempDir, 'scheduler.sqlite'));
+      try {
+        database
+          .prepare(
+            `UPDATE scheduler_claims
+                SET owner_id = 'foreign-owner', owner_pid = ?, owner_birth = NULL
+              WHERE run_id = ?`,
+          )
+          .run(FOREIGN_PID, claim.id);
+      } finally {
+        database.close();
+      }
+      return { claim, dueAt };
+    }
+
+    test('a dead foreign owner releases its uninvoked occurrence', () => {
+      const { claim, dueAt } = strandForeignClaim(false);
+      const restarted = createSchedulerLedger({
+        directory: tempDir,
+        processIdentity: foreignIdentity('dead'),
+      });
+      try {
+        const recovered = read(restarted.claimDue(dueAt));
+        // An attempt-1 pre-invocation claim has no retry lineage, so recovery
+        // releases it and claims the SAME occurrence afresh.
+        expect(recovered).toHaveLength(1);
+        expect(recovered[0]).toMatchObject({
+          jobId: claim.jobId,
+          scheduledForMs: claim.scheduledForMs,
+          attempt: 1,
+        });
+      } finally {
+        restarted.close();
+      }
+    });
+
+    test('a dead foreign owner that began invocation is settled indeterminate, not replayed', () => {
+      const { claim, dueAt } = strandForeignClaim(true);
+      const restarted = createSchedulerLedger({
+        directory: tempDir,
+        processIdentity: foreignIdentity('dead'),
+      });
+      try {
+        expect(read(restarted.claimDue(dueAt))).toEqual([]);
+        expect(read(restarted.allLogs())).toMatchObject([
+          { id: `${claim.id}-1`, state: 'indeterminate', success: false },
+        ]);
+      } finally {
+        restarted.close();
+      }
+    });
+
+    // #3563 fix round 1: the dead owner had begun invocation, so
+    // reconciliation records it indeterminate and advances the job's cursor.
+    // That cursor write must not parse the record's unreadable bytes, or the
+    // whole claim transaction rolls back and nothing is quarantined.
+    test('an invoked dead claim on an unreadable record still lets every other job claim', () => {
+      const dueAt = Date.parse('2026-01-01T01:00:00.000Z');
+      const { claim } = strandForeignClaim(true);
+      const seed = createSchedulerLedger({ directory: tempDir });
+      seed.create({
+        name: 'healthy',
+        schedule: { kind: 'every', everyMs: 1_000 },
+        prompt: 'run',
+        enabled: true,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      });
+      seed.close();
+      const database = new DatabaseSync(join(tempDir, 'scheduler.sqlite'));
+      try {
+        database
+          .prepare(
+            `UPDATE scheduler_jobs SET data = '{"name":' WHERE job_id = ?`,
+          )
+          .run(claim.jobId);
+      } finally {
+        database.close();
+      }
+      const quarantined: string[] = [];
+      const restarted = createSchedulerLedger({
+        directory: tempDir,
+        processIdentity: foreignIdentity('dead'),
+        onQuarantinedJob: (job) => quarantined.push(job.jobId),
+      });
+      try {
+        const receipts = read(restarted.claimDue(dueAt));
+        expect(receipts.map((receipt) => receipt.job.name)).toEqual([
+          'healthy',
+        ]);
+        expect(quarantined).toEqual([claim.jobId]);
+        expect(read(restarted.allLogs())).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              id: `${claim.id}-1`,
+              state: 'indeterminate',
+            }),
+          ]),
+        );
+      } finally {
+        restarted.close();
+      }
+      const inspection = new DatabaseSync(join(tempDir, 'scheduler.sqlite'));
+      try {
+        // The bytes stay for an operator; the cursor column still advances.
+        expect(
+          inspection
+            .prepare(
+              'SELECT data, last_run_ms FROM scheduler_jobs WHERE job_id = ?',
+            )
+            .get(claim.jobId),
+        ).toEqual({ data: '{"name":', last_run_ms: claim.scheduledForMs });
+      } finally {
+        inspection.close();
+      }
+    });
+
+    test.each(['exact', 'unavailable'] as const)(
+      'control: a live (%s) foreign owner with no birth keeps its fence',
+      (state) => {
+        const { dueAt } = strandForeignClaim(false);
+        const restarted = createSchedulerLedger({
+          directory: tempDir,
+          processIdentity: foreignIdentity(state),
+        });
+        try {
+          expect(read(restarted.claimDue(dueAt))).toEqual([]);
+          expect(read(restarted.allLogs())).toEqual([]);
+        } finally {
+          restarted.close();
+        }
+      },
+    );
+  });
+
+  // #3563: one unreadable job record used to throw out of claimDue's
+  // transaction, so every job missed its tick and the same transaction's
+  // dead-claim reconciliation rolled back with it.
+  test('quarantines one malformed job record instead of blocking every due job', () => {
+    const quarantined: Array<{
+      name: string;
+      jobId: string;
+      revision: number;
+    }> = [];
+    const ledger = createSchedulerLedger({
+      directory: tempDir,
+      onQuarantinedJob: (job) =>
+        quarantined.push({
+          name: job.name,
+          jobId: job.jobId,
+          revision: job.revision,
+        }),
+    });
+    try {
+      ledger.create({
+        name: 'healthy',
+        schedule: { kind: 'every', everyMs: 1_000 },
+        prompt: 'run',
+        enabled: true,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      });
+      const database = new DatabaseSync(join(tempDir, 'scheduler.sqlite'));
+      try {
+        // Ordered first, so it is read before the healthy job.
+        database
+          .prepare(
+            `INSERT INTO scheduler_jobs(name, job_id, revision, data, created_at, last_run_ms)
+             VALUES ('damaged', 'damaged-job-id', 3, '{"name":', '2025-01-01T00:00:00.000Z', NULL)`,
+          )
+          .run();
+      } finally {
+        database.close();
+      }
+
+      const now = Date.parse('2026-01-01T01:00:00.000Z');
+      const receipts = read(ledger.claimDue(now));
+      expect(receipts.map((receipt) => receipt.job.name)).toEqual(['healthy']);
+      expect(quarantined).toEqual([
+        { name: 'damaged', jobId: 'damaged-job-id', revision: 3 },
+      ]);
+
+      // Reported once per record revision, not on every tick, and the bytes
+      // stay in place for an operator to repair or remove.
+      read(ledger.claimDue(now + 60_000));
+      expect(quarantined).toHaveLength(1);
+      const inspection = new DatabaseSync(join(tempDir, 'scheduler.sqlite'));
+      try {
+        expect(
+          inspection
+            .prepare(
+              "SELECT data FROM scheduler_jobs WHERE job_id = 'damaged-job-id'",
+            )
+            .get(),
+        ).toEqual({ data: '{"name":' });
+      } finally {
+        inspection.close();
+      }
+    } finally {
+      ledger.close();
+    }
+  });
+
   test('returns a reclaimed manual retry to the manual caller with its immutable claimed job snapshot', () => {
     const owner = createSchedulerLedger({ directory: tempDir });
     owner.create({

@@ -107,6 +107,14 @@ export interface ModelLaunchCapabilities extends ModelLifecycleCapabilities {
 export type ModelLifecyclePoint = 'start' | 'resume' | 'turn';
 
 export const MODEL_OVERRIDE_UNSUPPORTED_CODE = 'model-override-unsupported';
+/**
+ * A new session was refused because the model the request names is not one
+ * the engine's own fresh session options offered. The engine answered, so the
+ * start is settled rather than uncertain. Deterministic for that engine and
+ * catalog, so NOT retryable as sent: the caller has to choose a model the
+ * engine offers.
+ */
+export const MODEL_NOT_ADVERTISED_CODE = 'model_not_advertised';
 export const SESSION_REATTACH_CONFLICT_CODE = 'session-reattach-conflict';
 export type SessionReattachConflictReason =
   | 'model-change'
@@ -831,6 +839,30 @@ export const MUSE_SERVE_STOP_UNCONFIRMED_CODE = 'muse-serve-stop-unconfirmed';
 export const PROVIDER_TURN_IN_PROGRESS_CODE = 'provider_turn_in_progress';
 
 /**
+ * Refusal code for a send that waited for its session's engine start (for
+ * an ACP session, reattaching to a stored native session) and the start had
+ * still not finished within the adapter's wait. Retryable: the same send
+ * succeeds once the session is ready, so clients keep it queued.
+ */
+export const PROVIDER_SESSION_STARTING_CODE = 'provider_session_starting';
+
+/**
+ * Refusal code for a send whose session's engine start failed while the send
+ * waited for it. Nothing was sent. Kept, not dropped: the client keeps the
+ * message queued with the reason and a Retry, and does not retry on its own.
+ */
+export const PROVIDER_SESSION_START_FAILED_CODE =
+  'provider_session_start_failed';
+
+/**
+ * Refusal code for a send whose idempotency key (`clientTurnId`) another
+ * in-flight attempt still holds, or released without sending. Nothing new
+ * was sent. Retryable with the same key: clients keep the message queued and
+ * re-send it.
+ */
+export const CLIENT_TURN_IN_FLIGHT_CODE = 'client_turn_in_flight';
+
+/**
  * A send refused before any engine effect because the bound engine cannot
  * take the attached input (an ACP engine whose `initialize` handshake did not
  * advertise `promptCapabilities.image`, or a file the engine only accepts as
@@ -1175,6 +1207,14 @@ export interface ProviderSendTurnInput {
    * HTTP/client schemas do not accept this field.
    */
   recoveryCorrelationId?: string;
+  /**
+   * Cancels this send before the engine has it (and interrupts a turn the
+   * engine accepted after it fired). Only an explicit, server-owned decision
+   * may supply it: a Stop/cancel, a server deadline, a shutdown. Never wire
+   * an HTTP request's or client connection's signal here: once Station has
+   * the message, the client may close or disconnect and the send must still
+   * go through.
+   */
   signal?: AbortSignal;
   /**
    * A client-generated per-turn idempotency

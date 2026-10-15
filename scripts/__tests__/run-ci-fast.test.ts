@@ -296,6 +296,8 @@ describe('bounded ci:fast runner', () => {
       ['npm', ['run', 'mobile:permissions:gate']],
       // #3149: a renderer-wide scan no path edge can select.
       ['npm', ['run', 'native-platform:ratchet']],
+      // #3565: the Tier 1 package's Station-import boundary.
+      ['npm', ['run', 'monument-import-boundary:gate']],
       ['npm', ['run', 'agent-plugin:validators:gate']],
       ['npm', ['run', 'settings:registry:gate']],
       ['npm', ['run', 'content:integrity']],
@@ -310,6 +312,8 @@ describe('bounded ci:fast runner', () => {
       ['npm', ['run', 'docs:public:hygiene']],
       ['npm', ['run', 'docs:issue-lifecycle:check']],
       ['npm', ['run', 'docs:public:contract-examples']],
+      // The Corpus decision registry and the numbered-ADR freeze.
+      ['npm', ['run', 'check:decisions']],
       // The git-ignored Basis MCP app bundles are generated, not checked:
       // nothing is tracked, so the only freshness question is "does the
       // generator succeed on this tree", and the typecheck aggregate below

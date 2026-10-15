@@ -453,6 +453,65 @@ async function pages(request, endpoint, field, limit = 100) {
   }
   throw new Error(`Pagination cap at ${endpoint} (${limit} pages)`);
 }
+// Actions leaves `pull_requests` empty for forks and for runs whose head moved
+// before the run was listed, so a push is attributed through the head instead.
+// `commits/{sha}/pulls` lists every PR that merely CONTAINS the commit (a
+// stacked PR included) and returns nothing for a commit that is no longer
+// reachable from any branch (a closed PR whose branch was deleted, or a head
+// replaced by a force-push). The head ref and the PR lifetime resolve both.
+function headLabel(run) {
+  const owner = run.head_repository?.owner?.login;
+  return owner && run.head_branch ? `${owner}:${run.head_branch}` : null;
+}
+function headsRun(pull, run) {
+  const label = headLabel(run);
+  return label
+    ? pull.head?.label === label
+    : pull.head?.ref === run.head_branch;
+}
+// A pull-request-family run exists only because of an event on a PR that was
+// already open, but events such as `edited` or `labeled` can land seconds after
+// the PR closed. Among PRs created before the run, those whose lifetime contains
+// it own it; with none, the latest-created one does.
+function owningPulls(pulls, run) {
+  const at = time(run.created_at);
+  const before = pulls.filter((p) => time(p.created_at) <= at);
+  const live = before.filter(
+    (p) => p.closed_at == null || at <= time(p.closed_at),
+  );
+  if (live.length || !before.length) return live;
+  return [
+    before.reduce((a, b) => (time(b.created_at) > time(a.created_at) ? b : a)),
+  ];
+}
+export async function resolvePushPRs(run, repo, request, caches) {
+  const { shaPulls, branchPulls } = caches;
+  if (!shaPulls.has(run.head_sha))
+    shaPulls.set(
+      run.head_sha,
+      await pages(request, `repos/${repo}/commits/${run.head_sha}/pulls`),
+    );
+  const direct = owningPulls(
+    shaPulls.get(run.head_sha).filter((p) => headsRun(p, run)),
+    run,
+  );
+  if (direct.length) return direct;
+  const owner = run.head_repository?.owner?.login;
+  if (!owner || !run.head_branch) return [];
+  const label = headLabel(run);
+  if (!branchPulls.has(label))
+    branchPulls.set(
+      label,
+      await pages(
+        request,
+        `repos/${repo}/pulls?state=all&head=${encodeURIComponent(label)}`,
+      ),
+    );
+  return owningPulls(
+    branchPulls.get(label).filter((p) => headsRun(p, run)),
+    run,
+  );
+}
 export async function collectHealth(
   options,
   request = api,
@@ -510,7 +569,6 @@ export async function collectHealth(
     await collectWindow(since, until);
     const unique = [...new Map(runs.map((r) => [r.id, r])).values()];
     runs.length = 0;
-    const pushPRs = new Map();
     const collectRun = async (run) => {
       const collectedRuns = [];
       const collectedJobs = [];
@@ -551,21 +609,22 @@ export async function collectHealth(
       const rejected = batch.find((result) => result.status === 'rejected');
       if (rejected) throw rejected.reason;
     }
+    const shaPulls = new Map();
+    const branchPulls = new Map();
     for (const run of runs.filter(
       (r) =>
         ['pull_request', 'pull_request_target'].includes(r.event) &&
         !r.pull_requests.length,
     )) {
-      if (!pushPRs.has(run.head_sha))
-        pushPRs.set(
-          run.head_sha,
-          await pages(request, `repos/${repo}/commits/${run.head_sha}/pulls`),
-        );
-      run.pull_requests = pushPRs
-        .get(run.head_sha)
-        .map((p) => ({ number: p.number }));
+      const resolved = await resolvePushPRs(run, repo, request, {
+        shaPulls,
+        branchPulls,
+      });
+      run.pull_requests = resolved.map((p) => ({ number: p.number }));
       if (!run.pull_requests.length)
-        reasons.push(`Cannot resolve PR push: run ${run.id}`);
+        reasons.push(
+          `Cannot resolve PR push: run ${run.id} (${run.head_sha?.slice(0, 12)} on ${run.head_repository?.full_name ?? 'unknown repository'}:${run.head_branch}): no pull request lists this commit or had this head branch before the run`,
+        );
     }
     for (const group of groupRuns(runs, 'merge_group')) {
       const run = group[0];

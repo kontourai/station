@@ -26,10 +26,6 @@
 
     "packages/sdk/src/queryFactories.ts",
 
-    "packages/shared/package.json",
-
-    "pnpm-lock.yaml",
-
     "scripts/button-cap-ratchet.mjs",
 
     "scripts/mobile-css-ratchet.mjs",
@@ -128,7 +124,19 @@
 
     "src-ui/src/components/CreatePlusButton.css",
 
-    "src-ui/src/components/chat-dock/ChatDockProjectContext.css"
+    "src-ui/src/components/chat-dock/ChatDockProjectContext.css",
+
+    "src-ui/src/components/status/live-status.css",
+
+    "packages/shared/package.json#/name",
+
+    "packages/shared/package.json#/exports",
+
+    "packages/shared/package.json#/files",
+
+    "pnpm-lock.yaml#/packages",
+
+    "pnpm-lock.yaml#/snapshots"
   ],
 
   "checks": [

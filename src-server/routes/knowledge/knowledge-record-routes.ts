@@ -19,12 +19,12 @@
  * the same defensive shape/length check `knowledge-index-routes.ts` already applies.
  * A Kit record `id`, by contrast, DOES reach a filesystem path directly in
  * `kit-default-store` (verified by reading `default-store.ts`): `recordPath(id)`
- * joins the raw id straight into `records/<id>.md` with no validation of its own —
- * `create`'s optional `input.id`, `link`'s `l.target_id` (via `readRecord` inside the
- * adapter's own existence check), and `get`'s `idOrHandle` (via `resolveRecordId` ->
- * `idExists`) all reach that join unguarded. A caller-supplied id containing `..`/`/`
- * is therefore a real traversal vector at the adapter layer this route sits in front
- * of. Every id-shaped value this file accepts — the create body's optional `id`, the
+ * joins the raw id into `records/<id>.md`. Only create IDs are validated by the
+ * adapter: get handles, link targets and update IDs can still reach recordPath
+ * unvalidated. KnowledgeFileTransactions.relativePath prevents escapes from
+ * the store root, but a legacy path-shaped ID can still read a matching record
+ * inside the root and outside records/. Read handles also support slug aliases.
+ * Every id-shaped value this HTTP surface accepts — the create body's optional `id`, the
  * `:id` path param, and each `links[].target_id` — is validated with the same
  * `isSafePathSegment` check `knowledge-store-routes.ts` already uses for
  * `projectSlug`, rejecting with 400 before the value ever reaches the adapter.

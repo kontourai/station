@@ -1,0 +1,7 @@
+{
+  "revision": "942391b5b7c770a7433f75f0be24e94f471ecc3c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed final disabled-composer repair after Chromium showed the fixture textarea remains disabled: focus targets the existing labelled composer fieldset when the textarea cannot accept focus; the fieldset is programmatically focusable and write permission is unchanged. Writable chats still target the textarea. The narrow status row hides without a pill, so it is not the parent focus destination. Browser assertions require the disabled composer group to own focus at both widths; unit regression requires the writable textarea.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

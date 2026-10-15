@@ -48,6 +48,8 @@ The phone-width captures compare the baseline and redesigned controls in the
 same isolated sample home and light theme. They show appearance, not task
 execution or native-shell qualification. Capture revisions and limits are in
 [the media manifest](../learn/media.json).
+These historical comparisons predate the paperclip and mic added to the start
+composer; they are not current references for its attachment controls.
 
 | Surface | Before | After |
 | --- | --- | --- |
@@ -193,11 +195,33 @@ Show inbox directly, as an icon button whose pressed state is available to assis
 Pending tool requests from the loaded event window also feed Needs approval,
 whose action opens the conversation's approval sheet. Failed history or
 continuation observation shows Status unavailable and withholds the cached
-working clock; the remote turn may still be running. History Retry refreshes
-the capability observation before reloading.
+working clock; the remote turn may still be running. Its Resync action
+reconnects the Station's orchestration stream and re-runs the failed history or
+conversation-open read. Resync is disabled and announces “Resyncing conversation”
+until those reads settle. History reads abort after 120 seconds and show a
+retryable error; the JSON reader exposes no progress signal. This bound allows
+slow remote reads beyond 30 seconds. Successful recovery announces “Conversation
+resynced” once, including after reconnecting or catching up. It moves focus to
+the composer (textarea when writable, otherwise its labelled composer group)
+only while this conversation is active, no dialog is open, and focus is still
+on Resync or was orphaned on the document body. Focus moved elsewhere stays there.
+Connection recovery and failed-read recovery outrank retained approvals, whose
+current state has not been verified. Check connection, Reconnecting, and Catching up take
+priority while the transport needs recovery; explicit stream resync respects
+the 30-second auth-refusal retry floor. Background work the session record last reported
+reads as "Last known: …" without animated dots until a read succeeds. History
+Retry refreshes the capability observation before reloading. The desktop
+inbox footer offers Refresh, which reconnects the same stream and re-reads the
+session list and conversation inventory; when the last read failed, the footer
+says the rows are the last known list.
 
-The pill uses compact state labels such as Working, Thinking, and Reconnecting;
-it does not expand to display tool names. State changes animate its width with
+The pill uses compact state labels such as Sending, Working, Thinking, and
+Reconnecting; it does not expand to display tool names. **Sending** covers the
+chat's own send until the agent has its turn (no turn open on the server yet);
+once Station's delivery lookup says it has the message, its detail says Station
+has it and is starting the agent, and that the app may be closed only when
+that Station keeps running without the app (not the desktop's own Station when
+it stops with the app, nor while the desktop has not reported it). State changes animate its width with
 the shared motion token, while the clock reserves a stable text column. Running
 tool rows and batches show a subtle reflection sweeping left to right; settled
 calls and approval requests stay still. Reduced motion disables the reflection
@@ -213,8 +237,8 @@ follows the last call. While the turn is live it keeps the shape it streamed
 with. In the summary, a failure is counted as **retried** rather than
 **failed** when a later call in the same summary ran the same tool with
 identical, recorded arguments and succeeded. A steer inside a turn does not
-start a new exchange. Under each settled answer, a muted time beside the ⋯
-button gives the turn's completion time from its provenance envelope. An
+start a new exchange. Under each settled answer, a muted time beside the copy
+and ⋯ buttons gives the turn's completion time from its provenance envelope. An
 answer without a readable envelope time shows no time. Exchanges are divided
 by a thin rule.
 
@@ -302,7 +326,10 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
 
 - Agent and Model selectors show their selected values without repeating the field labels.
   Their accessible names and tooltips retain the field name, exact Provider/model identity,
-  selection source, and any unavailable reason. The picker distinguishes duplicate model
+  selection source, and any unavailable reason. A long value ends in an ellipsis inside
+  its chip. When the Agent is reached through a model route ("via model-proxy
+  (home-server)"), a narrow composer drops that route before the Agent's name (#3050); the
+  chip's accessible name and tooltip keep it. The picker distinguishes duplicate model
   names by Provider identity. Compact neutral controls use clear hover/focus states and
   preserve the 44px mobile touch floor.
 - Choosing or resetting a Model closes the picker, in a chat, in the start
@@ -350,7 +377,9 @@ sits at the row's trailing edge. On mobile, Send is an arrow and its mode
 picker a chevron. They appear once the
 composer holds text, an attachment or quoted context; their geometry stays
 reserved while hidden, so editing does not move Stop or the other toolbar
-controls. Names and the selected mode remain accessible, and the opened picker
+controls. On mobile, Stop therefore follows them, at the row's trailing edge;
+before them it sat beside an empty reserved gap. At 390px a running turn's full
+row (Clear, Send, mode picker and Stop) still wraps to a second line. Names and the selected mode remain accessible, and the opened picker
 uses explicit Queue and Steer labels. Stop stays visible throughout the turn. Its mode
 picker defaults to **Queue**, which starts a new turn after the entire current
 turn finishes. **Steer** uses native mid-turn input only where the selected
@@ -384,7 +413,12 @@ a turn. Pending rows retain their selected mode. **Send now** is an explicit imm
 stop override: Station waits for a settled interruption receipt before sending
 the selected row, keeps other rows in order, and retains the message if stopping
 cannot be confirmed. Queued follow-ups currently accept text and quoted context;
-attachments remain in the composer until the turn finishes.
+attachments remain in the composer until the turn finishes. Steering carries
+text only (`steerTurn` takes an input string), and the mid-turn queue holds
+text only. The paperclip and mic stay usable during a turn, so the next
+message can be prepared: a file added then waits in the draft, and the line
+above the draft says that Steer and Queue carry text only, with **Remove
+attachments**. Send stays disabled until the turn ends or the files go.
 
 Activity is engine-reported. Claude Code SDK API retries supply attempt and delay
 with a bounded reason category; Codex's `willRetry` reports retry intent without
@@ -410,6 +444,22 @@ simple per-device preference rather than claiming to detect an attached keyboard
 
 ### 3.2 Attachments
 
+- A new chat's start composer attaches through its paperclip and paste, and
+  dictates through its mic, like a reply. It cannot know what the new chat's
+  engine accepts, so Start hands the files to the chat it opens, which runs
+  them through its own intake and staging before its first send. If that
+  engine refuses a file or a file does not stage, the message waits in the
+  chat's composer with the reason instead of going out without it. A task
+  started on another Station takes text only, so Start with files attached
+  refuses that and says why. Each composer owns its own dictation: a transcript goes only to
+  the composer whose mic started it, and a composer that closes stops its
+  dictation and takes the transcript with it. An unavailable mic stays focusable;
+  tapping or activating it opens its reason, including when the composer cannot
+  accept dictation.
+  Paste requires the browser to deliver clipboard files. Android keyboard
+  image insertion into the native WebView is not qualified by the browser
+  clipboard tests; use the paperclip's file picker when the keyboard refuses
+  image paste.
 - The composer decides image support before Send from the engine's declared
   and observed answers (`resolveComposerImageSupport`). When images cannot be
   sent, image chips say so and Send is disabled with the reason until the
@@ -542,9 +592,13 @@ or **Exit full screen**. Collapse stays on the header control. No resize or
 navigation action requires a gesture.
 
 Mobile message rows prioritize the authored text and essential live approval or
-error state. A separate 44px actions button opens attribution, model facts,
-provenance, copy, ratings, and Task references on demand. These details retain
-their original event-backed identities. Desktop attribution stays inline.
+error state. Each row with text has a 44px copy button beside a separate 44px
+actions button; the actions button opens attribution, model facts, provenance,
+ratings, and Task references on demand, and omits itself from a user message
+that has none of them. These details retain their original event-backed
+identities. Desktop attribution stays inline. On every screen size a message's
+copy control is one icon button, named "Copy your message" or "Copy answer";
+no menu repeats it as text.
 
 The executable contracts are `ChatDockMobileHeader.test.tsx` and the mobile
 project-switcher journey in `tests/cross-runtime-chat-switching.spec.ts`.

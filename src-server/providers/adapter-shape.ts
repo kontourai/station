@@ -22,6 +22,9 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import {
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  CLIENT_TURN_IN_FLIGHT_CODE,
+  PROVIDER_SESSION_START_FAILED_CODE,
+  PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 
@@ -82,6 +85,32 @@ export class AttachmentInputUnsupportedError extends SendTurnRefusedError {
 }
 
 /**
+ * An adapter's `startSession` refused the session DEFINITIVELY: the engine
+ * answered with a refusal and the adapter has torn down what it spawned, so
+ * nothing of this start is left running. The expected source is a requested
+ * model the engine's own fresh session options did not offer
+ * ({@link MODEL_NOT_ADVERTISED_CODE}). Throwing it is also a promise to publish
+ * the cause and then `session.exited` for a `session.started` already sent (the
+ * ACP adapter does): the service binds the thread to the adapter on the first
+ * event, and only that exit ends the session it announced.
+ *
+ * Throw ONLY when that is true. The start boundary otherwise records every
+ * adapter failure as an indeterminate start and keeps the thread fenced until
+ * it is inspected, which is right for a start that MAY have created a session.
+ * This type is how the adapter, the only layer that knows, tells it the start
+ * is settled; the dispatch receipt is then `rejected` and `code` is forwarded.
+ */
+export class SessionStartRefusedError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+  ) {
+    super(message);
+    this.name = 'SessionStartRefusedError';
+  }
+}
+
+/**
  * #2324: a send refused because the engine is running a turn it opened on
  * its own (`PROVIDER_TURN_TRIGGER`). Accepting it would fold the message
  * into a reply nobody asked for. Retryable: the same send succeeds once that
@@ -96,6 +125,51 @@ export class ProviderTurnInProgressError extends SendTurnRefusedError {
       'The agent is replying on its own; your message will be sent when it finishes.',
     );
     this.name = 'ProviderTurnInProgressError';
+  }
+}
+
+/**
+ * A send that waited for its session's engine start and gave up before the
+ * start finished. Nothing reached the engine. Retryable: orchestration
+ * forwards the code and clients keep the message queued.
+ */
+export class ProviderSessionStartingError extends SendTurnRefusedError {
+  readonly code = PROVIDER_SESSION_STARTING_CODE;
+
+  constructor() {
+    super(
+      'The session is still starting. Nothing was sent; try again in a moment.',
+    );
+    this.name = 'ProviderSessionStartingError';
+  }
+}
+
+/**
+ * A send whose session's engine start failed while it waited. Nothing was
+ * sent; `reason` is short and user-facing (engine detail belongs in logs).
+ * Kept by clients with a Retry rather than dropped.
+ */
+export class ProviderSessionStartFailedError extends SendTurnRefusedError {
+  readonly code = PROVIDER_SESSION_START_FAILED_CODE;
+
+  constructor(reason: string) {
+    super(`The agent's session couldn't start: ${reason}`);
+    this.name = 'ProviderSessionStartFailedError';
+  }
+}
+
+/**
+ * A send whose `clientTurnId` another attempt still holds, or released
+ * without sending. Nothing new was sent; the same key may be sent again.
+ */
+export class ClientTurnInFlightError extends SendTurnRefusedError {
+  readonly code = CLIENT_TURN_IN_FLIGHT_CODE;
+
+  constructor() {
+    super(
+      'An earlier attempt of this message has not finished. Nothing new was sent; try again in a moment.',
+    );
+    this.name = 'ClientTurnInFlightError';
   }
 }
 
@@ -291,6 +365,19 @@ export interface ProviderAdapterShape {
   discardSession?(
     threadId: string,
     recovery?: ProviderDiscardSessionRecovery,
+  ): Promise<void>;
+  /**
+   * Wait until the thread's session can take a turn, for an adapter whose
+   * session becomes visible before its engine start finishes. Orchestration
+   * awaits this BEFORE taking the thread's turn-start claim, so a long start
+   * never holds the lock Stop/End/park need. Resolves at once when nothing
+   * is pending; rejects with a `SendTurnRefusedError` (start failed, or
+   * {@link ProviderSessionStartingError} when still starting after the
+   * adapter's bound) or the signal's abort error. Nothing reaches the engine.
+   */
+  whenSessionReady?(
+    threadId: string,
+    options?: { signal?: AbortSignal },
   ): Promise<void>;
   sendTurn(input: ProviderSendTurnInput): Promise<ProviderTurnStartResult>;
   interruptTurn(

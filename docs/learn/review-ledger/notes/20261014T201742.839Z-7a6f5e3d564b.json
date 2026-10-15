@@ -1,0 +1,7 @@
+{
+  "revision": "2b3e7ecab4c991bed45b9a1ed36e9685c5ea91af",
+
+  "notes": [
+    {"path":"docs/design/cli-triage.md","note":"Upstream docs/reference/cli.md change only adds the --temp-home /tmp fallback note (when TMPDIR is inside a Station root) to the start and fresh flag rows. Searched this doc for temp-home/temporary-home claims; none state the temp home's location, so no prose change.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]}
+  ]
+}

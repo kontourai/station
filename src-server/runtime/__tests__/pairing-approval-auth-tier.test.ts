@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type HttpBindings } from '@hono/node-server';
@@ -12,6 +12,7 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { agentConnectionFixture } from '../../../tests/helpers/connection-fixtures.js';
 import { credentialProfileAppHomeDir } from '../../providers/app-home/credential-profile-registry.js';
+import { createPersonalTokenRoutes } from '../../routes/access/personal-token-routes.js';
 import { createAppHomeRoutes } from '../../routes/connections/app-home.js';
 import { createAttentionRoutes } from '../../routes/orchestration/attention.js';
 import {
@@ -129,6 +130,11 @@ async function createHarness(
   });
   const audits: Array<{ event: string; approver: string }> = [];
   configureDevicePairingHostRoutes(app as never, security.devicePairing, {
+    groups: {
+      groupOf: (principalId) => security.groupOf(principalId),
+      assignments: () => security.groupAssignments(),
+      assign: (principalId, group) => security.assignGroup(principalId, group),
+    },
     audit: (record) => audits.push(record),
     verifyOperatorCredential: (credential) =>
       security.verifyOperatorCredential(credential),
@@ -155,6 +161,10 @@ async function createHarness(
     undefined,
     undefined,
     () => security.devicePairing,
+  );
+  app.route(
+    '/api/access/tokens',
+    createPersonalTokenRoutes(security.devicePairing),
   );
   app.route(
     '/api/attention',
@@ -295,6 +305,7 @@ async function createHarness(
   return {
     audits,
     deviceAccessRequest,
+    homeDir,
     security,
     operatorCredential,
     localGrantSecret: () =>
@@ -1053,5 +1064,424 @@ describe('delegated engine sign-in HTTP admission', () => {
     );
     expect(revoked.status).toBe(401);
     expect(profileReads).not.toHaveBeenCalled();
+  });
+});
+
+describe('#3557 Station groups at the HTTP boundary', () => {
+  const ELEVATED =
+    'orchestration:read orchestration:operate terminal:operate access:approve';
+
+  /** A device tied to a verified Tailscale person, with `scope`. */
+  const pairPerson = async (
+    harness: Awaited<ReturnType<typeof createHarness>>,
+    login: string,
+    scope: string,
+  ) => {
+    const pairing = harness.security.devicePairing;
+    const offer = pairing.createOffer({ endpoint: ORIGIN, scope });
+    const request = pairing.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: `${login} phone`,
+      source: 'tailnet',
+      requester: { provider: 'tailscale-serve', login },
+    });
+    const principalId = `human:tailscale-serve:${login}`;
+    pairing.confirmRequest(
+      request.requestId,
+      { kind: 'presented-credential' },
+      { principalId, kind: 'verified-ingress' },
+    );
+    return {
+      principalId,
+      ...pairing.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: request.requestId,
+      }),
+    };
+  };
+
+  test("a Member's device holding access:approve is refused an approval; promoting the person admits it without re-pairing", async () => {
+    const harness = await createHarness();
+    const casey = await pairPerson(harness, 'casey', ELEVATED);
+    const pending = await harness.createPendingRequest('New watch');
+    const confirm = () =>
+      harness.request(
+        `/api/pairing/requests/${pending.requestId}/confirm`,
+        { ...cookieInit(casey.credential, 'POST'), body: '{}' },
+        '203.0.113.61',
+      );
+    expect([401, 403]).toContain((await confirm()).status);
+
+    const promoted = await harness.request(
+      `/api/pairing/people/${encodeURIComponent(casey.principalId)}/group`,
+      {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${harness.operatorCredential}`,
+        },
+        body: JSON.stringify({ group: 'admin' }),
+      },
+    );
+    expect(promoted.status).toBe(200);
+    expect(await promoted.json()).toMatchObject({
+      person: {
+        principalId: casey.principalId,
+        group: 'admin',
+        assigned: true,
+      },
+    });
+    expect((await confirm()).status).toBe(200);
+  });
+
+  test('a group change the record cannot take is 503, and a non-person is 400; neither changes anyone', async () => {
+    const harness = await createHarness();
+    const casey = await pairPerson(harness, 'casey', ELEVATED);
+    const put = (principalId: string) =>
+      harness.request(
+        `/api/pairing/people/${encodeURIComponent(principalId)}/group`,
+        {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${harness.operatorCredential}`,
+          },
+          body: JSON.stringify({ group: 'admin' }),
+        },
+      );
+    const invalid = await put('device:not-a-person');
+    expect(invalid.status).toBe(400);
+    expect(await invalid.json()).toEqual({ error: 'invalid_principal' });
+
+    // The record path is unusable (a directory sits there).
+    const recordPath = join(harness.homeDir, 'security', 'station-groups.json');
+    rmSync(recordPath, { force: true });
+    mkdirSync(recordPath);
+    const unavailable = await put(casey.principalId);
+    expect(unavailable.status).toBe(503);
+    expect(await unavailable.json()).toEqual({ error: 'groups_unavailable' });
+    expect(harness.security.groupOf(casey.principalId)).toBe('member');
+  });
+
+  test("the desktop's local grant lists people but cannot change a group: that needs the operator credential", async () => {
+    const harness = await createHarness();
+    const casey = await pairPerson(harness, 'casey', ELEVATED);
+    const mint = await harness.request(
+      '/.well-known/station/v1/pairing/local-grant',
+      harness.json({
+        secret: harness.localGrantSecret(),
+        deviceName: 'Desktop',
+      }),
+      '127.0.0.1',
+    );
+    const desktop = (await mint.json()) as { credential: string };
+    const authorization = { Authorization: `Bearer ${desktop.credential}` };
+    expect(
+      (await harness.request('/api/pairing/people', { headers: authorization }))
+        .status,
+    ).toBe(200);
+    const change = await harness.request(
+      `/api/pairing/people/${encodeURIComponent(casey.principalId)}/group`,
+      {
+        method: 'PUT',
+        headers: { ...authorization, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group: 'admin' }),
+      },
+    );
+    expect(change.status).toBe(401);
+    expect(harness.security.groupOf(casey.principalId)).toBe('member');
+  });
+
+  test("a person's own device neither lists people nor changes a group", async () => {
+    const harness = await createHarness();
+    const casey = await pairPerson(harness, 'casey', ELEVATED);
+    await harness.security.assignGroup(casey.principalId, 'admin');
+    const listed = await harness.request('/api/pairing/people', {
+      headers: { Authorization: `Bearer ${harness.operatorCredential}` },
+    });
+    expect(listed.status).toBe(200);
+    expect(await listed.json()).toMatchObject({
+      people: [
+        {
+          principalId: casey.principalId,
+          group: 'admin',
+          devices: [{ id: casey.device.id, effectiveScope: ELEVATED }],
+          canHoldTokens: true,
+        },
+      ],
+    });
+
+    await harness.security.assignGroup(casey.principalId, 'member');
+    const devices = await harness.request('/api/pairing/devices', {
+      headers: { Authorization: `Bearer ${harness.operatorCredential}` },
+    });
+    expect(
+      ((await devices.json()) as { devices: PairedDevice[] }).devices.find(
+        (device) => device.id === casey.device.id,
+      ),
+    ).toMatchObject({
+      scope: ELEVATED,
+      effectiveScope:
+        'orchestration:read orchestration:operate terminal:operate',
+    });
+    await harness.security.assignGroup(casey.principalId, 'admin');
+
+    // Casey's own Admin device may approve pairing requests, but never
+    // change anyone's group: that is the operator's alone.
+    for (const [method, path, body] of [
+      ['GET', '/api/pairing/people', undefined],
+      [
+        'PUT',
+        `/api/pairing/people/${encodeURIComponent(casey.principalId)}/group`,
+        JSON.stringify({ group: 'admin' }),
+      ],
+    ] as const) {
+      const refused = await harness.request(
+        path,
+        {
+          ...cookieInit(casey.credential, method === 'GET' ? 'GET' : 'POST'),
+          method,
+          ...(body ? { body } : {}),
+        },
+        '203.0.113.62',
+      );
+      expect([401, 403], `${method} ${path}`).toContain(refused.status);
+    }
+    expect(harness.security.groupOf(casey.principalId)).toBe('admin');
+  });
+});
+
+describe('#3557 personal access tokens at the HTTP boundary', () => {
+  const STANDARD = 'orchestration:read orchestration:operate terminal:operate';
+  const pairPerson = async (
+    harness: Awaited<ReturnType<typeof createHarness>>,
+    login: string,
+    scope: string,
+  ) => {
+    const pairing = harness.security.devicePairing;
+    const offer = pairing.createOffer({ endpoint: ORIGIN, scope });
+    const request = pairing.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: `${login} phone`,
+      source: 'tailnet',
+      requester: { provider: 'tailscale-serve', login },
+    });
+    const principalId = `human:tailscale-serve:${login}`;
+    pairing.confirmRequest(
+      request.requestId,
+      { kind: 'presented-credential' },
+      { principalId, kind: 'verified-ingress' },
+    );
+    return {
+      principalId,
+      ...pairing.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: request.requestId,
+      }),
+    };
+  };
+  const bearer = (credential: string, body?: unknown): RequestInit => ({
+    method: body === undefined ? 'GET' : 'POST',
+    headers: {
+      Authorization: `Bearer ${credential}`,
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+
+  test('a person mints a token from their own device; it reads as them and can do nothing more', async () => {
+    const harness = await createHarness();
+    const casey = await pairPerson(harness, 'casey', STANDARD);
+    const minted = await harness.request(
+      '/api/access/tokens',
+      bearer(casey.credential, {
+        name: 'CI',
+        scope: 'orchestration:read orchestration:operate',
+      }),
+    );
+    expect(minted.status).toBe(201);
+    const { secret, token } = (await minted.json()) as {
+      secret: string;
+      token: { id: string; ownerPrincipalId: string };
+    };
+    expect(token.ownerPrincipalId).toBe(casey.principalId);
+
+    expect(
+      (await harness.request('/api/attention', bearer(secret))).status,
+    ).toBe(200);
+    // A token neither manages tokens nor reaches device management.
+    expect(
+      (await harness.request('/api/access/tokens', bearer(secret))).status,
+    ).toBe(403);
+    expect(
+      [401, 403].includes(
+        (await harness.request('/api/pairing/devices', bearer(secret))).status,
+      ),
+    ).toBe(true);
+
+    // Never a Project's member administration, whatever its scope.
+    const administer = await harness.request(
+      '/api/projects/demo/access/invitations',
+      bearer(secret, {}),
+    );
+    expect(administer.status).toBe(403);
+    // The same person's device passes the boundary (the harness mounts no
+    // Project routes behind it), so the 403 is the token's alone.
+    expect(
+      (
+        await harness.request(
+          '/api/projects/demo/access/invitations',
+          bearer(casey.credential, {}),
+        )
+      ).status,
+    ).not.toBe(403);
+
+    const listed = await harness.request(
+      '/api/access/tokens',
+      bearer(casey.credential),
+    );
+    expect(await listed.json()).toMatchObject({
+      tokens: [{ id: token.id, name: 'CI' }],
+    });
+    const revoked = await harness.request(`/api/access/tokens/${token.id}`, {
+      ...bearer(casey.credential),
+      method: 'DELETE',
+    });
+    expect(revoked.status).toBe(200);
+    expect(
+      (await harness.request('/api/attention', bearer(secret))).status,
+    ).toBe(401);
+  });
+
+  test('a token never exceeds what the minting device may use, and only a device tied to a person mints', async () => {
+    const harness = await createHarness();
+    // A read-only device cannot reach the mint at all (it needs Operate);
+    // a device that operates but cannot read cannot mint a reading token.
+    const readOnly = await pairPerson(harness, 'erin', 'orchestration:read');
+    expect(
+      (
+        await harness.request(
+          '/api/access/tokens',
+          bearer(readOnly.credential, {
+            name: 'x',
+            scope: 'orchestration:read',
+          }),
+        )
+      ).status,
+    ).toBe(403);
+    const operateOnly = await pairPerson(
+      harness,
+      'dana',
+      'orchestration:operate',
+    );
+    const exceeded = await harness.request(
+      '/api/access/tokens',
+      bearer(operateOnly.credential, {
+        name: 'too much',
+        scope: 'orchestration:read',
+      }),
+    );
+    expect(exceeded.status).toBe(400);
+    expect(await exceeded.json()).toEqual({
+      error: { code: 'scope_exceeds_access' },
+    });
+
+    const mine = await harness.pairDevice('My phone');
+    for (const credential of [mine.credential, harness.operatorCredential]) {
+      const refused = await harness.request(
+        '/api/access/tokens',
+        bearer(credential, { name: 'x', scope: 'orchestration:read' }),
+      );
+      expect(refused.status).toBe(403);
+    }
+  });
+
+  test('a read-only person revokes a token the operator made for them', async () => {
+    const harness = await createHarness();
+    const erin = await pairPerson(harness, 'erin', 'orchestration:read');
+    const minted = await harness.request(
+      `/api/pairing/people/${encodeURIComponent(erin.principalId)}/tokens`,
+      bearer(harness.operatorCredential, {
+        name: 'Ops',
+        scope: 'orchestration:read',
+      }),
+    );
+    expect(minted.status).toBe(201);
+    const { secret, token } = (await minted.json()) as {
+      secret: string;
+      token: { id: string };
+    };
+    const revoked = await harness.request(`/api/access/tokens/${token.id}`, {
+      ...bearer(erin.credential),
+      method: 'DELETE',
+    });
+    expect(revoked.status).toBe(200);
+    expect(harness.security.verifyCredential(secret)).toBe(false);
+  });
+
+  test('the operator mints for a person; the desktop local grant cannot', async () => {
+    const harness = await createHarness();
+    const casey = await pairPerson(harness, 'casey', STANDARD);
+    const path = `/api/pairing/people/${encodeURIComponent(casey.principalId)}/tokens`;
+    const minted = await harness.request(
+      path,
+      bearer(harness.operatorCredential, {
+        name: 'Ops',
+        scope: 'orchestration:read orchestration:operate',
+        expiresInDays: 30,
+      }),
+    );
+    expect(minted.status).toBe(201);
+    const { secret } = (await minted.json()) as { secret: string };
+    expect(harness.security.identifyDevice(secret)?.principalBinding).toEqual(
+      casey.device.principalBinding,
+    );
+
+    // The token outlives Casey's last device; Casey stays listed with it.
+    const operator = { Authorization: `Bearer ${harness.operatorCredential}` };
+    expect(
+      (
+        await harness.request(`/api/pairing/devices/${casey.device.id}`, {
+          method: 'DELETE',
+          headers: operator,
+        })
+      ).status,
+    ).toBe(200);
+    expect(harness.security.verifyCredential(secret)).toBe(true);
+    const people = (await (
+      await harness.request('/api/pairing/people', { headers: operator })
+    ).json()) as {
+      people: { principalId: string; tokens: { name: string }[] }[];
+    };
+    expect(
+      people.people.find((person) => person.principalId === casey.principalId),
+    ).toMatchObject({ tokens: [{ name: 'Ops' }], canHoldTokens: false });
+
+    const mint = await harness.request(
+      '/.well-known/station/v1/pairing/local-grant',
+      harness.json({
+        secret: harness.localGrantSecret(),
+        deviceName: 'Desktop',
+      }),
+      '127.0.0.1',
+    );
+    const desktop = (await mint.json()) as { credential: string };
+    expect(
+      (
+        await harness.request(
+          path,
+          bearer(desktop.credential, {
+            name: 'x',
+            scope: 'orchestration:read',
+          }),
+        )
+      ).status,
+    ).toBe(401);
   });
 });

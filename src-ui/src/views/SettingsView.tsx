@@ -70,6 +70,7 @@ import { KeyboardShortcutsSection } from './settings/KeyboardShortcutsSection';
 import { KnowledgeStoreSection } from './settings/KnowledgeStoreSection';
 import { LocalAccountsSection } from './settings/LocalAccountsSection';
 import { PairingSection } from './settings/PairingSection';
+import { PeopleSection } from './settings/PeopleSection';
 import { PluginVisibilitySection } from './settings/PluginVisibilitySection';
 import {
   buildProjectOverrideUpdate,
@@ -1048,6 +1049,10 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 {/* #1973: SSH device hosts. Operator-only (the same gate as
               plugin visibility); the panel itself is lazy-loaded. */}
                 {sectionVisible('device-hosts') && <DeviceHostsSection />}
+                {/* #3557: people, their Station group and their tokens.
+              Operator-only (the same gate as device hosts); the section
+              renders nothing for a caller the route refuses. */}
+                {sectionVisible('people') && <PeopleSection />}
                 {sectionVisible('host-runtime') && (
                   <EnvironmentStatus apiBase={currentApiBase}>
                     {/* #2182: three settings whose subject is the machine,
