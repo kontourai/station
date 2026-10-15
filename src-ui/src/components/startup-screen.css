@@ -27,13 +27,7 @@
 
 .station-startup--leaving {
   opacity: 0;
-  transition: opacity var(--startup-fade) var(--ease-out);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .station-startup--leaving {
-    transition: none;
-  }
+  transition: opacity var(--startup-fade, var(--motion-fast)) var(--ease-out);
 }
 
 .station-startup__canvas {
