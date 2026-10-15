@@ -354,10 +354,9 @@ export function ChatDockHeader({
         />
       ) : null}
       {activeSessions.length > 0 && (
-        <div
-          role="group"
+        <fieldset
           aria-label="Working chats"
-          className="chat-dock__activity"
+          className="chat-dock__activity menu-group"
           data-open={activityOpen}
           onMouseEnter={() => setActivityOpen(true)}
           onMouseLeave={() => setActivityOpen(false)}
@@ -425,7 +424,7 @@ export function ChatDockHeader({
               );
             })}
           </div>
-        </div>
+        </fieldset>
       )}
       {/* #800: the COLLAPSED bar's one affordance, a real action: the same
           New chat action every other chrome uses, icon-only and named, so
