@@ -65,6 +65,15 @@ function readFixturePid(path: string): number | undefined {
     : undefined;
 }
 
+function killFixturePid(path: string, errors: unknown[]) {
+  try {
+    const pid = readFixturePid(path);
+    if (pid !== undefined) process.kill(pid, 'SIGKILL');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') errors.push(error);
+  }
+}
+
 function tar(args: string[], cwd: string) {
   const result = spawnSync('tar', args, {
     cwd,
@@ -369,22 +378,8 @@ describe('monument pack smoke: bounds and credentials', () => {
       }
     } finally {
       // The pre-fix negative leaves a live descendant; own that cleanup too.
-      for (const path of [launcherPath, descendantPath]) {
-        let pid: number;
-        try {
-          const observed = readFixturePid(path);
-          if (observed === undefined) continue;
-          pid = observed;
-        } catch {
-          continue;
-        }
-        try {
-          process.kill(pid, 'SIGKILL');
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ESRCH')
-            cleanupErrors.push(error);
-        }
-      }
+      for (const path of [launcherPath, descendantPath])
+        killFixturePid(path, cleanupErrors);
     }
     expect(cleanupErrors, 'owned negative-control cleanup').toEqual([]);
   });
@@ -415,6 +410,35 @@ describe('monument pack smoke: bounds and credentials', () => {
       ).toBe(false);
     },
   );
+
+  it('never turns an incomplete fixture PID record into a process-group signal', () => {
+    const path = join(scratch, 'incomplete-fixture.pid');
+    const errors: unknown[] = [];
+    const kill = vi.spyOn(process, 'kill').mockImplementation(() => true);
+    try {
+      for (const text of [
+        '',
+        ' ',
+        '0',
+        '-2',
+        '1.5',
+        '1',
+        String(process.pid),
+        '9007199254740992',
+      ]) {
+        writeFileSync(path, text);
+        killFixturePid(path, errors);
+      }
+      killFixturePid(join(scratch, 'missing-fixture.pid'), errors);
+      expect(kill).not.toHaveBeenCalled();
+      expect(errors).toEqual([]);
+      writeFileSync(path, '12345');
+      killFixturePid(path, errors);
+      expect(kill).toHaveBeenCalledExactlyOnceWith(12345, 'SIGKILL');
+    } finally {
+      kill.mockRestore();
+    }
+  });
 
   it('removes publish credentials and loaders, and keeps ordinary variables', () => {
     const env = plainEnvironment({
@@ -577,16 +601,8 @@ describe.skipIf(process.platform === 'win32')(
         if (child.exitCode === null && child.signalCode === null)
           child.kill('SIGKILL');
         await closed;
-        for (const path of [marker, descendantPid]) {
-          if (!existsSync(path)) continue;
-          try {
-            const pid = readFixturePid(path);
-            if (pid !== undefined) process.kill(pid, 'SIGKILL');
-          } catch (error) {
-            if ((error as NodeJS.ErrnoException).code !== 'ESRCH')
-              cleanupErrors.push(error);
-          }
-        }
+        for (const path of [marker, descendantPid])
+          killFixturePid(path, cleanupErrors);
       }
       expect(cleanupErrors, 'interrupt-fixture cleanup').toEqual([]);
     });
