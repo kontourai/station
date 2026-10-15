@@ -38,23 +38,35 @@ without a regeneration, or a stale or hand-edited raster, fails. Desktop overlay
 `icons/<channel>/` set. Android builds call
 `scripts/apply-android-channel-icons.mjs` after `tauri android init`, applying
 the selected `icons/<channel>/android` set to both `main` and `debug` so source
-set precedence cannot mask the release identity. The TestFlight delivery
+set precedence cannot mask the release identity. Android 13+ gets an API-33
+adaptive-icon override with a monochrome River mask inside the safe area;
+the launcher chooses its tint when themed icons are enabled. Older launchers
+keep the API-26 colour layers. The generator commits the same resources in
+the channel sets and generated-project seed.
+The TestFlight delivery
 workflow (`testflight-delivery.yml`) deletes `gen/apple` and runs
 `tauri ios init`, which renders `Assets.xcassets/AppIcon.appiconset` from
 Tauri's template with Tauri's own default PNGs, so it calls
 `node scripts/ios-channel-icons.mjs apply <channel>` after each init to copy the
-committed `icons/<channel>/ios/AppIcon-*.png` set (stable, beta, nightly; from
+committed `icons/<channel>/ios/AppIcon-*.png` set (stable, beta, nightly and
+the local Dev simulator; from
 the square master, because iOS rejects alpha and the generator refuses any
 translucent pixel) over it. `ios-channel-icons.mjs verify` compares every PNG
 referenced by the source catalog with that set, then compares the shipped
 `AppIcon60x60@2x.png` pixels with the corresponding input. It does not inspect
 every rendition in the compiled asset catalog. It amends the channel-icon receipt the
 overlay step created (its `desktopBundleIcon*` fields name the desktop master
-from `bundle.icon`, not the shipped icon). The ordinary `build-ios.yml` and release simulator jobs run init with
-`gen/apple` present and have no corresponding channel-icon apply/verify step.
-The committed catalog is the stable set; a local or alternate build must check
-its actual output instead of assuming that every init preserves the intended
-icons. Stable keeps the approved
+from `bundle.icon`, not the shipped icon). `write-ios-build-manifest.mjs` also
+restores the icon set for the active Tauri configuration, so local
+development, CI and release simulator builds do not rely on init preserving
+the committed catalog. Applying the set checks its files against the generated
+manifest before replacing catalog PNGs; repeat application of a valid set is
+allowed. Pass `--config <overlay>` when the build uses a channel overlay;
+without it, staging uses the base Stable configuration. Tauri can preserve
+an old `project.yml` during init, so its identifier is not the selection authority.
+CI, release and local development simulator completion compare the
+shipped loose icon too. An alternate build must run these staging and
+verification steps. Stable keeps the approved
 default artwork; `favicon-dev.png` is swapped into Dev by `is-dev-build` in
 `src-ui/src/index.css`.
 Mobile startup uses the same committed artwork: the channel's transparent
@@ -88,6 +100,17 @@ Generate icons only when deliberately changing the artwork:
    ```
 
 ## Manual Setup
+
+If a pinned Dock shortcut still shows the old icon after a macOS update, first
+check `CFBundleIconFile` in the installed app's `Contents/Info.plist` and compare
+the corresponding file under `Contents/Resources` with the channel's `.icns`.
+Quit and reopen the app. If the shortcut still shows the old artwork, remove
+that shortcut and drag the updated app from Applications back into the Dock.
+Stable, Beta and Nightly are separate installations and update separately.
+
+Generated-file hashes and packaged-icon comparisons do not prove that Finder,
+Dock, Windows taskbar or a Linux desktop refreshed its cached icon. Verify
+fresh installation and an update over the old artwork separately on each OS.
 
 If you prefer to manually create icons:
 

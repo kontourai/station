@@ -28,6 +28,9 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-14T23:38:43Z | nightly-desktop | 0.1.11-nightly.2478.10 | `e73c9c3` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/38635623869) |
+| 2026-10-14T23:38:40Z | nightly-android | 0.1.11-nightly.2478.10 | `e73c9c3` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/38635623869) |
+| 2026-10-14T22:30:11Z | nightly-npm | 0.7.0-nightly.2478.38635623869 | `e73c9c3` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38635623869) |
 | 2026-10-14T21:24:13Z | nightly-npm | 0.7.0-nightly.2478.38627222279 | `c4fbda3` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38627222279) |
 | 2026-10-14T20:12:59Z | nightly-npm | 0.7.0-nightly.2478.38623913681 | `29dfae3` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38623913681) |
 | 2026-10-14T18:04:14Z | nightly-npm | 0.7.0-nightly.2478.38607024649 | `bdd182c` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38607024649) |
@@ -265,6 +268,81 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-14T23:38:43Z · nightly-desktop · 0.1.11-nightly.2478.10
+
+- Ship SHA: `e73c9c32084c2ede3c43738bad8fdf90d7cec806`
+- Artifact built at: `2026-10-14T22:43:58.041Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 38635623869)
+
+### Changelog
+
+Commits since `59ff630` ([full sha](https://github.com/kontourai/station/commit/59ff630e0e832be3e5c6400776411a9dae06a6b9)):
+
+**Features**
+
+- [#3659](https://github.com/kontourai/station/pull/3659) feat(security): allow explicitly authorized remote device administration
+- [#3652](https://github.com/kontourai/station/pull/3652) feat(chat): never lose or double-send a message when the app closes mid-send
+
+**Fixes**
+
+- [#3661](https://github.com/kontourai/station/pull/3661) fix(chat): announce the conversation load, and stop the composer measurement opening a gap
+- [#3658](https://github.com/kontourai/station/pull/3658) fix(chat): clarify loading and recover tool approval decisions
+
+**CI / workflow**
+
+- [#3653](https://github.com/kontourai/station/pull/3653) ci(docs): run Corpus with v1 manifests refused and the decisions gate
+
+**Other**
+
+- [#3656](https://github.com/kontourai/station/pull/3656) build(deps): bump @kontourai/veritas from 1.7.6 to 1.11.2
+- [#3657](https://github.com/kontourai/station/pull/3657) chore(decisions): check decision records with Corpus
+
+## 2026-10-14T23:38:40Z · nightly-android · 0.1.11-nightly.2478.10
+
+- Ship SHA: `e73c9c32084c2ede3c43738bad8fdf90d7cec806`
+- Artifact built at: `2026-10-14T23:00:56.654Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 38635623869)
+
+### Changelog
+
+Commits since `59ff630` ([full sha](https://github.com/kontourai/station/commit/59ff630e0e832be3e5c6400776411a9dae06a6b9)):
+
+**Features**
+
+- [#3659](https://github.com/kontourai/station/pull/3659) feat(security): allow explicitly authorized remote device administration
+- [#3652](https://github.com/kontourai/station/pull/3652) feat(chat): never lose or double-send a message when the app closes mid-send
+
+**Fixes**
+
+- [#3661](https://github.com/kontourai/station/pull/3661) fix(chat): announce the conversation load, and stop the composer measurement opening a gap
+- [#3658](https://github.com/kontourai/station/pull/3658) fix(chat): clarify loading and recover tool approval decisions
+
+**CI / workflow**
+
+- [#3653](https://github.com/kontourai/station/pull/3653) ci(docs): run Corpus with v1 manifests refused and the decisions gate
+
+**Other**
+
+- [#3656](https://github.com/kontourai/station/pull/3656) build(deps): bump @kontourai/veritas from 1.7.6 to 1.11.2
+- [#3657](https://github.com/kontourai/station/pull/3657) chore(decisions): check decision records with Corpus
+
+## 2026-10-14T22:30:11Z · nightly-npm · 0.7.0-nightly.2478.38635623869
+
+- Ship SHA: `e73c9c32084c2ede3c43738bad8fdf90d7cec806`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2478.38635623869 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `c4fbda3` ([full sha](https://github.com/kontourai/station/commit/c4fbda38af04949946620b1a7e3373a591ace03e)):
+
+**Fixes**
+
+- [#3661](https://github.com/kontourai/station/pull/3661) fix(chat): announce the conversation load, and stop the composer measurement opening a gap
 
 ## 2026-10-14T21:24:13Z · nightly-npm · 0.7.0-nightly.2478.38627222279
 

@@ -1,5 +1,110 @@
 [
   {
+    "timestampUtc": "2026-10-14T23:38:43Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2478.10",
+    "sha": "e73c9c32084c2ede3c43738bad8fdf90d7cec806",
+    "artifactBuiltAt": "2026-10-14T22:43:58.041Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38635623869",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 38635623869)"
+    ],
+    "changelog": {
+      "previousSha": "59ff630e0e832be3e5c6400776411a9dae06a6b9",
+      "groups": {
+        "feat": [
+          "[#3659](https://github.com/kontourai/station/pull/3659) feat(security): allow explicitly authorized remote device administration",
+          "[#3652](https://github.com/kontourai/station/pull/3652) feat(chat): never lose or double-send a message when the app closes mid-send"
+        ],
+        "fix": [
+          "[#3661](https://github.com/kontourai/station/pull/3661) fix(chat): announce the conversation load, and stop the composer measurement opening a gap",
+          "[#3658](https://github.com/kontourai/station/pull/3658) fix(chat): clarify loading and recover tool approval decisions"
+        ],
+        "ci": [
+          "[#3653](https://github.com/kontourai/station/pull/3653) ci(docs): run Corpus with v1 manifests refused and the decisions gate"
+        ],
+        "docs": [],
+        "other": [
+          "[#3656](https://github.com/kontourai/station/pull/3656) build(deps): bump @kontourai/veritas from 1.7.6 to 1.11.2",
+          "[#3657](https://github.com/kontourai/station/pull/3657) chore(decisions): check decision records with Corpus"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
+    "timestampUtc": "2026-10-14T23:38:40Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2478.10",
+    "sha": "e73c9c32084c2ede3c43738bad8fdf90d7cec806",
+    "artifactBuiltAt": "2026-10-14T23:00:56.654Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38635623869",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 38635623869)"
+    ],
+    "changelog": {
+      "previousSha": "59ff630e0e832be3e5c6400776411a9dae06a6b9",
+      "groups": {
+        "feat": [
+          "[#3659](https://github.com/kontourai/station/pull/3659) feat(security): allow explicitly authorized remote device administration",
+          "[#3652](https://github.com/kontourai/station/pull/3652) feat(chat): never lose or double-send a message when the app closes mid-send"
+        ],
+        "fix": [
+          "[#3661](https://github.com/kontourai/station/pull/3661) fix(chat): announce the conversation load, and stop the composer measurement opening a gap",
+          "[#3658](https://github.com/kontourai/station/pull/3658) fix(chat): clarify loading and recover tool approval decisions"
+        ],
+        "ci": [
+          "[#3653](https://github.com/kontourai/station/pull/3653) ci(docs): run Corpus with v1 manifests refused and the decisions gate"
+        ],
+        "docs": [],
+        "other": [
+          "[#3656](https://github.com/kontourai/station/pull/3656) build(deps): bump @kontourai/veritas from 1.7.6 to 1.11.2",
+          "[#3657](https://github.com/kontourai/station/pull/3657) chore(decisions): check decision records with Corpus"
+        ]
+      },
+      "note": null,
+      "commitCount": 7
+    }
+  },
+  {
+    "timestampUtc": "2026-10-14T22:30:11Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2478.38635623869",
+    "sha": "e73c9c32084c2ede3c43738bad8fdf90d7cec806",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38635623869",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2478.38635623869 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "c4fbda38af04949946620b1a7e3373a591ace03e",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#3661](https://github.com/kontourai/station/pull/3661) fix(chat): announce the conversation load, and stop the composer measurement opening a gap"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-10-14T21:24:13Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2478.38627222279",
