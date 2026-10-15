@@ -204,13 +204,13 @@
   flex: 1;
   min-width: 0;
 }
-.agent-tool-library__source {
+.agent-tool-library__entry > .agent-tool-library__source {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
 }
-.agent-tool-library__source::after {
+.agent-tool-library__entry > .agent-tool-library__source::after {
   content: "›";
   color: var(--k-text-muted);
   font-size: var(--k-text-lg);
@@ -249,4 +249,13 @@ button.agent-tool-library__origin {
   .agent-tool-library__origin {
     min-height: 44px;
   }
+}
+
+.agent-tool-library__identity {
+  display: grid;
+  gap: var(--k-space-1);
+  justify-items: start;
+}
+.agent-tool-library > .button {
+  justify-self: start;
 }

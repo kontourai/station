@@ -38,6 +38,7 @@ export function AgentEditorToolsTab({
   engineId?: string;
 }) {
   const [browsing, setBrowsing] = useState(false);
+  const [initialSourceId, setInitialSourceId] = useState<string>();
   const [connectionDirty, setConnectionDirty] = useState(false);
   const [discardConnection, setDiscardConnection] = useState(false);
   const disabled = locked || !!finding;
@@ -52,7 +53,13 @@ export function AgentEditorToolsTab({
         <div className="agent-tools__heading">
           <span className="editor-label">Tools</span>
           <div className="agent-tools__actions">
-            <Button disabled={disabled} onClick={() => setBrowsing(true)}>
+            <Button
+              disabled={disabled}
+              onClick={() => {
+                setInitialSourceId(undefined);
+                setBrowsing(true);
+              }}
+            >
               <PlusGlyph />
               Add tools
             </Button>
@@ -139,7 +146,10 @@ export function AgentEditorToolsTab({
                 type="button"
                 className="agent-tool-library__source"
                 disabled={disabled}
-                onClick={() => setBrowsing(true)}
+                onClick={() => {
+                  setInitialSourceId(id);
+                  setBrowsing(true);
+                }}
               >
                 <strong>{source?.displayName || source?.name || id}</strong>
                 <small>
@@ -182,6 +192,7 @@ export function AgentEditorToolsTab({
             availableTools={availableTools}
             integrationTools={integrationTools}
             engineId={engineId}
+            initialSourceId={initialSourceId}
             onConnectionDirtyChange={setConnectionDirty}
           />
         </Dialog>

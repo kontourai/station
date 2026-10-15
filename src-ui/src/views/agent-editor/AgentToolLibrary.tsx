@@ -45,9 +45,11 @@ export function AgentToolLibrary({
   form,
   setForm,
   engineId,
+  initialSourceId,
   onConnectionDirtyChange,
 }: Pick<AgentEditorFormProps, 'form' | 'setForm'> & {
   engineId: string;
+  initialSourceId?: string;
   onConnectionDirtyChange?: (dirty: boolean) => void;
 }) {
   const client = useToolLibraryClient();
@@ -55,7 +57,9 @@ export function AgentToolLibrary({
   const library = useToolLibrary(client, form.project || undefined);
   const change = useToolLibraryChange(client);
   const [search, setSearch] = useState('');
-  const [selected, setSelected] = useState<string>();
+  const [selected, setSelected] = useState<string | undefined>(
+    initialSourceId ? `integration:${initialSourceId}` : undefined,
+  );
   const [catalog, setCatalog] = useState<{ id: string; name: string }>();
   const [setup, setSetup] = useState<string>();
   const [plugin, setPlugin] = useState<ToolLibrarySource>();

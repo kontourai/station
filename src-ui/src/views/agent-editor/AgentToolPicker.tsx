@@ -9,7 +9,11 @@ export function AgentToolPicker(
   props: Pick<
     AgentEditorFormProps,
     'form' | 'setForm' | 'availableTools' | 'integrationTools'
-  > & { engineId: string; onConnectionDirtyChange?: (dirty: boolean) => void },
+  > & {
+    engineId: string;
+    initialSourceId?: string;
+    onConnectionDirtyChange?: (dirty: boolean) => void;
+  },
 ) {
   const client = useContext(ToolLibraryClientContext);
   if (client) return <AgentToolLibrary {...props} />;
