@@ -342,7 +342,7 @@ test.describe('Android — Mobile Layout', () => {
     await dismissSetupLauncher(page);
     const { candidates, tooSmall } = await page.evaluate((minimumTarget) => {
       const buttons = Array.from(
-        document.querySelectorAll(
+        document.querySelectorAll<HTMLElement>(
           'button, a[href], [role="button"], input, select, textarea',
         ),
       );
