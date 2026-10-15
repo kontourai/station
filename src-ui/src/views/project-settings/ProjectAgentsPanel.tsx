@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { Checkbox } from '../../components/Checkbox';
 import { Dialog } from '../../components/Dialog';
+import { Empty, SkeletonList } from '../../components/state';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { AgentToolLibrary } from '../agent-editor/AgentToolLibrary';
 import {
@@ -50,7 +51,8 @@ export function ProjectAgentsPanel({
     !['station', 'claude'].includes(
       selectedEngine?.engineId ?? form?.execution.agentConnectionId ?? '',
     );
-  if (library.isPending) return <p>Loading Project tools…</p>;
+  if (library.isPending)
+    return <SkeletonList count={2} label="Loading Project tools" />;
   if (library.isError || !view)
     return <p role="status">Project tools unavailable.</p>;
   const role = access.data?.projects.find((row) => row.id === project.id)?.role;
@@ -152,9 +154,7 @@ export function ProjectAgentsPanel({
           </Button>
         </div>
       ))}
-      {agents.data?.length === 0 && (
-        <p className="editor-hint">No Project agents yet.</p>
-      )}
+      {agents.data?.length === 0 && <Empty variant="compact" />}
       <small>
         Running work also requires an available computer contribution.
       </small>

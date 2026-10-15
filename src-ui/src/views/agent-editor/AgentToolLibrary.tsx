@@ -9,7 +9,7 @@ import { Button } from '../../components/Button';
 import { Checkbox } from '../../components/Checkbox';
 import { ArrowDownGlyph } from '../../components/icons/Glyph';
 import { PageHeaderScope } from '../../components/page-frame';
-import { SkeletonList } from '../../components/state';
+import { Empty, SkeletonList } from '../../components/state';
 import type { Tool } from '../../types';
 import { AgentToolApproval } from './AgentToolApproval';
 import { AgentToolConnection } from './AgentToolDiscovery';
@@ -347,40 +347,42 @@ export function AgentToolLibrary({
                 >
                   <span className="sr-only">{title}</span>
                 </Checkbox>
-                <details className="agent-tool-library__tool-description">
-                  <summary aria-label={`Details for ${title}`}>
-                    <span className="agent-tool-library__tool-name">
-                      {title}
-                    </span>
-                    <span
-                      className="agent-tool-library__classification"
-                      title={
-                        tool.classificationSource === 'publisher'
-                          ? 'Reported by the source; approval still defaults to Ask me.'
-                          : undefined
-                      }
-                    >
-                      {tool.readOnly === true
-                        ? 'Read'
-                        : tool.readOnly === false
-                          ? 'Write'
-                          : 'Unclassified'}
-                    </span>
-                    <ArrowDownGlyph className="agent-tool-library__caret" />
-                  </summary>
-                  <p>{tool.description || 'No description provided.'}</p>
-                </details>
-                {checked && (
-                  <AgentToolApproval
-                    form={form}
-                    setForm={setForm}
-                    integrationId={source.id}
-                    tool={tool as Tool}
-                    tools={tools}
-                    engineId={engineId}
-                    disabled={!view.canManageAgents || !source.permitted}
-                  />
-                )}
+                <div className="agent-tool-library__tool-body">
+                  <details className="agent-tool-library__tool-description">
+                    <summary aria-label={`Details for ${title}`}>
+                      <span className="agent-tool-library__tool-name">
+                        {title}
+                      </span>
+                      <span
+                        className="agent-tool-library__classification"
+                        title={
+                          tool.classificationSource === 'publisher'
+                            ? 'Reported by the source; approval still defaults to Ask me.'
+                            : undefined
+                        }
+                      >
+                        {tool.readOnly === true
+                          ? 'Read'
+                          : tool.readOnly === false
+                            ? 'Write'
+                            : 'Unclassified'}
+                      </span>
+                      <ArrowDownGlyph className="agent-tool-library__caret" />
+                    </summary>
+                    {tool.description && <p>{tool.description}</p>}
+                  </details>
+                  {checked && (
+                    <AgentToolApproval
+                      form={form}
+                      setForm={setForm}
+                      integrationId={source.id}
+                      tool={tool as Tool}
+                      tools={tools}
+                      engineId={engineId}
+                      disabled={!view.canManageAgents || !source.permitted}
+                    />
+                  )}
+                </div>
               </div>
             );
           })}
@@ -578,7 +580,7 @@ export function AgentToolLibrary({
         );
       })}
       {matching.length === 0 && (
-        <p className="editor-hint">No matching tools.</p>
+        <Empty variant="compact" label="Nothing matches." />
       )}
       {change.isError && <p role="alert">{change.error.message}</p>}
       {view.operator && (

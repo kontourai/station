@@ -236,7 +236,8 @@
 }
 
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .attention-item__actions {
+  .attention-item__actions,
+  .attention-item__footer {
     justify-content: flex-start;
   }
 }
@@ -259,9 +260,4 @@
 .attention-item__footer > .attention-item__detail {
   flex-basis: 100%;
   min-width: 0;
-}
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .attention-item__footer {
-    justify-content: flex-start;
-  }
 }

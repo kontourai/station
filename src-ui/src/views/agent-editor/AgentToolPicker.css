@@ -205,6 +205,7 @@
   font-size: var(--k-text-sm);
 }
 button.agent-tool-library__origin {
+  min-height: 44px;
   border: 0;
   padding: 0;
   background: none;
@@ -227,12 +228,6 @@ button.agent-tool-library__origin {
   gap: var(--k-space-3);
 }
 
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .agent-tool-library__origin {
-    min-height: 44px;
-  }
-}
-
 .agent-tool-library__identity {
   display: grid;
   gap: var(--k-space-1);
@@ -250,6 +245,7 @@ button.agent-tool-library__origin {
 }
 .agent-tool-library__header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: flex-start;
   gap: var(--k-space-4);
@@ -264,7 +260,7 @@ button.agent-tool-library__origin {
 }
 .agent-tool-library__tool {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 11rem;
+  grid-template-columns: 44px minmax(0, 1fr);
   align-items: start;
   column-gap: var(--k-space-2);
   padding-block: var(--k-space-1);
@@ -274,7 +270,15 @@ button.agent-tool-library__origin {
   min-height: 44px;
   justify-content: center;
 }
+.agent-tool-library__tool-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--k-space-2);
+  min-width: 0;
+}
 .agent-tool-library__tool-description {
+  flex: 1 1 14rem;
   min-width: 0;
 }
 .agent-tool-library__tool-description summary {
@@ -297,7 +301,8 @@ button.agent-tool-library__origin {
   font-size: var(--k-text-sm);
   overflow-wrap: anywhere;
 }
-.agent-tool-library__tool > .agent-tool-picker__approval {
+.agent-tool-library__tool-body > .agent-tool-picker__approval {
+  flex: 0 1 11rem;
   min-height: 44px;
   align-self: start;
 }
@@ -360,21 +365,13 @@ details[open] > summary > .agent-tool-library__caret {
 .agent-tool-library__sharing > .cb {
   min-height: 44px;
 }
-@media (max-width: 600px) {
-  .agent-tool-library__header {
-    flex-direction: column;
-    gap: var(--k-space-3);
-  }
-  .agent-tool-library__tool {
-    grid-template-columns: 44px minmax(0, 1fr);
-  }
-  .agent-tool-library__tool > .agent-tool-picker__approval,
-  .agent-tool-library__tool > .editor-hint {
-    grid-column: 2;
-    justify-self: start;
-    margin-bottom: var(--k-space-2);
-  }
-}
+
 .agent-tool-library > .button {
   justify-self: start;
+}
+
+.agent-tool-library__identity {
+  flex: 1 1 14rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }

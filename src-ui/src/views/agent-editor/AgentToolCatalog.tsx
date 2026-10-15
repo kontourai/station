@@ -6,7 +6,7 @@ import {
   getRegistryItemId,
   type RegistryItem,
 } from '../../components/registry/RegistryCatalog';
-import { SkeletonList } from '../../components/state';
+import { Empty, SkeletonList } from '../../components/state';
 import { Tabs } from '../../components/Tabs';
 
 export function AgentToolCatalog({
@@ -84,7 +84,7 @@ export function AgentToolCatalog({
       ) : error ? (
         <p role="alert">Could not load this catalog.</p>
       ) : available.length === 0 ? (
-        <p className="editor-hint">No new matching tools.</p>
+        <Empty variant="compact" label="Nothing matches." />
       ) : (
         available.map((item) => {
           const id = getRegistryItemId(item);

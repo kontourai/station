@@ -19,14 +19,15 @@
   margin: 0;
 }
 .tool-access-panel li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--k-space-4);
+  gap: var(--k-space-2) var(--k-space-4);
   padding-block: var(--k-space-3);
   border-top: 1px solid var(--k-line);
 }
 .tool-access-panel__project {
+  flex: 1 1 14rem;
   display: grid;
   gap: var(--k-space-1);
   min-width: 0;
@@ -45,13 +46,4 @@
 }
 .tool-access-panel .button {
   min-height: 44px;
-}
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .tool-access-panel li {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--k-space-2);
-  }
-  .tool-access-panel li > .button {
-    justify-self: start;
-  }
 }

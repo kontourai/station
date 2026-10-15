@@ -15,10 +15,12 @@ export function MyAccessPanel({ compact = false }: { compact?: boolean }) {
   }>();
   const access = useOwnToolAccess(client);
   if (access.isPending)
-    return compact ? (
-      <span>Checking access…</span>
-    ) : (
-      <SkeletonList count={2} label="Checking your access" />
+    return (
+      <SkeletonList
+        count={compact ? 1 : 2}
+        withIcon={!compact}
+        label="Checking your access"
+      />
     );
   if (access.isError || !access.data)
     return <p role="status">Access unavailable</p>;
