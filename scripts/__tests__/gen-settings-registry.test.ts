@@ -224,6 +224,10 @@ const DECLARED_SCOPE: ReadonlyMap<string, string> = new Map(
 );
 
 const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
+  'account-preference-sync': 'account',
+  'personal-codex-approval': 'account',
+  'personal-claude-approval': 'account',
+  'personal-muse-approval': 'account',
   'approval-guardian': 'station',
   'usage-telemetry': 'station',
   'telemetry-destination': 'informational',
@@ -252,7 +256,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'reset-defaults': 'station',
   'reset-device-defaults': 'device',
   'feature-previews': 'station',
-  'enable-developer-tools': 'device',
+  'enable-developer-tools': 'account',
   'shared-answers': 'station',
   'plugin-visibility': 'station',
   'host-runtime': 'informational',
@@ -261,19 +265,19 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'default-region': 'defaults',
   'default-agent-instructions': 'defaults',
   'template-variables': 'defaults',
-  'chat-font-size': 'device',
-  'smooth-answer-reveal': 'device',
-  'chat-show-reasoning': 'device',
-  'chat-show-tool-details': 'device',
-  'chat-dock-auto-hide': 'device',
+  'chat-font-size': 'account',
+  'smooth-answer-reveal': 'account',
+  'chat-show-reasoning': 'account',
+  'chat-show-tool-details': 'account',
+  'chat-dock-auto-hide': 'account',
   'chat-auto-float-browser': 'device',
-  'diff-style': 'device',
-  'diff-wrap': 'device',
-  theme: 'device',
+  'diff-style': 'account',
+  'diff-wrap': 'account',
+  theme: 'account',
   'sidebar-sections': 'device',
   'haptic-feedback': 'device',
-  'confirm-conversation-delete': 'device',
-  'accent-color': 'device',
+  'confirm-conversation-delete': 'account',
+  'accent-color': 'account',
   'keyboard-shortcuts': 'device',
   'push-notifications': 'device',
   'speech-to-text': 'device',
@@ -308,12 +312,13 @@ describe('published write authority', () => {
       .filter((entry) => DECLARED_SCOPE.has(entry.configKey as string))
       .filter(
         (entry) =>
-          entry.scope !== DECLARED_SCOPE.get(entry.configKey as string),
+          entry.scope !==
+          (entry.id === 'smooth-answer-reveal'
+            ? 'account'
+            : DECLARED_SCOPE.get(entry.configKey as string)),
       )
       .map((entry) => `${entry.id} (${entry.configKey}): ${entry.scope}`);
-    // No exemption list. Every row that names a key agrees with that key's
-    // registry today, and a row that needed to disagree would have to say so
-    // here rather than acquiring the difference from where it is rendered.
+    // Answer delivery edits only the portable fields of the mixed feature record.
     expect(mismatched).toEqual([]);
   });
 });
