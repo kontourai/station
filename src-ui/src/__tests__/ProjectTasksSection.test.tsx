@@ -434,6 +434,16 @@ describe('ProjectTasksSection', () => {
       fireEvent.click(button);
       expect(dispatchTask).not.toHaveBeenCalled();
       expect(tasks[0].status).toBe('todo');
+      const settingsLink = screen.getByRole('link', {
+        name: 'Project settings › Agents',
+      });
+      expect(settingsLink.getAttribute('href')).toBe(
+        '/projects/project-alpha/edit?section=agents',
+      );
+      fireEvent.click(settingsLink);
+      expect(navigate).toHaveBeenCalledWith('/projects/project-alpha/edit', {
+        section: 'agents',
+      });
     },
   );
 

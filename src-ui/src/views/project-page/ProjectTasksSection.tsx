@@ -624,12 +624,12 @@ export function ProjectTasksSection({
                       Dispatch needs an agent, and this Task has none. New Tasks
                       use the first agent selected in{' '}
                       <a
-                        href={`/projects/${encodeURIComponent(slug)}/settings?section=agents`}
+                        href={`/projects/${encodeURIComponent(slug)}/edit?section=agents`}
                         onClick={(event) => {
                           if (!isPlainLeftClick(event)) return;
                           event.preventDefault();
                           navigate(
-                            `/projects/${encodeURIComponent(slug)}/settings`,
+                            `/projects/${encodeURIComponent(slug)}/edit`,
                             {
                               section: 'agents',
                             },
