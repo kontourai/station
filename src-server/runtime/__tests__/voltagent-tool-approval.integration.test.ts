@@ -1,3 +1,4 @@
+import type { LanguageModelV3StreamPart } from '@ai-sdk/provider';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import { simulateReadableStream } from 'ai';
 import { MockLanguageModelV3 } from 'ai/test';
@@ -44,7 +45,9 @@ test.each([
       name: 'Approval proof',
       prompt: instructions,
       tools: {
-        autoApprove: ['*', 'mcp/reports/read'],
+        mcpServers: ['reports'],
+        autoApprove:
+          action === 'read' ? ['mcp/reports/read'] : ['*', 'mcp/reports/read'],
         askBeforeUse: ['mcp/reports/*'],
       },
     };
@@ -69,7 +72,11 @@ test.each([
     const runtimeName = tools[0]!.name;
     const hooks = createAgentHooks({
       spec,
-      appConfig: {},
+      appConfig: {
+        defaultModel: 'fixture',
+        invokeModel: 'fixture',
+        structureModel: 'fixture',
+      },
       configLoader: loader,
       agentFixedTokens: new Map(),
       memoryAdapters: new Map(),
@@ -86,15 +93,17 @@ test.each([
       () => 'approval-conversation',
     );
     const unregister =
-      approval === 'unavailable'
-        ? () => {}
-        : hooks.registerApprovalRequester('approval-conversation', (call) =>
-            callback({ type: 'tool-approval', ...call }),
-          );
+      approval === 'approve' || approval === 'deny'
+        ? hooks.registerApprovalRequester(
+            'approval-conversation',
+            async (call) =>
+              (await callback({ type: 'tool-approval', ...call })) === true,
+          )
+        : () => {};
     let modelCall = 0;
     const model = new MockLanguageModelV3({
       doStream: async () => ({
-        stream: simulateReadableStream({
+        stream: simulateReadableStream<LanguageModelV3StreamPart>({
           chunks:
             modelCall++ === 0
               ? [
