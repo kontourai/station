@@ -978,7 +978,23 @@
 
     "src-ui/src/components/chat/TaskShapingComposer.tsx",
 
-    "src-ui/src/components/chat/TaskProposalCard.tsx"
+    "src-ui/src/components/chat/TaskProposalCard.tsx",
+
+    "src-ui/src/components/modals/NewChatModal.tsx",
+
+    "src-ui/src/components/modals/TaskChatStart.css",
+
+    "src-ui/src/components/chat-start/StartComposer.tsx",
+
+    "src-ui/src/components/chat-dock/ChatDockModalStack.tsx",
+
+    "src-ui/src/components/chat-dock/useChatDockOverlays.ts",
+
+    "src-ui/src/lib/newChatIntent.ts",
+
+    "src-server/runtime/frameworks/voltagent-adapter.ts",
+
+    "src-server/runtime/frameworks/__tests__/voltagent-model-input.test.ts"
   ],
 
   "checks": [

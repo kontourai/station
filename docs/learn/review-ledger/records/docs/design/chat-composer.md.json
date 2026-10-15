@@ -146,7 +146,11 @@
 
     "src-ui/src/components/chat/TaskShapingComposer.tsx",
 
-    "src-ui/src/components/chat/TaskProposalCard.tsx"
+    "src-ui/src/components/chat/TaskProposalCard.tsx",
+
+    "src-ui/src/components/modals/TaskChatStart.css",
+
+    "src-server/runtime/frameworks/voltagent-adapter.ts"
   ],
 
   "checks": [
