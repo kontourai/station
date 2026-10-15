@@ -400,11 +400,15 @@ test.each(Array.from({ length: 400 }, (_, i) => i))(
 test('a backward transition out of accepted violates the host constraint without changing either database', async () => {
   const root = makeTempDir('monument-invalid-boundary-transition-');
   const old = open(join(root, 'old.sqlite'));
-  closes.push(() => old.close());
+  closes.push(() => {
+    old.close();
+  });
   const coordinator = captured.current;
   if (!coordinator) throw new Error('Expected production SQL coordinator');
   const current = open(join(root, 'new.sqlite'));
-  closes.push(() => current.close());
+  closes.push(() => {
+    current.close();
+  });
   const kernel = openSqliteKernelStorage({ database: current['db'], tables });
   const ctx = context(current['db']);
   const setup: BoundaryCommand[] = [
