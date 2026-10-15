@@ -524,6 +524,13 @@ describe('session-terminal boundary ordering', () => {
         createdAt: '2026-10-13T03:00:00.000Z',
       };
       store.appendEvent(later);
+      expect(
+        store.sessionTurnBoundaryAuthority().hasPossibleEffect('thread'),
+      ).toEqual({
+        kind: 'available',
+        active: false,
+      });
+      expect(boundaries(path)).toEqual([{ thread_id: 'thread' }]);
       expect(store.sessionTurnBoundaryAuthority().observe(later)).toEqual({
         kind: 'applied',
       });

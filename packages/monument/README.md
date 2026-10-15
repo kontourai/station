@@ -186,8 +186,10 @@ stored fact. No Station participant opts into `observeReads`.
 that bind a creation fence. Its harness supplies a durable creation-sequence
 source and terminal callbacks, without exposing SQL to the cases. It verifies
 capture and preservation across transition/reopen, terminal lookup, missing
-facts, strict ordering (earlier, equal, later), and acceptance against the fixed
-host terminal authority. The default-table suite
+facts, strict ordering (earlier, equal, later), acceptance against the fixed
+host terminal authority, and live read-projection facts across reopen while raw
+listing and dead-owner recovery retain the rows. The SQLite binding also rejects
+a projection callback in kernel-terminal mode at open. The default-table suite
 remains separate because those tables have no creation-fence column.
 
 ## Reconcile after a restart
