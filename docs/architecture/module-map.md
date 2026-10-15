@@ -1390,8 +1390,8 @@ ledger is not read for it while the abandoned start is still running in this
 process (a cold start claims the key only once its Session exists), so it is
 never started a second time alongside itself.
 Someone else's entry that may still be sent (`queued`, `placing`,
-`unconfirmed`) is listed without its key, and `/chat` refuses a send under
-such a key (`inbox_key_held`). An `unconfirmed` entry
+`unconfirmed`) is listed without its key, and `/chat` and
+`/chat/:id/continue` refuse a send under such a key (`inbox_key_held`). An `unconfirmed` entry
 is never sent again and holds the ones behind it until someone who may send to
 the conversation dismisses it; only the sender withdraws a waiting one.
 Refusal reasons are stable codes with fixed messages. The delivery lookup

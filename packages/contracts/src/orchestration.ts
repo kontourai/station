@@ -1587,8 +1587,8 @@ export interface ConversationInboxEntry {
   /**
    * The send's idempotency key; resending the same body answers this entry.
    * Absent on someone else's entry that may still be sent (`queued`,
-   * `sending`, `unconfirmed`). A send under such a key is refused
-   * `inbox_key_held`.
+   * `sending`, `unconfirmed`). A send under such a key (`/chat` or
+   * `/chat/:id/continue`) is refused `inbox_key_held`.
    */
   clientTurnId?: string;
   /** Only follow-ups today; steer and display-only kinds may follow. */

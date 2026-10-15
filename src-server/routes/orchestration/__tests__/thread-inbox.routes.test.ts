@@ -432,6 +432,11 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       await inbox.idle();
     });
     let caller = OWNER;
+    /**
+     * `/chat/:id/continue` reached its continuation with these keys. A
+     * recorder: what is tested there is what the route lets through.
+     */
+    const continuations: Array<{ clientTurnId?: string; userId: string }> = [];
     const app = new Hono();
     app.route(
       '/api/orchestration',
@@ -441,6 +446,13 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         getUserId: () => caller,
         executeForegroundMessage: (input) =>
           executeForegroundMessage(input, deps),
+        continueForegroundMessage: async (input) => {
+          continuations.push({
+            ...(input.clientTurnId ? { clientTurnId: input.clientTurnId } : {}),
+            userId: input.userId,
+          });
+          return {} as never;
+        },
         ...(options.inbox === false ? {} : { threadInbox: inbox }),
       }),
     );
@@ -499,7 +511,18 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       await eventually(() => expect(inbox.mustQueue(CONVERSATION)).toBe(true));
     };
     const prompts = () => adapter.turns.map((turn) => turn.input);
+    const continueSend = (clientTurnId: string, message: string) =>
+      app.request(
+        `/api/orchestration/chat/${encodeURIComponent(CONVERSATION)}/continue`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ message, clientTurnId }),
+        },
+      );
     return {
+      continuations,
+      continueSend,
       root,
       adapter,
       store,
@@ -946,5 +969,25 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(world.prompts()).toEqual(['read the file', 'then summarize']);
     expect(world.adapter.turns.at(-1)?.clientTurnId).toBe('owner-key');
+  });
+
+  test('R3-4: /chat/:id/continue refuses a key the inbox holds for someone else too', async () => {
+    const world = station();
+    await world.busy();
+    const held = await world.send('owner-key', 'then summarize', {
+      whenBusy: 'queue',
+    });
+    expect(held.status).toBe(202);
+    const squat = await world.as(READER, () =>
+      world.continueSend('owner-key', 'from the reader'),
+    );
+    expect(squat.status, await squat.clone().text()).toBe(409);
+    expect(await squat.json()).toMatchObject({ code: 'inbox_key_held' });
+    expect(world.continuations).toEqual([]);
+    // Control: a key of the reader's own reaches the continuation.
+    await world.as(READER, () => world.continueSend('reader-key', 'mine'));
+    expect(world.continuations).toEqual([
+      { clientTurnId: 'reader-key', userId: READER },
+    ]);
   });
 });

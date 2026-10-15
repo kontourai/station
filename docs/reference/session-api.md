@@ -205,7 +205,8 @@ another device and a restart.
   `turnId`, once Station sent it). Sent when the conversation is idle and
   holds nothing, it takes the live path, whose turn claim answers with the
   turn already started. The same key with a different message is refused
-  `409` with `code: "inbox_key_conflict"`. A send, held or not, under a key
+  `409` with `code: "inbox_key_conflict"`. A send to `POST /chat` or
+  `POST /chat/<conversationId>/continue`, held or not, under a key
   the inbox holds for someone else in a state it may still send (`queued`,
   `sending`, `unconfirmed`) is refused `409` with `code: "inbox_key_held"`,
   so nobody takes the turn another person's message waits for. An inbox holds at most 50 unsettled
