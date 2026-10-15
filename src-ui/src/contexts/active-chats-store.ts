@@ -481,6 +481,7 @@ export class ActiveChatsStore {
       action?: { label: string; handler: () => void };
       sendFailure?: boolean;
       queuedRetry?: boolean;
+      childWorkKey?: string;
     },
   ) {
     const chat = this.chats[sessionId];

@@ -61,6 +61,7 @@ import { TranscriptVirtualizer } from './TranscriptVirtualizer';
 import {
   foldTranscriptChildren,
   TranscriptChildrenContext,
+  TranscriptTurnContext,
 } from './transcript-child-work';
 import {
   markTranscriptPhase,
@@ -439,7 +440,33 @@ function ChatMessageListComponent({
     [submitForm, formScope, activeSession.replay],
   );
 
-  const messages = activeSession.messages || EMPTY_MESSAGES;
+  const messages = useMemo(() => {
+    const loaded = activeSession.messages || EMPTY_MESSAGES;
+    const represented = new Set<string>();
+    for (const [key, child] of transcriptChildren) {
+      const inLoadedRow = loaded.some(
+        (message) =>
+          message.role === 'assistant' &&
+          message.sessionId === child.item.reporterThreadId &&
+          (child.toolAnchor
+            ? message.contentParts?.some(
+                (part) => part.toolCallId === child.item.parent?.toolCallId,
+              )
+            : message.turnId === child.spawn?.turnId),
+      );
+      const inStreamingRow =
+        !suppressStreamingRow &&
+        isTurnStreamLive(activeSession) &&
+        activeSession.currentSessionId === child.item.reporterThreadId &&
+        activeSession.openTurnId === child.spawn?.turnId;
+      if (inLoadedRow || inStreamingRow) represented.add(key);
+    }
+    const visible = loaded.filter(
+      (message) =>
+        !message.childWorkKey || !represented.has(message.childWorkKey),
+    );
+    return visible.length === loaded.length ? loaded : visible;
+  }, [activeSession, suppressStreamingRow, transcriptChildren]);
   // archive#3300: the turn fold, not the session flags — a settled turn must
   // not reconstruct its own streaming row after resume. See the doc comment
   // on `isTurnStreamLive` for why `isSessionExecutionActive` was the wrong
@@ -1221,7 +1248,15 @@ function ChatMessageListComponent({
           ? { id: `transcript-message-${encodeURIComponent(messageId)}` }
           : {})}
       >
-        {renderMessage(row.message, row.index)}
+        <TranscriptTurnContext.Provider
+          value={
+            row.message.role === 'assistant'
+              ? { threadId: row.message.sessionId, turnId: row.message.turnId }
+              : undefined
+          }
+        >
+          {renderMessage(row.message, row.index)}
+        </TranscriptTurnContext.Provider>
       </div>
     );
   };
@@ -1437,40 +1472,50 @@ function ChatMessageListComponent({
                     className="chat-message-anchor"
                     data-chat-message-key={`${activeSession.id}:streaming`}
                   >
-                    <ActiveStreamingMessage
-                      sessionId={activeSession.id}
-                      agentIcon={agentIcon}
-                      agentIconStyle={EMPTY_STYLE}
-                      fontSize={fontSize}
-                      showReasoning={showReasoning}
-                      renderReasoning={renderReasoning}
-                      renderToolCall={renderToolCall}
-                      activityHint={activeSession.activityHint}
-                      elapsedMs={activeSession.replay?.elapsedMs}
-                      conversationActivity={activeSession.conversationActivity}
-                      turnStartedAt={activeSession.openTurnStartedAt}
-                      suppressActivity={suppressActivity}
-                      hideProgressSilence={progressSilenceShownElsewhere}
-                      statusLabel={
-                        activeSession.orchestrationStatus ===
-                          'awaiting-approval' && chatWaitsOnUser(activeSession)
-                          ? // station#2235: the status alone asserts nothing about
-                            // an approval — a crashed turn's needs_input folds to
-                            // this status with no request behind it. Name the
-                            // approval only when a request is still waiting on
-                            // the user; without one the session is waiting on the
-                            // user, not on a decision. A session whose requests
-                            // are all answered is waiting on the engine, and says
-                            // nothing here.
-                            waitingApprovalCount > 0
-                            ? 'Waiting for approval'
-                            : 'Waiting on you'
-                          : undefined
-                      }
-                      attributionAgent={streamingAttributionAgent}
-                      owner={owner}
-                      onContentChange={handleStreamingContentChange}
-                    />
+                    <TranscriptTurnContext.Provider
+                      value={{
+                        threadId: activeSession.currentSessionId,
+                        turnId: activeSession.openTurnId,
+                      }}
+                    >
+                      <ActiveStreamingMessage
+                        sessionId={activeSession.id}
+                        agentIcon={agentIcon}
+                        agentIconStyle={EMPTY_STYLE}
+                        fontSize={fontSize}
+                        showReasoning={showReasoning}
+                        renderReasoning={renderReasoning}
+                        renderToolCall={renderToolCall}
+                        activityHint={activeSession.activityHint}
+                        elapsedMs={activeSession.replay?.elapsedMs}
+                        conversationActivity={
+                          activeSession.conversationActivity
+                        }
+                        turnStartedAt={activeSession.openTurnStartedAt}
+                        suppressActivity={suppressActivity}
+                        hideProgressSilence={progressSilenceShownElsewhere}
+                        statusLabel={
+                          activeSession.orchestrationStatus ===
+                            'awaiting-approval' &&
+                          chatWaitsOnUser(activeSession)
+                            ? // station#2235: the status alone asserts nothing about
+                              // an approval — a crashed turn's needs_input folds to
+                              // this status with no request behind it. Name the
+                              // approval only when a request is still waiting on
+                              // the user; without one the session is waiting on the
+                              // user, not on a decision. A session whose requests
+                              // are all answered is waiting on the engine, and says
+                              // nothing here.
+                              waitingApprovalCount > 0
+                              ? 'Waiting for approval'
+                              : 'Waiting on you'
+                            : undefined
+                        }
+                        attributionAgent={streamingAttributionAgent}
+                        owner={owner}
+                        onContentChange={handleStreamingContentChange}
+                      />
+                    </TranscriptTurnContext.Provider>
                   </div>
                 )}
                 {/* Backgrounded provider tasks outlive the assistant turn: the

@@ -148,6 +148,7 @@ function announceSettle(
   const summary = after.result?.summary;
   activeChatsStore.addEphemeralMessage(threadId, {
     role: 'system',
+    childWorkKey: childWorkKey(after),
     content: summary ? `${label}\n\n${summary}` : label,
   });
 }

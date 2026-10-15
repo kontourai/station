@@ -818,15 +818,18 @@ current cell is wired to `provider-task-stop`, so
 its running child work now uses that control. The legacy `TaskRow` bridge
 remains for an engine whose control cell is not wired.
 
-**Amended 2026-10-14.** A subagent whose engine names the tool call that
-spawned it (`parent.toolCallId`) is also drawn as a card in the chat
-transcript, right after that call
-(`components/chat/SubagentTranscriptCard.tsx`). The card is folded from the
-transcript window's own `child-work.updated` events, so it is not a third
-registry and binds nothing new to the dock. The Agents pane stays the place
-to see every child, stop one, or read a child no tool call names; the card
-and the pane's row share their status words and time format
-(`utils/child-work-display.ts`).
+**Amended 2026-10-14.** Subagents also appear as inline chat transcript
+cards (`components/chat/SubagentTranscriptCard.tsx`). Claude and Muse cards
+sit after their spawning tool-call run, including every child of a workflow.
+When an engine such as Codex reports a child without a tool-call row, the
+card uses the child's parent turn and the spawn event's text position.
+Each child appears once. The transcript's loaded `child-work.updated`
+events retain every child whose spawn is loaded, independently of the live
+registry's settled-item retention limit. Completion notices carry child
+identity and remain visible only when no inline card represents that child.
+The Agents pane remains the complete list and stop surface, including
+children with no loaded spawn anchor. The card and pane share status words
+and time formatting (`utils/child-work-display.ts`).
 
 **Implemented by #1969 (the Device pane), 2026-09-14.** A captured
 simulator or emulator screen as a dock tab (`device`, `exposure: 'catalog'`,

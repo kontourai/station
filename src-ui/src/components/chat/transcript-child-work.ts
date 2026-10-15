@@ -3,28 +3,21 @@ import {
   type ChildWorkDelta,
   type ChildWorkItem,
   childWorkDeltaFromLegacyClaudeTaskNotification,
+  childWorkKey,
   createEmptyChildWorkRegistry,
 } from '@kontourai/station-contracts/child-work';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { createContext, useContext } from 'react';
+import type { RunBlock, ToolCallLike } from './tool-call-runs';
 
-/**
- * The transcript's own read of the children its tool calls spawned.
- *
- * Folded from the SAME runtime events the transcript window renders (the
- * bounded event window plus the live events stitched onto it), through the
- * contract's one reducer, so a card says what the durable record says: on a
- * cold reload a finished subagent still reads Completed with its result,
- * where the chat registry (`childWorkHandlers.ts`) keeps only what is
- * running now.
- *
- * Only a child whose engine named the tool call that spawned it
- * (`parent.toolCallId`) is indexed: that is the one fact that places it in
- * the transcript. A child without one has no spawn point to render at, and
- * stays in the Agents pane only.
+/** Loaded transcript children retain their spawn anchors and all settled results.
+ * Each child uses the contract fold independently: live-registry retention must
+ * not evict a historical card whose spawn is still in the loaded window.
  */
 export interface TranscriptChild {
   item: ChildWorkItem;
+  spawn?: { turnId: string; textOffset: number };
+  toolAnchor: boolean;
   /** The engine of the session that reported the child (its event envelope). */
   provider?: string;
 }
@@ -55,48 +48,176 @@ export function foldTranscriptChildren(
   events: readonly { event: CanonicalRuntimeEvent }[] | undefined,
 ): TranscriptChildren {
   if (!events?.length) return EMPTY;
-  let registry = createEmptyChildWorkRegistry();
+  const registries = new Map<
+    string,
+    ReturnType<typeof createEmptyChildWorkRegistry>
+  >();
+  const spawns = new Map<string, TranscriptChild['spawn']>();
   const providers = new Map<string, string>();
+  const textOffsets = new Map<string, number>();
+  const tools = new Set<string>();
   for (const { event } of events) {
+    if (event.method === 'tool.started' || event.method === 'tool.completed')
+      tools.add(JSON.stringify([event.threadId, event.toolCallId]));
+    if (event.method === 'content.text-delta') {
+      const turn = JSON.stringify([event.threadId, event.turnId]);
+      textOffsets.set(turn, (textOffsets.get(turn) ?? 0) + event.delta.length);
+    }
     if (event.method === 'session.exited') {
-      // The session ended: nothing it listed can still be running. An empty
-      // authoritative listing turns each still-running child into
-      // `unresolved` (the contract's "no outcome observed"), never into an
-      // outcome, and a real settle drained after the exit still replaces it.
-      registry = applyChildWorkDelta(registry, {
-        kind: 'snapshot',
-        producer: 'engine-subagent',
-        reporterThreadId: event.threadId,
-        running: [],
-      });
+      for (const [key, registry] of registries) {
+        registries.set(
+          key,
+          applyChildWorkDelta(registry, {
+            kind: 'snapshot',
+            producer: 'engine-subagent',
+            reporterThreadId: event.threadId,
+            running: [],
+          }),
+        );
+      }
       continue;
     }
     const delta = deltaFor(event);
-    if (!delta || delta.kind === 'not-reported') continue;
-    // A delta names its own reporter; one arriving on another session's
-    // thread is not that session's to record (the server's rule too).
-    if (reporterOf(delta) !== event.threadId) continue;
-    registry = applyChildWorkDelta(registry, delta);
+    if (
+      !delta ||
+      delta.kind === 'not-reported' ||
+      reporterOf(delta) !== event.threadId
+    )
+      continue;
     providers.set(event.threadId, event.provider);
+    const running =
+      delta.kind === 'snapshot'
+        ? delta.running
+        : delta.kind === 'upsert'
+          ? [delta.item]
+          : [];
+    for (const item of running) {
+      const key = childWorkKey(item);
+      if (!registries.has(key))
+        registries.set(key, createEmptyChildWorkRegistry());
+      if (!spawns.has(key) && item.parent?.turnId)
+        spawns.set(key, {
+          turnId: item.parent.turnId,
+          textOffset:
+            textOffsets.get(
+              JSON.stringify([event.threadId, item.parent.turnId]),
+            ) ?? 0,
+        });
+    }
+    if (delta.kind === 'settle' && !registries.has(childWorkKey(delta)))
+      continue;
+    for (const [key, registry] of registries) {
+      if (
+        delta.kind !== 'snapshot' &&
+        key !== childWorkKey(delta.kind === 'upsert' ? delta.item : delta)
+      )
+        continue;
+      const scoped =
+        delta.kind === 'snapshot'
+          ? {
+              ...delta,
+              running: delta.running.filter(
+                (item) => childWorkKey(item) === key,
+              ),
+            }
+          : delta;
+      registries.set(key, applyChildWorkDelta(registry, scoped));
+    }
   }
-  const byToolCall = new Map<string, TranscriptChild>();
-  for (const item of Object.values(registry.items)) {
-    const toolCallId = item.parent?.toolCallId;
-    if (!toolCallId) continue;
-    const provider = providers.get(item.reporterThreadId);
-    // A resumed Claude agent is a second child under a new tool call, so a
-    // tool call names at most one child; the latest one wins if not.
-    byToolCall.set(toolCallId, { item, ...(provider ? { provider } : {}) });
+  const children = new Map<string, TranscriptChild>();
+  for (const [key, registry] of registries) {
+    const item = registry.items[key];
+    if (!item) continue;
+    const spawn = spawns.get(key);
+    const toolAnchor = Boolean(
+      item.parent?.toolCallId &&
+        tools.has(
+          JSON.stringify([item.reporterThreadId, item.parent.toolCallId]),
+        ),
+    );
+    if (!spawn && !toolAnchor) continue;
+    children.set(key, {
+      item,
+      provider: providers.get(item.reporterThreadId),
+      spawn,
+      toolAnchor,
+    });
   }
-  return byToolCall.size > 0 ? byToolCall : EMPTY;
+  return children.size > 0 ? children : EMPTY;
 }
 
 export const TranscriptChildrenContext =
   createContext<TranscriptChildren>(EMPTY);
 
-export function useTranscriptChild(
-  toolCallId: string | undefined,
-): TranscriptChild | undefined {
+export const TranscriptTurnContext = createContext<
+  { threadId?: string; turnId?: string } | undefined
+>(undefined);
+
+export function useTranscriptChildrenForCall(
+  toolCallId: string,
+): TranscriptChild[] {
   const children = useContext(TranscriptChildrenContext);
-  return toolCallId ? children.get(toolCallId) : undefined;
+  const turn = useContext(TranscriptTurnContext);
+  return [...children.values()].filter(
+    (child) =>
+      child.item.parent?.toolCallId === toolCallId &&
+      (!turn?.threadId || child.item.reporterThreadId === turn.threadId),
+  );
+}
+
+type ChildBlock = { type: 'subagent'; key: string; child: TranscriptChild };
+
+/** UI-only blocks; never add display markers to canonical events or messages. */
+export function useTranscriptChildBlocks<P extends ToolCallLike>(
+  blocks: RunBlock<P>[],
+): (RunBlock<P> | ChildBlock)[] {
+  const children = useContext(TranscriptChildrenContext);
+  const turn = useContext(TranscriptTurnContext);
+  const pending = [...children.entries()].filter(
+    ([, child]) =>
+      !child.toolAnchor &&
+      child.spawn &&
+      child.spawn.turnId === turn?.turnId &&
+      child.item.reporterThreadId === turn?.threadId,
+  );
+  if (!pending.length) return blocks;
+  const result: (RunBlock<P> | ChildBlock)[] = [];
+  let offset = 0;
+  for (const block of blocks) {
+    if (
+      block.type !== 'content-part' ||
+      block.part.type !== 'text' ||
+      typeof block.part.content !== 'string'
+    ) {
+      result.push(block);
+      continue;
+    }
+    const text = block.part.content;
+    let start = 0;
+    while (
+      pending.length &&
+      pending[0][1].spawn!.textOffset <= offset + text.length
+    ) {
+      const [key, child] = pending.shift()!;
+      const end = Math.max(start, child.spawn!.textOffset - offset);
+      if (end > start)
+        result.push({
+          ...block,
+          key: `subagent-text:${block.index}:${start}`,
+          part: { ...block.part, content: text.slice(start, end) },
+        });
+      result.push({ type: 'subagent', key, child });
+      start = end;
+    }
+    if (start < text.length)
+      result.push({
+        ...block,
+        key: `subagent-text:${block.index}:${start}`,
+        part: { ...block.part, content: text.slice(start) },
+      });
+    offset += text.length;
+  }
+  for (const [key, child] of pending)
+    result.push({ type: 'subagent', key, child });
+  return result;
 }

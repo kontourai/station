@@ -1,3 +1,4 @@
+import capturedCodexEvents from './fixtures/codex-subagent-transcript-events.json';
 /**
  * @vitest-environment jsdom
  *
@@ -24,6 +25,7 @@ import { StreamingMessage } from '../components/chat/StreamingMessage';
 import {
   foldTranscriptChildren,
   TranscriptChildrenContext,
+  TranscriptTurnContext,
 } from '../components/chat/transcript-child-work';
 
 const THREAD = 'claude-session-1';
@@ -107,6 +109,52 @@ afterEach(() => {
 });
 
 describe('subagent card streaming parity', () => {
+  test('Codex streaming text keeps a spawned card between pre-spawn and post-spawn prose before the turn settles', () => {
+    const captured = capturedCodexEvents[0];
+    const spawnAt = captured.findIndex(
+      (event) => event.method === 'child-work.updated',
+    );
+    const children = foldTranscriptChildren(
+      captured
+        .slice(0, spawnAt + 1)
+        .map((event) => ({ event: event as CanonicalRuntimeEvent })),
+    );
+    const before = captured
+      .slice(0, spawnAt)
+      .filter((event) => event.method === 'content.text-delta')
+      .map((event) => ('delta' in event ? event.delta : ''))
+      .join('');
+    useStreamingContent.mockReturnValue({
+      streamingText: `${before}After spawning the child.`,
+      hasContent: true,
+      contentRevision: 1,
+      contentParts: [],
+    });
+    render(
+      <TranscriptChildrenContext.Provider value={children}>
+        <TranscriptTurnContext.Provider
+          value={{
+            threadId: 'thread-codex',
+            turnId: '00000000-0000-7000-8000-000000000002',
+          }}
+        >
+          <StreamingMessage
+            sessionId="chat-tab"
+            agentIcon={<span>AI</span>}
+            agentIconStyle={{}}
+            fontSize={14}
+          />
+        </TranscriptTurnContext.Provider>
+      </TranscriptChildrenContext.Provider>,
+    );
+    const card = screen.getByTestId('subagent-card');
+    expect(within(card).getByText('Running')).toBeTruthy();
+    const text = document.body.textContent ?? '';
+    const cardAt = text.indexOf(card.textContent ?? '');
+    expect(cardAt).toBeGreaterThan(text.indexOf(before));
+    expect(text.indexOf('After spawning the child.')).toBeGreaterThan(cardAt);
+  });
+
   test('the streaming row and the settled row draw the same card for one spawning call', () => {
     const children = foldTranscriptChildren(events());
     useStreamingContent.mockReturnValue({

@@ -163,6 +163,8 @@ export interface ChatMessage {
    * `addEphemeralMessage`/`createEphemeralMessageState`, which always sets
    * this; there is no writer that sets it on any other message. */
   ephemeral?: boolean;
+  /** Child identity on a local completion notice, for inline-card deduplication. */
+  childWorkKey?: string;
   showContinue?: boolean;
   timestamp?: number;
   traceId?: string;

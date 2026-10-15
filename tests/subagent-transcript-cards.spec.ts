@@ -1,4 +1,9 @@
+import { mkdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { expect, type Page } from '@playwright/test';
+import capturedCodexEvents from '../src-ui/src/__tests__/fixtures/codex-subagent-transcript-events.json' with {
+  type: 'json',
+};
 import { test } from './helpers/fixture-audit';
 import {
   dismissSetupLauncher,
@@ -17,6 +22,8 @@ import {
  * its outcome. Events arrive through the named orchestration SSE fixture
  * seam, in the shapes `claude-adapter-child-work.ts` publishes.
  */
+
+const CAPTURE_ROOT = resolve('gallery/subagent-transcript-cards');
 
 const SESSION_ID = 'session-1';
 const CONVERSATION_ID = 'conv-1';
@@ -70,6 +77,7 @@ async function emit(page: Page, event: Record<string, unknown>) {
 
 test.describe('subagent transcript cards', () => {
   test.beforeEach(async ({ page }) => {
+    mkdirSync(CAPTURE_ROOT, { recursive: true });
     liveSequence = 0;
     // The running card's clock reads Date.now(); pin it six minutes and
     // twelve seconds after the child's reported start.
@@ -147,9 +155,54 @@ test.describe('subagent transcript cards', () => {
     );
   });
 
+  test('a captured Codex spawn has one inline card without a tool row on desktop and full-screen mobile', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 1100 });
+    await page.goto(`/?chat=${encodeURIComponent(CONVERSATION_ID)}`);
+    await dismissSetupLauncher(page);
+    await openChatRegion(page);
+    await waitForMockOrchestrationSse(page);
+    const captured = JSON.parse(
+      JSON.stringify(capturedCodexEvents[0]).replaceAll(
+        'thread-codex',
+        SESSION_ID,
+      ),
+    ) as Record<string, unknown>[];
+    for (const event of captured) await emit(page, event);
+    const card = page.getByTestId('subagent-card');
+    await expect(card).toHaveCount(1);
+    await expect(card.getByText('Completed')).toBeVisible();
+    await expect(card.getByText('gpt-5.5')).toBeVisible();
+    await expect(card.getByText('done', { exact: true })).toBeVisible();
+    await card.scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: join(CAPTURE_ROOT, 'subagent-card-codex-desktop.png'),
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page
+      .getByRole('button', { name: 'Chat actions', exact: true })
+      .click();
+    await page
+      .getByRole('menu', { name: 'Chat actions' })
+      .getByRole('menuitem', { name: 'Full screen', exact: true })
+      .click();
+    await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
+    await card.getByRole('button').click();
+    await card.scrollIntoViewIfNeeded();
+    await expect(card.getByText('done', { exact: true })).toHaveCount(2);
+    const box = await card.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.y).toBeGreaterThanOrEqual(0);
+    expect(box!.y + box!.height).toBeLessThanOrEqual(844);
+    await page.screenshot({
+      path: join(CAPTURE_ROOT, 'subagent-card-codex-mobile-390.png'),
+    });
+  });
+
   test('a spawned subagent gets one inline card that goes from Running to Completed and opens its result', async ({
     page,
-  }, testInfo) => {
+  }) => {
     // Tall enough that the dock's transcript shows the expanded card whole.
     await page.setViewportSize({ width: 1280, height: 1100 });
     await page.goto(`/?chat=${encodeURIComponent(CONVERSATION_ID)}`);
@@ -226,7 +279,7 @@ test.describe('subagent transcript cards', () => {
     await expect(card.getByText('claude-opus-5-5')).toBeVisible();
     await expect(card.getByText('6:12')).toBeVisible();
     await card.screenshot({
-      path: testInfo.outputPath('subagent-card-running-desktop.png'),
+      path: join(CAPTURE_ROOT, 'subagent-card-running-desktop.png'),
     });
 
     const identity = {
@@ -269,6 +322,7 @@ test.describe('subagent transcript cards', () => {
       },
     });
 
+    await expect(page.getByText(/Background task finished/)).toHaveCount(0);
     await expect(card.getByText('Completed')).toBeVisible();
     await expect(card.getByText('17:04')).toBeVisible();
     await expect(
@@ -276,7 +330,7 @@ test.describe('subagent transcript cards', () => {
     ).toBeVisible();
     await card.scrollIntoViewIfNeeded();
     await page.screenshot({
-      path: testInfo.outputPath('subagent-card-completed-desktop.png'),
+      path: join(CAPTURE_ROOT, 'subagent-card-completed-desktop.png'),
     });
 
     await card
@@ -287,10 +341,18 @@ test.describe('subagent transcript cards', () => {
       card.getByText('48,210 tokens · 37 tool uses · ran 17:04'),
     ).toBeVisible();
     await card.screenshot({
-      path: testInfo.outputPath('subagent-card-expanded-desktop.png'),
+      path: join(CAPTURE_ROOT, 'subagent-card-expanded-desktop.png'),
     });
 
     await page.setViewportSize({ width: 390, height: 844 });
+    await page
+      .getByRole('button', { name: 'Chat actions', exact: true })
+      .click();
+    await page
+      .getByRole('menu', { name: 'Chat actions' })
+      .getByRole('menuitem', { name: 'Full screen', exact: true })
+      .click();
+    await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
     await expect(card).toBeVisible();
     await card.scrollIntoViewIfNeeded();
     const box = await card.boundingBox();
@@ -311,14 +373,14 @@ test.describe('subagent transcript cards', () => {
     ).toBeVisible();
     await card.scrollIntoViewIfNeeded();
     await page.screenshot({
-      path: testInfo.outputPath('subagent-card-expanded-mobile-390.png'),
+      path: join(CAPTURE_ROOT, 'subagent-card-expanded-mobile-390.png'),
     });
     await card
       .getByRole('button', { name: /review station#3657 ADR freeze/ })
       .click();
     await expect(card.getByText('No further action needed.')).toHaveCount(0);
     await page.screenshot({
-      path: testInfo.outputPath('subagent-card-completed-mobile-390.png'),
+      path: join(CAPTURE_ROOT, 'subagent-card-completed-mobile-390.png'),
     });
   });
 });

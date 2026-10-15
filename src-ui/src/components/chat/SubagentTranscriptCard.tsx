@@ -20,13 +20,12 @@ import { LazyMarkdown } from './LazyMarkdown';
 import type { ToolCallLike } from './tool-call-runs';
 import {
   type TranscriptChild,
-  useTranscriptChild,
+  useTranscriptChildrenForCall,
 } from './transcript-child-work';
 import './SubagentTranscriptCard.css';
 
 /**
- * One card per subagent, inline in the transcript where its tool call
- * spawned it. Everything on it comes from the child's own contract record
+ * One card per subagent, inline at its reported spawn anchor. Everything on it comes from the child's own contract record
  * (`transcript-child-work.ts`); a fact no engine reported is either absent
  * or named as a gap, never a zero or a guess. The child's reasoning effort
  * has no producer at all, so the card has no slot for it.
@@ -81,7 +80,7 @@ function StatusGlyph({
   return <span className="subagent-card__hollow" aria-hidden="true" />;
 }
 
-function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
+export function SubagentTranscriptCard({ child }: { child: TranscriptChild }) {
   const { item, provider } = child;
   const [expanded, setExpanded] = useState(false);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
@@ -269,6 +268,12 @@ export function SubagentCardsForCalls({
 }
 
 function SubagentCardForCall({ toolCallId }: { toolCallId: string }) {
-  const child = useTranscriptChild(toolCallId);
-  return child ? <SubagentTranscriptCard child={child} /> : null;
+  const children = useTranscriptChildrenForCall(toolCallId);
+  return (
+    <>
+      {children.map((child) => (
+        <SubagentTranscriptCard key={child.item.childId} child={child} />
+      ))}
+    </>
+  );
 }

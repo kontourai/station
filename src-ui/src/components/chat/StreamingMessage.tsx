@@ -18,13 +18,17 @@ import { InputRequestRecordRow } from './InputRequestRecordRow';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { INLINE_RUN_LIMIT } from './message-bubble/MessageContent';
 import { StreamingMarkdown } from './StreamingMarkdown';
-import { SubagentCardsForCalls } from './SubagentTranscriptCard';
+import {
+  SubagentCardsForCalls,
+  SubagentTranscriptCard,
+} from './SubagentTranscriptCard';
 import {
   ToolCallBatchBoundary,
   usePreloadToolCallBatch,
 } from './ToolCallBatchBoundary';
 import { TurnActivityProgress } from './TurnActivityProgress';
 import { splitToolCallRuns } from './tool-call-runs';
+import { useTranscriptChildBlocks } from './transcript-child-work';
 import { UIBlockRenderer } from './UIBlockRenderer';
 import { uiBlockIdentity } from './ui-block-identity';
 
@@ -169,7 +173,16 @@ export function StreamingMessageView({
   // chunk) marks a batch in-progress (latest-call headline) whenever one
   // of its calls is still `running`, so the collapsed summary never
   // claims a batch is done before it is.
-  const blocks = useMemo(() => splitToolCallRuns(contentParts), [contentParts]);
+  const baseBlocks = useMemo(
+    () =>
+      splitToolCallRuns(
+        streamingText
+          ? [...contentParts, { type: 'text', content: streamingText }]
+          : contentParts,
+      ),
+    [contentParts, streamingText],
+  );
+  const blocks = useTranscriptChildBlocks(baseBlocks);
   usePreloadToolCallBatch(
     blocks.some((block) => block.type === 'tool-call-run'),
   );
@@ -200,6 +213,10 @@ export function StreamingMessageView({
 
         {/* Render completed content parts in order */}
         {blocks.map((block) => {
+          if (block.type === 'subagent')
+            return (
+              <SubagentTranscriptCard key={block.key} child={block.child} />
+            );
           if (block.type === 'tool-call-run') {
             if (!renderToolCall) return null;
             // Same inline threshold as the settled renderer
@@ -245,7 +262,19 @@ export function StreamingMessageView({
             return renderReasoning(part.content, i, hasAnswerText);
           }
           if (part.type === 'text' && part.content) {
-            return <StreamingMarkdown key={i} content={part.content} />;
+            const current = i === contentParts.length;
+            return current ? (
+              <div className="streaming-tip" key={block.key ?? i}>
+                <StreamingMarkdown content={part.content} />
+                {block === blocks.at(-1) && (
+                  <div className="stream-caret-line" aria-hidden="true">
+                    <span className="stream-caret" />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <StreamingMarkdown key={block.key ?? i} content={part.content} />
+            );
           }
           if (part.type === 'ui-block' && part.uiBlock) {
             const identity = uiBlockIdentity(contentParts, i, sessionId);
@@ -271,25 +300,6 @@ export function StreamingMessageView({
           }
           return null;
         })}
-
-        {/* Current streaming text — rendered as markdown with throttled
-            updates. The wrapper carries the trailing shimmer (transform-only
-            overlay) and a fixed-box blinking caret at the tip; both animate
-            on a CSS clock independent of the token buffer, so a token pause
-            never reads as frozen (station#2651). */}
-        {streamingText && (
-          <div className="streaming-tip">
-            {/* archive#3354: an unclosed trailing fence renders plain and is
-                never tokenized until it closes. */}
-            <StreamingMarkdown content={streamingText} />
-            {/* Terminal-style cursor on its own compact line — placement is
-                identical during the Suspense fallback and after the markdown
-                chunk loads (see .stream-caret-line in index.css). */}
-            <div className="stream-caret-line" aria-hidden="true">
-              <span className="stream-caret" />
-            </div>
-          </div>
-        )}
 
         {!suppressActivity &&
           (activityHint?.kind === 'retrying' ||

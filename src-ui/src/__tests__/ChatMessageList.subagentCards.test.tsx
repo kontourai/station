@@ -77,8 +77,12 @@ vi.mock('../hooks/orchestration/useSessionEventWindow', () => ({
 
 import { ChatMessageList } from '../components/chat/ChatMessageList';
 import { ActiveChatsProvider } from '../contexts/ActiveChatsContext';
+import { activeChatsStore } from '../contexts/active-chats-store';
+import { applyChildWorkToChat } from '../hooks/orchestration/childWorkHandlers';
 import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
 import type { ChatSession } from '../types';
+import capturedCodexEvents from './fixtures/codex-subagent-transcript-events.json';
+import museWorkflowEvents from './fixtures/muse-workflow-transcript-events.json';
 
 const API_BASE = 'http://localhost:3242';
 const THREAD = 'claude-session-1';
@@ -301,14 +305,14 @@ function stubFetch(): void {
   );
 }
 
-function renderTranscript() {
+function renderTranscript(session = chatSession()) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const tree = () => (
     <QueryClientProvider client={client}>
       <ActiveChatsProvider>
-        <TranscriptHarness session={chatSession()} />
+        <TranscriptHarness session={session} />
       </ActiveChatsProvider>
     </QueryClientProvider>
   );
@@ -334,33 +338,217 @@ describe('subagent transcript cards', () => {
     _setApiBase('');
   });
 
-  test('a running subagent renders one card after the call that spawned it, with its live status line', async () => {
-    windowEvents.current = [...spawningTurn(), progress()];
-    renderTranscript();
-    const card = await findCard();
-    expect(screen.getAllByTestId('subagent-card')).toHaveLength(1);
-    expect(
-      within(card).getByText('[opus] review station#3657 ADR freeze'),
-    ).toBeTruthy();
-    expect(within(card).getByText('Running')).toBeTruthy();
-    expect(within(card).getByText('Reading the decision records')).toBeTruthy();
-    // Engine and subagent type are the record's; the model was not reported,
-    // and says so rather than borrowing the parent's.
-    expect(card.textContent).toContain('general-purpose · Claude Code · ');
-    expect(within(card).getByText('model not reported')).toBeTruthy();
-    // Spawn point: after the intent, before the reply that followed the
-    // call, in the same assistant row.
-    const text = document.body.textContent ?? '';
-    const intentAt = text.indexOf('Starting an independent review.');
-    const cardAt = text.indexOf(card.textContent ?? '');
-    const replyAt = text.indexOf('The reviewer is running in the background.');
-    expect(intentAt).toBeGreaterThanOrEqual(0);
-    expect(cardAt).toBeGreaterThan(intentAt);
-    expect(replyAt).toBeGreaterThan(
-      cardAt + (card.textContent ?? '').length - 1,
+  test.each(capturedCodexEvents.map((events, index) => ({ events, index })))(
+    'captured Codex spawn format $index renders a completed card at its spawn position without a tool row',
+    async ({ events }) => {
+      windowEvents.current = events.map((event, index) => ({
+        sequence: index + 1,
+        event,
+      }));
+      renderTranscript({ ...chatSession(), currentSessionId: 'thread-codex' });
+      const card = await findCard();
+      expect(screen.getAllByTestId('subagent-card')).toHaveLength(1);
+      expect(within(card).getByText('Completed')).toBeTruthy();
+      expect(within(card).getByText('done')).toBeTruthy();
+      const spawnAt = events.findIndex(
+        (event) => event.method === 'child-work.updated',
+      );
+      const before = events
+        .slice(0, spawnAt)
+        .filter((event) => event.method === 'content.text-delta')
+        .map((event) => ('delta' in event ? event.delta : ''))
+        .join('');
+      const text = document.body.textContent ?? '';
+      const cardAt = text.indexOf(card.textContent ?? '');
+      if (before) expect(cardAt).toBeGreaterThan(text.indexOf(before));
+      expect(text.indexOf('The subagent', cardAt)).toBeGreaterThan(cardAt);
+      expect(unexpectedRequests).toEqual([]);
+    },
+  );
+
+  test('all 65 completed children whose spawns are loaded keep their cards and results', async () => {
+    windowEvents.current = Array.from({ length: 65 }, (_, index) => {
+      const call = `toolu_agent_${index}`;
+      const childId = `child-${index}`;
+      const turnId = 'turn-1';
+      const item = {
+        ...runningChild,
+        childId,
+        parent: { toolCallId: call, turnId },
+        title: `Review ${index}`,
+      };
+      return [
+        runtimeEvent(STARTED_AT, {
+          method: 'tool.started',
+          turnId,
+          itemId: call,
+          toolCallId: call,
+          toolName: 'Agent',
+          arguments: {},
+        }),
+        childWork(STARTED_AT, {
+          kind: 'snapshot',
+          producer: 'engine-subagent',
+          reporterThreadId: THREAD,
+          running: [item],
+        }),
+        childWork(ENDED_AT, {
+          kind: 'settle',
+          producer: 'engine-subagent',
+          reporterThreadId: THREAD,
+          childId,
+          status: 'completed',
+          result: { summary: `Result ${index}` },
+        }),
+      ];
+    }).flat();
+    windowEvents.current.unshift(
+      runtimeEvent(STARTED_AT, {
+        method: 'turn.started',
+        turnId: 'turn-1',
+        prompt: 'Review all 65 children',
+      }),
     );
-    expect(unexpectedRequests).toEqual([]);
+    windowEvents.current.push(
+      runtimeEvent(ENDED_AT, {
+        method: 'turn.completed',
+        turnId: 'turn-1',
+        finishReason: 'stop',
+      }),
+    );
+    windowEvents.current = windowEvents.current.map((entry, index) => ({
+      ...entry,
+      sequence: index + 1,
+    }));
+    renderTranscript();
+    await screen.findByText('Result 0');
+    expect(screen.getAllByTestId('subagent-card')).toHaveLength(65);
+    expect(screen.getByText('Result 64')).toBeTruthy();
   });
+
+  test('a Muse workflow call renders each child in writer order once', async () => {
+    windowEvents.current = [
+      runtimeEvent(STARTED_AT, {
+        provider: 'muse',
+        method: 'turn.started',
+        turnId: 'turn-1',
+        prompt: 'Launch workflow',
+      }),
+      runtimeEvent(STARTED_AT, {
+        provider: 'muse',
+        method: 'tool.started',
+        turnId: 'turn-1',
+        itemId: 'call_workflow_1',
+        toolCallId: 'call_workflow_1',
+        toolName: 'workflow',
+        arguments: {},
+      }),
+      ...museWorkflowEvents.map((event) => ({
+        sequence: ++sequence,
+        event: {
+          ...event,
+          threadId: THREAD,
+          delta: {
+            ...event.delta,
+            reporterThreadId: THREAD,
+            running: event.delta.running.map((item) => ({
+              ...item,
+              reporterThreadId: THREAD,
+            })),
+          },
+        },
+      })),
+      runtimeEvent(ENDED_AT, {
+        provider: 'muse',
+        method: 'turn.completed',
+        turnId: 'turn-1',
+        finishReason: 'stop',
+      }),
+    ];
+    renderTranscript();
+    await screen.findByText('second');
+    const cards = screen.getAllByTestId('subagent-card');
+    expect(cards).toHaveLength(2);
+    expect(within(cards[0]).getByText('first')).toBeTruthy();
+    expect(within(cards[1]).getByText('second')).toBeTruthy();
+  });
+
+  test('completion notices merge into represented cards while a child without a loaded spawn keeps its notice', async () => {
+    activeChatsStore.initChat(THREAD, {
+      agentSlug: 'station',
+      agentName: 'Station',
+      title: 'Review',
+    });
+    applyChildWorkToChat(THREAD, { kind: 'upsert', item: runningChild });
+    applyChildWorkToChat(THREAD, {
+      kind: 'settle',
+      producer: 'engine-subagent',
+      reporterThreadId: THREAD,
+      childId: runningChild.childId,
+      status: 'completed',
+      result: { summary: 'Review complete' },
+    });
+    applyChildWorkToChat(THREAD, {
+      kind: 'settle',
+      producer: 'engine-subagent',
+      reporterThreadId: THREAD,
+      childId: 'unanchored',
+      status: 'completed',
+      identity: { backgrounded: true, title: 'Other child' },
+      result: { summary: 'Other result' },
+    });
+    const notices =
+      activeChatsStore.getSnapshot()[THREAD].ephemeralMessages ?? [];
+    expect(notices).toHaveLength(2);
+    windowEvents.current = [...spawningTurn(), ...settles('Review complete')];
+    renderTranscript({ ...chatSession(), messages: notices });
+    await findCard();
+    expect(
+      screen.queryByText(/Background task finished — \[opus\]/),
+    ).toBeNull();
+    expect(
+      await screen.findByText(/Background task finished — Other child/),
+    ).toBeTruthy();
+    expect(screen.getAllByText('Review complete')).toHaveLength(1);
+    activeChatsStore.removeChat(THREAD);
+  });
+
+  test.each([false, true])(
+    'a running Claude child renders once at its call (start outside window: %s)',
+    async (startOutsideWindow) => {
+      windowEvents.current = [...spawningTurn(), progress()].filter(
+        (entry) => !startOutsideWindow || entry.event.method !== 'tool.started',
+      );
+      renderTranscript();
+      const card = await findCard();
+      expect(screen.getAllByTestId('subagent-card')).toHaveLength(1);
+      expect(
+        within(card).getByText('[opus] review station#3657 ADR freeze'),
+      ).toBeTruthy();
+      expect(within(card).getByText('Running')).toBeTruthy();
+      expect(
+        within(card).getByText('Reading the decision records'),
+      ).toBeTruthy();
+      // Engine and subagent type are the record's; the model was not reported,
+      // and says so rather than borrowing the parent's.
+      expect(card.textContent).toContain('general-purpose · Claude Code · ');
+      expect(within(card).getByText('model not reported')).toBeTruthy();
+      // Spawn point: after the intent, before the reply that followed the
+      // call, in the same assistant row.
+      const text = document.body.textContent ?? '';
+      const intentAt = text.indexOf('Starting an independent review.');
+      const cardAt = text.indexOf(card.textContent ?? '');
+      const replyAt = text.indexOf(
+        'The reviewer is running in the background.',
+      );
+      expect(intentAt).toBeGreaterThanOrEqual(0);
+      expect(cardAt).toBeGreaterThan(intentAt);
+      expect(replyAt).toBeGreaterThan(
+        cardAt + (card.textContent ?? '').length - 1,
+      );
+      expect(unexpectedRequests).toEqual([]);
+    },
+  );
 
   test('the card follows the child to Completed with its elapsed time, result preview, and an inspectable transcript', async () => {
     windowEvents.current = [...spawningTurn(), progress()];
