@@ -102,7 +102,7 @@ describe('TurnDeduplicator', () => {
   });
 
   test('inspect: an owner that gave its claim up after a possible effect reads indeterminate, never in flight', () => {
-    const { store, ledger } = open();
+    const { store, ledger, directory } = open();
     const owner = ledger.claim({ threadId: 't', clientTurnId: 'gave-up' });
     if (owner.kind !== 'owner') throw new Error('expected owner');
     owner.claim.beginInvocation();
@@ -113,12 +113,80 @@ describe('TurnDeduplicator', () => {
     expect(ledger.inspect({ threadId: 't', clientTurnId: 'gave-up' })).toEqual({
       state: 'indeterminate',
     });
-    // Still never claimable: retain writes nothing durable.
+    // Never claimable, and this owner's claim agrees with inspect instead of
+    // reading contended (a wait on a claim nothing will resolve).
     expect(ledger.claim({ threadId: 't', clientTurnId: 'gave-up' })).toEqual({
+      kind: 'indeterminate',
+    });
+    // Retain writes nothing durable: another live process still meets the
+    // unresolved claim as contended.
+    const peer = new EventStore(join(directory, 'orchestration.sqlite'));
+    expect(
+      peer
+        .createTurnDeduplicator()
+        .claim({ threadId: 't', clientTurnId: 'gave-up' }),
+    ).toEqual({ kind: 'contended', turnId: undefined });
+    peer.close();
+    store.close();
+  });
+
+  test('a key claimed afresh after its thread was deleted is in flight, not the old given-up claim', () => {
+    const { store, ledger } = open();
+    const owner = ledger.claim({ threadId: 't', clientTurnId: 'reused' });
+    if (owner.kind !== 'owner') throw new Error('expected owner');
+    owner.claim.beginInvocation();
+    owner.claim.retain();
+    store.deleteThread('t');
+    // The same thread id and key, used again: a new attempt owns it.
+    const again = ledger.claim({ threadId: 't', clientTurnId: 'reused' });
+    expect(again.kind).toBe('owner');
+    expect(ledger.inspect({ threadId: 't', clientTurnId: 'reused' })).toEqual({
+      state: 'in-flight',
+    });
+    expect(ledger.claim({ threadId: 't', clientTurnId: 'reused' })).toEqual({
       kind: 'contended',
       turnId: undefined,
     });
     store.close();
+  });
+
+  test("givenUp is never true for another owner's claim of a reused key, however old", () => {
+    const { store, ledger, directory } = open();
+    const owner = ledger.claim({
+      threadId: 't',
+      clientTurnId: 'reused-elsewhere',
+    });
+    if (owner.kind !== 'owner') throw new Error('expected owner');
+    owner.claim.beginInvocation();
+    owner.claim.retain();
+    store.deleteThread('t');
+    // Another store on the same database (another owner) claims the key.
+    const peer = new EventStore(join(directory, 'orchestration.sqlite'));
+    const fresh = peer
+      .createTurnDeduplicator()
+      .claim({ threadId: 't', clientTurnId: 'reused-elsewhere' });
+    expect(fresh.kind).toBe('owner');
+    const realNow = Date.now.bind(Date);
+    const clock = vi
+      .spyOn(Date, 'now')
+      .mockImplementation(() => realNow() + 16 * 60_000);
+    try {
+      // The lookup calls a claim this old indeterminate; it is still not
+      // one this owner gave up, so a same-key claim here waits on it.
+      expect(
+        ledger.inspect({ threadId: 't', clientTurnId: 'reused-elsewhere' }),
+      ).toEqual({ state: 'indeterminate' });
+      expect(
+        ledger.givenUp({ threadId: 't', clientTurnId: 'reused-elsewhere' }),
+      ).toBe(false);
+      expect(
+        ledger.claim({ threadId: 't', clientTurnId: 'reused-elsewhere' }),
+      ).toEqual({ kind: 'contended', turnId: undefined });
+    } finally {
+      clock.mockRestore();
+      peer.close();
+      store.close();
+    }
   });
 
   test('releases only an unresolved owner claim so a failed turn can retry', () => {
