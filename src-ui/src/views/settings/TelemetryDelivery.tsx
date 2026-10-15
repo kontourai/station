@@ -9,6 +9,7 @@ import {
 import { StationHttpError } from '@kontourai/station-sdk/client';
 import { Button } from '../../components/Button';
 import { PageRow } from '../../components/PageRow';
+import { SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { settingsRow } from './settings-catalog';
 
@@ -32,7 +33,6 @@ const failures: Record<TelemetryRequestFailureCode, string> = {
 
 function checked(probe: TelemetryConnectionProbeStatus): string {
   if (probe.phase === 'never') return 'Connection has not been checked.';
-  if (probe.phase === 'checking') return 'Checking connection…';
   if (probe.phase !== 'ready')
     return probe.failure
       ? failures[probe.failure.code]
@@ -43,6 +43,25 @@ function checked(probe: TelemetryConnectionProbeStatus): string {
 }
 
 const when = (value: string) => new Date(value).toLocaleString();
+
+function ConnectionStatus({
+  probe,
+  error,
+}: {
+  probe: TelemetryConnectionProbeStatus;
+  error: string | null;
+}) {
+  if (!error && probe.phase === 'checking')
+    return <SkeletonBlock count={1} label="Checking connection" />;
+  return (
+    <p
+      role={error || probe.phase === 'failed' ? 'alert' : 'status'}
+      className="settings__field-hint"
+    >
+      {error ?? checked(probe)}
+    </p>
+  );
+}
 
 export function TelemetryDelivery() {
   const authority = useHostRequestAuthorityScope();
@@ -99,11 +118,7 @@ function DeliveryForAuthority({
     );
   }
   if (!query.data || query.isFetching)
-    return (
-      <p role="status" className="settings__field-hint">
-        Refreshing delivery status…
-      </p>
-    );
+    return <SkeletonBlock count={2} label="Refreshing delivery status" />;
   const { product, otel } = query.data;
   const productSummary = {
     unconfigured: 'No product destination is configured.',
@@ -163,16 +178,7 @@ function DeliveryForAuthority({
             Last delivery attempt: {when(product.lastAttemptAt)}.
           </p>
         )}
-        <p
-          role={
-            productError || product.probe.phase === 'failed'
-              ? 'alert'
-              : 'status'
-          }
-          className="settings__field-hint"
-        >
-          {productError ?? checked(product.probe)}
-        </p>
+        <ConnectionStatus probe={product.probe} error={productError} />
       </PageRow>
       <PageRow
         {...settingsRow('otel-delivery')}
@@ -228,12 +234,7 @@ function DeliveryForAuthority({
             The latest metrics or trace export failed.
           </p>
         )}
-        <p
-          role={otelError || otel.probe.phase === 'failed' ? 'alert' : 'status'}
-          className="settings__field-hint"
-        >
-          {otelError ?? checked(otel.probe)}
-        </p>
+        <ConnectionStatus probe={otel.probe} error={otelError} />
       </PageRow>
       <Button size="sm" variant="ghost" onClick={() => void query.refetch()}>
         Refresh status

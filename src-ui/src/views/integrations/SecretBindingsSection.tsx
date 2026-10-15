@@ -170,7 +170,7 @@ export function SecretBindingsSection() {
         </summary>
         <div className="editor__expandable-content">
           <p className="agent-editor__section-desc">
-            Operator-owned references for MCP, ACP and telemetry. Secret
+            Operator-owned references for tool connections and telemetry. Secret
             material never enters this editor.
           </p>
           <form onSubmit={submit}>
