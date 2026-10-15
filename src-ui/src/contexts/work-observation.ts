@@ -4,7 +4,7 @@ import type {
   OrchestrationSessionSummary,
 } from '@kontourai/station-contracts/orchestration';
 import { type QueryClient, QueryClientContext } from '@tanstack/react-query';
-import { useContext, useSyncExternalStore } from 'react';
+import { useCallback, useContext, useSyncExternalStore } from 'react';
 
 // Query clients belong to verified Station/principal/grant namespaces. Never persist these observations
 // or share them with another principal using the same Station endpoint.
@@ -18,24 +18,43 @@ class WorkObservation {
   private sequences = new Map<string, number>();
   private failures = new Map<Scope, number>();
   private successes = new Map<Scope, number>();
-  private listeners = new Set<() => void>();
-  subscribe = (listener: () => void) => {
-    this.listeners.add(listener);
+  private listeners = new Map<string, Set<() => void>>();
+  private pending = new Set<string>();
+  private batching = false;
+  subscribe = (conversationId: string, listener: () => void) => {
+    let listeners = this.listeners.get(conversationId);
+    if (!listeners) {
+      listeners = new Set();
+      this.listeners.set(conversationId, listeners);
+    }
+    listeners.add(listener);
     return () => {
-      this.listeners.delete(listener);
+      listeners.delete(listener);
+      if (listeners.size === 0) {
+        this.listeners.delete(conversationId);
+        this.sequences.delete(conversationId);
+        this.failures.delete(conversationId);
+        this.successes.delete(conversationId);
+      }
     };
   };
   snapshot = () => this.revision;
   begin = () => ++this.clock;
-  private notify() {
+  private notify(conversationId?: string) {
+    if (conversationId !== undefined) this.pending.add(conversationId);
+    else for (const id of this.listeners.keys()) this.pending.add(id);
+    if (this.batching) return;
     this.revision += 1;
-    for (const listener of this.listeners) listener();
+    const pending = [...this.pending];
+    this.pending.clear();
+    for (const id of pending)
+      for (const listener of this.listeners.get(id) ?? []) listener();
   }
   failed(conversationId: string, started = this.begin()) {
     // A stream observation received while this request was pending wins.
     if ((this.successes.get(conversationId) ?? -1) > started) return;
     this.failures.set(conversationId, ++this.clock);
-    this.notify();
+    this.notify(conversationId);
   }
   observed(conversationId: string, sequence?: number) {
     const wasUnavailable = this.unavailable(conversationId);
@@ -46,7 +65,7 @@ class WorkObservation {
       );
     this.failures.delete(conversationId);
     this.successes.set(conversationId, ++this.clock);
-    if (wasUnavailable !== false) this.notify();
+    if (wasUnavailable !== false) this.notify(conversationId);
   }
   streamObserved(activity: ConversationTurnActivity) {
     if (
@@ -101,6 +120,7 @@ class WorkObservation {
         this.failures.set(INBOX, Math.max(...failedLists.values()));
         this.notify();
       } else if (event.action.type === 'success' && !event.action.manual) {
+        this.batching = true;
         // Appending history does not re-read the inventory pages already cached.
         if (!pageDirection) {
           failedLists.delete(root);
@@ -138,6 +158,7 @@ class WorkObservation {
                 );
             }
         }
+        this.batching = false;
         this.notify();
       }
     });
@@ -155,11 +176,18 @@ export function workObservation(client: QueryClient) {
 
 const noopSubscribe = () => () => {};
 const emptySnapshot = () => 0;
-export function useWorkObservation() {
+export function useWorkObservation(conversationId?: string) {
   const client = useContext(QueryClientContext);
   const observation = client ? workObservation(client) : undefined;
+  const subscribe = useCallback(
+    (listener: () => void) =>
+      observation && conversationId
+        ? observation.subscribe(conversationId, listener)
+        : noopSubscribe(),
+    [observation, conversationId],
+  );
   useSyncExternalStore(
-    observation?.subscribe ?? noopSubscribe,
+    subscribe,
     observation?.snapshot ?? emptySnapshot,
     observation?.snapshot ?? emptySnapshot,
   );

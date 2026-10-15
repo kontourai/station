@@ -714,3 +714,105 @@ it('a failed history read removes the running row clock until recovery', async (
   await within(screen.getByTestId('inbox-row-status')).findByText('Running');
   expect(view.container.querySelector('.inbox-row__elapsed')).not.toBeNull();
 });
+
+it('successful older-history retry clears last-known rows', async () => {
+  historyRead
+    .mockResolvedValueOnce({
+      ...historyPage,
+      hasMore: true,
+      nextCursor: 'older',
+    })
+    .mockRejectedValueOnce(new Error('older page offline'))
+    .mockResolvedValueOnce({ ...historyPage, hasMore: false });
+  function OlderReader() {
+    const history = useSessionEventWindow('http://older-probe.test', 'T');
+    return (
+      <button type="button" onClick={() => void history.loadOlder()}>
+        {history.hasMore ? 'Older available' : 'Older exhausted'}
+        {history.error && <span>{history.error.message}</span>}
+      </button>
+    );
+  }
+  renderWithProviders(
+    <>
+      <OlderReader />
+      <DockInbox />
+    </>,
+  );
+  await screen.findByText('Older available');
+  await act(async () => screen.getByText('Older available').click());
+  await screen.findByText('Last known: Needs approval');
+  await act(async () => screen.getByText('Older available').click());
+  await screen.findByText('Older exhausted');
+  expect(historyRead).toHaveBeenCalledTimes(3);
+  expect(screen.queryByText('older page offline')).toBeNull();
+  expect(screen.queryByText('Last known: Needs approval')).toBeNull();
+});
+
+it('inventory notifications stay linear across conversation subscribers', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const observation = workObservation(client);
+  const conversations = 1000;
+  const subscribers = 1000;
+  let calls = 0;
+  const releases = Array.from({ length: subscribers }, (_, i) =>
+    observation.subscribe(`conversation-${i}`, () => {
+      calls += 1;
+    }),
+  );
+  try {
+    await client.fetchQuery({
+      queryKey: ['conversation-inventory'],
+      queryFn: async () => ({
+        pages: [
+          {
+            items: Array.from({ length: conversations }, (_, i) => ({
+              id: `conversation-${i}`,
+              activity: {
+                conversationId: `conversation-${i}`,
+                asOfSequence: i,
+              },
+            })),
+          },
+        ],
+      }),
+    });
+    // Before scoped, batched publishing this inventory caused 1,001,000 callbacks.
+    expect(calls).toBeLessThanOrEqual(conversations + subscribers);
+    const beforeFailure = calls;
+    observation.failed('conversation-0');
+    expect(calls - beforeFailure).toBe(1);
+  } finally {
+    for (const release of releases) release();
+    client.clear();
+  }
+});
+
+it('evicts a closed conversation only after its final subscriber leaves', () => {
+  const client = new QueryClient();
+  const observation = workObservation(client);
+  const releaseReader = observation.subscribe('closed', () => {});
+  const releaseRow = observation.subscribe('closed', () => {});
+  const releaseOther = observation.subscribe('other', () => {});
+  observation.observed('closed', 100);
+  observation.failed('closed');
+  observation.failed('other');
+  releaseReader();
+  expect(observation.unavailable('closed')).toBe(true);
+  releaseRow();
+  expect(observation.unavailable('closed')).toBeUndefined();
+  expect(observation.unavailable('other')).toBe(true);
+  const releaseReopened = observation.subscribe('closed', () => {});
+  observation.failed('closed');
+  observation.streamObserved({
+    ...SESSIONS[0]!.conversationActivity!,
+    conversationId: 'closed',
+    asOfSequence: 1,
+  });
+  expect(observation.unavailable('closed')).toBe(false);
+  releaseReopened();
+  releaseOther();
+  client.clear();
+});

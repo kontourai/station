@@ -539,7 +539,9 @@ export function ChatDockBody({
   );
   // A history or continuation read failed: what the session record last said
   // (Running, background work) is no longer current proof.
-  const workObservation = useWorkObservation();
+  const workObservation = useWorkObservation(
+    activeSession.conversationId ?? activeSession.id,
+  );
   useEffect(() => {
     if (
       unverifiedOpen &&

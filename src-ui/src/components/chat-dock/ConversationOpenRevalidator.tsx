@@ -43,7 +43,7 @@ export function ConversationOpenRevalidator({
   agents,
   modelConnections,
 }: ConversationOpenRevalidatorProps) {
-  const observation = useWorkObservation();
+  const observation = useWorkObservation(conversationId);
   useEffect(() => {
     const observationStart = observation?.begin();
     let cancelled = false;

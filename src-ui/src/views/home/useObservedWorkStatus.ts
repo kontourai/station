@@ -9,7 +9,7 @@ export function useObservedWorkStatus(
   now: number,
   facts?: WorkFacts,
 ) {
-  const observation = useWorkObservation();
+  const observation = useWorkObservation(item.conversationId ?? item.id);
   return workStatus(
     item,
     now,

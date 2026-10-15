@@ -159,7 +159,7 @@ export function useSessionEventWindow(
   reconcileRevision = 0,
   legacySessionId?: string,
 ): SessionEventWindowReader {
-  const observation = useWorkObservation();
+  const observation = useWorkObservation(threadId);
   const readerKey = threadId
     ? JSON.stringify([apiBase, threadId, legacySessionId])
     : undefined;
@@ -331,6 +331,8 @@ export function useSessionEventWindow(
       setSessionLineage(page.sessionLineage);
       setHandoffs(page.handoffs ?? []);
       setContextBoundaries(page.contextBoundaries ?? []);
+      observation?.observed(threadId, page.watermark);
+      setError(undefined);
       if (page.watermark !== watermarkRef.current) {
         await reload();
         return;
