@@ -22,23 +22,27 @@ test.each([
     'create',
     () => {
       const mutation = useCreateTaskMutation();
-      return () =>
-        mutation.mutateAsync({ projectId: 'alpha', title: 'New task' });
+      return async () => {
+        await mutation.mutateAsync({ projectId: 'alpha', title: 'New task' });
+      };
     },
   ],
   [
     'status',
     () => {
       const mutation = useUpdateTaskStatusMutation();
-      return () =>
-        mutation.mutateAsync({ taskId: 'task-new', status: 'ready' });
+      return async () => {
+        await mutation.mutateAsync({ taskId: 'task-new', status: 'ready' });
+      };
     },
   ],
   [
     'dispatch',
     () => {
       const mutation = useDispatchTaskMutation();
-      return () => mutation.mutateAsync({ taskId: 'task-new' });
+      return async () => {
+        await mutation.mutateAsync({ taskId: 'task-new' });
+      };
     },
   ],
 ] as const)(
@@ -52,7 +56,6 @@ test.each([
       taskQueries.list('alpha', {
         apiBase: 'http://station.test',
         authorityKey: 'local',
-        isCurrent: () => true,
       }).queryKey,
     ];
     const otherKeys = [
