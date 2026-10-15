@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { useElapsedClock } from '../../hooks/useElapsedClock';
 import { formatDuration } from '../../utils/relativeTime';
 import type { ChatStatus } from './chatStatus';
@@ -87,16 +88,38 @@ export function ChatStatusPill({
   onRevealApproval,
   onRepair,
   onResync,
+  onRecoveryFocus,
 }: {
   status: ChatStatus | undefined;
   onRevealApproval?: () => void;
   onRepair?: () => void;
   /** Re-reads this conversation's status and history from the Station. */
   onResync?: () => void;
+  /** Focus the recovered composer without changing its write permission. */
+  onRecoveryFocus?: () => boolean;
 }) {
   useEffect(trackPageVisibilityForStatusMotion, []);
   const detailsId = useId();
-  const hostRef = useRef<HTMLDivElement>(null);
+  const hostRef = useRef<HTMLElement>(null);
+  const resyncFocused = useRef(false);
+  const previousAction = useRef<ChatStatus['action']>(undefined);
+  const [recovered, setRecovered] = useState(false);
+  useEffect(() => {
+    const wasResync = previousAction.current === 'resync';
+    previousAction.current = status?.action;
+    if (status?.action === 'resync') setRecovered(false);
+    else if (
+      wasResync &&
+      status?.kind !== 'blocked' &&
+      status?.kind !== 'reconnecting' &&
+      status?.kind !== 'catching-up'
+    ) {
+      setRecovered(true);
+      if (resyncFocused.current && !onRecoveryFocus?.())
+        hostRef.current?.focus();
+      resyncFocused.current = false;
+    }
+  }, [status?.action, status?.kind, onRecoveryFocus]);
   const lastWidth = useRef<number | undefined>(undefined);
   const resizeAnimation = useRef<Animation | undefined>(undefined);
   useEffect(() => () => resizeAnimation.current?.cancel(), []);
@@ -265,46 +288,71 @@ export function ChatStatusPill({
   } as const;
 
   return (
-    <div className="chat-status-pill-host" ref={hostRef}>
-      <span className="sr-only" role="status" aria-live="polite">
-        {announcement}
-      </span>
-      {current &&
-        (actionable ? (
-          <button
-            type="button"
-            {...common}
-            aria-label={
-              current.action === 'reveal-approval'
-                ? current.count !== undefined
-                  ? `Needs approval (${current.count}) — show the requests`
-                  : `${current.label} — show the request`
-                : current.action === 'repair'
-                  ? `${current.label} — repair the connection`
-                  : current.action === 'resync'
-                    ? `${current.label} — resync this conversation`
-                    : current.label
-            }
-            aria-expanded={current.action === 'details' ? expanded : undefined}
-            aria-controls={
-              current.action === 'details' && expanded ? detailsId : undefined
-            }
-            disabled={current.action === 'resync' && current.pending}
-            aria-busy={
-              current.action === 'resync' ? current.pending : undefined
-            }
-            onClick={activate}
-          >
-            {body}
-          </button>
-        ) : (
-          <div {...common} aria-hidden="true">
-            {body}
-          </div>
-        ))}
-      {current && expanded && !leaving && current.details.length > 0 && (
-        <PillDetails id={detailsId} lines={current.details} />
+    <>
+      {/* The narrow composer hides an empty status rail, including its descendants. */}
+      {createPortal(
+        <span className="sr-only" role="status" aria-live="polite">
+          {recovered
+            ? `Conversation resynced.${announcement ? ` ${announcement}` : ''}`
+            : announcement}
+        </span>,
+        document.body,
       )}
-    </div>
+      <section
+        className="chat-status-pill-host"
+        ref={hostRef}
+        tabIndex={-1}
+        aria-label="Conversation status"
+      >
+        {current &&
+          (actionable ? (
+            <button
+              type="button"
+              {...common}
+              aria-label={
+                current.action === 'reveal-approval'
+                  ? current.count !== undefined
+                    ? `Needs approval (${current.count}) — show the requests`
+                    : `${current.label} — show the request`
+                  : current.action === 'repair'
+                    ? `${current.label} — repair the connection`
+                    : current.action === 'resync'
+                      ? `${current.label} — resync this conversation`
+                      : current.label
+              }
+              aria-expanded={
+                current.action === 'details' ? expanded : undefined
+              }
+              aria-controls={
+                current.action === 'details' && expanded ? detailsId : undefined
+              }
+              disabled={current.action === 'resync' && current.pending}
+              aria-busy={
+                current.action === 'resync' ? current.pending : undefined
+              }
+              onFocus={() => {
+                resyncFocused.current = current.action === 'resync';
+              }}
+              onBlur={(event) => {
+                if (
+                  event.relatedTarget instanceof HTMLElement &&
+                  event.relatedTarget !== document.body
+                )
+                  resyncFocused.current = false;
+              }}
+              onClick={activate}
+            >
+              {body}
+            </button>
+          ) : (
+            <div {...common} aria-hidden="true">
+              {body}
+            </div>
+          ))}
+        {current && expanded && !leaving && current.details.length > 0 && (
+          <PillDetails id={detailsId} lines={current.details} />
+        )}
+      </section>
+    </>
   );
 }

@@ -56,6 +56,7 @@ export function useChatStatusPill({
   observationUnavailable = false,
   resyncPending = false,
   onResync,
+  onRecoveryFocus,
 }: {
   activeSession: ChatSession;
   streamStatus: ChatStreamStatus | undefined;
@@ -66,6 +67,8 @@ export function useChatStatusPill({
   resyncPending?: boolean;
   /** Re-reads this conversation when its status could not be observed. */
   onResync?: () => void;
+  /** Focus the recovered composer without changing its write permission. */
+  onRecoveryFocus?: () => boolean;
 }): { pill: ReactNode; statusInPill: boolean } {
   const [view, setView] = useState<'loading' | 'mounted' | 'unavailable'>(
     'loading',
@@ -130,8 +133,14 @@ export function useChatStatusPill({
       activeSession.conversationActivity?.openTurn?.threadId,
     ],
   );
-  // Approval is the pill's highest priority: any pending one is what it shows.
-  const presentingApproval = enabled && view === 'mounted' && approvalCount > 0;
+  const presentingApproval =
+    enabled &&
+    view === 'mounted' &&
+    approvalCount > 0 &&
+    !observationUnavailable &&
+    streamStatus?.kind !== 'blocked' &&
+    streamStatus?.kind !== 'reconnecting' &&
+    streamStatus?.kind !== 'catching-up';
   useEffect(() => {
     if (!presentingApproval) return;
     return claimApprovalThreads(threadIds);
@@ -174,6 +183,7 @@ export function useChatStatusPill({
     statusInPill: view !== 'unavailable',
     pill: (
       <LazyBoundary
+        key={activeSession.id}
         load={loadChatStatusPillView}
         shareAcrossMounts
         pending={null}
@@ -183,6 +193,7 @@ export function useChatStatusPill({
           onRevealApproval,
           onRepair: () => openConnectionsModal({ mode: 'request-access' }),
           onResync,
+          onRecoveryFocus,
           onMounted,
         }}
       />

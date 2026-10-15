@@ -1262,6 +1262,15 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
         }),
       ).toBeHidden();
       await expect(resync).toBeHidden();
+      await expect(
+        page.getByRole('group', { name: 'Message composer', exact: true }),
+      ).toBeFocused();
+      await expect(
+        page.getByRole('status').filter({ hasText: 'Conversation resynced.' }),
+      ).toBeAttached();
+      await page.screenshot({
+        path: testInfo.outputPath(`resync-recovered-${width}.png`),
+      });
       // The inventory is still unavailable until its own explicit recovery;
       // the successful conversation read independently verifies this row.
       if (width > 600) {

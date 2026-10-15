@@ -76,12 +76,13 @@ describe('buildTrendDays', () => {
       messages: 0,
       cost: 0,
     });
-    // Present row with zeros: a measured zero, honestly recorded.
+    // Recorded activity does not establish a zero cost measurement.
     expect(days[1]).toEqual({
       date: '2026-08-17',
       recorded: true,
       messages: 0,
       cost: 0,
+      costRecorded: false,
     });
   });
 

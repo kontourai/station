@@ -20,7 +20,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const agentsMock = vi.hoisted(() => ({ current: [] as any[] }));
 const resyncStream = vi.hoisted(() => vi.fn());
@@ -124,13 +124,22 @@ vi.mock('../hooks/useTTS', () => ({
 }));
 
 vi.mock('../hooks/orchestration/useActiveChatTranscript', () => ({
-  useActiveChatTranscript: () => transcriptStateMock.current,
+  useActiveChatTranscript: vi.fn(),
 }));
 
 vi.mock('../components/chat/ChatInputArea', () => ({
   // The composer rail hosts the chat's status pill (its `activity` slot).
-  ChatInputArea: ({ activity }: { activity?: React.ReactNode }) => (
-    <div data-testid="chat-input-area">{activity}</div>
+  ChatInputArea: ({
+    activity,
+    textareaRef,
+  }: {
+    activity?: React.ReactNode;
+    textareaRef: React.Ref<HTMLTextAreaElement>;
+  }) => (
+    <div data-testid="chat-input-area">
+      {activity}
+      <textarea ref={textareaRef} aria-label="Message composer" />
+    </div>
   ),
 }));
 
@@ -138,7 +147,19 @@ vi.mock('../components/chat/QueuedMessages', () => ({
   QueuedMessages: () => null,
 }));
 
+import {
+  PUBLIC_HANDSHAKE_SCHEMA_VERSION,
+  REMOTE_AUTH_PROTOCOL_VERSION,
+  STATION_COMPAT_MIN_CLIENT_PROTOCOL,
+  STATION_COMPAT_PROTOCOL_VERSION,
+} from '@kontourai/station-contracts/environment-security';
+import {
+  resetSessionEventWindowCapabilityCache,
+  setClientCredentialResolver,
+} from '@kontourai/station-sdk';
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
+import { setStreamConnectionState } from '../hooks/orchestration/streamConnectionState';
+import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
 import type { ChatSession } from '../types';
 
 function buildChatInput() {
@@ -234,6 +255,17 @@ function renderDock(session: ChatSession = buildSession()) {
 describe('ChatDockBody history-failure notice (station#3427)', () => {
   beforeEach(() => {
     agentsMock.current = [];
+    vi.mocked(useActiveChatTranscript).mockImplementation(() => ({
+      ...transcriptStateMock.current,
+      error: transcriptStateMock.current.error ?? undefined,
+      watermark: 0,
+      handoffs: [],
+      contextBoundaries: [],
+      settled: true,
+      catchingUp: false,
+      openTurnProjected: false,
+    }));
+    setStreamConnectionState('http://localhost:3242', 'caught-up');
     transcriptStateMock.current = {
       enabled: false,
       messages: [],
@@ -246,6 +278,159 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
       reload: vi.fn(async () => {}),
     };
   });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    setClientCredentialResolver(undefined);
+    resetSessionEventWindowCapabilityCache();
+    setStreamConnectionState('http://localhost:3242', 'caught-up');
+  });
+
+  test('a stalled real SDK history reload aborts, releases Resync and permits a slow successful retry', async () => {
+    const realTranscript = await vi.importActual<
+      typeof import('../hooks/orchestration/useActiveChatTranscript')
+    >('../hooks/orchestration/useActiveChatTranscript');
+    vi.mocked(useActiveChatTranscript).mockImplementation(
+      realTranscript.useActiveChatTranscript,
+    );
+    setClientCredentialResolver(() => ({
+      origin: 'http://localhost:3242',
+      credential: 'fixture',
+    }));
+    let reads = 0;
+    let stalledSignal: AbortSignal | null | undefined;
+    let release!: () => void;
+    const fetchMock = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const path = new URL(
+          input instanceof Request ? input.url : String(input),
+        ).pathname;
+        if (path === '/.well-known/station/v1')
+          return Response.json({
+            schemaVersion: PUBLIC_HANDSHAKE_SCHEMA_VERSION,
+            environmentId: 'recovery-test',
+            authentication: {
+              scheme: 'bearer',
+              protocolVersion: REMOTE_AUTH_PROTOCOL_VERSION,
+            },
+            transports: {
+              http: REMOTE_AUTH_PROTOCOL_VERSION,
+              sse: REMOTE_AUTH_PROTOCOL_VERSION,
+              websocket: REMOTE_AUTH_PROTOCOL_VERSION,
+            },
+            compatibility: {
+              serverVersion: '0.4.1',
+              protocolVersion: STATION_COMPAT_PROTOCOL_VERSION,
+              minClientProtocol: STATION_COMPAT_MIN_CLIENT_PROTOCOL,
+            },
+            capabilities: { sessionEventWindow: true },
+          });
+        if (
+          path === '/api/orchestration/conversations/thread-alpha/event-window'
+        ) {
+          reads++;
+          if (reads === 1)
+            return Response.json(
+              { success: false, error: 'Initial history unavailable' },
+              { status: 401 },
+            );
+          if (reads === 2) {
+            stalledSignal = init?.signal;
+            // Even a transport that ignores cancellation must not hold the UI guard.
+            return new Promise<Response>(() => {});
+          }
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+          return Response.json({
+            success: true,
+            data: {
+              protocolVersion: 1,
+              conversationId: 'thread-alpha',
+              events: [],
+              watermark: 0,
+              hasMore: false,
+            },
+          });
+        }
+        throw new Error(`Unexpected recovery request: ${path}`);
+      },
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    renderDock(
+      buildSession({
+        conversationId: 'thread-alpha',
+        orchestrationSessionStarted: true,
+      }),
+    );
+    const resync = await screen.findByRole('button', {
+      name: 'Status unavailable — resync this conversation',
+    });
+    expect(reads).toBe(1);
+    vi.useFakeTimers();
+    await act(async () => {
+      fireEvent.click(resync);
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(reads).toBe(2);
+    expect(
+      screen.getByRole('button', { name: /Resyncing conversation/ }),
+    ).toHaveProperty('disabled', true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+    expect(stalledSignal?.aborted).toBe(true);
+    expect(
+      screen.getByText(/Session history read timed out after 120 seconds/),
+    ).toBeTruthy();
+    const retry = screen.getByRole('button', {
+      name: 'Status unavailable — resync this conversation',
+    });
+    expect(retry).toHaveProperty('disabled', false);
+    await act(async () => {
+      fireEvent.click(retry);
+      await vi.advanceTimersByTimeAsync(40_000);
+    });
+    expect(reads).toBe(3);
+    expect(
+      screen.getByRole('button', { name: /Resyncing conversation/ }),
+    ).toHaveProperty('disabled', true);
+    await act(async () => {
+      release();
+      await vi.advanceTimersByTimeAsync(200);
+    });
+    expect(
+      screen.queryByRole('button', { name: /resync this conversation/ }),
+    ).toBeNull();
+    expect(screen.queryByText(/Session history read timed out/)).toBeNull();
+  });
+
+  test.each(['caught-up', 'closed'] as const)(
+    'a retained approval cannot hide recovery while the stream is %s',
+    async (stream) => {
+      transcriptStateMock.current.enabled = true;
+      transcriptStateMock.current.error = new Error('History unavailable');
+      setStreamConnectionState('http://localhost:3242', stream);
+      renderDock(
+        buildSession({
+          pendingApprovals: ['stale-approval'],
+          orchestrationStatus: 'awaiting-approval',
+        }),
+      );
+      expect(
+        await screen.findByRole('button', {
+          name:
+            stream === 'closed'
+              ? 'Check connection — repair the connection'
+              : 'Status unavailable — resync this conversation',
+        }),
+      ).toBeTruthy();
+      expect(
+        screen.queryByRole('button', { name: /Needs approval/ }),
+      ).toBeNull();
+    },
+  );
 
   test('says nothing when history is enabled and healthy', () => {
     transcriptStateMock.current.enabled = true;
@@ -322,10 +507,13 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
         }),
     );
     renderDock();
+    await screen.findByTestId('chat-input-area');
     const pill = await screen.findByRole('button', {
       name: 'Status unavailable — resync this conversation',
     });
     try {
+      pill.focus();
+      expect(document.activeElement).toBe(pill);
       // Same-tick activations exercise the owner guard before disabled paints.
       act(() => {
         for (let i = 0; i < 5; i++) fireEvent.click(pill);
@@ -347,6 +535,14 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
         release();
       });
       await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+      expect(document.activeElement).toBe(
+        screen.getByRole('textbox', { name: 'Message composer' }),
+      );
+      expect(
+        screen
+          .getAllByRole('status')
+          .some((status) => status.textContent === 'Conversation resynced.'),
+      ).toBe(true);
       expect(
         screen.queryByRole('button', { name: /resync this conversation/ }),
       ).toBeNull();

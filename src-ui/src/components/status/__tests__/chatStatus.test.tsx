@@ -177,7 +177,7 @@ describe('deriveChatStatus — one status, by priority', () => {
     expect(lines.join('|')).not.toMatch(/No progress for/);
   });
 
-  test('approval outranks the connection, which outranks the turn', () => {
+  test('connection recovery outranks approvals and turn activity', () => {
     const reconnecting = {
       label: 'Reconnecting live updates…',
       blocked: false,
@@ -190,7 +190,7 @@ describe('deriveChatStatus — one status, by priority', () => {
         stream: reconnecting,
         turnLive: true,
       })?.kind,
-    ).toBe('approval');
+    ).toBe('reconnecting');
     expect(
       deriveChatStatus({ ...base, stream: reconnecting, turnLive: true })?.kind,
     ).toBe('reconnecting');

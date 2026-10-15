@@ -1,0 +1,7 @@
+{
+  "revision": "0140c1aec970be475efd6ed12735ada58f1d3c31",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Fix round 2: traced mounted ChatDock through the real transcript reader and SDK. JSON history has no progress callback; 120-second cancellation releases a stalled Resync, preserves its error and permits a 40-second successful retry. Transport and failed-read recovery precede retained approvals; claims track the actual derivation. Recovery announces completion and transfers focus only from the recovery control. Owner-boundary baseline and three injected regressions executed; native transport and OS screen-reader output remain unverified.","inputs":["docs/design/chat-composer.md","src-ui/src/components/status/chatStatus.ts"]}
+  ]
+}
