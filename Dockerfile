@@ -72,6 +72,36 @@ RUN node scripts/lib/container-release-metadata.mjs \
   --station-manifest=.station-release.json >/dev/null
 RUN STATION_UI_BUNDLE_BUDGET=observe ./station build --instance=container --base=/tmp/station-build-home --port=3141 --ui-port=3000
 
+FROM dependencies AS telemetry-build
+ARG STATION_RELEASE_SHA
+ARG STATION_RELEASE_REF
+ARG STATION_RELEASE_CREATED_AT
+WORKDIR /app
+COPY packages ./packages
+COPY scripts ./scripts
+RUN node scripts/lib/container-release-metadata.mjs \
+  --tag="$STATION_RELEASE_REF" \
+  --sha="$STATION_RELEASE_SHA" \
+  --created-at="$STATION_RELEASE_CREATED_AT" \
+  --repository=kontourai/station \
+  --station-manifest=.station-release.json >/dev/null
+RUN npm run build:telemetry-broker
+
+FROM node:24.19.0-bookworm-slim@sha256:a9f5f7c91a432850b2a8a7797adf5eadb6c733ceed61167806cee7ea7fbc29df AS telemetry-runtime
+WORKDIR /app
+COPY --from=telemetry-build --chown=node:node /app/packages/telemetry-broker/dist ./dist
+COPY --from=telemetry-build --chown=node:node /app/.station-release.json ./
+ARG STATION_RELEASE_SHA
+ARG STATION_RELEASE_REF
+LABEL org.opencontainers.image.source="https://github.com/kontourai/station" \
+  org.opencontainers.image.revision=$STATION_RELEASE_SHA \
+  org.opencontainers.image.version=$STATION_RELEASE_REF
+USER node
+EXPOSE 43891
+HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
+  CMD ["node", "--input-type=module", "-e", "const r = await fetch('http://127.0.0.1:43891/health/live', {signal: AbortSignal.timeout(2000)}); if (!r.ok) process.exit(1)"]
+CMD ["node", "dist/main.mjs"]
+
 FROM node:24-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS runtime
 WORKDIR /app
 RUN apt-get update \

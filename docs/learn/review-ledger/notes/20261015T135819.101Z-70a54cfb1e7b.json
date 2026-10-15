@@ -1,0 +1,19 @@
+{
+  "revision": "7ab281365d6759acd1583802c9bafec9ec402e78",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed responsive/loading state contract against the complete one-line query-core delta: explicit useQuery<T> preserves the declared response type and changes no emitted JavaScript, loading state, placeholder selection, cache key or viewport behavior. No responsive claim or prose changes; current UI typecheck and delivery UI controls pass, not browser/native layout acceptance.","inputs":["docs/guides/responsive-ui.md","packages/sdk/src/query-core.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed theme/provider and cache ownership claims against explicit useQuery<T> propagation. Type parameter erases at runtime; no token cascade, theme preference, request, cache or refetch behavior changes. No prose edit or new visual/device qualification claimed; UI/SDK typechecks pass.","inputs":["docs/guides/theming.md","packages/sdk/src/query-core.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed route/service/request authorization and cache/durability guidance against the single shared React query type-argument change. No server transport, authority, failure mapping or persistent state behavior changes. Declared query payload now remains typed in consumers; no backend claim change or new deployed acceptance.","inputs":["docs/patterns/backend.md","packages/sdk/src/query-core.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed shared-query owner and cache/freshness/loading guidance against useQuery<T> at the actual typed query boundary. Existing five-minute stale/ten-minute GC defaults, per-key GC, retry inheritance, optional prior data and cancellation remain unchanged. UI and SDK compiler checks plus 23 retry/placeholder/cancellation/delivery UI controls pass. No prose or broader browser evidence change.","inputs":["docs/patterns/frontend.md","packages/sdk/src/query-core.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed useApiQuery return and remote-query documentation against explicit useQuery<T> propagation through the owning shared helper. Preserves declared fetched response type without a cast or consumer assertion; emitted runtime/defaults/keys/error/cancellation unchanged. Actual prior UI typecheck failed on erased delivery data and now passes; SDK typecheck and 23 focused controls pass. Publication/deployment proof remains separate.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-core.ts"]},
+
+    {"path":"docs/user/work-board.md","note":"Reviewed cached return, explicit Refresh Board, revision-conflict and unconfirmed-response claims against shared query type propagation. Type-only change does not alter request execution, invalidation, cache/retry defaults, board writes or user actions. Existing prose accurate; no new board browser or native journey acceptance claimed.","inputs":["docs/user/work-board.md","packages/sdk/src/query-core.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed SDK owner/consumer and cancellation-evidence instructions against shared query fix. Explicit useQuery<T> retains the established declared response type at the real fetch boundary; no app-internal import, testing seam or policy change. UI/SDK typechecks and 23 caller/cache/retry/placeholder controls passed; no instruction prose change.","inputs":["packages/sdk/AGENTS.md","packages/sdk/src/query-core.ts"]}
+  ]
+}

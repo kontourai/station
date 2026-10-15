@@ -96,6 +96,8 @@ export interface SettingDefinition<
    * declare it for a key whose resolver does not consult it.
    */
   envFallback?: string;
+  /** Compatibility fallbacks, in order, after a valid canonical environment value. */
+  envAliases?: readonly string[];
   secret?: boolean;
   /**
    * `null` is a legitimate STORED value for this key, distinct from absent
@@ -226,7 +228,63 @@ export const APP_SETTINGS_REGISTRY = [
     description:
       'Allow Station to send the documented anonymous product-usage events when this Station has a telemetry endpoint configured. No endpoint is configured by default, so nothing is sent.',
     defaultValue: true,
-    envFallback: 'STATION_TELEMETRY_ENABLED',
+    envFallback: 'STATION_PRODUCT_TELEMETRY_ENABLED',
+    envAliases: ['STATION_TELEMETRY_ENABLED'],
+  }),
+  defineSetting({
+    key: 'productTelemetryEndpoint',
+    scope: 'station',
+    descriptor: {
+      kind: 'string',
+      maxLength: 2048,
+      pattern: '^https?://[^\\s?#@]+$',
+    },
+    label: 'Product receiver address',
+    help: 'Station sends disclosed product observations to this full POST address.',
+    description:
+      'A saved address takes precedence over the product environment destination. No address is configured by default. Saving does not acknowledge disclosure or configure the OTel collector.',
+    envFallback: 'STATION_PRODUCT_TELEMETRY_ENDPOINT',
+    envAliases: ['STATION_TELEMETRY_ENDPOINT'],
+  }),
+  defineSetting({
+    key: 'productTelemetryKeyRef',
+    scope: 'station',
+    descriptor: {
+      kind: 'string',
+      maxLength: 64,
+      pattern: '^[a-z][a-z0-9-]{0,63}$',
+    },
+    label: 'Product receiver key reference',
+    help: 'Station resolves this instance secret binding for the configured product receiver.',
+    description:
+      'Enter a SecretBinding ID, never a key. The binding must grant this exact product destination; missing, revoked, person-owned or ungranted bindings fail without falling back to an environment key.',
+  }),
+  defineSetting({
+    key: 'otelTelemetryEndpoint',
+    scope: 'station',
+    descriptor: {
+      kind: 'string',
+      maxLength: 2048,
+      pattern: '^https?://[^\\s?#@]+$',
+    },
+    label: 'Collector address',
+    help: 'Station uses this collector for metrics and traces after restart.',
+    description:
+      'A saved OTLP HTTP base address takes precedence over OTEL_EXPORTER_OTLP_ENDPOINT. Restart activates it. It does not configure product observations or acknowledge disclosure.',
+    envFallback: 'OTEL_EXPORTER_OTLP_ENDPOINT',
+  }),
+  defineSetting({
+    key: 'otelTelemetryKeyRef',
+    scope: 'station',
+    descriptor: {
+      kind: 'string',
+      maxLength: 64,
+      pattern: '^[a-z][a-z0-9-]{0,63}$',
+    },
+    label: 'Collector key reference',
+    help: 'Station resolves this instance secret binding for its collector after restart.',
+    description:
+      'Enter a SecretBinding ID, never a key. The binding must grant this exact OTLP destination. It does not confer product or person authority; missing or revoked grants fail without environment fallback.',
   }),
   defineSetting({
     key: 'registryUrl',
