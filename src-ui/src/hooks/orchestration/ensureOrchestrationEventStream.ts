@@ -284,6 +284,12 @@ function registerStreamQueryClient(
   return () => {
     const index = streamQueryClients.indexOf(registration);
     if (index !== -1) streamQueryClients.splice(index, 1);
+    if (!currentStreamQueryClient(apiBase)) {
+      const state = sessionReadModelRefreshes.get(apiBase);
+      if (state?.deferred !== undefined) clearTimeout(state.deferred);
+      state?.awaitingSettle?.();
+      sessionReadModelRefreshes.delete(apiBase);
+    }
   };
 }
 
@@ -309,9 +315,9 @@ function refreshSessionReadModelOnFact(
  * conversation started on another device, and the abandoned reads pile up in
  * the native request queue until session history and status are refused. So
  * while a read is in flight this only remembers that another is owed, and
- * asks again once that read settles. The wait is bounded by the read's own
- * client deadline (`DEFAULT_CLIENT_REQUEST_TIMEOUT_MS`): a hung read fails
- * and settles rather than holding the refresh forever.
+ * asks again once that read settles. `fetchOrchestrationSessions` explicitly
+ * applies `DEFAULT_CLIENT_REQUEST_TIMEOUT_MS` to the request and body read,
+ * so a stalled read fails and releases the owed refresh.
  */
 function requestSessionReadModelRefresh(apiBase: string): void {
   const state = sessionReadModelRefreshState(apiBase);

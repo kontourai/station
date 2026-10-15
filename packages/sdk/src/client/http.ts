@@ -269,7 +269,8 @@ const BODY_READERS = new Set<PropertyKey>([
  * The deadline also governs the body readers (`json`, `text`, `arrayBuffer`,
  * `blob`, `formData`, `bytes`; not `response.body` streams, which a caller
  * reads itself): `fetch`'s signal aborts a body read still in progress when
- * it fires. A body reader that fails that way raises the same
+ * it fires. The reader also races that deadline so a transport that leaves
+ * its body pending cannot strand the caller. A deadline raises the same
  * `StationRequestTimeoutError` (with the same `mutation` fact) as a deadline
  * missed before the headers, so a caller can tell "the server answered 200
  * and then stalled" (a write may have been applied) from a malformed body.
@@ -292,11 +293,21 @@ function deadlineBoundBody(
       if (BODY_READERS.has(property) && typeof value === 'function') {
         const read = value as () => Promise<unknown>;
         return async () => {
+          let onDeadline: (() => void) | undefined;
           try {
-            return await read.call(target);
+            deadline.throwIfAborted();
+            return await Promise.race([
+              read.call(target),
+              new Promise<never>((_resolve, reject) => {
+                onDeadline = () => reject(timedOut());
+                deadline.addEventListener('abort', onDeadline, { once: true });
+              }),
+            ]);
           } catch (error) {
             if (deadline.aborted) throw timedOut();
             throw error;
+          } finally {
+            if (onDeadline) deadline.removeEventListener('abort', onDeadline);
           }
         };
       }

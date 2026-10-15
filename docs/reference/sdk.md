@@ -4195,6 +4195,16 @@ The [channel adapter](../../packages/connect/src/core/applicationChannel.ts)
 and [credential resolver](../../packages/sdk/src/client/http.ts) show where
 framing ends and the application's authority checks begin.
 
+## Session read-model deadline
+
+`fetchOrchestrationSessions(apiBase?)` reads the session read-model with an
+explicit 30-second request deadline, including JSON body consumption. A stalled
+body rejects with `StationRequestTimeoutError`, allowing the stream's owed
+refresh to run after the query settles. This per-read bound does not enable a
+global browser deadline for uploads or installs. See the
+[fetcher](../../packages/sdk/src/query-domains/chatRuntimeOrchestration.ts) and
+[deadline transport](../../packages/sdk/src/client/http.ts).
+
 ## Orchestration approval deadlines
 
 Orchestration command failures retain HTTP status even when the response omits
