@@ -234,7 +234,13 @@
 
     "src-ui/src/components/profile/ToolRequestsPanel.tsx",
 
-    "src-server/services/projects/project-native-tools.ts"
+    "src-server/services/projects/project-native-tools.ts",
+
+    "src-ui/src/components/profile/MyAccessPanel.css",
+
+    "src-ui/src/components/profile/ToolRequestsPanel.css",
+
+    "src-ui/src/components/attention/AttentionCard.css"
   ],
 
   "checks": [
