@@ -16,6 +16,7 @@ import {
 } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   checkConsumerManifest,
@@ -23,6 +24,8 @@ import {
   checkShippedImports,
   checkTarballListing,
   packMonument,
+  plainEnvironment,
+  run as runStep,
 } from '../monument-pack-smoke.mjs';
 
 const REPO = resolve(import.meta.dirname, '..', '..');
@@ -33,11 +36,12 @@ const scratch = trackTempDirs({ lifetime: 'file' })(
   'monument-pack-smoke-test-',
 );
 
-function run(args: string[]) {
+function run(args: string[], env: NodeJS.ProcessEnv = process.env) {
   const result = spawnSync(process.execPath, [SCRIPT, ...args], {
     cwd: REPO,
     encoding: 'utf8',
     windowsHide: true,
+    env,
   });
   return {
     status: result.status,
@@ -186,6 +190,146 @@ describe('monument pack smoke: checks', () => {
   });
 });
 
+describe('monument pack smoke: the public gate', () => {
+  const WORKFLOW = join(REPO, '.github', 'workflows', 'publish-packages.yml');
+  const manifestDir = trackTempDirs({ lifetime: 'file' })('monument-gate-');
+  const gate = (manifest: string, env: NodeJS.ProcessEnv = process.env) => {
+    const path = join(manifestDir, 'package.json');
+    writeFileSync(path, manifest);
+    return run(['--is-public', '--manifest', path], env);
+  };
+
+  it('reports private as public=false and anything else as public=true', () => {
+    for (const [manifest, expected] of [
+      ['{"name":"x","private":true}', 'false'],
+      // The preflight skips any truthy `private`, so the gate does too.
+      ['{"name":"x","private":"true"}', 'false'],
+      ['{"name":"x","private":1}', 'false'],
+      ['{"name":"x","private":false}', 'true'],
+      ['{"name":"x"}', 'true'],
+    ] as const) {
+      const result = gate(manifest);
+      expect(result.status, `${manifest}: ${result.output}`).toBe(0);
+      expect(result.output.trim(), manifest).toBe(`public=${expected}`);
+    }
+  });
+
+  it('fails closed on a manifest it cannot read, with no output line', () => {
+    for (const manifest of ['{', '', '[]', 'null', '"private"']) {
+      const result = gate(manifest);
+      expect(result.status, manifest).toBe(1);
+      expect(result.output).toContain('FAIL: cannot read');
+      expect(result.output).not.toContain('public=');
+    }
+    const missing = run([
+      '--is-public',
+      '--manifest',
+      join(manifestDir, 'none'),
+    ]);
+    expect(missing.status).toBe(1);
+  });
+
+  it('appends the line to GITHUB_OUTPUT', () => {
+    const output = join(manifestDir, 'github-output');
+    writeFileSync(output, 'earlier=1\n');
+    const result = gate('{"name":"x"}', {
+      ...process.env,
+      GITHUB_OUTPUT: output,
+    });
+    expect(result.status, result.output).toBe(0);
+    expect(readFileSync(output, 'utf8')).toBe('earlier=1\npublic=true\n');
+  });
+
+  it('gates the build and the smoke in the workflow on a dispatch AND a public package', () => {
+    const workflow = parse(readFileSync(WORKFLOW, 'utf8'));
+    const steps: Array<Record<string, any>> = workflow.jobs.publish.steps;
+    const index = (name: string) => steps.findIndex((s) => s.name === name);
+    const gateStep = steps[index('Is Monument public?')];
+    const build = steps[index('Build Monument')];
+    const smoke = steps[index('Smoke the Monument tarball')];
+    expect(gateStep.id).toBe('monument');
+    expect(gateStep.run).toBe(
+      'node scripts/monument-pack-smoke.mjs --is-public',
+    );
+    expect(gateStep.if).toBeUndefined();
+    // The gate precedes what it gates, and what it gates precedes the publish.
+    const changesets = steps.findIndex((s) => s.id === 'changesets');
+    expect(index('Is Monument public?')).toBeLessThan(index('Build Monument'));
+    expect(index('Build Monument')).toBeLessThan(
+      index('Smoke the Monument tarball'),
+    );
+    expect(index('Smoke the Monument tarball')).toBeLessThan(changesets);
+
+    // Evaluate each `if` the way Actions does for `a == 'b' && c == 'd'`.
+    const runs = (condition: string, context: Record<string, string>) =>
+      condition.split(' && ').every((clause) => {
+        const [left, right] = clause.split(' == ');
+        expect(right).toMatch(/^'(true|false)'$/);
+        const value = context[left.trim()];
+        return value !== undefined && value === right.slice(1, -1);
+      });
+    const state = (publishRun: string, isPublic: string) => ({
+      'env.PUBLISH_RUN': publishRun,
+      'steps.monument.outputs.public': isPublic,
+    });
+    for (const step of [build, smoke]) {
+      // private: skipped, on a dispatch and on a push
+      expect(runs(step.if, state('true', 'false'))).toBe(false);
+      expect(runs(step.if, state('false', 'false'))).toBe(false);
+      // public: runs on a dispatch, not on a push (the version PR)
+      expect(runs(step.if, state('true', 'true'))).toBe(true);
+      expect(runs(step.if, state('false', 'true'))).toBe(false);
+    }
+    // The gate step never ran (unset output) leaves both skipped.
+    expect(runs(build.if, { 'env.PUBLISH_RUN': 'true' })).toBe(false);
+  });
+});
+
+describe('monument pack smoke: bounds and credentials', () => {
+  it('kills a hung step at its bound and reports it as a timeout, never a pass', () => {
+    const started = Date.now();
+    const step = runStep(
+      process.execPath,
+      ['-e', 'setInterval(() => {}, 1000)'],
+      { timeoutMs: 400 },
+    );
+    expect(step.ok).toBe(false);
+    expect(step.timedOut).toBe(true);
+    expect(step.describe()).toContain('timed out after 400 ms and was killed');
+    expect(Date.now() - started).toBeLessThan(30_000);
+    // The control: the same helper passes a step that finishes.
+    const fine = runStep(process.execPath, ['-e', '0'], { timeoutMs: 30_000 });
+    expect(fine.ok).toBe(true);
+    expect(fine.timedOut).toBe(false);
+  });
+
+  it('removes publish credentials and loaders, and keeps ordinary variables', () => {
+    const env = plainEnvironment({
+      PATH: '/bin',
+      HOME: '/home/x',
+      ACTIONS_ID_TOKEN_REQUEST_URL: 'u',
+      ACTIONS_ID_TOKEN_REQUEST_TOKEN: 't',
+      NODE_AUTH_TOKEN: 'n',
+      NPM_ID_TOKEN: 'i',
+      NPM_TOKEN: 'x',
+      GITHUB_TOKEN: 'g',
+      'npm_config_//registry.npmjs.org/:_authToken': 'a',
+      npm_config__authToken: 'a',
+      NPM_CONFIG__AUTH: 'a',
+      NODE_OPTIONS: '--import tsx',
+      NODE_PATH: '/x',
+      TSX_TSCONFIG_PATH: '/x',
+      npm_config_registry: 'https://registry.npmjs.org',
+    });
+    expect(Object.keys(env).sort()).toEqual([
+      'HOME',
+      'PATH',
+      'STATION_TYPECHECK_INCREMENTAL',
+      'npm_config_registry',
+    ]);
+  });
+});
+
 describe.skipIf(process.platform === 'win32')(
   'monument pack smoke: tarballs',
   () => {
@@ -226,6 +370,22 @@ describe.skipIf(process.platform === 'win32')(
     }, () => {
       // The control for every rejection below.
       const result = run(['--tarball', good]);
+      expect(result.output).toContain('OK: @kontourai/monument consumer smoke');
+      expect(result.status).toBe(0);
+    });
+
+    it('keeps publish credentials out of the packed code and the type-check', {
+      timeout: CASE_TIMEOUT,
+    }, () => {
+      // The consumer script fails if any of these reach it.
+      const result = run(['--tarball', good], {
+        ...process.env,
+        ACTIONS_ID_TOKEN_REQUEST_URL: 'https://example.invalid/token',
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'fake',
+        NODE_AUTH_TOKEN: 'fake',
+        NPM_ID_TOKEN: 'fake',
+        'npm_config_//registry.npmjs.org/:_authToken': 'fake',
+      });
       expect(result.output).toContain('OK: @kontourai/monument consumer smoke');
       expect(result.status).toBe(0);
     });
@@ -360,9 +520,7 @@ describe.skipIf(process.platform === 'win32')(
       // `private` is the owner's step (#3565); this follows it either way.
       const gated = run(['--if-publishable', '--tarball', good]);
       expect(gated.status, gated.output).toBe(0);
-      expect(gated.output).toContain(
-        manifest.private === true ? 'SKIP:' : 'OK:',
-      );
+      expect(gated.output).toContain(manifest.private ? 'SKIP:' : 'OK:');
       expect(run(['--bogus']).status).toBe(2);
     });
   },

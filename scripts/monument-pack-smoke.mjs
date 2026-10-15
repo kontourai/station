@@ -36,10 +36,15 @@
  *   node scripts/monument-pack-smoke.mjs --tarball <tgz>  smoke an existing tarball
  *   node scripts/monument-pack-smoke.mjs --spec <name@v>  smoke a registry version
  *   node scripts/monument-pack-smoke.mjs --if-publishable  exit 0 while `private`
+ *   node scripts/monument-pack-smoke.mjs --is-public      print public=true|false (and
+ *                                     append it to $GITHUB_OUTPUT); exit 1 if the
+ *                                     manifest cannot be read. `--manifest <path>`
+ *                                     reads another manifest.
  *
  * POSIX only: it shells out to `tar`, `npm` and `pnpm`.
  */
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -86,6 +91,14 @@ import * as kernel from '@kontourai/monument';
 import * as adapter from '@kontourai/monument/adapter';
 import * as sqlite from '@kontourai/monument/sqlite';
 import * as testing from '@kontourai/monument/testing';
+
+// A publish job's credentials must not reach the packed code.
+for (const name of Object.keys(process.env))
+  assert.doesNotMatch(
+    name,
+    /^(ACTIONS_ID_TOKEN_REQUEST_(URL|TOKEN)|NPM_ID_TOKEN|NODE_AUTH_TOKEN|NPM_TOKEN|GITHUB_TOKEN)$|_authToken$/i,
+    'credential variable reached the consumer: ' + name,
+  );
 
 for (const specifier of [
   '@kontourai/monument',
@@ -164,32 +177,82 @@ function tail(text, lines = 12) {
   return all.slice(-lines).join('\n');
 }
 
-function run(command, args, options = {}) {
+/**
+ * Every spawned step has an explicit bound, so a hang ends the smoke instead
+ * of running to the job's own limit. Generous: `npm install` and the
+ * type-check can wait on a busy host (the type-check holds a host-wide slot).
+ */
+export const STEP_TIMEOUT_MS = 10 * 60 * 1000;
+const QUICK_STEP_TIMEOUT_MS = 2 * 60 * 1000;
+
+/**
+ * Runs one step. A timeout kills the child and is a failure with its own
+ * message: it can never read as a pass, and `ok` stays false.
+ */
+export function run(command, args, options = {}) {
+  const { timeoutMs = STEP_TIMEOUT_MS, ...spawnOptions } = options;
   const result = spawnSyncBounded(command, args, {
     encoding: 'utf8',
     windowsHide: true,
-    ...options,
+    killSignal: 'SIGKILL',
+    ...spawnOptions,
+    timeout: timeoutMs,
   });
+  const timedOut = result.error?.code === 'ETIMEDOUT';
   const ok = !result.error && result.status === 0;
   return {
     ok,
+    timedOut,
     stdout: result.stdout ?? '',
     describe: () =>
       `${command} ${args.join(' ')}: ${
-        result.error
-          ? result.error.message
-          : `exit ${result.status}\n${tail(`${result.stderr ?? ''}\n${result.stdout ?? ''}`)}`
+        timedOut
+          ? `timed out after ${timeoutMs} ms and was killed`
+          : result.error
+            ? result.error.message
+            : `exit ${result.status}\n${tail(`${result.stderr ?? ''}\n${result.stdout ?? ''}`)}`
       }`,
   };
 }
 
-/** The environment of a consumer with no loader, flag or search path set. */
-function plainEnvironment() {
-  const env = { ...process.env, STATION_TYPECHECK_INCREMENTAL: '0' };
+const LOADER_VARIABLE = /^(NODE_OPTIONS|NODE_PATH|TSX_.*|NODE_ENV)$/;
+/**
+ * Registry and CI credentials. The packed code and the type-check run in a
+ * publish job that holds an OIDC id-token request and may hold npm auth, and
+ * neither has any use for them: names GitHub, npm and pnpm read for
+ * publishing, and any `npm_config_` variable that carries a credential
+ * (`npm_config_//registry.npmjs.org/:_authToken` included).
+ */
+const CREDENTIAL_VARIABLE =
+  /^(ACTIONS_ID_TOKEN_REQUEST_(URL|TOKEN)|ACTIONS_RUNTIME_TOKEN|NPM_ID_TOKEN|NODE_AUTH_TOKEN|NPM_TOKEN|GITHUB_TOKEN|GH_TOKEN)$|^npm_config_.*(_authToken|_auth|_password|_username|_token)$/i;
+
+/**
+ * The environment of a consumer with no loader, flag, search path or
+ * credential set. `source` is a seam for tests.
+ */
+export function plainEnvironment(source = process.env) {
+  const env = { ...source, STATION_TYPECHECK_INCREMENTAL: '0' };
   for (const name of Object.keys(env))
-    if (/^(NODE_OPTIONS|NODE_PATH|TSX_.*|NODE_ENV)$/.test(name))
+    if (LOADER_VARIABLE.test(name) || CREDENTIAL_VARIABLE.test(name))
       delete env[name];
   return env;
+}
+
+/**
+ * Whether the manifest is publishable, by the preflight's own rule in
+ * publish-packages.yml (`if (pkg.private) continue`): any truthy `private`,
+ * the string "true" included, is private. Throws on anything but a JSON
+ * object, so a caller fails closed.
+ */
+export function monumentIsPublic(manifestText) {
+  const manifest = JSON.parse(manifestText);
+  if (
+    manifest === null ||
+    typeof manifest !== 'object' ||
+    Array.isArray(manifest)
+  )
+    throw new Error('the manifest is not a JSON object');
+  return !manifest.private;
 }
 
 /**
@@ -362,6 +425,7 @@ export function smokePackage({ repoRoot, tarball, spec }) {
     if (spec) {
       const fetched = run('npm', ['pack', spec, '--pack-destination', work], {
         cwd: work,
+        env: plainEnvironment(),
       });
       if (!fetched.ok) {
         failures.push(`could not fetch ${spec}: ${fetched.describe()}`);
@@ -371,7 +435,9 @@ export function smokePackage({ repoRoot, tarball, spec }) {
     }
 
     // 1. The tarball's own listing.
-    const listing = run('tar', ['-tzf', archive]);
+    const listing = run('tar', ['-tzf', archive], {
+      timeoutMs: QUICK_STEP_TIMEOUT_MS,
+    });
     if (!listing.ok) {
       failures.push(`could not list the tarball: ${listing.describe()}`);
       return failures;
@@ -441,6 +507,7 @@ export function smokePackage({ repoRoot, tarball, spec }) {
     const plain = run(process.execPath, ['run.mjs'], {
       cwd: consumer,
       env: plainEnvironment(),
+      timeoutMs: QUICK_STEP_TIMEOUT_MS,
     });
     if (!plain.ok)
       failures.push(`plain node import failed: ${plain.describe()}`);
@@ -505,12 +572,17 @@ export function packMonument({ repoRoot, destination, build = true }) {
 }
 
 function parseArguments(argv) {
-  const options = { build: true, ifPublishable: false };
+  const options = { build: true, ifPublishable: false, isPublic: false };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--no-build') options.build = false;
     else if (argument === '--if-publishable') options.ifPublishable = true;
-    else if (argument === '--tarball' || argument === '--spec') {
+    else if (argument === '--is-public') options.isPublic = true;
+    else if (
+      argument === '--tarball' ||
+      argument === '--spec' ||
+      argument === '--manifest'
+    ) {
       index += 1;
       const value = argv[index];
       if (!value) throw new Error(`${argument} needs a value`);
@@ -531,10 +603,27 @@ function main() {
     console.error(`FAIL: ${error.message}`);
     process.exit(2);
   }
-  const manifest = JSON.parse(
-    readFileSync(join(repoRoot, MONUMENT_DIR, 'package.json'), 'utf8'),
-  );
-  if (options.ifPublishable && manifest.private === true) {
+  const manifestPath =
+    options.manifest ?? join(repoRoot, MONUMENT_DIR, 'package.json');
+  let manifest;
+  let isPublic;
+  try {
+    const manifestText = readFileSync(manifestPath, 'utf8');
+    manifest = JSON.parse(manifestText);
+    isPublic = monumentIsPublic(manifestText);
+  } catch (error) {
+    console.error(`FAIL: cannot read ${manifestPath}: ${error.message}`);
+    process.exit(1);
+  }
+  if (options.isPublic) {
+    // The publish workflow's gate: one line, `public=true|false`.
+    const line = `public=${isPublic}`;
+    console.log(line);
+    if (process.env.GITHUB_OUTPUT)
+      appendFileSync(process.env.GITHUB_OUTPUT, `${line}\n`);
+    return;
+  }
+  if (options.ifPublishable && !isPublic) {
     console.log(
       `SKIP: ${PACKAGE_NAME} is private; nothing to publish, nothing to smoke.`,
     );
