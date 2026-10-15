@@ -491,8 +491,18 @@ describe('useOutboundQueueFlush', () => {
       kind: 'accepted',
       providerTurnId: 'provider-turn-a',
     });
+    // A follow-up this tab and a duplicate of it both hold.
+    activeChatsStore.updateChat('session-1', {
+      queuedMessages: ['held in both tabs'],
+      queuedMessageMetadata: [{ id: 'shared-held-key' }],
+    } as never);
+    const heldBy = () =>
+      ((stored as { turns?: Array<Record<string, unknown>> }).turns ?? []).find(
+        (turn) => turn.clientTurnId === 'shared-held-key',
+      )?.heldBy as { bootId: string } | undefined;
     try {
       renderHook(() => useOutboundQueueFlush('http://api.test'));
+      await waitFor(() => expect(heldBy()).toBeDefined());
       await waitFor(() =>
         expect(
           activeChatsStore
@@ -509,15 +519,28 @@ describe('useOutboundQueueFlush', () => {
       const record = stored as { turns: Array<Record<string, unknown>> };
       stored = {
         ...record,
-        turns: record.turns.filter((turn) => turn.clientTurnId !== 'b-sending'),
+        turns: record.turns
+          .filter((turn) => turn.clientTurnId !== 'b-sending')
+          // Meanwhile the duplicate tab holds the shared follow-up.
+          .map((turn) =>
+            turn.clientTurnId === 'shared-held-key'
+              ? { ...turn, heldBy: { bootId: 'other-tab', heldAt: now } }
+              : turn,
+          ),
       };
       held.clear();
       new FakeChannel('station-outbound-queue').postMessage('changed');
       await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
       expect(sendMessage.mock.calls[0]?.[6]).toBe('a-waiting');
+      // That pass did not take the shared key back from the duplicate tab.
+      expect(heldBy()?.bootId).toBe('other-tab');
     } finally {
       vi.unstubAllGlobals();
       _resetOutboundQueueChangeChannel();
+      activeChatsStore.updateChat('session-1', {
+        queuedMessages: [],
+        queuedMessageMetadata: [],
+      } as never);
     }
   });
 
