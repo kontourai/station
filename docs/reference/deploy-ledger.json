@@ -1,5 +1,39 @@
 [
   {
+    "timestampUtc": "2026-10-15T06:57:02Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2479.38682073239",
+    "sha": "79d6de57f1d33ee87805e4811c078f9aae7aec46",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38682073239",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2479.38682073239 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "e73c9c32084c2ede3c43738bad8fdf90d7cec806",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#3669](https://github.com/kontourai/station/pull/3669) fix(ci): retain primary Vitest errors and immutable failed reports",
+          "[#3660](https://github.com/kontourai/station/pull/3660) fix(orchestration): refuse a same-key resend of a retained claim as may-have-started at once",
+          "[#3534](https://github.com/kontourai/station/pull/3534) fix(profile): polish retained usage and preserve measurement gaps",
+          "[#3663](https://github.com/kontourai/station/pull/3663) fix(native): restore iOS channel icons and support Android themed launchers"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#3647](https://github.com/kontourai/station/pull/3647) chore: exempt Kontour packages from release age"
+        ]
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
     "timestampUtc": "2026-10-14T23:38:43Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2478.10",
