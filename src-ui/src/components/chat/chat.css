@@ -1499,6 +1499,10 @@
 .chat-input__agent-name,
 .chat-input__model-name {
   min-width: 0;
+  /* The stack aligns its lines to the start, which sizes each to its own
+     unwrapped text; without this cap a long name ran out of the chip and
+     under its caret instead of ending in an ellipsis. */
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2573,6 +2577,12 @@
 .chat-input .chat-input__stop-btn:hover:not(:disabled) {
   background: var(--k-negative-soft);
 }
+/* Trailing Stop (phone layout, see ChatInputArea): its gap sits before it. */
+.chat-input
+  .chat-input__send-group[data-stop-placement="trailing"]
+  .chat-input__stop-btn {
+  margin-inline: var(--k-space-1) 0;
+}
 .chat-input__send-group {
   gap: 0;
 }
@@ -3071,6 +3081,12 @@
 
   .chat-input__settings {
     flex-basis: 100%;
+  }
+
+  /* #3050: a narrow composer gives up the Agent's route before its name. The
+     chip's accessible name and tooltip keep the route. */
+  .chat-input__agent-route {
+    display: none;
   }
 
   .chat-input__activity .chat-scroll-to-bottom,
