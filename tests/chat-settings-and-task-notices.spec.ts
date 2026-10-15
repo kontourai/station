@@ -376,9 +376,7 @@ for (const theme of ['light', 'dark'] as const) {
   });
 }
 
-test('working chat indicator explains its count and opens with the keyboard', async ({
-  page,
-}, testInfo) => {
+async function openWorkingChat(page: Page) {
   await page.setViewportSize(DESKTOP);
   await seedChat(page);
   await page.goto('/?dock=open&maximize=true&chat=conv-1');
@@ -402,8 +400,26 @@ test('working chat indicator explains its count and opens with the keyboard', as
     exact: true,
   });
   await expect(activity).toHaveAttribute('title', '1 chat working');
+  return activity;
+}
+
+for (const key of ['Enter', 'Space']) {
+  test(`working chat indicator toggles with ${key}`, async ({ page }) => {
+    const activity = await openWorkingChat(page);
+    await activity.focus();
+    await expect(activity).toHaveAttribute('aria-expanded', 'false');
+    await page.keyboard.press(key);
+    await expect(activity).toHaveAttribute('aria-expanded', 'true');
+    await page.keyboard.press(key);
+    await expect(activity).toHaveAttribute('aria-expanded', 'false');
+  });
+}
+
+test('working chat selection returns keyboard focus to the indicator', async ({
+  page,
+}, testInfo) => {
+  const activity = await openWorkingChat(page);
   await activity.focus();
-  await expect(activity).toHaveAttribute('aria-expanded', 'false');
   await page.keyboard.press('Enter');
   await expect(activity).toHaveAttribute('aria-expanded', 'true');
   const chats = page.locator('.chat-dock__activity-dropdown');
@@ -416,6 +432,24 @@ test('working chat indicator explains its count and opens with the keyboard', as
   await expect(activity).toBeFocused();
   await page.keyboard.press('Space');
   await expect(chats).toBeVisible();
-  await chats.getByRole('button').first().click();
+  await page.keyboard.press('Tab');
+  await expect(chats.getByRole('button').first()).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(chats).toBeHidden();
+  await expect(activity).toBeFocused();
+  expect(await page.evaluate(() => document.activeElement?.tagName)).toBe(
+    'BUTTON',
+  );
+
+  await activity.hover();
+  await expect(chats).toBeVisible();
+  await activity.click();
+  await expect(chats).toBeVisible();
+  await activity.click();
+  await expect(chats).toBeHidden();
+  await page.mouse.move(0, 0);
+  await activity.hover();
+  await expect(chats).toBeVisible();
+  await page.mouse.move(0, 0);
   await expect(chats).toBeHidden();
 });

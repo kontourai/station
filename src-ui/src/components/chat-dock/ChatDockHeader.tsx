@@ -157,6 +157,7 @@ export function ChatDockHeader({
   moreActions,
 }: ChatDockHeaderProps) {
   const [activityOpen, setActivityOpen] = useState(false);
+  const activityOpenedByHover = useRef(false);
   const activityId = useId();
   const activityButton = useRef<HTMLButtonElement>(null);
   const isDockOpen = regionVisible;
@@ -358,8 +359,14 @@ export function ChatDockHeader({
           aria-label="Working chats"
           className="chat-dock__activity menu-group"
           data-open={activityOpen}
-          onMouseEnter={() => setActivityOpen(true)}
-          onMouseLeave={() => setActivityOpen(false)}
+          onMouseEnter={() => {
+            activityOpenedByHover.current = !activityOpen;
+            setActivityOpen(true);
+          }}
+          onMouseLeave={() => {
+            activityOpenedByHover.current = false;
+            setActivityOpen(false);
+          }}
           onBlur={(event) => {
             if (!event.currentTarget.contains(event.relatedTarget))
               setActivityOpen(false);
@@ -379,7 +386,13 @@ export function ChatDockHeader({
             title={activityLabel}
             aria-expanded={activityOpen}
             aria-controls={activityId}
-            onClick={() => setActivityOpen(true)}
+            onClick={(event) => {
+              // A pointer click following hover keeps the newly opened list open.
+              const keepHoverOpen =
+                event.detail > 0 && activityOpenedByHover.current;
+              activityOpenedByHover.current = false;
+              setActivityOpen((open) => keepHoverOpen || !open);
+            }}
           >
             <span className="loading-dots" aria-hidden="true">
               <span>●</span>
@@ -399,6 +412,8 @@ export function ChatDockHeader({
                   key={session.id}
                   className="chat-dock__activity-item"
                   onClick={() => {
+                    // Return focus to the indicator before hiding the selected row.
+                    activityButton.current?.focus();
                     chatControls?.focusSession(session.id);
                     setActivityOpen(false);
                   }}
