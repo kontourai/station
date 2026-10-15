@@ -200,7 +200,23 @@
 
     "src-ui/src/views/agent-editor/AgentToolPicker.css",
 
-    "packages/sdk/src/query-domains/catalog.ts"
+    "packages/sdk/src/query-domains/catalog.ts",
+
+    "packages/shared/src/mcp-tool-selection.ts",
+
+    "src-server/runtime/tools/tool-approval.ts",
+
+    "src-ui/src/views/agent-editor/AgentToolApproval.tsx",
+
+    "src-ui/src/views/agent-editor/AgentToolDetails.tsx",
+
+    "src-ui/src/views/agent-editor/AgentToolDiscovery.tsx",
+
+    "src-ui/src/views/agent-editor/AgentToolCatalog.tsx",
+
+    "src-server/services/plugins/integration-origin.ts",
+
+    "src-server/services/orchestration/session-agent-resolution.ts"
   ],
 
   "checks": [
