@@ -164,7 +164,6 @@ export function useSessionEventWindow(
     requestControllerRef.current = controller;
     setLoading(true);
     setSettled(false);
-    setError(undefined);
     try {
       const capability = await fetchSessionEventWindowCapability(apiBase);
       if (capability !== true) {
@@ -227,6 +226,7 @@ export function useSessionEventWindow(
       );
       if (!olderLoadedRef.current) setCursor(page.nextCursor);
       setWatermark(page.watermark);
+      setError(undefined);
     } catch (cause) {
       if (controller.signal.aborted) return;
       if (
