@@ -5,7 +5,8 @@
  */
 
 import type { STTState } from '@kontourai/station-sdk';
-import { Popover } from '@kontourai/ui/react';
+import { useState } from 'react';
+import { Dialog } from '../Dialog';
 import './VoiceOrb.css';
 
 interface VoiceOrbProps {
@@ -25,6 +26,7 @@ export function VoiceOrb({
   onStart,
   onStop,
 }: VoiceOrbProps) {
+  const [showReason, setShowReason] = useState(false);
   const isListening = state === 'listening';
   const isError = state === 'error';
 
@@ -47,10 +49,9 @@ export function VoiceOrb({
       className={className}
       data-testid="voice-orb"
       onClick={() => {
-        if (!unavailable) {
-          if (isListening) onStop();
-          else onStart();
-        }
+        if (unavailable) setShowReason(true);
+        else if (isListening) onStop();
+        else onStart();
       }}
       aria-disabled={unavailable || undefined}
       aria-label={supported ? 'Speak message' : 'Microphone unavailable'}
@@ -102,15 +103,19 @@ export function VoiceOrb({
     </button>
   );
 
-  return unavailable ? (
-    <Popover
-      ariaLabel="Microphone unavailable"
-      placement="top-end"
-      trigger={button}
-    >
-      <p>{reason}</p>
-    </Popover>
-  ) : (
-    button
+  return (
+    <>
+      {button}
+      {unavailable && showReason && (
+        <Dialog
+          title="Microphone unavailable"
+          closeLabel="Close microphone explanation"
+          size="sm"
+          onClose={() => setShowReason(false)}
+        >
+          <p>{reason}</p>
+        </Dialog>
+      )}
+    </>
   );
 }

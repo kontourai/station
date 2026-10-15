@@ -26,6 +26,9 @@ test.each([false, true])(
     expect(mic.getAttribute('aria-disabled')).toBe('true');
     fireEvent.click(mic);
     expect(
+      screen.getByRole('dialog', { name: 'Microphone unavailable' }),
+    ).toBeTruthy();
+    expect(
       screen.getByText(
         disabled
           ? 'Dictation is unavailable while this composer cannot accept input.'

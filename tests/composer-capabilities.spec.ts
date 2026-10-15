@@ -631,17 +631,25 @@ test.describe('on a touch phone', () => {
       name: 'Microphone unavailable',
     });
     await expect(mic).toHaveAttribute('aria-disabled', 'true');
-    // Tap the rendered trigger's hit area: Playwright treats aria-disabled
-    // buttons as inoperable even when their explanation remains tappable.
-    await composer
-      .locator('.popover__trigger')
-      .filter({
-        has: page.getByRole('button', { name: 'Microphone unavailable' }),
-      })
-      .tap();
+    // The control is aria-disabled for recording, but its actual hit area
+    // remains a touch target for the explanation.
+    const micBox = await mic.boundingBox();
+    expect(micBox).toBeTruthy();
+    await page.touchscreen.tap(
+      micBox!.x + micBox!.width / 2,
+      micBox!.y + micBox!.height / 2,
+    );
     await expect(
       page.getByRole('dialog', { name: 'Microphone unavailable' }),
     ).toContainText(/unavailable|not supported/i);
+    const reasonBox = await page
+      .getByRole('dialog', { name: 'Microphone unavailable' })
+      .boundingBox();
+    expect(reasonBox).toBeTruthy();
+    expect(reasonBox!.x).toBeGreaterThanOrEqual(0);
+    expect(reasonBox!.y).toBeGreaterThanOrEqual(0);
+    expect(reasonBox!.x + reasonBox!.width).toBeLessThanOrEqual(390);
+    expect(reasonBox!.y + reasonBox!.height).toBeLessThanOrEqual(844);
     await evidence(page, testInfo, 'touch-microphone-reason-phone.png');
     await page.keyboard.press('Escape');
     await field.tap();
