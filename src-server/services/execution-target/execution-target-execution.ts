@@ -8,6 +8,7 @@ import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-atta
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type { ConversationContextBoundaryProjection } from '@kontourai/station-contracts/conversation-context-boundary';
 import type {
+  ContinuationWorkspaceRefusalCode,
   ExecutionResolutionReceipt,
   ExecutionTarget,
   ResolvedExecutionEngine,
@@ -305,14 +306,7 @@ export interface ExecutionSessionBinding {
 
 export class ContinuationWorkspaceError extends Error {
   constructor(
-    readonly code:
-      | 'continuation_workspace_project_context_missing'
-      | 'continuation_workspace_corrupt_worktree_binding'
-      | 'continuation_workspace_worktree_gone'
-      | 'continuation_workspace_different_project'
-      | 'continuation_workspace_worktree_moved'
-      | 'continuation_workspace_direct_mismatch'
-      | 'continuation_workspace_unbound',
+    readonly code: ContinuationWorkspaceRefusalCode,
     message: string,
   ) {
     super(message);

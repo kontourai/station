@@ -63,7 +63,10 @@ import {
   isClientOrigin,
 } from '@kontourai/station-contracts/client-origin';
 import type { ExecutionModelRequest } from '@kontourai/station-contracts/execution-target';
-import { EXECUTION_ENGINE_CHANGED_CODE } from '@kontourai/station-contracts/execution-target';
+import {
+  CONTINUATION_WORKSPACE_REFUSAL_CODES,
+  EXECUTION_ENGINE_CHANGED_CODE,
+} from '@kontourai/station-contracts/execution-target';
 import type {
   ConversationInboxEntry,
   ConversationInboxEntryState,
@@ -82,7 +85,6 @@ import {
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
-import type { ContinuationWorkspaceError } from '../execution-target/execution-target-execution.js';
 import {
   type ConversationKeyInspection,
   type SessionStartResult,
@@ -518,29 +520,6 @@ function errorText(error: unknown): string {
 }
 
 /**
- * Every `ContinuationWorkspaceError` code. Listed here rather than imported:
- * that module's runtime imports (projects, worktree provisioning) would join
- * `EventStore`'s import graph, which opens this inbox. The type check below
- * fails to compile when the error gains a code this list lacks.
- */
-const CONTINUATION_WORKSPACE_REFUSAL_CODES = [
-  'continuation_workspace_project_context_missing',
-  'continuation_workspace_corrupt_worktree_binding',
-  'continuation_workspace_worktree_gone',
-  'continuation_workspace_different_project',
-  'continuation_workspace_worktree_moved',
-  'continuation_workspace_unbound',
-  'continuation_workspace_direct_mismatch',
-] as const satisfies readonly ContinuationWorkspaceError['code'][];
-type RequireNever<T extends never> = T;
-type MissingContinuationWorkspaceRefusalCode = RequireNever<
-  Exclude<
-    ContinuationWorkspaceError['code'],
-    (typeof CONTINUATION_WORKSPACE_REFUSAL_CODES)[number]
-  >
->;
-
-/**
  * The refusal codes an entry may record as its `reasonCode`, a closed list:
  * the start refusals a continuation can answer with, by their contract
  * names. Anything else is `start_refused`, so a reader never sees a code
@@ -548,15 +527,12 @@ type MissingContinuationWorkspaceRefusalCode = RequireNever<
  * `not_permitted`, `device_not_permitted`, `may_have_been_sent`,
  * `start_deadline` and `unreadable_entry`.
  */
-// `MissingContinuationWorkspaceRefusalCode` is `never` when the list above is
-// complete (it does not compile otherwise), so this is a set of strings.
-const START_REFUSAL_CODES: ReadonlySet<string> = new Set<
-  string | MissingContinuationWorkspaceRefusalCode
->([
+const START_REFUSAL_CODES: ReadonlySet<string> = new Set([
   SESSION_ENDED_REJECTION_CODE,
   EXECUTION_ENGINE_CHANGED_CODE,
   PROVIDER_SESSION_START_FAILED_CODE,
   MODEL_NOT_ADVERTISED_CODE,
+  // Every `ContinuationWorkspaceError` code: its type is this list's.
   ...CONTINUATION_WORKSPACE_REFUSAL_CODES,
 ]);
 
