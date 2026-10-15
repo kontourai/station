@@ -88,7 +88,8 @@
    with a finger; a long draft scrolls inside the field instead. */
 @media (pointer: coarse) {
   .start-composer__box .start-composer__input:focus-visible {
-    outline: none;
+    /* Match the global focus rule's priority; the box keeps its focus border. */
+    outline: none !important;
   }
   .start-composer__input {
     resize: none;

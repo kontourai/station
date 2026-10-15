@@ -7,6 +7,7 @@ import {
   installMockOrchestrationSse,
   waitForMockOrchestrationSse,
 } from './helpers/orchestration';
+import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 
 /*
  * One capability contract across new chat, reply, steer and queue: a start
@@ -159,11 +160,34 @@ async function seedRoutes(
     page.route('**/api/orchestration/chat', async (route) => {
       const request = route.request().postDataJSON() as Record<string, unknown>;
       executionRequests.push(request);
+      const conversationId = String(request.conversationId ?? '');
+      const turnId = `provider-turn-${executionRequests.length}`;
+      await mockRuntimeConversation(page, {
+        id: conversationId,
+        agentSlug: 'claude',
+        title: 'Composer capability task',
+        provider: 'claude',
+        model: 'claude-sonnet-4-20250514',
+        canContinue: true,
+        turns: () => [
+          [
+            {
+              eventId: `${turnId}-started`,
+              method: 'turn.started',
+              provider: 'claude',
+              threadId: conversationId,
+              turnId,
+              createdAt: '2026-04-12T00:00:00Z',
+              prompt: request.message,
+            },
+          ],
+        ],
+      });
       await route.fulfill(
         json(
           foregroundMessageReceiptEnvelope({
-            conversationId: String(request.conversationId ?? ''),
-            providerTurnId: `provider-turn-${executionRequests.length}`,
+            conversationId,
+            providerTurnId: turnId,
             agent: 'claude',
           }),
         ),
@@ -412,6 +436,18 @@ for (const [label, viewport] of [
     await expect(
       page.getByRole('button', { name: 'Send', exact: true }),
     ).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: 'Send mode: Queue' }),
+    ).toBeVisible();
+    await evidence(page, testInfo, `running-turn-queue-${label}.png`);
+    await page.getByRole('button', { name: 'Send mode: Queue' }).click();
+    await page
+      .getByRole('button', { name: /Steer (this turn|when safe)/ })
+      .click();
+    await expect(
+      page.getByRole('button', { name: 'Send mode: Steer' }),
+    ).toBeVisible();
+    await evidence(page, testInfo, `running-turn-steer-${label}.png`);
     // Horizontally: at 390px a running turn's full row (Clear, Send, Queue,
     // Stop) wraps onto a second line, which is a separate, existing limit.
     const stopAfter = await stop.boundingBox();
@@ -444,7 +480,7 @@ for (const [label, viewport] of [
   });
 }
 
-test("an image the new chat's engine cannot see keeps the message for the person", async ({
+test("a pasted image the new chat's engine cannot see keeps the message for the person", async ({
   page,
 }, testInfo) => {
   await page.setViewportSize({ width: 1280, height: 860 });
@@ -455,11 +491,23 @@ test("an image the new chat's engine cannot see keeps the message for the person
   await composer
     .getByRole('textbox', { name: 'What would you like done?' })
     .fill('look at this screenshot');
-  await attachThroughPicker(
-    page,
-    composer.getByRole('button', { name: 'Attach files' }),
-    SHOT,
+  // Clipboard payload seam: proves intake once a browser delivers file data,
+  // not Android keyboard/IME delivery into a native WebView.
+  await composer.getByRole('textbox').evaluate(
+    (field, bytes) => {
+      const clipboardData = new DataTransfer();
+      clipboardData.items.add(
+        new File([new Uint8Array(bytes)], 'shot.png', { type: 'image/png' }),
+      );
+      field.dispatchEvent(
+        new ClipboardEvent('paste', { bubbles: true, clipboardData }),
+      );
+    },
+    [...SHOT.buffer],
   );
+  await expect(
+    composer.getByRole('list', { name: 'Files for this chat' }),
+  ).toContainText('shot.png');
   await composer.getByRole('button', { name: 'Start', exact: true }).click();
   await started();
   const messageComposer = page.getByRole('group', {

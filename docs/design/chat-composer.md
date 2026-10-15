@@ -48,6 +48,8 @@ The phone-width captures compare the baseline and redesigned controls in the
 same isolated sample home and light theme. They show appearance, not task
 execution or native-shell qualification. Capture revisions and limits are in
 [the media manifest](../learn/media.json).
+These historical comparisons predate the paperclip and mic added to the start
+composer; they are not current references for its attachment controls.
 
 | Surface | Before | After |
 | --- | --- | --- |
@@ -435,6 +437,10 @@ simple per-device preference rather than claiming to detect an attached keyboard
   refuses that and says why. Each composer owns its own dictation: a transcript goes only to
   the composer whose mic started it, and a composer that closes stops its
   dictation and takes the transcript with it.
+  Paste requires the browser to deliver clipboard files. Android keyboard
+  image insertion into the native WebView is not qualified by the browser
+  clipboard tests; use the paperclip's file picker when the keyboard refuses
+  image paste.
 - The composer decides image support before Send from the engine's declared
   and observed answers (`resolveComposerImageSupport`). When images cannot be
   sent, image chips say so and Send is disabled with the reason until the
