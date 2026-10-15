@@ -4,6 +4,7 @@
 
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import type { useOpenConversation } from '../hooks/useActiveChatSessionLifecycle';
 
 const {
   createChatSession,
@@ -16,7 +17,9 @@ const {
   isMobile,
 } = vi.hoisted(() => ({
   createChatSession: vi.fn(() => 'new-session'),
-  openConversationAction: vi.fn(async () => 'reopened-session'),
+  openConversationAction: vi.fn<ReturnType<typeof useOpenConversation>>(
+    async () => 'reopened-session',
+  ),
   removeChat: vi.fn(),
   lastDockMaximized: { value: false },
   setActiveChat: vi.fn(),
@@ -425,7 +428,9 @@ describe('useChatDockActions placement-aware actions', () => {
   test('cancel during replay hydration tears down the child without focusing it', async () => {
     let finishHydration: (value: string) => void = () => {};
     openConversationAction.mockImplementationOnce((...args) => {
-      args[8].initialized('hydrated-child');
+      const hydration = args[8];
+      if (!hydration) throw new Error('Expected hydration ownership');
+      hydration.initialized('hydrated-child');
       return new Promise((resolve) => {
         finishHydration = resolve;
       });
