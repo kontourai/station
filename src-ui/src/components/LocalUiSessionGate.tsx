@@ -115,11 +115,27 @@ export function LocalUiSessionGate({
 
   useEffect(() => {
     let active = true;
-    void resolveLocalUiSession(apiBase).then((next) => {
-      if (active) setResolution(next);
-    });
+    let request = 0;
+    const resolve = () => {
+      const current = ++request;
+      void resolveLocalUiSession(apiBase).then((next) => {
+        if (active && current === request) setResolution(next);
+      });
+    };
+    const acceptLauncherLink = () => {
+      if (
+        !new URLSearchParams(window.location.hash.slice(1)).has(
+          'station-ui-bootstrap',
+        )
+      )
+        return;
+      resolve();
+    };
+    resolve();
+    window.addEventListener('hashchange', acceptLauncherLink);
     return () => {
       active = false;
+      window.removeEventListener('hashchange', acceptLauncherLink);
     };
   }, [apiBase]);
 

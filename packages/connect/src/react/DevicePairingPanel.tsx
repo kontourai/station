@@ -1038,6 +1038,7 @@ function authHeaders(credential: string | undefined): HeadersInit {
 
 async function pairingOfferError(response: Response): Promise<{
   message: string;
+  operatorHandoff?: boolean;
   /** The rejection answers for THIS device's own access (the 401 class). */
   auth: boolean;
 }> {
@@ -1056,6 +1057,7 @@ async function pairingOfferError(response: Response): Promise<{
   if (code === 'insufficient_scope') {
     return {
       auth: false,
+      operatorHandoff: true,
       message:
         'This device cannot create pairing codes. On the computer running Station, use a trusted operator session or run its launcher’s environment offer command (station-nightly for Nightly; ./station from source).',
     };
@@ -1225,6 +1227,7 @@ export function HostDevicePairingPanel({
   // True only when `error` came from an authentication rejection of THIS
   // device's own access (401 class) — the state `onReconnect` addresses.
   const [authBlocked, setAuthBlocked] = useState(false);
+  const [operatorHandoff, setOperatorHandoff] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   // #2228 slice 3: a remembered reachable address (the tailnet or LAN URL the
   // operator last created an offer with for this Station) outranks the active
@@ -1586,6 +1589,7 @@ export function HostDevicePairingPanel({
   const createOffer = async () => {
     setError(null);
     setAuthBlocked(false);
+    setOperatorHandoff(false);
     try {
       const response = await authenticatedFetch('/api/pairing/offers', {
         method: 'POST',
@@ -1599,6 +1603,7 @@ export function HostDevicePairingPanel({
         const outcome = await pairingOfferError(response);
         setError(outcome.message);
         setAuthBlocked(outcome.auth);
+        setOperatorHandoff(outcome.operatorHandoff ?? false);
         return;
       }
       const value: unknown = await response.json();
@@ -2076,9 +2081,6 @@ export function HostDevicePairingPanel({
               </label>
             ))}
           </fieldset>
-          <button type="button" onClick={createOffer} style={primaryBtnStyle}>
-            Create pairing code
-          </button>
           <div>
             <label style={{ display: 'grid', gap: 6 }}>
               Station server address your phone can reach
@@ -2109,6 +2111,9 @@ export function HostDevicePairingPanel({
               </small>
             )}
           </div>
+          <button type="button" onClick={createOffer} style={primaryBtnStyle}>
+            Create pairing code
+          </button>
         </>
       ) : (
         <div style={{ display: 'grid', justifyItems: 'center', gap: 10 }}>
@@ -2231,6 +2236,35 @@ export function HostDevicePairingPanel({
           onDismiss={() => setRevocation(null)}
           onStopSession={stopSession}
         />
+      )}
+      {operatorHandoff && (
+        <section
+          aria-label="Create an invitation on your computer"
+          style={{ display: 'grid', gap: 8 }}
+        >
+          <strong>Continue on the computer running Station</strong>
+          <ol>
+            <li>Open its Station desktop app and choose Pair phone.</li>
+            <li>
+              Scan its invitation on your phone, then approve that phone on the
+              computer.
+            </li>
+          </ol>
+          <details>
+            <summary>Running Station from a terminal?</summary>
+            <p>
+              Use the same launcher, home and instance you used to start this
+              Station. This command prints an invitation; it does not approve a
+              device.
+            </p>
+            <code>station-nightly environment offer</code>
+            <CopyCommandButton command="station-nightly environment offer" />
+            <p>
+              For a source checkout, use{' '}
+              <code>./station environment offer</code>.
+            </p>
+          </details>
+        </section>
       )}
       {error && (
         <div className="pairing-error" role="alert">

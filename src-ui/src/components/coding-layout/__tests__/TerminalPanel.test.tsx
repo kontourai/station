@@ -57,7 +57,11 @@ const { FakeFitAddon, FakeTerminal } = vi.hoisted(() => {
     write = vi.fn();
     dispose = vi.fn();
     focus = vi.fn();
-    onData = vi.fn(() => ({ dispose: vi.fn() }));
+    dataListener: ((data: string) => void) | null = null;
+    onData = vi.fn((listener: (data: string) => void) => {
+      this.dataListener = listener;
+      return { dispose: vi.fn() };
+    });
     onSelectionChange = vi.fn((listener: () => void) => {
       this.selectionListener = listener;
       return { dispose: vi.fn() };
@@ -208,6 +212,35 @@ test('renderer unmount detaches its WebSocket without sending a terminal close c
       sessionId: 'project-a:terminal-one',
     }),
   );
+});
+
+test('retains terminal output after a lost connection and reconnects its identity without replaying typed commands', async () => {
+  renderTerminal();
+  const { socket, terminal } = await connectTerminal();
+  act(() => terminal.dataListener?.('echo once\r'));
+  act(() => {
+    socket.readyState = 3;
+    socket.onclose?.({ code: 1006 } as CloseEvent);
+  });
+  expect(screen.getByRole('alert').textContent).toMatch(/connection lost/i);
+  expect(screen.getByRole('application', { name: 'Terminal' })).toBeTruthy();
+  expect(terminal.dispose).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Reconnect terminal' }));
+  await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
+  const replacement = FakeWebSocket.instances[1]!;
+  act(() => replacement.onopen?.());
+  expect(replacement.send.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual([
+    expect.objectContaining({
+      type: 'open',
+      projectSlug: 'project-a',
+      terminalId: 'terminal-one',
+    }),
+  ]);
+  expect(
+    replacement.send.mock.calls.some(
+      ([raw]) => JSON.parse(raw).type === 'data',
+    ),
+  ).toBe(false);
 });
 
 test('does not query a terminal port or open a raw socket when route policy blocks egress', async () => {
