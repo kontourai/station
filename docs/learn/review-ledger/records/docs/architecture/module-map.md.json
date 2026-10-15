@@ -970,7 +970,9 @@
 
     "pnpm-lock.yaml#/packages",
 
-    "pnpm-lock.yaml#/snapshots"
+    "pnpm-lock.yaml#/snapshots",
+
+    "src-server/knowledge-index/embedding-identity.ts"
   ],
 
   "checks": [

@@ -171,7 +171,6 @@ interface ChatInputAreaProps {
   disabled: boolean;
   /** A busy continuation may accept a draft while sends remain blocked. */
   allowDraftWhileDisabled?: boolean;
-  isSending: boolean;
   /**
    * A turn is outstanding — see `isTurnInFlight` (active-chats-state.ts) for
    * the derivation. Renamed from `hasAbortController` in the fix:
@@ -322,6 +321,12 @@ interface ChatInputAreaProps {
   secondaryActions?: ComposerActionsMenuProps;
   /** The visible, context-preserving Agent handoff entry point. */
   agentLabel?: string;
+  /**
+   * How the Agent is reached ("via model-proxy (home-server)"), when it is
+   * not direct. Kept apart from the name so a narrow composer drops it first
+   * (#3050); the accessible name always carries it.
+   */
+  agentRoute?: string;
   onOpenAgentHandoff?: () => void;
   agentHandoffTriggerRef?: React.RefObject<HTMLButtonElement | null>;
   agentHandoffDisabled?: boolean;
@@ -389,7 +394,6 @@ export function ChatInputArea({
   textareaRef,
   disabled,
   allowDraftWhileDisabled = false,
-  isSending,
   turnInFlight,
   busySteeringKind = 'native',
   busyFollowUp = 'queue',
@@ -438,9 +442,9 @@ export function ChatInputArea({
   queuedRetryNotice,
   attachUnavailableReason,
   onAttachUnavailable,
-  removalUnblocksSend = false,
+  removalUnblocksSend: removalUnblocksSendProp = false,
   attachmentStages = [],
-  sendBlockedReason,
+  sendBlockedReason: sendBlockedReasonProp,
   onRetryAttachmentStage,
   onCancelAttachmentStage,
   onReplaceAttachmentFile,
@@ -468,6 +472,7 @@ export function ChatInputArea({
   onVoiceStop,
   secondaryActions,
   agentLabel,
+  agentRoute,
   onOpenAgentHandoff,
   agentHandoffTriggerRef,
   agentHandoffDisabled = false,
@@ -481,6 +486,18 @@ export function ChatInputArea({
     input.trim() || hasQuotedContext || attachments.length,
   );
   const hideMobileSubmit = isMobile && !hasSendableDraft;
+  // Steering takes text only (`steerTurn` carries an input string) and the
+  // mid-turn follow-up queue holds text only, so a draft with files cannot
+  // join a running turn. The paperclip stays usable — the next message can
+  // be prepared now — and this says why it waits, with the way out.
+  const busyAttachmentReason =
+    turnInFlight && (attachments.length > 0 || attachmentStages.length > 0)
+      ? 'Files can’t be added to a running turn: Steer and Queue carry text only. Send when this turn ends, or remove them.'
+      : undefined;
+  const sendBlockedReason = sendBlockedReasonProp ?? busyAttachmentReason;
+  const removalUnblocksSend =
+    removalUnblocksSendProp ||
+    (sendBlockedReasonProp === undefined && busyAttachmentReason !== undefined);
   const [sendMode, setSendMode] = useState<'queue' | 'steer'>('queue');
   const [sendModeOpen, setSendModeOpen] = useState(false);
   useEffect(() => {
@@ -613,7 +630,7 @@ export function ChatInputArea({
   ]
     .filter(Boolean)
     .join(' ');
-  const agentAccessibleLabel = `Agent: ${agentLabel ?? 'current Agent'}. ${agentHandoffDisabled ? (agentHandoffDisabledReason ?? 'Unavailable') : 'Change Agent'}`;
+  const agentAccessibleLabel = `Agent: ${[agentLabel ?? 'current Agent', agentRoute].filter(Boolean).join(' · ')}. ${agentHandoffDisabled ? (agentHandoffDisabledReason ?? 'Unavailable') : 'Change Agent'}`;
   // A turn is in flight. Steer is the default on engines that can take
   // mid-turn input; otherwise Enter queues until this turn finishes.
   const mentionLocation =
@@ -977,6 +994,12 @@ export function ChatInputArea({
                 </span>
                 <span className="chat-input__agent-name">
                   {agentLabel ?? 'Current Agent'}
+                  {agentRoute && (
+                    <span className="chat-input__agent-route">
+                      {' · '}
+                      {agentRoute}
+                    </span>
+                  )}
                 </span>
               </span>
               <ArrowDownGlyph className="choice-caret" />
@@ -1057,6 +1080,7 @@ export function ChatInputArea({
         <fieldset
           className="chat-input__textarea-wrapper"
           aria-label="Message composer"
+          tabIndex={-1}
         >
           {(attachments.length > 0 || attachmentStages.length > 0) && (
             <React.Suspense
@@ -1480,16 +1504,17 @@ export function ChatInputArea({
               onFilesSelected={selectAttachmentFiles}
               onRemove={onRemoveAttachment}
               onClearAll={onClearAttachments}
+              // A running turn does not disable the paperclip: files join the
+              // draft for the next message (`busyAttachmentReason` says why
+              // they cannot steer or queue). Only a composer that cannot
+              // take input at all, or a model that takes nothing, refuses.
               disabled={
                 disabled ||
-                isSending ||
                 (!modelSupportsAttachments && !fileAttachmentsSupported)
               }
               supportsImages={modelSupportsAttachments}
               supportsFiles={fileAttachmentsSupported}
-              unavailableReason={
-                disabled || isSending ? undefined : attachUnavailableReason
-              }
+              unavailableReason={disabled ? undefined : attachUnavailableReason}
               onUnavailable={onAttachUnavailable}
             />
           </React.Suspense>
@@ -1498,7 +1523,9 @@ export function ChatInputArea({
               state={voiceState}
               supported={voiceSupported ?? false}
               unsupportedReason={voiceUnsupportedReason}
-              disabled={disabled || isSending}
+              // Dictation only writes the draft, so a running turn is no
+              // reason to refuse it.
+              disabled={disabled && !allowDraftWhileDisabled}
               onStart={onVoiceStart}
               onStop={onVoiceStop}
             />
@@ -1563,8 +1590,15 @@ export function ChatInputArea({
             </span>
           )}
           <span className="chat-controls-row__spacer" />
-          <div className="chat-input__send-group">
-            {turnInFlight && (
+          {/* On a phone Send/Queue hide (keeping their width) until there is
+              something to send, so typing never moves Stop. Stop therefore
+              sits after them, at the row's edge: before them it floated
+              beside an empty reserved gap. Desktop keeps Stop first. */}
+          <div
+            className="chat-input__send-group"
+            data-stop-placement={isMobile ? 'trailing' : undefined}
+          >
+            {turnInFlight && !isMobile && (
               <ComposerStopButton
                 onCancel={onCancel}
                 stopPending={stopPending}
@@ -1674,6 +1708,12 @@ export function ChatInputArea({
                 </button>
               )}
             </div>
+            {turnInFlight && isMobile && (
+              <ComposerStopButton
+                onCancel={onCancel}
+                stopPending={stopPending}
+              />
+            )}
           </div>
           {sendModeOpen && (
             <ResponsiveDialogSurface

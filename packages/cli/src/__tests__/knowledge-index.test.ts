@@ -49,6 +49,7 @@ describe('CLI knowledge reindex/migrate over HTTP', () => {
       category: string;
     }>;
     searchError: string | null;
+    searchIndex: unknown;
   } = {
     rebuildCalls: [],
     migrateCalls: [],
@@ -72,6 +73,7 @@ describe('CLI knowledge reindex/migrate over HTTP', () => {
       },
     ],
     searchError: null,
+    searchIndex: undefined,
   };
 
   beforeEach(async () => {
@@ -111,7 +113,13 @@ describe('CLI knowledge reindex/migrate over HTTP', () => {
           sendJson(400, { success: false, error: state.searchError });
           return;
         }
-        sendJson(200, { success: true, data: state.searchResult });
+        sendJson(200, {
+          success: true,
+          data: state.searchResult,
+          ...(state.searchIndex === undefined
+            ? {}
+            : { index: state.searchIndex }),
+        });
         return;
       }
 
@@ -136,6 +144,7 @@ describe('CLI knowledge reindex/migrate over HTTP', () => {
     state.migrateCalls = [];
     state.searchCalls = [];
     state.searchError = null;
+    state.searchIndex = undefined;
   });
 
   test('knowledge reindex reports rebuilt root counts and forwards --root', async () => {
@@ -285,6 +294,38 @@ describe('CLI knowledge reindex/migrate over HTTP', () => {
     expect(consoleLog).toHaveBeenCalledWith(
       JSON.stringify(state.searchResult, null, 2),
     );
+  });
+
+  test('knowledge search warns on stderr about stale roots and withheld excerpts, keeping --json stdout unchanged', async () => {
+    state.searchIndex = {
+      staleRoots: [
+        { rootId: 'root:personal', reason: 'embedding-changed' },
+        { rootId: 'root:legacy', reason: 'unknown-generation' },
+      ],
+      staleRecords: 2,
+      scanLimitReached: false,
+    };
+    const consoleError = vi
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'knowledge',
+      'search',
+      'release plan',
+      '--json',
+      `--api-base=${apiBase}`,
+    ]);
+
+    expect(consoleLog).toHaveBeenCalledWith(
+      JSON.stringify(state.searchResult, null, 2),
+    );
+    expect(consoleError.mock.calls.map(([line]) => line)).toEqual([
+      'Warning: root:personal was indexed with a different embedding model and was not searched. Run: station knowledge reindex --root=root:personal',
+      'Warning: root:legacy has an index from an older Station and was not searched. Run: station knowledge reindex --root=root:legacy',
+      'Warning: 2 record(s) changed since they were indexed; their excerpts were withheld. Reindex to search them.',
+    ]);
   });
 
   test('knowledge search with zero results is a reported no-op, not an error', async () => {

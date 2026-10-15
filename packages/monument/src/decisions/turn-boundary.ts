@@ -212,6 +212,7 @@ export function decideTurnBoundaryRemove(
 export function decideTurnBoundaryObserveTerminal(
   threadRows: readonly TurnBoundaryRecord[],
   command: TurnBoundaryObserveTerminalCommand,
+  terminalSequence?: number,
 ): { readonly retire: readonly string[] } {
   if (command.retire === false) return { retire: [] };
   return {
@@ -220,7 +221,11 @@ export function decideTurnBoundaryObserveTerminal(
         (row) =>
           row.state !== 'lifecycle' &&
           row.purpose !== 'task-dispatch' &&
-          compareCodePoints(row.createdAt, command.terminalCreatedAt) <= 0 &&
+          (command.sessionTerminal && row.createdSequence != null
+            ? terminalSequence !== undefined &&
+              row.createdSequence < terminalSequence
+            : compareCodePoints(row.createdAt, command.terminalCreatedAt) <=
+              0) &&
           (command.sessionTerminal ||
             (command.providerTurnId !== undefined &&
               row.state === 'accepted' &&

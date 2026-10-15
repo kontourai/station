@@ -11,7 +11,7 @@ import {
   openWorkItem,
   workItemOpenFailureMessage,
 } from '../../views/home/work-item-open-policy';
-import { MessageGlyph } from '../icons/Glyph';
+import { MessageGlyph, RefreshGlyph } from '../icons/Glyph';
 import { NewChatAction } from '../NewChatAction';
 import { Empty } from '../state';
 import {
@@ -55,6 +55,16 @@ export interface ChatDockInboxPanelProps {
   onAcknowledgeConversation?: (item: HomeWorkItem) => void;
   onOpenHistory: () => void;
   onNewChat?: () => void;
+  /**
+   * The inbox's own freshness: whether its last read failed (the rows are the
+   * last known list, not the current one), whether a read is running, and the
+   * explicit resync. Omitted renders no refresh control.
+   */
+  sync?: {
+    failed: boolean;
+    refreshing: boolean;
+    onRefresh: () => void;
+  };
   /**
    * station#3309: mounted only to play its exit. The panel is still on screen,
    * but the user's decision to collapse it is already complete, so it is inert
@@ -104,6 +114,7 @@ function ChatDockInboxPanelImpl({
   onAcknowledgeConversation,
   onOpenHistory,
   onNewChat,
+  sync,
   exiting = false,
   now: suppliedNow,
   agents,
@@ -215,10 +226,27 @@ function ChatDockInboxPanelImpl({
         )}
       </div>
       <footer className="chat-dock-inbox__footer">
+        {sync?.failed && (
+          <p className="chat-dock-inbox__sync-status" role="status">
+            Couldn't refresh. Showing the last known list.
+          </p>
+        )}
         <button type="button" onClick={onOpenHistory}>
           <MessageGlyph />
           History
         </button>
+        {sync && (
+          <button
+            type="button"
+            className="chat-dock-inbox__refresh"
+            onClick={sync.onRefresh}
+            disabled={sync.refreshing}
+            aria-label={sync.refreshing ? 'Refreshing inbox' : 'Refresh inbox'}
+          >
+            <RefreshGlyph />
+            {sync.refreshing ? 'Refreshing…' : 'Refresh'}
+          </button>
+        )}
         {onNewChat && <NewChatAction onClick={onNewChat} />}
       </footer>
     </aside>

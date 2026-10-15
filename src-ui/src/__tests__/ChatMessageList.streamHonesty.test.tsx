@@ -107,7 +107,11 @@ function managedSession(overrides: Partial<ChatSession>): ChatSession {
   };
 }
 
-function renderList(session: ChatSession, suppressStreamingRow = false) {
+function renderList(
+  session: ChatSession,
+  suppressStreamingRow = false,
+  liveStatusUnavailable = false,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -116,6 +120,7 @@ function renderList(session: ChatSession, suppressStreamingRow = false) {
       <ChatMessageList
         activeSession={session}
         suppressStreamingRow={suppressStreamingRow}
+        liveStatusUnavailable={liveStatusUnavailable}
         fontSize={14}
         showReasoning
         showToolDetails
@@ -138,6 +143,27 @@ describe('station#3300 — settled turn stays settled on resume', () => {
     );
     expect(screen.getByText('Background agent working')).toBeTruthy();
     expect(screen.queryByTestId('streaming-message')).toBeNull();
+  });
+  test('when the conversation cannot be observed, server child work is a last-known line, not a live one', () => {
+    renderList(
+      managedSession({
+        backgroundTasks: [],
+        conversationActivity: {
+          conversationId: 'stream-honesty-session',
+          asOfSequence: 7,
+          runningChildWork: { count: 1, producers: ['engine-subagent'] },
+        },
+      }),
+      false,
+      true,
+    );
+    const banner = screen.getByText(
+      'Last known: background agent working (status unavailable)',
+    ).parentElement as HTMLElement;
+    expect(banner.className).toBe('background-tasks-banner');
+    expect(screen.queryByText('Background agent working')).toBeNull();
+    // No animated dots claiming the work is happening now.
+    expect(banner.querySelector('.loading-dots-inline')).toBeNull();
   });
   test('REPRO: a stale "running" orchestrationStatus with the turn fold closed must not reconstruct the streaming row under the settled answer', () => {
     // The exact resume shape: `orchestrationStatus: 'running'` is persisted

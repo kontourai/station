@@ -1,5 +1,63 @@
 [
   {
+    "timestampUtc": "2026-10-15T10:40:35Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2479.38704016490",
+    "sha": "95bfa48dd8da3a1a59ee2797fb2cc5049aad99e6",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38704016490",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2479.38704016490 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "884f77c75f100dbc50e0de3c6bedc19cf90c76c7",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#3674](https://github.com/kontourai/station/pull/3674) fix(test): wait for complete stub pid files in the tauri-context signal tests"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
+    "timestampUtc": "2026-10-15T08:33:41Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2479.38688611844",
+    "sha": "884f77c75f100dbc50e0de3c6bedc19cf90c76c7",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38688611844",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2479.38688611844 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "79d6de57f1d33ee87805e4811c078f9aae7aec46",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#3665](https://github.com/kontourai/station/pull/3665) fix(cli): keep --temp-home out of a Station instance tree"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-10-15T06:57:02Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2479.38682073239",

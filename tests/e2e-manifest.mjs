@@ -391,6 +391,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/overlay-elevation-tokens.spec.ts',
     'tests/builtin-runtime-workflow.spec.ts',
     'tests/pending-message-queue.spec.ts',
+    'tests/composer-capabilities.spec.ts',
     'tests/skills.spec.ts',
     'tests/registry.spec.ts',
     'tests/connections-crud.spec.ts',
@@ -1159,6 +1160,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       '#613: proves mid-turn queue reorder, inline edit, and boundary drain (in the reordered order) for a runtime chat session via the mock orchestration SSE harness.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/composer-capabilities.spec.ts',
+    bucket: 'product',
+    surface: 'Chat composer',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      "One composer capability contract at desktop and 390px: a file attached through the start composer's picker is staged by the new chat and rides its first send, and a running turn keeps the paperclip usable while saying why files cannot steer or queue, blocking the send until the turn ends or they are removed, with Stop at the controls row's edge. Page-scoped HTTP fixtures and the mock orchestration SSE harness.",
     exceptions: [],
   },
   {

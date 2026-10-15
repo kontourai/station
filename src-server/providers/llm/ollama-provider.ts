@@ -358,6 +358,10 @@ export class OllamaEmbeddingProvider implements IEmbeddingProvider {
     return 768;
   }
 
+  embeddingIdentity(): string {
+    return `ollama-embedding:model=${this.model}`;
+  }
+
   async healthCheck(options?: { signal?: AbortSignal }): Promise<boolean> {
     try {
       const res = await fetch(`${this.baseUrl}/api/tags`, {

@@ -75,10 +75,12 @@ Agent/model. See the [plugin guide](../../docs/guides/plugins.md).
    `useSearchKnowledgeIndexMutation` and shows title, category, excerpt, and
    score. **View source record** fetches the current full record. The
    [search route](../../src-server/routes/knowledge/knowledge-index-routes.ts)
-   re-reads the record but returns the indexed excerpt, which may predate an
-   edit. Open the source and inspect its lifecycle; reindex when fresh excerpts
-   are needed. Changing embedding models requires rebuilding all roots, as
-   described in the Knowledge guide.
+   re-reads the record and withholds an indexed excerpt the record's current
+   body no longer contains, so after an edit the record is missing from Ask
+   until you reindex. Ask does not show the route's stale-index report. Open the
+   source to inspect its lifecycle. After changing embedding models, roots
+   built with the old model return nothing until rebuilt, as described in the
+   Knowledge guide.
 
 ## Capture and provenance limits
 

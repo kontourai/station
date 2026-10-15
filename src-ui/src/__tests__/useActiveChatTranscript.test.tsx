@@ -1218,7 +1218,7 @@ describe('useActiveChatTranscript', () => {
     expect(fetchWindow).not.toHaveBeenCalled();
   });
 
-  test('manual history Retry clears a cached handshake failure and loads the transcript', async () => {
+  test('manual history Retry keeps failed observation unavailable until the recovered transcript arrives', async () => {
     let cachedFailure = true;
     fetchCapability.mockImplementation(async () =>
       cachedFailure ? undefined : true,
@@ -1226,7 +1226,7 @@ describe('useActiveChatTranscript', () => {
     invalidateCapability.mockImplementation(() => {
       cachedFailure = false;
     });
-    fetchWindow.mockResolvedValue({
+    const recoveredWindow = {
       protocolVersion: 1,
       watermark: 1,
       hasMore: false,
@@ -1236,7 +1236,12 @@ describe('useActiveChatTranscript', () => {
           prompt: 'Recovered chat',
         }),
       ],
+    };
+    let resolveRecovery!: (page: typeof recoveredWindow) => void;
+    const recovery = new Promise<typeof recoveredWindow>((resolve) => {
+      resolveRecovery = resolve;
     });
+    fetchWindow.mockReturnValue(recovery);
     const { result } = renderHook(() =>
       useActiveChatTranscript('http://station.test', baseSession),
     );
@@ -1244,6 +1249,15 @@ describe('useActiveChatTranscript', () => {
     expect(fetchWindow).not.toHaveBeenCalled();
     act(() => {
       result.current.reload();
+    });
+    await waitFor(() => expect(fetchWindow).toHaveBeenCalledOnce());
+    expect(result.current.loading).toBe(true);
+    expect(result.current.error?.message).toBe(
+      'Session history transport failed.',
+    );
+    await act(async () => {
+      resolveRecovery(recoveredWindow);
+      await recovery;
     });
     await waitFor(() =>
       expect(
