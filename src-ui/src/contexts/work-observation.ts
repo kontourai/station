@@ -176,7 +176,7 @@ export function workObservation(client: QueryClient) {
 
 const noopSubscribe = () => () => {};
 const emptySnapshot = () => 0;
-export function useWorkObservation(conversationId?: string) {
+export function useWorkObservation(conversationId?: string | null) {
   const client = useContext(QueryClientContext);
   const observation = client ? workObservation(client) : undefined;
   const subscribe = useCallback(
