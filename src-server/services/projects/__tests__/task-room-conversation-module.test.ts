@@ -521,7 +521,7 @@ test('room requests start the Task and publish canonical answers and continued t
   }
 });
 
-test('Task title edits persist for the exact incarnation and room start leaves later human statuses intact', async () => {
+test('Task title edits persist for the exact incarnation; room start accepts Ready and preserves later human statuses', async () => {
   const directory = makeTempDir('task-room-title-');
   const graph = new TaskGraphService(directory, {
     resolveProjectWorkspace: async () => directory,
@@ -542,6 +542,7 @@ test('Task title edits persist for the exact incarnation and room start leaves l
       '2026-01-01T00:00:00.000Z',
     ),
   ).rejects.toThrow('Task not found');
+  await graph.updateTaskStatus(task.id, 'ready');
   expect(await graph.startTaskRoomWork(task.id, task.createdAt)).toMatchObject({
     changed: true,
     task: { status: 'in_progress' },
