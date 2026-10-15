@@ -21,6 +21,16 @@ work and busy-timeout waiting run on that worker. `ProjectTaskRoomHistory.close(
 is the awaitable worker/SQLite settlement seam; the still-synchronous
 `EventStore.close()` only initiates that close and never blocks with
 `Atomics.wait` or claims settlement it cannot synchronously prove.
+A response timeout, worker error, exit, or broken worker protocol settles all
+in-flight storage requests as `unavailable`. The adapter terminates that worker
+and waits for its connection to close before a later request lazily starts a
+replacement. Each request can start at most one worker; failed operations are
+never automatically replayed, and there is no background restart loop. Closing
+the history disables replacement. This recovers availability after a worker
+failure; it does not remove contention with synchronous main-thread writers on
+the same database. Authorization and controller admission still run inside the
+history transaction, preserving revocation and source-seal ordering.
+
 Callers submit room intents (`open`, `append`, and `read`) rather than raw
 database operations or caller-authored channel authority. Open results and
 cursors expose channel identity; history records include resolved principal

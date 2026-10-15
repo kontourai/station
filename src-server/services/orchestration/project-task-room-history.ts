@@ -990,141 +990,176 @@ function createWorkerStorage(
   },
   lockWaitMs: number = sqliteLockWaitMs(ROOM_WRITE_ADMISSION_MS),
 ): StorageAdapter {
-  const sourceUrl =
-    workerSourceUrl ??
-    new URL(
-      import.meta.url.endsWith('.ts')
-        ? './project-task-room-history-worker.ts'
-        : './project-task-room-history-worker.js',
-      import.meta.url,
-    );
-  const worker = new Worker(sourceUrl, {
-    workerData: {
-      databasePath,
-      ...limits,
-      lockWaitMs,
-      faultAfterCommitOnce,
-      unavailableAfterCommitOnce,
-    },
-    ...(sourceUrl.pathname.endsWith('.ts')
-      ? { execArgv: ['--import', 'tsx'] }
-      : {}),
-  });
-  let sequence = 0;
+  let current: StorageAdapter | undefined;
+  let retiring: Promise<unknown> = Promise.resolve();
   let closed = false;
-  let terminal = false;
-  const pending = new Map<
-    number,
-    {
-      resolve: (value: unknown) => void;
-      timer: ReturnType<typeof setTimeout>;
-      beforeCommit?: (
-        phase: StorageCommitPhase,
-      ) => Promise<StorageCommitDisposition>;
-    }
-  >();
-  const failAll = () => {
-    terminal = true;
-    for (const entry of pending.values()) {
-      clearTimeout(entry.timer);
-      entry.resolve({ kind: 'unavailable' });
-    }
-    pending.clear();
+  let failedOnce = false;
+
+  return {
+    async request(value, beforeCommit) {
+      await retiring;
+      if (closed) return { kind: 'unavailable' };
+      if (!current) {
+        try {
+          const generation = createGeneration(() => {
+            if (closed || current !== generation) return;
+            current = undefined;
+            failedOnce = true;
+            // Release the old connection before a later request starts a worker.
+            retiring = generation.close();
+          });
+          current = generation;
+        } catch {
+          failedOnce = true;
+          return { kind: 'unavailable' };
+        }
+      }
+      // One attempt per caller; never replay a possibly committed operation.
+      return current.request(value, beforeCommit);
+    },
+    async close() {
+      closed = true;
+      await retiring;
+      return current
+        ? current.close()
+        : { kind: failedOnce ? 'unavailable' : 'closed' };
+    },
   };
-  worker.on('message', (message: unknown) => {
-    if (isPlainOwn(message, ['type', 'id', 'authorizationId', 'phase'])) {
-      if (
-        message.type !== 'authorize' ||
-        !Number.isSafeInteger(message.id) ||
-        (message.phase !== 'authorize' && message.phase !== 'admit-new-write')
-      ) {
+
+  function createGeneration(failed: () => void): StorageAdapter {
+    const sourceUrl =
+      workerSourceUrl ??
+      new URL(
+        import.meta.url.endsWith('.ts')
+          ? './project-task-room-history-worker.ts'
+          : './project-task-room-history-worker.js',
+        import.meta.url,
+      );
+    const worker = new Worker(sourceUrl, {
+      workerData: {
+        databasePath,
+        ...limits,
+        lockWaitMs,
+        faultAfterCommitOnce,
+        unavailableAfterCommitOnce,
+      },
+      ...(sourceUrl.pathname.endsWith('.ts')
+        ? { execArgv: ['--import', 'tsx'] }
+        : {}),
+    });
+    let sequence = 0;
+    let closed = false;
+    let terminal = false;
+    const pending = new Map<
+      number,
+      {
+        resolve: (value: unknown) => void;
+        timer: ReturnType<typeof setTimeout>;
+        beforeCommit?: (
+          phase: StorageCommitPhase,
+        ) => Promise<StorageCommitDisposition>;
+      }
+    >();
+    const failAll = () => {
+      if (terminal) return;
+      terminal = true;
+      for (const entry of pending.values()) {
+        clearTimeout(entry.timer);
+        entry.resolve({ kind: 'unavailable' });
+      }
+      pending.clear();
+      failed();
+    };
+    worker.on('message', (message: unknown) => {
+      if (isPlainOwn(message, ['type', 'id', 'authorizationId', 'phase'])) {
+        if (
+          message.type !== 'authorize' ||
+          !Number.isSafeInteger(message.id) ||
+          (message.phase !== 'authorize' && message.phase !== 'admit-new-write')
+        ) {
+          failAll();
+          void worker.terminate();
+          return;
+        }
+        const entry = pending.get(message.id as number);
+        const respond = (disposition: StorageCommitDisposition) => {
+          if (
+            closed ||
+            terminal ||
+            !entry ||
+            pending.get(message.id as number) !== entry
+          )
+            return;
+          try {
+            worker.postMessage({
+              type: 'authorization',
+              id: message.id,
+              authorizationId: message.authorizationId,
+              phase: message.phase,
+              disposition,
+            });
+          } catch {
+            failAll();
+          }
+        };
+        if (!entry?.beforeCommit) respond('denied');
+        else
+          void entry
+            .beforeCommit(message.phase as StorageCommitPhase)
+            .then(respond, () => respond('unavailable'));
+        return;
+      }
+      if (!isPlainOwn(message, ['id', 'result'])) {
         failAll();
         void worker.terminate();
         return;
       }
-      const entry = pending.get(message.id as number);
-      const respond = (disposition: StorageCommitDisposition) => {
-        if (
-          closed ||
-          terminal ||
-          !entry ||
-          pending.get(message.id as number) !== entry
-        )
+      const id = (message as { id: unknown }).id;
+      if (!Number.isSafeInteger(id)) return;
+      const entry = pending.get(id as number);
+      if (!entry) return;
+      pending.delete(id as number);
+      clearTimeout(entry.timer);
+      entry.resolve((message as { result: unknown }).result);
+    });
+    worker.on('error', failAll);
+    worker.on('exit', failAll);
+    const request = (
+      value: unknown,
+      beforeCommit?: (
+        phase: StorageCommitPhase,
+      ) => Promise<StorageCommitDisposition>,
+    ) =>
+      new Promise<unknown>((resolve) => {
+        if (closed || terminal) {
+          resolve({ kind: 'unavailable' });
           return;
+        }
+        const id = ++sequence;
+        const timer = setTimeout(() => {
+          failAll();
+        }, PROJECT_TASK_ROOM_LIMITS.workerResponseMs);
+        pending.set(id, { resolve, timer, beforeCommit });
         try {
-          worker.postMessage({
-            type: 'authorization',
-            id: message.id,
-            authorizationId: message.authorizationId,
-            phase: message.phase,
-            disposition,
-          });
+          worker.postMessage({ id, request: value });
         } catch {
           failAll();
         }
-      };
-      if (!entry?.beforeCommit) respond('denied');
-      else
-        void entry
-          .beforeCommit(message.phase as StorageCommitPhase)
-          .then(respond, () => respond('unavailable'));
-      return;
-    }
-    if (!isPlainOwn(message, ['id', 'result'])) {
-      failAll();
-      void worker.terminate();
-      return;
-    }
-    const id = (message as { id: unknown }).id;
-    if (!Number.isSafeInteger(id)) return;
-    const entry = pending.get(id as number);
-    if (!entry) return;
-    pending.delete(id as number);
-    clearTimeout(entry.timer);
-    entry.resolve((message as { result: unknown }).result);
-  });
-  worker.on('error', failAll);
-  worker.on('exit', failAll);
-  const request = (
-    value: unknown,
-    beforeCommit?: (
-      phase: StorageCommitPhase,
-    ) => Promise<StorageCommitDisposition>,
-  ) =>
-    new Promise<unknown>((resolve) => {
-      if (closed || terminal) {
-        resolve({ kind: 'unavailable' });
-        return;
-      }
-      const id = ++sequence;
-      const timer = setTimeout(() => {
-        pending.delete(id);
-        resolve({ kind: 'unavailable' });
-        terminal = true;
-        void worker.terminate();
-      }, PROJECT_TASK_ROOM_LIMITS.workerResponseMs);
-      pending.set(id, { resolve, timer, beforeCommit });
-      try {
-        worker.postMessage({ id, request: value });
-      } catch {
-        clearTimeout(timer);
-        pending.delete(id);
-        resolve({ kind: 'unavailable' });
-      }
-    });
-  return {
-    request,
-    async close() {
-      if (closed) return { kind: terminal ? 'unavailable' : 'closed' };
-      const result = await request({ type: 'close' });
-      closed = true;
-      await worker.terminate();
-      failAll();
-      return isKind(result, 'closed')
-        ? { kind: 'closed' }
-        : { kind: 'unavailable' };
-    },
-  };
+      });
+    return {
+      request,
+      async close() {
+        if (closed) return { kind: terminal ? 'unavailable' : 'closed' };
+        const result = await request({ type: 'close' });
+        closed = true;
+        await worker.terminate();
+        failAll();
+        return isKind(result, 'closed')
+          ? { kind: 'closed' }
+          : { kind: 'unavailable' };
+      },
+    };
+  }
 }
 
 async function totalStorage(

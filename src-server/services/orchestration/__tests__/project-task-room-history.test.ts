@@ -3,6 +3,7 @@ import { copyFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Worker } from 'node:worker_threads';
 import { channelProposalDigestInput } from '@kontourai/station-contracts/channel-log';
 import {
   isProjectTaskRoomAppendReceipt,
@@ -1634,6 +1635,92 @@ describe('ProjectTaskRoomHistory v2', () => {
       await expect(room.close()).resolves.toMatchObject({
         kind: 'unavailable',
       });
+    }
+  });
+
+  it('reopens after a synchronous main-thread write outlasts the real worker response budget', async () => {
+    const path = databasePath();
+    const writer = new DatabaseSync(path, {
+      timeout: PROJECT_TASK_ROOM_LIMITS.workerResponseMs + 500,
+    });
+    writer.exec('CREATE TABLE main_thread_writes(value INTEGER)');
+    let calls = 0;
+    let contention: unknown;
+    const room = history(path, {
+      capabilities: {
+        async resolve(input) {
+          if (++calls === 3) {
+            // This authorization is requested under the real worker's write lock.
+            try {
+              writer.exec('INSERT INTO main_thread_writes VALUES (1)');
+            } catch (error) {
+              contention = error;
+            }
+          }
+          return capabilities.resolve(input);
+        },
+      },
+    });
+    try {
+      await expect(room.open({ grant: grant('discover') })).resolves.toEqual({
+        kind: 'unavailable',
+      });
+      expect(contention).toMatchObject({ message: 'database is locked' });
+      const recovered = await room.open({ grant: grant('discover') });
+      expect(['opened', 'existing']).toContain(recovered.kind);
+      writer.exec('INSERT INTO main_thread_writes VALUES (2)');
+      await expect(
+        room.open({ grant: grant('discover') }),
+      ).resolves.toMatchObject({
+        kind: 'existing',
+      });
+    } finally {
+      await room.close();
+      writer.close();
+    }
+  }, 15_000);
+
+  it('settles an exited real worker and lazily reopens durable history on the next request', async () => {
+    const room = history();
+    let transport: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      await room.open({ grant: grant('discover') });
+      await expect(room.append(message('before-crash'))).resolves.toMatchObject(
+        {
+          kind: 'committed',
+        },
+      );
+      transport = vi
+        .spyOn(Worker.prototype, 'postMessage')
+        .mockImplementationOnce(function (this: Worker) {
+          void this.terminate();
+        });
+      const interrupted = await Promise.all([
+        room.read({ grant: grant('history-read') }),
+        room.read({ grant: grant('history-read') }),
+      ]);
+      expect(interrupted).toEqual([
+        { kind: 'unavailable' },
+        { kind: 'unavailable' },
+      ]);
+      transport.mockRestore();
+      await expect(
+        room.open({ grant: grant('discover') }),
+      ).resolves.toMatchObject({
+        kind: 'existing',
+      });
+      await expect(
+        room.read({ grant: grant('history-read') }),
+      ).resolves.toMatchObject({
+        kind: 'available',
+        records: [{ envelope: { proposal: { proposalId: 'before-crash' } } }],
+      });
+      await expect(room.append(message('after-crash'))).resolves.toMatchObject({
+        kind: 'committed',
+      });
+    } finally {
+      transport?.mockRestore();
+      await room.close();
     }
   });
 
