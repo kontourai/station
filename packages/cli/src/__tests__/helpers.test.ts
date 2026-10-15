@@ -11,6 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
   DEFAULT_PROJECT_HOME,
   isGitUrl,
@@ -19,6 +20,10 @@ import {
 } from '../commands/helpers.js';
 
 afterEach(() => vi.unstubAllEnvs());
+
+// Directories the fallback tests create are removed in an after-hook even when
+// an assertion fails first (#2421).
+const makeTempDir = trackTempDirs();
 
 // Homes and roots named below used to be fixed paths in the shared system temp
 // directory (`/tmp/explicit-home`, `/tmp/station-helper-root`, ...). Any other
@@ -147,7 +152,7 @@ describe('channel lifecycle homes', () => {
     'mints an admissible temporary home when TMPDIR is inside a Station instance tree',
     () => {
       const sharedRoot = realpathSync(
-        mkdtempSync(join(tmpdir(), 'station-cli-agent-tmpdir-root-')),
+        makeTempDir('station-cli-agent-tmpdir-root-'),
       );
       const engineSpawnTmp = join(
         sharedRoot,
@@ -196,7 +201,7 @@ describe('channel lifecycle homes', () => {
     'mints the temporary home outside a self-rooted parent home whose engine-spawn TMPDIR it inherits',
     () => {
       const parentHome = realpathSync(
-        mkdtempSync(join(tmpdir(), 'station-cli-self-rooted-parent-')),
+        makeTempDir('station-cli-self-rooted-parent-'),
       );
       const engineSpawnTmp = join(parentHome, 'tmp', 'engine-spawn');
       mkdirSync(engineSpawnTmp, { recursive: true });
@@ -232,13 +237,9 @@ describe('channel lifecycle homes', () => {
       // A Station root whose `config` container is a regular file refuses
       // every home it would own, so both the ambient candidate and the
       // /tmp/station retry are refused by admission.
-      const brokenRoot = realpathSync(
-        mkdtempSync(join(tmpdir(), 'station-cli-broken-root-')),
-      );
+      const brokenRoot = realpathSync(makeTempDir('station-cli-broken-root-'));
       writeFileSync(join(brokenRoot, 'config'), 'not a directory');
-      const ambientTmp = realpathSync(
-        mkdtempSync(join(tmpdir(), 'station-cli-retry-tmp-')),
-      );
+      const ambientTmp = realpathSync(makeTempDir('station-cli-retry-tmp-'));
       vi.stubEnv('STATION_ROOT', brokenRoot);
       vi.stubEnv('STATION_HOME', undefined);
       vi.stubEnv('STATION_TEMP_ROOT', undefined);
@@ -295,9 +296,7 @@ describe('channel lifecycle homes', () => {
   it.skipIf(process.platform === 'win32')(
     'refuses the engine-spawn tree of an explicit STATION_HOME outside an explicit STATION_ROOT',
     () => {
-      const fixture = realpathSync(
-        mkdtempSync(join(tmpdir(), 'station-cli-split-root-home-')),
-      );
+      const fixture = realpathSync(makeTempDir('station-cli-split-root-home-'));
       const stationRoot = join(fixture, 'root');
       const parentHome = join(fixture, 'home');
       const engineSpawnTmp = join(parentHome, 'tmp', 'engine-spawn');
@@ -326,9 +325,7 @@ describe('channel lifecycle homes', () => {
   it.skipIf(process.platform === 'win32')(
     'honors a STATION_TEMP_ROOT inside STATION_HOME but outside its tmp tree',
     () => {
-      const parentHome = realpathSync(
-        mkdtempSync(join(tmpdir(), 'station-cli-scratch-home-')),
-      );
+      const parentHome = realpathSync(makeTempDir('station-cli-scratch-home-'));
       const scratch = join(parentHome, 'scratch');
       vi.stubEnv('STATION_ROOT', undefined);
       vi.stubEnv('STATION_HOME', parentHome);
