@@ -246,12 +246,16 @@ function renderDock(session: ChatSession = buildSession()) {
 describe('ChatDockBody history-failure notice (station#3427)', () => {
   beforeEach(() => {
     agentsMock.current = [];
-    vi.mocked(useActiveChatTranscript).mockImplementation(
-      () =>
-        transcriptStateMock.current as unknown as ReturnType<
-          typeof useActiveChatTranscript
-        >,
-    );
+    vi.mocked(useActiveChatTranscript).mockImplementation(() => ({
+      ...transcriptStateMock.current,
+      error: transcriptStateMock.current.error ?? undefined,
+      watermark: 0,
+      handoffs: [],
+      contextBoundaries: [],
+      settled: true,
+      catchingUp: false,
+      openTurnProjected: false,
+    }));
     setStreamConnectionState('http://localhost:3242', 'caught-up');
     transcriptStateMock.current = {
       enabled: false,
