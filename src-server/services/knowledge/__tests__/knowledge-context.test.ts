@@ -44,18 +44,21 @@ describe('knowledge-context helpers', () => {
 
   test('buildKnowledgeInjectContext reconstructs document text grouped by namespace', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'knowledge-context-'));
-    await saveKnowledgeMeta(join(dir, 'rules'), [
-      {
-        id: 'doc-1',
-        filename: 'rules.md',
-        namespace: 'rules',
-        path: 'rules.md',
-        source: 'upload',
-        chunkCount: 2,
-        contentHash: 'a'.repeat(64),
-        createdAt: new Date().toISOString(),
-      },
-    ]);
+    await saveKnowledgeMeta(
+      { storageDir: join(dir, 'rules'), dataDir: dir, projectSlug: 'test' },
+      [
+        {
+          id: 'doc-1',
+          filename: 'rules.md',
+          namespace: 'rules',
+          path: 'rules.md',
+          source: 'upload',
+          chunkCount: 2,
+          contentHash: 'a'.repeat(64),
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    );
 
     const context = await buildKnowledgeInjectContext({
       projectSlug: 'test',
@@ -99,18 +102,21 @@ describe('knowledge-context helpers', () => {
 
   test('excludes vector text that does not match authoritative content', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'knowledge-context-authority-'));
-    await saveKnowledgeMeta(join(dir, 'rules'), [
-      {
-        id: 'doc-1',
-        filename: 'rules.md',
-        namespace: 'rules',
-        path: 'rules.md',
-        source: 'upload',
-        chunkCount: 1,
-        contentHash: 'a'.repeat(64),
-        createdAt: new Date().toISOString(),
-      },
-    ]);
+    await saveKnowledgeMeta(
+      { storageDir: join(dir, 'rules'), dataDir: dir, projectSlug: 'test' },
+      [
+        {
+          id: 'doc-1',
+          filename: 'rules.md',
+          namespace: 'rules',
+          path: 'rules.md',
+          source: 'upload',
+          chunkCount: 1,
+          contentHash: 'a'.repeat(64),
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    );
 
     const context = await buildKnowledgeInjectContext({
       projectSlug: 'test',
@@ -140,17 +146,20 @@ describe('knowledge-context helpers', () => {
 
   test('legacy authority without a content hash cannot inject vector text', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'knowledge-context-legacy-'));
-    await saveKnowledgeMeta(join(dir, 'rules'), [
-      {
-        id: 'legacy',
-        filename: 'legacy.md',
-        namespace: 'rules',
-        path: 'legacy.md',
-        source: 'upload',
-        chunkCount: 1,
-        createdAt: new Date().toISOString(),
-      },
-    ]);
+    await saveKnowledgeMeta(
+      { storageDir: join(dir, 'rules'), dataDir: dir, projectSlug: 'test' },
+      [
+        {
+          id: 'legacy',
+          filename: 'legacy.md',
+          namespace: 'rules',
+          path: 'legacy.md',
+          source: 'upload',
+          chunkCount: 1,
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    );
 
     const context = await buildKnowledgeInjectContext({
       projectSlug: 'test',
