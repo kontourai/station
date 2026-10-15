@@ -1927,10 +1927,17 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   expect(await contrastRatio(inputTask)).toBeGreaterThanOrEqual(4.5);
   const userSheet = page.getByRole('dialog', { name: 'Your message actions' });
   await expect(userSheet.getByRole('button', { name: /^Copy/ })).toHaveCount(0);
-  // The Task pin and the ⋯ menu are one row: pin at the start, ⋯ at the end.
+  // The Task pin and the message's actions are one row: pin at the start,
+  // the actions at the end, listed in the sheet itself (no second ⋯).
+  const userActions = userSheet.getByRole('menu', { name: 'Message actions' });
+  await expect(userActions.getByRole('menuitem').first()).toBeVisible();
   await expect(
     userSheet.getByRole('button', { name: 'More message actions' }),
-  ).toBeVisible();
+  ).toHaveCount(0);
+  for (const item of await userActions.getByRole('menuitem').all()) {
+    const box = await item.boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  }
   const userSheetRow = await userSheet.evaluate((sheet) => {
     const rect = (node: Element) => node.getBoundingClientRect();
     const pin = rect(
@@ -1939,9 +1946,7 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
           (button) => button.textContent?.trim() === 'Add input to Task',
         )!,
     );
-    const menu = rect(
-      sheet.querySelector('button[aria-label="More message actions"]')!,
-    );
+    const menu = rect(sheet.querySelector('.message-details__menu')!);
     const summary = rect(sheet.querySelector('.message-details__summary')!);
     return {
       pinCentre: pin.top + pin.height / 2,
