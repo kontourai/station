@@ -972,7 +972,13 @@
 
     "pnpm-lock.yaml#/snapshots",
 
-    "src-server/knowledge-index/embedding-identity.ts"
+    "src-server/knowledge-index/embedding-identity.ts",
+
+    "src-ui/src/lib/task-shaping.ts",
+
+    "src-ui/src/components/chat/TaskShapingComposer.tsx",
+
+    "src-ui/src/components/chat/TaskProposalCard.tsx"
   ],
 
   "checks": [

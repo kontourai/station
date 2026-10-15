@@ -599,6 +599,13 @@ when it differs. On a phone, when a long chat title leaves the control too
 narrow for words, it shows only a folder glyph; its accessible name still
 names the project. This revises the earlier independent-sidebar/default behavior.
 
+Chat actions offers **Turn into Task** for a writable Station conversation,
+using the same conversation rather than starting a delegated worker. The
+agent shapes a proposal; only **Create Task** on its card accepts the brief
+and links the source Session. Shaping instructions use model context, leaving
+the person's idea as the visible message. The answer/input **Add to Task**
+picker offers **New Task from this…** even with an empty Task catalog.
+
 Chat actions retains conversation history, background tasks, connection
 management where needed, and chat settings. Its geometry action is **Full screen**
 or **Exit full screen**. Collapse stays on the header control. No resize or
