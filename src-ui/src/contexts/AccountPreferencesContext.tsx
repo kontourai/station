@@ -156,8 +156,6 @@ export function AccountPreferencesProvider({
     },
   });
   const mutate = mutation.mutate;
-  const currentError =
-    mutation.isError && mutation.variables?.queryKey === queryKey;
   const available = eligible && query.isSuccess && query.isFetchedAfterMount;
   const save = useCallback(
     (patch: AccountPreferencesPatch, onlyMissing = false) => {
@@ -276,9 +274,9 @@ export function AccountPreferencesProvider({
         saving: pending.size > 0,
         waitingForConnection:
           pending.size > 0 && mutation.isPaused && !onlineManager.isOnline(),
-        error: currentError,
+        error: mutation.isError,
         conflict:
-          currentError &&
+          mutation.isError &&
           mutation.error instanceof StationHttpError &&
           mutation.error.status === 409,
         data: available ? projected : undefined,

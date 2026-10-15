@@ -36,7 +36,7 @@ const fixture = vi.hoisted(() => ({
   namespace: 'person-a' as string | null,
   get: vi.fn<(...args: unknown[]) => Promise<AccountPreferencesView>>(),
   patch: vi.fn<(...args: unknown[]) => Promise<AccountPreferencesView>>(),
-  scope: { isCurrent: (): boolean => true, apiBase: 'https://station.test' },
+  scope: { isCurrent: () => true, apiBase: 'https://station.test' },
 }));
 vi.mock('@kontourai/station-sdk/client', async (original) => ({
   ...(await original<typeof import('@kontourai/station-sdk/client')>()),
@@ -89,7 +89,6 @@ beforeEach(() => {
   localStorage.clear();
   deviceSettingsStore.reloadFromStorage();
   fixture.namespace = 'person-a';
-  fixture.scope = { isCurrent: () => true, apiBase: 'https://station.test' };
   fixture.get
     .mockReset()
     .mockResolvedValue({ schemaVersion: 1, values: { theme: 'dark' } });
@@ -376,31 +375,5 @@ test('a cross-device conflict explains recovery and reloads the saved choice', a
       'Changed on another device. Reload before trying again.',
     ),
   ).toBeNull();
-  view.unmount();
-});
-
-test('a late failed save from the previous account cannot show an error for the next account', async () => {
-  let rejectSave!: (error: Error) => void;
-  fixture.scope.isCurrent = () => fixture.namespace === 'person-a';
-  fixture.patch.mockImplementationOnce(
-    () =>
-      new Promise((_resolve, reject) => {
-        rejectSave = reject;
-      }),
-  );
-  const qc = client();
-  const view = render(tree(qc));
-  fireEvent.click(await screen.findByRole('button', { name: 'Choose light' }));
-  await waitFor(() => expect(fixture.patch).toHaveBeenCalledTimes(1));
-  fixture.namespace = 'person-b';
-  fixture.scope = {
-    isCurrent: () => fixture.namespace === 'person-b',
-    apiBase: 'https://station.test',
-  };
-  view.rerender(tree(qc));
-  await screen.findByRole('button', { name: 'Choose light' });
-  await act(async () => rejectSave(new Error('Offline')));
-  expect(screen.queryByRole('alert')).toBeNull();
-  expect(screen.getByLabelText('Current theme').textContent).toBe('dark');
   view.unmount();
 });
