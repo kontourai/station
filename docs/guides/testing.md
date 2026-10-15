@@ -2168,7 +2168,9 @@ The context JSON must supply `sourceSha` (full candidate SHA), `runUrl`,
 contract). Establish that fingerprint from the exact executed screenshot spec,
 fixture helpers, comparator/report generator, workflow and lockfile bytes. If
 those inputs or renderer provenance cannot be established, do not link reviews.
-This is a visual-review fingerprint, never a complete build-cache key.
+Renderer and contract provenance are caller-supplied verified inputs; the tool
+does not establish them from a label. This is a visual-review fingerprint,
+never a complete build-cache key.
 
 After inspecting the actual images, retain the report with a `review` object
 containing `owner`, `disposition`, and `evidenceUrl`. A later report links it only
@@ -2194,3 +2196,8 @@ wait is separate. These are one run's step timings, not averages or a speedup
 claim. Capture dominates that sample. First remove repeated triage; keep PR and
 merge-group captures intact until reuse has complete input fingerprints and
 reliable invalidation. Exact comparison itself was a small part of this cost.
+
+Two additional hosted samples (`38730257388`, `38737332985`) took 314s and
+310s overall, capture 193s and 209s, install 36s and 35s, comparison 3s each.
+Across these three observed jobs, capture remained the largest step. The sample
+does not establish a workload-wide average or authorize capture reuse.
