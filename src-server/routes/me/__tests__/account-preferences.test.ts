@@ -1,21 +1,16 @@
 import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { AccountPreferencesStore } from '../../../services/identity/account-preferences.js';
 import { createAccountPreferencesRoutes } from '../account-preferences.js';
 
-const homes: string[] = [];
-afterEach(async () => {
-  for (const home of homes.splice(0))
-    await rm(home, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 async function fixture() {
-  const home = await mkdtemp(join(tmpdir(), 'station-account-preferences-'));
-  homes.push(home);
+  const home = makeTempDir('station-account-preferences-');
   const app = new Hono();
   const build = () =>
     createAccountPreferencesRoutes({
