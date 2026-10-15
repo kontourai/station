@@ -5086,6 +5086,14 @@ for (const viewport of [
       ),
     ).toBeVisible();
     await expect(closed.getByRole('button', { name: 'Check' })).toBeVisible();
+    // Its window is gone, so it can be withdrawn like an unanswered send;
+    // the open window's send cannot.
+    await expect(
+      closed.getByRole('button', { name: 'Discard…' }),
+    ).toBeVisible();
+    await expect(running.getByRole('button', { name: 'Discard…' })).toHaveCount(
+      0,
+    );
     await expect(list.getByText(/1 sending/)).toBeVisible();
 
     // The accepted note: sentence case, whole, under the message's own line.
