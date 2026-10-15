@@ -35,16 +35,29 @@ describe('EphemeralMessage action that asks first', () => {
         onAction={onAction}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Discard…' }));
+    const discard = screen.getByRole('button', { name: 'Discard…' });
+    discard.focus();
+    fireEvent.click(discard);
     expect(onAction).not.toHaveBeenCalled();
-    expect(
-      screen.getByRole('group', { name: 'Discard this message?' }).textContent,
-    ).toContain('It may already have reached the agent.');
+    const confirm = screen.getByRole('group', {
+      name: 'Discard this message?',
+    });
+    expect(confirm.textContent).toContain(
+      'It may already have reached the agent.',
+    );
+    // Discard… stays where it was, and focus moves into the question.
+    expect(discard.isConnected).toBe(true);
+    expect(discard.getAttribute('aria-controls')).toBe(confirm.id);
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Keep it' }),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Keep it' }));
     expect(
       screen.queryByRole('group', { name: 'Discard this message?' }),
     ).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Discard…' }));
+    // Keep it hands focus back to Discard….
+    expect(document.activeElement).toBe(discard);
+    fireEvent.click(discard);
     fireEvent.click(
       screen.getByRole('button', { name: 'I checked, discard it' }),
     );

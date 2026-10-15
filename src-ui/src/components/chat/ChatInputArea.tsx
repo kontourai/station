@@ -61,7 +61,10 @@ import {
   draggedConversationReference,
   endConversationReferenceDrag,
 } from './conversationReferenceDrag';
-import { UnconfirmedDiscardConfirm } from './UnconfirmedDiscardConfirm';
+import {
+  UnconfirmedDiscardConfirm,
+  useUnconfirmedDiscardDisclosure,
+} from './UnconfirmedDiscardConfirm';
 import './chat.css';
 import { SkeletonBlock, SkeletonList } from '../state';
 
@@ -670,9 +673,8 @@ export function ChatInputArea({
   const queuedRetryText = queuedRetryNotice?.text;
   // The queued notice's Discard opens the shared confirmation first; it
   // closes again whenever the notice goes.
-  const [confirmingQueuedDiscard, setConfirmingQueuedDiscard] = useState(false);
-  if (!queuedRetryText && confirmingQueuedDiscard)
-    setConfirmingQueuedDiscard(false);
+  const queuedDiscard = useUnconfirmedDiscardDisclosure();
+  if (!queuedRetryText && queuedDiscard.open) queuedDiscard.close();
   const queuedRetryDescriptionId = React.useId();
   const composerRootRef = useRef<HTMLDivElement | null>(null);
   // The draft's two-line floor, written by the per-keystroke sizing below and
@@ -1093,17 +1095,6 @@ export function ChatInputArea({
           {sendFailureNotice && (
             <div className="chat-input__send-failure" role="status">
               {sendFailureNotice}
-            </div>
-          )}
-          {queuedRetryNotice?.confirm && confirmingQueuedDiscard && (
-            <div className="chat-input__queued-retry-confirm">
-              <UnconfirmedDiscardConfirm
-                onKeep={() => setConfirmingQueuedDiscard(false)}
-                onConfirm={() => {
-                  setConfirmingQueuedDiscard(false);
-                  queuedRetryNotice.onDiscard();
-                }}
-              />
             </div>
           )}
           {composerTokens.length > 0 && (
@@ -1535,22 +1526,23 @@ export function ChatInputArea({
           )}
           {queuedRetryNotice && (
             <span className="chat-input__queued-retry-actions">
-              <button
-                type="button"
-                aria-describedby={queuedRetryDescriptionId}
-                aria-expanded={
-                  queuedRetryNotice.confirm
-                    ? confirmingQueuedDiscard
-                    : undefined
-                }
-                onClick={
-                  queuedRetryNotice.confirm
-                    ? () => setConfirmingQueuedDiscard((open) => !open)
-                    : queuedRetryNotice.onDiscard
-                }
-              >
-                {queuedRetryNotice.confirm ? 'Discard…' : 'Discard'}
-              </button>
+              {queuedRetryNotice.confirm ? (
+                <button
+                  type="button"
+                  aria-describedby={queuedRetryDescriptionId}
+                  {...queuedDiscard.triggerProps}
+                >
+                  Discard…
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  aria-describedby={queuedRetryDescriptionId}
+                  onClick={queuedRetryNotice.onDiscard}
+                >
+                  Discard
+                </button>
+              )}
               <span id={queuedRetryDescriptionId} className="sr-only">
                 {queuedRetryNotice.text}
               </span>
@@ -1705,6 +1697,19 @@ export function ChatInputArea({
             </ResponsiveDialogSurface>
           )}
         </div>
+        {/* After the controls row, so it follows its Discard… in reading
+            and tab order. */}
+        {queuedRetryNotice?.confirm && queuedDiscard.open && (
+          <div className="chat-input__queued-retry-confirm">
+            <UnconfirmedDiscardConfirm
+              {...queuedDiscard.confirmProps}
+              onConfirm={() => {
+                queuedDiscard.close();
+                queuedRetryNotice.onDiscard();
+              }}
+            />
+          </div>
+        )}
         {sessionReferencesOpen && (
           <React.Suspense
             fallback={<SkeletonBlock label="Conversation reference picker" />}

@@ -407,10 +407,17 @@ describe('MessageBubble phone copy and details actions', () => {
     );
     const sheet = screen.getByRole('dialog', { name: 'Your message actions' });
     const summary = sheet.querySelector('.message-details__summary');
-    // The sheet IS the menu's surface: its rows are listed in place.
-    const item = await within(sheet).findByRole('menuitem', {
+    // The sheet IS the menu's surface: its rows are listed in place, as
+    // plain buttons in a group (no menu roles without menu keyboard
+    // behaviour).
+    const item = await within(sheet).findByRole('button', {
       name: 'New chat from this message',
     });
+    expect(within(sheet).queryByRole('menu')).toBeNull();
+    expect(within(sheet).queryByRole('menuitem')).toBeNull();
+    expect(within(sheet).getByRole('group', { name: 'Message actions' })).toBe(
+      item.parentElement,
+    );
     expect(item.closest('.message-details__actions')?.parentElement).toBe(
       summary,
     );
@@ -455,7 +462,7 @@ describe('MessageBubble phone copy and details actions', () => {
         name: 'Your message actions',
       });
       expect(
-        await within(sheet).findByRole('menuitem', {
+        await within(sheet).findByRole('button', {
           name: 'Discard unsent message',
         }),
       ).toBeTruthy();

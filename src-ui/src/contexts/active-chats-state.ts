@@ -362,6 +362,8 @@ export type ChatUIState = {
     behindUnsent?: true;
     /** No answer came back; Station's delivery lookup decides it. */
     awaitingLookup?: true;
+    /** Claimed by a renderer still running: its send is under way there. */
+    sendUnderWay?: true;
   }>;
   inputHistory: string[];
   historyIndex?: number;

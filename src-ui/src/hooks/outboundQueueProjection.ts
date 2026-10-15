@@ -28,6 +28,8 @@ export interface OutboundQueuedTurnProjection {
   behindUnsent?: true;
   /** No answer came back; Station's delivery lookup decides it. */
   awaitingLookup?: true;
+  /** Claimed by a renderer still running: its send is under way there. */
+  sendUnderWay?: true;
 }
 
 /**
@@ -138,6 +140,7 @@ export function projectOutboundQueueEntries(
           station,
           heldBy,
           awaitingLookup,
+          sendUnderWay,
         }) => ({
           clientTurnId,
           content,
@@ -149,6 +152,7 @@ export function projectOutboundQueueEntries(
           ...(deliveryCheck ? { deliveryCheck } : {}),
           ...(heldBy ? { heldElsewhere: true as const } : {}),
           ...(awaitingLookup ? { awaitingLookup: true as const } : {}),
+          ...(sendUnderWay ? { sendUnderWay: true as const } : {}),
           ...(behindUnsent.has(clientTurnId)
             ? { behindUnsent: true as const }
             : {}),

@@ -77,11 +77,17 @@
 
 /* A message that may have reached the agent keeps its text on a line of its
    own, with its note, Check and Discard… wrapping below; an open
-   confirmation takes a row of its own under them. */
-.queued-message:has(> :is(.queued-message__actions, .queued-message__confirm)) {
+   confirmation takes a row of its own under them. Any outbox row with a
+   status note (accepted, sending, held, waiting for its Station) does the
+   same, so the note never squeezes the message. */
+.queued-message:has(> :is(.queued-message__actions, .queued-message__confirm)),
+.queued-messages--outbox .queued-message:has(> .queued-messages__label) {
   flex-wrap: wrap;
 }
 .queued-message:has(> :is(.queued-message__actions, .queued-message__confirm))
+  > .queued-message__text,
+.queued-messages--outbox
+  .queued-message:has(> .queued-messages__label)
   > .queued-message__text {
   flex-basis: calc(100% - 16px - 6px);
 }
@@ -108,9 +114,11 @@
   max-height: none;
 }
 /* The outbox list's own summary reads as a sentence, not a caption, and so
-   does another window's send under way (neutral, not a caution). */
+   do another window's send under way and an accepted message (neutral, not
+   a caution). */
 .queued-messages__label.queued-messages__label--summary,
-.queued-messages__label.queued-messages__label--sending {
+.queued-messages__label.queued-messages__label--sending,
+.queued-messages__label.queued-messages__label--accepted {
   font-weight: 500;
   letter-spacing: normal;
   text-transform: none;
@@ -216,12 +224,15 @@
   letter-spacing: normal;
 }
 
-/* A pending follow-up's text wraps (long unbroken strings too) and shows at
-   most two lines; the row's title and its Edit carry the full text. */
-.queued-messages--pending .queued-message__text {
+/* A pending follow-up's text, and an outbox row's, wraps (long unbroken
+   strings too) and shows at most two lines; the row's title and its Edit
+   carry the full text. */
+.queued-messages--pending .queued-message__text,
+.queued-messages--outbox .queued-message__text {
   white-space: normal;
 }
-.queued-messages--pending .queued-message__body {
+.queued-messages--pending .queued-message__body,
+.queued-messages--outbox .queued-message__body {
   display: -webkit-box;
   overflow: hidden;
   -webkit-box-orient: vertical;
@@ -335,6 +346,14 @@
   }
   .queued-messages--pending .queued-message__text {
     flex: 1 0 calc(100% - var(--k-space-5));
+  }
+  /* On a phone an outbox row's text takes its own line too; its 44px
+     controls wrap below it instead of leaving it a dozen characters. */
+  .queued-messages--outbox .queued-message {
+    flex-wrap: wrap;
+  }
+  .queued-messages--outbox .queued-message__text {
+    flex: 1 0 calc(100% - 16px - var(--space-1));
   }
   .queued-messages--pending .queued-message__btn {
     font-size: var(--k-text-sm);

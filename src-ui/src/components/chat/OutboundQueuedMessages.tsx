@@ -7,7 +7,10 @@ import {
   AWAITING_CONFIRMATION_LABEL,
   MAY_HAVE_REACHED_LABEL,
 } from './deliveryLabels';
-import { UnconfirmedDiscardConfirm } from './UnconfirmedDiscardConfirm';
+import {
+  UnconfirmedDiscardConfirm,
+  useUnconfirmedDiscardDisclosure,
+} from './UnconfirmedDiscardConfirm';
 import './QueuedMessages.css';
 
 interface OutboundQueuedTurn {
@@ -24,6 +27,25 @@ interface OutboundQueuedTurn {
   heldElsewhere?: true;
   /** No answer came back; Station's delivery lookup decides it. */
   awaitingLookup?: true;
+  /** Claimed by a window that is still running: its send is under way there. */
+  sendUnderWay?: true;
+}
+
+/**
+ * An `invoking` row is only "Sending" while the window that claimed it is
+ * proven running. A closed or crashed window's claim, or one released with
+ * no answer, waits for Station's delivery lookup like its bubble says.
+ */
+function sendingElsewhere(turn: OutboundQueuedTurn): boolean {
+  return (
+    turn.status === 'invoking' &&
+    turn.sendUnderWay === true &&
+    !turn.awaitingLookup
+  );
+}
+
+function awaitingConfirmation(turn: OutboundQueuedTurn): boolean {
+  return turn.status === 'invoking' && !sendingElsewhere(turn);
 }
 
 interface OutboundQueuedMessagesProps {
@@ -79,12 +101,10 @@ export function OutboundQueuedMessages({
   const acceptedCount = turns.filter(
     (turn) => turn.status === 'accepted',
   ).length;
-  const awaitingCount = turns.filter((turn) => turn.awaitingLookup).length;
-  // A send another window holds a claim on is under way there, not
+  const awaitingCount = turns.filter(awaitingConfirmation).length;
+  // A send a running window holds a claim on is under way there, not
   // uncertain.
-  const sendingCount = turns.filter(
-    (turn) => turn.status === 'invoking' && !turn.awaitingLookup,
-  ).length;
+  const sendingCount = turns.filter(sendingElsewhere).length;
   const uncertainCount = turns.filter(
     (turn) => turn.status === 'may-have-started',
   ).length;
@@ -98,7 +118,7 @@ export function OutboundQueuedMessages({
     awaitingCount ? `${awaitingCount} with no answer yet` : undefined,
     sendingCount ? `${sendingCount} sending` : undefined,
     acceptedCount
-      ? `${acceptedCount} accepted and waiting for completion`
+      ? `${acceptedCount} accepted, waiting for the agent to finish`
       : undefined,
     uncertainCount ? `${uncertainCount} may have reached the agent` : undefined,
   ]
@@ -122,7 +142,7 @@ export function OutboundQueuedMessages({
   };
 
   return (
-    <div className="queued-messages" aria-live="polite">
+    <div className="queued-messages queued-messages--outbox" aria-live="polite">
       <div className="queued-messages__label queued-messages__label--summary">
         {summary}
       </div>
@@ -176,7 +196,8 @@ export function OutboundQueuedMessages({
                 />
               ) : (
                 <span className="queued-message__text" title={turn.content}>
-                  {turn.content}
+                  {/* Clamped to two lines; the title (and Edit) carry it all. */}
+                  <span className="queued-message__body">{turn.content}</span>
                 </span>
               )}
               {showingMergePreview && nextTurn ? (
@@ -215,15 +236,15 @@ export function OutboundQueuedMessages({
                 <span
                   className={`queued-messages__label${
                     // Another window's send under way is not a caution.
-                    turn.status === 'invoking' && !turn.awaitingLookup
+                    sendingElsewhere(turn)
                       ? ' queued-messages__label--sending'
                       : ' queued-messages__label--unconfirmed'
                   }`}
                 >
-                  {turn.awaitingLookup
-                    ? AWAITING_CONFIRMATION_LABEL
-                    : turn.status === 'invoking'
-                      ? 'Sending'
+                  {sendingElsewhere(turn)
+                    ? 'Sending'
+                    : awaitingConfirmation(turn)
+                      ? AWAITING_CONFIRMATION_LABEL
                       : MAY_HAVE_REACHED_LABEL}
                 </span>
               ) : turn.status === 'failed' ? (
@@ -275,8 +296,8 @@ export function OutboundQueuedMessages({
                   )}
                 </span>
               ) : turn.status === 'accepted' ? (
-                <span className="queued-messages__label">
-                  Accepted; waiting for completion
+                <span className="queued-messages__label queued-messages__label--accepted">
+                  Accepted · waiting for the agent to finish
                 </span>
               ) : null}
               <UnconfirmedRowActions
@@ -484,18 +505,16 @@ function UnconfirmedRowActions({
   onError,
 }: {
   sessionId: string;
-  turn: {
-    clientTurnId: string;
-    status: OutboundQueuedTurn['status'];
-    awaitingLookup?: true;
-    waitingForStation?: string;
-  };
+  turn: OutboundQueuedTurn;
   onDiscarded: () => void;
   onError: (message: string) => void;
 }) {
-  const [confirming, setConfirming] = useState(false);
+  const disclosure = useUnconfirmedDiscardDisclosure();
   if (turn.status !== 'may-have-started' && turn.status !== 'invoking')
     return null;
+  // Under way in a running window: its answer is coming there, and a Check
+  // here would find nothing to ask.
+  if (sendingElsewhere(turn)) return null;
   const { clientTurnId } = turn;
   const discardable =
     turn.status === 'may-have-started' || turn.awaitingLookup === true;
@@ -508,20 +527,16 @@ function UnconfirmedRowActions({
             onError={onError}
           />
         )}
-        {discardable && !confirming ? (
-          <button
-            type="button"
-            aria-expanded={false}
-            onClick={() => setConfirming(true)}
-          >
+        {discardable ? (
+          <button type="button" {...disclosure.triggerProps}>
             Discard…
           </button>
         ) : null}
       </span>
-      {discardable && confirming ? (
+      {discardable && disclosure.open ? (
         <span className="queued-message__confirm">
           <UnconfirmedDiscardConfirm
-            onKeep={() => setConfirming(false)}
+            {...disclosure.confirmProps}
             onConfirm={() =>
               void import('../../lib/messageDeliveryActions')
                 .then(({ discardMessage }) =>

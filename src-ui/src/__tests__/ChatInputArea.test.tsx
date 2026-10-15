@@ -1924,4 +1924,34 @@ describe('ChatInputArea queued-retry Discard', () => {
     );
     expect(onDiscard).toHaveBeenCalledTimes(1);
   });
+
+  test('the question follows its Discard… and takes focus; Keep it gives focus back', () => {
+    renderChatInputArea({
+      queuedRetryNotice: {
+        text: "Send wasn't confirmed — queued to retry automatically",
+        onDiscard: vi.fn(),
+        confirm: true,
+      },
+    });
+    const discard = screen.getByRole('button', { name: 'Discard…' });
+    discard.focus();
+    fireEvent.click(discard);
+    const confirm = screen.getByRole('group', {
+      name: 'Discard this message?',
+    });
+    // After the button in reading and tab order, and named by it.
+    expect(
+      discard.compareDocumentPosition(confirm) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(discard.getAttribute('aria-controls')).toBe(confirm.id);
+    expect(discard.getAttribute('aria-expanded')).toBe('true');
+    const keep = screen.getByRole('button', { name: 'Keep it' });
+    expect(document.activeElement).toBe(keep);
+    fireEvent.click(keep);
+    expect(
+      screen.queryByRole('group', { name: 'Discard this message?' }),
+    ).toBeNull();
+    expect(document.activeElement).toBe(discard);
+  });
 });

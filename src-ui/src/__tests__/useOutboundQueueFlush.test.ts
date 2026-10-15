@@ -250,6 +250,163 @@ describe('useOutboundQueueFlush', () => {
     }
   });
 
+  it("another window's change refreshes this one without a flush, so two tabs holding one key never take it from each other", async () => {
+    // Two renderers that share a held key: a duplicated tab copies its
+    // session storage, queue and all. The other one is simulated through the
+    // shared storage and the cross-window channel.
+    const channels: Array<{
+      name: string;
+      listeners: Set<(event: { data: unknown }) => void>;
+    }> = [];
+    class FakeChannel {
+      readonly listeners = new Set<(event: { data: unknown }) => void>();
+      constructor(readonly name: string) {
+        channels.push(this);
+      }
+      addEventListener(_t: string, l: (event: { data: unknown }) => void) {
+        this.listeners.add(l);
+      }
+      removeEventListener(_t: string, l: (event: { data: unknown }) => void) {
+        this.listeners.delete(l);
+      }
+      postMessage(data: unknown) {
+        for (const channel of channels)
+          if (channel !== this && channel.name === this.name)
+            for (const listener of channel.listeners) listener({ data });
+      }
+      close() {}
+    }
+    vi.stubGlobal('BroadcastChannel', FakeChannel);
+    let stored: unknown;
+    _setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, value) => {
+        stored = value;
+      },
+      updateItem: async (_key, updater) => {
+        stored = updater(stored);
+      },
+    });
+    activeChatsStore.updateChat('session-1', {
+      queuedMessages: ['held in both tabs'],
+      queuedMessageMetadata: [{ id: 'shared-held-key' }],
+    } as never);
+    const heldBy = () => {
+      const record = stored as { turns?: Array<Record<string, unknown>> };
+      return (record?.turns ?? []).find(
+        (turn) => turn.clientTurnId === 'shared-held-key',
+      )?.heldBy as { bootId: string } | undefined;
+    };
+    try {
+      renderHook(() => useOutboundQueueFlush('http://api.test'));
+      // This tab holds its copy of the follow-up in the outbox.
+      await waitFor(() => expect(heldBy()).toBeDefined());
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const reads = vi.spyOn(outboundDispatch, 'open');
+      const passes = vi.spyOn(outboundDispatch, 'reconcile');
+      const holds = vi.spyOn(outboundDispatch, 'syncHeld');
+      // The other tab holds the same key now, and says the queue changed.
+      const record = stored as { turns: Array<Record<string, unknown>> };
+      stored = {
+        ...record,
+        turns: record.turns.map((turn) =>
+          turn.clientTurnId === 'shared-held-key'
+            ? { ...turn, heldBy: { bootId: 'other-tab', heldAt: Date.now() } }
+            : turn,
+        ),
+      };
+      new FakeChannel('station-outbound-queue').postMessage('changed');
+      // What this window shows is read again...
+      await waitFor(() => expect(reads).toHaveBeenCalled());
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      // ...and nothing takes the key back, which would tell the other tab
+      // to take it again in turn.
+      expect(passes).not.toHaveBeenCalled();
+      expect(holds).not.toHaveBeenCalled();
+      expect(heldBy()?.bootId).toBe('other-tab');
+    } finally {
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+      _resetOutboundQueueChangeChannel();
+      activeChatsStore.updateChat('session-1', {
+        queuedMessages: [],
+        queuedMessageMetadata: [],
+      } as never);
+    }
+  });
+
+  it("shows another window's send as under way only while that window runs, and notices when it stops", async () => {
+    // That window holds its renderer lock while it runs.
+    const held = new Set(['station-outbound-renderer:other-window']);
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      locks: {
+        request: async (
+          _name: string,
+          optionsOrCallback: unknown,
+          maybeCallback?: () => Promise<unknown>,
+        ) =>
+          (
+            (typeof optionsOrCallback === 'function'
+              ? optionsOrCallback
+              : maybeCallback) as () => Promise<unknown>
+          )(),
+        query: async () => ({ held: [...held].map((name) => ({ name })) }),
+      },
+    });
+    const now = Date.now();
+    let stored: unknown = [
+      {
+        clientTurnId: 'sending-elsewhere',
+        sessionId: 'session-1',
+        conversationId: 'session-1',
+        agentSlug: 'codex',
+        content: 'sent from the other window',
+        createdAt: now,
+        attempts: 1,
+        status: 'invoking',
+        dispatchBootId: 'other-window',
+        claimedAt: now,
+      },
+    ];
+    _setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, value) => {
+        stored = value;
+      },
+      updateItem: async (_key, updater) => {
+        stored = updater(stored);
+      },
+    });
+    const row = () =>
+      activeChatsStore
+        .getSnapshot()
+        ['session-1']?.outboundQueuedTurns?.find(
+          (turn) => turn.clientTurnId === 'sending-elsewhere',
+        );
+    try {
+      renderHook(() => useOutboundQueueFlush('http://api.test'));
+      await waitFor(() =>
+        expect(row()).toMatchObject({
+          status: 'invoking',
+          sendUnderWay: true,
+        }),
+      );
+      // That window crashes: nothing announces it, yet the row stops
+      // reading as under way.
+      held.clear();
+      await waitFor(
+        () => {
+          expect(row()).toMatchObject({ status: 'invoking' });
+          expect(row()?.sendUnderWay).toBeUndefined();
+        },
+        { timeout: 10_000 },
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  }, 20_000);
+
   it('replays the model and provider options captured when the turn was queued', async () => {
     let stored: unknown;
     _setOutboundQueueStorage({

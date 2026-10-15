@@ -88,6 +88,9 @@ let flushRequestedWhileFlushing = false;
 let reconcileRetryTimer: ReturnType<typeof setTimeout> | undefined;
 let reconcileRetryDelayMs = 0;
 
+/** How often a send under way in another window is looked at again. */
+const OWNER_RECHECK_MS = 3_000;
+
 export function useOutboundQueueFlush(apiBase: string): void {
   const sendMessage = useSendMessage(apiBase);
   const { observation } = useAuthorityPersistence();
@@ -241,6 +244,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
     let active = true;
     let projection = Promise.resolve();
     let unsubscribe: () => void = () => {};
+    let ownerRecheck: ReturnType<typeof setTimeout> | undefined;
     void Promise.all([
       import('../lib/outboundQueue'),
       import('./outboundQueueProjection'),
@@ -257,7 +261,20 @@ export function useOutboundQueueFlush(apiBase: string): void {
               const retired = await outboundDispatch
                 .retiredKeys()
                 .catch(() => undefined);
-              if (active) projectOutboundQueueEntries(entries, retired);
+              if (!active) return;
+              projectOutboundQueueEntries(entries, retired);
+              // "Sending" holds only while the window sending it runs, and a
+              // window that closes or crashes says nothing. While any row
+              // reads so, look again now and then; nothing is scheduled
+              // once none does.
+              if (
+                ownerRecheck === undefined &&
+                entries.some((entry) => entry.sendUnderWay)
+              )
+                ownerRecheck = setTimeout(() => {
+                  ownerRecheck = undefined;
+                  if (active) refreshProjection();
+                }, OWNER_RECHECK_MS);
             } catch (error) {
               if (!active) return;
               reporter.reportOutboundQueueUnavailable(
@@ -275,7 +292,11 @@ export function useOutboundQueueFlush(apiBase: string): void {
           outboundDispatch.subscribe(handleQueueChanged),
           // Another window's change (a Discard there, a send it settled)
           // reaches this one only through the queue's cross-window channel.
-          outboundDispatch.subscribeRemoteChange(handleQueueChanged),
+          // It only refreshes what this window shows: a flush here would
+          // re-hold this tab's follow-ups (`syncHeld`), taking a shared key
+          // back from a duplicated tab, whose own notice would come back and
+          // do the same, forever.
+          outboundDispatch.subscribeRemoteChange(refreshProjection),
         ];
         if (typeof document !== 'undefined') {
           // A hidden window can miss a message on that channel; coming back
@@ -295,6 +316,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
     );
     return () => {
       active = false;
+      if (ownerRecheck) clearTimeout(ownerRecheck);
       unsubscribe();
     };
   }, [status, triggerFlush]);
@@ -320,7 +342,10 @@ export function useOutboundQueueFlush(apiBase: string): void {
             ([, chat]) =>
               conversationCanMutate(chat) &&
               chat.outboundQueuedTurns?.some(
-                (turn) => turn.status === 'pending',
+                // A copy another window holds is sent only on the user's
+                // Send, never by a flush; it appearing here (that window just
+                // held it) must not start a pass that takes it back.
+                (turn) => turn.status === 'pending' && !turn.heldElsewhere,
               ),
           )
           .map(([sessionId]) => sessionId),

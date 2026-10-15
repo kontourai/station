@@ -3244,7 +3244,8 @@
 }
 
 /* The queued notice's Discard confirmation, in the composer and in the
-   transcript notice: a row of its own above the controls. */
+   transcript notice: a row of its own after its Discard… (below the
+   composer's controls, below the notice's button). */
 .chat-input__queued-retry-confirm,
 .ephemeral-message__confirm {
   margin-top: var(--k-space-2);
@@ -3256,7 +3257,7 @@
   gap: var(--k-space-1);
   min-width: 0;
 }
-.message-details__menu > [role="menuitem"] {
+.message-details__menu > button {
   min-height: 44px;
   padding: 0 var(--k-space-3);
   border: 1px solid var(--border-primary);

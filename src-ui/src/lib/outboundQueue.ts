@@ -129,6 +129,13 @@ export type OutboundDispatchTurn = Omit<
    * Station never received it, then it goes once with its key.
    */
   awaitingLookup?: true;
+  /**
+   * An `invoking` row whose claim belongs to a renderer that is still
+   * running (another window, or this one's drain): its send is under way
+   * there. Without it, an `invoking` row's owner is gone or unknown, and the
+   * row waits for Station's delivery lookup.
+   */
+  sendUnderWay?: true;
 };
 
 export interface OutboundDispatchIntent
@@ -921,7 +928,10 @@ function reorderBarrier(
 /** This renderer's boot id once the lease module is loaded (sync reads). */
 let knownBootId: string | undefined;
 
-function publicTurn(entry: QueuedOutboundTurn): OutboundDispatchTurn {
+function publicTurn(
+  entry: QueuedOutboundTurn,
+  underWay: ReadonlySet<string> = new Set(),
+): OutboundDispatchTurn {
   const {
     dispatchBootId: _dispatchBootId,
     claimedAt: _claimedAt,
@@ -936,7 +946,30 @@ function publicTurn(entry: QueuedOutboundTurn): OutboundDispatchTurn {
       ? { heldHere: true as const }
       : {}),
     ...(awaitingLookup(entry) ? { awaitingLookup: true as const } : {}),
+    ...(underWay.has(entry.clientTurnId)
+      ? { sendUnderWay: true as const }
+      : {}),
   });
+}
+
+/**
+ * The stored rows as callers see them. Whether a claimed send is still under
+ * way is read from its owner's liveness now: only a renderer proven running
+ * counts (an unknown one does not).
+ */
+async function publicTurns(): Promise<OutboundDispatchTurn[]> {
+  const rows = await readStored();
+  const underWay = new Set<string>();
+  for (const row of rows) {
+    if (
+      row.status === 'invoking' &&
+      row.dispatchBootId !== undefined &&
+      !liveOwned.has(row.clientTurnId) &&
+      (await ownerLiveness(row.dispatchBootId)) === true
+    )
+      underWay.add(row.clientTurnId);
+  }
+  return rows.map((row) => publicTurn(row, underWay));
 }
 
 /** An `invoking` row no renderer holds a claim on: released for the lookup. */
@@ -2441,12 +2474,12 @@ export const outboundDispatch: OutboundDispatchModule = {
     await reconcileAcceptedTerminals();
     // Known before projecting: which held copies are this renderer's own.
     await rendererBootId();
-    return (await readStored()).map(publicTurn);
+    return publicTurns();
   },
   snapshot: async () => {
     await reconcileAcceptedTerminals();
     await rendererBootId();
-    return (await readStored()).map(publicTurn);
+    return publicTurns();
   },
   fenceConversationHandoff,
   subscribe: (listener) => {

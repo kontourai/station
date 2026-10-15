@@ -5,7 +5,8 @@ import type { TurnDeliveryOutcome } from '@kontourai/station-contracts/orchestra
  * from facts this device has observed. Pure: every input below is a recorded
  * signal, and nothing here estimates.
  *
- * - `sending`: this device's request is out and no answer has come back yet.
+ * - `sending`: this device's request is out and no answer has come back yet
+ *   (in this window, or in another window of the app that is still running).
  * - `received`: Station said it has the request (the session may still be
  *   starting); the agent does not have the turn yet. Safe to close the app.
  * - `delivered`: the agent has the turn (Station answered with its turn id,
@@ -63,6 +64,8 @@ export interface MessageDeliverySignals {
   providerAccepted?: boolean;
   /** This device's request is out with no answer yet. */
   requestInFlight?: boolean;
+  /** The outbox row's send is under way in a renderer that is still running. */
+  outboxSendUnderWay?: boolean;
   /** The message's row in the durable outbox, if it has one. */
   outbox?: OutboxDeliveryStatus;
   /** Held in this chat's local queue behind a running turn. */
@@ -107,8 +110,10 @@ export function deriveMessageDeliveryState(
   if (signals.heldBehindTurn) return 'held-on-device';
   if (signals.lookup === 'received') return 'received';
   if (signals.requestInFlight) return 'sending';
-  // A row still `invoking` with no request of this window out: its send got
-  // no answer (or its window closed), and Station's lookup decides it.
+  if (signals.outbox === 'invoking' && signals.outboxSendUnderWay)
+    return 'sending';
+  // A row still `invoking` with no live sender: its send got no answer (or
+  // its window closed), and Station's lookup decides it.
   if (signals.outbox === 'invoking') return 'awaiting-confirmation';
   if (signals.outbox === 'pending')
     return signals.outboxWaitsForStation
@@ -138,6 +143,7 @@ export interface MessageDeliveryChatFacts {
     deliveryCheck?: { outcome: TurnDeliveryOutcome };
     waitingForStation?: string;
     behindUnsent?: true;
+    sendUnderWay?: true;
   }>;
 }
 
@@ -162,6 +168,7 @@ export function messageDeliveryStateFor(
       chat?.sendAwaitingTurnStart === true &&
       chat.pendingClientTurnId === key,
     outbox: row?.status,
+    outboxSendUnderWay: row?.sendUnderWay === true,
     lookup: (key && chat?.deliveryChecks?.[key]) || row?.deliveryCheck?.outcome,
     outboxWaitsForStation: row?.waitingForStation !== undefined,
     outboxBehindUnsent: row?.behindUnsent === true,

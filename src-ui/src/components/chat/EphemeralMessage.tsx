@@ -1,9 +1,12 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense } from 'react';
 import type { FullAccessRefusalNotice } from '../../utils/approvalMode';
 import { Skeleton } from '../state';
 import { FullAccessRefusalCard } from './FullAccessRefusalCard';
 import { LazyMarkdown } from './LazyMarkdown';
-import { UnconfirmedDiscardConfirm } from './UnconfirmedDiscardConfirm';
+import {
+  UnconfirmedDiscardConfirm,
+  useUnconfirmedDiscardDisclosure,
+} from './UnconfirmedDiscardConfirm';
 
 // DOMPurify is ~118 KB of source and only the rare `contentType: 'html'`
 // ephemeral message needs it, so the sanitizing renderer loads on demand.
@@ -182,7 +185,10 @@ export function EphemeralMessage({
   );
 }
 
-/** An action that runs only after the shared confirmation (#3596). */
+/**
+ * An action that runs only after the shared confirmation (#3596). Its button
+ * stays put while the confirmation is open below it.
+ */
 function ConfirmedAction({
   label,
   onConfirm,
@@ -190,35 +196,35 @@ function ConfirmedAction({
   label: string;
   onConfirm: () => void;
 }) {
-  const [confirming, setConfirming] = useState(false);
-  if (confirming)
-    return (
-      <div className="ephemeral-message__confirm">
-        <UnconfirmedDiscardConfirm
-          onKeep={() => setConfirming(false)}
-          onConfirm={onConfirm}
-        />
-      </div>
-    );
+  const disclosure = useUnconfirmedDiscardDisclosure();
   return (
-    <button
-      type="button"
-      className="ephemeral-message__action"
-      aria-expanded={false}
-      onClick={() => setConfirming(true)}
-      style={{
-        marginTop: '12px',
-        padding: '8px 16px',
-        borderRadius: '6px',
-        border: 'none',
-        background: 'var(--color-primary)',
-        color: 'white',
-        cursor: 'pointer',
-        fontSize: '13px',
-        fontWeight: 500,
-      }}
-    >
-      {label}
-    </button>
+    <>
+      <button
+        type="button"
+        className="ephemeral-message__action"
+        {...disclosure.triggerProps}
+        style={{
+          marginTop: '12px',
+          padding: '8px 16px',
+          borderRadius: '6px',
+          border: 'none',
+          background: 'var(--color-primary)',
+          color: 'white',
+          cursor: 'pointer',
+          fontSize: '13px',
+          fontWeight: 500,
+        }}
+      >
+        {label}
+      </button>
+      {disclosure.open ? (
+        <div className="ephemeral-message__confirm">
+          <UnconfirmedDiscardConfirm
+            {...disclosure.confirmProps}
+            onConfirm={onConfirm}
+          />
+        </div>
+      ) : null}
+    </>
   );
 }

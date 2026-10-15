@@ -365,12 +365,15 @@ export function UserMessageActionsMenu({
     close,
   );
 
-  const rows = (close: () => void) => (
+  // In the ⋯ popup the rows are menu items (with the menu's arrow-key
+  // focus); inline in the phone's sheet they are plain buttons in a group,
+  // since nothing there gives them menu keyboard behaviour.
+  const rows = (close: () => void, itemRole?: 'menuitem') => (
     <>
       {canFork && forkSource && onForkFromTurn && (
         <button
           type="button"
-          role="menuitem"
+          role={itemRole}
           onClick={() => {
             close();
             onForkFromTurn(forkSource);
@@ -382,7 +385,7 @@ export function UserMessageActionsMenu({
       {!canFork && onNewChatFromMessage && (
         <button
           type="button"
-          role="menuitem"
+          role={itemRole}
           onClick={() => {
             close();
             onNewChatFromMessage();
@@ -394,7 +397,7 @@ export function UserMessageActionsMenu({
       {onDiscardUnsent && (
         <button
           type="button"
-          role="menuitem"
+          role={itemRole}
           className="turn-footer__overflow-item--danger"
           onClick={() => {
             close();
@@ -410,7 +413,7 @@ export function UserMessageActionsMenu({
     return (
       <div
         className="message-details__menu"
-        role="menu"
+        role="group"
         aria-label="Message actions"
       >
         {rows(() => {})}
@@ -446,7 +449,7 @@ export function UserMessageActionsMenu({
               }
             }}
           >
-            {rows(close)}
+            {rows(close, 'menuitem')}
           </div>,
           document.body,
         )}

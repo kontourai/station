@@ -250,7 +250,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     );
   });
 
-  it("lists another window's claimed send as sending, never as uncertain or withdrawable", () => {
+  it("lists a running window's claimed send as sending, never as uncertain or withdrawable", () => {
     render(
       <OutboundQueuedMessages
         sessionId="session-1"
@@ -259,6 +259,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
             clientTurnId: 'turn-1',
             content: 'already sending',
             status: 'invoking',
+            sendUnderWay: true,
           },
         ]}
         onError={vi.fn()}
@@ -277,9 +278,40 @@ describe('OutboundQueuedMessages (station#2522)', () => {
       label.classList.contains('queued-messages__label--unconfirmed'),
     ).toBe(false);
     expect(screen.queryByText(/may have reached/i)).toBeNull();
+    expect(screen.queryByText(/no answer yet/i)).toBeNull();
+    // Its answer is coming in that window; a Check here would find nothing.
+    expect(screen.queryByRole('button', { name: 'Check' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Discard…' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Edit message' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Delete message' })).toBeNull();
+  });
+
+  it("a closed or crashed window's claimed send reads as its bubble does: no answer yet, with Check", () => {
+    render(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={[
+          {
+            clientTurnId: 'turn-1',
+            content: 'its window is gone',
+            status: 'invoking',
+          },
+        ]}
+        onError={vi.fn()}
+        onRetry={vi.fn()}
+        onStartNewChat={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText('Sending')).toBeNull();
+    expect(screen.queryByText(/sending/)).toBeNull();
+    expect(screen.getByText('1 with no answer yet')).toBeTruthy();
+    const label = screen.getByText(
+      'No answer yet · sends once Station confirms it never arrived',
+    );
+    expect(
+      label.classList.contains('queued-messages__label--unconfirmed'),
+    ).toBe(true);
+    expect(screen.getByRole('button', { name: 'Check' })).toBeTruthy();
   });
 
   it('separates waiting, accepted, and may-have-reached counts, in sentence case', () => {
@@ -302,11 +334,19 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     );
 
     const summary = screen.getByText(
-      '1 message waiting to send · 1 accepted and waiting for completion · 1 may have reached the agent',
+      '1 message waiting to send · 1 accepted, waiting for the agent to finish · 1 may have reached the agent',
     );
     expect(summary.classList.contains('queued-messages__label--summary')).toBe(
       true,
     );
+    // The accepted row's note: sentence case, in this list's own words.
+    const accepted = screen.getByText(
+      'Accepted · waiting for the agent to finish',
+    );
+    expect(
+      accepted.classList.contains('queued-messages__label--accepted'),
+    ).toBe(true);
+    expect(screen.queryByText(/Accepted; waiting for completion/)).toBeNull();
   });
 
   it('counts failed drafts as action-required rather than waiting to send', () => {
@@ -372,13 +412,29 @@ describe('OutboundQueuedMessages (station#2522)', () => {
         onStartNewChat={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Discard…' }));
+    const discard = screen.getByRole('button', { name: 'Discard…' });
+    discard.focus();
+    fireEvent.click(discard);
     const confirm = screen.getByRole('group', {
       name: 'Discard this message?',
     });
     expect(confirm.textContent).toContain(
       'It may already have reached the agent.',
     );
+    // The button stays, points at the question, and focus moves into it.
+    expect(discard.isConnected).toBe(true);
+    expect(discard.getAttribute('aria-expanded')).toBe('true');
+    expect(discard.getAttribute('aria-controls')).toBe(confirm.id);
+    expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: 'Keep it' }),
+    );
+    // Keep it closes the question and hands focus back to Discard….
+    fireEvent.click(screen.getByRole('button', { name: 'Keep it' }));
+    expect(
+      screen.queryByRole('group', { name: 'Discard this message?' }),
+    ).toBeNull();
+    expect(document.activeElement).toBe(discard);
+    fireEvent.click(discard);
     expect(dismissUnconfirmedMock).not.toHaveBeenCalled();
     fireEvent.click(
       screen.getByRole('button', { name: 'I checked, discard it' }),

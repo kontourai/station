@@ -218,6 +218,30 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     });
   });
 
+  it("lists another window's claimed send as under way only while that window runs", async () => {
+    const first = await freshRenderer();
+    await first.outboundDispatch.beginLive(intent);
+    const second = await freshRenderer();
+    // The sending window is running: its send is under way there.
+    expect((await second.outboundDispatch.open())[0]).toMatchObject({
+      status: 'invoking',
+      sendUnderWay: true,
+    });
+    // A window whose liveness cannot be read is not called running.
+    const withLocks = navigator;
+    vi.stubGlobal('navigator', { ...navigator, locks: undefined });
+    const [unknown] = await second.outboundDispatch.open();
+    expect(unknown).toMatchObject({ status: 'invoking' });
+    expect(unknown?.sendUnderWay).toBeUndefined();
+    vi.stubGlobal('navigator', withLocks);
+    expect((await second.outboundDispatch.open())[0]?.sendUnderWay).toBe(true);
+    // It closed or crashed: the same claim is no longer a send under way.
+    kill();
+    const [orphaned] = await second.outboundDispatch.open();
+    expect(orphaned).toMatchObject({ status: 'invoking' });
+    expect(orphaned?.sendUnderWay).toBeUndefined();
+  });
+
   it('a failed lookup changes nothing', async () => {
     const second = await killedMidSend();
     await second.outboundDispatch.reconcile(

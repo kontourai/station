@@ -7,7 +7,10 @@ import {
   AWAITING_CONFIRMATION_LABEL,
   MAY_HAVE_REACHED_LABEL,
 } from '../deliveryLabels';
-import { UnconfirmedDiscardConfirm } from '../UnconfirmedDiscardConfirm';
+import {
+  UnconfirmedDiscardConfirm,
+  useUnconfirmedDiscardDisclosure,
+} from '../UnconfirmedDiscardConfirm';
 
 /** An action's result on the delivery line: an error is an alert. */
 export interface DeliveryNotice {
@@ -97,7 +100,7 @@ export function MessageDeliveryNote({
   const [busy, setBusy] = useState(false);
   const [ownNotice, setNotice] = useState<DeliveryNotice | null>(null);
   const notice = ownNotice ?? outsideNotice ?? null;
-  const [confirmingDiscard, setConfirmingDiscard] = useState(false);
+  const discardDisclosure = useUnconfirmedDiscardDisclosure();
   const recheck = useRecheckMessageDelivery(chatKey);
   const savedOnDevice = useSyncExternalStore(activeChatsStore.subscribe, () => {
     const chat = activeChatsStore.getSnapshot()[chatKey];
@@ -216,8 +219,7 @@ export function MessageDeliveryNote({
                 type="button"
                 className="message-delivery__action"
                 disabled={busy}
-                aria-expanded={confirmingDiscard}
-                onClick={() => setConfirmingDiscard((open) => !open)}
+                {...discardDisclosure.triggerProps}
               >
                 Discard…
               </button>
@@ -225,10 +227,12 @@ export function MessageDeliveryNote({
           </span>
         ) : null}
       </div>
-      {confirmingDiscard && state === 'unconfirmed' && canDiscardUnconfirmed ? (
+      {discardDisclosure.open &&
+      state === 'unconfirmed' &&
+      canDiscardUnconfirmed ? (
         <UnconfirmedDiscardConfirm
           busy={busy}
-          onKeep={() => setConfirmingDiscard(false)}
+          {...discardDisclosure.confirmProps}
           onConfirm={() =>
             void run(async () => {
               const { discardMessage, ALREADY_DELIVERED } = await loadActions();

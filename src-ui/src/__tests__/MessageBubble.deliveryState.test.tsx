@@ -305,20 +305,28 @@ describe('MessageBubble delivery state', () => {
   it('unconfirmed: discarding states the risk first, and only the explicit confirmation dismisses it (#3596)', async () => {
     setChat({ deliveryChecks: { [KEY]: 'indeterminate' } });
     const { bubble } = renderBubble();
-    fireEvent.click(
-      await within(bubble).findByRole('button', { name: 'Discard…' }),
-    );
+    const discard = await within(bubble).findByRole('button', {
+      name: 'Discard…',
+    });
+    discard.focus();
+    fireEvent.click(discard);
     const confirm = within(bubble).getByRole('group', {
       name: 'Discard this message?',
     });
     expect(confirm.textContent).toContain(
       'It may already have reached the agent.',
     );
+    // Focus moves into the question, and comes back to Discard… on Keep it.
+    expect(discard.getAttribute('aria-controls')).toBe(confirm.id);
+    expect(document.activeElement).toBe(
+      within(confirm).getByRole('button', { name: 'Keep it' }),
+    );
     expect(outbox.dismissUnconfirmed).not.toHaveBeenCalled();
     fireEvent.click(within(confirm).getByRole('button', { name: 'Keep it' }));
     expect(
       within(bubble).queryByRole('group', { name: 'Discard this message?' }),
     ).toBeNull();
+    expect(document.activeElement).toBe(discard);
     fireEvent.click(within(bubble).getByRole('button', { name: 'Discard…' }));
     fireEvent.click(
       within(bubble).getByRole('button', { name: 'I checked, discard it' }),
@@ -388,6 +396,26 @@ describe('MessageBubble delivery state', () => {
       ],
     });
     const { bubble } = renderBubble();
+    expectOutlined(bubble, 'awaiting-confirmation');
+    expect(statusText(bubble)).toBe(
+      'No answer yet · sends once Station confirms it never arrived',
+    );
+  });
+
+  it("another running window's send reads Sending…; once that window is gone it waits for Station, as the list says", () => {
+    const row = {
+      clientTurnId: KEY,
+      content: TEXT,
+      createdAt: 1,
+      status: 'invoking' as const,
+    };
+    setChat({ outboundQueuedTurns: [{ ...row, sendUnderWay: true }] });
+    const { bubble } = renderBubble();
+    expectOutlined(bubble, 'sending');
+    expect(within(bubble).getByText('Sending…')).toBeTruthy();
+    act(() => {
+      activeChatsStore.updateChat(CHAT, { outboundQueuedTurns: [row] });
+    });
     expectOutlined(bubble, 'awaiting-confirmation');
     expect(statusText(bubble)).toBe(
       'No answer yet · sends once Station confirms it never arrived',
