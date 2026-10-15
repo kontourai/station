@@ -1,11 +1,21 @@
-import { releaseInitialStartupAnimation } from './lib/startup-animation';
+import { dismissInitialStartup } from './lib/startup-presentation';
+
+void import('./platform/native/startupPresentation')
+  .then(({ observeInitialStartupVisibility }) =>
+    observeInitialStartupVisibility(),
+  )
+  .catch(() => {
+    // A missing presentation adapter leaves the static mark until the app
+    // commits; it cannot hold readiness or replace the startup recovery path.
+  });
 
 void import('./main').catch(() => {
-  releaseInitialStartupAnimation();
+  dismissInitialStartup();
   const root = document.getElementById('root');
   if (!root) return;
-  root.querySelector('canvas')?.remove();
-  const screen = root.querySelector('.station-startup');
+  const screen = document.createElement('div');
+  screen.className = 'station-startup';
+  root.replaceChildren(screen);
   screen?.setAttribute('aria-busy', 'false');
   screen?.setAttribute('role', 'alert');
   screen?.setAttribute('aria-label', 'Station could not start');

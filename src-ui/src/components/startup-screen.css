@@ -4,9 +4,21 @@
 .station-startup {
   position: fixed;
   inset: 0;
+  z-index: var(--k-z-toast);
   background: var(--k-bg);
   color: var(--k-text);
   font-family: var(--k-font-ui);
+}
+
+.station-startup--leaving {
+  opacity: 0;
+  transition: opacity var(--startup-fade) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .station-startup--leaving {
+    transition: none;
+  }
 }
 
 .station-startup__canvas {
