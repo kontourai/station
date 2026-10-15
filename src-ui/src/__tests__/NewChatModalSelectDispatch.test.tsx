@@ -138,7 +138,10 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   useHostRequestAuthorityScope: () => undefined,
 }));
 
-vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
+vi.mock('../hooks/useIsMobile', async (importActual) => ({
+  ...(await importActual<typeof import('../hooks/useIsMobile')>()),
+  useIsMobile: () => false,
+}));
 vi.mock('../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => undefined,
 }));
