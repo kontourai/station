@@ -410,7 +410,7 @@
     "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
-    "mermaid": "11.17.2",
+    "mermaid": "12.1.0",
     "@ai-sdk/provider": "^3.0.18",
     "@axe-core/playwright": "^4.13.0",
     "@biomejs/biome": "^2.5.15",
