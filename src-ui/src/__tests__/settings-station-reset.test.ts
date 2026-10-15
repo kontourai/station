@@ -146,6 +146,11 @@ describe('buildStationResetPlan', () => {
       'registryUrl',
       'disableDefaultSkillRegistries',
       'distributionProfile',
+      // Telemetry destinations and credential references are Station settings.
+      'productTelemetryEndpoint',
+      'productTelemetryKeyRef',
+      'otelTelemetryEndpoint',
+      'otelTelemetryKeyRef',
       // Permissions
       'approvalGuardian',
       'defaultApprovalMode',
