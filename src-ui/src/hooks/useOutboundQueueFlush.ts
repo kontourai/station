@@ -360,6 +360,9 @@ export function useOutboundQueueFlush(apiBase: string): void {
               // A row deferred moments ago is skipped by every pass until its
               // wait ends (OUTBOUND_DEFER_RETRY_MS); one retry then, so a
               // trigger that came too soon (a turn ending) never strands it.
+              // One timer, for the earliest wait; when it fires it reads the
+              // queue again, which arms it for the next row still waiting (a
+              // pass that claims nothing announces no change to do that).
               const retryAt = Math.min(
                 ...entries
                   .filter(
@@ -381,7 +384,9 @@ export function useOutboundQueueFlush(apiBase: string): void {
                   timer: setTimeout(
                     () => {
                       deferredRetry = undefined;
-                      if (active && status === 'connected') triggerFlush(true);
+                      if (!active) return;
+                      refreshProjection();
+                      if (status === 'connected') triggerFlush(true);
                     },
                     retryAt - Date.now() + 10,
                   ),

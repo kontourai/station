@@ -155,6 +155,7 @@ export interface OutboundDispatchIntent
     | 'createdAt'
     | 'lastError'
     | 'lastAttemptAt'
+    | 'deferredAt'
     | 'dispatchBootId'
     | 'claimedAt'
     | 'providerTurnId'

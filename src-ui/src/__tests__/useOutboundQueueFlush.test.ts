@@ -1074,6 +1074,63 @@ describe('useOutboundQueueFlush: a message deferred because a turn is running', 
     expect(sendMessage).toHaveBeenCalledTimes(before + 1);
   }, 15_000);
 
+  it("a second deferred row is not stranded when the first one's retry finds its chat blocked", async () => {
+    const now = Date.now();
+    const row = (
+      clientTurnId: string,
+      sessionId: string,
+      deferredAt: number,
+    ) => ({
+      clientTurnId,
+      sessionId,
+      conversationId: sessionId,
+      agentSlug: 'codex',
+      content: clientTurnId,
+      createdAt: now - 1_000,
+      attempts: 0,
+      status: 'pending',
+      deferredAt,
+    });
+    // X (chat 1) was deferred first, Y (chat 2) 150ms later.
+    stored = [row('x', 'session-1', now - 150), row('y', 'session-2', now)];
+    // X's chat now has a turn running, so X's retry finds it blocked.
+    activeChatsStore.updateChat('session-1', {
+      conversationId: 'session-1',
+      conversationActivity: {
+        conversationId: 'session-1',
+        asOfSequence: 1,
+        openTurn: {
+          turnId: 'running-turn',
+          threadId: 'thread-1',
+          startedAt: '2026-10-15T00:00:00.000Z',
+          trigger: 'user',
+        },
+      },
+    } as never);
+    // Y's chat is free (its turn ended inside Y's wait): the pass that
+    // starts now skips Y, which is still waiting.
+    activeChatsStore.initChat('session-2', {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Second chat',
+    });
+    sendMessage.mockResolvedValue({
+      kind: 'accepted',
+      providerTurnId: 'provider-y',
+    });
+    try {
+      renderHook(() => useOutboundQueueFlush('http://api.test'));
+      await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1), {
+        timeout: OUTBOUND_DEFER_RETRY_MS + 4_000,
+      });
+      expect(sendMessage.mock.calls[0]?.[6]).toBe('y');
+      await settle(OUTBOUND_DEFER_RETRY_MS);
+      expect(sendMessage).toHaveBeenCalledTimes(1);
+    } finally {
+      activeChatsStore.removeChat('session-2');
+    }
+  }, 15_000);
+
   it('a chat with a turn running is not sent to, and its message goes as soon as the turn ends', async () => {
     sendMessage.mockResolvedValue({
       kind: 'accepted',
