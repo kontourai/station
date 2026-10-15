@@ -88,6 +88,7 @@ import {
 } from './plugin-person-approval.js';
 
 interface RegistryRouteDeps {
+  authorizeOperator?: (c: Context) => Promise<void>;
   /**
    * Caller resolution for the operator-only plugin-catalog routes (#2067).
    * Absent means this composition is not serving authenticated HTTP callers,
@@ -175,6 +176,28 @@ export function createRegistryRoutes(
   const app = new Hono();
   const projectHomeDir = configLoader.getProjectHomeDir();
   const sources = registrySourceManager(projectHomeDir);
+  app.use('*', async (c, next) => {
+    if (
+      c.req.method === 'POST' &&
+      ['/integrations/install', '/plugins/install', '/agents/install'].includes(
+        c.req.path.replace(/^\/api\/registry/, ''),
+      ) &&
+      deps?.authorizeOperator
+    ) {
+      try {
+        await deps.authorizeOperator(c);
+      } catch {
+        return c.json(
+          {
+            success: false,
+            error: 'Only the Station operator can install sources.',
+          },
+          403,
+        );
+      }
+    }
+    await next();
+  });
   const manageSources = operatorOnly(deps?.visibility, 'manage marketplaces');
   app.get(
     '/sources',

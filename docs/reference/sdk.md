@@ -35,6 +35,25 @@ withhold stale provenance.
 mutation variables and refreshes account/integration queries. Existing endpoint
 ownership checks still apply; a successful catalog install does not sign in.
 
+## Project tool library
+
+`@kontourai/station-sdk/tool-library` exposes `ToolLibraryClient` with explicit
+`apiBase`, optional principal pin, and request authority options. It provides
+`useOwnToolAccess`, `useToolLibrary`, `useToolRequests`,
+`useProjectAuthoredAgents`, and `useToolLibraryChange`. Hosts supply a React Query
+client; account-bound hosts pin the current principal. Queries are authority
+scoped and refetched while mounted. Callers must include `expectedActor` and, for
+Project changes, the exact `projectId`; server authority remains decisive.
+
+The owning shapes are `@kontourai/station-contracts/tool-library`. Catalog
+responses contain descriptions, recorded provenance and recorded action metadata, never
+commands, environment variables or credential material. Personal tool accounts
+require the managed Station engine; external engines report these sources as
+unsupported. Installation, Project
+policy and personal account connection remain distinct operations. See the
+[Agent guide](../guides/agents.md#shared-projects) and
+[API reference](api.md#project-tool-library).
+
 ## Agent development entry
 
 `@kontourai/station-sdk/agent` is the React-free Agent authoring and execution

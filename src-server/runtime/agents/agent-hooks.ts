@@ -49,6 +49,10 @@ import { createStagedPreToolPolicyEvaluator } from './pre-tool-policy.js';
 // ── Hook factory dependencies ──────────────────────────
 
 export interface AgentHooksDeps {
+  projectToolPolicy?: (
+    invocation: InvocationContext,
+    tool: ToolCallContext,
+  ) => void;
   spec: AgentSpec;
   appConfig: AppConfig;
   configLoader: ConfigLoader;
@@ -123,6 +127,7 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
   };
   const evaluatePreToolPolicy = createStagedPreToolPolicyEvaluator({
     spec: deps.spec,
+    projectToolPolicy: deps.projectToolPolicy,
     agentPolicyService: deps.agentPolicyService,
     approvalGuardian: deps.approvalGuardian,
     isCurrentRuntimeGeneration: deps.isCurrentRuntimeGeneration

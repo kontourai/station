@@ -361,6 +361,7 @@ export async function listIntegrationMetadata(
         transport: def.transport,
         source: def.command || def.endpoint,
         origin: readIntegrationOrigin(projectHomeDir, def),
+        credentialOwnership: def.credentialOwnership,
         enabled: def.enabled !== false,
         disabledTools: def.disabledTools,
         probe: sanitizeProbeProjection(def.probe),

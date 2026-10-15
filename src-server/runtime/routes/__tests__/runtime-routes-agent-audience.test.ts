@@ -170,7 +170,7 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
     for (const close of closers.splice(0)) await close();
   });
 
-  async function setup() {
+  async function setup(memberRole: 'contributor' | 'admin' = 'contributor') {
     __resetStationServerSelfAttestationForTests();
     const home = makeTempDir('station-agent-audience-');
 
@@ -246,7 +246,7 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       enabled.scope,
       {
         email: null,
-        role: 'contributor',
+        role: memberRole,
         expiresAt: new Date(Date.now() + 3600_000).toISOString(),
       },
       asOperatorAuthority,
@@ -350,10 +350,11 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       port: 4321,
       appConfig: {},
       eventBus,
-      configLoader: {
-        getProjectHomeDir: () => home,
-        loadAppConfig: () => ({}),
-      },
+      configLoader,
+      mcpService: deepStub({
+        listIntegrations: async () => [],
+        getMCPToolCatalog: () => [],
+      }),
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       activeAgents: new Map(),
       agentService,
@@ -363,6 +364,15 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       providerService: deepStub({ listProviderConnections: () => [] }),
       connectionService: deepStub({
         checkGatedModelConnectionIds: () => new Set<string>(),
+        listRuntimeConnections: async () => [
+          {
+            id: 'claude',
+            name: 'Claude Code',
+            kind: 'agent',
+            enabled: true,
+            capabilities: ['agent-runtime'],
+          },
+        ],
       }),
       agentMetadataMap: new Map(),
       agentFixedTokens: new Map(),
@@ -491,6 +501,75 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
     description: 'Answers client questions',
     project: 'b-project',
   };
+
+  test('Project admins author only scoped agents and My access reflects current standing without promoting Station authority', async () => {
+    const { base, bProject, revokeB, home } = await setup('admin');
+    const access = await asAccount(base, '/api/tool-library/access');
+    expect(access.status).toBe(200);
+    expect(access.body.data.station.operator).toBe(false);
+    expect(access.body.data.projects).toEqual([
+      expect.objectContaining({
+        id: bProject.id,
+        role: 'admin',
+        canManageAgents: true,
+        canManageTools: false,
+      }),
+    ]);
+    const saved = await asAccount(
+      base,
+      '/api/tool-library/projects/b-project/agents',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          projectId: bProject.id,
+          expectedActor: B_REF.id,
+          draft: {
+            name: 'Project helper',
+            prompt: 'Help this Project',
+            engineId: 'claude',
+            tools: { mcpServers: [], available: [] },
+          },
+        }),
+      },
+    );
+    expect(saved.status).toBe(200);
+    const persisted = JSON.parse(
+      readFileSync(
+        join(home, 'agents', saved.body.data.slug, 'agent.json'),
+        'utf8',
+      ),
+    );
+    expect(persisted.execution.approvalMode).toBe('ask');
+    expect(persisted.tools.browser).toBe(false);
+    const listed = await asAccount(
+      base,
+      '/api/tool-library/projects/b-project/agents',
+    );
+    expect(listed.body.data).toEqual([
+      expect.objectContaining({
+        slug: saved.body.data.slug,
+        projectId: bProject.id,
+        spec: expect.objectContaining({
+          name: 'Project helper',
+          project: 'b-project',
+          prompt: 'Help this Project',
+          execution: expect.objectContaining({ agentConnectionId: 'claude' }),
+        }),
+      }),
+    ]);
+    expect(
+      (await asAccount(base, '/api/tool-library/projects/a-project/agents'))
+        .status,
+    ).toBe(403);
+    await revokeB();
+    expect(
+      (await asAccount(base, '/api/tool-library/projects/b-project/agents'))
+        .status,
+    ).toBe(403);
+    const after = await asAccount(base, '/api/tool-library/access');
+    expect(after.body.data.projects).toEqual([]);
+  });
 
   test('a member’s account request lists only the admitted Agent, as a member view', async () => {
     const { base } = await setup();

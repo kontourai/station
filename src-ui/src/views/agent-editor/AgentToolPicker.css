@@ -148,3 +148,68 @@
 .agent-tool-picker__tool-heading > .agent-tool-picker__category {
   padding-inline-start: 0;
 }
+.agent-tool-library {
+  display: grid;
+  gap: var(--k-space-2);
+}
+.agent-tool-library__row,
+.agent-tool-library__tool {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-3);
+  min-height: 44px;
+  border-bottom: 1px solid var(--k-line);
+  padding-block: var(--k-space-2);
+}
+.agent-tool-library__source {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: var(--k-space-1);
+  text-align: start;
+  background: none;
+  color: var(--k-text);
+  border: 0;
+  min-height: 44px;
+  cursor: pointer;
+}
+.agent-tool-library__source small,
+.agent-tool-library__identity small {
+  display: block;
+  color: var(--k-text-muted);
+}
+.agent-tool-library__tool > .cb {
+  flex: 1;
+  min-width: 0;
+}
+.agent-tool-library__tool {
+  flex-wrap: wrap;
+}
+.agent-tool-library__tool details[open] {
+  flex-basis: 100%;
+}
+.agent-tool-library__tool summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--k-text-muted);
+}
+.agent-tool-library__source:focus-visible {
+  outline: 2px solid var(--k-focus);
+  border-radius: var(--k-radius-sm);
+}
+.tool-access-panel ul {
+  list-style: none;
+  padding: 0;
+}
+.tool-access-panel li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  padding-block: var(--k-space-2);
+}
+.tool-access-panel li small {
+  flex-basis: 100%;
+  color: var(--k-text-muted);
+}

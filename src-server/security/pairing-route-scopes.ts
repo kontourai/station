@@ -297,6 +297,7 @@ const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   // updates and removes nothing: the change is taken later on the
   // `/api/plugins` routes, which refuse Station's internal agent caller.
   '/api/plugin-proposals',
+  '/api/tool-library',
   // #2323 S4: local plugin source status. A read the handler answers only
   // for the operator; it installs nothing.
   '/api/plugin-sources',
@@ -2724,6 +2725,20 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/acp/registry' },
     { method: 'POST', path: '/acp/registry/:id/install' },
     { method: 'GET', path: '/acp/status' },
+    { method: 'GET', path: '/api/tool-library/accounts/:id' },
+    { method: 'POST', path: '/api/tool-library/accounts/:id/:action' },
+    { method: 'GET', path: '/api/tool-library/access' },
+    { method: 'GET', path: '/api/tool-library/catalog' },
+    { method: 'GET', path: '/api/tool-library/requests' },
+    { method: 'POST', path: '/api/tool-library/add' },
+    { method: 'POST', path: '/api/tool-library/sources/:id/discover' },
+    { method: 'POST', path: '/api/tool-library/requests' },
+    { method: 'POST', path: '/api/tool-library/requests/:id/:action' },
+    { method: 'PUT', path: '/api/tool-library/projects/:slug/policy' },
+    { method: 'PUT', path: '/api/tool-library/sources/:id/sharing' },
+    { method: 'GET', path: '/api/tool-library/projects/:slug/agents' },
+    { method: 'POST', path: '/api/tool-library/projects/:slug/agents' },
+    { method: 'PUT', path: '/api/tool-library/projects/:slug/agents/:agent' },
     { method: 'GET', path: '/agents' },
     { method: 'POST', path: '/agents' },
     // Find-or-create the ONE Agent definition bound to a locally-detected

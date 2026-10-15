@@ -161,12 +161,17 @@ export function createIntegrationRegistryProvider(
       }
       return { success: false, message: `No provider could install ${id}` };
     },
-    async installWithDefinition(id) {
+    async installWithDefinition(id, expectedRegistryId) {
       for (const provider of providers) {
         const item = (await provider.listAvailable()).find(
           (entry) => entry.id === id,
         );
-        if (!item) continue;
+        if (
+          !item ||
+          (expectedRegistryId !== undefined &&
+            originFor(provider, item).registryId !== expectedRegistryId)
+        )
+          continue;
         const result = await provider.install(id);
         if (!result.success) return { result };
         const definition = await provider.getToolDef(id);

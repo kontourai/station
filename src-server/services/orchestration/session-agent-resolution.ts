@@ -63,9 +63,15 @@ import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { stationControlToolCatalog } from '../../tools/station-control-mcp-server.js';
 import { stationKnowledgeToolCatalog } from '../../tools/station-knowledge-mcp-server.js';
 import { agentDefinitionFingerprint } from '../agents/agent-definition-fingerprint.js';
+import { ToolLibraryRefusal } from '../plugins/tool-library-service.js';
 import { withProjectToolDefaults } from '../projects/project-tools.js';
 
 interface SessionAgentResolverOptions {
+  validateProjectTools?: (
+    slug: string,
+    spec: AgentSpec,
+    input: ProviderSessionStartInput,
+  ) => Promise<void>;
   resolveProjectToolServers?: (
     input: ProviderSessionStartInput,
   ) => Promise<readonly string[]>;
@@ -344,6 +350,7 @@ export function createSessionAgentResolver(
         );
       }
 
+      await options.validateProjectTools?.(slug, spec, input);
       const definition: ResolvedAgentDefinition = { slug };
       const report: SessionCapabilityDeliveryMetadata = { agentSlug: slug };
 
@@ -431,6 +438,11 @@ export function createSessionAgentResolver(
             async (id) => {
               const toolDef = await resolveToolServer(id);
               if (!toolDef) return { ok: false, reason: 'not-found' };
+              if (
+                toolDef.credentialOwnership &&
+                input.provider !== 'station-agent'
+              )
+                return { ok: false, reason: 'engine-unsupported' };
               if (toolDef.enabled === false) {
                 return { ok: false, reason: 'disabled' };
               }
@@ -669,7 +681,8 @@ export function createSessionAgentResolver(
     } catch (error) {
       if (
         input.metadata?.executionAgentId ||
-        error instanceof ToolApprovalDeliveryError
+        error instanceof ToolApprovalDeliveryError ||
+        error instanceof ToolLibraryRefusal
       )
         throw error;
       logger?.warn?.(

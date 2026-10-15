@@ -58,10 +58,12 @@ export function RegistryView({
   initialTab,
   toolPicker = false,
   onInstalled,
+  installTarget,
 }: {
   initialTab?: RegistryCatalogTab;
   toolPicker?: boolean;
   onInstalled?: () => void;
+  installTarget?: string;
 } = {}) {
   const { navigate } = useNavigation();
   const { showToast } = useToast();
@@ -86,7 +88,7 @@ export function RegistryView({
     if (!toolPicker) navigate(`/registry/${tab}`);
   };
   const [message, setMessage] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(installTarget ?? '');
   const [selectedSource, setSelectedSource] = useState('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspectedSelection, setInspectedSelection] = useState<{
@@ -567,7 +569,27 @@ export function RegistryView({
           onSelect={setSelectedSource}
         />
       )}
-      {toolPicker ? (
+      {installTarget ? (
+        <div>
+          <Button
+            variant="primary"
+            disabled={
+              previewMutation.isPending || mutationPending || !selectedItem
+            }
+            onClick={() => {
+              if (selectedItem)
+                runAction(
+                  selectedItem,
+                  getRegistryItemId(selectedItem),
+                  isInstalled(selectedItem, getRegistryItemId(selectedItem)),
+                );
+            }}
+          >
+            Review {selectedItem?.displayName || 'tool'} permissions
+          </Button>
+          {message && <p role="status">{message}</p>}
+        </div>
+      ) : toolPicker ? (
         <AgentToolCatalog
           tab={activeTab}
           onTab={selectTab}

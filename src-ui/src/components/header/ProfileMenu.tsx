@@ -2,7 +2,9 @@ import { type ReactNode, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
+import { StationToolLibraryProvider } from '../../views/agent-editor/ToolLibraryContext';
 import { QuestionGlyph, SettingsGlyph } from '../icons/Glyph';
+import { MyAccessPanel } from '../profile/MyAccessPanel';
 import './HeaderMenu.css';
 
 /**
@@ -137,6 +139,10 @@ export function ProfileMenu({
         aria-label="Profile and settings"
         tabIndex={-1}
       >
+        <StationToolLibraryProvider>
+          <MyAccessPanel compact />
+        </StationToolLibraryProvider>
+        {row('access', 'My access', <SettingsGlyph />, onOpenProfile)}
         {row(
           'profile',
           'Profile',

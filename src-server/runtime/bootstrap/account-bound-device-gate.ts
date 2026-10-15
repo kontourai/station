@@ -326,6 +326,23 @@ export function installAccountBoundDeviceGate(
         );
       }
       const permitted =
+        (method === 'GET' &&
+          [
+            '/api/tool-library/access',
+            '/api/tool-library/catalog',
+            '/api/tool-library/requests',
+          ].includes(path)) ||
+        (method === 'POST' && path === '/api/tool-library/requests') ||
+        (method === 'POST' &&
+          /^\/api\/tool-library\/sources\/[^/]+\/discover$/.test(path)) ||
+        (/^(?:\/api\/tool-library\/projects\/[^/]+\/agents(?:\/[^/]+)?|\/api\/tool-library\/projects\/[^/]+\/policy)$/.test(
+          path,
+        ) &&
+          ['GET', 'POST', 'PUT'].includes(method)) ||
+        (/^\/api\/tool-library\/accounts\/[^/]+(?:\/(?:authorize|callback))?$/.test(
+          path,
+        ) &&
+          ['GET', 'POST'].includes(method)) ||
         path === '/' ||
         path.startsWith('/assets/') ||
         // Neutral observations are open only to a verified native Device

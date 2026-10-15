@@ -47,53 +47,49 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 ### MCP Tool Configuration
 
 The **Tools** section is shared by creating, copying, and editing an Agent.
-Choose **Add tools** to browse installed sources before attaching them. Search
-by action name or description, or filter by source and category. **Station tools**
-includes Station Control, Knowledge, and Documentation; categories describe what
-tools do, not which Project they belong to. Select an individual action to add
-only that action, or use **Select shown** to add the visible actions while
-preserving choices outside the filter. On Station and Claude, newly added
-Station-classified reads default to **Always allow**; changes and unknown or
-source-reported actions default to **Ask me**. Existing choices are preserved.
+Choose **Add tools**, search the list, then choose **Add**. Each row shows its
+source: Station, a registry, a plugin, or a connection on this Station. Open a
+source for its description and actions. **Details** holds each action's
+description and approval choice; **About this source** holds provenance and
+connection settings. Unknown provenance stays unknown.
 
-**Refresh tools** discovers the source's current actions without attaching it to
-the Agent. Discovery failures remain visible, including a connection check that
-completed but could not list tools. Local probes retain up to 200 action names,
-category labels, and description previews (up to 2,000 characters). The picker
-also uses the current refresh response for plugin and personal-account sources;
-those discoveries do not create a local integration override or share credentials.
+On Station and Claude, newly added Station-classified reads default to **Always
+allow**. Changes, unknown actions and publisher-classified reads default to
+**Ask me**. Existing choices remain. Other engines show their supported controls;
+explicit Ask rules refuse startup on an engine that cannot deliver them.
+**Refresh actions** in source details discovers current actions without attaching
+them. Individual action selections stay fixed. **Include future tools** adds new
+actions as they appear, with Ask protection on Station and Claude.
 
-Individual selections stay fixed when a source gains tools. Enable **Include all
-current and future tools** only when the Agent should receive every action that
-source adds. Engines that cannot accept individual selections offer **Add source**
-and explain that the whole source is included. Disabled sources must be enabled
-using **Set up** in the picker. Selecting tools grants no additional Project access.
-Future actions default to **Ask me** on Station and Claude; exact choices for
-reviewed actions override that source default.
+Operators can add catalog sources or **Connect your own source** without leaving
+the Agent draft. Sources that need configuration open setup before attachment.
+Tool-providing plugins use the existing package permission review. Catalogs mark
+these with `providesTools: true`; this is a browsing hint, not a permission grant.
 
-**Find more** searches server and plugin catalogs. Install a server or review a
-plugin's install consent, then use **Installed tools** to connect it and choose
-actions. **Connect server** opens manual setup without leaving the Agent draft.
-**Details** exposes server/action descriptions, action IDs, and the recorded
-registry or plugin, version and location. Older or changed execution definitions
-may show **Origin unavailable**; Station does not guess their source.
+### Shared Projects
 
-The **Station** shortcut adds read-only built-in controls. Expand an added source
-to choose **Read only**, **All**, **None**, or individual tools. The category
-picker narrows the checklist; these shortcuts apply to that category and preserve
-choices elsewhere. Each selected action offers **Ask me** or **Always allow**
-on Station and Claude. Other engines show **Engine controlled**; an Agent saved
-with explicit Ask rules refuses to start on an engine that cannot deliver them.
-The gear opens engine settings. **Advanced** contains browser and workflow options.
-Saved changes apply to new chats. Hover over or click an info icon for field
-explanations and engine capabilities. Keyboard users can press Enter to open it,
-use arrow or Page keys to scroll long help, and press Escape to dismiss it.
+The Station operator installs and connects sources. Project Admins and Owners
+can create and edit Project agents and attach permitted installed sources. An
+uninstalled source offers **Request**, then **Pending**. The operator handles
+requests in the existing Inbox, including connection or plugin consent setup.
+Requests survive restarts and become available only when setup succeeds and the
+Project still permits the source. Installation approval never widens an Owner's
+selected policy.
 
-Station Control publishes native MCP titles and behavioral annotations. The
-`ai.kontour/tool-group` vendor metadata organizes the picker; third-party
-integrations can supply the same display hint. It does not grant access or
-change approval rules. MCP has no standard category field; grouping does not
-require separate servers.
+Project **Tool permissions** defaults to all sources shared by the operator. A
+Project Owner can select a smaller list. The operator can withdraw a source from
+Projects in its details. Station Control remains operator-only. Installed tools,
+Project permissions and personal account sign-in are separate; installing a
+source does not share someone's OAuth credentials. Personal tool accounts
+require the managed Station engine; external engines cannot deliver that
+principal-bound connection and report it as unsupported. Existing instance-level
+credentials retain their existing execution semantics.
+
+Open **Profile → My access** to see Station authority and roles across Projects.
+Admins and Owners can reach **Agents and tools** there and from their shared
+Project. This authoring surface does not enable member agent execution: member
+turns remain refused by the existing execution gate. Computer contribution and
+execution authority remain separate requirements.
 
 Claude and Codex offer **Keep harness tools**. New Agents add integrations to
 the harness configuration; existing Agents keep their previous behavior until

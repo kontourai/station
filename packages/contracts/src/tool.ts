@@ -157,6 +157,7 @@ export interface ToolServerProbeResult {
 }
 
 export interface ToolMetadata {
+  credentialOwnership?: ToolCredentialOwnership;
   id: string;
   kind: 'mcp' | 'builtin';
   displayName?: string;

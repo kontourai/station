@@ -71,6 +71,7 @@ export { RegistryInstallAliasFormatError } from './registry-install-aliases.js';
  * become uninstallable by declaring a kind.
  */
 interface ManifestPlugin {
+  providesTools?: boolean;
   id: string;
   displayName: string;
   description: string;
@@ -422,6 +423,9 @@ export class JsonManifestRegistryProvider
         .digest('hex'),
       items: entries.map((plugin) => ({
         id: plugin.id,
+        ...(plugin.providesTools === undefined
+          ? {}
+          : { providesTools: plugin.providesTools }),
         displayName: plugin.displayName,
         description: plugin.description,
         version: plugin.version,
@@ -718,6 +722,9 @@ export class JsonManifestRegistryProvider
       }
       return {
         id: plugin.id,
+        ...(plugin.providesTools === undefined
+          ? {}
+          : { providesTools: plugin.providesTools }),
         displayName: plugin.displayName,
         description: plugin.description,
         version: installedPlugin?.version,

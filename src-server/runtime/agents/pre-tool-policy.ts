@@ -27,7 +27,8 @@ type ToolDenialReason =
   | 'delegation_deny_approvals'
   | 'unattended_grant_denied'
   | 'no_approval_channel'
-  | 'policy_evaluation_failed';
+  | 'policy_evaluation_failed'
+  | 'project_tool_policy';
 
 /**
  * `defer` means "Station's policy is not deciding this call; the engine's own
@@ -83,6 +84,10 @@ export type StagedPreToolPolicyEvaluator = (
 ) => Promise<PreToolPolicyDecision>;
 
 interface StagedPreToolPolicyDeps {
+  projectToolPolicy?: (
+    invocation: InvocationContext,
+    tool: ToolCallContext,
+  ) => void;
   spec: AgentSpec;
   agentPolicyService?: AgentPolicyService;
   approvalGuardian?: ApprovalGuardianService;
@@ -448,6 +453,16 @@ export function createStagedPreToolPolicyEvaluator(
           policyBlockQuotation(verdict),
         );
       }
+    }
+
+    try {
+      deps.projectToolPolicy?.(invocation, tool);
+    } catch {
+      return deny(
+        'project_tool_policy',
+        tool.toolName,
+        'is no longer permitted by this Project.',
+      );
     }
 
     const approvalName = options.identity?.delegationToolName ?? tool.toolName;

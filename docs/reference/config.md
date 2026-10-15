@@ -438,6 +438,16 @@ external-engine approval are separate; see the [Agent guide](../guides/agents.md
 | `askBeforeUse` | string[] | Tool-name patterns requiring approval on Station and Claude. Source-qualified exact choices override wildcard defaults; Ask wins equally specific conflicts. Legacy flattened Always grants cannot override a source-qualified Ask default. Session grants, guardian allows and unattended grants cannot bypass an effective Ask. Earlier refusals still apply. Other engines refuse startup when this list is nonempty. |
 | `unattendedAutoApprove` | string[] | Explicit opt-in: tools that may run with nobody to confirm (scheduled jobs, `/invoke`, CLI, delegated children) on Station's engine. Same patterns as `autoApprove`. Earlier policy checks and existing grants run first. For calls reaching this opt-in, an enabled guardian in enforce mode blocks deny/defer (including error fallback); review mode does not block the opt-in. See [Unattended runs](../guides/agents.md#unattended-runs) |
 
+Project source permissions are stored separately in
+`<STATION_HOME>/security/tool-library.json`, keyed by exact local Project ID.
+The file also holds source sharing, durable acquisition requests, and ownership
+bindings for agents created through Project administration. Default policy is
+`all`; `selected` is a source ceiling checked during authoring and runtime tool
+delivery. Agent selection and Project defaults cannot broaden that ceiling.
+Project-authored agents use `tools.mcpMode: "replace"`, disable browser tools,
+and start with `execution.approvalMode: "ask"`. Their API accepts no arbitrary
+command, filesystem or engine configuration.
+
 ### guardrails
 
 Inputs to Station's framework adapters. This is not a guarantee that every

@@ -112,6 +112,7 @@ export interface GuidanceAsset {
 }
 
 export interface RegistryItem {
+  providesTools?: boolean;
   id: string;
   catalog?: RegistryCatalogSelection;
   catalogSourceName?: string;

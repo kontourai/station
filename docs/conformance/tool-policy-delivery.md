@@ -98,6 +98,27 @@ has no Station pre-tool interception seam. Muse is also unsupported. An
 unknown engine receives an unsupported matrix entry; that does not mean Station
 intercepts or blocks all of that engine's tool calls.
 
+## Project source policy
+
+Project policy is a source ceiling, separate from per-action approval.
+[Tool library state](../../src-server/services/plugins/tool-library-service.ts)
+checks exact Project bindings for Project-authored agents and source selections
+for all agents used in a Project. Session resolution validates inherited defaults;
+managed native loading validates added Project tools. The staged pre-tool policy
+rechecks current permission on each intercepted call. Legacy operator-authored
+agents retain their Station Control capability; Project-authored agents cannot
+select it. Personal account credentials remain separately owned. The managed Station
+engine resolves the current principal and Project; external session resolution
+reports these sources as `engine-unsupported` rather than exporting an unbound
+endpoint. Other capabilities may still be delivered; this is not necessarily a
+whole-session refusal.
+
+Engines without a pre-tool interception seam receive the admitted configuration
+at session start. A mid-session policy change cannot revoke a tool call already
+owned by such an engine. This is a delivery limit, not a guarantee of universal
+live revocation. Member execution remains blocked by the existing Agent audience
+gate; the new surface permits scoped authoring and requests only.
+
 ## Explicit per-tool Ask
 
 `tools.askBeforeUse` is delivered by Station and Claude. New picker choices

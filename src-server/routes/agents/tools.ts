@@ -65,6 +65,7 @@ import {
  * Absent in legacy/test wiring → the proxy keeps its original direct behavior.
  */
 export interface McpUiCallDeps {
+  authorizeOperator?: (c: Context) => Promise<void>;
   /** Injectable for local icon route tests; production defaults to Station home. */
   integrationIconAssets?: Pick<IntegrationIconAssets, 'resolve'>;
   /**
@@ -215,6 +216,28 @@ export function createToolRoutes(
   mcpUiCallDeps: McpUiCallDeps = {},
 ) {
   const app = new Hono();
+  app.use('*', async (c, next) => {
+    const path = c.req.path.replace(/^\/integrations/, '') || '/';
+    const management =
+      (c.req.method === 'POST' && path === '/') ||
+      (['PUT', 'DELETE'].includes(c.req.method) && /^\/[^/]+$/.test(path)) ||
+      (c.req.method === 'POST' &&
+        /^\/[^/]+\/(?:enabled|tools\/apply|reconnect)$/.test(path));
+    if (management && mcpUiCallDeps.authorizeOperator) {
+      try {
+        await mcpUiCallDeps.authorizeOperator(c);
+      } catch {
+        return c.json(
+          {
+            success: false,
+            error: 'Only the Station operator can configure sources.',
+          },
+          403,
+        );
+      }
+    }
+    await next();
+  });
   const iconAssets =
     mcpUiCallDeps.integrationIconAssets ??
     new IntegrationIconAssets(resolveHomeDir());

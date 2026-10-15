@@ -65,6 +65,7 @@ import {
   navigateToAttentionTarget,
 } from '../../utils/attentionOpen';
 import { formatNotificationTime } from '../../utils/notifications';
+import { StationToolLibraryProvider } from '../../views/agent-editor/ToolLibraryContext';
 import { Dialog } from '../Dialog';
 import { LazyBoundary } from '../LazyBoundary';
 import { SkeletonList } from '../state';
@@ -168,12 +169,27 @@ function SessionFailedDetail({ item }: { item: SessionFailedAttentionItem }) {
   );
 }
 
+const loadToolRequestPanel = () =>
+  import('../profile/ToolRequestsPanel').then((module) => ({
+    default: module.ToolRequestsPanel,
+  }));
+
 function AttentionAction({ item }: { item: AttentionItem }) {
   // A task running on a paired Station: its thread id here names only the
   // local lifecycle record, so a reply or request inspection would address
   // nothing. Same rule, and same note, as the Activity detail's peer branch.
   if (isPeerHostedAttentionItem(item)) return <PeerHostedAction item={item} />;
   switch (item.kind) {
+    case 'tool-request':
+      return (
+        <StationToolLibraryProvider>
+          <LazyBoundary
+            load={loadToolRequestPanel}
+            componentProps={{ requestId: item.source.requestId }}
+            pending={<SkeletonList count={1} />}
+          />
+        </StationToolLibraryProvider>
+      );
     case 'approval':
       return item.requestReference ? (
         <ExactRequestAction
