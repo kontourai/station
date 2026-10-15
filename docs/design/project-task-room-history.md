@@ -21,6 +21,25 @@ work and busy-timeout waiting run on that worker. `ProjectTaskRoomHistory.close(
 is the awaitable worker/SQLite settlement seam; the still-synchronous
 `EventStore.close()` only initiates that close and never blocks with
 `Atomics.wait` or claims settlement it cannot synchronously prove.
+The attached-session follower uses yielding EventStore writes for envelopes,
+owner records, transcript events, session/cursor updates, and colliding alias
+deletion. Each synchronous attempt temporarily sets `busy_timeout=0`, completes
+or rolls back, and restores the prior timeout before an asynchronous backoff
+(2–64 ms). A Session FIFO preserves background write order. Each queued write
+has a five-second contention budget once it reaches the front; exhaustion
+rejects the poll without advancing its cursor. A later poll re-reads the source
+page and existing event IDs suppress duplicate inserts. This recovery requires
+the external source to retain its records; it is not an independent transcript
+journal. Deterministic ingress refusals keep their existing logged-skip policy.
+
+Scheduled message-search imports use the same yielding path. Their projection
+and watermark commit in one transaction. On contention budget exhaustion, the
+next pass retries the unchanged durable window after two seconds; restart also
+resumes from that watermark. Constructor migrations and foreground/provider
+writes still use synchronous APIs and can collide with room workers. This
+background-writer change does not establish universal deadlock freedom or
+worker recovery after another writer blocks the event loop.
+
 Callers submit room intents (`open`, `append`, and `read`) rather than raw
 database operations or caller-authored channel authority. Open results and
 cursors expose channel identity; history records include resolved principal
