@@ -295,3 +295,21 @@ test('slash commands change real Task status through its existing mutation path'
   expect(mocks.agent).not.toHaveBeenCalled();
   expect(mocks.message).not.toHaveBeenCalled();
 });
+
+test('a message acknowledgement preserves text entered for the next message', async () => {
+  let acknowledge!: (value: unknown) => void;
+  mocks.message.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        acknowledge = resolve;
+      }),
+  );
+  render(<TaskRoomComposer {...props} />);
+  const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
+  fireEvent.change(textbox, { target: { value: 'First message' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send to task room' }));
+  await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
+  fireEvent.change(textbox, { target: { value: 'Next thought' } });
+  await act(async () => acknowledge({ kind: 'committed' }));
+  expect((textbox as HTMLTextAreaElement).value).toBe('Next thought');
+});

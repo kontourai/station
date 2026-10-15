@@ -180,7 +180,7 @@ export function TaskRoomComposer({
         try {
           await updateTaskStatus({ taskId, status, apiBase: scope.apiBase });
           if (currentOwner.current !== owner || !scope.isCurrent()) return;
-          setDraft('');
+          setDraft((current) => (current === draft ? '' : current));
           setNotice(`Status → ${status.replaceAll('_', ' ')}`);
         } catch (error) {
           if (currentOwner.current === owner)
@@ -238,7 +238,7 @@ export function TaskRoomComposer({
         try {
           const outcome = await request.mutateAsync(input);
           if (outcome.kind === 'recorded') {
-            setDraft('');
+            setDraft((current) => (current === draft ? '' : current));
             setRecipient(undefined);
             setBrief(undefined);
             setIncludeBrief(true);
@@ -276,7 +276,7 @@ export function TaskRoomComposer({
           text: draft.trim(),
         });
         if (outcome.kind === 'committed' || outcome.kind === 'duplicate')
-          setDraft('');
+          setDraft((current) => (current === draft ? '' : current));
         else setNotice('Message rejected. Draft retained.');
       } catch {
         setNotice(

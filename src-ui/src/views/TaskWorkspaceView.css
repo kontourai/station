@@ -955,13 +955,20 @@
 .task-workspace [hidden] {
   display: none !important;
 }
+.route-transition:has(> .task-workspace) {
+  min-height: 0;
+  overflow: hidden;
+}
 .task-workspace.page {
+  height: 100%;
+  max-height: 100%;
   padding: 0;
   overflow: hidden;
   color: var(--k-text);
   background: var(--k-panel);
 }
 .task-room-header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -1043,6 +1050,7 @@
 .task-room-main {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(240px, 300px);
+  grid-template-rows: minmax(0, 1fr);
   flex: 1;
   min-height: 0;
 }
@@ -1236,7 +1244,9 @@
 }
 .task-room-thread {
   overflow-y: auto;
-  max-height: 60%;
+  min-height: 0;
+  flex: 0 1 55%;
+  max-height: 55%;
   border-top: 1px solid var(--k-line-strong);
   padding: var(--k-space-4);
   background: var(--k-bg);
@@ -1462,4 +1472,26 @@
 .task-room-composer input[type="checkbox"],
 .task-room-thread input[type="checkbox"] {
   accent-color: var(--k-action);
+}
+
+.task-room-editor > .button {
+  align-self: flex-start;
+}
+.task-room-brief-rendered h2,
+.account-entry__shared-document h2 {
+  margin-top: var(--k-space-5);
+}
+.task-room-brief-rendered p,
+.account-entry__shared-document p {
+  line-height: var(--k-leading-loose);
+  margin-block: var(--k-space-2);
+}
+.task-room-brief-rendered .contains-task-list,
+.account-entry__shared-document .contains-task-list {
+  list-style: none;
+  padding-left: 0;
+}
+.task-room-brief-rendered .task-list-item,
+.account-entry__shared-document .task-list-item {
+  margin-block: var(--k-space-2);
 }
