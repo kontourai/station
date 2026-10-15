@@ -233,9 +233,11 @@ async function fetchWithDeadline(
 ): Promise<Response> {
   const request = opts?.request ?? fetch;
   const deadline = AbortSignal.timeout(timeoutMs);
-  const signal = init?.signal
-    ? AbortSignal.any([init.signal, deadline])
-    : deadline;
+  const signal = AbortSignal.any([
+    ...(input instanceof Request ? [input.signal] : []),
+    ...(init?.signal ? [init.signal] : []),
+    deadline,
+  ]);
   signal.throwIfAborted();
   // `fetch` defaults an init without a method to GET, so reading GET here is a
   // derivation of what was actually sent, not a stand-in for an unknown.
@@ -256,7 +258,11 @@ async function fetchWithDeadline(
   return deadlineBoundBody(response, deadline, timedOut);
 }
 
-/** Opt-in header and body-idle bounds, with no total-duration deadline. */
+// Over seven times the observed ~41s healthy slow-tailnet read, while bounding
+// queue occupancy even when a broken connection keeps trickling bytes.
+const PROGRESS_REQUEST_TOTAL_TIMEOUT_MS = 5 * 60_000;
+
+/** Opt-in header and body-idle bounds, with a five-minute total ceiling. */
 async function fetchWithProgressTimeout(
   input: Parameters<typeof fetch>[0],
   init: RequestInit | undefined,
@@ -266,17 +272,27 @@ async function fetchWithProgressTimeout(
   readOnly?: boolean,
 ): Promise<Response> {
   const deadline = new AbortController();
-  const signal = init?.signal
-    ? AbortSignal.any([init.signal, deadline.signal])
-    : deadline.signal;
+  const signal = AbortSignal.any([
+    ...(input instanceof Request ? [input.signal] : []),
+    ...(init?.signal ? [init.signal] : []),
+    deadline.signal,
+  ]);
   const method =
     init?.method ?? (input instanceof Request ? input.method : 'GET');
-  const timedOut = () =>
-    new StationRequestTimeoutError(url, timeoutMs, { method, readOnly });
+  const timedOut = (durationMs = timeoutMs) =>
+    new StationRequestTimeoutError(url, durationMs, { method, readOnly });
+  const totalTimer = setTimeout(
+    () => deadline.abort(timedOut(PROGRESS_REQUEST_TOTAL_TIMEOUT_MS)),
+    PROGRESS_REQUEST_TOTAL_TIMEOUT_MS,
+  );
   let timer: ReturnType<typeof setTimeout> | undefined;
   const reset = () => {
     clearTimeout(timer);
     timer = setTimeout(() => deadline.abort(timedOut()), timeoutMs);
+  };
+  const clearTimers = () => {
+    clearTimeout(timer);
+    clearTimeout(totalTimer);
   };
   reset();
   let onAbort: () => void = () => {};
@@ -292,19 +308,19 @@ async function fetchWithProgressTimeout(
       }),
     ]);
   } catch (error) {
-    clearTimeout(timer);
+    clearTimers();
     throw error;
   } finally {
     signal.removeEventListener('abort', onAbort);
   }
   if (!response.body) {
-    clearTimeout(timer);
+    clearTimers();
     return response;
   }
   reset();
   const reader = response.body.getReader();
   const cleanup = () => {
-    clearTimeout(timer);
+    clearTimers();
     signal.removeEventListener('abort', onAbort);
   };
   const body = new ReadableStream<Uint8Array>({
@@ -960,7 +976,7 @@ async function settleCredentialResponse(
  * pass `timeoutMs: null` to opt out of the host default.
  */
 export type AuthenticatedFetchInit = RequestInit & {
-  /** Opt-in header and body inactivity timeout; supersedes the total request deadline. */
+  /** Opt-in header/body inactivity timeout with a five-minute total cap; supersedes timeoutMs. */
   progressTimeoutMs?: number;
   timeoutMs?: number | null;
   /** See `ClientRequestOptions['readOnly']` — the same declaration, for the
