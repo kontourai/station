@@ -20,7 +20,7 @@ takes no model dependency.
 
 | Machine | Durable record | Rule |
 | --- | --- | --- |
-| Turn dedup | one claim per key, with its owner and invocation state | A dead owner's claim is reclaimed only when that owner provably never began its effect (`pending` or `untracked`). `begun` and unknown answer `indeterminate`, and the turn is never sent again. A key whose resolved row retention evicted answers `expired`: the effect ran, and the key is never claimed afresh. |
+| Turn dedup | one claim per key, with its owner, invocation state and optional versioned input digest | A dead owner's claim is reclaimed only when that owner provably never began its effect (`pending` or `untracked`). `begun` and unknown answer `indeterminate`, and the turn is never sent again. A key whose resolved row retention evicted answers `expired`: the effect ran, and the key is never claimed afresh. |
 | Turn boundary | one row per provider invocation | `prepared` → `invoking` → `accepted` or `indeterminate`. After a crash, a dead owner's `prepared` row is removed, an `invoking` row becomes `indeterminate`, and both `accepted` and `indeterminate` rows are reported until their owner retires them. |
 | Request keys | one row per caller, tool and key, with a digest | A reused key with a different digest is a conflict. A stored attempt without a result is never treated as new. |
 | Owner liveness | none | There is one three-state rule: `dead`, `live` or `unknown`. A pid whose birth differs from the recorded one is `dead`, and `unknown` never frees a claim. Reconcile takes its verdicts before the transaction, one probe per process, and applies each only to a row that has not changed since. |
@@ -80,7 +80,7 @@ vite or vitest configs are accepted limits, left to review.
 
 ## Retention
 
-- **Turn dedup:** rows past `turnDedupMaxEntries` are evicted oldest first,
+- **Turn dedup:** when both original and incoming input digests are known, a mismatch answers `conflict` before replay, contention or dead-owner reclaim. Reclaim preserves only the original digest; legacy input stays unknown. Digest-less callers retain legacy behavior. Rows past `turnDedupMaxEntries` are evicted oldest first,
   among resolved rows only. An unresolved claim is never evicted.
   An evicted key leaves a tombstone, which holds only the key and the time
   and does not count toward the cap. A claim of a tombstoned key answers

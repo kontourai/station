@@ -13,6 +13,7 @@ import {
   exactProcessIdentity,
   probeExactProcessIdentity,
 } from '@kontourai/station-shared/process-identity';
+import { ClientTurnInputConflictError } from '../providers/adapter-shape.js';
 import { turnDedupClaims } from '../telemetry/metrics.js';
 
 export interface TurnIdempotencyProcessIdentity {
@@ -37,9 +38,17 @@ export interface TurnIdempotencyPersistence {
 }
 
 type TurnIdempotencyClaim =
+  | {
+      claimed: false;
+      conflict: true;
+      value?: undefined;
+      indeterminate?: undefined;
+      expired?: undefined;
+    }
   | { claimed: true }
   | {
       claimed: false;
+      conflict?: undefined;
       value?: string;
       indeterminate?: undefined;
       expired?: undefined;
@@ -50,6 +59,7 @@ type TurnIdempotencyClaim =
    */
   | {
       claimed: false;
+      conflict?: undefined;
       indeterminate: true;
       value?: undefined;
       expired?: undefined;
@@ -60,6 +70,7 @@ type TurnIdempotencyClaim =
    */
   | {
       claimed: false;
+      conflict?: undefined;
       expired: true;
       value?: undefined;
       indeterminate?: undefined;
@@ -122,12 +133,22 @@ export class TurnIdempotencyStore {
     key: string,
     now = Date.now(),
     tracking: 'tracked' | 'untracked' = 'untracked',
+    inputDigest?: string,
   ): TurnIdempotencyClaim {
     const result = this.persistence.execute(
-      { type: 'turnDedup.claim', key, owner: this.owner, now, tracking },
+      {
+        type: 'turnDedup.claim',
+        key,
+        owner: this.owner,
+        now,
+        tracking,
+        ...(inputDigest !== undefined ? { inputDigest } : {}),
+      },
       this.liveness,
     );
     switch (result.kind) {
+      case 'conflict':
+        return { claimed: false, conflict: true };
       case 'claimed':
         // A fresh claim is a new attempt: a retained marker left from an
         // earlier row of this key (one its thread's deletion removed) must not
@@ -283,11 +304,18 @@ export class TurnIdempotencyStore {
         .kind === 'found'
     );
   }
-  read(key: string): string | undefined {
+  read(key: string, inputDigest?: string): string | undefined {
     const result = this.persistence.execute(
       { type: 'turnDedup.read', key },
       this.liveness,
     );
+    if (
+      result.kind === 'found' &&
+      inputDigest !== undefined &&
+      result.record.inputDigest !== undefined &&
+      inputDigest !== result.record.inputDigest
+    )
+      throw new ClientTurnInputConflictError();
     return result.kind === 'found'
       ? (result.record.value ?? undefined)
       : undefined;
@@ -298,10 +326,11 @@ export async function awaitTurnResolution(
   key: string,
   timeoutMs = 5 * 60_000,
   intervalMs = 200,
+  inputDigest?: string,
 ): Promise<string | undefined> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const resolved = store.read(key);
+    const resolved = store.read(key, inputDigest);
     if (resolved) return resolved;
     // Released without a result (its owner refused before any effect):
     // nothing will resolve it, so stop waiting rather than run out the clock.
@@ -311,5 +340,5 @@ export async function awaitTurnResolution(
     if (store.givenUp(key)) return undefined;
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
-  return store.read(key);
+  return store.read(key, inputDigest);
 }

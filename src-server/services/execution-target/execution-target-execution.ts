@@ -41,6 +41,7 @@ import { createLogger } from '../../utils/logger.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
+import { turnSubmissionDigest } from '../orchestration/turn-submission-digest.js';
 import { assertProjectWorktreeDirectory } from '../projects/project-service.js';
 import {
   WorktreeProvisioningService,
@@ -344,7 +345,11 @@ export interface ExecutionTargetExecutionDependencies
   sendTurn: (
     access: EnvironmentAccess,
     input: ProviderSendTurnInput,
-    context?: { clientOrigin?: ClientOrigin; principal?: PrincipalRef },
+    context?: {
+      clientOrigin?: ClientOrigin;
+      principal?: PrincipalRef;
+      submissionDigest?: string;
+    },
   ) => Promise<{ turnId: string }>;
   /**
    * #2436: record the approval pick a send carries on the session it is
@@ -1137,6 +1142,28 @@ export async function executeForegroundMessage(
         clientTurnId: effectiveClientTurnId ?? '',
       })
     : input.attachments;
+  const submissionDigest = effectiveClientTurnId
+    ? turnSubmissionDigest({
+        text: input.message,
+        ...(input.ambientContext !== undefined
+          ? { ambientContext: input.ambientContext }
+          : {}),
+        ...(input.target.model?.override !== undefined
+          ? { modelId: input.target.model.override }
+          : {}),
+        ...(attachments ? { attachments } : {}),
+        ...(input.skillExperience
+          ? { skillExperience: input.skillExperience }
+          : {}),
+        scope: {
+          target: input.target,
+          ephemeral: input.ephemeral ?? false,
+          expectedInputRequest: input.expectedInputRequest ?? null,
+          setApprovalMode: input.setApprovalMode ?? null,
+          setApprovalModeBasedOn: input.setApprovalModeBasedOn ?? null,
+        },
+      })
+    : undefined;
   const transcriptSeed =
     resolved.provider === 'station-agent' && deps.nativeMemoryOwnsTranscript
       ? undefined
@@ -1179,8 +1206,9 @@ export async function executeForegroundMessage(
         ? { modelOptions: { ...resolved.modelOptions } }
         : {}),
     },
-    input.clientOrigin || input.principal
+    input.clientOrigin || input.principal || submissionDigest
       ? {
+          ...(submissionDigest ? { submissionDigest } : {}),
           ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
           ...(input.principal ? { principal: input.principal } : {}),
         }

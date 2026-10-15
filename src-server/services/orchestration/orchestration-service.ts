@@ -148,6 +148,7 @@ import type {
 import {
   AttachmentInputUnsupportedError,
   ClientTurnInFlightError,
+  ClientTurnInputConflictError,
   ProviderTurnEndedError,
   SendTurnRefusedError,
   SessionStartRefusedError,
@@ -454,6 +455,10 @@ import {
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
+import {
+  directTurnSubmissionDigest,
+  TurnSubmissionUnsupportedError,
+} from './turn-submission-digest.js';
 import { WorkspaceExecutionBarrier } from './workspace-execution-barrier.js';
 import { resolveWorkspaceIdentity } from './workspace-identity.js';
 
@@ -483,6 +488,8 @@ function telemetryEngine(
  * from an HTTP route.
  */
 interface OrchestrationDispatchInternalOptions {
+  /** Server-captured authorized intent, before foreground prompt composition. */
+  submissionDigest?: string;
   skillExperience?: SkillExperienceStartInputV1;
   /** Request authority forwarded only by the server-owned foreground resolver. */
   nativeMemoryReadAuthority?: SessionReadAuthority;
@@ -6907,6 +6914,13 @@ export class OrchestrationService {
             command.target,
           );
         case 'sendTurn': {
+          const submissionDigest = command.input.clientTurnId
+            ? (internal?.submissionDigest ??
+              directTurnSubmissionDigest(
+                command.input,
+                internal?.skillExperience,
+              ))
+            : undefined;
           // Monitor envelopes register here, at the one execution choke
           // point every first and successor turn crosses. No registration
           // means the normal Task/chat path is byte-for-byte unchanged.
@@ -7117,8 +7131,11 @@ export class OrchestrationService {
             const claim = turnDeduplicator?.claim({
               threadId: turnInput.threadId,
               clientTurnId,
+              inputDigest: submissionDigest,
             });
             if (claim) {
+              if (claim.kind === 'conflict')
+                throw new ClientTurnInputConflictError();
               // #3559: the key's owner died after it may have handed this
               // turn to the provider, or the key's resolved row was evicted
               // after the turn was sent. Never send it again; report the same
@@ -7137,9 +7154,14 @@ export class OrchestrationService {
                     turnDeduplicator!.awaitResolution({
                       threadId: turnInput.threadId,
                       clientTurnId,
+                      inputDigest: submissionDigest,
                     }),
                     turnInput.signal,
-                  ).catch(() => undefined));
+                  ).catch((error) => {
+                    if (error instanceof ClientTurnInputConflictError)
+                      throw error;
+                    return undefined;
+                  }));
                 if (!existingTurnId) {
                   throwIfAborted(turnInput.signal);
                   // The other attempt, in this process, gave the key up after
@@ -8751,7 +8773,9 @@ export class OrchestrationService {
           error instanceof DraftDiscardBusyError ||
           error instanceof RequestEventGuardError ||
           error instanceof ReceiverExecutionRefusal ||
-          error instanceof AttachmentInputUnsupportedError
+          error instanceof AttachmentInputUnsupportedError ||
+          error instanceof ClientTurnInputConflictError ||
+          error instanceof TurnSubmissionUnsupportedError
           ? error.code
           : retryableAdapterRefusalCode(error),
       );

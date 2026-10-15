@@ -174,7 +174,7 @@ describe('executeForegroundMessage', () => {
         threadId: 'conversation:test:handoff-child',
         ambientContext: 'authorized transcript seed',
       }),
-      undefined,
+      expect.anything(),
     );
   });
 
@@ -496,7 +496,7 @@ describe('executeForegroundMessage', () => {
           requestEventId: 'opened-a',
         },
       }),
-      undefined,
+      expect.anything(),
     );
   });
 
@@ -693,7 +693,7 @@ describe('executeForegroundMessage', () => {
         attachments: [expect.objectContaining({ name: 'screen.png' })],
         clientTurnId: 'client-turn-1',
       }),
-      { clientOrigin },
+      expect.objectContaining({ clientOrigin }),
     );
     expect(result).toMatchObject({
       conversationId: 'conversation:test',

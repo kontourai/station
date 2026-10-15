@@ -871,3 +871,13 @@ Room records accept legacy `station.project-task-room/v2` and new
 principal. Existing records retain their exact bytes and integrity digests.
 See the [API review contract](api.md#review-an-immutable-task-output) for the
 per-room old-writer fence and permanent duplicate identity behavior.
+
+### Keyed orchestration send identity
+
+The provider contract exports `CLIENT_TURN_INPUT_CONFLICT_CODE`
+(`client_turn_input_conflict`). Existing keyed orchestration sends return this
+nonretryable refusal when a known original submission digest differs. This is
+an additive code, not a requirement for keys on all routes. The server captures
+the digest; clients cannot supply it as provider metadata. Legacy input proof
+and mixed-version limits are described in
+[TurnDeduplicator](../architecture/module-map.md#turndeduplicator).

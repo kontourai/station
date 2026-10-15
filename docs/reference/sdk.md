@@ -4368,3 +4368,15 @@ outcome-unknown, persistence-failed and cancelled. Connected means the peer
 credential was saved, not that a Project checkout, Agent or execution offer is
 ready. See [the connection guide](../guides/connections.md#saved-station-addresses)
 for the independent Device and peer choices and current trusted-session limits.
+
+### Keyed orchestration input conflicts
+
+Existing keyed foreground, background and continuation sends can return HTTP
+409 with `code: client_turn_input_conflict` when the key already names different
+submitted input. Execution callers receive `ChatHttpError` with that status and
+code; no new provider turn is accepted. Resubmit the original input to replay its
+result, or use a fresh key for a distinct turn. Legacy records without original
+digest proof and older servers cannot enforce this comparison. Key generation
+and the separate `/chat` stream ledger are outside this bounded #3567 slice.
+See [TurnDeduplicator](../architecture/module-map.md#turndeduplicator) for the
+submission digest scope and mixed-version limits.

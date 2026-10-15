@@ -57,6 +57,8 @@ export interface SqliteTurnDedupTables {
    * name, so a writer that predates the kernel still reads the rows.
    */
   readonly ownerIdField: string;
+  /** Optional host-owned additive digest column; legacy bindings use owner_json. */
+  readonly inputDigestColumn?: string;
   /**
    * Thrown, as is, for any `owner_json` the adapter refuses, in place of the
    * detailed reason. The host's callers may already match on it.
@@ -202,7 +204,8 @@ CREATE TABLE IF NOT EXISTS monument_turn_dedup (
   dedup_key TEXT PRIMARY KEY,
   value TEXT,
   created_at INTEGER NOT NULL,
-  owner_json TEXT
+  owner_json TEXT,
+  input_digest TEXT
 );
 CREATE TABLE IF NOT EXISTS monument_turn_dedup_expired (
   dedup_key TEXT PRIMARY KEY,
@@ -274,6 +277,7 @@ function identifier(name: string): string {
 
 /** `owner_json` fields the kernel writes itself; the owner id may not use one. */
 const RESERVED_OWNER_FIELDS = new Set([
+  'inputDigest',
   'pid',
   'identityKind',
   'birth',
@@ -325,6 +329,9 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
         : dedup
           ? {
               ...dedup,
+              ...(dedup.inputDigestColumn
+                ? { inputDigestColumn: identifier(dedup.inputDigestColumn) }
+                : {}),
               table: identifier(dedup.table),
               tombstoneTable: identifier(dedup.tombstoneTable),
               owned: false,
@@ -333,6 +340,7 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
               table: 'monument_turn_dedup',
               tombstoneTable: 'monument_turn_dedup_expired',
               ownerIdField: 'id',
+              inputDigestColumn: 'input_digest',
               owned: true,
             },
     requestKeys:
@@ -519,6 +527,9 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
         'value',
         'created_at',
         'owner_json',
+        ...(tables.turnDedup.inputDigestColumn
+          ? [tables.turnDedup.inputDigestColumn]
+          : []),
       ]);
       requireColumns(db, tables.turnDedup.tombstoneTable, [
         'dedup_key',
@@ -593,6 +604,16 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
     if (!owned) return;
     db.exec(META_SCHEMA);
     db.exec(owned);
+    if (
+      tables.turnDedup !== 'unused' &&
+      tables.turnDedup.owned &&
+      !(
+        db.prepare('PRAGMA table_info(monument_turn_dedup)').all() as Array<{
+          name: string;
+        }>
+      ).some((c) => c.name === 'input_digest')
+    )
+      db.exec('ALTER TABLE monument_turn_dedup ADD COLUMN input_digest TEXT');
     const row = db
       .prepare("SELECT value FROM monument_meta WHERE key = 'schema_version'")
       .get() as { value: string } | undefined;
@@ -630,7 +651,11 @@ function parseInvocation(raw: unknown): TurnClaimInvocation | undefined {
 function decodeDedupOwner(
   ownerJson: string,
   binding: SqliteTurnDedupTables,
-): { readonly owner: OwnerIdentity; readonly recorded: unknown } {
+): {
+  readonly owner: OwnerIdentity;
+  readonly recorded: unknown;
+  readonly inputDigest?: string;
+} {
   let parsed: unknown;
   try {
     parsed = JSON.parse(ownerJson);
@@ -647,6 +672,9 @@ function decodeDedupOwner(
         id: fields[binding.ownerIdField],
       }),
       recorded: fields.invocation,
+      ...(typeof fields.inputDigest === 'string'
+        ? { inputDigest: fields.inputDigest }
+        : {}),
     };
   } catch (error) {
     if (binding.ownerErrorMessage) throw new Error(binding.ownerErrorMessage);
@@ -669,13 +697,28 @@ function decodeDedup(
   );
   if (typeof row.owner_json !== 'string')
     return { ...base, ...(legacyUntracked ? { invocation: 'untracked' } : {}) };
-  const { owner, recorded } = decodeDedupOwner(row.owner_json, binding);
+  const { owner, recorded, inputDigest } = decodeDedupOwner(
+    row.owner_json,
+    binding,
+  );
+  // Older writers replace owner_json but leave additive columns behind.
+  // Trust the column only with matching proof on this owner, never a stale digest.
+  const digest =
+    inputDigest !== undefined &&
+    (!binding.inputDigestColumn || row.input_digest === inputDigest)
+      ? inputDigest
+      : undefined;
   // An unrecognised value reads as absent, which a dead owner never reclaims;
   // only a row with no record at all can fall back to `untracked`.
   const invocation =
     parseInvocation(recorded) ??
     (legacyUntracked && recorded === undefined ? 'untracked' : undefined);
-  return { ...base, owner, ...(invocation ? { invocation } : {}) };
+  return {
+    ...base,
+    owner,
+    ...(invocation ? { invocation } : {}),
+    ...(digest !== undefined ? { inputDigest: digest } : {}),
+  };
 }
 
 /**
@@ -693,6 +736,9 @@ function encodeDedupOwner(
     ...rest,
     [binding.ownerIdField]: id,
     ...(record.invocation ? { invocation: record.invocation } : {}),
+    ...(record.inputDigest !== undefined
+      ? { inputDigest: record.inputDigest }
+      : {}),
   });
 }
 
@@ -820,21 +866,22 @@ function sqliteTransaction(
     turnDedup: {
       get: (key) => {
         const row = one(
-          `SELECT dedup_key, value, created_at, owner_json FROM ${dedup.table} WHERE dedup_key = ?`,
+          `SELECT dedup_key, value, created_at, owner_json${dedup.inputDigestColumn ? `, ${dedup.inputDigestColumn} AS input_digest` : ''} FROM ${dedup.table} WHERE dedup_key = ?`,
           key,
         );
         return row ? decodeDedup(row, dedup) : undefined;
       },
       put: (record) => {
         run(
-          `INSERT INTO ${dedup.table} (dedup_key, value, created_at, owner_json)
-           VALUES (?, ?, ?, ?)
+          `INSERT INTO ${dedup.table} (dedup_key, value, created_at, owner_json${dedup.inputDigestColumn ? `, ${dedup.inputDigestColumn}` : ''})
+           VALUES (?, ?, ?, ?${dedup.inputDigestColumn ? ', ?' : ''})
            ON CONFLICT(dedup_key) DO UPDATE SET value = excluded.value,
-             created_at = excluded.created_at, owner_json = excluded.owner_json`,
+             created_at = excluded.created_at, owner_json = excluded.owner_json${dedup.inputDigestColumn ? `, ${dedup.inputDigestColumn} = excluded.${dedup.inputDigestColumn}` : ''}`,
           record.key,
           record.value,
           record.createdAt,
           encodeDedupOwner(record, dedup),
+          ...(dedup.inputDigestColumn ? [record.inputDigest ?? null] : []),
         );
       },
       delete: (key) => {

@@ -2590,7 +2590,8 @@ export function createOrchestrationRoutes(
           ? 503
           : // The caller's view of the Agent is stale: a conflict with the
             // current binding, not malformed input.
-            errorCode(error) === EXECUTION_ENGINE_CHANGED_CODE
+            errorCode(error) === EXECUTION_ENGINE_CHANGED_CODE ||
+              errorCode(error) === 'client_turn_input_conflict'
             ? 409
             : 400,
       );
@@ -3020,7 +3021,7 @@ export function createOrchestrationRoutes(
             error: errorMessage(error),
             ...(errorCode(error) ? { code: errorCode(error) } : {}),
           },
-          400,
+          errorCode(error) === 'client_turn_input_conflict' ? 409 : 400,
         );
       }
     },

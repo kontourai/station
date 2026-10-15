@@ -23,6 +23,7 @@ import type {
 import {
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   CLIENT_TURN_IN_FLIGHT_CODE,
+  CLIENT_TURN_INPUT_CONFLICT_CODE,
   PROVIDER_SESSION_START_FAILED_CODE,
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
@@ -155,6 +156,15 @@ export class ProviderSessionStartFailedError extends SendTurnRefusedError {
   constructor(reason: string) {
     super(`The agent's session couldn't start: ${reason}`);
     this.name = 'ProviderSessionStartFailedError';
+  }
+}
+
+export class ClientTurnInputConflictError extends SendTurnRefusedError {
+  readonly code = CLIENT_TURN_INPUT_CONFLICT_CODE;
+  readonly retryable = false;
+  constructor() {
+    super('This client turn key already names a different submitted input.');
+    this.name = 'ClientTurnInputConflictError';
   }
 }
 

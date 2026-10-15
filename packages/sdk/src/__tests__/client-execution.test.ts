@@ -358,41 +358,55 @@ describe('client execution', () => {
     });
   });
 
-  test('preserves a coded orchestration refusal for the composer', async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          success: false,
-          error: "This conversation's worktree is gone and cannot be resumed.",
-          code: 'continuation_workspace_worktree_gone',
-        }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } },
-      ),
-    );
-    vi.stubGlobal('fetch', fetchMock);
-
-    let error: unknown;
-    try {
-      await sendExecutionMessage('http://station.test', {
-        message: 'Resume safely',
-        target: {
-          environment: { kind: 'current' },
-          agent: agentId('station'),
-        },
-      });
-      expect.unreachable('expected an orchestration refusal');
-    } catch (caught) {
-      error = caught;
-    }
-    expect(error).toBeInstanceOf(ChatHttpError);
-    expect(error).toMatchObject({
+  test.each([
+    {
       status: 400,
-      serverMessage:
-        "This conversation's worktree is gone and cannot be resumed.",
       code: 'continuation_workspace_worktree_gone',
-    });
-    expect(ChatHttpError).toBe(ClientChatHttpError);
-  });
+      message: "This conversation's worktree is gone and cannot be resumed.",
+    },
+    {
+      status: 409,
+      code: 'client_turn_input_conflict',
+      message:
+        'This client turn key already names a different submitted input.',
+    },
+  ])(
+    'preserves a coded orchestration refusal $code for the composer',
+    async ({ status, code, message }) => {
+      const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: false,
+            error: message,
+            code,
+          }),
+          { status, headers: { 'Content-Type': 'application/json' } },
+        ),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      let error: unknown;
+      try {
+        await sendExecutionMessage('http://station.test', {
+          message: 'Resume safely',
+          target: {
+            environment: { kind: 'current' },
+            agent: agentId('station'),
+          },
+        });
+        expect.unreachable('expected an orchestration refusal');
+      } catch (caught) {
+        error = caught;
+      }
+      expect(error).toBeInstanceOf(ChatHttpError);
+      expect(error).toMatchObject({
+        status,
+        serverMessage: message,
+        code,
+      });
+      expect(ChatHttpError).toBe(ClientChatHttpError);
+    },
+  );
 
   test('parses foreground indeterminacy as typed no-retry evidence', async () => {
     const receipt = {

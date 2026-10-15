@@ -58,6 +58,101 @@ describe('TurnDeduplicator', () => {
     restarted.close();
   });
 
+  test('upgrades a legacy host schema without fabricating original digests; an old writer invalidates its marker', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'station-digest-upgrade-'));
+    directories.push(directory);
+    const path = join(directory, 'legacy.sqlite');
+    const raw = new DatabaseSync(path);
+    raw.exec(
+      ORCHESTRATION_EVENT_STORE_MIGRATION.replace(',\n  input_digest TEXT', ''),
+    );
+    raw
+      .prepare(
+        'INSERT INTO orchestration_turn_dedup (dedup_key, value, created_at) VALUES (?, ?, ?)',
+      )
+      .run(turnDedupKey('thread', 'legacy'), 'legacy-turn', 1);
+    const store = new EventStore(path);
+    try {
+      const ledger = store.createTurnDeduplicator();
+      expect(
+        ledger.claim({
+          threadId: 'thread',
+          clientTurnId: 'legacy',
+          inputDigest: 'v1:retry',
+        }),
+      ).toEqual({ kind: 'contended', turnId: 'legacy-turn' });
+      expect(
+        raw
+          .prepare(
+            'SELECT input_digest FROM orchestration_turn_dedup WHERE dedup_key = ?',
+          )
+          .get(turnDedupKey('thread', 'legacy')),
+      ).toEqual({ input_digest: null });
+      const owner = ledger.claim({
+        threadId: 'thread',
+        clientTurnId: 'known',
+        inputDigest: 'v1:A',
+      });
+      if (owner.kind !== 'owner') throw new Error('expected owner');
+      owner.claim.resolve('turn-A');
+      raw
+        .prepare(
+          "UPDATE orchestration_turn_dedup SET owner_json = json_remove(owner_json, '$.inputDigest') WHERE dedup_key = ?",
+        )
+        .run(turnDedupKey('thread', 'known'));
+      expect(
+        ledger.claim({
+          threadId: 'thread',
+          clientTurnId: 'known',
+          inputDigest: 'v1:B',
+        }),
+      ).toEqual({ kind: 'contended', turnId: 'turn-A' });
+      const row = raw
+        .prepare(
+          'SELECT input_digest, owner_json FROM orchestration_turn_dedup WHERE dedup_key = ?',
+        )
+        .get(turnDedupKey('thread', 'known')) as {
+        input_digest: string;
+        owner_json: string;
+      };
+      expect(row.input_digest).toBe('v1:A');
+      expect(JSON.parse(row.owner_json)).not.toHaveProperty('inputDigest');
+    } finally {
+      store.close();
+      raw.close();
+    }
+  });
+
+  test('a waiter never reports a replacement claim with different input as its accepted turn', async () => {
+    const { store, ledger } = open();
+    try {
+      const input = {
+        threadId: 'thread',
+        clientTurnId: 'K',
+        inputDigest: 'v1:A',
+      };
+      const original = ledger.claim(input);
+      if (original.kind !== 'owner') throw new Error('expected original owner');
+      const waiting = ledger.awaitResolution({
+        ...input,
+        intervalMs: 1,
+        timeoutMs: 1000,
+      });
+      original.claim.release();
+      const replacement = store
+        .createTurnDeduplicator()
+        .claim({ ...input, inputDigest: 'v1:B' });
+      if (replacement.kind !== 'owner')
+        throw new Error('expected replacement owner');
+      replacement.claim.resolve('turn-B');
+      await expect(waiting).rejects.toMatchObject({
+        code: 'client_turn_input_conflict',
+      });
+    } finally {
+      store.close();
+    }
+  });
+
   test('inspect: a claim whose owner cannot be proven live or dead reads in flight only for a bounded time', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     try {
