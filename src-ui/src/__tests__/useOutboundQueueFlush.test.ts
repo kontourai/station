@@ -1131,6 +1131,20 @@ describe('useOutboundQueueFlush: a message deferred because a turn is running', 
     }
   }, 15_000);
 
+  it('unmounting during a deferral wait stops every later queue read', async () => {
+    sendMessage.mockResolvedValue({ kind: 'deferred' });
+    const view = renderHook(() => useOutboundQueueFlush('http://api.test'));
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+    // The deferral's retry is armed; leave before it fires.
+    await settle(200);
+    const reads = vi.spyOn(outboundDispatch, 'open');
+    view.unmount();
+    await settle(OUTBOUND_DEFER_RETRY_MS + 500);
+    expect(reads).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    reads.mockRestore();
+  }, 10_000);
+
   it('a chat with a turn running is not sent to, and its message goes as soon as the turn ends', async () => {
     sendMessage.mockResolvedValue({
       kind: 'accepted',

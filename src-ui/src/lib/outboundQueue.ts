@@ -1575,9 +1575,15 @@ async function enqueue(
 ): Promise<OutboundDispatchTurn> {
   // Runtime callers can still be untyped JavaScript. Provider terminal
   // evidence is produced only by an accepted transport result, never trusted
-  // from an enqueue intent.
-  const { providerTurnId: _ignoredProviderTurnId, ...safeIntent } =
-    intent as OutboundDispatchIntent & { providerTurnId?: unknown };
+  // from an enqueue intent; nor is a deferral, which only a release records.
+  const {
+    providerTurnId: _ignoredProviderTurnId,
+    deferredAt: _ignoredDeferredAt,
+    ...safeIntent
+  } = intent as OutboundDispatchIntent & {
+    providerTurnId?: unknown;
+    deferredAt?: unknown;
+  };
   const now = safeIntent.createdAt ?? Date.now();
   return mutateState((state) => {
     // A message already delivered or discarded is not queued again.
@@ -2115,8 +2121,14 @@ export class OutboundKeyRetiredError extends Error {
 async function beginLive(
   intent: OutboundDispatchIntent,
 ): Promise<LiveOutboundDispatch> {
-  const { providerTurnId: _ignoredProviderTurnId, ...safeIntent } =
-    intent as OutboundDispatchIntent & { providerTurnId?: unknown };
+  const {
+    providerTurnId: _ignoredProviderTurnId,
+    deferredAt: _ignoredDeferredAt,
+    ...safeIntent
+  } = intent as OutboundDispatchIntent & {
+    providerTurnId?: unknown;
+    deferredAt?: unknown;
+  };
   const bootId = await rendererBootId();
   await holdRendererLiveness();
   const claimedAt = Date.now();

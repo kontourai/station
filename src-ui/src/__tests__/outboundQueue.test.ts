@@ -125,6 +125,18 @@ describe('OutboundDispatchModule', () => {
     expect(send).toHaveBeenCalledOnce();
   });
 
+  it('an untyped caller cannot enqueue a deferral: the row is sent at once', async () => {
+    await outboundDispatch.enqueue({
+      ...turn('claims-a-deferral', 'session-untyped'),
+      deferredAt: Date.now(),
+    } as never);
+    const [row] = await outboundDispatch.snapshot();
+    expect(row?.deferredAt).toBeUndefined();
+    const send = vi.fn(async () => accepted('provider-untyped'));
+    await outboundDispatch.flush(send);
+    expect(send).toHaveBeenCalledOnce();
+  });
+
   it('#749 releases a post-claim deferral without consuming an attempt, and claims it again only after the wait', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     try {
