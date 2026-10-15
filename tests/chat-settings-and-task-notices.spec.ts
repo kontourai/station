@@ -32,6 +32,10 @@ const PHONE = { width: 390, height: 844 } as const;
 const DESKTOP = { width: 1280, height: 800 } as const;
 
 async function seedChat(page: Page) {
+  // Presence reporting is outside this journey; keep it off the shared server.
+  await page.route('**/api/presence/focus', (route) =>
+    route.fulfill({ status: 204 }),
+  );
   await page.addInitScript(() => {
     // Developer tools add the Event replay section, which is what makes the
     // panel taller than a phone screen.
