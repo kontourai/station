@@ -2,9 +2,14 @@ import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { KernelCommand } from '../commands.js';
 import type { KernelContext } from '../port.js';
-import { openSqliteKernelStorage, type SqliteKernelTables } from '../sqlite.js';
+import {
+  openSqliteKernelStorage,
+  type SqliteKernelDatabase,
+  type SqliteKernelTables,
+} from '../sqlite.js';
 import {
   createSqliteKernelLocation,
+  hostBoundaryConformanceCases,
   KernelCrashError,
   kernelConformanceCasesFor,
   openCrashPointStore,
@@ -38,6 +43,10 @@ function tables(
       terminalFacts,
       ...(terminalFacts === 'host'
         ? {
+            terminalSeen: (db, thread, turn) =>
+              context(db).terminalSeen(thread, turn),
+            terminalSequence: (db, thread, id) =>
+              context(db).terminalSequence(thread, id),
             creationSequence: {
               column: 'created_sequence',
               read: (db) =>
@@ -54,16 +63,16 @@ function tables(
     },
   };
 }
-function context(db: DatabaseSync): KernelContext {
+function context(db: SqliteKernelDatabase) {
   return {
-    liveness: () => 'unknown',
-    terminalSeen: (thread, turn) => {
+    liveness: () => 'unknown' as const,
+    terminalSeen: (thread: string, turn: string) => {
       expect(db.isTransaction).toBe(true);
       return !!db
         .prepare('SELECT 1 FROM host_events WHERE thread = ? AND turn = ?')
         .get(thread, turn);
     },
-    terminalSequence: (thread, id) => {
+    terminalSequence: (thread: string, id: string | undefined) => {
       expect(db.isTransaction).toBe(true);
       return (
         db
@@ -270,6 +279,7 @@ it('bound-table configuration refuses missing columns, unsafe names and invalid 
           table: 'bad;DROP TABLE host_head',
           ownerEncoding: 'columns',
           terminalFacts: 'host',
+          terminalSeen: () => false,
         },
       },
     }),
@@ -283,6 +293,135 @@ it('bound-table configuration refuses missing columns, unsafe names and invalid 
   );
   expect(db.prepare('SELECT * FROM host_boundaries').all()).toEqual([]);
 });
+
+it.each([
+  'host without terminalSeen',
+  'kernel with terminalSeen',
+  'kernel with terminalSequence',
+] as const)('rejects %s at open', (misconfiguration) => {
+  const db = new DatabaseSync(':memory:');
+  callbacks.push(() => db.close());
+  db.exec(schema);
+  const binding = tables().turnBoundary;
+  if (!binding || binding === 'unused') throw new Error('Expected binding');
+  expect(() =>
+    openSqliteKernelStorage({
+      database: db,
+      tables: {
+        turnBoundary: {
+          ...binding,
+          terminalFacts: misconfiguration.startsWith('host')
+            ? 'host'
+            : 'kernel',
+          terminalSeen:
+            misconfiguration === 'kernel with terminalSeen'
+              ? () => false
+              : undefined,
+          terminalSequence:
+            misconfiguration === 'kernel with terminalSequence'
+              ? () => 17
+              : undefined,
+        },
+      },
+    }),
+  ).toThrow(
+    misconfiguration.startsWith('host')
+      ? 'require terminalSeen at open'
+      : 'cannot have host callbacks',
+  );
+});
+
+it('accepts a standalone unique boundary identity and supports its upsert', () => {
+  const db = new DatabaseSync(':memory:');
+  callbacks.push(() => db.close());
+  db.exec(schema.replace('boundary_id TEXT PRIMARY KEY', 'boundary_id TEXT'));
+  db.exec(
+    'CREATE UNIQUE INDEX boundary_identity ON host_boundaries(boundary_id)',
+  );
+  const storage = openSqliteKernelStorage({ database: db, tables: tables() });
+  storage.executeSync(create(), context(db));
+  expect(
+    storage.executeSync(
+      {
+        type: 'turnBoundary.transition',
+        boundaryId: 'b',
+        ownerId: owner.id,
+        from: ['prepared'],
+        to: 'invoking',
+        now: '2031',
+      },
+      context(db),
+    ),
+  ).toEqual({ kind: 'applied' });
+  expect(db.prepare('SELECT state FROM host_boundaries').get()).toMatchObject({
+    state: 'invoking',
+  });
+});
+
+it.each(['none', 'compound', 'partial'] as const)(
+  'rejects a bound identity with only a %s unique index at open',
+  (index) => {
+    const db = new DatabaseSync(':memory:');
+    callbacks.push(() => db.close());
+    db.exec(schema.replace('boundary_id TEXT PRIMARY KEY', 'boundary_id TEXT'));
+    if (index === 'compound')
+      db.exec(
+        'CREATE UNIQUE INDEX compound ON host_boundaries(boundary_id, thread_id)',
+      );
+    if (index === 'partial')
+      db.exec(
+        "CREATE UNIQUE INDEX partial ON host_boundaries(boundary_id) WHERE state = 'prepared'",
+      );
+    expect(() =>
+      openSqliteKernelStorage({ database: db, tables: tables() }),
+    ).toThrow(
+      'requires a primary key or non-partial unique index on boundary_id',
+    );
+  },
+);
+
+for (const encoding of ['json', 'columns'] as const) {
+  for (const via of ['execute', 'executeSync'] as const) {
+    describe(`portable host fence (${encoding}, ${via})`, () => {
+      for (const contract of hostBoundaryConformanceCases)
+        it(contract.name, async () => {
+          await contract.run({
+            async createLocation(facts) {
+              const binding = tables(encoding).turnBoundary;
+              if (!binding || binding === 'unused')
+                throw new Error('Expected binding');
+              const location = createSqliteKernelLocation({
+                via,
+                tables: {
+                  turnDedup: 'unused',
+                  requestKeys: 'unused',
+                  turnBoundary: {
+                    ...binding,
+                    terminalSeen: (_db, thread, turn) =>
+                      facts.terminalSeen(thread, turn),
+                    terminalSequence: (_db, thread, id) =>
+                      facts.terminalSequence(thread, id),
+                  },
+                },
+                prepare: (db) => db.exec(schema),
+              });
+              return {
+                ...location,
+                async setCreationSequence(sequence) {
+                  const db = new DatabaseSync(location.path);
+                  try {
+                    db.prepare('UPDATE host_head SET value = ?').run(sequence);
+                  } finally {
+                    db.close();
+                  }
+                },
+              };
+            },
+          });
+        });
+    });
+  }
+}
 
 for (const via of ['execute', 'executeSync'] as const) {
   registerKernelConformance(

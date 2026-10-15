@@ -104,7 +104,10 @@ coordinator has not switched to it yet. The binding supports the default
 `owner_json` layout (`ownerEncoding: 'json'`) and separate `owner_id`,
 `owner_pid`, `owner_birth`, `owner_identity_kind` columns (`'columns'`). Both
 layouts retain `boundary_id`, `thread_id`, `state`, `purpose`,
-`provider_turn_id`, `created_at` and `updated_at`.
+`provider_turn_id`, `created_at` and `updated_at`. These column names are fixed,
+unlike the configurable dedup owner field and request-key result column.
+`boundary_id` must have a primary key or a non-partial unique index by itself;
+compound and partial indexes cannot support the adapter's upsert.
 
 ```ts
 const storage = openSqliteKernelStorage({
@@ -116,6 +119,8 @@ const storage = openSqliteKernelStorage({
       table: 'host_boundaries',
       ownerEncoding: 'columns',
       terminalFacts: 'host',
+      terminalSeen: (db, thread, turn) => hostTerminalSeen(db, thread, turn),
+      terminalSequence: (db, thread, eventId) => hostTerminalSequence(db, thread, eventId),
       creationSequence: {
         column: 'created_sequence',
         read: db => readDurableEventHead(db),
@@ -123,11 +128,7 @@ const storage = openSqliteKernelStorage({
     },
   },
 });
-const context = {
-  liveness,
-  terminalSeen: (thread, turn) => hostTerminalSeen(thread, turn),
-  terminalSequence: (thread, eventId) => hostTerminalSequence(thread, eventId),
-};
+const context = { liveness };
 ```
 
 The fence and terminal callbacks run synchronously inside the command
@@ -136,8 +137,9 @@ callbacks only read facts; a host with an event log uses that log as its sole
 terminal authority. `terminalSeen` replaces, rather than supplements, the
 kernel's default terminal table. Observing a terminal or forgetting boundaries
 does not add or delete default terminal facts when that callback is present.
-A binding with `terminalFacts: 'host'` creates no terminal table and refuses
-operations that need default facts if the callback is missing. With every area
+Bound callbacks are fixed at open and override per-command context callbacks.
+Opening `terminalFacts: 'host'` without `terminalSeen`, or `'kernel'` with either
+host callback, is rejected before any command. Host mode creates no terminal table. With every area
 bound or unused, the adapter creates no `monument_*` tables.
 
 `creationSequence` is optional and specific to a bound SQLite table. Its
@@ -159,6 +161,13 @@ This API does not move Station's runtime terminal reconciler. Its current
 read-only command requires an event-authoritative read view and an explicit
 choice of when physical retirement runs; opting a writing participant into
 reads would take the write lock and does not satisfy that requirement.
+
+`hostBoundaryConformanceCases` in `./testing` is a portable contract for hosts
+that bind a creation fence. Its harness supplies a durable creation-sequence
+source and terminal callbacks, without exposing SQL to the cases. It verifies
+capture and preservation across transition/reopen, terminal lookup, missing
+facts, and strict ordering (earlier, equal, later). The default-table suite
+remains separate because those tables have no creation-fence column.
 
 ## Reconcile after a restart
 

@@ -1,4 +1,4 @@
-import type { KernelContext, OwnerIdentity } from '@kontourai/monument';
+import type { OwnerIdentity } from '@kontourai/monument';
 import type {
   SqliteKernelDatabase,
   SqliteKernelTables,
@@ -36,13 +36,16 @@ export const tables: SqliteKernelTables = {
     table: 'orchestration_turn_boundaries',
     ownerEncoding: 'columns',
     terminalFacts: 'host',
+    terminalSeen: (db, thread, turn) => context(db).terminalSeen(thread, turn),
+    terminalSequence: (db, thread, id) =>
+      context(db).terminalSequence(thread, id),
     creationSequence: { column: 'created_sequence', read: head },
   },
 };
-export function context(db: SqliteKernelDatabase): KernelContext {
+export function context(db: SqliteKernelDatabase) {
   return {
-    liveness: () => 'unknown',
-    terminalSeen: (thread, turn) => {
+    liveness: () => 'unknown' as const,
+    terminalSeen: (thread: string, turn: string) => {
       expect(db.isTransaction).toBe(true);
       return !!db
         .prepare(
@@ -50,7 +53,7 @@ export function context(db: SqliteKernelDatabase): KernelContext {
         )
         .get(thread, turn);
     },
-    terminalSequence: (thread, id) => {
+    terminalSequence: (thread: string, id: string | undefined) => {
       expect(db.isTransaction).toBe(true);
       return (
         db

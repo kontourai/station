@@ -83,6 +83,17 @@ export interface SqliteTurnBoundaryTable {
   readonly ownerEncoding: 'json' | 'columns';
   /** Host event log replaces the kernel's terminal table. Requires terminalSeen. */
   readonly terminalFacts: 'kernel' | 'host';
+  /** Fixed at open; invoked synchronously inside the command transaction. */
+  readonly terminalSeen?: (
+    database: SqliteKernelDatabase,
+    threadId: string,
+    providerTurnId: string,
+  ) => boolean;
+  readonly terminalSequence?: (
+    database: SqliteKernelDatabase,
+    threadId: string,
+    terminalEventId: string | undefined,
+  ) => number | undefined;
   /** Capture only on insertion, under the writer lock; never backfill old rows. */
   readonly creationSequence?: {
     readonly column: string;
@@ -279,6 +290,23 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
   )
     throw new TypeError(`ownerIdField cannot be ${dedup.ownerIdField}.`);
   const boundary = tables.turnBoundary;
+  if (boundary && boundary !== 'unused') {
+    if (
+      boundary.terminalFacts === 'host' &&
+      typeof boundary.terminalSeen !== 'function'
+    )
+      throw new SqliteKernelConfigurationError(
+        'Host terminal facts require terminalSeen at open.',
+      );
+    if (
+      boundary.terminalFacts === 'kernel' &&
+      (boundary.terminalSeen !== undefined ||
+        boundary.terminalSequence !== undefined)
+    )
+      throw new SqliteKernelConfigurationError(
+        'Kernel terminal facts cannot have host callbacks.',
+      );
+  }
   if (
     boundary &&
     boundary !== 'unused' &&
@@ -507,7 +535,7 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
         'created_at',
         tables.requestKeys.resultColumn,
       ]);
-    if (tables.turnBoundary !== 'unused' && !tables.turnBoundary.owned)
+    if (tables.turnBoundary !== 'unused' && !tables.turnBoundary.owned) {
       requireColumns(db, tables.turnBoundary.table, [
         'boundary_id',
         'thread_id',
@@ -523,6 +551,29 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
           ? [tables.turnBoundary.creationSequence.column]
           : []),
       ]);
+      const indexes = db
+        .prepare(`PRAGMA index_list(${tables.turnBoundary.table})`)
+        .all() as Array<{ name: string; unique: number; partial: number }>;
+      const uniqueIdentity = indexes.some((index) => {
+        if (!index.unique || index.partial) return false;
+        const columns = db
+          .prepare(`PRAGMA index_info('${index.name.replaceAll("'", "''")}')`)
+          .all() as Array<{ name: string | null }>;
+        return columns.length === 1 && columns[0].name === 'boundary_id';
+      });
+      const primaryKey = (
+        db
+          .prepare(`PRAGMA table_info(${tables.turnBoundary.table})`)
+          .all() as Array<{ name: string; pk: number }>
+      ).filter((column) => column.pk > 0);
+      if (
+        !uniqueIdentity &&
+        !(primaryKey.length === 1 && primaryKey[0].name === 'boundary_id')
+      )
+        throw new SqliteKernelConfigurationError(
+          `bound table ${tables.turnBoundary.table} requires a primary key or non-partial unique index on boundary_id.`,
+        );
+    }
     const owned = [
       tables.turnDedup !== 'unused' && tables.turnDedup.owned
         ? TURN_DEDUP_SCHEMA
@@ -1019,11 +1070,11 @@ export function openSqliteKernelStorage(
 ): SqliteKernelStorage {
   if ((options.path === undefined) === (options.database === undefined))
     throw new TypeError('Pass exactly one of path or database.');
+  const tables = resolveTables(options.tables);
   const owned = options.database === undefined;
   const db: SqliteKernelDatabase =
     options.database ?? new DatabaseSync(options.path as string);
   const participants = options.participants ?? [];
-  const tables = resolveTables(options.tables);
   let pragmas: SqliteKernelPragmas;
   try {
     pragmas =
@@ -1039,6 +1090,18 @@ export function openSqliteKernelStorage(
     throw error;
   }
   const tx = sqliteTransaction(db, tables);
+  const boundary = tables.turnBoundary;
+  const boundFacts =
+    boundary !== 'unused' && !boundary.owned
+      ? boundary.terminalFacts === 'host'
+        ? {
+            terminalSeen: (thread: string, turn: string) =>
+              boundary.terminalSeen!(db, thread, turn),
+            terminalSequence: (thread: string, event: string | undefined) =>
+              boundary.terminalSequence?.(db, thread, event),
+          }
+        : undefined
+      : undefined;
   // Read-only commands run in a deferred transaction, so under WAL they are
   // served from a snapshot while another connection holds the write lock.
   // Not when a participant observes reads: a host write inside a deferred
@@ -1055,6 +1118,7 @@ export function openSqliteKernelStorage(
     executeOptions: SqliteExecuteOptions = {},
   ): KernelResult<C> => {
     if (closed) throw new KernelStorageClosedError();
+    if (boundFacts) context = { ...context, ...boundFacts };
     const area = command.type.slice(0, command.type.indexOf('.')) as
       | 'turnDedup'
       | 'turnBoundary'

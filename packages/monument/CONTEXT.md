@@ -99,8 +99,9 @@ vite or vitest configs are accepted limits, left to review.
 - **Terminal-turn facts:** by default the kernel records provider turn ids a
   thread has seen end, which make a later acceptance of the same id
   `ambiguous`. Those default facts are retired by `turnBoundary.forgetThread`.
-  A host with an event log supplies `KernelContext.terminalSeen` inside the
-  transaction instead: observation and forgetting do not maintain a second
+  A host with an event log supplies `terminalSeen` inside the transaction
+  instead (`KernelContext` for the portable port; fixed at open for a bound
+  SQLite table): observation and forgetting do not maintain a second
   terminal source. Session-terminal ordering can use the host's persisted
   sequence and an existing boundary creation-fence column; NULL legacy fences
   and turn-scoped generations retain timestamps. The binding API is available,

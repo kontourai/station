@@ -142,7 +142,25 @@ function random(seed: number) {
   let n = seed + 1;
   return (max: number) => {
     n = (Math.imul(n, 1664525) + 1013904223) >>> 0;
-    return n % max;
+    return (n >>> 8) % max;
+  };
+}
+
+function terminalCommand(
+  event: CanonicalRuntimeEvent,
+): Extract<BoundaryCommand, { type: 'turnBoundary.observeTerminal' }> {
+  const turn = 'turnId' in event ? event.turnId : undefined;
+  return {
+    type: 'turnBoundary.observeTerminal',
+    threadId: event.threadId,
+    providerTurnId: turn,
+    sessionTerminal: !turn,
+    terminalCreatedAt: event.createdAt,
+    terminalEventId: event.eventId,
+    ...(event.method === 'runtime.error' &&
+    event.code === 'SESSION_START_INDETERMINATE'
+      ? { retire: false }
+      : {}),
   };
 }
 
@@ -181,9 +199,10 @@ test.each(Array.from({ length: 400 }, (_, i) => i))(
     const crash = await openCrashPointStore(location);
     closes.push(() => crash.dispose());
     const pick = random(seed);
+    const persisted: CanonicalRuntimeEvent[] = [];
     let ordinal = 0;
     for (let step = 0; step < 64; step++) {
-      const threadId = `t${pick(4)}`;
+      const threadId = step < 11 ? 't0' : `t${pick(4)}`;
       const boundaryId = `b${ordinal++}`;
       const now = at(pick(60));
       const providerTurnId = `p${pick(5)}`;
@@ -196,14 +215,17 @@ test.each(Array.from({ length: 400 }, (_, i) => i))(
         ? existing[pick(existing.length)].id
         : 'absent';
       let command: BoundaryCommand;
-      switch (pick(6)) {
+      let observedEvent: CanonicalRuntimeEvent | undefined;
+      // Claim after a persisted terminal, replay at equality, advance the head,
+      // replace the claim, then replay that same terminal below the new fence.
+      switch (step < 11 ? [4, 0, 4, 2, 4, 0, 4, 4, 4, 4, 4][step] : pick(6)) {
         case 0:
           command = {
             type: 'turnBoundary.create',
             boundaryId,
             threadId,
-            state: pick(5) ? 'prepared' : 'lifecycle',
-            purpose: pick(7) ? 'turn' : 'task-dispatch',
+            state: step < 7 || pick(5) ? 'prepared' : 'lifecycle',
+            purpose: step < 7 || pick(7) ? 'turn' : 'task-dispatch',
             owner,
             now,
           };
@@ -227,18 +249,21 @@ test.each(Array.from({ length: 400 }, (_, i) => i))(
           command = {
             type: 'turnBoundary.remove',
             boundaryId: id,
-            ownerId: pick(5) ? owner.id : 'other',
-            from: [
-              (
-                [
-                  'prepared',
-                  'invoking',
-                  'accepted',
-                  'indeterminate',
-                  'lifecycle',
-                ] as const
-              )[pick(5)],
-            ],
+            ownerId: step === 3 || pick(5) ? owner.id : 'other',
+            from:
+              step === 3
+                ? ['prepared']
+                : [
+                    (
+                      [
+                        'prepared',
+                        'invoking',
+                        'accepted',
+                        'indeterminate',
+                        'lifecycle',
+                      ] as const
+                    )[pick(5)],
+                  ],
           };
           break;
         case 3:
@@ -252,38 +277,65 @@ test.each(Array.from({ length: 400 }, (_, i) => i))(
           };
           break;
         case 4: {
-          const sessionTerminal = pick(2) === 0;
+          const method =
+            step < 7
+              ? 2
+              : step === 7 || step === 10
+                ? 3
+                : step === 8
+                  ? 1
+                  : step === 9
+                    ? 0
+                    : pick(4);
           const eventId = `event-${step}`;
-          const event: CanonicalRuntimeEvent = sessionTerminal
-            ? {
-                eventId,
-                provider: 'claude',
-                threadId,
-                createdAt: now,
-                method: 'session.exited',
-                sessionId: threadId,
-                exitCode: 0,
-              }
-            : {
-                eventId,
-                provider: 'claude',
-                threadId,
-                turnId: providerTurnId,
-                createdAt: now,
-                method: 'turn.completed',
-              };
-          if (pick(4) !== 0) {
+          const fresh: CanonicalRuntimeEvent =
+            method === 2
+              ? {
+                  eventId,
+                  provider: 'claude',
+                  threadId,
+                  createdAt: now,
+                  method: 'session.exited',
+                  sessionId: threadId,
+                  exitCode: 0,
+                }
+              : method === 3
+                ? {
+                    eventId,
+                    provider: 'claude',
+                    threadId,
+                    createdAt: now,
+                    method: 'runtime.error',
+                    severity: 'error',
+                    message: 'generated terminal',
+                    code:
+                      step === 7 || (step >= 11 && pick(2))
+                        ? 'SESSION_START_INDETERMINATE'
+                        : 'PROVIDER_FAILED',
+                  }
+                : {
+                    eventId,
+                    provider: 'claude',
+                    threadId,
+                    turnId: providerTurnId,
+                    createdAt: now,
+                    method: method === 0 ? 'turn.completed' : 'turn.aborted',
+                    reason: 'generated abort',
+                  };
+          const replay =
+            step === 2 ||
+            step === 6 ||
+            (step >= 11 && persisted.length > 0 && pick(3) === 0);
+          const event = replay
+            ? persisted[step < 7 ? 0 : pick(persisted.length)]
+            : fresh;
+          if (!replay && (step < 11 || pick(4) !== 0)) {
             old.appendEvent(event);
             current!.appendEvent(event);
+            persisted.push(event);
           }
-          command = {
-            type: 'turnBoundary.observeTerminal',
-            threadId,
-            providerTurnId: sessionTerminal ? undefined : providerTurnId,
-            sessionTerminal,
-            terminalCreatedAt: now,
-            terminalEventId: eventId,
-          };
+          observedEvent = event;
+          command = terminalCommand(event);
           break;
         }
         default:
@@ -334,7 +386,9 @@ test.each(Array.from({ length: 400 }, (_, i) => i))(
             }
           : answer;
       expect(observable, JSON.stringify({ seed, step, command })).toEqual(
-        legacy(coordinator, command),
+        observedEvent
+          ? old.sessionTurnBoundaryAuthority().observe(observedEvent)
+          : legacy(coordinator, command),
       );
       expect(rows(current!['db'])).toEqual(rows(old['db']));
     }
@@ -397,21 +451,32 @@ test('alternating old SQL and new kernel writers share one database for 400 turn
       providerTurnId: turn,
       now: at(i * 3 + 2),
     });
-    const event: CanonicalRuntimeEvent = {
-      eventId: `terminal-${i}`,
-      provider: 'claude',
-      threadId,
-      turnId: turn,
-      createdAt: at(i * 3 + 3),
-      method: 'turn.completed',
-    };
+    const sessionTerminal = i % 3 === 0;
+    const event: CanonicalRuntimeEvent = sessionTerminal
+      ? {
+          eventId: `terminal-${i}`,
+          provider: 'claude',
+          threadId,
+          createdAt: at(i * 3 - 30),
+          method: 'session.exited',
+          sessionId: threadId,
+          exitCode: 0,
+        }
+      : {
+          eventId: `terminal-${i}`,
+          provider: 'claude',
+          threadId,
+          turnId: turn,
+          createdAt: at(i * 3 + 3),
+          method: 'turn.completed',
+        };
     reference.appendEvent(event);
     shared.appendEvent(event);
     await compare({
       type: 'turnBoundary.observeTerminal',
       threadId,
-      providerTurnId: turn,
-      sessionTerminal: false,
+      providerTurnId: sessionTerminal ? undefined : turn,
+      sessionTerminal,
       terminalCreatedAt: event.createdAt,
       terminalEventId: event.eventId,
     });
