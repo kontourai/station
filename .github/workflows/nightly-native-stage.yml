@@ -132,7 +132,7 @@ jobs:
           # rows land on main AFTER the ship, so the checkout at the source
           # SHA can never contain the row for its own marker.
           node scripts/nightly-cohort-decide.mjs --head-sha "$head_sha" --android-marker "$android_sha" --android-candidate "$normalized_android_sha" --desktop-marker "$desktop_sha" --desktop-candidate "$normalized_desktop_sha" --rebuild-index "$NIGHTLY_REBUILD_INDEX" --ledger-ref origin/main
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         if: steps.decide.outputs.build == 'true'
         with: { node-version-file: .nvmrc }
       - id: allocate
@@ -187,7 +187,7 @@ jobs:
         run: |
           node scripts/release-cohort-workflow.mjs plan-input plan-input.json "${{ steps.source.outputs.sha }}" "$GITHUB_RUN_ID" "${{ steps.allocate.outputs.date }}" "${{ steps.allocate.outputs.build }}"
           node scripts/release-cohort.mjs plan plan-input.json > cohort-plan.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.decide.outputs.build == 'true'
         with:
           name: nightly-cohort-plan-${{ github.run_id }}
@@ -223,15 +223,15 @@ jobs:
           ref: ${{ needs.plan-cohort.outputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: nightly-cohort-plan-${{ github.run_id }}
           path: cohort
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         # Nightly ships arm64-v8a only (#1456). The trade: 32-bit ARM devices
@@ -343,7 +343,7 @@ jobs:
         run: |
           node scripts/release-cohort-workflow.mjs stage-input android-stage-input.json cohort/cohort-plan.json android station-nightly-universal.aab=cohort-android/station-nightly-universal.aab
           node scripts/release-cohort.mjs stage-receipt cohort/cohort-plan.json android-stage-input.json > android-stage-receipt.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: nightly-cohort-android-${{ github.run_id }}
@@ -374,15 +374,15 @@ jobs:
           ref: ${{ needs.plan-cohort.outputs.source_sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: nightly-cohort-plan-${{ github.run_id }}
           path: cohort
       - name: Setup pinned pnpm
-        uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: aarch64-apple-darwin }
@@ -449,7 +449,7 @@ jobs:
             cohort-macos/station-nightly-desktop-macos-aarch64.dmg
             cohort-macos/station-client-build.json
       - run: cp cohort-macos/station-client-build.json macos-build-identity.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: nightly-cohort-macos-${{ github.run_id }}
           path: |
@@ -502,9 +502,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: '${{ inputs.source_sha }}', fetch-depth: 0, persist-credentials: false }
-      - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with: { targets: x86_64-pc-windows-msvc }
@@ -526,7 +526,7 @@ jobs:
           $signed = (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64)) -or (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) -or (-not [string]::IsNullOrWhiteSpace($env:WINDOWS_SIGN_COMMAND))
           ./scripts/build-windows-nightly.ps1 -SourceSha $env:SOURCE_SHA -BundleVersion ([int]$env:BUNDLE_VERSION) -SignUpdater -RequireSigning:$signed
       - name: Retain packaging evidence even when signing authority is absent
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows-nightly-build-${{ github.run_id }}
           path: |
@@ -549,7 +549,7 @@ jobs:
           Copy-Item dist-windows-nightly/windows-build-receipt.json windows-stage-metadata.json
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with: { subject-path: 'cohort-windows/*' }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: nightly-cohort-windows-${{ github.run_id }}
           path: |
@@ -567,12 +567,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { ref: '${{ inputs.source_sha }}', persist-credentials: false }
-      - uses: pnpm/setup@fbda4c85fc2e1e08721cd8763afea8f48d60f024 # v3.0.0
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with: { node-version-file: .nvmrc, cache: pnpm, cache-dependency-path: pnpm-lock.yaml }
       - run: npm run dependencies:ci
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with: { pattern: 'nightly-cohort-*', path: cohort, merge-multiple: true }
       - name: Verify both updater signatures and assemble the current cohort
         env: { TAURI_SIGNING_PUBLIC_KEY: '${{ secrets.TAURI_SIGNING_PUBLIC_KEY }}' }
@@ -590,7 +590,7 @@ jobs:
           node scripts/release-cohort.mjs stage-receipt cohort/cohort-plan.json windows-stage-input.json > windows-stage-receipt.json
           mkdir -p cohort-macos
           cp cohort/cohort-macos/latest.json cohort-macos/latest.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: nightly-cohort-desktop-manifest-${{ github.run_id }}
           path: |
