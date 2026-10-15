@@ -371,6 +371,7 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
           {
             id: 'claude',
             name: 'Claude Code',
+            engineId: 'claude',
             kind: 'agent',
             enabled: true,
             capabilities: ['agent-runtime'],
@@ -507,97 +508,113 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
     project: 'b-project',
   };
 
-  test('Project admins author only scoped agents and My access reflects current standing without promoting Station authority', async () => {
-    const { base, bProject, revokeB, home, configLoader, mcpProbe } =
-      await setup('admin');
-    const access = await asAccount(base, '/api/tool-library/access');
-    expect(access.status).toBe(200);
-    expect(access.body.data.station.operator).toBe(false);
-    expect(access.body.data.projects).toEqual([
-      expect.objectContaining({
-        id: bProject.id,
-        role: 'admin',
-        canManageAgents: true,
-        canManageTools: false,
-      }),
-    ]);
-    const saved = await asAccount(
-      base,
-      '/api/tool-library/projects/b-project/agents',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
+  test.each(['claude', 'station'])(
+    'Project admins author scoped %s agents and My access reflects current standing without promoting Station authority',
+    async (engineId) => {
+      const { base, bProject, revokeB, home, configLoader, mcpProbe } =
+        await setup('admin');
+      const access = await asAccount(base, '/api/tool-library/access');
+      expect(access.status).toBe(200);
+      expect(access.body.data.station.operator).toBe(false);
+      expect(access.body.data.projects).toEqual([
+        expect.objectContaining({
+          id: bProject.id,
+          role: 'admin',
+          canManageAgents: true,
+          canManageTools: false,
+        }),
+      ]);
+      const catalog = await asAccount(
+        base,
+        '/api/tool-library/catalog?project=b-project',
+      );
+      expect(catalog.body.data.engines).toContainEqual({
+        id: 'station',
+        name: 'Station',
+        engineId: 'station',
+      });
+      const saved = await asAccount(
+        base,
+        '/api/tool-library/projects/b-project/agents',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            projectId: bProject.id,
+            expectedActor: B_REF.id,
+            draft: {
+              name: 'Project helper',
+              prompt: 'Help this Project',
+              engineId,
+              tools: { mcpServers: [], available: [] },
+            },
+          }),
+        },
+      );
+      expect(saved.status).toBe(200);
+      const persisted = JSON.parse(
+        readFileSync(
+          join(home, 'agents', saved.body.data.slug, 'agent.json'),
+          'utf8',
+        ),
+      );
+      expect(persisted.execution.approvalMode).toBe('ask');
+      expect(persisted.execution.agentConnectionId).toBe(
+        engineId === 'station' ? undefined : engineId,
+      );
+      expect(persisted.tools.browser).toBe(false);
+      const listed = await asAccount(
+        base,
+        '/api/tool-library/projects/b-project/agents',
+      );
+      expect(listed.body.data).toEqual([
+        expect.objectContaining({
+          slug: saved.body.data.slug,
           projectId: bProject.id,
-          expectedActor: B_REF.id,
-          draft: {
+          spec: expect.objectContaining({
             name: 'Project helper',
+            project: 'b-project',
             prompt: 'Help this Project',
-            engineId: 'claude',
-            tools: { mcpServers: [], available: [] },
-          },
+            execution:
+              engineId === 'station' ? {} : { agentConnectionId: engineId },
+          }),
         }),
-      },
-    );
-    expect(saved.status).toBe(200);
-    const persisted = JSON.parse(
-      readFileSync(
-        join(home, 'agents', saved.body.data.slug, 'agent.json'),
-        'utf8',
-      ),
-    );
-    expect(persisted.execution.approvalMode).toBe('ask');
-    expect(persisted.tools.browser).toBe(false);
-    const listed = await asAccount(
-      base,
-      '/api/tool-library/projects/b-project/agents',
-    );
-    expect(listed.body.data).toEqual([
-      expect.objectContaining({
-        slug: saved.body.data.slug,
-        projectId: bProject.id,
-        spec: expect.objectContaining({
-          name: 'Project helper',
-          project: 'b-project',
-          prompt: 'Help this Project',
-          execution: expect.objectContaining({ agentConnectionId: 'claude' }),
-        }),
-      }),
-    ]);
-    expect(
-      (await asAccount(base, '/api/tool-library/projects/a-project/agents'))
-        .status,
-    ).toBe(403);
-    await configLoader.saveIntegration('disabled-reports', {
-      id: 'disabled-reports',
-      kind: 'mcp',
-      transport: 'stdio',
-      command: 'node',
-      enabled: false,
-    });
-    const discovery = await asAccount(
-      base,
-      '/api/tool-library/sources/disabled-reports/discover',
-      {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          project: 'b-project',
-          projectId: bProject.id,
-          expectedActor: B_REF.id,
-        }),
-      },
-    );
-    expect(discovery.status).toBe(403);
-    expect(mcpProbe).not.toHaveBeenCalled();
-    await revokeB();
-    expect(
-      (await asAccount(base, '/api/tool-library/projects/b-project/agents'))
-        .status,
-    ).toBe(403);
-    const after = await asAccount(base, '/api/tool-library/access');
-    expect(after.body.data.projects).toEqual([]);
-  });
+      ]);
+      expect(
+        (await asAccount(base, '/api/tool-library/projects/a-project/agents'))
+          .status,
+      ).toBe(403);
+      await configLoader.saveIntegration('disabled-reports', {
+        id: 'disabled-reports',
+        kind: 'mcp',
+        transport: 'stdio',
+        command: 'node',
+        enabled: false,
+      });
+      const discovery = await asAccount(
+        base,
+        '/api/tool-library/sources/disabled-reports/discover',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            project: 'b-project',
+            projectId: bProject.id,
+            expectedActor: B_REF.id,
+          }),
+        },
+      );
+      expect(discovery.status).toBe(403);
+      expect(mcpProbe).not.toHaveBeenCalled();
+      await revokeB();
+      expect(
+        (await asAccount(base, '/api/tool-library/projects/b-project/agents'))
+          .status,
+      ).toBe(403);
+      const after = await asAccount(base, '/api/tool-library/access');
+      expect(after.body.data.projects).toEqual([]);
+    },
+  );
 
   test('a member’s account request lists only the admitted Agent, as a member view', async () => {
     const { base } = await setup();

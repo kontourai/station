@@ -25,7 +25,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   clients.splice(0).forEach((client) => client.clear());
 });
-function setup() {
+function setup(engine = 'claude') {
   const view: ToolLibraryView = {
     sources: [
       {
@@ -46,6 +46,7 @@ function setup() {
     project: { id: 'design-id', slug: 'design', name: 'Design' },
     policy: { mode: 'selected', sources: [], revision: 1 },
     engines: [
+      { id: 'station', name: 'Station', engineId: 'station' },
       { id: 'claude', name: 'Claude', engineId: 'claude' },
       { id: 'codex', name: 'Codex', engineId: 'codex' },
     ],
@@ -72,7 +73,7 @@ function setup() {
       name: 'Analyst',
       project: 'design',
       prompt: 'Read reports',
-      execution: { agentConnectionId: 'claude' },
+      execution: engine === 'station' ? {} : { agentConnectionId: engine },
       tools: {
         mcpServers: ['reports'],
         available: ['reports_read'],
@@ -160,4 +161,19 @@ test('connection edits prevent dismissing the Project tools dialog or saving its
   fireEvent.click(screen.getByRole('button', { name: 'Close Project agent' }));
   fireEvent.keyDown(screen.getAllByRole('dialog').at(-1)!, { key: 'Escape' });
   expect(screen.getByRole('button', { name: 'Edit connection' })).toBeTruthy();
+});
+
+test('a managed Station agent reopens with Station selected and saves its tools unchanged', async () => {
+  const h = setup('station');
+  fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+  expect((screen.getByLabelText('Engine') as HTMLSelectElement).value).toBe(
+    'station',
+  );
+  fireEvent.change(screen.getByLabelText('Name'), {
+    target: { value: 'Station analyst' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Save agent' }));
+  await waitFor(() => expect(h.writes).toHaveLength(1));
+  expect(h.writes[0]?.draft.engineId).toBe('station');
+  expect(h.writes[0]?.draft.tools).toEqual(h.saved.spec.tools);
 });

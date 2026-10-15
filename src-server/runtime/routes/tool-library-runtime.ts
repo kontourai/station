@@ -173,14 +173,16 @@ export function runtimeToolLibraryDependencies(
         })),
       };
     },
-    engines: async () =>
-      (await context.connectionService.listRuntimeConnections())
-        .filter((row) => row.enabled !== false)
+    engines: async () => [
+      { id: 'station', name: 'Station', engineId: 'station' },
+      ...(await context.connectionService.listRuntimeConnections())
+        .filter((row) => row.enabled !== false && row.id !== 'station')
         .map((row) => ({
           id: row.id,
           name: row.name || row.id,
           engineId: resolveEngineCapabilityMatrix(row.id, row).engineId,
         })),
+    ],
     async withinProject(c, captured, operation) {
       if (!captured.project)
         throw new ToolLibraryRefusal('forbidden', 'Choose a Project.');
@@ -257,6 +259,7 @@ export function runtimeToolLibraryDependencies(
     async saveAgent(slug, draft, project, authorize) {
       const engines = await context.connectionService.listRuntimeConnections();
       if (
+        draft.engineId !== 'station' &&
         !engines.some(
           (engine) => engine.id === draft.engineId && engine.enabled !== false,
         )
@@ -265,10 +268,13 @@ export function runtimeToolLibraryDependencies(
           'forbidden',
           'Choose an available engine.',
         );
-      const chosenEngine = resolveEngineCapabilityMatrix(
-        draft.engineId,
-        engines.find((row) => row.id === draft.engineId),
-      ).engineId;
+      const chosenEngine =
+        draft.engineId === 'station'
+          ? 'station'
+          : resolveEngineCapabilityMatrix(
+              draft.engineId,
+              engines.find((row) => row.id === draft.engineId),
+            ).engineId;
       if (chosenEngine !== 'station') {
         const selected = await sources();
         if (
@@ -283,12 +289,9 @@ export function runtimeToolLibraryDependencies(
             'Personal tool accounts require the Station engine.',
           );
       }
-      const engine = engines.find((row) => row.id === draft.engineId)!;
       if (
         draft.tools.askBeforeUse?.length &&
-        !['station', 'claude'].includes(
-          resolveEngineCapabilityMatrix(engine.id, engine).engineId,
-        )
+        !['station', 'claude'].includes(chosenEngine)
       )
         throw new ToolLibraryRefusal(
           'conflict',
@@ -307,7 +310,9 @@ export function runtimeToolLibraryDependencies(
           permission: 'view',
         },
         execution: {
-          agentConnectionId: engineConnectionId(draft.engineId),
+          ...(chosenEngine === 'station'
+            ? {}
+            : { agentConnectionId: engineConnectionId(draft.engineId) }),
           approvalMode: 'ask',
         },
         tools: { ...draft.tools, mcpMode: 'replace', browser: false },

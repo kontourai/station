@@ -343,14 +343,21 @@ export function createSessionAgentResolver(
         );
       }
 
-      if (options.resolveProjectToolServers) {
-        spec = withProjectToolDefaults(
-          spec,
-          await options.resolveProjectToolServers(input),
+      try {
+        if (options.resolveProjectToolServers) {
+          spec = withProjectToolDefaults(
+            spec,
+            await options.resolveProjectToolServers(input),
+          );
+        }
+        await options.validateProjectTools?.(slug, spec, input);
+      } catch (error) {
+        if (error instanceof ToolLibraryRefusal) throw error;
+        throw new ToolLibraryRefusal(
+          'unavailable',
+          'Project tool permissions could not be verified. Try again after restoring the Project and its policy.',
         );
       }
-
-      await options.validateProjectTools?.(slug, spec, input);
       const definition: ResolvedAgentDefinition = { slug };
       const report: SessionCapabilityDeliveryMetadata = { agentSlug: slug };
 

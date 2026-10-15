@@ -8,6 +8,7 @@ import {
   type ClientOrigin,
   isClientOrigin,
 } from '@kontourai/station-contracts/client-origin';
+import { sessionDeliveryChannels } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   AgentRunFailureKind,
   AgentRunStatus,
@@ -56,6 +57,7 @@ import {
   projectRequestAnswerability,
   type SessionAnswerabilityObservation,
 } from './open-requests.js';
+import { sessionAgentStartUnavailableReason } from './session-agent-resolution.js';
 import {
   acceptsTurnTerminalEvent,
   activeTurnIdForEvents,
@@ -1738,22 +1740,15 @@ export async function startRecoveredOrchestrationSession(options: {
       startInput = await deps.applyApprovalPosture(adapter, startInput);
     }
     if (deps.resolveSessionAgent) {
-      try {
-        startInput = await deps.resolveSessionAgent(startInput);
-      } catch (error) {
-        if (startInput.metadata?.executionAgentId) throw error;
-        // Ordinary saved bindings retain boot recovery's unresolved-input
-        // fallback. Explicit overrides above require verified profile delivery.
-        deps.logger.warn(
-          'resolveSessionAgent failed during session recovery; continuing without a resolved agent definition',
-          {
-            provider: session.provider,
-            threadId: session.threadId,
-            error: errorMessage(error),
-          },
-        );
-      }
+      startInput = await deps.resolveSessionAgent(startInput);
     }
+    const unavailableReason = sessionAgentStartUnavailableReason({
+      agentSlug: startInput.metadata?.agentSlug,
+      hasResolvedAgent:
+        Boolean(startInput.agent) ||
+        sessionDeliveryChannels(startInput.provider) === undefined,
+    });
+    if (unavailableReason) throw new Error(unavailableReason);
     // Apply credentials before reserving the independent engine-start slot.
     // Not wrapped in a try/catch: see `applyCredentialProfile`'s docs.
     if (deps.applyCredentialProfile) {

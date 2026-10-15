@@ -143,6 +143,7 @@ export function ProjectAgentsPanel({
                 slug: agent.slug,
                 toolsConfig: agent.spec.tools,
               });
+              next.execution.agentConnectionId ||= 'station';
               setForm(next);
               setSaved(JSON.stringify(next));
             }}

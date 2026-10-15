@@ -99,7 +99,13 @@ Open **Profile → My access** to see Station authority and roles across Project
 Admins and Owners can reach **Agents and tools** there and from their shared
 Project. This authoring surface does not enable member agent execution: member
 turns remain refused by the existing execution gate. Computer contribution and
-execution authority remain separate requirements.
+execution authority remain separate requirements. The engine picker includes
+managed **Station** alongside installed engines. Station Agents keep no external
+engine binding; editing and saving preserves that choice and its tool approvals.
+
+New and recovered sessions both recheck authored tools against current Project
+permissions. Missing Agent definitions or unreadable Project policy refuse
+engine startup; the conversation stays recoverable after the cause is fixed.
 
 **Browser access** is a separate Agent capability. The current delivery path
 connects Claude Code to the Project's Station browser; other engines disclose
