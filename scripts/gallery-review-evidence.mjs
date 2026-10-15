@@ -42,9 +42,17 @@ export function buildGalleryReviewEvidence({
     throw new Error(
       'sourceSha and captureContract must be full SHA fingerprints',
     );
+  const observed = new Map();
+  const readObserved = (file) => {
+    const bytes = readFileSync(file);
+    observed.set(file, hash(bytes));
+    return bytes;
+  };
   const root = realpathSync(gallery);
-  const capture = JSON.parse(readFileSync(join(root, 'capture.json'), 'utf8'));
-  const reference = JSON.parse(readFileSync(baseline, 'utf8'));
+  const capture = JSON.parse(
+    readObserved(join(root, 'capture.json')).toString('utf8'),
+  );
+  const reference = JSON.parse(readObserved(baseline).toString('utf8'));
   for (const screen of [...capture.screens, ...reference.screens]) {
     if (
       typeof screen.name !== 'string' ||
@@ -70,7 +78,7 @@ export function buildGalleryReviewEvidence({
         );
         if (!auxiliary.startsWith(`${root}${sep}`))
           throw new Error('auxiliary image escapes gallery');
-        if (hash(readFileSync(auxiliary)) !== screen.rasterDiagnostic.sha256)
+        if (hash(readObserved(auxiliary)) !== screen.rasterDiagnostic.sha256)
           throw new Error(`auxiliary PNG digest mismatch: ${screen.name}`);
       }
       return {
@@ -82,7 +90,6 @@ export function buildGalleryReviewEvidence({
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
-  const result = runDiff({ gallery: root, baseline }, { log: () => {} });
   const referenceImages = reference.screens
     .map((screen) => {
       const file = join(
@@ -91,10 +98,15 @@ export function buildGalleryReviewEvidence({
       );
       return {
         name: screen.name,
-        sha256: existsSync(file) ? hash(readFileSync(file)) : null,
+        sha256: existsSync(file) ? hash(readObserved(file)) : null,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
+  const result = runDiff({ gallery: root, baseline }, { log: () => {} });
+  for (const [file, sha256] of observed) {
+    if (hash(readFileSync(file)) !== sha256)
+      throw new Error('Gallery evidence changed during comparison');
+  }
   const signature = {
     referenceImages,
     renderer: context.renderer,
