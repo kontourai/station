@@ -25,6 +25,7 @@ import { applyAccountPreferencePatch } from '../lib/account-preference-values';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { useApiBase, useHostRequestAuthorityScope } from './ApiBaseContext';
 import { useAuthorityPersistence } from './AuthorityPersistenceContext';
+import { activeChatsStore } from './active-chats-store';
 import { toastStore } from './ToastContext';
 
 interface PreferenceState {
@@ -208,6 +209,19 @@ export function AccountPreferencesProvider({
       available,
     );
   }, [eligible, available, projected, query.isFetchedAfterMount, save, scope]);
+  useLayoutEffect(() => {
+    for (const [sessionId, chat] of Object.entries(
+      activeChatsStore.getSnapshot(),
+    ))
+      if (
+        chat.queuedApprovalDefaultNamespace &&
+        chat.queuedApprovalDefaultNamespace !== authority.namespace
+      )
+        activeChatsStore.updateChat(sessionId, {
+          queuedApprovalMode: undefined,
+          queuedApprovalDefaultNamespace: undefined,
+        });
+  }, [authority.namespace]);
   useLayoutEffect(() => {
     let failureShown = false;
     const apply = () => {

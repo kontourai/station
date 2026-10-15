@@ -454,6 +454,21 @@ export function useSendMessage(
         throw new Error('Replay conversations are read-only.');
       const allChats = activeChatsStore.getSnapshot();
       let currentState = allChats[sessionId];
+      if (
+        currentState?.queuedApprovalDefaultNamespace &&
+        currentState.queuedApprovalDefaultNamespace !== experienceNamespace
+      ) {
+        currentState = {
+          ...currentState,
+          queuedApprovalMode: undefined,
+          queuedApprovalDefaultNamespace: undefined,
+        };
+        updateChat(sessionId, {
+          queuedApprovalMode: undefined,
+          queuedApprovalDefaultNamespace: undefined,
+        });
+      }
+
       const firstInteractiveSend =
         !conversationId &&
         !currentState?.conversationId &&
@@ -787,8 +802,12 @@ export function useSendMessage(
           currentState = {
             ...currentState,
             queuedApprovalMode: personalDefault,
+            queuedApprovalDefaultNamespace: experienceNamespace ?? undefined,
           };
-          updateChat(sessionId, { queuedApprovalMode: personalDefault });
+          updateChat(sessionId, {
+            queuedApprovalMode: personalDefault,
+            queuedApprovalDefaultNamespace: experienceNamespace ?? undefined,
+          });
         }
       }
       const resolvedTurnId = turnId ?? randomCorrelationId();

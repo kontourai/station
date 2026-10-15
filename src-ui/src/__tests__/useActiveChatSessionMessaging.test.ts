@@ -796,6 +796,20 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       }
     });
 
+    it('drops another account’s inherited default while keeping explicit chat choices', async () => {
+      activeChatsStore.updateChat(sessionId, {
+        queuedApprovalMode: 'never',
+        queuedApprovalDefaultNamespace: 'other-account',
+      });
+      expect(await bodyAfterSend()).not.toHaveProperty('setApprovalMode');
+      activeChatsStore.updateChat(sessionId, {
+        status: 'idle',
+        orchestrationStatus: 'idle',
+        queuedApprovalMode: 'ask',
+      });
+      expect(await bodyAfterSend()).toMatchObject({ setApprovalMode: 'ask' });
+    });
+
     it('an Agent default overrides the personal default and an explicit chat choice overrides both', async () => {
       accountPreferenceFixture.data.values.interactiveApprovalModes = {
         codex: 'never',

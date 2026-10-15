@@ -88,7 +88,9 @@ Each supported engine has an optional personal approval default for new
 interactive chats. Resolution is explicit chat choice → Agent default → personal
 engine preference → Station default → engine configuration. The first human
 send carries the selected personal preference through the existing recorded
-approval decision path, including durable outbox replay. Existing chats,
+approval decision path, including durable outbox replay. Inherited queued defaults retain their account
+namespace and are retired when that account changes; explicit chat picks remain
+separate. Existing chats,
 unattended starts and remote-Station execution do not inherit the initiating
 Station's personal preference. Engine capability and device authorization still
 apply. The composer distinguishes startup intent, confirmed engine mode,

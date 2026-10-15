@@ -53,7 +53,7 @@ sits on, including the raised panel rows and the sidebar hover fill.
 Do not copy the package's theme or primitive styles into a feature; propose a
 shared value upstream when it belongs to the public design system.
 
-## Device preference and accents
+## Personal preference and device startup
 
 [startup-theme.js](../../src-ui/public/startup-theme.js) selects the saved
 light/dark preference before the entry HTML paints, reading the device-settings
@@ -92,8 +92,10 @@ background in night mode, plus a centered native window mark behind the
 initially transparent WebView. A different OS and saved app preference can still
 produce a background change at that boundary.
 [ThemeToggle](../../src-ui/src/components/header/ThemeToggle.tsx) keeps it in
-sync with the device-settings store. The selected light/dark preference belongs
-to the Device; changing a server or Project is not a separate theme choice.
+sync with the settings facade. After account verification, the account preference
+on this Station replaces the device startup theme. Without a person, the theme
+remains local. Different accounts or Stations can have different themes; Project
+selection does not change it. See [account preferences](../design/settings-architecture.md#account-preferences-and-device-settings).
 
 The [accent helper](../../src-ui/src/lib/accent-contrast.ts) applies a custom
 accent together with its foreground contrast partner and hover treatment.

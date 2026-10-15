@@ -302,6 +302,7 @@ export interface SessionApprovalOverride {
 export interface ApprovalPostureState {
   /** A pick the server has not received yet. A Default pick is a decision too. */
   queuedApprovalMode?: ApprovalMode;
+  queuedApprovalDefaultNamespace?: string;
   /** The latest recorded decision this client has folded. */
   approvalPosture?: ApprovalMode;
   /** Its server global sequence; absent when only this client's send vouches for it. */
