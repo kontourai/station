@@ -1,0 +1,7 @@
+{
+  "revision": "574632b2174a0d7f80edde4bfe1b352064d2e2be",
+
+  "notes": [
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed Tier 1 scope, import separation and terminal ownership against port.ts, step.ts and sqlite.ts. Host terminal facts replace the default table; sequence fences are bound host columns, and the production Station coordinator and runtime reconciler have not moved. This records contract and fixture evidence rather than provider or release proof.","inputs":["packages/monument/CONTEXT.md","packages/monument/src/port.ts","packages/monument/src/sqlite.ts","packages/monument/src/step.ts"]}
+  ]
+}

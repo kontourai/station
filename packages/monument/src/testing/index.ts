@@ -22,6 +22,10 @@ export {
   type KernelStorageLocation,
   openCrashPointStore,
 } from './crash-point-store.js';
+export {
+  type HostBoundaryConformanceHarness,
+  hostBoundaryConformanceCases,
+} from './host-boundary-conformance.js';
 export { memoryKernelHarness } from './memory-harness.js';
 export {
   createFakeProcessTable,
