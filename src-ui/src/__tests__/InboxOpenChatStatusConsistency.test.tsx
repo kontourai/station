@@ -912,3 +912,40 @@ it('clearing the query cache releases retained observation failures and fences',
   expect(observation.unavailable('T')).toBeUndefined();
   expect(screen.queryByText('Last known: Needs approval')).toBeNull();
 });
+
+it('a healthy inventory read cannot clear a failed sessions observation', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  renderWithProviders(<DockInbox />, client);
+  await act(async () => {
+    await client
+      .fetchQuery({
+        queryKey: ['orchestration-sessions'],
+        queryFn: async () => {
+          throw new Error('sessions offline');
+        },
+      })
+      .catch(() => {});
+  });
+  expect(screen.getByText('Last known: Needs approval')).toBeTruthy();
+  await act(async () => {
+    await client.fetchQuery({
+      queryKey: ['conversation-inventory'],
+      queryFn: async () => ({
+        pages: [
+          { items: [{ id: 'T', activity: SESSIONS[0]!.conversationActivity }] },
+        ],
+      }),
+    });
+  });
+  expect(screen.getByText('Last known: Needs approval')).toBeTruthy();
+  await act(async () => {
+    await client.fetchQuery({
+      queryKey: ['orchestration-sessions'],
+      queryFn: async () => SESSIONS,
+    });
+  });
+  expect(screen.queryByText('Last known: Needs approval')).toBeNull();
+  client.clear();
+});

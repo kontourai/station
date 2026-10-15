@@ -131,7 +131,8 @@ class WorkObservation {
         (value) => value.at,
       ),
     );
-    if (inboxFailure > success) return true;
+    if (inboxFailure > (this.streamSuccesses.get(conversationId) ?? -1))
+      return true;
     return success === -1 ? undefined : false;
   }
   private drop(conversationId: string) {
