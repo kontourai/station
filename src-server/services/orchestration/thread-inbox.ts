@@ -82,6 +82,7 @@ import {
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 import { SESSION_ENDED_REJECTION_CODE } from '@kontourai/station-contracts/session-lifecycle';
+import type { ContinuationWorkspaceError } from '../execution-target/execution-target-execution.js';
 import {
   type ConversationKeyInspection,
   type SessionStartResult,
@@ -92,7 +93,6 @@ import {
   evaluateSessionWait,
   type SessionWaitFoldEvent,
 } from './session-turn-wait.js';
-import type { ContinuationWorkspaceError } from '../execution-target/execution-target-execution.js';
 import type { SqliteDatabase } from './sqlite-database.js';
 
 /** The inbox is the only machine this kernel storage keeps. */
