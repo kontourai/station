@@ -23,52 +23,59 @@ export async function toolLibraryCatalog(
     ['station-docs', stationDocsToolCatalog()],
     ['station-knowledge', stationKnowledgeToolCatalog()],
   ]);
-  const rows: ToolLibrarySource[] = installed.map((source) => ({
-    id: source.id,
-    kind: 'integration',
-    name: source.displayName || source.id,
-    description: source.description,
-    from: builtin.has(source.id)
-      ? 'Station'
-      : source.origin?.pluginName ||
-        source.origin?.registryName ||
-        (source.origin?.kind === 'manual'
-          ? 'Connected on this Station'
-          : 'Source unavailable'),
-    origin: builtin.has(source.id)
-      ? { kind: 'station', registryName: 'Station' }
-      : source.origin,
-    personalAccount: !!source.credentialOwnership,
-    installed: true,
-    enabled: source.enabled !== false && source.probe?.ok !== false,
-    permitted: true,
-    operatorOnly: source.id === 'station-control',
-    tools: (
-      builtin.get(source.id) ??
-      source.probe?.tools ??
-      runtimeTools
-        .filter((tool) => tool.serverId === source.id)
-        .map((tool) => ({
-          name: tool.toolName ?? tool.originalName,
-          description: tool.description,
-        }))
-    ).map((tool) => ({
-      name: tool.name,
-      disabled: mcpToolDisabled(
-        source.id,
-        tool.name,
-        source.disabledTools ?? [],
-      ),
-      description: tool.description,
-      ...('title' in tool && typeof tool.title === 'string'
-        ? { title: tool.title }
-        : {}),
-      ...('group' in tool ? { group: tool.group } : {}),
-      ...('readOnly' in tool ? { readOnly: tool.readOnly } : {}),
-      classificationSource: builtin.has(source.id) ? 'station' : 'publisher',
-    })),
-  }));
+  const rows: ToolLibrarySource[] = installed
+    .filter((source) => source.kind === 'mcp')
+    .map((source) => ({
+      id: source.id,
+      kind: 'integration',
+      name: source.displayName || source.id,
+      description: source.description,
+      from: builtin.has(source.id)
+        ? 'Station'
+        : source.origin?.pluginName ||
+          source.origin?.registryName ||
+          (source.origin?.kind === 'manual'
+            ? 'Connected on this Station'
+            : 'Source unavailable'),
+      origin: builtin.has(source.id)
+        ? { kind: 'station', registryName: 'Station' }
+        : source.origin,
+      personalAccount: !!source.credentialOwnership,
+      installed: true,
+      enabled: source.enabled !== false && source.probe?.ok !== false,
+      permitted: true,
+      operatorOnly: source.id === 'station-control',
+      tools: (
+        builtin.get(source.id) ??
+        source.probe?.tools ??
+        runtimeTools
+          .filter((tool) => tool.serverId === source.id)
+          .map((tool) => ({
+            name: tool.toolName ?? tool.originalName,
+            description: tool.description,
+          }))
+      ).map((tool) => ({
+        name: tool.name,
+        disabled: mcpToolDisabled(
+          source.id,
+          tool.name,
+          source.disabledTools ?? [],
+        ),
+        description: tool.description,
+        ...('title' in tool && typeof tool.title === 'string'
+          ? { title: tool.title }
+          : {}),
+        ...('group' in tool ? { group: tool.group } : {}),
+        ...('readOnly' in tool ? { readOnly: tool.readOnly } : {}),
+        classificationSource: builtin.has(source.id) ? 'station' : 'publisher',
+      })),
+    }));
   for (const item of integrations) {
+    if (
+      item.tags?.includes('builtin') ||
+      installed.some((source) => source.id === item.id && source.kind !== 'mcp')
+    )
+      continue;
     if (rows.some((row) => row.kind === 'integration' && row.id === item.id))
       continue;
     rows.push({
@@ -88,7 +95,8 @@ export async function toolLibraryCatalog(
   for (const item of plugins) {
     const pluginName = item.installedPluginName;
     const servers = installed.filter(
-      (source) => source.origin?.pluginName === pluginName,
+      (source) =>
+        source.kind === 'mcp' && source.origin?.pluginName === pluginName,
     );
     rows.push({
       id: item.id,

@@ -47,7 +47,9 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 ### MCP Tool Configuration
 
 The **Tools** section is shared by creating, copying, and editing an Agent.
-Choose **Add tools**, search the list, then choose **Add**. Each row shows its
+Choose **Add tools**, search the list, then choose **Add**. The list covers MCP
+sources and tool-providing plugins. Engine-native tools use their engine’s
+settings. Each row shows its
 source: Station, a registry, a plugin, or a connection on this Station. Open a
 source for its description and actions. **Details** holds each action's
 description and approval choice; **About this source** holds provenance and

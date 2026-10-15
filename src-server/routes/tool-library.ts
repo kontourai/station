@@ -15,6 +15,7 @@ import {
 import { ProjectMembershipRefusal } from '../services/projects/project-membership-store.js';
 import { guardProjectResponse } from '../services/projects/project-response-guard.js';
 import { createLogger } from '../utils/logger.js';
+import { errorMessage } from './schemas/schema-validation.js';
 
 export interface ToolLibraryActor {
   access: OwnAccessView;
@@ -90,7 +91,7 @@ export function createToolLibraryRoutes(deps: ToolLibraryRouteDeps) {
       return c.json(
         {
           success: false,
-          error: error.message,
+          error: errorMessage(error),
           code: `tool_library_${error.code}`,
         },
         error.code === 'forbidden'
