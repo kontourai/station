@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ORCHESTRATION_EVENT_STORE_MIGRATION } from '../../../domain/migrations/003-orchestration-events.js';
 import { TurnIdempotencyStore } from '../../turn-idempotency.js';
 import { EventStore } from '../event-store.js';
@@ -14,6 +15,7 @@ import {
 import { createTurnDeduplicator } from '../turn-deduplicator.js';
 
 describe('TurnDeduplicator', () => {
+  const makeTempDir = trackTempDirs();
   const directories: string[] = [];
   afterEach(() =>
     directories
@@ -59,8 +61,7 @@ describe('TurnDeduplicator', () => {
   });
 
   test('upgrades a legacy host schema without fabricating original digests; an old writer invalidates its marker', () => {
-    const directory = mkdtempSync(join(tmpdir(), 'station-digest-upgrade-'));
-    directories.push(directory);
+    const directory = makeTempDir('station-digest-upgrade-');
     const path = join(directory, 'legacy.sqlite');
     const raw = new DatabaseSync(path);
     raw.exec(
