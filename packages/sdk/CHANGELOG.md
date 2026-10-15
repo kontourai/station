@@ -46,6 +46,10 @@
   Station's own check for the reading caller). The orchestration contract's
   `OrchestrationPeerPendingRequest` and the attention contract's
   `AttentionPeerRequestReference` carry the matching optional fields.
+- 05ac05a: `interruptDelegatedTask` results carry an optional `interruptOutcome`, the
+  outcome the Station that ran the stop derived (`InterruptTurnResult['outcome']`).
+  `no-active-turn` means nothing was interrupted, for example because the
+  requested `turnId` was not the running turn.
 - 971eba6: `DelegatedTaskEvent` usage entries now carry the remaining canonical
   `token-usage.updated` fields (#225): `cacheWriteTokens5m`,
   `cacheWriteTokens1h`, `serviceTier` (opaque provider text, at most 64
@@ -85,6 +89,12 @@
   priced, and the new optional `MonitoringMetric.unpricedCount` counts the
   completions it leaves out.
 - eee7f74: Expose source-qualified marketplace selections, persisted source management, provider catalog boundaries and SDK query/mutation hooks. Installed skills retain source and package digest provenance.
+- 8b5b785: A send's delivery can be looked up by its idempotency key. Contracts add
+  `TurnDeliveryInspection` (`not-received`, `received`, `started`,
+  `indeterminate`, `expired`, `unknown`), an optional client key on send-turn
+  input and an optional `clientTurnId` on `turn.started`. The SDK adds
+  `getTurnDelivery(apiBase, conversationId, clientTurnId, { projectSlug? })`, a
+  read-only lookup; a Station without it answers `404`, surfaced as a refusal.
 - 91ec8af: Validate plugin command declarations in both manifest formats and publish them in the installed-plugin inventory. A ready installation's record now carries `commands` and an opaque `installationGeneration` that a command request echoes back; install previews list each command as a `command` component. Declarations that fail validation are dropped and reported as `commandsRejected`; the plugin still loads.
 - d3e3396: Expose optional pull-request context `pushTargetOwner` and branch mergeability `sourceOwner` so conflict indicators can distinguish forks with the same branch name.
 - 3accc1b: Support explicit receiver-owned engine overrides while preserving the authored Agent profile. Retain execution binding and definition expectations in handoff and reopen projections, expose bounded capability compatibility, and include engine/model/options intent in durable task-room request identity.
@@ -161,6 +171,7 @@
 - 2d235b6: Publish retained-source statistics and measurement coverage types, conservative observation allocation, and authority-scoped station operator usage queries. Keep unknown attribution and measurements explicit.
   
   Expose separate station-usage-query and usage-rollup-query entries so lazy usage views can avoid startup analytics coupling while preserving existing root exports.
+- Updated dependencies [59ff630]
 - Updated dependencies [31cac46]
 - Updated dependencies [c2c67c2]
 - Updated dependencies [2451a89]
@@ -190,6 +201,7 @@
 - Updated dependencies [971eba6]
 - Updated dependencies [c965c37]
 - Updated dependencies [eee7f74]
+- Updated dependencies [8b5b785]
 - Updated dependencies [db816d2]
 - Updated dependencies [8396b7b]
 - Updated dependencies [91ec8af]
@@ -209,6 +221,7 @@
 - Updated dependencies [2d235b6]
 - Updated dependencies [21f4fbc]
 - Updated dependencies [8f66f37]
+- Updated dependencies [884f77c]
 - Updated dependencies [971eba6]
 - Updated dependencies [f75829f]
 - Updated dependencies [a097632]

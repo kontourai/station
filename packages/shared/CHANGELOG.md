@@ -140,6 +140,16 @@
 
 ### Patch Changes
 
+- 59ff630: Three new retryable provider refusal codes: `provider_session_starting` (the
+  session was still starting when the wait ran out; nothing was sent),
+  `provider_session_start_failed` (the session could not start; nothing was
+  sent) and `client_turn_in_flight` (an earlier attempt with the same client
+  turn id still holds its key; retry with the same id). `ProviderSendTurnInput`
+  documents that its `signal` may only come from a server-owned stop, cancel,
+  deadline or shutdown, never from an HTTP request. The shared transcript
+  projection stamps a content run that no turn opened with its first event's
+  time, so a resumed session's replay sorts into place instead of after every
+  newer message.
 - 306ebf4: Add optional `clientInputId` to turn steering and an explicit indeterminate
   result so acknowledgement retries preserve one engine invocation. Add a
   per-device Return preference. Preserve nonterminal retry errors in the runtime
@@ -147,10 +157,20 @@
 - 2d235b6: Publish retained-source statistics and measurement coverage types, conservative observation allocation, and authority-scoped station operator usage queries. Keep unknown attribution and measurements explicit.
   
   Expose separate station-usage-query and usage-rollup-query entries so lazy usage views can avoid startup analytics coupling while preserving existing root exports.
+- 884f77c: `station start --temp-home` and `station fresh --temp-home` no longer fail
+  when run by an agent Station spawned. That agent's `TMPDIR` is
+  `<home>/tmp/engine-spawn`, so the temporary home either was refused as a
+  non-leaf instance path or, under a self-rooted parent home, was admitted into
+  a tree the parent reaps by age. A candidate under the `tmp/` tree of
+  `STATION_HOME` or the resolved Station root, or one the runtime-home guard
+  refuses, is now removed and the home is created under `/tmp/station` instead
+  (not on Windows). When that retry is refused too, the error reports both
+  refusals. `createStationTempDirSync` accepts an optional `root`.
 - 112beed: Add optional durable source sequence to usage receipts. Reconcile sparse cumulative observations in source order and transfer deduplicated logical receipts within the aggregate bound.
 - 67f8927: Follow literal Skill calls in bundled references outside the entry Skill directory.
   Called Skills and their bytes participate in dependency inspection and source
   review, while missing calls remain named gaps and reference cycles stay bounded.
+- Updated dependencies [59ff630]
 - Updated dependencies [31cac46]
 - Updated dependencies [c2c67c2]
 - Updated dependencies [7899c97]
@@ -176,6 +196,7 @@
 - Updated dependencies [971eba6]
 - Updated dependencies [c965c37]
 - Updated dependencies [eee7f74]
+- Updated dependencies [8b5b785]
 - Updated dependencies [8396b7b]
 - Updated dependencies [91ec8af]
 - Updated dependencies [91ec8af]

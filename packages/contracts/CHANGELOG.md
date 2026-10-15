@@ -4,6 +4,16 @@
 
 ### Minor Changes
 
+- 59ff630: Three new retryable provider refusal codes: `provider_session_starting` (the
+  session was still starting when the wait ran out; nothing was sent),
+  `provider_session_start_failed` (the session could not start; nothing was
+  sent) and `client_turn_in_flight` (an earlier attempt with the same client
+  turn id still holds its key; retry with the same id). `ProviderSendTurnInput`
+  documents that its `signal` may only come from a server-owned stop, cancel,
+  deadline or shutdown, never from an HTTP request. The shared transcript
+  projection stamps a content run that no turn opened with its first event's
+  time, so a resumed session's replay sorts into place instead of after every
+  newer message.
 - 31cac46: `tool.started` and `tool.completed` carry an optional `toolKind`
   (`EngineToolKind`, the Agent Client Protocol `ToolKind` vocabulary) when the
   engine reported one, and the shared transcript projection copies it onto the
@@ -118,6 +128,12 @@
 - c965c37: Add Station Knowledge to the built-in Station role alongside Control and Docs.
   Knowledge exposes scoped read/capture tools; platform index controls remain in Control.
 - eee7f74: Expose source-qualified marketplace selections, persisted source management, provider catalog boundaries and SDK query/mutation hooks. Installed skills retain source and package digest provenance.
+- 8b5b785: A send's delivery can be looked up by its idempotency key. Contracts add
+  `TurnDeliveryInspection` (`not-received`, `received`, `started`,
+  `indeterminate`, `expired`, `unknown`), an optional client key on send-turn
+  input and an optional `clientTurnId` on `turn.started`. The SDK adds
+  `getTurnDelivery(apiBase, conversationId, clientTurnId, { projectSlug? })`, a
+  read-only lookup; a Station without it answers `404`, surfaced as a refusal.
 - 8396b7b: `ModelOptionCapabilities` gains an optional `imageInput`: whether the engine
   reports that a model accepts image input. Absent means the runtime did not
   say. Station fills it for OpenCode models from OpenCode's own model listing, so
