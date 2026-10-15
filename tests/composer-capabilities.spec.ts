@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises';
+import { copyFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, type Page, type TestInfo } from '@playwright/test';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
@@ -355,7 +355,7 @@ async function evidence(page: Page, testInfo: TestInfo, name: string) {
   const directory = process.env.STATION_COMPOSER_EVIDENCE_DIR;
   if (directory) {
     await mkdir(directory, { recursive: true });
-    await page.screenshot({ path: join(directory, name) });
+    await copyFile(testInfo.outputPath(name), join(directory, name));
   }
 }
 
