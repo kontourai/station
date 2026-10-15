@@ -651,4 +651,54 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
     ).toBeTruthy();
     expect(screen.queryByText('Background agent working')).toBeNull();
   });
+
+  test('a resync that ends in blocked repair does not complete on a later reconnect', async () => {
+    transcriptStateMock.current.enabled = true;
+    transcriptStateMock.current.error = new Error('History unavailable');
+    transcriptStateMock.current.messages = [
+      { role: 'user', content: 'hi', timestamp: 1 },
+    ] as any;
+    let release!: () => void;
+    transcriptStateMock.current.reload.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    renderDock(buildSession());
+    await screen.findByRole('textbox');
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /Status unavailable — resync/,
+      }),
+    );
+    await screen.findByRole('button', { name: /Resyncing conversation/ });
+    document.body.tabIndex = -1;
+    act(() => document.body.focus());
+    document.body.removeAttribute('tabindex');
+
+    act(() =>
+      setStreamConnectionState(
+        'http://localhost:3242',
+        'interrupted',
+        Date.now() - 3000,
+      ),
+    );
+    await screen.findByRole('button', { name: 'Reconnecting' });
+    act(() => setStreamConnectionState('http://localhost:3242', 'closed'));
+    await screen.findByRole('button', { name: /Check connection/ });
+    await act(async () => {
+      transcriptStateMock.current.error = null;
+      release();
+    });
+    // A later, unrelated reconnect is not completion of the failed recovery.
+    act(() => setStreamConnectionState('http://localhost:3242', 'caught-up'));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: /Check connection/ }),
+      ).toBeNull(),
+    );
+    expect(screen.queryByText(/Conversation resynced/)).toBeNull();
+    expect(document.activeElement).toBe(document.body);
+  });
 });
