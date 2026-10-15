@@ -10,12 +10,23 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { EphemeralMessage as StoredNotice } from '../../../contexts/active-chats-state';
 
-type Store = import('../../../contexts/active-chats-store').ActiveChatsStore;
-type Handlers = typeof import('../../../hooks/orchestration/childWorkHandlers');
+import { activeChatsStore } from '../../../contexts/active-chats-store';
+import * as handlers from '../../../hooks/orchestration/childWorkHandlers';
+
+vi.mock('../../../contexts/active-chats-store', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../../contexts/active-chats-store')
+    >();
+  return {
+    ...actual,
+    activeChatsStore: new actual.ActiveChatsStore({
+      storage: { getItem: () => null, setItem: () => {} },
+    }),
+  };
+});
 
 const threadId = 'thread-notice-1';
-let activeChatsStore: Store;
-let handlers: Handlers;
 
 /** The settle a Claude backgrounded Bash produces (see the adapter fixture
  * `claude-2.1.281-background-bash.jsonl`): its summary quotes the title. */
@@ -54,20 +65,8 @@ async function renderNotice(notice: StoredNotice) {
   return within(view.container).getByTestId('background-task-notice');
 }
 
-beforeEach(async () => {
+beforeEach(() => {
   vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => {} });
-  vi.resetModules();
-  vi.doMock('../../../contexts/active-chats-store', async () => {
-    const actual = await vi.importActual<
-      typeof import('../../../contexts/active-chats-store')
-    >('../../../contexts/active-chats-store');
-    const store = new actual.ActiveChatsStore({
-      storage: { getItem: () => null, setItem: () => {} },
-    });
-    return { ...actual, activeChatsStore: store };
-  });
-  ({ activeChatsStore } = await import('../../../contexts/active-chats-store'));
-  handlers = await import('../../../hooks/orchestration/childWorkHandlers');
   activeChatsStore.initChat(threadId, {
     agentSlug: 'claude-agent',
     agentName: 'Claude',
@@ -77,9 +76,9 @@ beforeEach(async () => {
 
 afterEach(() => {
   cleanup();
+  activeChatsStore.removeChat(threadId);
+  activeChatsStore.flushPendingSave();
   vi.unstubAllGlobals();
-  vi.doUnmock('../../../contexts/active-chats-store');
-  vi.resetModules();
 });
 
 describe('background task settle notice', () => {
