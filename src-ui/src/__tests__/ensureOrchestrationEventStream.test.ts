@@ -14,6 +14,7 @@
  * only the sibling event-handler modules so application can be counted.
  */
 import { notifyCredentialChanged } from '@kontourai/station-sdk';
+import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { handleOrchestrationEvent, settleSemanticDeliveryBuffer } = vi.hoisted(
@@ -261,6 +262,17 @@ describe('ensureOrchestrationEventStream — turn provenance sibling (station#14
 // hand, so these prove the refresh logic only. That production supplies one —
 // `ChatDock` registering its `useQueryClient()` — is proven through the real
 // mount in `ChatWorkspacePaneStreamQueryClient.test.tsx` (#2307).
+/** A real QueryClient whose invalidations are observable. */
+function spiedClient(): {
+  client: QueryClient;
+  invalidateQueries: ReturnType<typeof vi.spyOn>;
+} {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return { client, invalidateQueries: vi.spyOn(client, 'invalidateQueries') };
+}
+
 describe('ensureOrchestrationEventStream — session read-model refresh (helper-level, injected QueryClient)', () => {
   beforeEach(() => {
     handleOrchestrationEvent.mockReset();
@@ -288,7 +300,7 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
   }
 
   it('invalidates the shared session read-model when a session-ending event arrives', async () => {
-    const invalidateQueries = vi.fn();
+    const { client, invalidateQueries } = spiedClient();
     vi.stubGlobal(
       'fetch',
       vi
@@ -302,7 +314,7 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
 
     ensureOrchestrationEventStream(
       'https://ensure-orchestration-readmodel.example.test',
-      { invalidateQueries } as never,
+      client,
     );
     await vi.waitFor(() =>
       expect(handleOrchestrationEvent).toHaveBeenCalledTimes(1),
@@ -315,7 +327,7 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
   });
 
   it('uses the shared client when a projection-update stream started without one', async () => {
-    const invalidateQueries = vi.fn();
+    const { client, invalidateQueries } = spiedClient();
     let resolveResponse: ((response: Response) => void) | undefined;
     vi.stubGlobal(
       'fetch',
@@ -330,7 +342,7 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
       'https://ensure-orchestration-projection-fallback.example.test';
     ensureOrchestrationEventStream(origin);
     await vi.waitFor(() => expect(resolveResponse).toBeTypeOf('function'));
-    ensureOrchestrationEventStream(origin, { invalidateQueries } as never);
+    ensureOrchestrationEventStream(origin, client);
     resolveResponse?.(
       openSseResponseWithOneFrame(
         'event: orchestration:session-projection-updated\ndata: {"threadId":"claude:1"}\n\n',
@@ -347,7 +359,7 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
   // stream — e.g. the previous authority's, still alive after a switch — must
   // not write into it.
   it("never refreshes a client registered for a different apiBase's stream", async () => {
-    const invalidateQueries = vi.fn();
+    const { client: boundClient, invalidateQueries } = spiedClient();
     const boundOrigin = 'https://ensure-orchestration-bound.example.test';
     const unboundOrigin = 'https://ensure-orchestration-unbound.example.test';
     vi.stubGlobal(
@@ -364,9 +376,7 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
             : new Promise<Response>(() => undefined),
         ),
     );
-    ensureOrchestrationEventStream(boundOrigin, {
-      invalidateQueries,
-    } as never);
+    ensureOrchestrationEventStream(boundOrigin, boundClient);
     ensureOrchestrationEventStream(unboundOrigin);
     await vi.waitFor(() =>
       expect(handleOrchestrationEvent).toHaveBeenCalledTimes(1),
@@ -378,7 +388,7 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
   // #2307: a docked and a full-screen Chat can both be mounted on one
   // authority's client; closing one must not unregister the other.
   it('keeps refreshing while another registration of the same client is live', async () => {
-    const invalidateQueries = vi.fn();
+    const { client, invalidateQueries } = spiedClient();
     let resolveResponse: ((response: Response) => void) | undefined;
     vi.stubGlobal(
       'fetch',
@@ -390,7 +400,6 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
       ),
     );
     const origin = 'https://ensure-orchestration-two-docks.example.test';
-    const client = { invalidateQueries } as never;
     const releaseFirst = ensureOrchestrationEventStream(origin, client);
     ensureOrchestrationEventStream(origin, client);
     releaseFirst();
@@ -408,7 +417,7 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
   });
 
   it('leaves the read-model alone for ordinary streaming frames', async () => {
-    const invalidateQueries = vi.fn();
+    const { client, invalidateQueries } = spiedClient();
     vi.stubGlobal(
       'fetch',
       vi
@@ -422,7 +431,7 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
 
     ensureOrchestrationEventStream(
       'https://ensure-orchestration-readmodel-quiet.example.test',
-      { invalidateQueries } as never,
+      client,
     );
     await vi.waitFor(() =>
       expect(handleOrchestrationEvent).toHaveBeenCalledTimes(1),
@@ -436,7 +445,7 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
   // some other session's terminal event must be deferred, not dropped, or the
   // promotion stays unseen until an unrelated refetch.
   it('re-reads the read-model on turn.started, deferring one that lands inside the window', async () => {
-    const invalidateQueries = vi.fn();
+    const { client, invalidateQueries } = spiedClient();
     vi.stubGlobal(
       'fetch',
       vi
@@ -451,7 +460,7 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
 
     ensureOrchestrationEventStream(
       'https://ensure-orchestration-readmodel-first-turn.example.test',
-      { invalidateQueries } as never,
+      client,
     );
     await vi.waitFor(() =>
       expect(handleOrchestrationEvent).toHaveBeenCalledTimes(2),
@@ -468,7 +477,7 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
   });
 
   it('re-reads the read-model on a lone turn.started', async () => {
-    const invalidateQueries = vi.fn();
+    const { client, invalidateQueries } = spiedClient();
     vi.stubGlobal(
       'fetch',
       vi
@@ -482,12 +491,159 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
 
     ensureOrchestrationEventStream(
       'https://ensure-orchestration-readmodel-lone-turn.example.test',
-      { invalidateQueries } as never,
+      client,
     );
     await vi.waitFor(() =>
       expect(invalidateQueries).toHaveBeenCalledWith({
         queryKey: ['orchestration-sessions'],
       }),
     );
+  });
+
+  /** An open SSE response the test pushes frames into over time. */
+  function pushableSseResponse(): {
+    response: Response;
+    push: (frame: string) => void;
+  } {
+    let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        start(value) {
+          controller = value;
+        },
+      }),
+      { headers: { 'Content-Type': 'text/event-stream' } },
+    );
+    return {
+      response,
+      push: (frame) => controller?.enqueue(new TextEncoder().encode(frame)),
+    };
+  }
+
+  const projectionFrame =
+    'event: orchestration:session-projection-updated\ndata: {"threadId":"codex:busy"}\n\n';
+
+  /**
+   * The read-model observed the way the inbox observes it, with a read that
+   * takes `readMs` — a megabyte over a remote link to a busy Station.
+   */
+  function observeSlowReadModel(client: QueryClient, readMs: number) {
+    // `kept` counts answers that reached the cache: a cancelled read still
+    // finishes on the wire (the fetcher has no abort path) but is discarded.
+    const reads = { started: 0, landed: 0, kept: 0 };
+    const observer = new QueryObserver(client, {
+      queryKey: ['orchestration-sessions'],
+      queryFn: async () => {
+        reads.started += 1;
+        const read = reads.started;
+        await new Promise((resolve) => setTimeout(resolve, readMs));
+        reads.landed += 1;
+        return read;
+      },
+      staleTime: Number.POSITIVE_INFINITY,
+    });
+    let lastData: number | undefined;
+    const stop = observer.subscribe((result) => {
+      if (result.data !== undefined && result.data !== lastData) {
+        lastData = result.data;
+        reads.kept += 1;
+      }
+    });
+    return { observer, reads, stop };
+  }
+
+  it('lets a slow read land while projection updates keep arriving, instead of restarting it on every update', async () => {
+    const { client } = spiedClient();
+    const stream = pushableSseResponse();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(stream.response));
+    const origin = 'https://ensure-orchestration-slow-read-model.example.test';
+    const model = observeSlowReadModel(client, 3_000);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(model.observer.getCurrentResult().data).toBe(1);
+
+    ensureOrchestrationEventStream(origin, client);
+    // A busy Station: a projection update every 400ms for 12 seconds.
+    for (let tick = 0; tick < 30; tick += 1) {
+      stream.push(projectionFrame);
+      await vi.advanceTimersByTimeAsync(400);
+    }
+    await vi.advanceTimersByTimeAsync(4_000);
+
+    // Every read that started was kept — none was cancelled and discarded —
+    // and the inbox moved on from the snapshot it had before the updates.
+    // (`kept` also counts the first read, which landed before the updates.)
+    expect(model.reads.kept).toBe(model.reads.started);
+    expect(model.reads.started).toBeGreaterThanOrEqual(3);
+    // Single flight: never more reads than the 3s read time allows, rather
+    // than one per update (30) or one per throttle window (12).
+    expect(model.reads.started).toBeLessThanOrEqual(6);
+    expect(model.observer.getCurrentResult().data).toBe(model.reads.started);
+    model.stop();
+  });
+
+  it('re-reads once more after an in-flight read when an update arrived during it', async () => {
+    const { client } = spiedClient();
+    const stream = pushableSseResponse();
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(stream.response));
+    const origin = 'https://ensure-orchestration-owed-read-model.example.test';
+    const model = observeSlowReadModel(client, 3_000);
+    await vi.advanceTimersByTimeAsync(3_000);
+
+    ensureOrchestrationEventStream(origin, client);
+    stream.push(projectionFrame);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(model.reads.started).toBe(2);
+    // The update that matters (say, a conversation started on a phone)
+    // arrives while that read is still in flight. It must not be lost.
+    stream.push(projectionFrame);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(model.reads.started).toBe(3);
+    expect(model.observer.getCurrentResult().data).toBe(3);
+    // Nothing further is owed, so nothing further is read.
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(model.reads.started).toBe(3);
+    model.stop();
+  });
+
+  it("a stream for a Station without a client never holds the live Station's refresh", async () => {
+    const { client, invalidateQueries } = spiedClient();
+    const live = pushableSseResponse();
+    const stale = pushableSseResponse();
+    const liveOrigin = 'https://ensure-orchestration-live-station.example.test';
+    const staleOrigin =
+      'https://ensure-orchestration-switched-away.example.test';
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockImplementation((input: RequestInfo | URL) =>
+          Promise.resolve(
+            String(input).startsWith(staleOrigin)
+              ? stale.response
+              : live.response,
+          ),
+        ),
+    );
+    ensureOrchestrationEventStream(liveOrigin, client);
+    // The Station the user switched away from: its stream keeps running, and
+    // nothing is registered to receive its refreshes.
+    ensureOrchestrationEventStream(staleOrigin);
+
+    live.push(projectionFrame);
+    await vi.advanceTimersByTimeAsync(100);
+    stale.push(projectionFrame);
+    await vi.advanceTimersByTimeAsync(100);
+    live.push(projectionFrame);
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    // The live Station's second update is deferred to the end of ITS window
+    // and lands; the other Station's frame does not consume it.
+    expect(
+      invalidateQueries.mock.calls.filter(
+        ([filters]: unknown[]) =>
+          JSON.stringify((filters as { queryKey?: unknown }).queryKey) ===
+          JSON.stringify(['orchestration-sessions']),
+      ),
+    ).toHaveLength(2);
   });
 });

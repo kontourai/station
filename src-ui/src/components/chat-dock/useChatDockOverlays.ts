@@ -63,6 +63,9 @@ export function useChatDockOverlays({
   const [newChatInitialPrompt, setNewChatInitialPrompt] = useState<
     string | undefined
   >();
+  const [newChatInitialFiles, setNewChatInitialFiles] = useState<
+    File[] | undefined
+  >();
   const newChatOnClosed = useRef<
     ((outcome: NewChatClosedOutcome, draft?: string) => void) | undefined
   >(undefined);
@@ -90,6 +93,7 @@ export function useChatDockOverlays({
       newChatDraftText.current = undefined;
       newChatOnClosed.current = open ? options?.onClosed : undefined;
       setNewChatInitialPrompt(open ? options?.initialPrompt : undefined);
+      setNewChatInitialFiles(open ? options?.initialFiles : undefined);
       setNewChatStartWithDefault(open && options?.startWithDefault === true);
       setNewChatSelection(open ? options?.selection : undefined);
       setNewChatHandoff(open ? options?.handoff : undefined);
@@ -182,6 +186,7 @@ export function useChatDockOverlays({
     newChatRequestEpoch,
     newChatStartWithDefault,
     newChatInitialPrompt,
+    newChatInitialFiles,
     newChatSelection,
     newChatHandoff,
     newChatSelectionInvalid,

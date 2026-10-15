@@ -4195,6 +4195,24 @@ The [channel adapter](../../packages/connect/src/core/applicationChannel.ts)
 and [credential resolver](../../packages/sdk/src/client/http.ts) show where
 framing ends and the application's authority checks begin.
 
+## Session read-model deadline
+
+`fetchOrchestrationSessions(apiBase?)` reads the session read-model with an
+explicit 30-second timeout for receiving headers, then a 30-second inactivity
+timeout while consuming the JSON body. Each nonempty chunk resets the inactivity
+timeout, so a slow response can take longer than 30 seconds while progressing.
+A five-minute total cap also bounds responses that keep trickling bytes. This
+allows over seven times the observed ~41-second healthy read on a slow tailnet
+link. Either bound rejects with
+`StationRequestTimeoutError`, allowing the stream's owed refresh to run after the query settles; existing cached sessions remain available
+during retries. The opt-in `authenticatedFetch` option `progressTimeoutMs`
+supersedes the configured total request deadline for this call, while retaining
+the five-minute cap. Both timeout paths preserve cancellation from a `Request`
+input and an explicit `init.signal`. This per-read bound does not
+enable a global browser deadline for uploads or installs. See the
+[fetcher](../../packages/sdk/src/query-domains/chatRuntimeOrchestration.ts) and
+[deadline transport](../../packages/sdk/src/client/http.ts).
+
 ## Orchestration approval deadlines
 
 Orchestration command failures retain HTTP status even when the response omits
