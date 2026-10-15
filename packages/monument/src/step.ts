@@ -27,6 +27,7 @@ import {
   DEFAULT_KERNEL_LIMITS,
   type KernelContext,
   type KernelLimits,
+  type KernelTerminalFacts,
   type KernelTransaction,
 } from './port.js';
 
@@ -92,14 +93,16 @@ function runKernelCommand<C extends KernelCommand>(
   command: C,
   context: KernelContext,
   tx: KernelTransaction,
+  facts?: KernelTerminalFacts,
 ): KernelResults[C['type']] {
-  return dispatch(command, context, tx) as KernelResults[C['type']];
+  return dispatch(command, context, tx, facts) as KernelResults[C['type']];
 }
 
 function dispatch(
   command: KernelCommand,
   context: KernelContext,
   tx: KernelTransaction,
+  facts?: KernelTerminalFacts,
 ): KernelResults[KernelCommand['type']] {
   const limits = resolveKernelLimits(context.limits);
   // One probe per process within a command, however many rows it reads.
@@ -216,7 +219,9 @@ function dispatch(
         current ? tx.turnBoundary.listThread(current.threadId) : [],
         current !== undefined &&
           command.providerTurnId !== undefined &&
-          tx.turnTerminals.has(current.threadId, command.providerTurnId),
+          (facts
+            ? facts.terminalSeen(current.threadId, command.providerTurnId)
+            : tx.turnTerminals.has(current.threadId, command.providerTurnId)),
       );
       const decision = decideTurnBoundaryTransition(
         current,
@@ -236,11 +241,14 @@ function dispatch(
       return decision.result;
     }
     case 'turnBoundary.observeTerminal': {
-      if (command.providerTurnId !== undefined)
+      if (command.providerTurnId !== undefined && !facts)
         tx.turnTerminals.add(command.threadId, command.providerTurnId);
       const decision = decideTurnBoundaryObserveTerminal(
         tx.turnBoundary.listThread(command.threadId),
         command,
+        command.sessionTerminal
+          ? facts?.terminalSequence?.(command.threadId, command.terminalEventId)
+          : undefined,
       );
       for (const boundaryId of decision.retire)
         tx.turnBoundary.delete(boundaryId);
@@ -270,7 +278,7 @@ function dispatch(
       for (const row of tx.turnBoundary.listThread(command.threadId))
         if (row.state !== 'lifecycle') tx.turnBoundary.delete(row.boundaryId);
       // Terminal facts retire with the thread's boundaries (see README).
-      tx.turnTerminals.deleteThread(command.threadId);
+      if (!facts) tx.turnTerminals.deleteThread(command.threadId);
       return { kind: 'applied' };
     }
 
@@ -391,6 +399,7 @@ export function runKernelTransactionStep<C extends KernelCommand, Host>(
   tx: KernelTransaction,
   participants: readonly CommitParticipant<Host>[],
   host: Host,
+  facts?: KernelTerminalFacts,
 ): KernelResult<C> {
   const readOnly = isReadOnlyKernelCommand(command);
   const joined = readOnly
@@ -405,7 +414,7 @@ export function runKernelTransactionStep<C extends KernelCommand, Host>(
         reason: verdict.refuse,
       } satisfies ParticipantRefusal;
   }
-  const result = runKernelCommand(command, context, tx);
+  const result = runKernelCommand(command, context, tx, facts);
   for (const participant of joined)
     participant.commit?.({ command, result }, host);
   return result;

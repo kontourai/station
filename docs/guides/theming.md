@@ -78,7 +78,11 @@ current stage text; labels use Hanken Grotesk and a small entrance transition.
 There is no timer-driven sequence of invented loading stages. Reduced motion
 uses the completed static lockup and track; hidden windows pause painting, and
 unmount removes the frame and observers. Route-level waits still use the state
-primitives. The imagery remains the committed Station mark; this splash choice
+primitives. The imagery remains the committed Station mark, in the install's channel
+colours: the host reports the channel only after the app loads, so
+[startup-theme.js](../../src-ui/public/startup-theme.js) applies the mark the
+install last reported before first paint (a first launch shows the stable
+mark until the report arrives); this splash choice
 does not finalize the broader Kontour wordmark decision.
 
 The native OS launch surface follows OS appearance; it cannot read the

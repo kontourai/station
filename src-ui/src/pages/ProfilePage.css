@@ -202,15 +202,12 @@
   background: var(--k-brand);
 }
 
-.profile-usage-graph__label {
-  max-width: 100%;
-  font-size: 0.65rem;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.profile-usage-graph__axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: var(--k-space-2);
+  font-size: var(--k-text-xs);
+  color: var(--k-text-muted);
 }
 
 .profile-usage-graph__usage-bars {
@@ -412,19 +409,6 @@
 
   .profile-usage-graph__bars {
     gap: 0.45rem;
-  }
-
-  .profile-usage-graph__label {
-    visibility: hidden;
-  }
-
-  .profile-usage-graph__column:nth-child(4n + 1) .profile-usage-graph__label,
-  .profile-usage-graph__column:last-child .profile-usage-graph__label {
-    visibility: visible;
-  }
-
-  .profile-usage-graph__column:nth-last-child(2) .profile-usage-graph__label {
-    visibility: hidden;
   }
 
   .profile-stats-grid {

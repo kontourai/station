@@ -1,0 +1,7 @@
+{
+  "revision": "3843b2f367569eb0c183374252017037e8e638e6",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed final approval flow at HEAD: accepted request remains in the event-backed sheet lookup and Check status performs SDK inspection despite answeredApprovals; pending inspection clears optimism; shared sent receipts survive remounts while retained, confirmed receipts can age out at 256 without evicting uncertainty, and live resolved events retire receipts even without an open chat. 106 focused tests and browser geometry/recovery passed; implementer and independent capacity fault injections caught intended regressions and restored green. Live timeout cause is separately observed brian-media overload; no deployment/provider delivery claim.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/chat/ToolCallDisplay.tsx","src-ui/src/hooks/orchestration/answerRequest.ts","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

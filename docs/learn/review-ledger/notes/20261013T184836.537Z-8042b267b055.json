@@ -1,0 +1,7 @@
+{
+  "revision": "3e1e8a94bd2f66cb6b04e2bf1ad3ecd084287bd5",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Reviewed the public-site source boundary against corpus.json and the Pages workflow. Only the root manifest name changes; public allowlist and bundle-only manual remain unchanged.","inputs":["docs/README.md","docs/guides/documentation.md"]}
+  ]
+}

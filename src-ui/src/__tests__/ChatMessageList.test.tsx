@@ -1218,7 +1218,7 @@ describe('ChatMessageList', () => {
       const writeText = clipboardWrites();
       renderAssistantRow();
 
-      fireEvent.click(screen.getByRole('button', { name: 'Copy message' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Copy answer' }));
 
       expect(writeText).toHaveBeenCalledWith('the answer');
       await waitFor(() =>
@@ -1230,7 +1230,7 @@ describe('ChatMessageList', () => {
       clipboardRefuses();
       renderAssistantRow();
 
-      fireEvent.click(screen.getByRole('button', { name: 'Copy message' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Copy answer' }));
 
       await waitFor(() =>
         expect(showToastMock).toHaveBeenCalledWith(COPY_TOAST_FAILURE),
@@ -1242,7 +1242,7 @@ describe('ChatMessageList', () => {
       clipboardAbsent();
       renderAssistantRow();
 
-      fireEvent.click(screen.getByRole('button', { name: 'Copy message' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Copy answer' }));
 
       await waitFor(() =>
         expect(showToastMock).toHaveBeenCalledWith(COPY_TOAST_FAILURE),

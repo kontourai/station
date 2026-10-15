@@ -12,6 +12,7 @@ const SOURCE_ROOT = path.resolve(import.meta.dirname, '..');
  */
 const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'debug', // Development-only logger bootstrap flag, not a product preference.
+  'station.transcriptTrace.overlay', // Opt-in transcript layout tracer's debug overlay toggle (only read while the `app:transcript-layout` debug namespace is on); developer tooling, not a product preference.
   'lastProject', // Navigation restore pointer to the last visited project.
   'lastProjectLayout', // Navigation restore pointer to the last visited layout.
   'recentAgents', // Derived MRU used for picker ordering, not a setting.
@@ -41,6 +42,7 @@ const ALLOWED_RAW_LOCAL_STORAGE_KEYS = [
   'theme', // Read-only first-paint compatibility path; migrated and deleted by the envelope.
   'station-accent-color', // Read-only first-paint compatibility path; migrated and deleted by the envelope.
   'station-branding-theme-v1', // Validated branding cache for first paint; re-validated on read. Server data, not a device setting.
+  'station-startup-mark', // The channel mark the native host last reported, so startup-theme.js can paint the splash before the report arrives. Host identity, not a setting.
 ] as const;
 
 // Known accepted limitation ( 2, accepted-with-rationale): this is

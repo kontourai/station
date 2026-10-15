@@ -1,0 +1,7 @@
+{
+  "revision": "4bc60df6872e59361724c6572a56d6239ab95350",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Corpus pin moved 340b66f→08c62cc (v1 manifests refused, decisions gate). PR: Docs kit is still an advisory corpus check on PRs, merge-queue and main; the text names no pin, and Station has no decisions block, so the claims stand. Verified corpus check/--base/build pass at both pins on this checkout.","inputs":["docs/guides/documentation.md",".github/workflows/docs-kit.yml"]}
+  ]
+}

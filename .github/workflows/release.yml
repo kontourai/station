@@ -801,6 +801,7 @@ jobs:
       - run: node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --output "$RUNNER_TEMP/tauri.release.conf.json"
       - working-directory: src-desktop
         run: npx tauri ios init --ci --skip-targets-install --config "$RUNNER_TEMP/tauri.release.conf.json"
+      - run: node scripts/write-ios-build-manifest.mjs --config "$RUNNER_TEMP/tauri.release.conf.json"
       - working-directory: src-desktop
         run: rm -rf gen/apple/build && npx tauri ios build --target aarch64-sim --no-sign --ci --config "$RUNNER_TEMP/tauri.release.conf.json"
       - name: Verify and package simulator artifact
@@ -809,6 +810,7 @@ jobs:
           test -n "$simulator_app"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$simulator_app/Info.plist")" = "$RELEASE_VERSION"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$simulator_app/Info.plist")" = "$IOS_BUNDLE_VERSION"
+          node scripts/ios-channel-icons.mjs verify '${{ needs.preflight.outputs.channel == 'preview' && 'beta' || 'stable' }}' --app "$simulator_app" --receipt "$RUNNER_TEMP/ios-simulator-icon-receipt.json"
           mkdir release-assets
           tar -C "$(dirname "$simulator_app")" -czf "release-assets/station-${RELEASE_TAG}-ios-simulator.app.tar.gz" "$(basename "$simulator_app")"
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2

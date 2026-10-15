@@ -312,6 +312,8 @@ describe('bounded ci:fast runner', () => {
       ['npm', ['run', 'docs:public:hygiene']],
       ['npm', ['run', 'docs:issue-lifecycle:check']],
       ['npm', ['run', 'docs:public:contract-examples']],
+      // The Corpus decision registry and the numbered-ADR freeze.
+      ['npm', ['run', 'check:decisions']],
       // The git-ignored Basis MCP app bundles are generated, not checked:
       // nothing is tracked, so the only freshness question is "does the
       // generator succeed on this tree", and the typecheck aggregate below

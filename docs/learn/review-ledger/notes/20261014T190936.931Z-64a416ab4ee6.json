@@ -1,0 +1,7 @@
+{
+  "revision": "3d96ef1053aec36aeae3167b317486c2e4975afd",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Review round on the same change. Re-read the reservation and short-dock claims against ChatInputArea.tsx: the composer still reserves a two-line draft and the short-dock yielding order is unchanged; the reservation now also ignores out-of-flow siblings (absolute/fixed, such as the dock's hidden status region), which the doc does not enumerate. chat.css adds only a horizontal inset to the dock's own wait rows. No prose change needed.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx","src-ui/src/__tests__/ChatInputArea.test.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

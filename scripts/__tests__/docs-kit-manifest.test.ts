@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { loadPublicDocs } from '../build-github-pages.mjs';
 import { readStationDocsInputs } from '../generate-station-docs.mjs';
 
-// docs-kit.json feeds the docs-bundle.json that pages.yml publishes beside
+// corpus.json feeds the docs-bundle.json that pages.yml publishes beside
 // Station's own Pages site, so its published documents must be exactly the
 // pages that site renders: the bundle's docs/<path>.html URLs point at them.
 // Its topics mirror the shipped Station Docs MCP topics, so the shared docs
@@ -21,7 +21,7 @@ interface ShippedTopic {
 }
 
 function readManifest() {
-  return JSON.parse(readFileSync('docs-kit.json', 'utf8'));
+  return JSON.parse(readFileSync('corpus.json', 'utf8'));
 }
 
 async function shippedManualTopics() {
@@ -82,7 +82,7 @@ describe('docs-kit manifest', () => {
 
   it('identifies Station and lands on the README', () => {
     expect(readManifest()).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       product: 'station',
       repo: 'kontourai/station',
       landing: 'README.md',

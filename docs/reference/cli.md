@@ -142,7 +142,7 @@ Current command availability, with background in the [CLI product design](../des
 
 | Tier | Verbs | Bundled `station` | `./station` |
 |------|-------|-------------------|-------------|
-| Client | `chat`, `agents`, `sessions`, `approvals`, `operate`, `projects`, `tasks`, `skills`, every surface verb, `registry`, `stations`, `target`, `triage`, `setup existing`/`hosted`, `config`, `checkpoints`, `export`/`import`, `plugin`, `environment access request` | yes | yes |
+| Client | `chat`, `agents`, `sessions`, `approvals`, `operate`, `projects`, `tasks`, `skills`, every surface verb, `registry`, `stations`, `target`, `triage`, `setup existing`/`hosted`, `config`, `checkpoints`, `export`/`import`, `plugin`, `environment access request`, `environment access devices`/`scope`/`revoke`/`remove` (explicit administration grant) | yes | yes |
 | Host-local | `open`, `doctor`, `environment show`, `environment credential show`, `environment offer`, `environment access list`/`approve`/`deny`, `environment operator passkeys`, `service status`/`start`/`stop` | yes, existing local installation required for local authority | yes |
 | Host mutation | `environment credential rotate`, `environment reset`, `environment peers`, service install/uninstall | repository launcher required | yes |
 | Contributor | `build`, `dev`, `fresh`, `home`, `link`, `shortcut`, `start`, `stop`, `upgrade` | fails, naming `./station <command>` | yes |
@@ -2130,7 +2130,7 @@ station start [--port=<n>] [--ui-port=<n>] [--host=<address>] [--clean] [--force
 | `--watch` | — | Development mode: server under `tsx watch`, UI as the Vite dev server proxying to it; loopback only, builds nothing. See [Development](../guides/development.md#running-a-second-station-in-development-mode) |
 | `--home=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | Runtime home for this instance — isolated **and** persistent. It never changes shared profiles; cannot be combined with `--temp-home` or `--base` |
 | `--base=<dir>` | current `STATION_HOME` or `<STATION_ROOT>/instances/<channel>` | The same runtime-only setting as `--home` |
-| `--temp-home` | — | Create and use a temporary home under the system temp directory |
+| `--temp-home` | — | Create and use a temporary home under the system temp directory (`TMPDIR`). If that candidate is under the `tmp/` tree of `STATION_HOME` or the resolved Station root (an agent Station spawns has `TMPDIR=<home>/tmp/engine-spawn`, which Station reaps by age), or is refused as a runtime home, it is removed and the home is created under `/tmp/station` instead; a refused retry is reported with the original refusal. On Windows the refusal stands |
 | `--instance=<name>` | derived from `{cwd, base, ports}` | Stable instance name for targeted stop/restart flows |
 | `--features=<flags>` | — | Comma-separated feature flags (e.g. `strands-runtime`) |
 | `--log[=<path>]` | `/tmp/station-server.log` | Redirect server stdout/stderr to a log file |
@@ -2287,11 +2287,11 @@ station environment operator passkeys revoke <passkey-id> [--api-base=<loopback-
 station environment access list [--api-base=<loopback-url>|--station=<name>]
 station environment access approve [<request-id-or-offer-id>|--latest] [--scope=<scope,…>] [--force] [--bind-person|--bind-account|--personal-device] [--api-base=<loopback-url>|--station=<name>]
 station environment access deny [<request-id-or-offer-id>|--latest] [--force] [--api-base=<loopback-url>|--station=<name>]
-station environment access devices [--json] [--api-base=<loopback-url>|--station=<name>]
-station environment access scope <device-id|id-prefix|name> (--add=<scope,…>|--remove=<scope,…>|--set=<scope,…>) [--dry-run] [--api-base=<loopback-url>|--station=<name>]
+station environment access devices [--json] [--api-base=<url>|--station=<name>]
+station environment access scope <device-id|id-prefix|name> (--add=<scope,…>|--remove=<scope,…>|--set=<scope,…>) [--dry-run] [--api-base=<url>|--station=<name>]
 station environment access scopes [--json]
-station environment access revoke <device-id|id-prefix|name> [--force] [--api-base=<loopback-url>|--station=<name>]
-station environment access remove <device-id|id-prefix|name> [--force] [--api-base=<loopback-url>|--station=<name>]
+station environment access revoke <device-id|id-prefix|name> [--force] [--api-base=<url>|--station=<name>]
+station environment access remove <device-id|id-prefix|name> [--force] [--api-base=<url>|--station=<name>]
 station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
 station environment hosts [--api-base=<url>]
 station environment list [--api-base=<url>]
@@ -2315,7 +2315,8 @@ station environment peers remove <environment-id>
   issued Device credentials remain valid until separately revoked or the
   environment is reset. Rotation also prints the replacement bootstrap
   credential; protect its output in the same way as `credential show`.
-- `environment reset` rotates both the environment ID and credential. It prints
+- `environment reset` rotates both the environment ID and credential, and
+  revokes every paired device and personal access token. It prints
   only non-secret reset metadata; run the explicit credential show command to
   bootstrap a client afterward.
 - `environment offer` discovers the active local Station through its
@@ -2355,8 +2356,17 @@ station environment peers remove <environment-id>
   `approve --scope=<scope,…>` keeps only those of the requested scopes; it can
   only narrow the request, and cannot be combined with `--bind-account`.
   Without `--scope`, the device gets what it asked for.
-- `access devices`/`scope`/`scopes` manage what each paired device may do, on
-  the same host-only operator channel (#1796). `access devices` lists the live
+- `access devices`/`scope` manage what each paired device may do. A local
+  operator uses the proved host channel; a saved paired Station uses its own
+  device credential, including at a loopback endpoint. Remote administration
+  requires an explicit `access:devices` grant, granted only by the operator to
+  an already-paired device. It is absent from presets, requestable extras and
+  historical defaults. A person-bound device also needs the Admin group ceiling;
+  Admin membership alone grants no scope. The permission allows listing,
+  changing other scopes (including `approval:full-access`), revocation and
+  removing revoked records. Its holder cannot grant or remove `access:devices`
+  on any device, create offers, administer people/accounts or provision peers.
+  `access scopes` needs no Station and prints the local vocabulary. `access devices` lists the live
   paired devices with id, name, last seen and scopes. `access scope` adds,
   removes or sets scopes on one device, named by its id, a unique id prefix,
   or its exact name (an ambiguous prefix or name is refused). Every scope is
@@ -2376,12 +2386,11 @@ station environment peers remove <environment-id>
   for another reason (the operator's or another device's decision, an Agent or
   Station default, or a session with no recorded grantor). If that reset
   failed, running `--remove approval:full-access` again on the device re-runs
-  it; re-running changes nothing already reset. A paired remote CLI cannot run
-  these verbs: they refuse a non-loopback target before reading any
-  credential.
-- `access revoke` and `access remove` finish what the Paired devices panel
-  cannot do from a native host app (#3256), on the same host-only channel and
-  with the same device selector as `access scope` (id, unique id prefix, or
+  it; re-running changes nothing already reset. Remote commands never read
+  this client's local operator credential; they use the selected Station's
+  paired credential and preserve secure transport and redirect refusal.
+- `access revoke` and `access remove` use the same local-operator or explicitly
+  granted paired-device channel and the same device selector as `access scope` (id, unique id prefix, or
   exact name; an ambiguous one is refused). `access revoke` ends a live
   device's access immediately, closes its terminal and voice connections, and
   resets to Ask what its full access had granted, printing the same report as
@@ -2442,6 +2451,39 @@ rotation, update and test at least one client before ending maintenance. After
 reset, reconcile the public handshake and treat the Station as a new saved
 environment. Operator-credential rotation preserves the paired-device registry;
 environment reset clears it, requiring those devices to pair again.
+
+To authorize remote device administration, run once on the Station host with
+its actual home and local endpoint:
+
+```bash
+STATION_HOME=/absolute/path/to/station/home \
+  station environment access scope <admin-device> --add=access:devices \
+  --api-base=http://127.0.0.1:38141
+```
+
+Then, from that paired CLI:
+
+```bash
+station environment access devices --station=workstation
+station environment access scope <target-device> --add=approval:full-access --station=workstation
+```
+
+Account-bound guest principals remain restricted by their separate route
+allowlist: it excludes device administration even with an Admin group and an
+`access:devices` grant. Use an operator-approved personal Device or the host
+operator channel. The CLI reports this policy refusal distinctly.
+
+Update both host and CLI before granting the new scope. Older clients reject
+scope strings containing unknown tokens; they do not gain administrative access
+by upgrading. Older hosts also reject the new `device-access` revocation actor,
+even after the administrative scope is removed. Downgrading a home that used
+this feature requires a compatible host build; startup fails closed rather than
+silently discarding unknown authority records. Removing `access:devices` or revoking the holder immediately stops
+administration, including a scope request waiting for its body. Successful scope,
+revoke and remove operations emit a credential-free `station.device_access.changed`
+audit record; device revocation records distinguish a device administrator from
+the operator credential.
+
 
 ### `stop`
 
@@ -2514,7 +2556,7 @@ station fresh [--force] [--allow-default-home-clean] [--home=<dir>] [--base=<dir
 | `--allow-default-home-clean` | Required together with `--force` to delete the selected channel's default runtime home; it never authorizes deleting `STATION_ROOT` |
 | `--home=<dir>` | Clean a specific home directory |
 | `--base=<dir>` | The same setting as `--home`, under the name it shipped with |
-| `--temp-home` | Create and clean a temporary home under the system temp directory |
+| `--temp-home` | Create and clean a temporary home under the system temp directory, falling back to `/tmp/station` as for `start --temp-home` |
 | `--instance=<name>` / `--port=<n>` / `--ui-port=<n>` | Match the instance identity used for shared-build safety checks |
 
 ```bash
@@ -3000,6 +3042,7 @@ Phase 2 was closed on local-fixture scope, while any hosted registry remains
 separate publication/distribution work requiring its own stable-URL evidence.
 
 ---
+
 
 ## Plugin
 

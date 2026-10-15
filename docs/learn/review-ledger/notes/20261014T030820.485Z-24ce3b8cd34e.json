@@ -1,0 +1,7 @@
+{
+  "revision": "8a09b8296f39ea32392fd23093ae32cf28727575",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"mobile-chat-composer.spec.ts gained geometry inside the existing 'mobile messages prioritize text' journey (inline copy, settle time, single-row and wrapped sheet, user sheet row, 320px reason box, action visual family); MonitoringWidgets.css only sizes the shared copy glyph in the monitoring result copy. Bucket ownership and the matrix rows' coverage descriptions are unchanged. No prose change.","inputs":["docs/guides/e2e-coverage-matrix.md","src-ui/src/views/MonitoringWidgets.css","tests/mobile-chat-composer.spec.ts"]}
+  ]
+}

@@ -11,6 +11,7 @@ import {
 } from '../../services/orchestration/orchestration-session-state.js';
 import { applyWalJournalMode } from '../../utils/sqlite-wal.js';
 import { PROJECT_TASK_ROOM_RUNTIME_MIGRATION } from './006-project-task-room-runtime.js';
+import { ensureTurnBoundarySequenceFence } from './014-turn-boundary-sequence-fence.js';
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require('node:sqlite') as {
@@ -1468,6 +1469,7 @@ export function runOrchestrationEventMigration(projectHomeDir: string): void {
   ensureOrchestrationTurnDedupColumns(db);
   ensureOrchestrationEventStoreColumns(db);
   ensureOrchestrationAdoptionColumns(db);
+  ensureTurnBoundarySequenceFence(db);
   db.close();
 }
 

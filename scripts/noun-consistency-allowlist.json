@@ -7,15 +7,9 @@
   },
   {
     "file": "src-ui/src/components/usage-stats/UsageDrillDownModal.tsx",
-    "line": 130,
+    "line": 143,
     "snippet": "Prompt Total",
     "reason": "LLM-prompt sense (station#4196 cache-honest model drilldown): the declared-disjoint cache-inclusive input total, not the retired Prompts/Skills authoring noun."
-  },
-  {
-    "file": "src-ui/src/components/usage-stats/UsageDrillDownModal.tsx",
-    "line": 163,
-    "snippet": "Prompt Total/Turn",
-    "reason": "LLM-prompt sense (station#4196 cache-honest model drilldown): the per-turn form of the declared-disjoint cache-inclusive input total, not the retired Prompts/Skills authoring noun."
   },
   {
     "file": "src-ui/src/__tests__/AgentConnectionView.test.tsx",

@@ -397,7 +397,7 @@ describe('assistant row identity composition (station#1434)', () => {
     const copy =
       container.querySelector<HTMLButtonElement>('.message__copy-btn');
     expect(copy?.type).toBe('button');
-    expect(copy?.getAttribute('aria-label')).toBe('Copy message');
+    expect(copy?.getAttribute('aria-label')).toBe('Copy answer');
     expect(copy?.querySelector('svg')?.getAttribute('aria-hidden')).toBe(
       'true',
     );

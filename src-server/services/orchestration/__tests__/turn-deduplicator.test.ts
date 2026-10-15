@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ORCHESTRATION_EVENT_STORE_MIGRATION } from '../../../domain/migrations/003-orchestration-events.js';
 import { TurnIdempotencyStore } from '../../turn-idempotency.js';
 import { EventStore } from '../event-store.js';
@@ -56,6 +56,137 @@ describe('TurnDeduplicator', () => {
         .claim({ threadId: 'thread', clientTurnId: 'client' }),
     ).toEqual({ kind: 'contended', turnId: 'provider-turn' });
     restarted.close();
+  });
+
+  test('inspect: a claim whose owner cannot be proven live or dead reads in flight only for a bounded time', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      // A tracked directory from the suite's helper; its own store is not
+      // the one under test.
+      const { directory, store: helperStore } = open();
+      helperStore.close();
+      const store = new EventStore(
+        join(directory, 'unknowable-owner.sqlite'),
+        512,
+        {
+          exact: () => ({ pid: process.pid, start: 'unknowable' }),
+          probe: () => ({ state: 'unavailable' }),
+        },
+      );
+      const ledger = store.createTurnDeduplicator();
+      expect(ledger.claim({ threadId: 't', clientTurnId: 'k' }).kind).toBe(
+        'owner',
+      );
+      vi.setSystemTime(Date.now() + 14 * 60_000);
+      expect(ledger.inspect({ threadId: 't', clientTurnId: 'k' })).toEqual({
+        state: 'in-flight',
+      });
+      vi.setSystemTime(Date.now() + 2 * 60_000);
+      expect(ledger.inspect({ threadId: 't', clientTurnId: 'k' })).toEqual({
+        state: 'indeterminate',
+      });
+      // A live owner's claim is bounded the same way.
+      const live = open();
+      expect(
+        live.ledger.claim({ threadId: 't', clientTurnId: 'live' }).kind,
+      ).toBe('owner');
+      vi.setSystemTime(Date.now() + 16 * 60_000);
+      expect(
+        live.ledger.inspect({ threadId: 't', clientTurnId: 'live' }),
+      ).toEqual({ state: 'indeterminate' });
+      live.store.close();
+      store.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('inspect: an owner that gave its claim up after a possible effect reads indeterminate, never in flight', () => {
+    const { store, ledger, directory } = open();
+    const owner = ledger.claim({ threadId: 't', clientTurnId: 'gave-up' });
+    if (owner.kind !== 'owner') throw new Error('expected owner');
+    owner.claim.beginInvocation();
+    expect(ledger.inspect({ threadId: 't', clientTurnId: 'gave-up' })).toEqual({
+      state: 'in-flight',
+    });
+    owner.claim.retain();
+    expect(ledger.inspect({ threadId: 't', clientTurnId: 'gave-up' })).toEqual({
+      state: 'indeterminate',
+    });
+    // Never claimable, and this owner's claim agrees with inspect instead of
+    // reading contended (a wait on a claim nothing will resolve).
+    expect(ledger.claim({ threadId: 't', clientTurnId: 'gave-up' })).toEqual({
+      kind: 'indeterminate',
+    });
+    // Retain writes nothing durable: another live process still meets the
+    // unresolved claim as contended.
+    const peer = new EventStore(join(directory, 'orchestration.sqlite'));
+    expect(
+      peer
+        .createTurnDeduplicator()
+        .claim({ threadId: 't', clientTurnId: 'gave-up' }),
+    ).toEqual({ kind: 'contended', turnId: undefined });
+    peer.close();
+    store.close();
+  });
+
+  test('a key claimed afresh after its thread was deleted is in flight, not the old given-up claim', () => {
+    const { store, ledger } = open();
+    const owner = ledger.claim({ threadId: 't', clientTurnId: 'reused' });
+    if (owner.kind !== 'owner') throw new Error('expected owner');
+    owner.claim.beginInvocation();
+    owner.claim.retain();
+    store.deleteThread('t');
+    // The same thread id and key, used again: a new attempt owns it.
+    const again = ledger.claim({ threadId: 't', clientTurnId: 'reused' });
+    expect(again.kind).toBe('owner');
+    expect(ledger.inspect({ threadId: 't', clientTurnId: 'reused' })).toEqual({
+      state: 'in-flight',
+    });
+    expect(ledger.claim({ threadId: 't', clientTurnId: 'reused' })).toEqual({
+      kind: 'contended',
+      turnId: undefined,
+    });
+    store.close();
+  });
+
+  test("givenUp is never true for another owner's claim of a reused key, however old", () => {
+    const { store, ledger, directory } = open();
+    const owner = ledger.claim({
+      threadId: 't',
+      clientTurnId: 'reused-elsewhere',
+    });
+    if (owner.kind !== 'owner') throw new Error('expected owner');
+    owner.claim.beginInvocation();
+    owner.claim.retain();
+    store.deleteThread('t');
+    // Another store on the same database (another owner) claims the key.
+    const peer = new EventStore(join(directory, 'orchestration.sqlite'));
+    const fresh = peer
+      .createTurnDeduplicator()
+      .claim({ threadId: 't', clientTurnId: 'reused-elsewhere' });
+    expect(fresh.kind).toBe('owner');
+    const realNow = Date.now.bind(Date);
+    const clock = vi
+      .spyOn(Date, 'now')
+      .mockImplementation(() => realNow() + 16 * 60_000);
+    try {
+      // The lookup calls a claim this old indeterminate; it is still not
+      // one this owner gave up, so a same-key claim here waits on it.
+      expect(
+        ledger.inspect({ threadId: 't', clientTurnId: 'reused-elsewhere' }),
+      ).toEqual({ state: 'indeterminate' });
+      expect(
+        ledger.givenUp({ threadId: 't', clientTurnId: 'reused-elsewhere' }),
+      ).toBe(false);
+      expect(
+        ledger.claim({ threadId: 't', clientTurnId: 'reused-elsewhere' }),
+      ).toEqual({ kind: 'contended', turnId: undefined });
+    } finally {
+      clock.mockRestore();
+      peer.close();
+      store.close();
+    }
   });
 
   test('releases only an unresolved owner claim so a failed turn can retry', () => {

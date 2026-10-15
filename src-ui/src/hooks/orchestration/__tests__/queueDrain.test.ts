@@ -75,6 +75,238 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     vi.useRealTimers();
   });
 
+  test('a drained follow-up is durable as invoking under its queue key before its request, and let go once Station has it', async () => {
+    const queue = await import('../../../lib/outboundQueue');
+    let stored: unknown;
+    queue._setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, next) => {
+        stored = next;
+      },
+      updateItem: async (_key, updater) => {
+        stored = updater(stored);
+      },
+    });
+    let rowAtRequest: unknown;
+    sendExecutionMessageMock.mockImplementationOnce(async (_base, body) => {
+      rowAtRequest = (await queue.outboundDispatch.snapshot()).find(
+        (row) => row.clientTurnId === body.clientTurnId,
+      );
+      return {
+        conversationId: threadId,
+        sessionId: threadId,
+        providerTurnId: 'provider-drained',
+        target: { kind: 'agent', id: 'claude' },
+        resolution: {},
+      };
+    });
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['held follow-up'],
+      queuedMessageMetadata: [{ id: 'queue-key-1', mode: 'queue' }],
+    });
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.waitFor(() =>
+      expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1),
+    );
+    expect(
+      (
+        sendExecutionMessageMock.mock.calls[0]?.[1] as
+          | { clientTurnId: string }
+          | undefined
+      )?.clientTurnId,
+    ).toBe('queue-key-1');
+    expect(rowAtRequest).toMatchObject({
+      clientTurnId: 'queue-key-1',
+      status: 'invoking',
+      content: 'held follow-up',
+    });
+    await vi.waitFor(async () =>
+      expect(await queue.outboundDispatch.snapshot()).toEqual([]),
+    );
+  });
+
+  test('a queued message the outbox already holds as possibly started is not sent again by the drain', async () => {
+    const queue = await import('../../../lib/outboundQueue');
+    let stored: unknown;
+    queue._setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, next) => {
+        stored = next;
+      },
+      updateItem: async (_key, updater) => {
+        stored = updater(stored);
+      },
+    });
+    const earlier = await queue.outboundDispatch.beginLive({
+      clientTurnId: 'queue-key-2',
+      sessionId: threadId,
+      agentSlug: 'claude',
+      content: 'maybe already started',
+    });
+    await earlier.indeterminate('Station could not confirm the start.');
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['maybe already started', 'the next one'],
+      queuedMessageMetadata: [
+        { id: 'queue-key-2', mode: 'queue' },
+        { id: 'queue-key-next', mode: 'queue' },
+      ],
+    });
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.waitFor(() =>
+      expect(
+        activeChatsStore.getSnapshot()[threadId]?.ephemeralMessages?.at(-1)
+          ?.content,
+      ).toMatch(/not sent again/),
+    );
+    // The queue moves on to the next message, which is sent once; the
+    // possibly-started one never is.
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.waitFor(() =>
+      expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1),
+    );
+    expect(
+      (
+        sendExecutionMessageMock.mock.calls[0]?.[1] as
+          | { clientTurnId: string }
+          | undefined
+      )?.clientTurnId,
+    ).toBe('queue-key-next');
+    expect(activeChatsStore.getSnapshot()[threadId]?.queuedMessages).toEqual(
+      [],
+    );
+  });
+
+  test('a late durable row of a send that went back into the queue becomes its held copy', async () => {
+    const queue = await import('../../../lib/outboundQueue');
+    let stored: unknown;
+    let releaseWrite!: () => void;
+    const slow = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    let first = true;
+    queue._setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, next) => {
+        stored = next;
+      },
+      updateItem: async (_key, updater) => {
+        if (first) {
+          first = false;
+          await slow;
+        }
+        stored = updater(stored);
+      },
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(new TypeError('offline'));
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['requeued late'],
+      queuedMessageMetadata: [{ id: 'queue-key-4', mode: 'queue' }],
+    });
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.advanceTimersByTimeAsync(3_100);
+    await vi.waitFor(() =>
+      expect(activeChatsStore.getSnapshot()[threadId]?.queuedMessages).toEqual([
+        'requeued late',
+      ]),
+    );
+    releaseWrite();
+    await vi.waitFor(async () =>
+      expect(await queue.outboundDispatch.snapshot()).toEqual([
+        expect.objectContaining({
+          clientTurnId: 'queue-key-4',
+          status: 'pending',
+          heldBy: expect.objectContaining({ bootId: expect.any(String) }),
+        }),
+      ]),
+    );
+  });
+
+  test("a queued message discarded in another window is not sent by this window's drain", async () => {
+    const queue = await import('../../../lib/outboundQueue');
+    let stored: unknown;
+    queue._setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, next) => {
+        stored = next;
+      },
+      updateItem: async (_key, updater) => {
+        stored = updater(stored);
+      },
+    });
+    await queue.outboundDispatch.syncHeld([
+      {
+        clientTurnId: 'queue-key-gone',
+        sessionId: threadId,
+        agentSlug: 'claude',
+        content: 'discarded elsewhere',
+      },
+    ]);
+    await queue.outboundDispatch.discard('queue-key-gone');
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['discarded elsewhere'],
+      queuedMessageMetadata: [{ id: 'queue-key-gone', mode: 'queue' }],
+    });
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.waitFor(() =>
+      expect(
+        activeChatsStore.getSnapshot()[threadId]?.ephemeralMessages?.at(-1)
+          ?.content,
+      ).toMatch(/discarded/),
+    );
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(activeChatsStore.getSnapshot()[threadId]?.queuedMessages).toEqual(
+      [],
+    );
+  });
+
+  test('a durable write that lands after the drain sent without it is let go, never left to be resent', async () => {
+    const queue = await import('../../../lib/outboundQueue');
+    let stored: unknown;
+    let releaseWrite!: () => void;
+    const slow = new Promise<void>((resolve) => {
+      releaseWrite = resolve;
+    });
+    let first = true;
+    queue._setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, next) => {
+        stored = next;
+      },
+      updateItem: async (_key, updater) => {
+        if (first) {
+          first = false;
+          await slow;
+        }
+        stored = updater(stored);
+      },
+    });
+    sendExecutionMessageMock.mockResolvedValueOnce({
+      conversationId: threadId,
+      sessionId: threadId,
+      providerTurnId: 'provider-late',
+      target: { kind: 'agent', id: 'claude' },
+      resolution: {},
+    });
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['late write'],
+      queuedMessageMetadata: [{ id: 'queue-key-3', mode: 'queue' }],
+    });
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(200);
+    await vi.advanceTimersByTimeAsync(3_100);
+    await vi.waitFor(() =>
+      expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1),
+    );
+    releaseWrite();
+    await vi.waitFor(async () =>
+      expect(await queue.outboundDispatch.snapshot()).toEqual([]),
+    );
+  });
+
   test('Send now coalesces repeated clicks, stops once, and preserves remaining FIFO messages', async () => {
     let settle!: (value: unknown) => void;
     interruptMock.mockImplementationOnce(
@@ -1007,6 +1239,162 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
     await vi.dynamicImportSettled();
     expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2);
     expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([]);
+  });
+
+  test('a send refused because its session is still starting waits in the queue and is re-sent', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['sent during the reattach'],
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new ChatHttpError(
+        400,
+        'The session is still starting. Nothing was sent; try again in a moment.',
+        'provider_session_starting',
+      ),
+    );
+
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+
+    const waiting = activeChatsStore.getSnapshot()[threadId];
+    // Waiting, not failed and not dropped into the unsent record.
+    expect(waiting.status).not.toBe('error');
+    expect(waiting.error).toBeUndefined();
+    expect(waiting.queuedMessages).toEqual(['sent during the reattach']);
+    expect(waiting.unsentMessages ?? []).toEqual([]);
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2);
+    expect(activeChatsStore.getSnapshot()[threadId].queuedMessages).toEqual([]);
+  });
+
+  test('a session that stays starting past every automatic retry leaves the message queued with a Retry reason', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['sent during a long start'],
+    });
+    sendExecutionMessageMock.mockRejectedValue(
+      new ChatHttpError(
+        400,
+        'The session is still starting. Nothing was sent; try again in a moment.',
+        'provider_session_starting',
+      ),
+    );
+
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+    // Ten automatic re-sends, each about a second apart.
+    for (let attempt = 0; attempt < 10; attempt++) {
+      expect(
+        activeChatsStore.getSnapshot()[threadId].queuedMessageFailure,
+      ).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1_000);
+      await vi.advanceTimersByTimeAsync(100);
+      await vi.dynamicImportSettled();
+    }
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(11);
+
+    const exhausted = activeChatsStore.getSnapshot()[threadId];
+    expect(exhausted.queuedMessages).toEqual(['sent during a long start']);
+    expect(exhausted.unsentMessages ?? []).toEqual([]);
+    expect(exhausted.queuedMessageFailure).toMatchObject({
+      code: 'provider_session_starting',
+      message:
+        'The session is still starting. Your message is still queued; retry to send it.',
+    });
+    // Nothing else re-sends it on its own.
+    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.dynamicImportSettled();
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(11);
+    sendExecutionMessageMock.mockReset();
+  });
+
+  test('a send whose session failed to start stays queued at the head with its reason and Retry, and is not re-sent on its own', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['first queued', 'second queued'],
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new ChatHttpError(
+        400,
+        "The agent's session couldn't start: native session is gone",
+        'provider_session_start_failed',
+      ),
+    );
+
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+
+    const kept = activeChatsStore.getSnapshot()[threadId];
+    expect(kept.queuedMessages).toEqual(['first queued', 'second queued']);
+    expect(kept.unsentMessages ?? []).toEqual([]);
+    expect(kept.queuedMessageFailure).toMatchObject({
+      code: 'provider_session_start_failed',
+      message: expect.stringContaining("couldn't start"),
+    });
+    await vi.advanceTimersByTimeAsync(5_000);
+    await vi.dynamicImportSettled();
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('a session the user stopped before it was ready drops the queued message but offers its text back', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['stopped before ready'],
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new ChatHttpError(
+        400,
+        "The agent's session ended before it was ready. Nothing was sent.",
+      ),
+    );
+
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+
+    const dropped = activeChatsStore.getSnapshot()[threadId];
+    expect(dropped.queuedMessages).toEqual([]);
+    expect(dropped.unsentMessages).toEqual([
+      expect.objectContaining({ content: 'stopped before ready' }),
+    ]);
+    expect(dropped.ephemeralMessages?.at(-1)?.content).toContain(
+      'Your message: stopped before ready',
+    );
+  });
+
+  test('a retry whose earlier attempt still held the same key waits in the queue and is re-sent', async () => {
+    activeChatsStore.updateChat(threadId, {
+      queuedMessages: ['same key'],
+    });
+    sendExecutionMessageMock.mockRejectedValueOnce(
+      new ChatHttpError(
+        400,
+        'An earlier attempt of this message has not finished. Nothing new was sent; try again in a moment.',
+        'client_turn_in_flight',
+      ),
+    );
+
+    drainQueuedMessageOnTurnCompleted('http://api.test', threadId);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+    const waiting = activeChatsStore.getSnapshot()[threadId];
+    expect(waiting.status).not.toBe('error');
+    expect(waiting.queuedMessages).toEqual(['same key']);
+    const firstKey = sendExecutionMessageMock.mock.calls[0]?.[1]?.clientTurnId;
+    expect(typeof firstKey).toBe('string');
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.dynamicImportSettled();
+    expect(sendExecutionMessageMock).toHaveBeenCalledTimes(2);
+    // Re-sent with the same idempotency key.
+    expect(sendExecutionMessageMock.mock.calls[1]?.[1]?.clientTurnId).toBe(
+      firstKey,
+    );
   });
 
   test('#2324 delta review: a pending provider-turn retry is dropped when the chat was removed before it fires', async () => {
