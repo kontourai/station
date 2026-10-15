@@ -216,7 +216,9 @@ function dispatch(
         current ? tx.turnBoundary.listThread(current.threadId) : [],
         current !== undefined &&
           command.providerTurnId !== undefined &&
-          tx.turnTerminals.has(current.threadId, command.providerTurnId),
+          (context.terminalSeen
+            ? context.terminalSeen(current.threadId, command.providerTurnId)
+            : tx.turnTerminals.has(current.threadId, command.providerTurnId)),
       );
       const decision = decideTurnBoundaryTransition(
         current,
@@ -236,11 +238,17 @@ function dispatch(
       return decision.result;
     }
     case 'turnBoundary.observeTerminal': {
-      if (command.providerTurnId !== undefined)
+      if (command.providerTurnId !== undefined && !context.terminalSeen)
         tx.turnTerminals.add(command.threadId, command.providerTurnId);
       const decision = decideTurnBoundaryObserveTerminal(
         tx.turnBoundary.listThread(command.threadId),
         command,
+        command.sessionTerminal
+          ? context.terminalSequence?.(
+              command.threadId,
+              command.terminalEventId,
+            )
+          : undefined,
       );
       for (const boundaryId of decision.retire)
         tx.turnBoundary.delete(boundaryId);
@@ -270,7 +278,8 @@ function dispatch(
       for (const row of tx.turnBoundary.listThread(command.threadId))
         if (row.state !== 'lifecycle') tx.turnBoundary.delete(row.boundaryId);
       // Terminal facts retire with the thread's boundaries (see README).
-      tx.turnTerminals.deleteThread(command.threadId);
+      if (!context.terminalSeen)
+        tx.turnTerminals.deleteThread(command.threadId);
       return { kind: 'applied' };
     }
 

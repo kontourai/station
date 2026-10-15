@@ -96,7 +96,14 @@ vite or vitest configs are accepted limits, left to review.
   decision, never claim the key afresh. Past the TTL it stops holding a quota
   slot, so a claim that can never resolve does not lock its caller out of the
   per-caller cap, or everyone out of the store-wide one.
-- **Terminal-turn facts:** these are the provider turn ids a thread has seen
-  end, which make a later acceptance of the same id `ambiguous`. They are
-  retired together with the thread's boundaries by
-  `turnBoundary.forgetThread`, and kept until then.
+- **Terminal-turn facts:** by default the kernel records provider turn ids a
+  thread has seen end, which make a later acceptance of the same id
+  `ambiguous`. Those default facts are retired by `turnBoundary.forgetThread`.
+  A host with an event log supplies `KernelContext.terminalSeen` inside the
+  transaction instead: observation and forgetting do not maintain a second
+  terminal source. Session-terminal ordering can use the host's persisted
+  sequence and an existing boundary creation-fence column; NULL legacy fences
+  and turn-scoped generations retain timestamps. The binding API is available,
+  but Station's turn-boundary coordinator remains on its existing SQL until
+  the separate integration change. Its runtime terminal reconciliation still
+  needs a read view that does not acquire the write lock.

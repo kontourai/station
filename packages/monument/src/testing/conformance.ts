@@ -811,6 +811,73 @@ const turnDedup: KernelConformanceCase[] = [
 
 const turnBoundary: KernelConformanceCase[] = [
   {
+    name: 'turn boundary: authoritative host terminal facts replace the default terminal table',
+    areas: ['turnBoundary'],
+    run: (harness) =>
+      withSession(harness, async (session) => {
+        const owner = session.processes.spawn();
+        const context = {
+          liveness: session.processes.liveness,
+          terminalSeen: () => false,
+        };
+        // A stale default fact must not override the host's current event log.
+        await session.run({
+          type: 'turnBoundary.observeTerminal',
+          threadId: 't',
+          providerTurnId: 'p',
+          sessionTerminal: false,
+          terminalCreatedAt: at(0),
+        });
+        await session.run(create('b', 't', owner, at(1)));
+        await session.run(
+          transition('b', owner, ['prepared'], 'invoking', at(2)),
+        );
+        assert.deepEqual(
+          await session.store.storage.execute(
+            transition('b', owner, ['invoking'], 'accepted', at(3), 'p'),
+            context,
+          ),
+          { kind: 'applied' },
+        );
+        await session.store.storage.execute(
+          {
+            type: 'turnBoundary.observeTerminal',
+            threadId: 't',
+            providerTurnId: 'q',
+            sessionTerminal: false,
+            terminalCreatedAt: at(4),
+          },
+          context,
+        );
+        await session.run(create('c', 'u', owner, at(1)));
+        await session.run(
+          transition('c', owner, ['prepared'], 'invoking', at(2)),
+        );
+        // No observeTerminal command supplies this fact: acceptance reads the host.
+        assert.deepEqual(
+          await session.store.storage.execute(
+            transition('c', owner, ['invoking'], 'accepted', at(3), 'q'),
+            {
+              ...context,
+              terminalSeen: (thread, turn) => thread === 'u' && turn === 'q',
+            },
+          ),
+          { kind: 'ambiguous' },
+        );
+        await session.run(create('d', 't', owner, at(1)));
+        await session.run(
+          transition('d', owner, ['prepared'], 'invoking', at(2)),
+        );
+        // Host observation of q never inserted a shadow terminal fact.
+        assert.deepEqual(
+          await session.run(
+            transition('d', owner, ['invoking'], 'accepted', at(3), 'q'),
+          ),
+          { kind: 'applied' },
+        );
+      }),
+  },
+  {
     name: 'turn boundary: a pending, invoking or lifecycle row occupies its thread',
     areas: ['turnBoundary'],
     run: (harness) =>

@@ -48,9 +48,10 @@ relaxes durability on purpose is not silently undone. Pass
 `configureConnection: true` to hand the pragmas to the adapter.
 Read-only commands (`turnDedup.read`, `turnBoundary.list`,
 `turnBoundary.hasPossibleEffect`) run in a deferred transaction, so under WAL
-they are served while another connection holds the write lock. Every other
-command, and every command when a participant has a `commit` hook, takes
-`BEGIN IMMEDIATE`. The adapter also offers `executeSync`, which runs the same transaction
+they are served while another connection holds the write lock. Every
+writing command, and a read observed by a participant with `observeReads`,
+takes `BEGIN IMMEDIATE`. A `commit` hook alone does not opt into reads.
+The adapter also offers `executeSync`, which runs the same transaction
 synchronously, for hosts whose call sites are synchronous. `executeSync` is
 specific to node:sqlite and is not part of the portable contract.
 
@@ -95,6 +96,69 @@ must retire kernel records in the same transaction as its own (deleting a
 thread and its dedup keys) passes `{ withinHostTransaction: true }`: the
 command is a savepoint in that transaction, so it commits or rolls back with
 it, and a command that throws or is refused undoes only itself.
+
+## Host boundary rows and terminal facts
+
+Boundary binding is available for the phase-2b integration; Station's boundary
+coordinator has not switched to it yet. The binding supports the default
+`owner_json` layout (`ownerEncoding: 'json'`) and separate `owner_id`,
+`owner_pid`, `owner_birth`, `owner_identity_kind` columns (`'columns'`). Both
+layouts retain `boundary_id`, `thread_id`, `state`, `purpose`,
+`provider_turn_id`, `created_at` and `updated_at`.
+
+```ts
+const storage = openSqliteKernelStorage({
+  database: hostConnection,
+  tables: {
+    turnDedup: 'unused',
+    requestKeys: 'unused',
+    turnBoundary: {
+      table: 'host_boundaries',
+      ownerEncoding: 'columns',
+      terminalFacts: 'host',
+      creationSequence: {
+        column: 'created_sequence',
+        read: db => readDurableEventHead(db),
+      },
+    },
+  },
+});
+const context = {
+  liveness,
+  terminalSeen: (thread, turn) => hostTerminalSeen(thread, turn),
+  terminalSequence: (thread, eventId) => hostTerminalSequence(thread, eventId),
+};
+```
+
+The fence and terminal callbacks run synchronously inside the command
+transaction. Terminal
+callbacks only read facts; a host with an event log uses that log as its sole
+terminal authority. `terminalSeen` replaces, rather than supplements, the
+kernel's default terminal table. Observing a terminal or forgetting boundaries
+does not add or delete default terminal facts when that callback is present.
+A binding with `terminalFacts: 'host'` creates no terminal table and refuses
+operations that need default facts if the callback is missing. With every area
+bound or unused, the adapter creates no `monument_*` tables.
+
+`creationSequence` is optional and specific to a bound SQLite table. Its
+column must already exist. The adapter captures its durable head under the
+writer lock only for a new row; updates preserve the original fence, including
+NULL, and preserve the host's owner and creation fields. No table is migrated
+or backfilled. A nested writing boundary command reserves the writer before
+any decision reads, even if the host's savepoint was deferred.
+
+`turnBoundary.observeTerminal` carries the host's `terminalEventId`.
+For a session terminal and a fenced row, the decision retires the row only
+when `terminalSequence(thread, eventId)` returns a persisted sequence strictly
+above the fence. A missing terminal retains fenced rows. Rows with no fence
+and turn-scoped terminals retain the timestamp generation check; lifecycle
+and task-dispatch rows retain their separate settlement owners.
+
+This API does not move Station's runtime terminal reconciler. Its current
+`hasPossibleEffect` deletes event-retired rows. Replacing that path with a
+read-only command requires an event-authoritative read view and an explicit
+choice of when physical retirement runs; opting a writing participant into
+reads would take the write lock and does not satisfy that requirement.
 
 ## Reconcile after a restart
 
