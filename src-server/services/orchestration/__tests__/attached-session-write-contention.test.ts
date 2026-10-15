@@ -1,11 +1,4 @@
-import {
-  appendFileSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type {
@@ -17,6 +10,7 @@ import {
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { AttachedSessionSource } from '../../../providers/sessions/attached-session-source.js';
 import { ClaudeTranscriptSessionSource } from '../../../providers/sessions/claude-transcript-session-source.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
@@ -25,6 +19,7 @@ import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import type { ProjectTaskRoomCapabilityAuthority } from '../project-task-room-history.js';
 
+const makeTempDir = trackTempDirs();
 let directory: string;
 let path: string;
 let events: EventStore;
@@ -83,7 +78,7 @@ function follower(source: AttachedSessionSource) {
   });
 }
 beforeEach(() => {
-  directory = mkdtempSync(join(tmpdir(), 'station-follow-contention-'));
+  directory = makeTempDir('station-follow-contention-');
   path = join(directory, 'orchestration.sqlite');
   events = new EventStore(path);
   peer = new DatabaseSync(path);
@@ -93,7 +88,6 @@ afterEach(() => {
   if (peer.isTransaction) peer.exec('ROLLBACK');
   peer.close();
   events.close();
-  rmSync(directory, { recursive: true, force: true });
 });
 
 test.each([
