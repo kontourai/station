@@ -489,6 +489,7 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
     'reconnecting',
     'later-status',
     'dialog',
+    'approval-focus',
   ])(
     'Resync coalesces retries and completes recovery with %s focus/status',
     async (scenario) => {
@@ -545,7 +546,7 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
         }
         if (scenario === 'dialog')
           render(<div role="dialog" aria-label="Open dialog" />);
-        if (scenario === 'reconnecting') {
+        if (scenario === 'reconnecting' || scenario === 'approval-focus') {
           act(() =>
             setStreamConnectionState(
               'http://localhost:3242',
@@ -553,15 +554,25 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
               Date.now() - 3_000,
             ),
           );
-          await screen.findByRole('button', {
+          const reconnecting = await screen.findByRole('button', {
             name: 'Reconnecting',
           });
+          if (scenario === 'approval-focus') {
+            act(() => reconnecting.focus());
+            elsewhere = reconnecting;
+            view.rerenderSession(
+              buildSession({
+                pendingApprovals: ['retained-approval'],
+                orchestrationStatus: 'awaiting-approval',
+              }),
+            );
+          }
         }
         await act(async () => {
           transcriptStateMock.current.error = null;
           release();
         });
-        if (scenario === 'reconnecting') {
+        if (scenario === 'reconnecting' || scenario === 'approval-focus') {
           act(() =>
             setStreamConnectionState('http://localhost:3242', 'receiving'),
           );
@@ -571,11 +582,13 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
           act(() =>
             setStreamConnectionState('http://localhost:3242', 'caught-up'),
           );
-          await screen.findByText('Connected');
+          if (scenario === 'approval-focus')
+            await screen.findByRole('button', { name: /Needs approval/ });
+          else await screen.findByText('Connected');
         }
         await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
         expect(document.activeElement).toBe(
-          scenario === 'elsewhere'
+          scenario === 'elsewhere' || scenario === 'approval-focus'
             ? elsewhere
             : scenario === 'dialog'
               ? document.body

@@ -339,10 +339,7 @@ export function ChatStatusPill({
               aria-busy={
                 current.action === 'resync' ? current.pending : undefined
               }
-              ref={(element) => {
-                if (element && current.action === 'resync')
-                  resyncControl.current = element;
-              }}
+              ref={current.action === 'resync' ? resyncControl : undefined}
               onClick={activate}
             >
               {body}
