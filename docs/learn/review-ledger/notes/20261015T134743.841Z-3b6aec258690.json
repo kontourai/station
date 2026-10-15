@@ -1,0 +1,7 @@
+{
+  "revision": "e4fb04d302dd8905b5b6e18a2771e9b58a0490b5",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Reviewed SDK/contracts architecture paragraphs against telemetry-delivery and usage-export contract subpaths and usage-export-query SDK export. Types stay in contracts, React queries in SDK, and server authorization remains required; no new runtime/identity authority is implied. Existing prose remains accurate. Source review and 339 focused tests are separate from deployed acceptance.","inputs":["docs/architecture.md","packages/sdk/package.json#/exports"]}
+  ]
+}

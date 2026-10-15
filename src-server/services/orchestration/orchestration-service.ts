@@ -136,6 +136,10 @@ import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/to
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import type { SessionUsageAggregate } from '@kontourai/station-shared/usage-fold';
 import type { OrchestrationSessionUsage } from '../../analytics/usage-aggregator-state.js';
+import {
+  readAuthorizedUsageExport,
+  UsageExportRejected,
+} from '../../analytics/usage-export-reader.js';
 import type { UsagePricingSnapshotCapture } from '../../analytics/usage-pricing-snapshot-capture.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import { engineIdForAdapter } from '../../providers/adapter-identity.js';
@@ -5599,6 +5603,24 @@ export class OrchestrationService {
       stationId,
       request,
     );
+  }
+
+  readUsageReceiptExport(
+    authority: SessionReadAuthority,
+    stationId: string,
+    request: import('@kontourai/station-contracts/usage-export').UsageExportRequest,
+  ) {
+    this.initialize();
+    const store = this.options.eventStore;
+    if (!store) throw new UsageExportRejected('usage_export_unavailable', 503);
+    return readAuthorizedUsageExport({
+      store,
+      authority,
+      stationId,
+      request,
+      personalOwnerIds: () =>
+        this.options.personalConversationAccess?.ownerIds(authority.userId),
+    });
   }
 
   /**

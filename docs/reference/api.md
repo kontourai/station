@@ -1062,6 +1062,29 @@ write it: first-run decisions and revisioned log-level changes have separate
 routes, and contribution/full-access choices have additional checks.
 See [config reference](config.md) for effective defaults and consumer limits.
 
+Telemetry destination/reference fields have an additional operator or
+`access:manage` guard; an internal-agent request cannot write them. Invalid
+addresses fail before persistence. Product destination changes fence the old
+queue and requests; saved collector changes require restart activation. See
+[telemetry settings](config.md#telemetry-destinations) for the exact fields.
+
+### Telemetry delivery status and connection checks
+
+`GET /api/usage-telemetry/delivery-status` requires `orchestration:read` and
+returns the current process's product queue, exact-receipt acknowledgements,
+loss/failure counters and OTel callback/probe state. It carries presence flags
+and counters rather than addresses, keys, installation IDs or receipt IDs.
+Unsupported versions and unavailable state must not be replaced with healthy
+defaults or cached success.
+
+`POST /api/usage-telemetry/connection-checks/product` and
+`POST /api/usage-telemetry/connection-checks/otel` require `access:manage`.
+Product checks use a separate content-free source/schema probe;
+OTel checks send empty metrics and trace requests. Neither creates product
+disclosure consent or establishes downstream delivery/query acceptance. The
+[usage reference](usage-telemetry.md#delivery-status-and-connection-checks)
+owns the protocol, saved authority and failure limits.
+
 ---
 
 ## Connections
@@ -1531,6 +1554,39 @@ cumulative updates retain earlier measured dimensions; unsupported combined
 model/pricing attribution stays unknown or unpriced. The window records
 observations, not a billing statement or precise consumption dates. See
 [Profile measurement scopes](../guides/monitoring.md#profile-usage-and-paired-people).
+
+### Export Retained Canonical Usage Observations
+
+`GET /api/analytics/usage-export` returns
+`{success: true, data: UsageExportPage}`. Required `from`/`to` are inclusive
+UTC Station-observed dates, at most 366 days. `scope` defaults to `individual`;
+`personal-account` explicitly selects the existing approved personal owner set
+and refuses nonmembers or hosted use. `pageSize` is 1–100 observation events;
+`cursor` continues the fixed committed source watermark. Unknown/repeated
+query keys, invalid dates and malformed continuations refuse with 400.
+
+The page contains `schemaVersion: 1`, `stationId`, `streamEpoch`, `highWater`,
+`scope`, `window`, `observations: [{globalSequence, receipts}]`, optional
+`nextCursor`, and unknown `coverage`. Canonical token and provider-cost receipts
+remain distinct; no page total or provider-completeness claim is manufactured.
+One event can yield multiple receipts. The continuation binds the source,
+verified request person, tenant, owner set, scope and dates; it is not a grant.
+
+Production uses the canonical request authority and checks its current
+credential/account and personal owner set before response release and queued
+chunks. Unbound Device attribution, local operator fallback, foreign scope or
+a changed continuation context are refused. Source/storage failures and
+over-budget cumulative-cost projection return 503. All responses use
+`Cache-Control: no-store`.
+
+Focused mounted-route and runtime-composition controls have exercised paging,
+scope and revocation with controlled identity fixtures. This does not qualify
+live source enrollment or persistent deployment. The path does not provide a
+companion source credential, deletion journal,
+restore-generation fence or durable sync checkpoint/index. A backup copies
+`streamEpoch`; it does not establish current restore authority. See
+[the monitoring guide](../guides/monitoring.md#canonical-usage-export-source)
+for source bounds and the open #3459/#3460 acceptance.
 
 ### Get Achievements
 

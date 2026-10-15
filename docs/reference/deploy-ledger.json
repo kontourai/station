@@ -1,5 +1,81 @@
 [
   {
+    "timestampUtc": "2026-10-15T16:55:53Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2479.4",
+    "sha": "df22f5f3a722617aad8d6855f211ef798e81b74e",
+    "artifactBuiltAt": "2026-10-15T16:11:36.509Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38761672945",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt partial",
+    "notes": [
+      "ios: TestFlight delivery success (run 38761672945)",
+      "android: NOT_VERIFIED (android provider outcome unknown: unresolved:run:38761672945:play-upload-or-query (the provider effect may already be live))"
+    ],
+    "changelog": {
+      "previousSha": "e73c9c32084c2ede3c43738bad8fdf90d7cec806",
+      "groups": {
+        "feat": [
+          "[#3662](https://github.com/kontourai/station/pull/3662) feat(chat): show each sent message's delivery state on its bubble",
+          "[#3675](https://github.com/kontourai/station/pull/3675) feat(monument): prepare host-backed turn boundaries (phase 2b, part 1)"
+        ],
+        "fix": [
+          "[#3672](https://github.com/kontourai/station/pull/3672) fix(ui): resync unavailable conversations and refresh the inbox",
+          "[#3673](https://github.com/kontourai/station/pull/3673) fix(chat): unify composer file and dictation controls",
+          "[#3668](https://github.com/kontourai/station/pull/3668) fix(knowledge): bind search to the embedding generation and current excerpts; refill topK after authorization",
+          "[#3667](https://github.com/kontourai/station/pull/3667) fix(ui): stop request storms that saturate the native request queue",
+          "[#3674](https://github.com/kontourai/station/pull/3674) fix(test): wait for complete stub pid files in the tauri-context signal tests",
+          "[#3665](https://github.com/kontourai/station/pull/3665) fix(cli): keep --temp-home out of a Station instance tree",
+          "[#3669](https://github.com/kontourai/station/pull/3669) fix(ci): retain primary Vitest errors and immutable failed reports",
+          "[#3660](https://github.com/kontourai/station/pull/3660) fix(orchestration): refuse a same-key resend of a retained claim as may-have-started at once",
+          "[#3534](https://github.com/kontourai/station/pull/3534) fix(profile): polish retained usage and preserve measurement gaps",
+          "[#3663](https://github.com/kontourai/station/pull/3663) fix(native): restore iOS channel icons and support Android themed launchers"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#3666](https://github.com/kontourai/station/pull/3666) refactor(knowledge): move legacy documents onto ProjectFileTransactions",
+          "[#3689](https://github.com/kontourai/station/pull/3689) test(ui): keep useDockSlotDevice in the NewChatModal useIsMobile mocks",
+          "[#3687](https://github.com/kontourai/station/pull/3687) perf(docs): reuse value digests during history replay",
+          "[#3647](https://github.com/kontourai/station/pull/3647) chore: exempt Kontour packages from release age"
+        ]
+      },
+      "note": null,
+      "commitCount": 16
+    }
+  },
+  {
+    "timestampUtc": "2026-10-15T16:13:01Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2479.38761672945",
+    "sha": "df22f5f3a722617aad8d6855f211ef798e81b74e",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38761672945",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2479.38761672945 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "912944dc07b210f2748d304142047bad80841d6a",
+      "groups": {
+        "feat": [],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#3666](https://github.com/kontourai/station/pull/3666) refactor(knowledge): move legacy documents onto ProjectFileTransactions"
+        ]
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-10-15T14:51:19Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2479.38748549060",
