@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ORCHESTRATION_EVENT_STORE_MIGRATION } from '../../../domain/migrations/003-orchestration-events.js';
 import { EventStore } from '../event-store.js';
+import { SESSION_TURN_ACCEPTED_CAPACITY } from '../session-turn-boundary.js';
 
 describe('session-terminal boundary ordering', () => {
   const makeTempDir = trackTempDirs();
@@ -75,6 +76,255 @@ describe('session-terminal boundary ordering', () => {
       db.close();
     }
   }
+  test('polling reads committed terminal history under a peer writer without retiring rows', () => {
+    const path = databasePath();
+    const store = open(path);
+    invoking(store);
+    const peer = open(path);
+    const authority = store.sessionTurnBoundaryAuthority();
+    const db = store['db'];
+    db.exec('PRAGMA busy_timeout = 1000');
+    peer['db'].exec('BEGIN IMMEDIATE');
+    try {
+      peer.appendEvent(terminal('session.exited'));
+      const changes = db.prepare('SELECT total_changes() AS n').get();
+      const started = performance.now();
+      expect(authority.hasPossibleEffect('thread')).toEqual({
+        kind: 'available',
+        active: true,
+      });
+      expect(performance.now() - started).toBeLessThan(500);
+      expect(db.prepare('SELECT total_changes() AS n').get()).toEqual(changes);
+      expect(boundaries(path)).toEqual([{ thread_id: 'thread' }]);
+      peer['db'].exec('COMMIT');
+      peer['db'].exec('BEGIN IMMEDIATE');
+      const committedPoll = performance.now();
+      expect(authority.hasPossibleEffect('thread')).toEqual({
+        kind: 'available',
+        active: false,
+      });
+      expect(performance.now() - committedPoll).toBeLessThan(500);
+      expect(db.prepare('SELECT total_changes() AS n').get()).toEqual(changes);
+      expect(boundaries(path)).toEqual([{ thread_id: 'thread' }]);
+    } finally {
+      if (peer['db'].isTransaction) peer['db'].exec('ROLLBACK');
+    }
+  });
+  test('polling retains pending transitions until a writer retries them', () => {
+    const path = databasePath();
+    const store = open(path);
+    const authority = store.sessionTurnBoundaryAuthority();
+    const claim = authority.claim('thread', '2030-01-01T00:00:00.000Z');
+    if (claim.kind !== 'owner') throw new Error('Expected boundary owner');
+    const peer = new DatabaseSync(path);
+    try {
+      store['db'].exec('PRAGMA busy_timeout = 25');
+      peer.exec('BEGIN IMMEDIATE');
+      expect(claim.claim.notInvoked()).toEqual({ kind: 'unavailable' });
+      store['db'].exec('PRAGMA busy_timeout = 1000');
+      const started = performance.now();
+      expect(authority.hasPossibleEffect('thread')).toEqual({
+        kind: 'available',
+        active: true,
+      });
+      expect(performance.now() - started).toBeLessThan(500);
+      peer.exec('ROLLBACK');
+      expect(authority.hasPossibleEffect('thread')).toEqual({
+        kind: 'available',
+        active: true,
+      });
+      expect(boundaries(path)).toEqual([{ thread_id: 'thread' }]);
+      const retried = authority.claim('thread', '2030-01-01T00:00:01.000Z');
+      expect(retried.kind).toBe('owner');
+      expect(boundaries(path)).toEqual([{ thread_id: 'thread' }]);
+    } finally {
+      if (peer.isTransaction) peer.exec('ROLLBACK');
+      peer.close();
+    }
+  });
+  test.each(['claim', 'lifecycle', 'engine'] as const)(
+    '%s admission retires committed terminal rows before occupancy and capacity decisions',
+    (mode) => {
+      const path = databasePath();
+      const store = open(path);
+      const authority = store.sessionTurnBoundaryAuthority();
+      const at = '2030-01-01T00:00:00.000Z';
+      for (let i = 0; i < SESSION_TURN_ACCEPTED_CAPACITY; i++) {
+        const claim = authority.claim('thread', at);
+        if (claim.kind !== 'owner') throw new Error('Expected boundary owner');
+        expect(claim.claim.beginInvocation(at)).toEqual({ kind: 'applied' });
+        expect(claim.claim.accepted(`turn-${i}`, at)).toEqual({
+          kind: 'applied',
+        });
+      }
+      for (let i = 0; i < SESSION_TURN_ACCEPTED_CAPACITY; i++) {
+        store.appendEvent({
+          eventId: `terminal-${i}`,
+          provider: 'claude',
+          threadId: 'thread',
+          turnId: `turn-${i}`,
+          method: 'turn.completed',
+          createdAt: at,
+        });
+      }
+      expect(boundaries(path)).toHaveLength(SESSION_TURN_ACCEPTED_CAPACITY);
+      if (mode === 'engine') {
+        const peer = new DatabaseSync(path, { readOnly: true });
+        try {
+          const event = {
+            eventId: 'engine-start',
+            provider: 'claude',
+            threadId: 'thread',
+            turnId: 'new-turn',
+            method: 'turn.started',
+            createdAt: at,
+          } as const;
+          const prepared = authority.prepareProviderTurn(
+            'thread',
+            'new-turn',
+            at,
+          );
+          const record = () => {
+            expect(prepared.record()).toEqual({ kind: 'applied' });
+            expect(store['db'].isTransaction).toBe(true);
+            expect(
+              store['db']
+                .prepare(
+                  'SELECT provider_turn_id FROM orchestration_turn_boundaries',
+                )
+                .all(),
+            ).toEqual([{ provider_turn_id: 'new-turn' }]);
+            expect(
+              peer
+                .prepare(
+                  'SELECT COUNT(*) AS n FROM orchestration_turn_boundaries',
+                )
+                .get(),
+            ).toEqual({ n: SESSION_TURN_ACCEPTED_CAPACITY });
+          };
+          expect(() =>
+            store.appendEvent(event, [], () => {
+              record();
+              throw new Error('outer rollback');
+            }),
+          ).toThrow('outer rollback');
+          expect(boundaries(path)).toHaveLength(SESSION_TURN_ACCEPTED_CAPACITY);
+          expect(store.hasEventId(event.eventId)).toBe(false);
+          store.appendEvent(event, [], record);
+        } finally {
+          peer.close();
+        }
+      } else {
+        const claim =
+          mode === 'lifecycle'
+            ? authority.claimLifecycle('thread', at)
+            : authority.claim('thread', at);
+        expect(claim.kind).toBe('owner');
+      }
+      expect(boundaries(path)).toEqual([{ thread_id: 'thread' }]);
+    },
+  );
+  test.each(['claim', 'lifecycle'] as const)(
+    '%s admission clears a session-retired invocation without polling first',
+    (mode) => {
+      const path = databasePath();
+      const store = open(path);
+      invoking(store);
+      store.appendEvent(terminal('session.exited'));
+      const authority = store.sessionTurnBoundaryAuthority();
+      const claim =
+        mode === 'lifecycle'
+          ? authority.claimLifecycle('thread', '2030-01-01T00:00:00.000Z')
+          : authority.claim('thread', '2030-01-01T00:00:00.000Z');
+      expect(claim.kind).toBe('owner');
+      expect(boundaries(path)).toEqual([{ thread_id: 'thread' }]);
+    },
+  );
+  test.each([
+    'recovery',
+    'admission-error',
+    'task-dispatch',
+    'lifecycle',
+    'empty-turn',
+    'null-turn',
+  ] as const)(
+    'polling and writer admission preserve the existing %s terminal classification',
+    (mode) => {
+      const path = databasePath();
+      const store = open(path);
+      const authority = store.sessionTurnBoundaryAuthority();
+      const at = '2030-01-01T00:00:00.000Z';
+      if (mode === 'lifecycle') {
+        expect(authority.claimLifecycle('thread', at).kind).toBe('owner');
+      } else if (mode === 'task-dispatch') {
+        expect(authority.claimTaskDispatch('thread', at).kind).toBe('owner');
+      } else if (mode === 'admission-error') {
+        invoking(store);
+      } else {
+        expect(
+          authority
+            .prepareProviderTurn(
+              'thread',
+              mode === 'empty-turn' ? '' : 'turn',
+              at,
+            )
+            .record(),
+        ).toEqual({ kind: 'applied' });
+        if (mode === 'null-turn')
+          store['db']
+            .prepare(
+              'UPDATE orchestration_turn_boundaries SET provider_turn_id = NULL WHERE thread_id = ?',
+            )
+            .run('thread');
+      }
+      const base = {
+        eventId: 'excluded-terminal',
+        provider: 'claude',
+        threadId: 'thread',
+        createdAt: at,
+      } as const;
+      const event: CanonicalRuntimeEvent =
+        mode === 'recovery'
+          ? {
+              ...base,
+              method: 'turn.aborted',
+              turnId: 'turn',
+              recoveryTerminal: true,
+            }
+          : mode === 'admission-error'
+            ? {
+                ...base,
+                method: 'runtime.error',
+                severity: 'error',
+                message: 'uncertain admission',
+                code: 'SESSION_START_INDETERMINATE',
+              }
+            : mode === 'empty-turn' || mode === 'null-turn'
+              ? { ...base, method: 'turn.completed', turnId: '' }
+              : {
+                  ...base,
+                  method: 'session.exited',
+                  sessionId: 'thread',
+                  exitCode: 0,
+                };
+      store.appendEvent(event);
+      // Existing SQL matches an empty provider id, but never a NULL id.
+      const retired = mode === 'empty-turn';
+      expect(authority.hasPossibleEffect('thread')).toEqual({
+        kind: 'available',
+        active: !retired && mode !== 'lifecycle',
+      });
+      expect(boundaries(path)).toEqual([{ thread_id: 'thread' }]);
+      const next = authority.claimLifecycle(
+        'thread',
+        '2030-01-01T00:00:01.000Z',
+      );
+      expect(next.kind).toBe(
+        retired ? 'owner' : mode === 'lifecycle' ? 'busy' : 'active-turn',
+      );
+      expect(boundaries(path)).toEqual([{ thread_id: 'thread' }]);
+    },
+  );
   test('reconcile preserves a newer reused-ID boundary when an older turn terminal arrives late', () => {
     const path = databasePath();
     const store = open(path);
@@ -154,7 +404,11 @@ describe('session-terminal boundary ordering', () => {
         const event = terminal(method);
         store.appendEvent(event);
         const current = settle(store, path, event, mode);
-        expect(boundaries(path)).toEqual([{ thread_id: 'other-thread' }]);
+        expect(boundaries(path)).toEqual(
+          mode === 'read'
+            ? [{ thread_id: 'other-thread' }, { thread_id: 'thread' }]
+            : [{ thread_id: 'other-thread' }],
+        );
         expect(
           current.sessionTurnBoundaryAuthority().hasPossibleEffect('thread'),
         ).toEqual({ kind: 'available', active: false });

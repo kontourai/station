@@ -4,7 +4,11 @@ import type { KernelStorageLocation } from './crash-point-store.js';
 
 /** A host supplies its durable head independently of the kernel commands. */
 export interface HostBoundaryConformanceHarness {
-  createLocation(facts: Required<KernelTerminalFacts>): Promise<
+  createLocation(
+    facts: Required<
+      Pick<KernelTerminalFacts, 'terminalSeen' | 'terminalSequence'>
+    >,
+  ): Promise<
     KernelStorageLocation & {
       setCreationSequence(sequence: number): Promise<void>;
     }

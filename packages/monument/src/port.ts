@@ -64,6 +64,9 @@ export interface KernelTerminalFacts {
   /** Read-only host facts, called synchronously inside the command transaction.
    * When supplied, the host replaces the kernel's terminal table entirely. */
   readonly terminalSeen: (threadId: string, providerTurnId: string) => boolean;
+  /** Event-retired rows excluded only from possible-effect reads. Raw records,
+   * listing and recovery remain unchanged; the host owns physical retirement. */
+  readonly retiredBoundaryIds?: (threadId: string) => readonly string[];
   /** Persisted ordering for session terminals. Missing facts keep fenced rows. */
   readonly terminalSequence?: (
     threadId: string,
