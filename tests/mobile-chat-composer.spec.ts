@@ -4764,9 +4764,7 @@ async function queueSendForRetry(
   // no answer waits for Station to confirm it never arrived before it is
   // sent again, #3652) and the send's "Working" pill has left.
   await expect(
-    page
-      .locator('.queued-messages')
-      .getByText(/with no answer yet/i),
+    page.locator('.queued-messages').getByText(/with no answer yet/i),
   ).toBeVisible();
   await expect(page.locator('.chat-status-pill')).toHaveCount(0);
   return { textarea };
@@ -4972,9 +4970,7 @@ test('deleting the queued message from the queue panel clears its queued-retry n
     .click();
   await page.getByRole('button', { name: 'I checked, discard it' }).click();
   await expect(
-    page
-      .locator('.queued-messages')
-      .getByText(/with no answer yet/i),
+    page.locator('.queued-messages').getByText(/with no answer yet/i),
   ).toHaveCount(0);
   await expect(notice).toHaveCount(0);
   await expect(noticeDiscards(page)).toHaveCount(0);
