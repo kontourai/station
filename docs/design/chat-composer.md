@@ -199,7 +199,13 @@ conversation-open read. Resync is disabled and announces “Resyncing conversati
 until those reads settle. Check connection, Reconnecting, and Catching up take
 priority while the transport needs recovery; explicit stream resync respects
 the 30-second auth-refusal retry floor. Background work the session record last reported
-reads as "Last known: …" without animated dots until a read succeeds. History
+reads as "Last known: …" without animated dots while its observation is
+unverified. The inbox, sidebar, Home, and mobile picker share this freshness:
+a failed conversation read marks only that conversation; a failed inbox read
+marks the retained list. Rows prefix the computed status with "Last known:"
+and suppress pulsing and elapsed clocks. A successful read or a newer stream
+activity observation verifies the affected conversation again, independently of
+other conversations and Station authorities. History
 Retry refreshes the capability observation before reloading. The desktop
 inbox footer offers Refresh, which reconnects the same stream and re-reads the
 session list and conversation inventory; when the last read failed, the footer
@@ -527,7 +533,8 @@ It uses the same direct-chat or agent-choice flow as Chat actions;
 opening it sends no message. Rows show the catalog's Agent icon, conversation
 title, Project with its icon (or its sidebar colour dot), and a right-aligned status/time. Unresolved Agents retain their
 name. The status line is the ladder's own words (`Needs answer`, `Needs
-approval`, …, the same words the dock row prints). Running time uses the
+approval`, …, the same words the dock row prints), prefixed with "Last known:"
+when its latest observation failed. Verified running time uses the
 recorded open-turn start; without one, the row's compact time trails the status
 line (`· 2m`). One ellipsis opens the
 existing details/actions sheet, including Git and PR reads on demand.
