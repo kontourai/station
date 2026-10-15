@@ -163,6 +163,7 @@ interface ChatInputAreaProps {
   mentionAuthority?: string | null;
   attachments: FileAttachment[];
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  onEnabledChange?: (element: HTMLTextAreaElement | null) => void;
   // Status
   disabled: boolean;
   /** A busy continuation may accept a draft while sends remain blocked. */
@@ -378,6 +379,7 @@ export function ChatInputArea({
   quoteContext,
   attachments,
   textareaRef,
+  onEnabledChange,
   disabled,
   allowDraftWhileDisabled = false,
   isSending,
@@ -467,6 +469,11 @@ export function ChatInputArea({
   loadingConversation = false,
   onStartNewChat,
 }: ChatInputAreaProps) {
+  const textareaDisabled = disabled && !allowDraftWhileDisabled;
+  useEffect(() => {
+    onEnabledChange?.(textareaDisabled ? null : textareaRef.current);
+    return () => onEnabledChange?.(null);
+  }, [textareaDisabled, textareaRef, onEnabledChange]);
   const isMobile = useIsMobile();
   const hasSendableDraft = Boolean(
     input.trim() || hasQuotedContext || attachments.length,
@@ -1197,7 +1204,7 @@ export function ChatInputArea({
             }
             placeholder={placeholder}
             value={displayInput}
-            disabled={disabled && !allowDraftWhileDisabled}
+            disabled={textareaDisabled}
             tabIndex={0}
             onFocus={(e) => {
               setShortcutContext('composerFocused', true);

@@ -287,6 +287,7 @@ interface ChatDockBodyProps {
    */
   loadingEscapeDelayMs?: number;
   onForkFromTurn?: (source: ForkTurnSource) => void;
+  onComposerEnabledChange?: (element: HTMLTextAreaElement | null) => void;
   chatInput: ReturnType<typeof useChatInput>;
   setShowStatsPanel: (show: boolean) => void;
 }
@@ -444,6 +445,7 @@ export function ChatDockBody({
   onExecutionModelSelect,
   modelsLoading = false,
   chatInput,
+  onComposerEnabledChange,
   secondaryActions,
   onOpenAgentHandoff,
   agentHandoffTriggerRef,
@@ -2096,6 +2098,7 @@ export function ChatDockBody({
             mentionAuthority={mentionAuthority}
             attachments={chatInput.attachments}
             textareaRef={chatInput.textareaRef}
+            onEnabledChange={onComposerEnabledChange}
             disabled={!agent || recoveryOpen || resolvingOpen || busyOpen}
             allowDraftWhileDisabled={busyOpen && !!agent}
             isSending={isExecutionActive}

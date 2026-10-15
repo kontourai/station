@@ -1,10 +1,15 @@
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
 import {
   expect,
   type Locator,
   type Page,
   type TestInfo,
 } from '@playwright/test';
-import { test } from './helpers/fixture-audit';
+import { build } from 'esbuild';
+import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import {
   DEFAULT_CONVERSATION_LOOKUPS,
   DEFAULT_CONVERSATIONS,
@@ -538,7 +543,7 @@ test('working chat selection focuses the selected composer among several chats',
   await expect(composer).toHaveValue('Draft for the selected chat');
 });
 
-async function selectDelayedWorkingChat(page: Page) {
+async function selectDelayedWorkingChat(page: Page, readOnly = false) {
   await openWorkingChat(page, true);
   await emitMockOrchestrationEvent(page, 'orchestration:event', {
     event: {
@@ -561,6 +566,38 @@ async function selectDelayedWorkingChat(page: Page) {
   await page.route('**/api/conversations/conv-2/open', async (route) => {
     markRequested();
     await held;
+    if (readOnly) {
+      return route.fulfill({
+        json: {
+          success: true,
+          data: {
+            status: 'resolved',
+            currentSessionId: 'session-2',
+            canContinue: false,
+            conversation: {
+              id: 'conv-2',
+              source: 'runtime',
+              title: 'Working chat 2',
+              agentSlug: agentId('dev-agent'),
+              projectSlug: 'dev',
+              mutable: false,
+              answerability: { answerable: true },
+              createdAt: '2026-10-14T08:00:00.000Z',
+              updatedAt: '2026-10-14T08:00:00.000Z',
+              messageCount: 0,
+            },
+            transcript: { available: true, owner: 'runtime', messageCount: 0 },
+            recoveryActions: [],
+            execution: {
+              sessionId: 'session-2',
+              agentId: agentId('dev-agent'),
+              provider: 'codex',
+            },
+            answerability: { answerable: true },
+          } satisfies ConversationOpenResolution,
+        },
+      });
+    }
     await route.fallback();
   });
   const activity = page.getByRole('button', {
@@ -663,4 +700,226 @@ test('delayed working chat selection restores composer focus after resizing to 3
   } finally {
     release();
   }
+});
+
+test('later textarea enable fulfils the working chat focus request', async ({
+  page,
+}) => {
+  // The mounted owner changes conversation readiness and textarea enabled state
+  // separately, through keyboard actions; ChatInputArea reports its real state.
+  const script = (
+    await build({
+      stdin: {
+        resolveDir: resolve(dirname(fileURLToPath(import.meta.url)), '..'),
+        loader: 'tsx',
+        contents: `
+import React,{useRef,useState} from 'react';import{createRoot}from'react-dom/client';
+import{QueryClient,QueryClientProvider}from'@tanstack/react-query';
+import{ChatInputArea}from'./src-ui/src/components/chat/ChatInputArea';
+import{PreviewProvider}from'./src-ui/src/contexts/PreviewContext';
+import{useWorkingChatFocus}from'./src-ui/src/hooks/useWorkingChatFocus';
+const base={attachments:[],isSending:false,turnInFlight:false,modelSupportsAttachments:true,fontSize:14,dockHeight:500,canModelSelect:false,availableModels:[],modelQuery:null,commandQuery:null,slashCommands:[],onCancel:()=>{},onClearInput:()=>{},onRemoveAttachment:()=>{},onClearAttachments:()=>{},onModelSelect:()=>{},onModelReset:()=>{},onModelClose:()=>{},onModelOpen:()=>{},onModelRuntimeOptionChange:()=>{},onApprovalModeChange:()=>{},onCommandSelect:async()=>{},onCommandClose:()=>{},onHistoryUp:()=>{},onHistoryDown:()=>{},updateFromInput:()=>{},closeAll:()=>{}};
+function App(){
+ const ref=useRef(null),surfaceRef=useRef(null);
+ const[ready,setReady]=useState(false),[disabled,setDisabled]=useState(true),[input,setInput]=useState('');
+ const{requestComposerFocus,onComposerEnabledChange}=useWorkingChatFocus({activeSessionId:'selected',ready,terminal:false,surfaceRef});
+ return <main ref={surfaceRef} onKeyDown={e=>{if(e.key==='F7')setReady(true);if(e.key==='F8')setDisabled(false)}}>
+ <div className="chat-dock__activity"><button onClick={()=>requestComposerFocus('selected')}>Select working chat</button></div>
+ <output>{ready?'Conversation ready':'Opening conversation'}</output>
+ <ChatInputArea {...base} sessionId="selected" input={input} onInputChange={setInput} onSend={async()=>{}} disabled={disabled} textareaRef={ref} onEnabledChange={onComposerEnabledChange}/>
+ </main>;
+}
+createRoot(document.getElementById('root')).render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><PreviewProvider><App/></PreviewProvider></QueryClientProvider>);
+`,
+      },
+      bundle: true,
+      format: 'iife',
+      jsx: 'automatic',
+      write: false,
+      platform: 'browser',
+      define: {
+        'process.env.NODE_ENV': '"production"',
+        'import.meta.env.DEV': 'false',
+      },
+      loader: { '.css': 'empty' },
+    })
+  ).outputFiles[0].text;
+  await page.route(
+    'http://station.test/api/**',
+    rejectUnexpectedFixtureRequest,
+  );
+  await page.route('http://station.test/', (route) =>
+    route.fulfill({ contentType: 'text/html', body: '<div id="root"></div>' }),
+  );
+  await page.goto('http://station.test/');
+  await page.addScriptTag({ content: script });
+  await page.getByRole('button', { name: 'Select working chat' }).click();
+  const composer = page.locator('textarea');
+  await page.keyboard.press('F7');
+  await expect(
+    page.getByText('Conversation ready', { exact: true }),
+  ).toBeVisible();
+  await expect(composer).toBeDisabled();
+  await page.keyboard.press('F8');
+  await expect(composer).toBeEnabled();
+  await expect(composer).toBeFocused();
+  await composer.fill('Draft after the later enable');
+  await expect(composer).toHaveValue('Draft after the later enable');
+});
+
+test('read-only working chat selection focuses its transcript', async ({
+  page,
+}) => {
+  const { composer, release } = await selectDelayedWorkingChat(page, true);
+  try {
+    release();
+    await expect(page.getByText(/read-only/).first()).toBeVisible();
+    await expect(composer).toBeDisabled();
+    await expect(
+      page.getByRole('log', { name: 'Conversation transcript' }),
+    ).toBeFocused();
+  } finally {
+    release();
+  }
+});
+
+for (const expired of [false, true]) {
+  test(`working chat focus ${expired ? 'expires after its bounded lifetime' : 'survives a slow remote open'}`, async ({
+    page,
+  }) => {
+    await page.clock.install();
+    const { composer, release } = await selectDelayedWorkingChat(page);
+    try {
+      await page.clock.fastForward(expired ? 60_001 : 59_000);
+      await finishDelayedOpen(page, composer, release);
+      if (expired) await expect(composer).not.toBeFocused();
+      else await expect(composer).toBeFocused();
+    } finally {
+      release();
+    }
+  });
+}
+
+test('approval dialog cancels pending working chat focus at phone width', async ({
+  page,
+}) => {
+  const { composer, release } = await selectDelayedWorkingChat(page);
+  try {
+    await page.setViewportSize(PHONE);
+    await emitMockOrchestrationEvent(
+      page,
+      'orchestration:event',
+      {
+        event: {
+          provider: 'codex',
+          threadId: 'session-2',
+          method: 'request.opened',
+          turnId: 'second-active',
+          eventId: 'focus-approval',
+          requestId: 'focus-approval',
+          requestType: 'approval',
+          title: 'Allow protected write',
+          createdAt: new Date().toISOString(),
+          payload: { toolName: 'shell', command: 'write protected file' },
+        },
+      },
+      { sequence: 2 },
+    );
+    const dialog = page.getByRole('dialog', {
+      name: /Needs approval|Allow protected write/,
+    });
+    await expect(dialog).toBeVisible();
+    await dialog
+      .getByRole('button', { name: 'Close and answer later' })
+      .click();
+    await expect(dialog).toBeHidden();
+    await finishDelayedOpen(page, composer, release);
+    await expect(composer).not.toBeFocused();
+    await expect(dialog).toBeHidden();
+  } finally {
+    release();
+  }
+});
+
+test('replay working chat selection focuses its transcript', async ({
+  page,
+}) => {
+  await openWorkingChat(page, true);
+  await page.route(
+    /\/api\/orchestration\/sessions\/(?:session-1|conv-1)\/event-page(?:\?.*)?$/,
+    (route) => {
+      const threadId = decodeURIComponent(
+        new URL(route.request().url()).pathname.split('/').at(-2)!,
+      );
+      const base = {
+        provider: 'codex',
+        threadId,
+        createdAt: '2026-10-14T08:00:00.000Z',
+      };
+      const events = [
+        {
+          ...base,
+          eventId: 'replay-start',
+          method: 'turn.started',
+          turnId: 'replay-live',
+          prompt: 'Replay working turn',
+        },
+        {
+          ...base,
+          eventId: 'replay-delta1',
+          method: 'content.text-delta',
+          turnId: 'replay-live',
+          itemId: 'replay-answer',
+          delta: 'Replay answer ',
+        },
+        {
+          ...base,
+          eventId: 'replay-delta2',
+          method: 'content.text-delta',
+          turnId: 'replay-live',
+          itemId: 'replay-answer',
+          delta: 'still working.',
+        },
+      ];
+      return route.fulfill({
+        json: {
+          success: true,
+          data: {
+            session: { model: 'claude-sonnet' },
+            events: events.map((event, index) => ({
+              sequence: index + 1,
+              event,
+            })),
+            nextSequence: 3,
+            hasMore: false,
+          },
+        },
+      });
+    },
+  );
+  const settings = await openChatSettings(page);
+  await settings
+    .getByRole('button', { name: 'Step through this conversation' })
+    .click();
+  const transport = page.getByTestId('replay-transport');
+  await expect(transport).toBeVisible();
+  await transport.getByText('Replay controls · 0 / 3', { exact: true }).click();
+  const step = transport.getByRole('button', { name: 'Step', exact: true });
+  await step.click();
+  await step.click();
+  await step.click();
+  const activity = page.locator('.chat-dock__activity-btn');
+  await activity.focus();
+  await page.keyboard.press('Enter');
+  const replay = page
+    .locator('.chat-dock__activity-dropdown')
+    .getByRole('button', { name: /Event replay/ });
+  await expect(replay).toBeVisible();
+  await replay.focus();
+  await page.keyboard.press('Enter');
+  await expect(transport).toBeVisible();
+  await expect(page.locator('.chat-input textarea')).toHaveCount(0);
+  await expect(
+    page.getByRole('log', { name: 'Conversation transcript' }),
+  ).toBeFocused();
 });

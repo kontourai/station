@@ -74,6 +74,7 @@ import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
 import { useProjectIcons } from '../../hooks/useProjectIcons';
+import { useWorkingChatFocus } from '../../hooks/useWorkingChatFocus';
 import {
   dockAcceptsNewChatIntent,
   readNewChatIntent,
@@ -1426,70 +1427,32 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     },
     [focusSession, isFullscreenPlacement, setImportedSessionId],
   );
-  const [pendingComposerFocus, setPendingComposerFocus] = useState<{
-    sessionId: string;
-  } | null>(null);
-  const composerReady =
-    !!activeSession &&
-    conversationOpenPhase(activeSession) === 'writable' &&
-    !!executionProfile &&
-    !activeSession.replay &&
-    isPaneOpen &&
-    !importedSessionId;
-  useEffect(() => {
-    if (!pendingComposerFocus) return;
-    if (activeSessionId !== pendingComposerFocus.sessionId) {
-      setPendingComposerFocus(null);
-      return;
-    }
-    const mayRestoreFocus = (element: EventTarget | null) =>
-      element === document.body ||
-      (element instanceof Element && !!element.closest('.chat-dock__activity'));
-    const dialogOpen = () =>
-      Array.from(
-        document.querySelectorAll(
-          '[role="dialog"], [role="alertdialog"], dialog[open]',
-        ),
-      ).some((dialog) => !dialog.closest('[aria-hidden="true"], [hidden]'));
-    if (dialogOpen() || !mayRestoreFocus(document.activeElement)) {
-      setPendingComposerFocus(null);
-      return;
-    }
-    const composer = chatInput.textareaRef.current;
-    if (composerReady && composer && !composer.disabled && !composer.readOnly) {
-      setPendingComposerFocus(null);
-      composer.focus();
-      return;
-    }
-    const onFocusIn = (event: FocusEvent) => {
-      if (!mayRestoreFocus(event.target)) setPendingComposerFocus(null);
-    };
-    const observer = new MutationObserver(() => {
-      if (dialogOpen()) setPendingComposerFocus(null);
-    });
-    document.addEventListener('focusin', onFocusIn);
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['role', 'open', 'aria-hidden', 'hidden'],
-    });
-    return () => {
-      document.removeEventListener('focusin', onFocusIn);
-      observer.disconnect();
-    };
-  }, [
-    pendingComposerFocus,
-    activeSessionId,
-    composerReady,
-    chatInput.textareaRef,
-  ]);
+  const conversationSurfaceRef = useRef<HTMLDivElement>(null);
+  const composerFocusPhase = activeSession
+    ? conversationOpenPhase(activeSession)
+    : null;
+  const { requestComposerFocus, onComposerEnabledChange } = useWorkingChatFocus(
+    {
+      activeSessionId,
+      ready:
+        composerFocusPhase === 'writable' &&
+        !!executionProfile &&
+        isPaneOpen &&
+        !importedSessionId,
+      terminal:
+        !activeSession ||
+        !!activeSession.replay ||
+        composerFocusPhase === 'read-only' ||
+        composerFocusPhase === 'unverified',
+      surfaceRef: conversationSurfaceRef,
+    },
+  );
   const selectWorkingChat = useCallback(
     (sessionId: string) => {
       focusSessionInPane(sessionId);
-      setPendingComposerFocus({ sessionId });
+      requestComposerFocus(sessionId);
     },
-    [focusSessionInPane],
+    [focusSessionInPane, requestComposerFocus],
   );
   const closeImportedSession = useCallback(
     () => setImportedSessionId(null),
@@ -2668,7 +2631,10 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       }
                     />
                   )}
-                <div className="chat-dock__conversation-surface">
+                <div
+                  className="chat-dock__conversation-surface"
+                  ref={conversationSurfaceRef}
+                >
                   <div ref={sessionInventoryMountRef} />
                   {conversationOpenRecovery && !importedSessionId ? (
                     <LazyBoundary
@@ -2763,6 +2729,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       }
                       modelsLoading={modelsLoading}
                       chatInput={chatInput}
+                      onComposerEnabledChange={onComposerEnabledChange}
                       secondaryActions={secondaryActions}
                       onOpenAgentHandoff={() =>
                         openConversationHandoff(composerAgentTriggerRef.current)
