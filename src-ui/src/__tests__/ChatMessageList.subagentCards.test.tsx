@@ -114,7 +114,10 @@ function chatSession(): ChatSession {
 }
 
 let sequence = 0;
-function runtimeEvent(createdAt: string, fields: Record<string, unknown>) {
+function runtimeEvent<T extends Record<string, unknown>>(
+  createdAt: string,
+  fields: T,
+) {
   sequence += 1;
   return {
     sequence,
@@ -371,7 +374,7 @@ describe('subagent transcript cards', () => {
       const call = `toolu_agent_${index}`;
       const childId = `child-${index}`;
       const turnId = 'turn-1';
-      const item = {
+      const item: ChildWorkItem = {
         ...runningChild,
         childId,
         parent: { toolCallId: call, turnId },
