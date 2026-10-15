@@ -65,8 +65,8 @@ When a conversation status/history read or an inbox read fails, retained
 conversation rows say **Last known:** before their computed status. The status
 uses a muted style without a pulsing indicator or running clock. The transcript's
 background-work indicator also says **Last known**. A successful read or a newer
-stream observation verifies the affected conversation again; other conversations
-and Station authorities retain their own observations. Use **Resync** on the
+live update verifies the affected conversation again. Other conversations and
+Stations retain their own observations. Use **Resync** on the
 conversation or **Refresh inbox** to request fresh observations.
 
 ## Gates, Evidence, And Receipts
