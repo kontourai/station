@@ -6,16 +6,17 @@
  * than to a broken harness. The tampered tarballs start from the real one, so
  * their shape is what `pnpm pack` writes.
  */
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import {
   cpSync,
+  existsSync,
   mkdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { parse } from 'yaml';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
@@ -26,6 +27,7 @@ import {
   packMonument,
   plainEnvironment,
   run as runStep,
+  smokePackage,
 } from '../monument-pack-smoke.mjs';
 
 const REPO = resolve(import.meta.dirname, '..', '..');
@@ -43,8 +45,8 @@ async function run(args: string[], env: NodeJS.ProcessEnv = process.env) {
     timeoutMs: CASE_TIMEOUT,
   });
   return {
-    status: result.ok ? result.status : (result.status ?? 1),
-    output: `${result.stdout}${result.stderr}`,
+    status: result.ok ? result.status : result.status || 1,
+    output: `${result.stdout}${result.stderr}${result.ok ? '' : `\n${result.describe()}`}`,
   };
 }
 
@@ -435,6 +437,94 @@ describe.skipIf(process.platform === 'win32')(
       const result = await run(['--tarball', good]);
       expect(result.output).toContain('OK: @kontourai/monument consumer smoke');
       expect(result.status).toBe(0);
+    });
+
+    it('an interrupt settles the consumer tree and never launches the typecheck', async ({
+      task,
+    }) => {
+      const marker = join(scratch, 'cancel-consumer-ready');
+      const descendantPid = join(scratch, 'cancel-descendant.pid');
+      const compiled = join(scratch, 'cancel-typecheck-launched');
+      const fakeRoot = join(scratch, 'cancel-host');
+      mkdirSync(join(fakeRoot, 'node_modules', '@types'), { recursive: true });
+      mkdirSync(join(fakeRoot, 'scripts'));
+      writeFileSync(
+        join(fakeRoot, 'scripts', 'tsc-slot.mjs'),
+        `import {writeFileSync} from 'node:fs'; writeFileSync(${JSON.stringify(compiled)}, 'launched');`,
+      );
+      const ordinaryFailure = tamper('ordinary-consumer-failure', (dir) => {
+        const path = join(dir, 'dist', 'index.js');
+        writeFileSync(
+          path,
+          `throw new Error('ordinary consumer refusal');\n${readFileSync(path, 'utf8')}`,
+        );
+      });
+      const failures = await smokePackage({
+        repoRoot: fakeRoot,
+        tarball: ordinaryFailure,
+      });
+      expect(failures.join('\n')).toContain('plain node import failed');
+      expect(
+        existsSync(compiled),
+        'ordinary failure still runs typecheck',
+      ).toBe(true);
+      rmSync(compiled);
+      const descendant = `require('node:fs').writeFileSync(${JSON.stringify(descendantPid)}, String(process.pid)); setInterval(() => {}, 1000);`;
+      const archive = tamper('interrupted-consumer', (dir) => {
+        const path = join(dir, 'dist', 'index.js');
+        writeFileSync(
+          path,
+          `import {writeFileSync as ready} from 'node:fs';
+          import {spawn as startChild} from 'node:child_process';
+          startChild(process.execPath, ['-e', ${JSON.stringify(descendant)}], {stdio:'inherit',windowsHide:true});
+          ready(${JSON.stringify(marker)}, 'ready');
+          await new Promise(() => {});\n${readFileSync(path, 'utf8')}`,
+        );
+      });
+      const driver = `import {smokePackage} from ${JSON.stringify(new URL('../monument-pack-smoke.mjs', import.meta.url).href)};
+        try { const failures = await smokePackage({repoRoot:${JSON.stringify(fakeRoot)},tarball:${JSON.stringify(archive)}});
+          console.error(failures.join('\\n')); process.exitCode=failures.length?1:0;
+        } catch(error) { console.error(error.message);process.exitCode=1; }`;
+      const child = spawn(
+        process.execPath,
+        ['--input-type=module', '--eval', driver],
+        {
+          stdio: ['ignore', 'ignore', 'pipe'],
+          windowsHide: true,
+        },
+      );
+      let stderr = '';
+      child.stderr.on('data', (chunk: Buffer) => {
+        stderr = (stderr + chunk.toString()).slice(-8192);
+      });
+      const closed = new Promise<number | null>((resolve, reject) => {
+        child.once('error', reject);
+        child.once('close', resolve);
+      });
+      try {
+        await vi.waitFor(
+          () => {
+            expect(existsSync(marker)).toBe(true);
+            expect(existsSync(descendantPid)).toBe(true);
+          },
+          { timeout: task.timeout / 3 },
+        );
+        child.kill('SIGTERM');
+        expect(await closed, stderr).not.toBe(0);
+        expect(
+          existsSync(compiled),
+          'typecheck must not launch after interruption',
+        ).toBe(false);
+        expect(stderr).toContain('interrupted after owned tree settlement');
+        const pid = Number(readFileSync(descendantPid, 'utf8'));
+        expect(() => process.kill(pid, 0)).toThrowError(
+          expect.objectContaining({ code: 'ESRCH' }),
+        );
+      } finally {
+        if (child.exitCode === null && child.signalCode === null)
+          child.kill('SIGKILL');
+        await closed;
+      }
     });
 
     it('keeps publish credentials out of the packed code and the type-check', {

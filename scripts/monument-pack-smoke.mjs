@@ -235,6 +235,13 @@ export async function run(command, args, options = {}) {
       error.code = 'MONUMENT_PROCESS_UNSETTLED';
       throw error;
     }
+    if (cancellation === 'interrupted') {
+      const error = new Error(
+        `${command}: interrupted after owned tree settlement`,
+      );
+      error.code = 'MONUMENT_PROCESS_INTERRUPTED';
+      throw error;
+    }
     const output = capture.finish();
     const timedOut = cancellation === 'timeout';
     const error =
