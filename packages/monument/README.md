@@ -81,7 +81,8 @@ const storage = openSqliteKernelStorage({
 - The host creates a bound table. The adapter checks its columns at open and
   never creates or alters it, and creates no `monument_*` table for a machine
   it is not given: bind it, or mark it `'unused'`, and its commands are
-  refused. An area left out keeps the adapter's own tables.
+  refused. An area left out keeps the adapter's own tables. The `inbox` area
+  has no bound form: it is the adapter's own table or `'unused'`.
 - `ownerIdField` is the `owner_json` field that names the owner. It is read
   and written under that name, never as `id`, so a writer from before the
   kernel still parses the rows.
@@ -115,6 +116,7 @@ const storage = openSqliteKernelStorage({
   tables: {
     turnDedup: 'unused',
     requestKeys: 'unused',
+    inbox: 'unused',
     turnBoundary: {
       table: 'host_boundaries',
       ownerEncoding: 'columns',
