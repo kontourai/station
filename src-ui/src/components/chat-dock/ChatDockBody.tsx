@@ -573,6 +573,12 @@ export function ChatDockBody({
     unverifiedOpen,
     onRetryConversationOpen,
   ]);
+  const focusRecoveredComposer = useCallback(() => {
+    const textarea = chatInput.textareaRef.current;
+    if (!textarea || textarea.disabled) return false;
+    textarea.focus();
+    return document.activeElement === textarea;
+  }, [chatInput.textareaRef]);
   // Live chat status shares the composer rail; replay keeps its recorded rows.
   const { pill: statusPill, statusInPill } = useChatStatusPill({
     activeSession,
@@ -583,6 +589,7 @@ export function ChatDockBody({
     observationUnavailable: observationUnavailable || resyncPending,
     resyncPending,
     onResync: resyncConversation,
+    onRecoveryFocus: focusRecoveredComposer,
   });
   /*
    * One transitional state for the whole conversation, from the two things

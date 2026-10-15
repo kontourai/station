@@ -56,6 +56,7 @@ export function useChatStatusPill({
   observationUnavailable = false,
   resyncPending = false,
   onResync,
+  onRecoveryFocus,
 }: {
   activeSession: ChatSession;
   streamStatus: ChatStreamStatus | undefined;
@@ -66,6 +67,8 @@ export function useChatStatusPill({
   resyncPending?: boolean;
   /** Re-reads this conversation when its status could not be observed. */
   onResync?: () => void;
+  /** Focus the recovered composer when it is writable. */
+  onRecoveryFocus?: () => boolean;
 }): { pill: ReactNode; statusInPill: boolean } {
   const [view, setView] = useState<'loading' | 'mounted' | 'unavailable'>(
     'loading',
@@ -190,6 +193,7 @@ export function useChatStatusPill({
           onRevealApproval,
           onRepair: () => openConnectionsModal({ mode: 'request-access' }),
           onResync,
+          onRecoveryFocus,
           onMounted,
         }}
       />

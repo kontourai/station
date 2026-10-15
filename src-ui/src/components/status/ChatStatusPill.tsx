@@ -87,12 +87,15 @@ export function ChatStatusPill({
   onRevealApproval,
   onRepair,
   onResync,
+  onRecoveryFocus,
 }: {
   status: ChatStatus | undefined;
   onRevealApproval?: () => void;
   onRepair?: () => void;
   /** Re-reads this conversation's status and history from the Station. */
   onResync?: () => void;
+  /** Focus the recovered composer when it is writable. */
+  onRecoveryFocus?: () => boolean;
 }) {
   useEffect(trackPageVisibilityForStatusMotion, []);
   const detailsId = useId();
@@ -111,10 +114,11 @@ export function ChatStatusPill({
       status?.kind !== 'catching-up'
     ) {
       setRecovered(true);
-      if (resyncFocused.current) hostRef.current?.focus();
+      if (resyncFocused.current && !onRecoveryFocus?.())
+        hostRef.current?.focus();
       resyncFocused.current = false;
     }
-  }, [status?.action, status?.kind]);
+  }, [status?.action, status?.kind, onRecoveryFocus]);
   const lastWidth = useRef<number | undefined>(undefined);
   const resizeAnimation = useRef<Animation | undefined>(undefined);
   useEffect(() => () => resizeAnimation.current?.cancel(), []);

@@ -11,6 +11,7 @@ export function ChatStatusPillView({
   onRevealApproval,
   onRepair,
   onResync,
+  onRecoveryFocus,
   onMounted,
 }: {
   input: ChatStatusInput;
@@ -18,6 +19,8 @@ export function ChatStatusPillView({
   onRepair: () => void;
   /** Re-reads the conversation; absent leaves an unobservable pill inert. */
   onResync?: () => void;
+  /** Focus the recovered composer when it is writable. */
+  onRecoveryFocus?: () => boolean;
   /** The pill is on screen: its host may hand it the chat's status. */
   onMounted: () => void;
 }) {
@@ -29,6 +32,7 @@ export function ChatStatusPillView({
       onRevealApproval={onRevealApproval}
       onRepair={onRepair}
       onResync={onResync}
+      onRecoveryFocus={onRecoveryFocus}
     />
   );
 }

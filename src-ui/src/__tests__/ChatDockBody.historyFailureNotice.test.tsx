@@ -129,8 +129,17 @@ vi.mock('../hooks/orchestration/useActiveChatTranscript', () => ({
 
 vi.mock('../components/chat/ChatInputArea', () => ({
   // The composer rail hosts the chat's status pill (its `activity` slot).
-  ChatInputArea: ({ activity }: { activity?: React.ReactNode }) => (
-    <div data-testid="chat-input-area">{activity}</div>
+  ChatInputArea: ({
+    activity,
+    textareaRef,
+  }: {
+    activity?: React.ReactNode;
+    textareaRef: React.Ref<HTMLTextAreaElement>;
+  }) => (
+    <div data-testid="chat-input-area">
+      {activity}
+      <textarea ref={textareaRef} aria-label="Message composer" />
+    </div>
   ),
 }));
 
@@ -526,8 +535,8 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
         release();
       });
       await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
-      expect(document.activeElement?.getAttribute('aria-label')).toBe(
-        'Conversation status',
+      expect(document.activeElement).toBe(
+        screen.getByRole('textbox', { name: 'Message composer' }),
       );
       expect(
         screen
