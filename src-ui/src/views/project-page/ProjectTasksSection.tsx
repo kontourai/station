@@ -26,6 +26,7 @@ import { describeReadFailure, Empty, ErrorState } from '../../components/state';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { browserStarterWorkOperationStore } from '../../lib/starter-work-operation-store';
+import { isPlainLeftClick } from '../../utils/attentionOpen';
 import { ProjectTaskSharingControl } from './ProjectTaskSharingControl';
 import '../ProjectPage.css';
 
@@ -621,7 +622,23 @@ export function ProjectTasksSection({
                       id={dispatchReasonId}
                     >
                       Dispatch needs an agent, and this Task has none. New Tasks
-                      use the first agent selected in Project settings › Agents.
+                      use the first agent selected in{' '}
+                      <a
+                        href={`/projects/${encodeURIComponent(slug)}/settings?section=agents`}
+                        onClick={(event) => {
+                          if (!isPlainLeftClick(event)) return;
+                          event.preventDefault();
+                          navigate(
+                            `/projects/${encodeURIComponent(slug)}/settings`,
+                            {
+                              section: 'agents',
+                            },
+                          );
+                        }}
+                      >
+                        Project settings › Agents
+                      </a>
+                      .
                     </div>
                   )}
                   {workflowMatch && (
