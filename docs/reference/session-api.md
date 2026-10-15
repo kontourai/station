@@ -185,6 +185,17 @@ it with, stamped by Station (an engine cannot supply one): the send's
 handoff dialog names its message by, rather than the conversation-derived key
 Station deduplicates the handoff under.
 
+A key is one send for the whole conversation, not only for one of its
+Sessions. A continuation can move to a new Session (the one it used ended, or
+the request names a model its engine cannot switch to mid-Session), so before
+it may do that Station reads the turn ledger for the key across every Session
+of the conversation. A key whose turn already started is answered with that
+turn (`providerTurnId`), whatever the retry changed. One that may have reached
+the agent is refused `409` with `code: "foreground_message_indeterminate"`,
+and one another attempt still holds is refused with the retryable
+`code: "client_turn_in_flight"`. Nothing is sent in any of these cases. A
+handoff is deduplicated under its own key and is not part of this check.
+
 ### Let Station hold a follow-up
 
 A follow-up sent to a conversation whose turn is still running is refused

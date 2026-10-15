@@ -1107,7 +1107,10 @@ describe('POST /chat whenBusy queue (#3568)', () => {
             agent: agentId('writer'),
           },
         }),
-        // The composer's continue route.
+        // The composer's continue route. The harness's continuation is a
+        // recorder, so this row proves the route refuses before reaching it
+        // (`continuations` stays empty), not what a real continuation would
+        // send; the `/chat` rows above run the real one.
         await world.continueSend('owner-key', 'then summarize'),
       ];
       const answers = await Promise.all(

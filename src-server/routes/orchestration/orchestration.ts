@@ -2328,13 +2328,16 @@ export function createOrchestrationRoutes(
   };
 
   /**
-   * #3568: a key whose inbox start was abandoned at its deadline but is still
-   * running in this process. The ledger cannot hold the key yet (a cold start
-   * claims it once its Session exists), so a live send under it, from anyone
-   * including its own sender, would be a second send. It is refused with the
-   * retryable `client_turn_in_flight`: once the start answers, the same key
-   * is answered by the turn claim or placed by the inbox, once. The same
-   * read gate as `inboxKeyHeldRefusal` applies.
+   * #3568: a key the inbox is starting in this process now, from before its
+   * start begins until it answers, including past its deadline (`inFlight`).
+   * No Session's ledger may hold the key yet (a cold start claims it once its
+   * Session exists, and a live send may continue in a new Session), so a live
+   * send under it would be a second send. It is refused with the retryable
+   * `client_turn_in_flight`. Another sender meets `inboxKeyHeldRefusal` first
+   * while the entry may still be sent, so this reaches the entry's own
+   * sender, or anyone once the entry is dismissed (a dismissal does not end
+   * the start). Once the start answers, a retry under the key is answered
+   * from the conversation-wide ledger. The same read gate applies.
    */
   const inboxKeyInFlightRefusal = async (
     c: Context,

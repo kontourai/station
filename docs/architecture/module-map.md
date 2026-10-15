@@ -1382,7 +1382,11 @@ ledger for the key across the whole conversation
 claim waits, and only a key no Session holds is started, through the same
 `continueExecutionTargetMessage` continuation delegated results use, as the
 recorded sender. Delegated results use `startUnlessDelivered` too, so neither
-can send twice into a successor Session a continuation reserves. A start that
+can send twice into a successor Session a continuation reserves, and every
+live keyed continuation (`executeForegroundMessage`) applies the same rule
+(`conversationKeyDecision`, through `inspectConversationTurnKey`) before it may
+reserve one: a same-key retry that names a model the engine cannot switch to
+mid-Session, or follows an ended Session, is answered from the ledger. A start that
 has not answered within ten minutes is `unconfirmed` (`start_deadline`) until
 a later drive reads the ledger: `started` settles it `placed`, a key no
 Session holds queues it again (Monument's `inbox.resolveUnconfirmed`). The
