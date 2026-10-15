@@ -236,7 +236,9 @@ async function runContendedMutation({
 }
 
 describe('integration configuration cross-process mutation', () => {
-  test('a synchronous child holder does not block generic JSON RMW and both process updates survive', async ({ task }) => {
+  test('a synchronous child holder does not block generic JSON RMW and both process updates survive', async ({
+    task,
+  }) => {
     const root = mkdtempSync(join(tmpdir(), 'station-json-process-'));
     roots.push(root);
     const path = join(root, 'state.json');
@@ -261,7 +263,9 @@ describe('integration configuration cross-process mutation', () => {
     });
   });
 
-  test('a synchronous child holder does not block credential RMW and both process updates survive', async ({ task }) => {
+  test('a synchronous child holder does not block credential RMW and both process updates survive', async ({
+    task,
+  }) => {
     const root = mkdtempSync(join(tmpdir(), 'station-credential-process-'));
     roots.push(root);
     const store = new ToolServerCredentialStore(root);
@@ -285,7 +289,9 @@ describe('integration configuration cross-process mutation', () => {
     );
   });
 
-  test('a synchronous CLI holder does not block the server event loop and both updates survive', async ({ task }) => {
+  test('a synchronous CLI holder does not block the server event loop and both updates survive', async ({
+    task,
+  }) => {
     const root = mkdtempSync(join(tmpdir(), 'station-integration-process-'));
     roots.push(root);
     const portabilityUrl = new URL(
