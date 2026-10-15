@@ -101,25 +101,9 @@ export function ChatStatusPill({
   useEffect(trackPageVisibilityForStatusMotion, []);
   const detailsId = useId();
   const hostRef = useRef<HTMLElement>(null);
-  const resyncFocused = useRef(false);
-  const previousAction = useRef<ChatStatus['action']>(undefined);
-  const [recovered, setRecovered] = useState(false);
-  useEffect(() => {
-    const wasResync = previousAction.current === 'resync';
-    previousAction.current = status?.action;
-    if (status?.action === 'resync') setRecovered(false);
-    else if (
-      wasResync &&
-      status?.kind !== 'blocked' &&
-      status?.kind !== 'reconnecting' &&
-      status?.kind !== 'catching-up'
-    ) {
-      setRecovered(true);
-      if (resyncFocused.current && !onRecoveryFocus?.())
-        hostRef.current?.focus();
-      resyncFocused.current = false;
-    }
-  }, [status?.action, status?.kind, onRecoveryFocus]);
+  const resyncControl = useRef<HTMLButtonElement | null>(null);
+  const recoveryPending = useRef(false);
+  const [liveAnnouncement, setLiveAnnouncement] = useState('');
   const lastWidth = useRef<number | undefined>(undefined);
   const resizeAnimation = useRef<Animation | undefined>(undefined);
   useEffect(() => () => resizeAnimation.current?.cancel(), []);
@@ -201,6 +185,33 @@ export function ChatStatusPill({
     shown?.kind === 'approval' && shown.count !== undefined
       ? `Needs approval (${shown.count})`
       : (shown?.label ?? '');
+  useEffect(() => {
+    if (status?.action === 'resync') recoveryPending.current = true;
+    const completed =
+      recoveryPending.current &&
+      status?.action !== 'resync' &&
+      status?.kind !== 'blocked' &&
+      status?.kind !== 'reconnecting' &&
+      status?.kind !== 'catching-up';
+    if (completed) {
+      recoveryPending.current = false;
+      const activeElement = document.activeElement;
+      if (
+        (!activeElement ||
+          activeElement === document.body ||
+          activeElement === resyncControl.current) &&
+        !document.querySelector(
+          '[role="dialog"], [role="alertdialog"], dialog[open]',
+        )
+      )
+        onRecoveryFocus?.();
+    }
+    setLiveAnnouncement(
+      completed
+        ? `Conversation resynced.${announcement ? ` ${announcement}` : ''}`
+        : announcement,
+    );
+  }, [status?.action, status?.kind, announcement, onRecoveryFocus]);
   const currentLabel = current?.label;
   const currentCount = current?.count;
   const hasClock = current?.clockFrom !== undefined;
@@ -292,9 +303,7 @@ export function ChatStatusPill({
       {/* The narrow composer hides an empty status rail, including its descendants. */}
       {createPortal(
         <span className="sr-only" role="status" aria-live="polite">
-          {recovered
-            ? `Conversation resynced.${announcement ? ` ${announcement}` : ''}`
-            : announcement}
+          {liveAnnouncement}
         </span>,
         document.body,
       )}
@@ -330,15 +339,9 @@ export function ChatStatusPill({
               aria-busy={
                 current.action === 'resync' ? current.pending : undefined
               }
-              onFocus={() => {
-                resyncFocused.current = current.action === 'resync';
-              }}
-              onBlur={(event) => {
-                if (
-                  event.relatedTarget instanceof HTMLElement &&
-                  event.relatedTarget !== document.body
-                )
-                  resyncFocused.current = false;
+              ref={(element) => {
+                if (element && current.action === 'resync')
+                  resyncControl.current = element;
               }}
               onClick={activate}
             >
