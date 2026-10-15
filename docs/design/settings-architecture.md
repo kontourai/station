@@ -191,7 +191,7 @@ keep their existing Save and discard guard.
 
 The sidebar footer groups **Schedule**, **Customize**, and **Settings** beside
 live work. Customize opens Agents,
-Skills, Engines & Models, and Plugins at their existing routes. Developer joins
+Skills, Connections, and Plugins at their existing routes. Developer joins
 that chooser when enabled on this device. The footer replaces its command-palette chip and duplicate notification bell; the header bell and command-palette shortcut remain available.
 The Settings rail and phone picker stay within Settings; the panel's Settings
 gear remains available from management screens. Long permission and checkpoint

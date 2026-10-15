@@ -910,18 +910,16 @@ describe('ProjectPage (#762 query-failure regression)', () => {
       ];
     };
 
-    test('names the Agent that can actually start the chat', async () => {
+    test('invites a project chat without naming a different Agent', async () => {
       readyCodex();
 
       await renderProjectPage();
 
-      expect(
-        screen.getByText('New here? Chat with Codex to get started.'),
-      ).toBeTruthy();
+      expect(screen.getByText('Start a chat in this project.')).toBeTruthy();
       expect(screen.queryByText(/Chat with Station/)).toBeNull();
     });
 
-    test('#1582 C4: it is the shared page callout, with its copy unchanged', async () => {
+    test('#1582 C4: uses the shared page callout', async () => {
       // It used to be an inline card with its own border, its own text ramp
       // and a hand-rolled accent button — one of the three visual systems
       // Home and this page used for the same kind of offer.
@@ -938,10 +936,10 @@ describe('ProjectPage (#762 query-failure regression)', () => {
       ).toBeTruthy();
       expect(callout?.className).toContain('page-callout--info');
       expect(callout?.querySelector('.page-callout__title')?.textContent).toBe(
-        'New here? Chat with Codex to get started.',
+        'Start a chat in this project.',
       );
       expect(callout?.querySelector('.page-callout__body')?.textContent).toBe(
-        'Ask a question or describe a task — no setup required.',
+        'Choose an agent above, then ask a question or describe a task.',
       );
       expect(
         callout?.querySelector('.page-callout__action .button--primary')
@@ -949,7 +947,7 @@ describe('ProjectPage (#762 query-failure regression)', () => {
       ).toBe('Start a chat');
     });
 
-    test('withholds the banner, and its no-setup promise, when nothing can start a chat', async () => {
+    test('withholds the banner when nothing can start a chat', async () => {
       readyCodex();
       sdkMocks.engineConnections = [
         {
@@ -963,7 +961,7 @@ describe('ProjectPage (#762 query-failure regression)', () => {
 
       await renderProjectPage();
 
-      expect(screen.queryByText(/no setup required/)).toBeNull();
+      expect(screen.queryByText('Start a chat in this project.')).toBeNull();
       expect(screen.queryByRole('button', { name: 'Start a chat' })).toBeNull();
     });
 

@@ -4,6 +4,42 @@ Station is a local-first workspace for agent work. This guide covers the ways
 to run Station today, a verified macOS/Linux install when its release ring is
 published, first launch, connection setup, and routine lifecycle.
 
+## First chat with Codex
+
+If Codex is installed and signed in on this computer, you can use that account
+without adding a model API key:
+
+1. Start Station using one of the paths below. For a source checkout, follow
+   the [README commands](../../README.md#run-from-source-macos-linux) and open
+   the single-use sign-in link printed by `./station start`.
+2. Open **Customize** (the sparkle icon at the bottom of the sidebar) →
+   **Connections** → **Engines** → **Codex**. Confirm the account is signed in.
+   **Check connection** sends a short message using your model allowance.
+3. On Home, choose **Open local project** and select your repository folder.
+   Station recommends and selects **Coding** after detecting Git. Choose
+   **Create**, then open **Coding** beneath the project in the sidebar.
+4. Choose **Codex** in the Agent picker, write a request, and choose **Start**.
+   A detected engine's default Agent is enough; creating another Agent is optional.
+5. To talk to the built-in **Station** assistant using the same Codex account,
+   open **Settings → General → Built-in agent engine → Change…**, choose
+   **Codex**, choose **Use this engine**, then **Save**. Select **Station** in
+   the chat's Agent picker. Ask it to list your projects to exercise a read-only
+   Station tool as well as chat.
+
+For a customized Codex Agent, open **Customize → Agents → New agent → Use an
+AI app**, enter a name, select **Codex**, and choose its model and Project.
+In **Tools**, choose **Station** to add read-only controls; expand the row to
+inspect the selection. Save with **Create Agent**, then choose it in a new chat.
+Codex does not receive the editor's System Instructions from Station; the editor
+shows that capability limit. See the [Agents guide](../guides/agents.md#mcp-tool-configuration)
+for tool selection and approval details.
+
+In **Coding**, use **Files** to open a project file, **Diff** to inspect changes,
+and **Terminal** for a shell. These controls sit in the right-hand rail. Chat
+and its inbox remain available alongside them. A successful answer to a file
+question and a successful Station tool call establish different capabilities;
+check both before relying on the Agent for work.
+
 ## Ways To Run Station Today
 
 Station is open source and under active development. Check the
@@ -143,7 +179,7 @@ or hosted model service that Station's own engine runs inference on. An
 **Engine** is an installed agent CLI, or a custom engine you connected, that
 runs its own agent loop.
 
-1. Open **Connections**.
+1. Open **Customize → Connections**.
 2. On the **Models** tab choose a detected service or **Add model connection**;
    on the **Engines** tab choose a detected engine or **Add engine**. During
    first run, a detected Engine can be ticked to connect it and create its
