@@ -106,6 +106,10 @@ async function seedChat(page: Page) {
 }
 
 async function openChat(page: Page, viewport: { width: number }) {
+  const layoutsReady = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === '/api/projects/dev/layouts',
+  );
   const chat = encodeURIComponent(CONVERSATION_ID);
   if (viewport.width === PHONE.width) {
     // A phone holds Chat in the maximized dock, not a layout region.
@@ -120,6 +124,11 @@ async function openChat(page: Page, viewport: { width: number }) {
   await expect(
     page.getByRole('log', { name: 'Conversation transcript' }),
   ).toContainText('Started the captures in the background.');
+  await (await layoutsReady).finished();
+  // Conversation authority adds the inventory and copy-session menu rows.
+  await expect(
+    page.getByRole('button', { name: 'Composer actions', exact: true }),
+  ).toBeVisible();
 }
 
 async function openChatSettings(page: Page): Promise<Locator> {
