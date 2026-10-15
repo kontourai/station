@@ -83,6 +83,13 @@ describe('TurnDeduplicator', () => {
         }),
       ).toEqual({ kind: 'contended', turnId: 'legacy-turn' });
       expect(
+        ledger.inspect({
+          threadId: 'thread',
+          clientTurnId: 'legacy',
+          inputDigest: 'v1:different',
+        }),
+      ).toEqual({ state: 'resolved', value: 'legacy-turn' });
+      expect(
         raw
           .prepare(
             'SELECT input_digest FROM orchestration_turn_dedup WHERE dedup_key = ?',

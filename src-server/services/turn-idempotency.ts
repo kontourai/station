@@ -233,7 +233,11 @@ export class TurnIdempotencyStore {
    * cannot be proven dead; `reclaimable` is one whose owner died before it
    * began its effect, which the next claim of the key takes over.
    */
-  inspect(key: string, now = Date.now()): TurnClaimInspection {
+  inspect(
+    key: string,
+    now = Date.now(),
+    inputDigest?: string,
+  ): TurnClaimInspection {
     const result = this.persistence.execute(
       { type: 'turnDedup.read', key },
       this.liveness,
@@ -245,6 +249,12 @@ export class TurnIdempotencyStore {
         `Turn claim read refused by ${result.participant}: ${result.reason}`,
       );
     const record = result.record;
+    if (
+      inputDigest !== undefined &&
+      record.inputDigest !== undefined &&
+      inputDigest !== record.inputDigest
+    )
+      throw new ClientTurnInputConflictError();
     if (record.value !== null)
       return { state: 'resolved', value: record.value };
     if (record.owner?.id === this.owner.id && this.retained.has(key))

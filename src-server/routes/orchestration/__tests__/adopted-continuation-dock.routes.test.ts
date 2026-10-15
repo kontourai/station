@@ -631,6 +631,60 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
     },
   );
 
+  test('#3567: continuation captures caller intent before its session authorization read', async () => {
+    const f = await fixture({ engineAgent: true });
+    const child = await f.adopt(f.attached('claude', f.project));
+    const { continueExecutionTargetMessage } = await import(
+      '../../../tools/station-control-delegation.js'
+    );
+    const original = {
+      conversationId: child,
+      message: ' A ',
+      clientTurnId: 'retained-K',
+      userId: 'operator',
+      readAuthority: sessionReadAuthorityFromRequest(
+        'operator',
+        undefined,
+        undefined,
+      ),
+    };
+    let entered!: () => void;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const reached = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const read = f.service.readSession.bind(f.service);
+    const spy = vi
+      .spyOn(f.service, 'readSession')
+      .mockImplementationOnce(async (...args) => {
+        entered();
+        await held;
+        return read(...args);
+      });
+    const pending = continueExecutionTargetMessage(original, f.service);
+    await reached;
+    original.message = 'B';
+    release();
+    const first = await pending;
+    spy.mockRestore();
+    expect(f.engines.claude.turns).toEqual([{ threadId: child, input: 'A' }]);
+    expect(
+      (
+        await continueExecutionTargetMessage(
+          { ...original, message: ' A ' },
+          f.service,
+        )
+      ).providerTurnId,
+    ).toBe(first.providerTurnId);
+    await expect(
+      continueExecutionTargetMessage(original, f.service),
+    ).rejects.toMatchObject({ code: 'client_turn_input_conflict' });
+    expect(f.engines.claude.turns).toHaveLength(1);
+  });
+
   test.each(['chat', 'chat/background', 'continue'])(
     '#3567: the production %s executor preserves raw submission identity through auth and dispatch',
     async (route) => {

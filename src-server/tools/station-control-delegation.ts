@@ -131,6 +131,7 @@ import {
 } from '../services/orchestration/request-presentation.js';
 import type { StartOwnerAttribution } from '../services/orchestration/session-owner-attribution.js';
 import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
+import { snapshotTurnSubmissionFields } from '../services/orchestration/turn-submission-digest.js';
 import {
   type PortableExecutionConsentIdentity,
   portableConsentOfStartedMetadata,
@@ -6166,6 +6167,13 @@ export async function executeExecutionTargetMessage(
   admission?: ForegroundInvocationAdmission,
   remote?: RemoteStationForwarder,
 ): Promise<ForegroundMessageHandle> {
+  if (input.clientTurnId || input.handoffIntent)
+    input = snapshotTurnSubmissionFields(input, [
+      'target',
+      'attachments',
+      'expectedInputRequest',
+      'skillExperience',
+    ]);
   const capturedProject = admission?.project;
   const capturedAgent = admission?.agentSpec;
   if (admission) {
@@ -6561,6 +6569,7 @@ export async function executeExecutionTargetMessage(
         handoff.conversationId,
         handoff.idempotencyKey,
         readAuthority,
+        handoff.inputDigest,
       ),
     retireNativeReturnSource: async (_access, handoffSessionId) =>
       orchestrationService.retireNativeReturnSource(
@@ -6925,6 +6934,14 @@ export async function continueExecutionTargetMessage(
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
 ): Promise<ForegroundMessageHandle> {
+  if (input.clientTurnId)
+    input = snapshotTurnSubmissionFields(input, [
+      'model',
+      'environment',
+      'attachments',
+      'expectedInputRequest',
+      'skillExperience',
+    ]);
   const readAuthority = readAuthorityForInput(input);
   const selectedTarget = await resolveTarget(
     {

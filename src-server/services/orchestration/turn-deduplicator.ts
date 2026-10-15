@@ -85,12 +85,14 @@ export interface TurnDeduplicator {
   givenUp(input: { threadId: string; clientTurnId: string }): boolean;
   /**
    * Read-only: what {@link claim} would meet for this pair, without claiming,
-   * reclaiming or touching retention. For the delivery lookup a client uses
+   * reclaiming or touching retention. A supplied digest throws the typed input
+   * conflict only when the row retains different original proof. For the delivery lookup a client uses
    * to decide whether resending the same key is safe.
    */
   inspect(input: {
     threadId: string;
     clientTurnId: string;
+    inputDigest?: string;
   }): TurnClaimInspection;
 }
 
@@ -160,8 +162,12 @@ export function createTurnDeduplicator(options: {
     },
     givenUp: ({ threadId, clientTurnId }) =>
       options.store.givenUp(options.keyFor(threadId, clientTurnId)),
-    inspect: ({ threadId, clientTurnId }) =>
-      options.store.inspect(options.keyFor(threadId, clientTurnId)),
+    inspect: ({ threadId, clientTurnId, inputDigest }) =>
+      options.store.inspect(
+        options.keyFor(threadId, clientTurnId),
+        Date.now(),
+        inputDigest,
+      ),
     awaitResolution: ({
       threadId,
       clientTurnId,

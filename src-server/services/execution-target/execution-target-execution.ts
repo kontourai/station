@@ -41,7 +41,11 @@ import { createLogger } from '../../utils/logger.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
-import { turnSubmissionDigest } from '../orchestration/turn-submission-digest.js';
+import {
+  snapshotTurnSubmissionFields,
+  snapshotTurnSubmissionValue,
+  turnSubmissionDigest,
+} from '../orchestration/turn-submission-digest.js';
 import { assertProjectWorktreeDirectory } from '../projects/project-service.js';
 import {
   WorktreeProvisioningService,
@@ -474,8 +478,15 @@ export interface ExecutionTargetExecutionDependencies
   /** Exact provider effect truth for replaying an explicit handoff safely. */
   readConversationHandoffEffect?: (
     access: EnvironmentAccess,
-    input: { conversationId: string; idempotencyKey: string },
-  ) => Promise<{ providerTurnId?: string } | null>;
+    input: {
+      conversationId: string;
+      idempotencyKey: string;
+      inputDigest?: string;
+    },
+  ) => Promise<{
+    providerTurnId?: string;
+    marker?: { sessionId: string };
+  } | null>;
   /** Private captured caller guard at the existing provisioning effect. */
   admitWorktreeProvisioning?: (
     threadId: string,
@@ -533,6 +544,14 @@ export async function executeForegroundMessage(
   input: ForegroundMessageInput,
   deps: ExecutionTargetExecutionDependencies,
 ): Promise<ForegroundMessageHandle> {
+  if (input.clientTurnId || input.handoffIntent) {
+    input = snapshotTurnSubmissionFields(input, [
+      'target',
+      'attachments',
+      'expectedInputRequest',
+      'skillExperience',
+    ]);
+  }
   const message = input.message.trim();
   // The route admits an attachment-only foreground turn. Keep the execution
   // seam aligned with that contract after staged references hydrate JIT; a
@@ -614,6 +633,60 @@ export async function executeForegroundMessage(
         input.target.workspace.workspaceIsolation === undefined,
     );
   }
+  const effectiveClientTurnId = requestedHandoff
+    ? `handoff:${createHash('sha256')
+        .update(`${conversationId}\0${input.handoffIntent!.idempotencyKey}`)
+        .digest('hex')}`
+    : input.clientTurnId;
+  let attachments: ChatAttachmentInput[] | undefined;
+  let submissionDigest: string | undefined;
+  const captureSubmission = (sessionId: string) => {
+    attachments = input.resolveAttachments
+      ? input.resolveAttachments({
+          threadId: sessionId,
+          clientTurnId: effectiveClientTurnId ?? '',
+        })
+      : input.attachments;
+    if (effectiveClientTurnId && attachments)
+      attachments = snapshotTurnSubmissionValue(attachments);
+    submissionDigest = effectiveClientTurnId
+      ? turnSubmissionDigest({
+          text: input.message,
+          ...(input.ambientContext !== undefined
+            ? { ambientContext: input.ambientContext }
+            : {}),
+          ...(input.target.model?.override !== undefined
+            ? { modelId: input.target.model.override }
+            : {}),
+          ...(attachments ? { attachments } : {}),
+          ...(input.skillExperience
+            ? { skillExperience: input.skillExperience }
+            : {}),
+          scope: {
+            target: input.target,
+            ephemeral: input.ephemeral ?? false,
+            expectedInputRequest: input.expectedInputRequest ?? null,
+            setApprovalMode: input.setApprovalMode ?? null,
+            setApprovalModeBasedOn: input.setApprovalModeBasedOn ?? null,
+          },
+        })
+      : undefined;
+  };
+  // Compare original proof before the legacy handoff effect check or accepted replay.
+  const priorHandoff = requestedHandoff
+    ? await deps.readConversationHandoffEffect?.(resolved.access, {
+        conversationId,
+        idempotencyKey: input.handoffIntent!.idempotencyKey,
+      })
+    : undefined;
+  if (priorHandoff?.marker) {
+    captureSubmission(priorHandoff.marker.sessionId);
+    await deps.readConversationHandoffEffect?.(resolved.access, {
+      conversationId,
+      idempotencyKey: input.handoffIntent!.idempotencyKey,
+      inputDigest: submissionDigest,
+    });
+  }
   const preparedHandoff = requestedHandoff
     ? await deps.prepareConversationHandoff?.(resolved.access, {
         conversationId,
@@ -689,11 +762,14 @@ export async function executeForegroundMessage(
   // the existing effect. Re-starting the marker's Session would either send
   // twice or, after settlement, fail only because that Session is terminal.
   if (preparedHandoff?.outcome === 'existing') {
+    if (submissionDigest === undefined)
+      captureSubmission(preparedHandoff.marker.sessionId);
     const existingEffect = await deps.readConversationHandoffEffect?.(
       resolved.access,
       {
         conversationId,
         idempotencyKey: input.handoffIntent!.idempotencyKey,
+        inputDigest: submissionDigest,
       },
     );
     if (existingEffect?.providerTurnId) {
@@ -1131,39 +1207,7 @@ export async function executeForegroundMessage(
         });
     }
   }
-  const effectiveClientTurnId = requestedHandoff
-    ? `handoff:${createHash('sha256')
-        .update(`${conversationId}\0${input.handoffIntent!.idempotencyKey}`)
-        .digest('hex')}`
-    : input.clientTurnId;
-  const attachments = input.resolveAttachments
-    ? input.resolveAttachments({
-        threadId: sessionId,
-        clientTurnId: effectiveClientTurnId ?? '',
-      })
-    : input.attachments;
-  const submissionDigest = effectiveClientTurnId
-    ? turnSubmissionDigest({
-        text: input.message,
-        ...(input.ambientContext !== undefined
-          ? { ambientContext: input.ambientContext }
-          : {}),
-        ...(input.target.model?.override !== undefined
-          ? { modelId: input.target.model.override }
-          : {}),
-        ...(attachments ? { attachments } : {}),
-        ...(input.skillExperience
-          ? { skillExperience: input.skillExperience }
-          : {}),
-        scope: {
-          target: input.target,
-          ephemeral: input.ephemeral ?? false,
-          expectedInputRequest: input.expectedInputRequest ?? null,
-          setApprovalMode: input.setApprovalMode ?? null,
-          setApprovalModeBasedOn: input.setApprovalModeBasedOn ?? null,
-        },
-      })
-    : undefined;
+  if (submissionDigest === undefined) captureSubmission(sessionId);
   const transcriptSeed =
     resolved.provider === 'station-agent' && deps.nativeMemoryOwnsTranscript
       ? undefined

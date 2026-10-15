@@ -16382,6 +16382,33 @@ describe('OrchestrationService', () => {
       expect(claude.sendTurn).toHaveBeenCalledTimes(1);
     });
 
+    test('#3567: retained caller mutations cannot change the submitted adapter payload or replay identity', async () => {
+      const threadId = 'thread-owned-submission';
+      await service.dispatch({ type: 'startSession', input: { threadId, provider: 'claude' } });
+      claude.sendTurn.mockClear();
+      const original: ProviderSendTurnInput = { threadId, input: 'A', clientTurnId: 'K', ambientContext: 'context A', modelOptions: { effort: 'low' }, attachments: [{ kind: 'file', name: 'note.txt', mimeType: 'text/plain', size: 1, dataUrl: 'data:text/plain;base64,QQ==' }] };
+      const retry = structuredClone(original);
+      const signal = new AbortController().signal; original.signal = signal;
+      let entered!: () => void;
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      const reached = new Promise<void>((resolve) => { entered = resolve; });
+      const read = service.readSession.bind(service);
+      const spy = vi.spyOn(service, 'readSession').mockImplementationOnce(async (...args) => { entered(); await held; return read(...args); });
+      const pending = service.dispatch({ type: 'sendTurn', input: original });
+      await reached;
+      original.modelOptions!.effort = 'high'; original.input = 'B'; original.ambientContext = 'context B'; original.attachments![0].dataUrl = 'data:text/plain;base64,Qg==';
+      release();
+      const first = await pending;
+      spy.mockRestore();
+      expect(claude.sendTurn.mock.calls[0][0]).toMatchObject({ displayInput: 'A', modelOptions: { effort: 'low' }, attachments: retry.attachments });
+      expect(claude.sendTurn.mock.calls[0][0].signal).toBe(signal);
+      expect(claude.sendTurn.mock.calls[0][0].input).not.toContain('context B');
+      expect(await service.dispatch({ type: 'sendTurn', input: retry })).toEqual(first);
+      await expect(service.dispatch({ type: 'sendTurn', input: original })).rejects.toMatchObject({ code: 'client_turn_input_conflict' });
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
     test('#3567: unsupported JSON options are refused before any adapter send', async () => {
       const threadId = 'thread-unsupported-digest';
       await service.dispatch({ type: 'startSession', input: { threadId, provider: 'claude', modelId: 'claude-sonnet' } });

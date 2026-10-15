@@ -72,6 +72,36 @@ function canonicalJson(value: unknown, ancestors = new Set<object>()): string {
   }
 }
 
+/** Own JSON intent without JSON.stringify silently discarding unsupported values. */
+export function snapshotTurnSubmissionValue<T>(value: T): T {
+  return JSON.parse(canonicalJson(value));
+}
+
+/** Snapshot only named intent fields; authority objects remain live references. */
+export function snapshotTurnSubmissionFields<T extends object>(
+  input: T,
+  fields: readonly (keyof T)[],
+): T {
+  const captured = { ...input };
+  for (const field of fields) {
+    if (input[field] !== undefined)
+      captured[field] = snapshotTurnSubmissionValue(input[field]);
+  }
+  return captured;
+}
+
+/** Copy client intent while keeping cancellation and server authority references live. */
+export function snapshotDirectTurnInput<
+  T extends ProviderSendTurnInput & { expectedInputRequest?: unknown },
+>(input: T): T {
+  return snapshotTurnSubmissionFields(input, [
+    'modelOptions',
+    'metadata',
+    'attachments',
+    'expectedInputRequest',
+  ]);
+}
+
 /** Captured authorized client intent, before transcript/prompt/model preparation. */
 export function turnSubmissionDigest(input: {
   text: string;
