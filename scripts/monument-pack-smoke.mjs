@@ -58,8 +58,14 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, posix, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { spawnSyncBounded } from './lib/bounded-capture.mjs';
+import { CAPTURE_MAX_BYTES } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import {
+  captureOwnedProcessOutput,
+  executeOwnedCommand,
+  terminateSuiteExecution,
+  waitForSuiteSettlement,
+} from './lib/owned-process.mjs';
 import { moduleReferences } from './monument-import-boundary-gate.mjs';
 
 export const MONUMENT_DIR = 'packages/monument';
@@ -185,34 +191,80 @@ function tail(text, lines = 12) {
 export const STEP_TIMEOUT_MS = 10 * 60 * 1000;
 const QUICK_STEP_TIMEOUT_MS = 2 * 60 * 1000;
 
-/**
- * Runs one step. A timeout kills the child and is a failure with its own
- * message: it can never read as a pass, and `ok` stays false.
- */
-export function run(command, args, options = {}) {
+/** Own each command tree until completion or bounded termination. */
+export async function run(command, args, options = {}) {
   const { timeoutMs = STEP_TIMEOUT_MS, ...spawnOptions } = options;
-  const result = spawnSyncBounded(command, args, {
-    encoding: 'utf8',
-    windowsHide: true,
-    killSignal: 'SIGKILL',
+  const execution = executeOwnedCommand(command, args, undefined, command, {
     ...spawnOptions,
-    timeout: timeoutMs,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
   });
-  const timedOut = result.error?.code === 'ETIMEDOUT';
-  const ok = !result.error && result.status === 0;
-  return {
-    ok,
-    timedOut,
-    stdout: result.stdout ?? '',
-    describe: () =>
-      `${command} ${args.join(' ')}: ${
-        timedOut
-          ? `timed out after ${timeoutMs} ms and was killed`
-          : result.error
-            ? result.error.message
-            : `exit ${result.status}\n${tail(`${result.stderr ?? ''}\n${result.stdout ?? ''}`)}`
-      }`,
+  let cleanup;
+  const stop = () =>
+    (cleanup ??= terminateSuiteExecution(execution, {
+      processLabel: command,
+      terminationGraceMs: 1_000,
+      terminationForceMs: 1_000,
+      waitForSuiteSettlement,
+    }));
+  let cancellation;
+  let cancelled;
+  const cancellationSettled = new Promise((resolve) => {
+    cancelled = resolve;
+  });
+  const cancel = (reason) => {
+    cancellation ??= reason;
+    void stop().then(() => cancelled({ status: null, signal: null }));
   };
+  const capture = captureOwnedProcessOutput(execution, {
+    maxBytes: CAPTURE_MAX_BYTES,
+    onOverflow: () => cancel('output exceeded capture bound'),
+  });
+  const interrupt = () => cancel('interrupted');
+  const timer = setTimeout(() => cancel('timeout'), timeoutMs);
+  process.once('SIGINT', interrupt);
+  process.once('SIGTERM', interrupt);
+  try {
+    const result = await Promise.race([
+      execution.completion,
+      cancellationSettled,
+    ]);
+    const settlement = await stop();
+    if (!settlement.settled || execution.isAlive()) {
+      const error = new Error(`${command}: owned process tree did not settle`);
+      error.code = 'MONUMENT_PROCESS_UNSETTLED';
+      throw error;
+    }
+    const output = capture.finish();
+    const timedOut = cancellation === 'timeout';
+    const error =
+      result.error ??
+      (settlement.errors.length
+        ? new Error('owned process cleanup reported errors')
+        : output.truncated || output.invalidUtf8
+          ? new Error('output was not safely captured')
+          : undefined);
+    const ok = !cancellation && !error && result.status === 0;
+    return {
+      ok,
+      timedOut,
+      status: result.status,
+      stdout: output.stdout.text,
+      stderr: output.stderr.text,
+      describe: () =>
+        `${command} ${args.join(' ')}: ${
+          timedOut
+            ? `timed out after ${timeoutMs} ms and owned tree was settled`
+            : (cancellation ??
+              error?.message ??
+              `exit ${result.status}\n${tail(`${output.stderr.text}\n${output.stdout.text}`)}`)
+        }`,
+    };
+  } finally {
+    clearTimeout(timer);
+    process.removeListener('SIGINT', interrupt);
+    process.removeListener('SIGTERM', interrupt);
+  }
 }
 
 const LOADER_VARIABLE = /^(NODE_OPTIONS|NODE_PATH|TSX_.*|NODE_ENV)$/;
@@ -413,9 +465,10 @@ function outsideRepository(path, repoRoot) {
  * Smoke one artefact. Exactly one of `tarball` (a `.tgz`) or `spec`
  * (`name@version` on the registry). Resolves to the list of failures.
  */
-export function smokePackage({ repoRoot, tarball, spec }) {
+export async function smokePackage({ repoRoot, tarball, spec }) {
   const failures = [];
   const work = mkdtempSync(join(tmpdir(), 'monument-pack-smoke-'));
+  let preserveScratch = false;
   try {
     if (!outsideRepository(work, repoRoot)) {
       failures.push(`scratch directory ${work} is inside the repository`);
@@ -423,10 +476,14 @@ export function smokePackage({ repoRoot, tarball, spec }) {
     }
     let archive = tarball;
     if (spec) {
-      const fetched = run('npm', ['pack', spec, '--pack-destination', work], {
-        cwd: work,
-        env: plainEnvironment(),
-      });
+      const fetched = await run(
+        'npm',
+        ['pack', spec, '--pack-destination', work],
+        {
+          cwd: work,
+          env: plainEnvironment(),
+        },
+      );
       if (!fetched.ok) {
         failures.push(`could not fetch ${spec}: ${fetched.describe()}`);
         return failures;
@@ -435,7 +492,7 @@ export function smokePackage({ repoRoot, tarball, spec }) {
     }
 
     // 1. The tarball's own listing.
-    const listing = run('tar', ['-tzf', archive], {
+    const listing = await run('tar', ['-tzf', archive], {
       timeoutMs: QUICK_STEP_TIMEOUT_MS,
     });
     if (!listing.ok) {
@@ -453,7 +510,7 @@ export function smokePackage({ repoRoot, tarball, spec }) {
       join(consumer, 'package.json'),
       `${JSON.stringify({ name: 'monument-smoke-consumer', private: true, type: 'module' })}\n`,
     );
-    const installed = run(
+    const installed = await run(
       'npm',
       [
         'install',
@@ -504,7 +561,7 @@ export function smokePackage({ repoRoot, tarball, spec }) {
 
     // 4. Plain node: no loader, no flag.
     writeFileSync(join(consumer, 'run.mjs'), RUN_SCRIPT);
-    const plain = run(process.execPath, ['run.mjs'], {
+    const plain = await run(process.execPath, ['run.mjs'], {
       cwd: consumer,
       env: plainEnvironment(),
       timeoutMs: QUICK_STEP_TIMEOUT_MS,
@@ -536,7 +593,7 @@ export function smokePackage({ repoRoot, tarball, spec }) {
           files: ['check.ts'],
         })}\n`,
       );
-      const types = run(
+      const types = await run(
         process.execPath,
         [join(repoRoot, 'scripts', 'tsc-slot.mjs'), '-p', 'tsconfig.json'],
         { cwd: consumer, env: plainEnvironment() },
@@ -545,21 +602,29 @@ export function smokePackage({ repoRoot, tarball, spec }) {
         failures.push(`type declarations do not resolve: ${types.describe()}`);
     }
     return failures;
+  } catch (error) {
+    preserveScratch = error?.code === 'MONUMENT_PROCESS_UNSETTLED';
+    throw error;
   } finally {
-    rmSync(work, { recursive: true, force: true });
+    if (!preserveScratch) rmSync(work, { recursive: true, force: true });
+    else console.error(`Unsettled process scratch retained: ${work}`);
   }
 }
 
 /** Build `dist/` and pack with pnpm into `destination`; returns the `.tgz`. */
-export function packMonument({ repoRoot, destination, build = true }) {
+export async function packMonument({ repoRoot, destination, build = true }) {
   const cwd = join(repoRoot, MONUMENT_DIR);
   if (build) {
-    const built = run('npm', ['run', 'build'], { cwd });
+    const built = await run('npm', ['run', 'build'], { cwd });
     if (!built.ok) throw new Error(`build failed: ${built.describe()}`);
   }
-  const packed = run('pnpm', ['pack', '--pack-destination', destination], {
-    cwd,
-  });
+  const packed = await run(
+    'pnpm',
+    ['pack', '--pack-destination', destination],
+    {
+      cwd,
+    },
+  );
   if (!packed.ok) throw new Error(`pnpm pack failed: ${packed.describe()}`);
   const tarballs = readdirSync(destination).filter((name) =>
     name.endsWith('.tgz'),
@@ -594,7 +659,7 @@ function parseArguments(argv) {
   return options;
 }
 
-function main() {
+async function main() {
   const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
   let options;
   try {
@@ -631,21 +696,26 @@ function main() {
   }
   const failures = [];
   const scratch = mkdtempSync(join(tmpdir(), 'monument-pack-'));
+  let preserveScratch = false;
   try {
     let tarball = options.tarball && resolve(options.tarball);
     if (!tarball && !options.spec) {
       failures.push(...checkPublishConfigParity(manifest));
-      tarball = packMonument({
+      tarball = await packMonument({
         repoRoot,
         destination: scratch,
         build: options.build,
       });
     }
-    failures.push(...smokePackage({ repoRoot, tarball, spec: options.spec }));
+    failures.push(
+      ...(await smokePackage({ repoRoot, tarball, spec: options.spec })),
+    );
   } catch (error) {
+    preserveScratch = error?.code === 'MONUMENT_PROCESS_UNSETTLED';
     failures.push(error.message);
   } finally {
-    rmSync(scratch, { recursive: true, force: true });
+    if (!preserveScratch) rmSync(scratch, { recursive: true, force: true });
+    else console.error(`Unsettled process scratch retained: ${scratch}`);
   }
   if (failures.length > 0) {
     console.error(
@@ -659,4 +729,4 @@ function main() {
   );
 }
 
-if (invokedDirectly(import.meta.url)) main();
+if (invokedDirectly(import.meta.url)) await main();

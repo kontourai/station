@@ -36,16 +36,15 @@ const scratch = trackTempDirs({ lifetime: 'file' })(
   'monument-pack-smoke-test-',
 );
 
-function run(args: string[], env: NodeJS.ProcessEnv = process.env) {
-  const result = spawnSync(process.execPath, [SCRIPT, ...args], {
+async function run(args: string[], env: NodeJS.ProcessEnv = process.env) {
+  const result = await runStep(process.execPath, [SCRIPT, ...args], {
     cwd: REPO,
-    encoding: 'utf8',
-    windowsHide: true,
     env,
+    timeoutMs: CASE_TIMEOUT,
   });
   return {
-    status: result.status,
-    output: `${result.stdout ?? ''}${result.stderr ?? ''}`,
+    status: result.ok ? result.status : (result.status ?? 1),
+    output: `${result.stdout}${result.stderr}`,
   };
 }
 
@@ -199,7 +198,7 @@ describe('monument pack smoke: the public gate', () => {
     return run(['--is-public', '--manifest', path], env);
   };
 
-  it('reports private as public=false and anything else as public=true', () => {
+  it('reports private as public=false and anything else as public=true', async () => {
     for (const [manifest, expected] of [
       ['{"name":"x","private":true}', 'false'],
       // The preflight skips any truthy `private`, so the gate does too.
@@ -208,20 +207,20 @@ describe('monument pack smoke: the public gate', () => {
       ['{"name":"x","private":false}', 'true'],
       ['{"name":"x"}', 'true'],
     ] as const) {
-      const result = gate(manifest);
+      const result = await gate(manifest);
       expect(result.status, `${manifest}: ${result.output}`).toBe(0);
       expect(result.output.trim(), manifest).toBe(`public=${expected}`);
     }
   });
 
-  it('fails closed on a manifest it cannot read, with no output line', () => {
+  it('fails closed on a manifest it cannot read, with no output line', async () => {
     for (const manifest of ['{', '', '[]', 'null', '"private"']) {
-      const result = gate(manifest);
+      const result = await gate(manifest);
       expect(result.status, manifest).toBe(1);
       expect(result.output).toContain('FAIL: cannot read');
       expect(result.output).not.toContain('public=');
     }
-    const missing = run([
+    const missing = await run([
       '--is-public',
       '--manifest',
       join(manifestDir, 'none'),
@@ -229,10 +228,10 @@ describe('monument pack smoke: the public gate', () => {
     expect(missing.status).toBe(1);
   });
 
-  it('appends the line to GITHUB_OUTPUT', () => {
+  it('appends the line to GITHUB_OUTPUT', async () => {
     const output = join(manifestDir, 'github-output');
     writeFileSync(output, 'earlier=1\n');
-    const result = gate('{"name":"x"}', {
+    const result = await gate('{"name":"x"}', {
       ...process.env,
       GITHUB_OUTPUT: output,
     });
@@ -286,21 +285,80 @@ describe('monument pack smoke: the public gate', () => {
 });
 
 describe('monument pack smoke: bounds and credentials', () => {
-  it('kills a hung step at its bound and reports it as a timeout, never a pass', () => {
+  it('kills a hung step at its bound and reports it as a timeout, never a pass', async () => {
     const started = Date.now();
-    const step = runStep(
+    const step = await runStep(
       process.execPath,
       ['-e', 'setInterval(() => {}, 1000)'],
       { timeoutMs: 400 },
     );
     expect(step.ok).toBe(false);
     expect(step.timedOut).toBe(true);
-    expect(step.describe()).toContain('timed out after 400 ms and was killed');
+    expect(step.describe()).toContain(
+      'timed out after 400 ms and owned tree was settled',
+    );
     expect(Date.now() - started).toBeLessThan(30_000);
     // The control: the same helper passes a step that finishes.
-    const fine = runStep(process.execPath, ['-e', '0'], { timeoutMs: 30_000 });
+    const fine = await runStep(process.execPath, ['-e', '0'], {
+      timeoutMs: 30_000,
+    });
     expect(fine.ok).toBe(true);
     expect(fine.timedOut).toBe(false);
+  });
+
+  it('settles a timed-out launcher and its live descendant before returning', async () => {
+    const launcherPath = join(scratch, 'timeout-launcher.pid');
+    const descendantPath = join(scratch, 'timeout-descendant.pid');
+    const heartbeat = join(scratch, 'timeout-heartbeat');
+    const descendant = `const fs = require('node:fs');
+      fs.writeFileSync(${JSON.stringify(descendantPath)}, String(process.pid));
+      setInterval(() => fs.appendFileSync(${JSON.stringify(heartbeat)}, 'x'), 25);`;
+    const launcher = `const fs = require('node:fs');
+      fs.writeFileSync(${JSON.stringify(launcherPath)}, String(process.pid));
+      require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(descendant)}],
+        { stdio: 'inherit', windowsHide: true });
+      setInterval(() => {}, 1000);`;
+    const pids: number[] = [];
+    try {
+      const step = await runStep(process.execPath, ['-e', launcher], {
+        timeoutMs: 2_000,
+      });
+      for (const path of [launcherPath, descendantPath])
+        pids.push(Number(readFileSync(path, 'utf8')));
+      expect(step.ok).toBe(false);
+      expect(step.timedOut).toBe(true);
+      const stopped = readFileSync(heartbeat, 'utf8');
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(
+        readFileSync(heartbeat, 'utf8'),
+        'descendant output must stop before the step returns',
+      ).toBe(stopped);
+      for (const pid of pids) {
+        let alive = true;
+        try {
+          process.kill(pid, 0);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+          alive = false;
+        }
+        expect(alive, `owned process ${pid} must be gone`).toBe(false);
+      }
+    } finally {
+      // The pre-fix negative leaves a live descendant; own that cleanup too.
+      for (const path of [launcherPath, descendantPath]) {
+        let pid: number;
+        try {
+          pid = Number(readFileSync(path, 'utf8'));
+        } catch {
+          continue;
+        }
+        try {
+          process.kill(pid, 'SIGKILL');
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;
+        }
+      }
+    }
   });
 
   it('removes publish credentials and loaders, and keeps ordinary variables', () => {
@@ -336,11 +394,11 @@ describe.skipIf(process.platform === 'win32')(
     let good = '';
     const extracted = join(scratch, 'extracted');
 
-    beforeAll(() => {
+    beforeAll(async () => {
       const destination = join(scratch, 'good');
       mkdirSync(destination);
       // Builds packages/monument/dist (see SHARED_OUTPUT_VITEST_FILES).
-      good = packMonument({ repoRoot: REPO, destination });
+      good = await packMonument({ repoRoot: REPO, destination });
       mkdirSync(extracted);
       tar(['-xzf', good, '-C', extracted], REPO);
     }, CASE_TIMEOUT);
@@ -367,18 +425,18 @@ describe.skipIf(process.platform === 'win32')(
 
     it('passes the real package: all four entry points import under plain node and type-check', {
       timeout: CASE_TIMEOUT,
-    }, () => {
+    }, async () => {
       // The control for every rejection below.
-      const result = run(['--tarball', good]);
+      const result = await run(['--tarball', good]);
       expect(result.output).toContain('OK: @kontourai/monument consumer smoke');
       expect(result.status).toBe(0);
     });
 
     it('keeps publish credentials out of the packed code and the type-check', {
       timeout: CASE_TIMEOUT,
-    }, () => {
+    }, async () => {
       // The consumer script fails if any of these reach it.
-      const result = run(['--tarball', good], {
+      const result = await run(['--tarball', good], {
         ...process.env,
         ACTIONS_ID_TOKEN_REQUEST_URL: 'https://example.invalid/token',
         ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'fake',
@@ -392,7 +450,7 @@ describe.skipIf(process.platform === 'win32')(
 
     it('fails when the exports map points back at src/*.ts, and plain node says why', {
       timeout: CASE_TIMEOUT,
-    }, () => {
+    }, async () => {
       // The pre-publish-prep shape: TypeScript source shipped under exports.
       const archive = tamper('typescript-exports', (packageDir) => {
         cpSync(
@@ -414,7 +472,7 @@ describe.skipIf(process.platform === 'win32')(
           };
         });
       });
-      const result = run(['--tarball', archive]);
+      const result = await run(['--tarball', archive]);
       expect(result.status, result.output).toBe(1);
       expect(result.output).toContain(
         'exports[.] must be a ./dist/*.js file, got ./src/index.ts',
@@ -430,11 +488,11 @@ describe.skipIf(process.platform === 'win32')(
 
     it('fails when exports name compiled files that are not in the tarball', {
       timeout: CASE_TIMEOUT,
-    }, () => {
+    }, async () => {
       const archive = tamper('missing-dist', (packageDir) => {
         rmSync(join(packageDir, 'dist', 'sqlite.js'));
       });
-      const result = run(['--tarball', archive]);
+      const result = await run(['--tarball', archive]);
       expect(result.status, result.output).toBe(1);
       expect(result.output).toContain(
         'exports[./sqlite].default names a missing file: ./dist/sqlite.js',
@@ -444,11 +502,11 @@ describe.skipIf(process.platform === 'win32')(
 
     it('fails when declarations are missing, though plain node still imports', {
       timeout: CASE_TIMEOUT,
-    }, () => {
+    }, async () => {
       const archive = tamper('no-declarations', (packageDir) => {
         rmSync(join(packageDir, 'dist', 'index.d.ts'));
       });
-      const result = run(['--tarball', archive]);
+      const result = await run(['--tarball', archive]);
       expect(result.status, result.output).toBe(1);
       expect(result.output).toContain(
         'types names a missing file: ./dist/index.d.ts',
@@ -459,7 +517,7 @@ describe.skipIf(process.platform === 'win32')(
 
     it('fails on a shipped test and on a Station import in shipped code', {
       timeout: CASE_TIMEOUT,
-    }, () => {
+    }, async () => {
       const archive = tamper('leaks', (packageDir) => {
         mkdirSync(join(packageDir, 'dist', '__tests__'));
         writeFileSync(
@@ -471,7 +529,7 @@ describe.skipIf(process.platform === 'win32')(
           "import '@kontourai/station-shared';\n",
         );
       });
-      const result = run(['--tarball', archive]);
+      const result = await run(['--tarball', archive]);
       expect(result.status, result.output).toBe(1);
       expect(result.output).toContain(
         'tarball ships a test: dist/__tests__/memory.test.js',
@@ -483,7 +541,7 @@ describe.skipIf(process.platform === 'win32')(
 
     it('rejects what `npm pack` makes of the package, which ignores publishConfig.exports', {
       timeout: CASE_TIMEOUT,
-    }, () => {
+    }, async () => {
       const destination = join(scratch, 'npm-pack');
       mkdirSync(destination);
       const packed = spawnSync(
@@ -500,7 +558,7 @@ describe.skipIf(process.platform === 'win32')(
         destination,
         packed.stdout.trim().split('\n').at(-1)!,
       );
-      const result = run(['--tarball', archive]);
+      const result = await run(['--tarball', archive]);
       expect(result.status, result.output).toBe(1);
       expect(result.output).toContain(
         'a published entry point may not be TypeScript source',
@@ -509,7 +567,7 @@ describe.skipIf(process.platform === 'win32')(
 
     it('skips while the package is private, smokes once it is not, and refuses unknown arguments', {
       timeout: CASE_TIMEOUT,
-    }, () => {
+    }, async () => {
       const manifest = JSON.parse(
         readFileSync(
           join(REPO, 'packages', 'monument', 'package.json'),
@@ -518,10 +576,10 @@ describe.skipIf(process.platform === 'win32')(
       );
       // The workflow runs this flag on every publish dispatch. Flipping
       // `private` is the owner's step (#3565); this follows it either way.
-      const gated = run(['--if-publishable', '--tarball', good]);
+      const gated = await run(['--if-publishable', '--tarball', good]);
       expect(gated.status, gated.output).toBe(0);
       expect(gated.output).toContain(manifest.private ? 'SKIP:' : 'OK:');
-      expect(run(['--bogus']).status).toBe(2);
+      expect((await run(['--bogus'])).status).toBe(2);
     });
   },
 );
