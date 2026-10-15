@@ -66,10 +66,19 @@ describe('deviceMaySendChat (#3568)', () => {
     expect(security.deviceMaySendChat(casey.device.id)).toBe(false);
   });
 
-  test('a device whose grant lacks the route scope may not', async () => {
+  test('a device whose grant lacks the route scope may not, including one narrowed after pairing', async () => {
     const { security } = await station();
     const reader = pair(security.devicePairing, 'robin', 'orchestration:read');
     expect(security.deviceMaySendChat(reader.device.id)).toBe(false);
+
+    const casey = pair(security.devicePairing, 'casey', STANDARD);
+    expect(security.deviceMaySendChat(casey.device.id)).toBe(true);
+    security.devicePairing.setDeviceScope(
+      casey.device.id,
+      ['orchestration:read'],
+      { kind: 'presented-credential' },
+    );
+    expect(security.deviceMaySendChat(casey.device.id)).toBe(false);
   });
 
   test('a personal access token holding the scope may, until it is revoked or expires', async () => {

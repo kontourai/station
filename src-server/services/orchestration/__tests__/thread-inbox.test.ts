@@ -951,6 +951,22 @@ describe('thread inbox (#3568)', () => {
     expect(calls).toBe(5);
   });
 
+  test('R2-1: a key whose claim expired on some Session is unconfirmed, and nothing is sent', async () => {
+    const world = boot(path(), {
+      // The ledger's answer for a claim that outlived its window: it may
+      // have been sent, so it must never be sent again.
+      inspectDelivery: () => ({ outcome: 'expired' }),
+    });
+    await runningFirstTurn(world);
+    queueFollowUp(world);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await settle(world);
+    expect(followUpSends()).toEqual([]);
+    expect(world.inbox.list(THREAD)).toMatchObject([
+      { state: 'unconfirmed', reasonCode: 'may_have_been_sent' },
+    ]);
+  });
+
   test('R2-9: a refusal code outside the documented set is recorded as start_refused', async () => {
     const world = boot(path(), {
       start: async () => {
