@@ -161,6 +161,8 @@ export interface TurnBoundaryObserveTerminalCommand {
   /** A session-level terminal retires every turn row on the thread. */
   readonly sessionTerminal: boolean;
   readonly terminalCreatedAt: string;
+  /** Identifies the host's persisted terminal, resolved inside the transaction. */
+  readonly terminalEventId?: string;
   /**
    * `false` records the terminal fact without retiring any row (for a
    * terminal that must not close its boundary, such as a recovery's own

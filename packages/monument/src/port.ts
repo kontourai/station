@@ -69,6 +69,18 @@ export interface KernelContext {
   readonly limits?: Partial<KernelLimits>;
 }
 
+/** A host terminal authority fixed when its adapter opens storage. */
+export interface KernelTerminalFacts {
+  /** Read-only host facts, called synchronously inside the command transaction.
+   * When supplied, the host replaces the kernel's terminal table entirely. */
+  readonly terminalSeen: (threadId: string, providerTurnId: string) => boolean;
+  /** Persisted ordering for session terminals. Missing facts keep fenced rows. */
+  readonly terminalSequence?: (
+    threadId: string,
+    terminalEventId: string | undefined,
+  ) => number | undefined;
+}
+
 /**
  * The portable port. One `execute` call is one atomic transaction: the
  * adapter runs the command's synchronous decision inside its transaction and

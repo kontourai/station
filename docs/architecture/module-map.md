@@ -65,7 +65,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [ProjectIdentity](#projectidentity) | Prepare and attach portable identity while preserving receiver-local Project identity. | `src-server/services/projects/project-identity-service.ts` |
 | [StationKnowledgeMcpServer](#stationknowledgemcpserver) | Serve scoped read/capture tools separately from platform controls. | `src-server/tools/station-knowledge-mcp-server.ts` |
 | [KnowledgeStoreProvider](#knowledgestoreprovider) | Register canonical roots and resolve their record adapters. | `src-server/knowledge-store/knowledge-store-provider.ts` |
-| [SqliteVecIndexProvider](#sqlitevecindexprovider) | Rebuild and query derived root partitions with explicit freshness limits. | `src-server/knowledge-index/sqlite-vec-index-provider.ts` |
+| [SqliteVecIndexProvider](#sqlitevecindexprovider) | Rebuild and query derived root partitions, scoped to one embedding generation. | `src-server/knowledge-index/sqlite-vec-index-provider.ts` |
 | [Workspace checkpoints](#workspace-checkpoints) | Capture turn-associated file snapshots and restore one through current workspace and caller checks. | `src-server/services/checkpoints/checkpoint-restore.ts` |
 | [Personal Work Board](#personal-work-board) | Arrange exact work references without copying their owners' state. | `src-server/services/spatial-board/spatial-board-store.ts` |
 | [BrowserSessionService](#browsersessionservice) | Own browser acquisition, profile-scoped sessions and authorized automation independently of viewers. | `src-server/services/browser/browser-service.ts` |
@@ -2151,7 +2151,8 @@ interfaces; they do not establish live external-provider behavior.
 ## SqliteVecIndexProvider
 
 **Purpose and interface.** `SqliteVecIndexProvider` owns a derived vector index:
-upsert/remove, scoped search, explicit root rebuild, and statistics. Callers supply the
+upsert/remove, scoped search, explicit root rebuild, per-generation chunk counts
+(`generations`), and statistics. Callers supply the
 store and embedder for a rebuild. Runtime composition selects this built-in index for
 the store/index routes; the older `KnowledgeService` has a different,
 configured-provider interface.
@@ -2160,12 +2161,15 @@ configured-provider interface.
 A rebuild reads and embeds source records before deleting that root's rows. Embedding
 failure therefore leaves the old partition intact, but a later write failure can leave
 an incomplete rebuild: the replacement is not one atomic transaction. Changing vector
-width recreates the whole table and clears all roots' rebuild timestamps. The index does
-not record embedding-model identity, so a same-width model change needs an explicit
-rebuild. The search route checks root access and re-reads each record, but combines its
-current title/category with the cached index excerpt; it does not compare that excerpt
-with the current body. A successful lookup therefore establishes neither text freshness
-nor an active lifecycle state.
+width recreates the whole table and clears all roots' rebuild timestamps. Each chunk
+records its embedding generation (provider kind, model and width, from
+[embedding-identity](../../src-server/knowledge-index/embedding-identity.ts)); an
+identity-scoped search admits only that generation, and a table from before generations
+is reported as unknown and replaced on its next write. The search route checks root
+access, re-reads each record, returns an excerpt only while the record's current body
+still contains it, refills withheld hits from further down the ranking (up to 1,000), and
+reports readable stale roots and withheld records beside the results. It does not check
+lifecycle state, so a retired record with an unchanged body is still returned.
 
 **Follow the code.** [Index
 implementation](../../src-server/knowledge-index/sqlite-vec-index-provider.ts), [HTTP
@@ -2174,9 +2178,10 @@ composition](../../src-server/runtime/routes/runtime-routes.ts) show the ownersh
 access checks. [Provider
 tests](../../src-server/knowledge-index/__tests__/sqlite-vec-index-provider.test.ts),
 [partition tests](../../src-server/knowledge-index/__tests__/partition-scoping.test.ts),
-and [lossless-rebuild
-tests](../../src-server/knowledge-index/__tests__/lossless-rebuild.test.ts) use
-controlled records and embeddings. They do not guarantee equal ranking after a
+[lossless-rebuild
+tests](../../src-server/knowledge-index/__tests__/lossless-rebuild.test.ts), and the
+[route tests](../../src-server/routes/knowledge/__tests__/knowledge-index.routes.test.ts)
+for generations, excerpt currency and refill use controlled records and embeddings. They do not guarantee equal ranking after a
 model/source change or prove live embedding-service availability.
 
 ## KnowledgeFileTransactions

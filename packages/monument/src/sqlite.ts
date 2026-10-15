@@ -79,6 +79,30 @@ export interface SqliteRequestKeyTable {
   readonly resultColumn: string;
 }
 
+/** A host's boundary rows. Bound tables are checked, never migrated. */
+export interface SqliteTurnBoundaryTable {
+  readonly table: string;
+  readonly ownerEncoding: 'json' | 'columns';
+  /** Host event log replaces the kernel's terminal table. Requires terminalSeen. */
+  readonly terminalFacts: 'kernel' | 'host';
+  /** Fixed at open; invoked synchronously inside the command transaction. */
+  readonly terminalSeen?: (
+    database: SqliteKernelDatabase,
+    threadId: string,
+    providerTurnId: string,
+  ) => boolean;
+  readonly terminalSequence?: (
+    database: SqliteKernelDatabase,
+    threadId: string,
+    terminalEventId: string | undefined,
+  ) => number | undefined;
+  /** Capture only on insertion, under the writer lock; never backfill old rows. */
+  readonly creationSequence?: {
+    readonly column: string;
+    readonly read: (database: SqliteKernelDatabase) => number;
+  };
+}
+
 /**
  * Which tables back each machine. An area left out is kernel-owned: its
  * `monument_*` tables are created at open. A bound area uses the host's
@@ -89,7 +113,7 @@ export interface SqliteRequestKeyTable {
 export interface SqliteKernelTables {
   readonly turnDedup?: SqliteTurnDedupTables | 'unused';
   readonly requestKeys?: SqliteRequestKeyTable | 'unused';
-  readonly turnBoundary?: 'unused';
+  readonly turnBoundary?: SqliteTurnBoundaryTable | 'unused';
   readonly inbox?: 'unused';
 }
 
@@ -206,6 +230,8 @@ CREATE INDEX IF NOT EXISTS monument_turn_boundaries_thread
 CREATE UNIQUE INDEX IF NOT EXISTS monument_turn_boundaries_one_invocation
   ON monument_turn_boundaries (thread_id)
   WHERE state IN ('lifecycle', 'prepared', 'invoking', 'indeterminate');
+`;
+const TURN_TERMINAL_SCHEMA = `
 CREATE TABLE IF NOT EXISTS monument_turn_terminals (
   thread_id TEXT NOT NULL,
   provider_turn_id TEXT NOT NULL,
@@ -256,7 +282,9 @@ interface ResolvedTables {
   readonly requestKeys:
     | (SqliteRequestKeyTable & { readonly owned: boolean })
     | 'unused';
-  readonly turnBoundary: 'owned' | 'unused';
+  readonly turnBoundary:
+    | (SqliteTurnBoundaryTable & { readonly owned: boolean })
+    | 'unused';
   readonly inbox: 'owned' | 'unused';
 }
 
@@ -286,6 +314,35 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
     RESERVED_OWNER_FIELDS.has(dedup.ownerIdField)
   )
     throw new TypeError(`ownerIdField cannot be ${dedup.ownerIdField}.`);
+  const boundary = tables.turnBoundary;
+  if (boundary && boundary !== 'unused') {
+    if (
+      boundary.terminalFacts === 'host' &&
+      typeof boundary.terminalSeen !== 'function'
+    )
+      throw new SqliteKernelConfigurationError(
+        'Host terminal facts require terminalSeen at open.',
+      );
+    if (
+      boundary.terminalFacts === 'kernel' &&
+      (boundary.terminalSeen !== undefined ||
+        boundary.terminalSequence !== undefined)
+    )
+      throw new SqliteKernelConfigurationError(
+        'Kernel terminal facts cannot have host callbacks.',
+      );
+  }
+  if (
+    boundary &&
+    boundary !== 'unused' &&
+    boundary.creationSequence &&
+    boundaryColumns(boundary)
+      .split(', ')
+      .includes(boundary.creationSequence.column)
+  )
+    throw new TypeError(
+      'The creation fence must have its own boundary column.',
+    );
   return {
     turnDedup:
       dedup === 'unused'
@@ -317,7 +374,31 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
               resultColumn: 'result',
               owned: true,
             },
-    turnBoundary: tables.turnBoundary ?? 'owned',
+    turnBoundary:
+      tables.turnBoundary === 'unused'
+        ? 'unused'
+        : tables.turnBoundary
+          ? {
+              ...tables.turnBoundary,
+              table: identifier(tables.turnBoundary.table),
+              ...(tables.turnBoundary.creationSequence
+                ? {
+                    creationSequence: {
+                      ...tables.turnBoundary.creationSequence,
+                      column: identifier(
+                        tables.turnBoundary.creationSequence.column,
+                      ),
+                    },
+                  }
+                : {}),
+              owned: false,
+            }
+          : {
+              table: 'monument_turn_boundaries',
+              ownerEncoding: 'json',
+              terminalFacts: 'kernel',
+              owned: true,
+            },
     inbox: tables.inbox ?? 'owned',
   };
 }
@@ -480,11 +561,56 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
         'created_at',
         tables.requestKeys.resultColumn,
       ]);
+    if (tables.turnBoundary !== 'unused' && !tables.turnBoundary.owned) {
+      requireColumns(db, tables.turnBoundary.table, [
+        'boundary_id',
+        'thread_id',
+        'state',
+        'purpose',
+        'provider_turn_id',
+        'created_at',
+        'updated_at',
+        ...(tables.turnBoundary.ownerEncoding === 'json'
+          ? ['owner_json']
+          : ['owner_id', 'owner_pid', 'owner_birth', 'owner_identity_kind']),
+        ...(tables.turnBoundary.creationSequence
+          ? [tables.turnBoundary.creationSequence.column]
+          : []),
+      ]);
+      const indexes = db
+        .prepare(`PRAGMA index_list(${tables.turnBoundary.table})`)
+        .all() as Array<{ name: string; unique: number; partial: number }>;
+      const uniqueIdentity = indexes.some((index) => {
+        if (!index.unique || index.partial) return false;
+        const columns = db
+          .prepare(`PRAGMA index_info('${index.name.replaceAll("'", "''")}')`)
+          .all() as Array<{ name: string | null }>;
+        return columns.length === 1 && columns[0].name === 'boundary_id';
+      });
+      const primaryKey = (
+        db
+          .prepare(`PRAGMA table_info(${tables.turnBoundary.table})`)
+          .all() as Array<{ name: string; pk: number }>
+      ).filter((column) => column.pk > 0);
+      if (
+        !uniqueIdentity &&
+        !(primaryKey.length === 1 && primaryKey[0].name === 'boundary_id')
+      )
+        throw new SqliteKernelConfigurationError(
+          `bound table ${tables.turnBoundary.table} requires a primary key or non-partial unique index on boundary_id.`,
+        );
+    }
     const owned = [
       tables.turnDedup !== 'unused' && tables.turnDedup.owned
         ? TURN_DEDUP_SCHEMA
         : '',
-      tables.turnBoundary === 'owned' ? TURN_BOUNDARY_SCHEMA : '',
+      tables.turnBoundary !== 'unused' && tables.turnBoundary.owned
+        ? TURN_BOUNDARY_SCHEMA
+        : '',
+      tables.turnBoundary !== 'unused' &&
+      tables.turnBoundary.terminalFacts === 'kernel'
+        ? TURN_TERMINAL_SCHEMA
+        : '',
       tables.requestKeys !== 'unused' && tables.requestKeys.owned
         ? REQUEST_KEYS_SCHEMA
         : '',
@@ -597,7 +723,10 @@ function encodeDedupOwner(
   });
 }
 
-function decodeBoundary(row: Record<string, unknown>): TurnBoundaryRecord {
+function decodeBoundary(
+  row: Record<string, unknown>,
+  binding: SqliteTurnBoundaryTable,
+): TurnBoundaryRecord {
   const state = String(row.state);
   if (!BOUNDARY_STATES.has(state))
     throw new Error(`Invalid monument boundary state: ${state}`);
@@ -612,9 +741,25 @@ function decodeBoundary(row: Record<string, unknown>): TurnBoundaryRecord {
     ...(typeof row.provider_turn_id === 'string'
       ? { providerTurnId: row.provider_turn_id }
       : {}),
-    owner: parseOwnerIdentity(JSON.parse(String(row.owner_json)), {
-      birthlessExact: 'unverified',
-    }),
+    owner: parseOwnerIdentity(
+      binding.ownerEncoding === 'json'
+        ? JSON.parse(String(row.owner_json))
+        : {
+            id: row.owner_id,
+            pid: row.owner_pid,
+            identityKind: row.owner_identity_kind,
+            birth: row.owner_birth,
+          },
+      { birthlessExact: 'unverified' },
+    ),
+    ...(binding.creationSequence
+      ? {
+          createdSequence:
+            row.creation_sequence == null
+              ? null
+              : sequenceFence(row.creation_sequence),
+        }
+      : {}),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
   };
@@ -668,8 +813,26 @@ function decodeInboxEntry(row: Record<string, unknown>): InboxEntryRecord {
 const INBOX_COLUMNS =
   'inbox_id, entry_key, sequence, kind, digest, payload, state, placement, outcome, created_at, updated_at';
 
-const BOUNDARY_COLUMNS =
-  'boundary_id, thread_id, state, purpose, provider_turn_id, owner_json, created_at, updated_at';
+function sequenceFence(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0)
+    throw new Error('Invalid boundary creation sequence.');
+  return value;
+}
+
+function boundaryColumns(binding: SqliteTurnBoundaryTable): string {
+  return [
+    'boundary_id',
+    'thread_id',
+    'state',
+    'purpose',
+    'provider_turn_id',
+    ...(binding.ownerEncoding === 'json'
+      ? ['owner_json']
+      : ['owner_id', 'owner_pid', 'owner_birth', 'owner_identity_kind']),
+    'created_at',
+    'updated_at',
+  ].join(', ');
+}
 
 function sqliteTransaction(
   db: SqliteKernelDatabase,
@@ -693,6 +856,24 @@ function sqliteTransaction(
     'unused'
   >;
   const result = keys.resultColumn;
+  const boundary = tables.turnBoundary as Exclude<
+    ResolvedTables['turnBoundary'],
+    'unused'
+  >;
+  const columns = boundaryColumns(boundary);
+  const selectedColumns =
+    columns +
+    (boundary.creationSequence
+      ? `, ${boundary.creationSequence.column} AS creation_sequence`
+      : '');
+  const decode = (row: Record<string, unknown>) =>
+    decodeBoundary(row, boundary);
+  const requireTerminalTable = () => {
+    if (boundary.terminalFacts === 'host')
+      throw new SqliteKernelConfigurationError(
+        'Host terminal facts require a terminalSeen callback.',
+      );
+  };
 
   const count = (sql: string, ...values: Array<string | number | null>) =>
     Number((one(sql, ...values) as { total: number }).total);
@@ -771,54 +952,90 @@ function sqliteTransaction(
     turnBoundary: {
       get: (boundaryId) => {
         const row = one(
-          `SELECT ${BOUNDARY_COLUMNS} FROM monument_turn_boundaries WHERE boundary_id = ?`,
+          `SELECT ${selectedColumns} FROM ${boundary.table} WHERE boundary_id = ?`,
           boundaryId,
         );
-        return row ? decodeBoundary(row) : undefined;
+        return row ? decode(row) : undefined;
       },
       listThread: (threadId) =>
         all(
-          `SELECT ${BOUNDARY_COLUMNS} FROM monument_turn_boundaries WHERE thread_id = ? ORDER BY rowid`,
+          `SELECT ${selectedColumns} FROM ${boundary.table} WHERE thread_id = ? ORDER BY rowid`,
           threadId,
-        ).map(decodeBoundary),
+        ).map(decode),
       listAll: () =>
         all(
-          `SELECT ${BOUNDARY_COLUMNS} FROM monument_turn_boundaries ORDER BY rowid`,
-        ).map(decodeBoundary),
+          `SELECT ${selectedColumns} FROM ${boundary.table} ORDER BY rowid`,
+        ).map(decode),
       put: (record) => {
-        run(
-          `INSERT INTO monument_turn_boundaries (${BOUNDARY_COLUMNS})
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(boundary_id) DO UPDATE SET thread_id = excluded.thread_id,
-             state = excluded.state, purpose = excluded.purpose,
-             provider_turn_id = excluded.provider_turn_id,
-             owner_json = excluded.owner_json, created_at = excluded.created_at,
-             updated_at = excluded.updated_at`,
+        const fence = boundary.creationSequence;
+        // An update retains even a NULL legacy fence. Only a new row reads the head.
+        const prior = fence
+          ? one(
+              `SELECT ${fence.column} AS fence FROM ${boundary.table} WHERE boundary_id = ?`,
+              record.boundaryId,
+            )
+          : undefined;
+        const values = [
           record.boundaryId,
           record.threadId,
           record.state,
           record.purpose,
           record.providerTurnId ?? null,
-          JSON.stringify(ownerFields(record.owner)),
+          ...(boundary.ownerEncoding === 'json'
+            ? [JSON.stringify(ownerFields(record.owner))]
+            : [
+                record.owner.id,
+                record.owner.pid,
+                record.owner.identityKind === 'exact'
+                  ? record.owner.birth
+                  : null,
+                record.owner.identityKind,
+              ]),
           record.createdAt,
           record.updatedAt,
+          ...(fence
+            ? [
+                prior
+                  ? prior.fence === null
+                    ? null
+                    : sequenceFence(prior.fence)
+                  : sequenceFence(fence.read(db)),
+              ]
+            : []),
+        ];
+        const insertColumns = columns + (fence ? `, ${fence.column}` : '');
+        // A bound row's identity, owner and creation fields belong to the host.
+        // In particular, decoding a birthless exact owner must not rewrite it.
+        const updates = (
+          boundary.owned
+            ? columns.split(', ').filter((column) => column !== 'boundary_id')
+            : ['state', 'provider_turn_id', 'updated_at']
+        )
+          .map((column) => `${column} = excluded.${column}`)
+          .join(', ');
+        run(
+          `INSERT INTO ${boundary.table} (${insertColumns}) VALUES (${values.map(() => '?').join(', ')})
+             ON CONFLICT(boundary_id) DO UPDATE SET ${updates}`,
+          ...values,
         );
       },
       delete: (boundaryId) => {
-        run(
-          'DELETE FROM monument_turn_boundaries WHERE boundary_id = ?',
-          boundaryId,
-        );
+        run(`DELETE FROM ${boundary.table} WHERE boundary_id = ?`, boundaryId);
       },
     },
     turnTerminals: {
-      has: (threadId, providerTurnId) =>
-        one(
-          'SELECT 1 AS present FROM monument_turn_terminals WHERE thread_id = ? AND provider_turn_id = ?',
-          threadId,
-          providerTurnId,
-        ) !== undefined,
+      has: (threadId, providerTurnId) => {
+        requireTerminalTable();
+        return (
+          one(
+            'SELECT 1 AS present FROM monument_turn_terminals WHERE thread_id = ? AND provider_turn_id = ?',
+            threadId,
+            providerTurnId,
+          ) !== undefined
+        );
+      },
       add: (threadId, providerTurnId) => {
+        requireTerminalTable();
         run(
           'INSERT OR IGNORE INTO monument_turn_terminals (thread_id, provider_turn_id) VALUES (?, ?)',
           threadId,
@@ -826,6 +1043,7 @@ function sqliteTransaction(
         );
       },
       deleteThread: (threadId) => {
+        requireTerminalTable();
         run(
           'DELETE FROM monument_turn_terminals WHERE thread_id = ?',
           threadId,
@@ -968,11 +1186,11 @@ export function openSqliteKernelStorage(
 ): SqliteKernelStorage {
   if ((options.path === undefined) === (options.database === undefined))
     throw new TypeError('Pass exactly one of path or database.');
+  const tables = resolveTables(options.tables);
   const owned = options.database === undefined;
   const db: SqliteKernelDatabase =
     options.database ?? new DatabaseSync(options.path as string);
   const participants = options.participants ?? [];
-  const tables = resolveTables(options.tables);
   let pragmas: SqliteKernelPragmas;
   try {
     pragmas =
@@ -988,6 +1206,18 @@ export function openSqliteKernelStorage(
     throw error;
   }
   const tx = sqliteTransaction(db, tables);
+  const boundary = tables.turnBoundary;
+  const boundFacts =
+    boundary !== 'unused' && !boundary.owned
+      ? boundary.terminalFacts === 'host'
+        ? {
+            terminalSeen: (thread: string, turn: string) =>
+              boundary.terminalSeen!(db, thread, turn),
+            terminalSequence: (thread: string, event: string | undefined) =>
+              boundary.terminalSequence?.(db, thread, event),
+          }
+        : undefined
+      : undefined;
   // Read-only commands run in a deferred transaction, so under WAL they are
   // served from a snapshot while another connection holds the write lock.
   // Not when a participant observes reads: a host write inside a deferred
@@ -1020,14 +1250,41 @@ export function openSqliteKernelStorage(
         );
       return inSavepoint(
         db,
-        () => runKernelTransactionStep(command, context, tx, participants, db),
+        () => {
+          // A host savepoint may still be deferred. Reserve the writer before
+          // reading the creation fence or any participant's admission facts.
+          if (
+            area === 'turnBoundary' &&
+            !isReadOnlyKernelCommand(command) &&
+            tables.turnBoundary !== 'unused'
+          )
+            db.prepare(
+              `UPDATE ${tables.turnBoundary.table} SET boundary_id = boundary_id WHERE 0`,
+            ).run();
+          return runKernelTransactionStep(
+            command,
+            context,
+            tx,
+            participants,
+            db,
+            boundFacts,
+          );
+        },
         // A refusal keeps nothing, not even an earlier participant's admission.
         (result) => !isParticipantRefusal(result),
       );
     }
     return inTransaction(
       db,
-      () => runKernelTransactionStep(command, context, tx, participants, db),
+      () =>
+        runKernelTransactionStep(
+          command,
+          context,
+          tx,
+          participants,
+          db,
+          boundFacts,
+        ),
       isReadOnlyKernelCommand(command) && !readsTakeWriteLock
         ? 'DEFERRED'
         : 'IMMEDIATE',
