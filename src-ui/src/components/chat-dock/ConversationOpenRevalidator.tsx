@@ -57,7 +57,7 @@ export function ConversationOpenRevalidator({
             observation,
             () => !cancelled && read?.current() !== false,
           );
-        if (cancelled) return;
+        if (cancelled || read?.current() === false) return;
         const previous = activeChatsStore.getSnapshot()[sessionId];
         const sameChild = !controller.conversationExecutionChanged(
           resolution,
@@ -133,7 +133,7 @@ export function ConversationOpenRevalidator({
         resumeHeldQueueDrain(apiBase, sessionId);
       })
       .catch(() => {
-        if (cancelled) return;
+        if (cancelled || read?.current() === false) return;
         if (observation?.unavailable(conversationId) === undefined)
           read?.failed();
         updateChat(sessionId, {

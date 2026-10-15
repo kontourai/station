@@ -34,6 +34,8 @@ import {
   InfiniteQueryObserver,
   QueryClient,
   QueryClientProvider,
+  useInfiniteQuery,
+  useQuery,
 } from '@tanstack/react-query';
 import {
   act,
@@ -182,14 +184,20 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
 
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import { ConversationOpenRevalidator } from '../components/chat-dock/ConversationOpenRevalidator';
-import { resolveConversationOpenAuthoritatively } from '../components/chat-dock/conversationOpenController';
+import {
+  openConversationForDock,
+  resolveConversationOpenAuthoritatively,
+  retryActiveConversationForDock,
+} from '../components/chat-dock/conversationOpenController';
 import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
 import { workObservation } from '../contexts/work-observation';
 import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
+import { useConversationActivityFeed } from '../hooks/orchestration/useConversationActivityFeed';
 import { useSessionEventWindow } from '../hooks/orchestration/useSessionEventWindow';
+import { useSessionTranscriptEvents } from '../hooks/orchestration/useSessionTranscriptEvents';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import { useInboxWorkItems } from '../views/home/useInboxWorkItems';
 import { useWorkFacts } from '../views/home/useWorkFacts';
@@ -1421,4 +1429,309 @@ describe('stream epoch changes', () => {
       act(() => client.clear());
     }
   });
+
+  function oldPage() {
+    return {
+      ...historyPage,
+      watermark: 100,
+      nextCursor: 'older',
+      session: {
+        ...SESSIONS[0]!,
+        conversationActivity: {
+          ...SESSIONS[0]!.conversationActivity!,
+          asOfSequence: 100,
+        },
+      },
+    };
+  }
+
+  // Each path owns a different publication point; use coherent old-epoch activity,
+  // then exercise the next read's fence rather than only checking token callbacks.
+  it.each(['history', 'older-history'] as const)(
+    'late old-epoch %s activity cannot poison the next read fence',
+    async (source) => {
+      const client = new QueryClient();
+      const dock = renderWithProviders(<DockInbox />, client);
+      const release = ensureOrchestrationEventStream(
+        'http://test.local',
+        client,
+      );
+      function TranscriptReader() {
+        const history = useSessionTranscriptEvents(
+          'http://test.local',
+          { threadId: 'T', conversationId: 'T' },
+          true,
+        );
+        return (
+          <button type="button" onClick={() => void history.loadOlder()}>
+            Read older epoch page
+          </button>
+        );
+      }
+      let oldHistory: ReturnType<typeof renderWithProviders> | undefined;
+      let newHistory: ReturnType<typeof renderWithProviders> | undefined;
+      try {
+        act(() => sendSnapshot(`late-${source}-old`, 100));
+        let resolveOld!: (page: OrchestrationConversationEventWindow) => void;
+        if (source === 'older-history')
+          historyRead.mockResolvedValueOnce(oldPage());
+        historyRead.mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveOld = resolve;
+            }),
+        );
+        oldHistory = renderWithProviders(<TranscriptReader />, client);
+        if (source === 'older-history') {
+          await waitFor(() => expect(historyRead).toHaveBeenCalledTimes(1));
+          await act(async () =>
+            screen.getByText('Read older epoch page').click(),
+          );
+        }
+        await waitFor(() =>
+          expect(historyRead).toHaveBeenCalledTimes(
+            source === 'history' ? 1 : 2,
+          ),
+        );
+        act(() => sendSnapshot(`late-${source}-new`, 1));
+        await act(async () => resolveOld(oldPage()));
+        historyRead.mockRejectedValueOnce(new Error('fresh history failed'));
+        newHistory = renderWithProviders(<HistoryReader />, client);
+        await screen.findByText('Last known: Needs approval');
+        act(() => sendActivity(2));
+        expect(screen.queryByText('Last known: Needs approval')).toBeNull();
+        expect(
+          activeChatsStore.getSnapshot()[CHAT_TAB]?.conversationActivity
+            ?.asOfSequence,
+        ).toBe(2);
+      } finally {
+        oldHistory?.unmount();
+        newHistory?.unmount();
+        release();
+        dock.unmount();
+        act(() => client.clear());
+      }
+    },
+  );
+
+  it.each(['retry', 'picker', 'revalidator'] as const)(
+    'late old-epoch open resolution cannot publish through %s',
+    async (consumer) => {
+      const client = new QueryClient();
+      const dock = renderWithProviders(<DockInbox />, client);
+      const release = ensureOrchestrationEventStream(
+        'http://test.local',
+        client,
+      );
+      let revalidator: ReturnType<typeof renderWithProviders> | undefined;
+      let history: ReturnType<typeof renderWithProviders> | undefined;
+      try {
+        act(() => sendSnapshot(`open-${consumer}-old`, 100));
+        let resolveOld!: (resolution: ConversationOpenResolution) => void;
+        openRead.mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              resolveOld = resolve;
+            }),
+        );
+        const updateChat = (
+          id: string,
+          patch: Parameters<typeof activeChatsStore.updateChat>[1],
+        ) => activeChatsStore.updateChat(id, patch);
+        const observation = workObservation(client);
+        let opening: Promise<unknown> | undefined;
+        if (consumer === 'retry') {
+          opening = retryActiveConversationForDock(
+            CHAT_TAB,
+            'T',
+            'http://test.local',
+            updateChat,
+            vi.fn(),
+            (id) => activeChatsStore.getSnapshot()[id],
+            observation,
+          );
+        } else if (consumer === 'picker') {
+          opening = openConversationForDock('T', {
+            apiBase: 'http://test.local',
+            observation,
+            open: async () => true,
+            projectName: () => undefined,
+            findTab: () => CHAT_TAB,
+            readChat: (id) => activeChatsStore.getSnapshot()[id],
+            updateChat,
+            setRecovery: vi.fn(),
+          });
+        } else {
+          revalidator = renderWithProviders(
+            <ConversationOpenRevalidator
+              sessionId={CHAT_TAB}
+              conversationId="T"
+              apiBase="http://test.local"
+              updateChat={updateChat}
+            />,
+            client,
+          );
+        }
+        await waitFor(() => expect(openRead).toHaveBeenCalledOnce());
+        act(() => sendSnapshot(`open-${consumer}-new`, 1));
+        await act(async () => {
+          resolveOld({
+            status: 'resolved',
+            conversation: {
+              id: 'T',
+              agentSlug: agentId('demo-agent'),
+              title: 'Mismatch demo chat',
+              createdAt: FOLD_SESSION_CREATED_AT,
+              updatedAt: FOLD_SESSION_CREATED_AT,
+              messageCount: 1,
+              mutable: false,
+              answerability: { answerable: true },
+            },
+            currentSessionId: 'T',
+            activity: oldPage().session.conversationActivity,
+            transcript: { available: true, owner: 'runtime', messageCount: 1 },
+            canContinue: true,
+            answerability: { answerable: true },
+            recoveryActions: [],
+          });
+          await opening;
+        });
+        historyRead.mockRejectedValueOnce(new Error('fresh history failed'));
+        history = renderWithProviders(<HistoryReader />, client);
+        await screen.findByText('Last known: Needs approval');
+        act(() => sendActivity(2));
+        expect(screen.queryByText('Last known: Needs approval')).toBeNull();
+        expect(
+          activeChatsStore.getSnapshot()[CHAT_TAB]?.conversationActivity
+            ?.asOfSequence,
+        ).toBe(2);
+      } finally {
+        revalidator?.unmount();
+        history?.unmount();
+        release();
+        dock.unmount();
+        act(() => client.clear());
+      }
+    },
+  );
+
+  it.each(['inventory', 'sessions'] as const)(
+    'cached %s and its pending refetch cannot restore old-epoch activity',
+    async (source) => {
+      const client = new QueryClient();
+      const dock = renderWithProviders(<DockInbox />, client);
+      const release = ensureOrchestrationEventStream(
+        'http://test.local',
+        client,
+      );
+      const conversation: ConversationListItem = {
+        id: 'T',
+        agentSlug: agentId('demo-agent'),
+        title: 'Mismatch demo chat',
+        createdAt: FOLD_SESSION_CREATED_AT,
+        updatedAt: FOLD_SESSION_CREATED_AT,
+        messageCount: 1,
+        mutable: false,
+        answerability: { answerable: true },
+        activity: oldPage().session.conversationActivity,
+      };
+      const inventoryPage = { items: [conversation], hasMore: false };
+      const sessions = [oldPage().session];
+      const key =
+        source === 'inventory'
+          ? ['conversation-inventory']
+          : ['orchestration-sessions'];
+      let settleOld!: () => void;
+      const fetchInventory = vi
+        .fn()
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              settleOld = () => resolve(inventoryPage);
+            }),
+        )
+        .mockImplementation(() => new Promise(() => {}));
+      const fetchSessions = vi
+        .fn()
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              settleOld = () => resolve(sessions);
+            }),
+        )
+        .mockImplementation(() => new Promise(() => {}));
+      function Feed() {
+        const inventory = useInfiniteQuery({
+          queryKey: ['conversation-inventory'],
+          queryFn: fetchInventory,
+          initialPageParam: undefined,
+          getNextPageParam: () => undefined,
+          enabled: source === 'inventory',
+          retry: false,
+        });
+        const sessionQuery = useQuery({
+          queryKey: ['orchestration-sessions'],
+          queryFn: fetchSessions,
+          enabled: source === 'sessions',
+          retry: false,
+        });
+        useConversationActivityFeed({
+          sessions: sessionQuery.data ?? [],
+          sessionsFetchedAfterMount: sessionQuery.isFetchedAfterMount,
+          conversations: inventory.data?.pages.flatMap((page) => page.items),
+          conversationsFetchedAfterMount: inventory.isFetchedAfterMount,
+        });
+        return null;
+      }
+      function RetiredFeed() {
+        useConversationActivityFeed({
+          sessions,
+          sessionsFetchedAfterMount: source === 'sessions',
+          conversations: [conversation],
+          conversationsFetchedAfterMount: source === 'inventory',
+        });
+        return null;
+      }
+      let retiredFeed: ReturnType<typeof renderWithProviders> | undefined;
+      let feed: ReturnType<typeof renderWithProviders> | undefined;
+      let history: ReturnType<typeof renderWithProviders> | undefined;
+      try {
+        act(() => sendSnapshot(`cache-${source}-old`, 100));
+        client.setQueryData(
+          key,
+          source === 'inventory'
+            ? { pages: [inventoryPage], pageParams: [undefined] }
+            : sessions,
+        );
+        feed = renderWithProviders(<Feed />, client);
+        await waitFor(() =>
+          expect(
+            source === 'inventory' ? fetchInventory : fetchSessions,
+          ).toHaveBeenCalledOnce(),
+        );
+        act(() => sendSnapshot(`cache-${source}-new`, 1));
+        await act(async () => settleOld());
+        expect(client.getQueryData(key)).toBeUndefined();
+        // Reconcile a render that retained the pre-reset query result. The query
+        // reset cannot retract props already captured by a mounted consumer.
+        retiredFeed = renderWithProviders(<RetiredFeed />, client);
+        historyRead.mockRejectedValueOnce(new Error('fresh history failed'));
+        history = renderWithProviders(<HistoryReader />, client);
+        await screen.findByText('Last known: Needs approval');
+        act(() => sendActivity(2));
+        expect(screen.queryByText('Last known: Needs approval')).toBeNull();
+        expect(
+          activeChatsStore.getSnapshot()[CHAT_TAB]?.conversationActivity
+            ?.asOfSequence,
+        ).toBe(2);
+      } finally {
+        retiredFeed?.unmount();
+        feed?.unmount();
+        history?.unmount();
+        release();
+        dock.unmount();
+        act(() => client.clear());
+      }
+    },
+  );
 });

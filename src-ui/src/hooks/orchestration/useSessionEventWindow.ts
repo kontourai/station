@@ -258,6 +258,7 @@ export function useSessionEventWindow(
         requestSerial !== requestSerialRef.current
       )
         return;
+      if (read?.current() === false) return;
       read?.observed(page.watermark);
       setUpgradeRequired(false);
       // #2309: the window read carries its conversation's activity too.
@@ -321,7 +322,8 @@ export function useSessionEventWindow(
       () =>
         requestGeneration === generation.current &&
         requestSerial === requestSerialRef.current,
-      watermarkRef.current,
+      activeChatsStore.getChatForExecutionSession(threadId)
+        ?.conversationActivity?.asOfSequence,
     );
 
     requestControllerRef.current?.abort();
@@ -341,6 +343,7 @@ export function useSessionEventWindow(
         requestSerial !== requestSerialRef.current
       )
         return;
+      if (read?.current() === false) return;
       activeChatsStore.applyConversationActivity(
         page.session?.conversationActivity,
       );

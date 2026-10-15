@@ -96,6 +96,13 @@ class WorkObservation {
     // but let new-epoch observations supersede them without the old fences.
     for (const failures of this.failures.values())
       for (const failure of failures.values()) failure.sequence = -1;
+    // Cancel logical query publication as well as clearing retained old-epoch pages.
+    // resetQueries also refetches mounted lists in the replacement epoch.
+    void this.client.resetQueries({
+      predicate: (query) =>
+        query.queryKey[0] === 'conversation-inventory' ||
+        query.queryKey[0] === 'orchestration-sessions',
+    });
     this.notify();
   }
   private record(conversationId: string) {

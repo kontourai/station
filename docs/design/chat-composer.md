@@ -218,7 +218,15 @@ starts. The highest stream sequence also supersedes older pending failures that
 settle later, so completion order cannot change current status. Reader generation
 tokens stop released or replaced readers from publishing. A stream epoch change
 resets the authority client’s sequence fences and invalidates old-epoch read
-tokens while retaining unresolved failures until a new-epoch observation; cache clear invalidates
+tokens while retaining unresolved failures until a new-epoch observation.
+Response publishers use the read token's `current()` check before applying
+history activity or an open-resolution chat patch (option B). This covers
+initial history, older pages, picker opens, retries, and binding revalidation,
+including an epoch replacement while an open is awaiting focus. The same
+boundary resets and cancels cached inventory and sessions queries; their
+activity feed accepts only rows still held by the current query cache. Stream
+and snapshot activity remain synchronous publishers in the current epoch.
+Cache clear invalidates
 outstanding publishers too. This proves current status, not history
 reader recovery; the history pane retains its own error UI. Unmounting a row
 preserves failures and sequence fences. Pruning requires absence from the loaded

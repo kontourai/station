@@ -304,32 +304,43 @@ export async function openConversationForDock(
   conversation: ConversationListItem | string,
   effects: ConversationOpenDockEffects,
 ): Promise<boolean> {
+  const conversationId =
+    typeof conversation === 'string' ? conversation : conversation.id;
+  const read = effects.observation?.read(
+    conversationId,
+    'open',
+    effects.isCurrent,
+  );
+  const isCurrent = () =>
+    read?.current() !== false && effects.isCurrent?.() !== false;
   try {
     const resolution = await resolveConversationOpenAuthoritatively(
-      typeof conversation === 'string' ? conversation : conversation.id,
+      conversationId,
       effects.apiBase,
       effects.observation,
-      effects.isCurrent,
+      isCurrent,
     );
+    if (!isCurrent()) return false;
     const outcome = await commitConversationOpen({
       resolution,
       open: effects.open,
       projectName: effects.projectName,
       findTab: effects.findTab,
-      isCurrent: effects.isCurrent,
+      isCurrent,
       readChat: effects.readChat,
       agentName: effects.agentName,
     });
+    if (!isCurrent()) return false;
     if (outcome.kind === 'recovery') {
       if (typeof conversation === 'string') return false;
       effects.setRecovery(outcome.recovery);
       return true;
     }
-    if (effects.isCurrent?.() === false) return false;
     effects.updateChat(outcome.tabId, outcome.patch);
     effects.setRecovery(null);
     return true;
   } catch {
+    if (!isCurrent()) return false;
     if (typeof conversation === 'string') return false;
     effects.setRecovery({ conversation, status: 'error' });
     return true;
@@ -345,17 +356,21 @@ export async function retryActiveConversationForDock(
   readChat?: (tabId: string) => Partial<ChatUIState> | undefined,
   observation?: ReturnType<typeof workObservation>,
 ): Promise<void> {
+  const read = observation?.read(conversationId, 'open');
   try {
     const resolution = await resolveConversationOpenAuthoritatively(
       conversationId,
       apiBase,
       observation,
+      read?.current,
     );
+    if (read?.current() === false) return;
     updateChat(
       sessionId,
       conversationOpenPatch(resolution, readChat?.(sessionId)),
     );
   } catch {
+    if (read?.current() === false) return;
     onUnavailable();
   }
 }
