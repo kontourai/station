@@ -46,7 +46,13 @@
 
     "src-ui/src/components/chat-dock/ConversationOpenRevalidator.tsx",
 
-    "src-ui/src/__tests__/InboxOpenChatStatusConsistency.test.tsx"
+    "src-ui/src/__tests__/InboxOpenChatStatusConsistency.test.tsx",
+
+    "src-ui/src/components/chat-dock/conversationOpenController.ts",
+
+    "src-ui/src/components/chat-dock/ChatDock.tsx",
+
+    "src-ui/src/views/home/useObservedWorkStatus.ts"
   ],
 
   "checks": [
