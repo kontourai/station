@@ -11,6 +11,8 @@
 }
 .task-chat-start .new-chat-modal__header {
   padding: var(--k-space-3);
+  flex-shrink: 0;
+  max-height: none;
 }
 .task-chat-start .new-chat-modal__title-row {
   margin-bottom: 0;

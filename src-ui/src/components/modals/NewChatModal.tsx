@@ -1984,7 +1984,7 @@ export function NewChatModal({
               />
             </React.Suspense>
           ) : null}
-          {recentChats && (
+          {recentChats && !taskShaping && (
             <React.Suspense
               fallback={<SkeletonList count={1} label="Loading recent chats" />}
             >
