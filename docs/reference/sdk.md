@@ -12,6 +12,16 @@ entry point. Exports select TypeScript/TSX source and host components may also
 need CSS, React and a Query Client. See the [package README](../../packages/sdk/README.md)
 for source distribution and a checked authoring example.
 
+## Integration discovery
+
+`useReconnectIntegrationMutation` returns the redacted `IntegrationViewModel`
+from the connection check and invalidates the integrations query. Inspect
+`result.probe.ok`: a completed HTTP request can still report a failed discovery.
+Successful `probe.tools` entries contain bounded raw action names, descriptions,
+and category labels. The returned discovery is useful even when plugin-owned or
+personal-account state is not persisted in the ordinary integration listing.
+Metadata is for browsing; it grants no execution or credential authority.
+
 ## Agent development entry
 
 `@kontourai/station-sdk/agent` is the React-free Agent authoring and execution

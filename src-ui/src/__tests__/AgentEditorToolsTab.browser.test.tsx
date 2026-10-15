@@ -6,10 +6,17 @@
  * `tools.browser: false`.
  */
 
+import { _setApiBase } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { useState } from 'react';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import type { Tool } from '../types';
 import { AgentEditorToolsTab } from '../views/agent-editor/AgentEditorToolsTab';
 import {
@@ -32,19 +39,19 @@ function Harness({
   engineId?: string;
 }) {
   const [form, setForm] = useState(initial);
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: { queries: { retry: false, gcTime: 0 } },
+      }),
+  );
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   onForm(form);
   return (
     // The Tools tab mounts the workflows section, whose SDK hooks need an
     // observer even when the queries are disabled (an unsaved agent has no
     // slug, so nothing fetches).
-    <QueryClientProvider
-      client={
-        new QueryClient({
-          defaultOptions: { queries: { retry: false, gcTime: 0 } },
-        })
-      }
-    >
+    <QueryClientProvider client={queryClient}>
       <AgentEditorToolsTab
         form={form}
         setForm={setForm}
@@ -99,6 +106,279 @@ describe('agent editor browser tools switch (D14)', () => {
       ).disabled,
     ).toBe(true);
   });
+});
+
+test.each(['station', 'claude', 'codex'])(
+  'finds an unattached tool by description and adds only that action on %s',
+  (engineId) => {
+    let latest = createEmptyAgentForm();
+    const availableTools: Tool[] = [
+      {
+        id: 'reports',
+        name: 'Reports',
+        tools: [
+          {
+            name: 'summarize',
+            description: 'Explain quarterly revenue',
+            group: 'Reporting',
+          },
+          {
+            name: 'delete_report',
+            description: 'Remove a report',
+            group: 'Reporting',
+          },
+        ],
+      },
+    ];
+    render(
+      <Harness
+        initial={latest}
+        onForm={(form) => {
+          latest = form;
+        }}
+        availableTools={availableTools}
+        engineId={engineId}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Add tools' }));
+    const picker = within(screen.getByRole('dialog', { name: 'Add tools' }));
+    fireEvent.change(picker.getByRole('searchbox', { name: 'Search tools' }), {
+      target: { value: 'quarterly revenue' },
+    });
+    fireEvent.click(picker.getByRole('checkbox', { name: 'Summarize' }));
+    expect(
+      buildAgentPayload({ ...latest, slug: 'analyst' }).tools,
+    ).toMatchObject({
+      mcpServers: ['reports'],
+      available: ['reports_summarize'],
+      mcpMode: 'add',
+    });
+    expect(latest.tools.autoApprove).toEqual([]);
+    fireEvent.change(picker.getByRole('searchbox', { name: 'Search tools' }), {
+      target: { value: '' },
+    });
+    fireEvent.click(picker.getByRole('button', { name: 'Reports' }));
+    expect(
+      (
+        picker.getByRole('checkbox', {
+          name: 'Delete report',
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(false);
+    fireEvent.click(picker.getByRole('button', { name: 'Done' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  },
+);
+
+test('refreshing the catalog preserves a copied agent selection and future tools require an explicit opt-in', () => {
+  let latest = createEmptyAgentForm();
+  latest.tools.mcpServers = ['reports'];
+  latest.tools.available = ['reports_summarize', 'reports_missing'];
+  latest.toolsAvailableEdited = true;
+  const availableTools: Tool[] = [
+    {
+      id: 'reports',
+      name: 'Reports',
+      tools: [{ name: 'summarize', group: 'Reporting' }],
+    },
+  ];
+  const renderHarness = () => (
+    <Harness
+      initial={latest}
+      onForm={(form) => {
+        latest = form;
+      }}
+      availableTools={availableTools}
+      engineId="codex"
+    />
+  );
+  const view = render(renderHarness());
+  fireEvent.click(screen.getByRole('button', { name: 'Add tools' }));
+  let picker = within(screen.getByRole('dialog', { name: 'Add tools' }));
+  fireEvent.change(picker.getByRole('combobox', { name: 'Tool category' }), {
+    target: { value: 'Reporting' },
+  });
+  availableTools[0].tools = [
+    ...availableTools[0].tools!,
+    { name: 'export_report', group: 'Reporting' },
+  ];
+  view.rerender(renderHarness());
+  picker = within(screen.getByRole('dialog', { name: 'Add tools' }));
+  expect(
+    (picker.getByRole('checkbox', { name: 'Summarize' }) as HTMLInputElement)
+      .checked,
+  ).toBe(true);
+  expect(
+    (
+      picker.getByRole('checkbox', {
+        name: 'Export report',
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(false);
+  fireEvent.click(picker.getByRole('button', { name: 'Select shown' }));
+  expect(latest.tools.available).toEqual([
+    'reports_missing',
+    'reports_summarize',
+    'reports_export_report',
+  ]);
+  fireEvent.click(
+    picker.getByRole('checkbox', {
+      name: 'Include all current and future tools',
+    }),
+  );
+  expect(latest.tools.available).toEqual(['reports_*']);
+  availableTools[0].tools.push({ name: 'archive_report', group: 'Reporting' });
+  view.rerender(renderHarness());
+  picker = within(screen.getByRole('dialog', { name: 'Add tools' }));
+  expect(
+    (
+      picker.getByRole('checkbox', {
+        name: 'Archive report',
+      }) as HTMLInputElement
+    ).checked,
+  ).toBe(true);
+});
+
+test('the tool browser explains whole-source engines and keeps disabled sources unavailable', () => {
+  let latest = createEmptyAgentForm();
+  render(
+    <Harness
+      initial={latest}
+      onForm={(form) => {
+        latest = form;
+      }}
+      engineId="acp"
+      availableTools={[
+        ...stationTools,
+        {
+          id: 'disabled',
+          name: 'Disabled source',
+          enabled: false,
+          tools: [{ name: 'read' }],
+        },
+      ]}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Add tools' }));
+  const picker = within(screen.getByRole('dialog', { name: 'Add tools' }));
+  expect(
+    picker.getByText(/This engine accepts whole tool sources/),
+  ).toBeTruthy();
+  fireEvent.click(picker.getByRole('button', { name: 'Disabled source' }));
+  expect(
+    (picker.getByRole('button', { name: 'Add source' }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  fireEvent.click(picker.getByRole('button', { name: 'Station tools' }));
+  const station = within(picker.getByRole('region', { name: 'Station tools' }));
+  expect(
+    (station.getByRole('checkbox', { name: 'List agents' }) as HTMLInputElement)
+      .disabled,
+  ).toBe(true);
+  fireEvent.click(station.getByRole('button', { name: 'Add source' }));
+  expect(latest.tools.available).toEqual(['station-control_*']);
+});
+
+test('refresh uses an unpersisted discovery result and reports a failed probe even on HTTP success', async () => {
+  _setApiBase('http://station.example.test');
+  const fetchMock = vi
+    .spyOn(globalThis, 'fetch')
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            id: 'reports',
+            kind: 'mcp',
+            probe: {
+              ok: true,
+              toolCount: 1,
+              checkedAt: '2026-10-15T00:00:00Z',
+              tools: [
+                {
+                  name: 'reports_read',
+                  description: 'Read quarterly results',
+                  group: 'Reporting',
+                },
+              ],
+            },
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    )
+    .mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            id: 'reports',
+            kind: 'mcp',
+            probe: {
+              ok: false,
+              toolCount: 0,
+              checkedAt: '2026-10-15T00:01:00Z',
+              error: 'Operator consent is required',
+            },
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      ),
+    );
+  try {
+    let latest = createEmptyAgentForm();
+    render(
+      <Harness
+        initial={latest}
+        onForm={(form) => {
+          latest = form;
+        }}
+        availableTools={[{ id: 'reports', name: 'Reports' }]}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Add tools' }));
+    let picker = within(screen.getByRole('dialog', { name: 'Add tools' }));
+    fireEvent.click(picker.getByRole('button', { name: 'Reports' }));
+    fireEvent.click(picker.getByRole('button', { name: 'Refresh tools' }));
+    const read = await picker.findByRole('checkbox', { name: 'Reports read' });
+    fireEvent.click(read);
+    expect(latest.tools.available).toEqual(['reports_reports_read']);
+    expect(picker.getByText('Read quarterly results')).toBeTruthy();
+    fireEvent.click(picker.getByRole('button', { name: 'Done' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add tools' }));
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Add tools' })).getByRole(
+        'button',
+        { name: 'Reports' },
+      ),
+    );
+    expect(
+      (
+        within(screen.getByRole('dialog', { name: 'Add tools' })).getByRole(
+          'checkbox',
+          { name: 'Reports read' },
+        ) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+    picker = within(screen.getByRole('dialog', { name: 'Add tools' }));
+    await waitFor(() =>
+      expect(
+        (
+          picker.getByRole('button', {
+            name: 'Refresh tools',
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(false),
+    );
+    fireEvent.click(picker.getByRole('button', { name: 'Refresh tools' }));
+    expect(await picker.findByRole('alert')).toHaveProperty(
+      'textContent',
+      expect.stringContaining('Operator consent is required'),
+    );
+  } finally {
+    fetchMock.mockRestore();
+    _setApiBase('');
+  }
 });
 
 const stationTools: Tool[] = [

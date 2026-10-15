@@ -459,6 +459,7 @@ export interface Tool {
   id: string;
   name: string;
   displayName?: string;
+  source?: string;
   description?: string;
   kind?: 'mcp' | 'builtin' | 'custom';
   transport?: string;
@@ -470,6 +471,7 @@ export interface Tool {
   toolName?: string;
   group?: string;
   title?: string;
+  probe?: import('@kontourai/station-contracts/tool').ToolServerProbeResult;
   tools?: {
     name: string;
     toolName?: string;

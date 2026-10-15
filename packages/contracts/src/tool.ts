@@ -136,9 +136,15 @@ export interface ToolServerProbeResult {
    * (audit CI-R15). Before this the count was the only surviving evidence,
    * and the live catalogue that carries names is empty until an agent session
    * opens a client — so a server could report "1 tool" and no surface could
-   * ever say which. Names only, capped, no schemas or descriptions.
+   * ever say which. Retained for readers of older probe records.
    */
   toolNames?: string[];
+  /** Bounded discovery metadata for browsing before an Agent loads this source. */
+  tools?: {
+    name: string;
+    description?: string;
+    group?: string;
+  }[];
   checkedAt: string;
   /** OAuth consent evidence attached to the existing probe/health projection. */
   authorization?:

@@ -112,7 +112,7 @@ export interface AgentEditorFormProps {
   enrich: (prompt: string) => Promise<string | null>;
   isEnriching: boolean;
   onNavigate: (view: NavigationView) => void;
-  onOpenAddModal: (type: 'integrations' | 'skills') => void;
+  onOpenAddModal: (type: 'skills') => void;
   agentConnections?: ConnectionConfig[];
   /** Persisted authored commands, exposed read-only when the engine cannot deliver them. */
   authoredCommands?: Record<string, SlashCommand>;

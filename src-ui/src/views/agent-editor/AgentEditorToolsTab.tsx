@@ -1,9 +1,9 @@
 import type { AgentEngineValidationFinding } from '@kontourai/station-contracts/agent-validation';
-import { useReconnectIntegrationMutation } from '@kontourai/station-sdk';
 import type { Dispatch, SetStateAction } from 'react';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { Checkbox } from '../../components/Checkbox';
+import { Dialog } from '../../components/Dialog';
 import { InfoTip } from '../../components/InfoTip';
 import {
   ArrowDownGlyph,
@@ -17,6 +17,7 @@ import { IntegrationGlyph } from '../../components/icons/IntegrationGlyph';
 import { Toggle } from '../../components/Toggle';
 import type { Tool } from '../../types';
 import { AgentEditorWorkflows } from './AgentEditorWorkflows';
+import { AgentToolPicker } from './AgentToolPicker';
 import type { AgentEditorFormProps } from './types';
 import {
   addIntegration,
@@ -38,7 +39,6 @@ export function AgentEditorToolsTab({
   expandedIntegrations,
   setExpandedIntegrations,
   onNavigate,
-  onOpenAddModal,
   finding,
   engineDefaultToolsHint,
   engineId = 'station',
@@ -59,9 +59,9 @@ export function AgentEditorToolsTab({
   engineId?: string;
 }) {
   const [search, setSearch] = useState('');
+  const [browsing, setBrowsing] = useState(false);
   const [groups, setGroups] = useState<Record<string, string>>({});
   const [showApprovals, setShowApprovals] = useState(false);
-  const checkTools = useReconnectIntegrationMutation();
   const disabled = locked || !!finding;
   const selected: Tool[] = form.tools.mcpServers.map(
     (id) =>
@@ -76,7 +76,7 @@ export function AgentEditorToolsTab({
   const query = search.trim().toLowerCase();
 
   const catalogFor = (integration: Tool): Tool[] =>
-    integration.tools?.length
+    integration.tools !== undefined
       ? integration.tools.map((tool) => ({
           id: `${integration.id}_${tool.toolName || tool.name}`,
           name: tool.toolName || tool.name,
@@ -142,10 +142,10 @@ export function AgentEditorToolsTab({
             <Button
               variant="secondary"
               disabled={disabled}
-              onClick={() => onOpenAddModal('integrations')}
+              onClick={() => setBrowsing(true)}
               aria-label="Add tools"
             >
-              <PlusGlyph /> Add
+              <PlusGlyph /> Add tools
             </Button>
             <details className="agent-tools__preferences">
               <summary aria-label="Tool settings" title="Tool settings">
@@ -222,6 +222,12 @@ export function AgentEditorToolsTab({
             </details>
           </div>
         </div>
+        {selected.length === 0 && (
+          <p className="editor-hint">
+            Add tools to let this agent work with Station or your connected
+            apps.
+          </p>
+        )}
         {selected.length > 0 && (
           <>
             <div className="agent-tools__search">
@@ -496,7 +502,8 @@ export function AgentEditorToolsTab({
                         </div>
                         {!supportsSelection && (
                           <span className="editor-hint">
-                            This harness selects its own tools.
+                            This engine accepts the whole source. Individual
+                            tool selection is unavailable.
                           </span>
                         )}
                         {showApprovals && (
@@ -526,22 +533,10 @@ export function AgentEditorToolsTab({
                               disabled={
                                 disabled || integration.enabled === false
                               }
-                              pending={
-                                checkTools.isPending &&
-                                checkTools.variables === integration.id
-                              }
-                              pendingLabel="Check tools"
-                              onClick={() => checkTools.mutate(integration.id)}
+                              onClick={() => setBrowsing(true)}
                             >
-                              Check tools
+                              Browse tools
                             </Button>
-                            {checkTools.isError &&
-                              checkTools.variables === integration.id && (
-                                <span className="editor-hint" role="status">
-                                  Could not check tools. Open Manage
-                                  integrations.
-                                </span>
-                              )}
                           </div>
                         )}
                         <div className="agent-tools__checklist">
@@ -559,6 +554,7 @@ export function AgentEditorToolsTab({
                                   checked={enabled}
                                   disabled={
                                     disabled ||
+                                    integration.enabled === false ||
                                     !supportsSelection ||
                                     tool.enabled === false
                                   }
@@ -618,6 +614,28 @@ export function AgentEditorToolsTab({
           </>
         )}
       </div>
+      {browsing && !disabled && (
+        <Dialog
+          title="Add tools"
+          subtitle="Browse by source or by what the tools do."
+          closeLabel="Close tools"
+          onClose={() => setBrowsing(false)}
+          size="lg"
+          footer={
+            <Button variant="primary" onClick={() => setBrowsing(false)}>
+              Done
+            </Button>
+          }
+        >
+          <AgentToolPicker
+            form={form}
+            setForm={setForm}
+            availableTools={availableTools}
+            integrationTools={integrationTools}
+            engineId={engineId}
+          />
+        </Dialog>
+      )}
       <details className="agent-tools__advanced">
         <summary>Advanced</summary>
         <div className="editor-field">

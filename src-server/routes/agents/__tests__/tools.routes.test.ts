@@ -186,7 +186,21 @@ describe('Tool Routes', () => {
     const service = createMockMCPService();
     service.listIntegrations.mockResolvedValue([
       { id: 'station-control', name: 'Station' },
-      { id: 'mcp-1', name: 'Test MCP' },
+      {
+        id: 'mcp-1',
+        name: 'Test MCP',
+        probe: {
+          toolNames: ['mcp-1_mcp-1_export_report'],
+          tools: [
+            {
+              name: 'mcp-1_export_report',
+              description: 'Export quarterly revenue',
+              group: 'Reporting',
+            },
+          ],
+        },
+      },
+      { id: 'station-docs', name: 'Station documentation' },
     ]);
     service.getMCPToolCatalog.mockResolvedValue([
       {
@@ -210,11 +224,25 @@ describe('Tool Routes', () => {
     );
     expect(result.data[1].tools).toEqual([
       expect.objectContaining({
+        toolName: 'mcp-1_export_report',
+        description: 'Export quarterly revenue',
+        group: 'Reporting',
+      }),
+      expect.objectContaining({
         name: 'mcp-1_render',
         toolName: 'render',
         group: 'Reports',
       }),
     ]);
+    expect(result.data[2].tools).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          toolName: 'search_station_docs',
+          group: 'Documentation',
+          readOnly: true,
+        }),
+      ]),
+    );
   });
 
   test('POST / saves integration', async () => {

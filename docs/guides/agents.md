@@ -46,12 +46,32 @@ For full field reference see [docs/reference/config.md](../reference/config.md).
 
 ### MCP Tool Configuration
 
-Open an Agent's **Tools** section to add integrations. **Station**
-adds read-only built-in controls; expand the row to choose **Read only**, **All**,
-**None**, or individual tools. Use the group picker to narrow Station controls to
-Knowledge, Projects, Tasks, Scheduling, and other areas. The three shortcuts apply
-to the chosen group and preserve choices elsewhere. Search narrows the checklist. The shield opens approval settings; the gear
-opens harness settings. **Advanced** contains browser and workflow options.
+The **Tools** section is shared by creating, copying, and editing an Agent.
+Choose **Add tools** to browse installed sources before attaching them. Search
+by action name or description, or filter by source and category. **Station tools**
+includes Station Control, Knowledge, and Documentation; categories describe what
+tools do, not which Project they belong to. Select an individual action to add
+only that action, or use **Select shown** to add the visible actions while
+preserving choices outside the filter. Adding tools does not auto-approve them.
+
+**Refresh tools** discovers the source's current actions without attaching it to
+the Agent. Discovery failures remain visible, including a connection check that
+completed but could not list tools. Local probes retain up to 200 action names,
+category labels, and description previews (up to 2,000 characters). The picker
+also uses the current refresh response for plugin and personal-account sources;
+those discoveries do not create a local integration override or share credentials.
+
+Individual selections stay fixed when a source gains tools. Enable **Include all
+current and future tools** only when the Agent should receive every action that
+source adds. Engines that cannot accept individual selections offer **Add source**
+and explain that the whole source is included. Disabled sources must be enabled
+in Connections first. Selecting tools grants no additional Project access.
+
+The **Station** shortcut adds read-only built-in controls. Expand an added source
+to choose **Read only**, **All**, **None**, or individual tools. The category
+picker narrows the checklist; these shortcuts apply to that category and preserve
+choices elsewhere. The shield opens approval settings; the gear opens engine
+settings. **Advanced** contains browser and workflow options.
 Saved changes apply to new chats. Hover over or click an info icon for field
 explanations and engine capabilities. Keyboard users can press Enter to open it,
 use arrow or Page keys to scroll long help, and press Escape to dismiss it.

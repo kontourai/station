@@ -40,6 +40,7 @@ import {
   toolServerCredentialWrites,
 } from '../../telemetry/metrics.js';
 import { stationControlToolCatalog } from '../../tools/station-control-mcp-server.js';
+import { stationDocsToolCatalog } from '../../tools/station-docs-mcp-server.js';
 import { stationKnowledgeToolCatalog } from '../../tools/station-knowledge-mcp-server.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import { normalizeToolName } from '../../utils/tool-name-normalizer.js';
@@ -330,25 +331,28 @@ export function createToolRoutes(
             ? stationTools
             : t.id === 'station-knowledge'
               ? stationKnowledgeToolCatalog()
-              : [
-                  ...(t.probe?.toolNames ?? []).map((name) => ({
-                    name: originalMcpToolName(t.id, name),
-                    description: undefined,
-                  })),
-                  ...catalog
-                    .filter((tool) => tool.serverId === t.id)
-                    .map((tool) => ({
-                      name:
-                        tool.toolName ??
-                        originalMcpToolName(t.id, tool.originalName),
-                      description: tool.description,
-                      group:
-                        typeof tool._meta?.['ai.kontour/tool-group'] ===
-                        'string'
-                          ? tool._meta['ai.kontour/tool-group']
-                          : undefined,
+              : t.id === 'station-docs'
+                ? stationDocsToolCatalog()
+                : [
+                    ...(t.probe?.toolNames ?? []).map((name) => ({
+                      name: originalMcpToolName(t.id, name),
+                      description: undefined,
                     })),
-                ];
+                    ...(t.probe?.tools ?? []),
+                    ...catalog
+                      .filter((tool) => tool.serverId === t.id)
+                      .map((tool) => ({
+                        name:
+                          tool.toolName ??
+                          originalMcpToolName(t.id, tool.originalName),
+                        description: tool.description,
+                        group:
+                          typeof tool._meta?.['ai.kontour/tool-group'] ===
+                          'string'
+                            ? tool._meta['ai.kontour/tool-group']
+                            : undefined,
+                      })),
+                  ];
         const rows = [
           ...new Map(entries.map((tool) => [tool.name, tool])).values(),
         ];

@@ -103,6 +103,17 @@ class ConnectedAccountActorRequiredError extends StationOwnedToolServerError {
 /** Bound on the names a probe records, so one chatty server cannot bloat its
  *  persisted config file (CI-R15). */
 const PROBE_TOOL_NAME_LIMIT = 200;
+
+function probeToolMetadata(connection: MCPConnection) {
+  return connection.tools.slice(0, PROBE_TOOL_NAME_LIMIT).map((tool) => ({
+    name: tool.originalName,
+    description: tool.description?.slice(0, 2000),
+    group:
+      typeof tool._meta?.['ai.kontour/tool-group'] === 'string'
+        ? tool._meta['ai.kontour/tool-group'].slice(0, 100)
+        : undefined,
+  }));
+}
 const CONTRIBUTED_INTEGRATION_DEFINITION = Symbol(
   'station.contributed-integration-definition',
 );
@@ -1043,6 +1054,7 @@ export class MCPService {
           toolNames: connection.tools
             .slice(0, PROBE_TOOL_NAME_LIMIT)
             .map((tool) => tool.name),
+          tools: probeToolMetadata(connection),
           checkedAt,
         };
         await this.requireCurrentDefinition(claim, existing);
@@ -1200,6 +1212,7 @@ export class MCPService {
             .slice(0, PROBE_TOOL_NAME_LIMIT)
             .map((tool) => tool.name),
           checkedAt,
+          tools: probeToolMetadata(connection),
           authorization: { state: 'authorized' },
         },
       };

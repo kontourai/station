@@ -192,7 +192,9 @@ export function toggleIntegrationToolEnabled(
   catalogs: Record<string, Tool[]> = { [integrationId]: tools },
 ): AgentFormData {
   const patterns = canonicalAgentToolPatterns(form, catalogs);
-  const all = patterns.includes('*') || patterns.includes(`${integrationId}_*`);
+  const all =
+    form.tools.mcpServers.includes(integrationId) &&
+    (patterns.includes('*') || patterns.includes(`${integrationId}_*`));
   const enabled = new Set(
     all
       ? tools.map((tool) => getIntegrationToolKey(integrationId, tool))

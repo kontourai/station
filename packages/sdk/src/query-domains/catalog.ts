@@ -350,13 +350,16 @@ export function useDeleteIntegrationMutation(
 }
 
 export function useReconnectIntegrationMutation(
-  options?: MutationOptions<void, string>,
+  options?: MutationOptions<IntegrationViewModel, string>,
 ) {
   return useApiMutation(
     async (id: string) => {
-      await requestIntegration<void>(`/${encodeURIComponent(id)}/reconnect`, {
-        method: 'POST',
-      });
+      return requestIntegration<IntegrationViewModel>(
+        `/${encodeURIComponent(id)}/reconnect`,
+        {
+          method: 'POST',
+        },
+      );
     },
     {
       invalidateKeys: [['integrations']],
