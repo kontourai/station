@@ -1,0 +1,52 @@
+{
+  "date": "2026-10-15",
+  "sourceRevision": "987c661c12adf5a827c995c439b3b45386c1358f",
+  "scope": "Local browser and iOS26.5 Safari simulator; no physical/native/release qualification; Terminal excluded.",
+  "screenshots": [
+    {
+      "path": "round5-safari-tool-success.png",
+      "sha256": "eb38b99aa3d7c7be12d4d53a84374fcf0df8336f595410f7cfd13008c8a221c3",
+      "note": "Actual Safari simulator, sent message and successful tool result after restart."
+    },
+    {
+      "path": "round5-desktop-tool-success.png",
+      "sha256": "7d08c456bb5e56551b2f5bbff139171c5ba2526969687e114b44e3c288209179",
+      "note": "Desktop showing the failed first restart call and subsequent successful Safari call."
+    },
+    {
+      "path": "round5-desktop-history-error.png",
+      "sha256": "bcd04127db3131fb0b4b28c8f24aac03a487404ca787e1c487a7af02f3442c74",
+      "note": "Desktop transient history error after rebuild; later recovered."
+    }
+  ],
+  "regressions": {
+    "baseline": "75 passed",
+    "injected": "6 intended failures,69 passed with both production owners restored to69f1b3b82af",
+    "restored": "75 passed",
+    "logs": [
+      "/tmp/station-final-history-after.log",
+      "/tmp/station-final-history-injected.log",
+      "/tmp/station-final-history-restored.log"
+    ]
+  },
+  "independentReview": "No P1/P2 source findings at987c661c12a; runtime incidents remain unexplained.",
+  "runtime": {
+    "conversation": "onboarding-codex:1792083192179",
+    "executionAfterRestart": "onboarding-codex:1792083192179:session:c36e89f7-6e9f-4806-990e-26ffd4970efe",
+    "desktopToolFailure": {
+      "toolCallId": "exec-147c4112-114d-43a7-a6fc-23a97e9ca520",
+      "time": "2026-10-15T22:08:14.591Z",
+      "status": "error",
+      "reason": "HTTP transport send failure; current process URL matched failure; no causal fix established"
+    },
+    "safariToolSuccess": {
+      "toolCallId": "exec-fd146f0e-4996-496f-a280-abaf457ae118",
+      "time": "2026-10-15T22:08:41.294Z",
+      "status": "success",
+      "projectSlug": "station-onboarding-demo-20261015"
+    },
+    "history": "Temporarily unavailable on rebuilt desktop before recovery; Safari restored history and sent a successful tool request. Recovery latency remains open.",
+    "sendState": "Desktop briefly retained an unconfirmed queued-send warning for the completed restart request.",
+    "nativeCliDiagnostic": "Separate ephemeral Codex0.162.1 invocation succeeded with the same endpoint/token; this does not establish app recovery correctness."
+  }
+}

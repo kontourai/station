@@ -116,3 +116,22 @@ and the tested narrow-desktop recovery route.
 Round-four capture artifacts are a dated local audit, not public product
 contracts or release qualification. Source and regression receipts are separate
 from Safari simulator evidence and physical-device acceptance.
+
+## Recovery verification
+
+The final recovery pass retires superseded history-capability requests before
+they can consume recovery attempts or create orphaned timers. Optional MCP
+prompt lookups now cancel with their query, retain HTTP error metadata and the
+existing request deadline, and do not retry automatically.
+
+At `987c661c12a`, 75 focused checks passed; restoring the old production owners
+caused six intended failures, and restoration passed all 75 again. Independent
+source review reported no P1/P2 findings. This proves those bounded repairs.
+
+The rebuilt app restored desktop and Safari history after a Station restart,
+and a message sent from Safari completed a real `list_projects` call. The first
+desktop tool call after restart failed with an HTTP transport error; history
+also temporarily failed before recovering. Both intermittent failures remain
+unexplained and are not claimed fixed by the bounded repairs. Physical devices,
+native shells and release delivery remain unverified. Terminal remains outside
+this pass.
