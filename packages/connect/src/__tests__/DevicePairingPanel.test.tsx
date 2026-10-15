@@ -36,8 +36,15 @@ function response(body: unknown, status = 200) {
 
 test('a polling authentication refusal is visible, pauses automatic retries, and can be checked explicitly', async () => {
   vi.useFakeTimers();
-  const request = vi.fn(async () =>
-    response({ error: { code: 'authentication_required' } }, 401),
+  let recovered = false;
+  const request = vi.fn(async (input: RequestInfo | URL) =>
+    recovered
+      ? response(
+          new URL(String(input)).pathname.endsWith('/requests')
+            ? { requests: [] }
+            : { devices: [] },
+        )
+      : response({ error: { code: 'authentication_required' } }, 401),
   );
   try {
     render(
@@ -56,11 +63,15 @@ test('a polling authentication refusal is visible, pauses automatic retries, and
     expect(request).toHaveBeenCalledTimes(2);
     await act(async () => vi.advanceTimersByTimeAsync(3000));
     expect(request).toHaveBeenCalledTimes(2);
+    recovered = true;
     fireEvent.click(
       screen.getByRole('button', { name: 'Check connection again' }),
     );
     await act(async () => undefined);
     expect(request).toHaveBeenCalledTimes(4);
+    expect(screen.queryByRole('alert')).toBeNull();
+    await act(async () => vi.advanceTimersByTimeAsync(1000));
+    expect(request).toHaveBeenCalledTimes(6);
   } finally {
     vi.useRealTimers();
   }
@@ -2619,7 +2630,7 @@ describe('device pairing panels', () => {
       403,
       { error: { code: 'insufficient_scope' } },
       {},
-      'This device cannot create pairing codes. On the computer running Station, use a trusted operator session or run its launcher’s environment offer command (station-nightly for Nightly; ./station from source).',
+      'This device cannot create pairing codes.',
     ],
     [
       403,
@@ -2958,7 +2969,7 @@ describe('device pairing panels', () => {
       // QR code: error-styled border and the phone-reach warning, not the
       // neutral hint.
       expect(screen.getByRole('note').textContent).toContain(
-        'A phone cannot reach this address',
+        'Localhost points to the phone.',
       );
       fireEvent.change(screen.getByLabelText('Pairing endpoint'), {
         target: { value: 'https://kontour.python-smelt.ts.net:3773' },

@@ -1058,8 +1058,7 @@ async function pairingOfferError(response: Response): Promise<{
     return {
       auth: false,
       operatorHandoff: true,
-      message:
-        'This device cannot create pairing codes. On the computer running Station, use a trusted operator session or run its launcher’s environment offer command (station-nightly for Nightly; ./station from source).',
+      message: 'This device cannot create pairing codes.',
     };
   }
   if (code === 'origin_forbidden') {
@@ -1257,6 +1256,7 @@ export function HostDevicePairingPanel({
   const [now, setNow] = useState(Date.now());
   const refreshGeneration = useRef(0);
   const pollingPaused = useRef(false);
+  const pollingFailure = useRef<string | null>(null);
   const requestActionIdsRef = useRef(new Set<string>());
   const deviceActionIdsRef = useRef(new Set<string>());
   const payload = useMemo(
@@ -1330,12 +1330,19 @@ export function HostDevicePairingPanel({
           requestResponse.status === 401 || deviceResponse.status === 401;
         setAuthBlocked(authenticationFailed);
         setOperatorHandoff(!authenticationFailed);
-        setError(
-          authenticationFailed
-            ? "This device's access to this Station needs review. Reconnect it, then try again."
-            : 'This device cannot manage pairing requests. Continue on the computer running Station.',
-        );
+        const message = authenticationFailed
+          ? "This device's access to this Station needs review. Reconnect it, then try again."
+          : 'This device cannot manage pairing requests. Continue on the computer running Station.';
+        pollingFailure.current = message;
+        setError(message);
         return;
+      }
+      if (pollingFailure.current) {
+        const failure = pollingFailure.current;
+        pollingFailure.current = null;
+        setError((current) => (current === failure ? null : current));
+        setAuthBlocked(false);
+        setOperatorHandoff(false);
       }
       if (requestBody) setRequests(requestBody.requests ?? []);
       if (deviceBody) setDevices(deviceBody.devices ?? []);
@@ -2063,10 +2070,7 @@ export function HostDevicePairingPanel({
       {!offer ? (
         <>
           <p style={{ margin: 0, color: 'var(--text-secondary, #999)' }}>
-            Create a code and scan it with your phone camera to open Station.
-            Review the connection on your phone, then approve access here. Both
-            devices connect to the same Station server. Your phone must be able
-            to reach its address.
+            Scan the invitation on your phone, then approve access here.
           </p>
           <fieldset
             style={{
@@ -2107,7 +2111,7 @@ export function HostDevicePairingPanel({
           </fieldset>
           <div>
             <label style={{ display: 'grid', gap: 6 }}>
-              Station server address your phone can reach
+              Station address
               <input
                 aria-label="Pairing endpoint"
                 inputMode="url"
@@ -2124,14 +2128,12 @@ export function HostDevicePairingPanel({
             </label>
             {endpointIsLoopback ? (
               <small role="note" style={{ color: 'var(--status-error, #e66)' }}>
-                A phone cannot reach this address — localhost and 127.0.0.1
-                point to the phone itself. Use this server’s LAN or tailnet
-                address (for example a Tailscale Serve HTTPS URL).
+                Localhost points to the phone. Use your computer’s reachable
+                address.
               </small>
             ) : (
               <small style={{ color: 'var(--text-secondary, #999)' }}>
-                Use this server’s LAN or tailnet address. Localhost and
-                127.0.0.1 point to the phone itself when opened there.
+                Your phone must be able to reach this address.
               </small>
             )}
           </div>
@@ -2266,27 +2268,19 @@ export function HostDevicePairingPanel({
           aria-label="Create an invitation on your computer"
           style={{ display: 'grid', gap: 8 }}
         >
-          <strong>Continue on the computer running Station</strong>
-          <ol>
-            <li>Open its Station desktop app and choose Pair phone.</li>
-            <li>
-              Scan its invitation on your phone, then approve that phone on the
-              computer.
-            </li>
-          </ol>
+          <p>
+            Open Station on your computer and choose <strong>Pair phone</strong>
+            .
+          </p>
           <details>
             <summary>Running Station from a terminal?</summary>
-            <p>
-              Use the same launcher, home and instance you used to start this
-              Station. This command prints an invitation; it does not approve a
-              device.
-            </p>
+            <p>For a Nightly installation:</p>
             <code>station-nightly environment offer</code>
             <CopyCommandButton command="station-nightly environment offer" />
             <p>
-              For a source checkout, use{' '}
-              <code>./station environment offer</code>.
+              Source checkout: <code>./station environment offer</code>.
             </p>
+            <small>Use the same Station home and instance.</small>
           </details>
         </section>
       )}

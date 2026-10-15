@@ -77,10 +77,12 @@ export function GuidedConnect({
     <div className="guided-connect">
       <div className="guided-connect__inner">
         <img src="/favicon.png" alt="" className="guided-connect__logo" />
-        <h1 className="guided-connect__title">Connect to a Station</h1>
+        <h1 className="guided-connect__title">
+          {phone ? 'Connect your phone' : 'Connect to a Station'}
+        </h1>
         <p className="guided-connect__description">
           {phone
-            ? 'Use your computer’s agents, chats, and projects from your phone.'
+            ? 'Use the AI and files on your computer.'
             : 'Choose the computer where you want to work.'}
         </p>
         {notice && (
@@ -131,21 +133,16 @@ export function GuidedConnect({
             >
               Request access
             </button>
-            {isLocal && (
-              <small>
-                Or request access to connect this browser to the address above.
-              </small>
-            )}
           </section>
         )}
         <section
           className="guided-connect__destination"
           aria-label="Another Station"
         >
-          <h2>{phone ? 'Connect your phone' : 'On another computer'}</h2>
+          {!phone && <h2>On another computer</h2>}
           <p>
             {phone
-              ? 'On the computer running Station, open Connections → Computers → Add computer → Control this Station from another device. Keep that computer running while you work here.'
+              ? 'On your computer, open Station → Pair phone. Keep it running.'
               : 'Use a pairing code from the Station running on that computer.'}
           </p>
           <Button
@@ -176,9 +173,8 @@ export function GuidedConnect({
             {needsStation && (
               <div>
                 <p>
-                  Install Station on a Mac, Windows, or Linux computer first.
-                  Your phone connects to that computer; you don’t need to
-                  install coding tools on your phone.
+                  Install Station on a computer, then return with its pairing
+                  code.
                 </p>
                 <a
                   href="https://station.kontourai.io/#start"
@@ -187,20 +183,12 @@ export function GuidedConnect({
                 >
                   Get Station for your computer
                 </a>
-                <p>
-                  Then return here with its pairing code. For a computer you
-                  don’t manage, ask its owner for access.
-                </p>
               </div>
             )}
           </section>
         )}
         <details className="guided-connect__advanced">
           <summary>Other ways to connect</summary>
-          <p>
-            Use an address from your Station’s owner, or a configured broker
-            invitation.
-          </p>
           <div className="guided-connect__alternatives">
             <Button
               className="guided-connect__action"
