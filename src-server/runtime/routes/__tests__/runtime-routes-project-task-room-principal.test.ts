@@ -239,6 +239,82 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
     };
   }
 
+  test('proposal creation primes the accepting principal before seeding its shared document', async () => {
+    const { app, store, roomRuntime, context, taskRecord, setCaller } =
+      await setup('proposal-device');
+    setCaller({
+      credential: 'proposal-device',
+      authority: 'device-credential',
+      source: 'bearer',
+      locality: 'home-possession',
+    });
+    Reflect.set(
+      context,
+      'orchestrationService',
+      deepStub({
+        canUserReadSession: () => true,
+        sessionQueries: {
+          readAssistantTurn: async () => ({
+            status: 'found',
+            projectSlug: taskRecord.projectId,
+            sessionId: 'shaping-session',
+            turnId: 'shaping-turn',
+            message: {
+              id: 'answer',
+              role: 'assistant',
+              parts: [{ type: 'text', text: 'Accepted proposal' }],
+            },
+          }),
+        },
+      }),
+    );
+    Reflect.set(context.taskGraphService, 'createTask', async () => taskRecord);
+    const request = new Request('http://station/api/tasks', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        projectId: taskRecord.projectId,
+        title: 'Accepted idea',
+        description: 'Show progress.',
+        proposalBrief: '## Goal\n\nShow progress.',
+        shapingSource: { sessionId: 'shaping-session', turnId: 'shaping-turn' },
+      }),
+    });
+    try {
+      const response = await app.fetch(request, loopbackEnv());
+      expect(response.status, await response.text()).toBe(201);
+      expect(
+        await roomRuntime.document({ taskId: taskRecord.id, request }),
+      ).toMatchObject({ kind: 'snapshot', text: '## Goal\n\nShow progress.' });
+      expect(
+        await roomRuntime.discover({ taskId: taskRecord.id, request }),
+      ).toMatchObject({ kind: 'opened' });
+      await roomRuntime.message({
+        taskId: taskRecord.id,
+        request,
+        proposalId: 'accepting-principal-proof',
+        text: 'Accepted brief',
+      });
+      expect(
+        await roomRuntime.history({ taskId: taskRecord.id, request }),
+      ).toMatchObject({
+        kind: 'available',
+        records: expect.arrayContaining([
+          expect.objectContaining({
+            principal: {
+              kind: 'operator',
+              operatorId: LOCAL_OPERATOR_PRINCIPAL_ID,
+              deviceId: 'device-x',
+            },
+          }),
+        ]),
+      });
+    } finally {
+      await roomRuntime.close();
+      store.close();
+    }
+  });
+
   test('brief capture refuses Task metadata edited during the document read', async () => {
     const { app, store, roomRuntime, taskRecord, setCaller } =
       await setup('brief-device');
