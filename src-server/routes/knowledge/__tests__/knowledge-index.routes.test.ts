@@ -13,6 +13,7 @@ import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-
 import { getLoadablePath } from 'sqlite-vec';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { SqliteVecIndexProvider } from '../../../knowledge-index/sqlite-vec-index-provider.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
 import { createKnowledgeIndexRoutes } from '../knowledge-index-routes.js';
@@ -747,16 +748,10 @@ describe('knowledge-index routes', () => {
       };
     }
 
-    const extraDirs: string[] = [];
-    afterEach(() => {
-      for (const dir of extraDirs.splice(0)) {
-        rmSync(dir, { recursive: true, force: true });
-      }
-    });
+    const makeRootDirectory = trackTempDirs();
 
     async function createRoot(displayName: string, projectSlug?: string) {
-      const dir = mkdtempSync(join(tmpdir(), 'knowledge-index-currency-'));
-      extraDirs.push(dir);
+      const dir = makeRootDirectory('knowledge-index-currency-');
       return store.createRoot({
         scope: projectSlug
           ? { kind: 'project', projectSlug }
