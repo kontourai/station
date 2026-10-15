@@ -20,7 +20,7 @@ function Harness({
   onForm,
   locked = false,
   availableTools = [],
-  engineId = 'station',
+  engineId = 'claude',
 }: {
   initial: AgentFormData;
   onForm: (form: AgentFormData) => void;
@@ -69,13 +69,12 @@ describe('agent editor browser tools switch (D14)', () => {
         }}
       />,
     );
-    fireEvent.click(screen.getByText('Advanced'));
-    const toggle = screen.getByRole('switch', { name: 'Browser tools' });
+    const toggle = screen.getByRole('switch', { name: 'Browser access' });
     expect(toggle.getAttribute('aria-checked')).toBe('true');
     fireEvent.click(
-      screen.getByRole('button', { name: 'More about Browser tools' }),
+      screen.getByRole('button', { name: 'More about Browser access' }),
     );
-    expect(screen.getByRole('tooltip').textContent).toMatch(/Claude agents/);
+    expect(screen.getByRole('tooltip').textContent).toMatch(/Project browser/);
     fireEvent.click(toggle);
     expect(latest?.tools.browser).toBe(false);
     expect(toggle.getAttribute('aria-checked')).toBe('false');
@@ -87,16 +86,38 @@ describe('agent editor browser tools switch (D14)', () => {
     render(
       <Harness initial={createEmptyAgentForm('')} onForm={() => {}} locked />,
     );
-    fireEvent.click(screen.getByText('Advanced'));
     expect(
       (
         screen.getByRole('switch', {
-          name: 'Browser tools',
+          name: 'Browser access',
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
   });
 });
+
+test.each(['station', 'codex'])(
+  '%s explains unavailable Station browser delivery without changing the saved preference',
+  (engineId) => {
+    let latest = createEmptyAgentForm(engineId);
+    render(
+      <Harness
+        initial={latest}
+        engineId={engineId}
+        onForm={(form) => {
+          latest = form;
+        }}
+      />,
+    );
+    expect(screen.queryByRole('switch', { name: 'Browser access' })).toBeNull();
+    expect(
+      screen.getByText(
+        'Station browser access is currently available with Claude Code.',
+      ),
+    ).toBeTruthy();
+    expect(latest.tools.browser).toBe(true);
+  },
+);
 
 test('added sources use one compact row and can be removed without changing another source', () => {
   let latest = createEmptyAgentForm();

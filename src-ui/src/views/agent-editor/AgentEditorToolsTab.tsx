@@ -209,20 +209,19 @@ export function AgentEditorToolsTab({
         }}
         onCancel={() => setDiscardConnection(false)}
       />
-      <details className="agent-tools__advanced">
-        <summary>Advanced</summary>
-        <div className="editor-field">
-          <div className="editor-label-row">
-            <span className="editor-label">
-              Browser tools
-              <InfoTip label="Browser tools">
-                Drive the Project browser. Available to Claude agents.
-              </InfoTip>
-            </span>
+      <div className="editor-field">
+        <div className="editor-label-row">
+          <span className="editor-label">
+            Browser access
+            <InfoTip label="Browser access">
+              Let this agent view and interact with the Project browser.
+            </InfoTip>
+          </span>
+          {engineId === 'claude' && (
             <Toggle
               checked={form.tools.browser !== false}
               disabled={disabled}
-              label="Browser tools"
+              label="Browser access"
               onChange={(browser) =>
                 setForm((current) => ({
                   ...current,
@@ -230,8 +229,16 @@ export function AgentEditorToolsTab({
                 }))
               }
             />
-          </div>
+          )}
         </div>
+        <p className="editor-hint">
+          {engineId === 'claude'
+            ? 'Uses this Project’s Station browser.'
+            : 'Station browser access is currently available with Claude Code.'}
+        </p>
+      </div>
+      <details className="agent-tools__advanced">
+        <summary>Workflow files</summary>
         <AgentEditorWorkflows slug={form.slug} locked={locked} />
       </details>
     </div>

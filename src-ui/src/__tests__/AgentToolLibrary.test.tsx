@@ -139,6 +139,12 @@ test('one list makes the source clear and attaching tools preserves the draft an
   expect(h.writes).toHaveLength(0);
   fireEvent.click(screen.getByLabelText('Details for Read a guide'));
   expect(screen.getByText('Find setup instructions.')).toBeTruthy();
+  fireEvent.click(screen.getByText('About this source'));
+  expect(
+    screen.queryByRole('button', { name: 'Check for new tools' }),
+  ).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Edit connection' })).toBeNull();
+  expect(screen.getByText('All Projects on this Station')).toBeTruthy();
 });
 test('a Project admin requests installation and sees durable pending state without changing the agent', async () => {
   const h = fixture(false, false);
@@ -191,18 +197,18 @@ test('a viewer gets no working attachment or request action', async () => {
 
 test('refresh preserves explicit action selection and future tools require opt-in', async () => {
   const h = fixture();
+  h.source.origin = { kind: 'manual' };
   fireEvent.click(await screen.findByRole('button', { name: 'Add' }));
   fireEvent.click(screen.getByLabelText('Change a guide'));
   h.source.tools.push({ name: 'publish', description: 'Publish updates.' });
   fireEvent.click(screen.getByText('About this source'));
-  fireEvent.click(screen.getByRole('button', { name: 'Refresh actions' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Check for new tools' }));
   await screen.findByLabelText('publish');
   expect((screen.getByLabelText('publish') as HTMLInputElement).checked).toBe(
     false,
   );
   expect(h.latest().tools.available).toEqual(['station-docs_read']);
-  fireEvent.click(screen.getByText('Advanced'));
-  fireEvent.click(screen.getByLabelText('Include future tools'));
+  fireEvent.click(screen.getByLabelText('Include new tools automatically'));
   expect(h.latest().tools.available).toContain('station-docs_*');
   expect(h.latest().tools.askBeforeUse).toContain('mcp/station-docs/*');
 });
@@ -224,7 +230,7 @@ test('whole-source engines do not offer unsupported individual or future-tool se
   const h = fixture(true, true, true, 'acp');
   fireEvent.click(await screen.findByRole('button', { name: 'Add' }));
   expect(h.latest().tools.available).toContain('station-docs_*');
-  expect(screen.queryByText('Include future tools')).toBeNull();
+  expect(screen.queryByText('Include new tools automatically')).toBeNull();
   expect(
     (screen.getByLabelText('Read a guide') as HTMLInputElement).disabled,
   ).toBe(true);

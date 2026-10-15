@@ -340,8 +340,22 @@ details[open] > summary > .agent-tool-library__caret {
   min-height: 44px;
 }
 .agent-tool-library__sharing {
+  display: grid;
+  gap: var(--k-space-1);
   padding-top: var(--k-space-2);
   border-top: 1px solid var(--k-line);
+}
+.agent-tool-library__future {
+  padding-block: var(--k-space-2);
+}
+.agent-tool-library__future > .cb {
+  min-height: 44px;
+}
+.agent-tool-library__future p,
+.agent-tool-library__sharing p {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }
 .agent-tool-library__sharing > .cb {
   min-height: 44px;

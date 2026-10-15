@@ -386,11 +386,7 @@ export function AgentToolLibrary({
           })}
         </div>
         {attached && ['station', 'claude', 'codex'].includes(engineId) && (
-          <details className="agent-tool-picker__details">
-            <summary>
-              <ArrowDownGlyph className="agent-tool-library__caret" />
-              Advanced
-            </summary>
+          <div className="agent-tool-library__future">
             <Checkbox
               checked={patterns.includes(`${source.id}_*`)}
               disabled={!view.canManageAgents || !source.permitted}
@@ -415,9 +411,10 @@ export function AgentToolLibrary({
                 )
               }
             >
-              Include future tools
+              Include new tools automatically
             </Checkbox>
-          </details>
+            <p>Applies when this source adds tools.</p>
+          </div>
         )}
         <details className="agent-tool-picker__details agent-tool-library__settings">
           <summary>
@@ -447,22 +444,30 @@ export function AgentToolLibrary({
                 connection.
               </p>
             )}
-            <div className="agent-tool-library__connection-actions">
-              {source.installed && source.kind === 'integration' && (
-                <Button
-                  variant="ghost"
-                  pending={change.isPending}
-                  onClick={() => void refresh(source).catch(() => {})}
-                >
-                  Refresh actions
-                </Button>
+            {source.kind === 'integration' &&
+              source.origin?.kind !== 'station' && (
+                <div className="agent-tool-library__connection-actions">
+                  {source.installed && (
+                    <Button
+                      variant="ghost"
+                      title="Fetch the latest tool list. Your selections stay the same."
+                      pending={change.isPending}
+                      onClick={() => void refresh(source).catch(() => {})}
+                    >
+                      Check for new tools
+                    </Button>
+                  )}
+                  {view.operator && (
+                    <Button
+                      variant="ghost"
+                      title="Edit how Station connects to this server."
+                      onClick={() => setSetup(source.id)}
+                    >
+                      Edit connection
+                    </Button>
+                  )}
+                </div>
               )}
-              {view.operator && source.kind === 'integration' && (
-                <Button variant="ghost" onClick={() => setSetup(source.id)}>
-                  Connection settings
-                </Button>
-              )}
-            </div>
             {source.personalAccount && view.project && (
               <ToolAccountPanel
                 sourceId={source.id}
@@ -472,6 +477,7 @@ export function AgentToolLibrary({
             )}
             {view.operator && !source.operatorOnly && (
               <div className="agent-tool-library__sharing">
+                <strong>All Projects on this Station</strong>
                 <Checkbox
                   disabled={change.isPending}
                   checked={source.sharedWithProjects !== false}
@@ -485,8 +491,13 @@ export function AgentToolLibrary({
                       .catch(() => {})
                   }
                 >
-                  Available to Projects
+                  Share with Projects
                 </Checkbox>
+                <p>
+                  {source.sharedWithProjects !== false
+                    ? 'Project admins can add these tools where Project permissions allow.'
+                    : 'New Project runs cannot use these tools. The source stays installed.'}
+                </p>
               </div>
             )}
           </div>

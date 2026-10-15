@@ -53,7 +53,7 @@ settings. Each row shows its
 source: Station, a registry, a plugin, or a connection on this Station. Open a
 source for its description and actions. Click an action name for its description;
 approval choices sit beside selected actions. **About this source** holds
-provenance, Project sharing and connection settings. Click a registry name to browse its tools without leaving
+provenance, Station-wide Project sharing and external connection settings. Click a registry name to browse its tools without leaving
 the draft. Catalog browsing retains Project permissions and approval defaults.
 **Origin not recorded** means provenance is missing, invalid, or no longer
 matches the saved connection; it does not describe connection health.
@@ -62,9 +62,10 @@ On Station and Claude, newly added Station-classified reads default to **Always
 allow**. Changes, unknown actions and publisher-classified reads default to
 **Ask me**. Existing choices remain. Other engines show their supported controls;
 explicit Ask rules refuse startup on an engine that cannot deliver them.
-**Refresh actions** in source details discovers current actions without attaching
-them. Individual action selections stay fixed. **Include future tools** adds new
-actions as they appear, with Ask protection on Station and Claude.
+**Check for new tools** in source details fetches the current list without
+changing selections. **Edit connection** opens the server settings. Built-in
+Station sources need neither control. **Include new tools automatically** opts
+into actions added later, with Ask protection on Station and Claude.
 
 Operators can add catalog sources or **Connect your own source** without leaving
 the Agent draft. Sources that need configuration open setup before attachment.
@@ -83,7 +84,11 @@ selected policy.
 
 Project **Tool permissions** defaults to all sources shared by the operator. A
 Project Owner can select a smaller list. The operator can withdraw a source from
-Projects in its details. Station Control remains operator-only. Installed tools,
+Projects using **About this source → Share with Projects**. This setting covers
+all Projects on the Station; turning it off blocks new Project runs using the
+source without uninstalling it. Already-running engines without pre-tool
+interception cannot guarantee immediate withdrawal. Station Control remains
+operator-only. Installed tools,
 Project permissions and personal account sign-in are separate; installing a
 source does not share someone's OAuth credentials. Personal tool accounts
 require the managed Station engine; external engines cannot deliver that
@@ -95,6 +100,13 @@ Admins and Owners can reach **Agents and tools** there and from their shared
 Project. This authoring surface does not enable member agent execution: member
 turns remain refused by the existing execution gate. Computer contribution and
 execution authority remain separate requirements.
+
+**Browser access** is a separate Agent capability. The current delivery path
+connects Claude Code to the Project's Station browser; other engines disclose
+that this delivery is unavailable. **Workflow files** holds the workflow editor.
+Browser access is independent of attaching MCP sources. See the
+[browser and computer capability proposal](../design/agent-interaction-capabilities.md)
+for the proposed cross-engine behavior; it is not implemented.
 
 Claude and Codex offer **Keep harness tools**. New Agents add integrations to
 the harness configuration; existing Agents keep their previous behavior until
