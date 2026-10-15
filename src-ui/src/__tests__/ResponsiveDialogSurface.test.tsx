@@ -266,6 +266,25 @@ describe('ResponsiveDialogSurface', () => {
     },
   );
 
+  test('still dismisses on Escape from a portaled child that leaves it unhandled', () => {
+    setMobileViewport(false);
+    const onClose = vi.fn();
+    render(
+      <ResponsiveDialogSurface
+        layer="dialog"
+        ariaLabel="Outer"
+        onClose={onClose}
+      >
+        <button type="button">Outer first</button>
+        {createPortal(<input aria-label="Portaled field" />, document.body)}
+      </ResponsiveDialogSurface>,
+    );
+    const field = screen.getByRole('textbox', { name: 'Portaled field' });
+    field.focus();
+    fireEvent.keyDown(field, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   test.each(['summary', 'contenteditable', 'shadow input'])(
     'leaves native Tab alone from an internal %s',
     (kind) => {
