@@ -105,13 +105,9 @@ async function seedChat(page: Page) {
   );
 }
 
-async function openChat(
-  page: Page,
-  viewport: { width: number },
-  maximized = false,
-) {
+async function openChat(page: Page, viewport: { width: number }) {
   const chat = encodeURIComponent(CONVERSATION_ID);
-  if (viewport.width === PHONE.width || maximized) {
+  if (viewport.width === PHONE.width) {
     // A phone holds Chat in the maximized dock, not a layout region.
     await page.goto(`/?dock=open&maximize=true&chat=${chat}`);
     await dismissSetupLauncher(page);
@@ -324,7 +320,7 @@ for (const theme of ['light', 'dark'] as const) {
   test(`Done hover keeps readable contrast (${theme})`, async ({
     page,
   }, testInfo) => {
-    await page.setViewportSize(DESKTOP);
+    await page.setViewportSize(PHONE);
     await seedChat(page);
     await page.addInitScript((theme) => {
       localStorage.setItem(
@@ -335,7 +331,7 @@ for (const theme of ['light', 'dark'] as const) {
         }),
       );
     }, theme);
-    await openChat(page, DESKTOP, true);
+    await openChat(page, PHONE);
     await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
     const dialog = await openChatSettings(page);
     const done = dialog.getByRole('button', { name: 'Done', exact: true });
