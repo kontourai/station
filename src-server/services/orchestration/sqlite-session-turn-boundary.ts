@@ -192,6 +192,9 @@ export function createSqliteSessionTurnBoundaryCoordinator({
       }
     },
     removeTerminal(input) {
+      // Empty provider ids never identified a terminal in the host protocol.
+      if (!input.sessionTerminal && !input.providerTurnId)
+        return { kind: 'applied' };
       try {
         const result = execute({
           ...input,

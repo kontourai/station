@@ -972,7 +972,15 @@
 
     "pnpm-lock.yaml#/snapshots",
 
-    "src-server/knowledge-index/embedding-identity.ts"
+    "src-server/knowledge-index/embedding-identity.ts",
+
+    "src-server/services/orchestration/sqlite-session-turn-boundary.ts",
+
+    "src-server/services/orchestration/__tests__/fixtures/legacy-turn-boundary.ts",
+
+    "src-server/services/orchestration/__tests__/monument-boundary-append.test.ts",
+
+    "src-server/services/orchestration/__tests__/monument-boundary-host.test.ts"
   ],
 
   "checks": [
