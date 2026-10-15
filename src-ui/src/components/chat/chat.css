@@ -881,7 +881,9 @@
    and a short delivery line (`MessageDeliveryNote`). The outline is drawn
    inside the bubble so the bubble keeps its size when it fills on delivery.
    The line style carries meaning beside colour: dashed while it is on its
-   way, solid once it needs the user (not sent). */
+   way, solid once it needs the user (not sent, may have reached the agent).
+   Only a send under way keeps the accent; a send with no answer reads as a
+   caution. */
 .message.user {
   transition: background-color var(--motion-base) var(--ease-standard);
 }
@@ -894,10 +896,12 @@
 .message.user.message--delivery-not-sent {
   outline: 1px solid var(--k-negative);
 }
-.message.user.message--delivery-unconfirmed,
 .message.user.message--delivery-unanswered,
 .message.user.message--delivery-awaiting-confirmation {
   outline-color: var(--k-caution);
+}
+.message.user.message--delivery-unconfirmed {
+  outline: 1px solid var(--k-caution);
 }
 .message-delivery {
   display: grid;

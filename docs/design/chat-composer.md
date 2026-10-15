@@ -205,7 +205,8 @@ that Station keeps running without the app (not the desktop's own Station when
 it stops with the app, nor while the desktop has not reported it). The user's
 own bubble carries the same state until the agent has the message
 (`MessageDeliveryNote`): outlined rather than filled (dashed while on its way,
-solid when not sent), with a short label that says whether it goes if the app
+solid when not sent or when it may have reached the agent; only a send under
+way keeps the accent colour, and a send with no answer reads as a caution), with a short label that says whether it goes if the app
 closes (including waiting behind an unsent message, waiting for its own
 Station, and "Not confirmed" for this window's send with no answer), plus Retry
 and Edit when not sent (Discard is in the bubble's ⋯ menu) and Check and

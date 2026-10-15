@@ -1273,7 +1273,9 @@ export function useSendMessage(
         if (undeliverableCause && !options?.dispatch) {
           try {
             const { outboundDispatch } = await import('../lib/outboundQueue');
-            // A live send's own row already went back to pending above.
+            // A live send already has its outbox row, settled by the outcome
+            // branch above (with no answer, `live.unanswered()` released it
+            // for Station's delivery lookup), so it is not queued again.
             if (!live)
               await outboundDispatch.enqueue(
                 {
