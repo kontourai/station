@@ -22,9 +22,16 @@
  */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
-import type { OrchestrationConversationEventWindow } from '@kontourai/station-contracts/orchestration';
+import type {
+  ConversationListItem,
+  OrchestrationConversationEventWindow,
+} from '@kontourai/station-contracts/orchestration';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  InfiniteQueryObserver,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query';
 import {
   act,
   cleanup,
@@ -123,6 +130,10 @@ vi.mock('../hooks/useIsMobile', async (importActual) => ({
 // The sessions the sidebar reads, and the sidebar footer's and Boards
 // section's reads, answered the way `ProjectSidebar.test.tsx` answers them.
 const historyRead = vi.hoisted(() => vi.fn());
+const openRead = vi.hoisted(() => vi.fn());
+vi.mock('@kontourai/station-sdk/conversation-open', () => ({
+  resolveConversationOpen: openRead,
+}));
 const streams = vi.hoisted(
   () =>
     new Map<
@@ -167,6 +178,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
 }));
 
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
+import { ConversationOpenRevalidator } from '../components/chat-dock/ConversationOpenRevalidator';
 import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { activeChatsStore } from '../contexts/active-chats-store';
@@ -252,6 +264,7 @@ function statusTextIn(root: HTMLElement): string {
 
 beforeEach(() => {
   historyRead.mockReset();
+  openRead.mockReset();
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(NOW);
   window.localStorage.clear();
@@ -495,11 +508,31 @@ describe('inbox observation freshness', () => {
     expect(within(third.container).getByText('Needs approval')).toBeTruthy();
   });
 
-  it('a failed inbox read marks retained rows and a successful read clears it', async () => {
+  it('a failed inbox read marks retained rows; appending a page keeps them last known until refresh', async () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
     renderWithProviders(<DockInbox />, client);
+    const conversation: ConversationListItem = {
+      id: 'T',
+      source: 'runtime',
+      agentSlug: agentId('demo-agent'),
+      title: 'Mismatch demo chat',
+      createdAt: FOLD_SESSION_CREATED_AT,
+      updatedAt: FOLD_SESSION_CREATED_AT,
+      messageCount: 1,
+      mutable: false,
+      answerability: { answerable: true },
+      activity: SESSIONS[0]!.conversationActivity,
+    };
+    const page = {
+      items: [conversation],
+      nextCursor: 'older' as string | undefined,
+    };
+    client.setQueryData(['conversation-inventory'], {
+      pages: [page],
+      pageParams: [undefined],
+    });
     await act(async () => {
       await client
         .fetchQuery({
@@ -511,23 +544,114 @@ describe('inbox observation freshness', () => {
         .catch(() => {});
     });
     expect(screen.getByText('Last known: Needs approval')).toBeTruthy();
+    const observer = new InfiniteQueryObserver(client, {
+      queryKey: ['conversation-inventory'],
+      initialPageParam: undefined as string | undefined,
+      getNextPageParam: (lastPage: typeof page) => lastPage.nextCursor,
+      queryFn: async ({ pageParam }) =>
+        pageParam
+          ? {
+              items: [
+                {
+                  ...conversation,
+                  id: 'other',
+                  activity: { conversationId: 'other', asOfSequence: 5 },
+                },
+              ],
+              nextCursor: undefined,
+            }
+          : page,
+    });
     await act(async () => {
-      await client.fetchQuery({
-        queryKey: ['conversation-inventory'],
-        queryFn: async () => ({ pages: [], pageParams: [] }),
-      });
+      await observer.fetchNextPage();
+    });
+    expect(screen.getByText('Last known: Needs approval')).toBeTruthy();
+    await act(async () => {
+      await observer.refetch();
     });
     expect(screen.getByText('Needs approval')).toBeTruthy();
   });
+
+  it.each([false, true])(
+    'a failed open read preserves an independently newer stream observation: %s',
+    async (newerStream) => {
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      });
+      let rejectOpen!: (error: Error) => void;
+      openRead.mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectOpen = reject;
+          }),
+      );
+      const release = ensureOrchestrationEventStream(
+        'http://test.local',
+        client,
+      );
+      streams.get('http://test.local')!({
+        event: 'orchestration:activity',
+        data: JSON.stringify({
+          conversation: {
+            conversationId: 'T',
+            currentSessionId: 'T',
+            activity: { ...SESSIONS[0]!.conversationActivity, asOfSequence: 3 },
+          },
+        }),
+      });
+      try {
+        renderWithProviders(
+          <>
+            <ConversationOpenRevalidator
+              sessionId={CHAT_TAB}
+              conversationId="T"
+              apiBase="http://test.local"
+              updateChat={(id, patch) => activeChatsStore.updateChat(id, patch)}
+            />
+            <DockInbox />
+          </>,
+          client,
+        );
+        await waitFor(() => expect(openRead).toHaveBeenCalledOnce());
+        if (newerStream)
+          act(() =>
+            streams.get('http://test.local')!({
+              event: 'orchestration:activity',
+              data: JSON.stringify({
+                conversation: {
+                  conversationId: 'T',
+                  currentSessionId: 'T',
+                  activity: {
+                    ...SESSIONS[0]!.conversationActivity,
+                    asOfSequence: 4,
+                  },
+                },
+              }),
+            }),
+          );
+        await act(async () => rejectOpen(new Error('open unavailable')));
+        await waitFor(() =>
+          expect(
+            activeChatsStore.getSnapshot()[CHAT_TAB]?.conversationOpenFailed,
+          ).toBe(true),
+        );
+        expect(
+          screen.getByText(
+            newerStream ? 'Needs approval' : 'Last known: Needs approval',
+          ),
+        ).toBeTruthy();
+      } finally {
+        release();
+      }
+    },
+  );
 });
 
 it('a failed history read removes the running row clock until recovery', async () => {
-  historyRead
-    .mockRejectedValueOnce(new Error('offline'))
-    .mockResolvedValue({
-      ...historyPage,
-      session: { ...SESSIONS[0]!, ...FOLD_FIXTURES.runningTool.summary },
-    });
+  historyRead.mockRejectedValueOnce(new Error('offline')).mockResolvedValue({
+    ...historyPage,
+    session: { ...SESSIONS[0]!, ...FOLD_FIXTURES.runningTool.summary },
+  });
   const sessions = [{ ...SESSIONS[0]!, ...FOLD_FIXTURES.runningTool.summary }];
   const view = renderWithProviders(
     <>

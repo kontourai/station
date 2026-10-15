@@ -53,16 +53,9 @@ export function ConversationOpenRevalidator({
           await controller.resolveConversationOpenAuthoritatively(
             conversationId,
             apiBase,
+            observation,
           );
         if (cancelled) return;
-        if (resolution.status === 'unavailable')
-          observation?.failed(conversationId, observationStart);
-        else
-          observation?.observed(
-            conversationId,
-            (resolution.status === 'resolved' ? resolution.activity : undefined)
-              ?.asOfSequence ?? resolution.conversation.activity?.asOfSequence,
-          );
         const previous = activeChatsStore.getSnapshot()[sessionId];
         const sameChild = !controller.conversationExecutionChanged(
           resolution,
@@ -139,7 +132,8 @@ export function ConversationOpenRevalidator({
       })
       .catch(() => {
         if (cancelled) return;
-        observation?.failed(conversationId, observationStart);
+        if (observation?.unavailable(conversationId) === undefined)
+          observation?.failed(conversationId, observationStart);
         updateChat(sessionId, {
           conversationOpenPending: false,
           conversationOpenFailed: true,

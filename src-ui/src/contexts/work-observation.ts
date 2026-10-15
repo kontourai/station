@@ -38,6 +38,7 @@ class WorkObservation {
     this.notify();
   }
   observed(conversationId: string, sequence?: number) {
+    const wasUnavailable = this.unavailable(conversationId);
     if (sequence !== undefined)
       this.sequences.set(
         conversationId,
@@ -45,7 +46,7 @@ class WorkObservation {
       );
     this.failures.delete(conversationId);
     this.successes.set(conversationId, ++this.clock);
-    this.notify();
+    if (wasUnavailable !== false) this.notify();
   }
   streamObserved(activity: ConversationTurnActivity) {
     if (
@@ -89,15 +90,23 @@ class WorkObservation {
         root !== 'orchestration-sessions'
       )
         return;
-      if (event.action.type === 'fetch') startedLists.set(root, this.begin());
-      if (event.action.type === 'error') {
+      const pageDirection =
+        root === 'conversation-inventory'
+          ? event.query.state.fetchMeta?.fetchMore?.direction
+          : undefined;
+      if (event.action.type === 'fetch' && !pageDirection)
+        startedLists.set(root, this.begin());
+      if (event.action.type === 'error' && !pageDirection) {
         failedLists.set(root, startedLists.get(root) ?? this.begin());
         this.failures.set(INBOX, Math.max(...failedLists.values()));
         this.notify();
       } else if (event.action.type === 'success' && !event.action.manual) {
-        failedLists.delete(root);
-        if (failedLists.size === 0) this.failures.delete(INBOX);
-        else this.failures.set(INBOX, Math.max(...failedLists.values()));
+        // Appending history does not re-read the inventory pages already cached.
+        if (!pageDirection) {
+          failedLists.delete(root);
+          if (failedLists.size === 0) this.failures.delete(INBOX);
+          else this.failures.set(INBOX, Math.max(...failedLists.values()));
+        }
         if (root === 'orchestration-sessions') {
           const sessions = client.getQueryData<OrchestrationSessionSummary[]>(
             event.query.queryKey,
@@ -113,7 +122,14 @@ class WorkObservation {
           const inventory = client.getQueryData<{
             pages: { items: ConversationListItem[] }[];
           }>(event.query.queryKey);
-          for (const page of inventory?.pages ?? [])
+          const pages = inventory?.pages ?? [];
+          const observedPages =
+            pageDirection === 'forward'
+              ? pages.slice(-1)
+              : pageDirection === 'backward'
+                ? pages.slice(0, 1)
+                : pages;
+          for (const page of observedPages)
             for (const conversation of page.items) {
               if (conversation.activity)
                 this.observed(

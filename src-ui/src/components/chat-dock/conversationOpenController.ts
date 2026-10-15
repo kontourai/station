@@ -4,6 +4,7 @@ import type {
 } from '@kontourai/station-contracts/orchestration';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import type { ChatUIState } from '../../contexts/active-chats-state';
+import type { workObservation } from '../../contexts/work-observation';
 import { newerConversationActivity } from '../../utils/conversation-activity';
 
 export type ConversationOpenRecovery = {
@@ -17,6 +18,7 @@ export type ConversationOpenCommit =
 
 interface ConversationOpenDockEffects {
   apiBase: string;
+  observation?: ReturnType<typeof workObservation>;
   open: Parameters<typeof commitConversationOpen>[0]['open'];
   projectName: Parameters<typeof commitConversationOpen>[0]['projectName'];
   findTab: Parameters<typeof commitConversationOpen>[0]['findTab'];
@@ -30,11 +32,26 @@ interface ConversationOpenDockEffects {
 export async function resolveConversationOpenAuthoritatively(
   conversationId: string,
   apiBase: string,
+  observation?: ReturnType<typeof workObservation>,
 ): Promise<ConversationOpenResolution> {
   const { resolveConversationOpen } = await import(
     '@kontourai/station-sdk/conversation-open'
   );
-  return resolveConversationOpen(conversationId, apiBase);
+  const started = observation?.begin();
+  try {
+    const resolution = await resolveConversationOpen(conversationId, apiBase);
+    if (resolution.status === 'unavailable')
+      observation?.failed(conversationId, started);
+    else if (resolution.status === 'resolved')
+      observation?.observed(
+        conversationId,
+        (resolution.activity ?? resolution.conversation.activity)?.asOfSequence,
+      );
+    return resolution;
+  } catch (error) {
+    observation?.failed(conversationId, started);
+    throw error;
+  }
 }
 
 /** Provider is a model-provider field for native chats; keep the engine domain separate. */
@@ -292,6 +309,7 @@ export async function openConversationForDock(
     const resolution = await resolveConversationOpenAuthoritatively(
       typeof conversation === 'string' ? conversation : conversation.id,
       effects.apiBase,
+      effects.observation,
     );
     const outcome = await commitConversationOpen({
       resolution,
@@ -325,11 +343,13 @@ export async function retryActiveConversationForDock(
   updateChat: ConversationOpenDockEffects['updateChat'],
   onUnavailable: () => void,
   readChat?: (tabId: string) => Partial<ChatUIState> | undefined,
+  observation?: ReturnType<typeof workObservation>,
 ): Promise<void> {
   try {
     const resolution = await resolveConversationOpenAuthoritatively(
       conversationId,
       apiBase,
+      observation,
     );
     updateChat(
       sessionId,

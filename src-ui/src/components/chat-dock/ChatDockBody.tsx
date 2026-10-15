@@ -541,7 +541,13 @@ export function ChatDockBody({
   // (Running, background work) is no longer current proof.
   const workObservation = useWorkObservation(apiBase);
   useEffect(() => {
-    if (unverifiedOpen && !activeSession.replay) {
+    if (
+      unverifiedOpen &&
+      !activeSession.replay &&
+      workObservation?.unavailable(
+        activeSession.conversationId ?? activeSession.id,
+      ) === undefined
+    ) {
       workObservation?.failed(activeSession.conversationId ?? activeSession.id);
     }
   }, [
