@@ -812,9 +812,11 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     await second.inbox.reconcile();
     await new Promise((resolve) => setTimeout(resolve, 200));
     await second.inbox.idle();
+    // A start into a successor Session carries the transcript before the
+    // message, so a second send ends with it rather than equalling it.
     expect(
-      [...first.prompts(), ...second.prompts()].filter(
-        (prompt) => prompt === 'then summarize',
+      [...first.prompts(), ...second.prompts()].filter((prompt) =>
+        prompt.endsWith('then summarize'),
       ),
     ).toHaveLength(1);
     expect(second.inbox.list(CONVERSATION)).toMatchObject([
