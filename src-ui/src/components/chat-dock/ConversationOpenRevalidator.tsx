@@ -49,12 +49,13 @@ export function ConversationOpenRevalidator({
     const read = observation?.read(conversationId, 'open', () => !cancelled);
     void import('./conversationOpenController')
       .then(async (controller) => {
+        if (cancelled || read?.current() === false) return;
         const resolution =
           await controller.resolveConversationOpenAuthoritatively(
             conversationId,
             apiBase,
             observation,
-            () => !cancelled,
+            () => !cancelled && read?.current() !== false,
           );
         if (cancelled) return;
         const previous = activeChatsStore.getSnapshot()[sessionId];

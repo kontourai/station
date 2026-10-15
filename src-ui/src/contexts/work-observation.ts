@@ -64,6 +64,7 @@ class WorkObservation {
     isCurrent = () => true,
     sequence = this.sequences.get(conversationId) ?? -1,
   ) {
+    if (!isCurrent()) return;
     const started = this.begin();
     const watermark = Math.max(
       sequence,
@@ -73,6 +74,7 @@ class WorkObservation {
     const current = () =>
       this.records.get(conversationId) === record && isCurrent();
     return {
+      current,
       failed: () => {
         if (current()) this.failed(conversationId, started, source, watermark);
       },

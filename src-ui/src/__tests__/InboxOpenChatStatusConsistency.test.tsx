@@ -1143,6 +1143,27 @@ it('a released open reader cannot recreate a record after dock and picker releas
   // Settle after the last reference was released: it must not recreate an orphan.
   await act(async () => rejectOpen(new Error('late open failure')));
   expect(o.unavailable('T')).toBeUndefined();
+  // Module loading is asynchronous too: retirement before it resolves must
+  // prevent both a new read and creation of a new observation token.
+  for (const clearBeforeImport of [false, true]) {
+    openRead.mockClear();
+    openRead.mockRejectedValueOnce(new Error('retired before controller load'));
+    const deferred = renderWithProviders(
+      <ConversationOpenRevalidator
+        sessionId={CHAT_TAB}
+        conversationId="T"
+        apiBase="http://test.local"
+        updateChat={vi.fn()}
+      />,
+      client,
+    );
+    if (clearBeforeImport) act(() => client.clear());
+    else deferred.unmount();
+    await act(async () => {});
+    expect(openRead).not.toHaveBeenCalled();
+    expect(o.unavailable('T')).toBeUndefined();
+    if (clearBeforeImport) deferred.unmount();
+  }
   client.clear();
 });
 
