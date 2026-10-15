@@ -1057,7 +1057,7 @@ async function pairingOfferError(response: Response): Promise<{
     return {
       auth: false,
       message:
-        'This device cannot create pairing codes. On the computer running Station, use a trusted operator session or run station environment offer.',
+        'This device cannot create pairing codes. On the computer running Station, use a trusted operator session or run its launcher’s environment offer command (station-nightly for Nightly; ./station from source).',
     };
   }
   if (code === 'origin_forbidden') {
