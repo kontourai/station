@@ -213,7 +213,11 @@ a failed conversation read marks only that conversation; a failed inbox read
 marks the retained list. Rows prefix the computed status with "Last known:"
 and suppress pulsing and elapsed clocks. Each observation source clears only its own failed read. A newer stream
 activity supersedes each failed source whose watermark it exceeds, even when
-another source has a higher watermark. This proves current status, not history
+another source has a higher watermark. Each read captures its watermark when it
+starts. The highest stream sequence also supersedes older pending failures that
+settle later, so completion order cannot change current status. Reader generation
+tokens stop released or replaced readers from publishing; cache clear invalidates
+outstanding publishers too. This proves current status, not history
 reader recovery; the history pane retains its own error UI. Unmounting a row
 preserves failures and sequence fences. Pruning requires absence from the loaded
 inventory and no subscribed rows or mounted readers; authority cache clear also

@@ -45,8 +45,8 @@ export function ConversationOpenRevalidator({
 }: ConversationOpenRevalidatorProps) {
   const observation = useWorkObservation(conversationId);
   useEffect(() => {
-    const observationStart = observation?.begin();
     let cancelled = false;
+    const read = observation?.read(conversationId, 'open', () => !cancelled);
     void import('./conversationOpenController')
       .then(async (controller) => {
         const resolution =
@@ -54,6 +54,7 @@ export function ConversationOpenRevalidator({
             conversationId,
             apiBase,
             observation,
+            () => !cancelled,
           );
         if (cancelled) return;
         const previous = activeChatsStore.getSnapshot()[sessionId];
@@ -133,7 +134,7 @@ export function ConversationOpenRevalidator({
       .catch(() => {
         if (cancelled) return;
         if (observation?.unavailable(conversationId) === undefined)
-          observation?.failed(conversationId, observationStart);
+          read?.failed();
         updateChat(sessionId, {
           conversationOpenPending: false,
           conversationOpenFailed: true,

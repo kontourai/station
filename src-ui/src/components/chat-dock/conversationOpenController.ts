@@ -33,24 +33,22 @@ export async function resolveConversationOpenAuthoritatively(
   conversationId: string,
   apiBase: string,
   observation?: ReturnType<typeof workObservation>,
+  isCurrent?: () => boolean,
 ): Promise<ConversationOpenResolution> {
+  const read = observation?.read(conversationId, 'open', isCurrent);
   const { resolveConversationOpen } = await import(
     '@kontourai/station-sdk/conversation-open'
   );
-  const started = observation?.begin();
   try {
     const resolution = await resolveConversationOpen(conversationId, apiBase);
-    if (resolution.status === 'unavailable')
-      observation?.failed(conversationId, started, 'open');
+    if (resolution.status === 'unavailable') read?.failed();
     else if (resolution.status === 'resolved')
-      observation?.observed(
-        conversationId,
+      read?.observed(
         (resolution.activity ?? resolution.conversation.activity)?.asOfSequence,
-        'open',
       );
     return resolution;
   } catch (error) {
-    observation?.failed(conversationId, started, 'open');
+    read?.failed();
     throw error;
   }
 }
@@ -311,6 +309,7 @@ export async function openConversationForDock(
       typeof conversation === 'string' ? conversation : conversation.id,
       effects.apiBase,
       effects.observation,
+      effects.isCurrent,
     );
     const outcome = await commitConversationOpen({
       resolution,

@@ -197,7 +197,6 @@ export function useSessionEventWindow(
 
   const reload = useCallback(async () => {
     if (!threadId) return;
-    const observationStart = observation?.begin();
     const revisionAtStart = reconcileRevisionRef.current;
     if (recoveryTimerRef.current !== undefined) {
       clearTimeout(recoveryTimerRef.current);
@@ -205,6 +204,16 @@ export function useSessionEventWindow(
     }
     const requestGeneration = generation.current;
     const requestSerial = ++requestSerialRef.current;
+    const read = observation?.read(
+      threadId,
+      'history',
+      () =>
+        requestGeneration === generation.current &&
+        requestSerial === requestSerialRef.current,
+      activeChatsStore.getChatForExecutionSession(threadId)
+        ?.conversationActivity?.asOfSequence,
+    );
+
     requestControllerRef.current?.abort();
     const controller = new AbortController();
     requestControllerRef.current = controller;
@@ -214,13 +223,7 @@ export function useSessionEventWindow(
       const capability = await fetchSessionEventWindowCapability(apiBase);
       if (capability !== true) {
         if (requestGeneration !== generation.current) return;
-        observation?.failed(
-          threadId,
-          observationStart,
-          'history',
-          activeChatsStore.getChatForExecutionSession(threadId)
-            ?.conversationActivity?.asOfSequence,
-        );
+        read?.failed();
         const upgradeRequired = capability === false;
         setUpgradeRequired(upgradeRequired);
         setError(
@@ -255,7 +258,7 @@ export function useSessionEventWindow(
         requestSerial !== requestSerialRef.current
       )
         return;
-      observation?.observed(threadId, page.watermark);
+      read?.observed(page.watermark);
       setUpgradeRequired(false);
       // #2309: the window read carries its conversation's activity too.
       activeChatsStore.applyConversationActivity(
@@ -288,13 +291,7 @@ export function useSessionEventWindow(
         requestSerial !== requestSerialRef.current
       )
         return;
-      observation?.failed(
-        threadId,
-        observationStart,
-        'history',
-        activeChatsStore.getChatForExecutionSession(threadId)
-          ?.conversationActivity?.asOfSequence,
-      );
+      read?.failed();
       const failure = cause instanceof Error ? cause : new Error(String(cause));
       setError(failure);
       setUpgradeRequired(false);
@@ -314,11 +311,19 @@ export function useSessionEventWindow(
   }, [apiBase, legacySessionId, observation, threadId]);
 
   const loadOlder = useCallback(async () => {
-    const observationStart = observation?.begin();
     const pageCursor = cursorRef.current;
     if (!threadId || !pageCursor) return;
     const requestGeneration = generation.current;
     const requestSerial = ++requestSerialRef.current;
+    const read = observation?.read(
+      threadId,
+      'older-history',
+      () =>
+        requestGeneration === generation.current &&
+        requestSerial === requestSerialRef.current,
+      watermarkRef.current,
+    );
+
     requestControllerRef.current?.abort();
     const controller = new AbortController();
     requestControllerRef.current = controller;
@@ -343,7 +348,7 @@ export function useSessionEventWindow(
       setSessionLineage(page.sessionLineage);
       setHandoffs(page.handoffs ?? []);
       setContextBoundaries(page.contextBoundaries ?? []);
-      observation?.observed(threadId, page.watermark, 'older-history');
+      read?.observed(page.watermark);
       setError(undefined);
       if (page.watermark !== watermarkRef.current) {
         await reload();
@@ -355,12 +360,7 @@ export function useSessionEventWindow(
     } catch (cause) {
       if (controller.signal.aborted) return;
       if (requestGeneration !== generation.current) return;
-      observation?.failed(
-        threadId,
-        observationStart,
-        'older-history',
-        watermarkRef.current,
-      );
+      read?.failed();
       setError(cause instanceof Error ? cause : new Error(String(cause)));
     } finally {
       if (
@@ -396,6 +396,7 @@ export function useSessionEventWindow(
     setSettledRevision(undefined);
     if (threadId) void reload();
     return () => {
+      generation.current += 1;
       requestControllerRef.current?.abort();
       if (recoveryTimerRef.current !== undefined) {
         clearTimeout(recoveryTimerRef.current);

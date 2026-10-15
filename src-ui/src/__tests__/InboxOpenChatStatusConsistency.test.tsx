@@ -1103,3 +1103,157 @@ it('stream evidence supersedes each failed reader at its own watermark', async (
     client.clear();
   }
 });
+
+it('a released open reader cannot recreate a record after dock and picker release', async () => {
+  const client = new QueryClient();
+  const o = workObservation(client);
+  let rejectOpen!: (e: Error) => void;
+  openRead.mockImplementationOnce(
+    () =>
+      new Promise((_resolve, reject) => {
+        rejectOpen = reject;
+      }),
+  );
+  const open = renderWithProviders(
+    <ConversationOpenRevalidator
+      sessionId={CHAT_TAB}
+      conversationId="T"
+      apiBase="http://test.local"
+      updateChat={vi.fn()}
+    />,
+    client,
+  );
+  const dock = renderWithProviders(<DockInbox />, client);
+  const picker = renderWithProviders(<MobileSwitcher />, client);
+  await waitFor(() => expect(openRead).toHaveBeenCalledOnce());
+  act(() => o.failed('T', o.begin(), 'history', 10));
+  await act(async () => {
+    await client.fetchQuery({
+      queryKey: ['conversation-inventory'],
+      queryFn: async () => ({ pages: [{ items: [] }] }),
+    });
+  });
+  dock.unmount();
+  expect(o.unavailable('T')).toBe(true);
+  open.unmount();
+  expect(o.unavailable('T')).toBe(true);
+  expect(screen.getByText('Last known: Needs approval')).toBeTruthy();
+  picker.unmount();
+  expect(o.unavailable('T')).toBeUndefined();
+  // Settle after the last reference was released: it must not recreate an orphan.
+  await act(async () => rejectOpen(new Error('late open failure')));
+  expect(o.unavailable('T')).toBeUndefined();
+  client.clear();
+});
+
+it('pending history and partial stream produce the same current status in both completion orders', async () => {
+  const finalStates = [];
+  for (const reader of ['history', 'older-history'] as const) {
+    for (const settleAfterStream of [false, true]) {
+      activeChatsStore.clearConversationActivity();
+      activeChatsStore.updateChat(CHAT_TAB, {
+        conversationActivity: undefined,
+      });
+      const client = new QueryClient();
+      const o = workObservation(client);
+      function OlderReader() {
+        const history = useSessionEventWindow('http://test.local', 'T');
+        return (
+          <>
+            <button
+              type="button"
+              onClick={() =>
+                void (reader === 'history'
+                  ? history.reload()
+                  : history.loadOlder())
+              }
+            >
+              Probe pending older
+            </button>
+            {history.error && <p role="alert">{history.error.message}</p>}
+          </>
+        );
+      }
+      historyRead.mockResolvedValueOnce({
+        ...historyPage,
+        watermark: 10,
+        hasMore: true,
+        nextCursor: 'older',
+        session: {
+          ...SESSIONS[0]!,
+          conversationActivity: {
+            ...SESSIONS[0]!.conversationActivity!,
+            asOfSequence: 10,
+          },
+        },
+      });
+      const mounted = renderWithProviders(
+        <>
+          <OlderReader />
+          <DockInbox />
+        </>,
+        client,
+      );
+      await waitFor(() =>
+        expect(
+          activeChatsStore.getSnapshot()[CHAT_TAB]?.conversationActivity
+            ?.asOfSequence,
+        ).toBe(10),
+      );
+      act(() => o.failed('T', o.begin(), reader, 10));
+      let rejectOlder!: (e: Error) => void;
+      historyRead.mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            rejectOlder = reject;
+          }),
+      );
+      await act(async () => screen.getByText('Probe pending older').click());
+      await waitFor(() => expect(historyRead).toHaveBeenCalledTimes(2));
+      act(() => o.failed('T', o.begin(), 'open', 20));
+      const release = ensureOrchestrationEventStream(
+        'http://test.local',
+        client,
+      );
+      try {
+        if (!settleAfterStream)
+          await act(async () => rejectOlder(new Error('late older failure')));
+        act(() =>
+          streams.get('http://test.local')!({
+            event: 'orchestration:activity',
+            data: JSON.stringify({
+              conversation: {
+                conversationId: 'T',
+                currentSessionId: 'T',
+                activity: {
+                  ...SESSIONS[0]!.conversationActivity!,
+                  asOfSequence: 15,
+                },
+              },
+            }),
+          }),
+        );
+        expect(screen.getByText('Last known: Needs approval')).toBeTruthy();
+        if (settleAfterStream)
+          await act(async () => rejectOlder(new Error('late older failure')));
+        act(() => o.observed('T', 20, 'open'));
+        expect(screen.getByRole('alert').textContent).toBe(
+          'late older failure',
+        );
+        expect(screen.queryByText('Last known: Needs approval')).toBeNull();
+        finalStates.push({
+          unavailable: o.unavailable('T'),
+          status: screen.getByText('Needs approval').textContent,
+          historyError: screen.getByRole('alert').textContent,
+        });
+      } finally {
+        release();
+        mounted.unmount();
+        act(() => client.clear());
+      }
+      historyRead.mockClear();
+    }
+  }
+  for (const finalState of finalStates)
+    expect(finalState).toEqual(finalStates[0]);
+});

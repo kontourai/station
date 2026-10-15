@@ -22,6 +22,8 @@ type Source =
 class WorkObservation {
   private revision = 0;
   private clock = 0;
+  private records = new Map<string, object>();
+  private streamWatermarks = new Map<string, number>();
   private streamSuccesses = new Map<string, number>();
   private sequences = new Map<string, number>();
   private failures = new Map<
@@ -40,8 +42,7 @@ class WorkObservation {
       listeners = new Set();
       this.listeners.set(conversationId, listeners);
     }
-    if (!this.successes.has(conversationId))
-      this.successes.set(conversationId, -1);
+    this.record(conversationId);
     listeners.add(listener);
     return () => {
       listeners.delete(listener);
@@ -57,6 +58,38 @@ class WorkObservation {
     this.ensureLifecycle();
     return ++this.clock;
   };
+  read(
+    conversationId: string,
+    source: Source,
+    isCurrent = () => true,
+    sequence = this.sequences.get(conversationId) ?? -1,
+  ) {
+    const started = this.begin();
+    const watermark = Math.max(
+      sequence,
+      this.sequences.get(conversationId) ?? -1,
+    );
+    const record = this.record(conversationId);
+    const current = () =>
+      this.records.get(conversationId) === record && isCurrent();
+    return {
+      failed: () => {
+        if (current()) this.failed(conversationId, started, source, watermark);
+      },
+      observed: (resultSequence?: number) => {
+        if (current()) this.observed(conversationId, resultSequence, source);
+      },
+    };
+  }
+  private record(conversationId: string) {
+    let record = this.records.get(conversationId);
+    if (!record) {
+      record = {};
+      this.records.set(conversationId, record);
+      this.successes.set(conversationId, -1);
+    }
+    return record;
+  }
   private notify(conversationId?: string) {
     if (conversationId !== undefined) this.pending.add(conversationId);
     else for (const id of this.listeners.keys()) this.pending.add(id);
@@ -71,6 +104,13 @@ class WorkObservation {
   // them. A stream observation supersedes each failure whose watermark it exceeds:
   // it proves current status, not recovery of that reader. A history pane keeps
   // its own error UI until its history read succeeds.
+  // Every read captures its watermark at START, for either settlement. Stream
+  // watermarks are retained even below another source's fence: a failure started
+  // below the highest stream sequence is obsolete regardless of completion order.
+  // Equality is replay, not supersession. Successes and newer failures apply normally.
+  // Readers supply a generation/token predicate invalidated on release/unmount;
+  // record tokens also retire outstanding publishers on pruning or cache clear. Imperative
+  // opens may create observations, but retired readers may never recreate them.
   // Unsubscribe preserves evidence unless inventory also no longer references it.
   failed(
     conversationId: string,
@@ -78,22 +118,22 @@ class WorkObservation {
     source: Source = 'history',
     sequence?: number,
   ) {
-    if ((this.streamSuccesses.get(conversationId) ?? -1) > started) return;
+    const watermark = sequence ?? this.sequences.get(conversationId) ?? -1;
+    if (watermark < (this.streamWatermarks.get(conversationId) ?? -1)) return;
     if (sequence !== undefined)
       this.sequences.set(
         conversationId,
         Math.max(sequence, this.sequences.get(conversationId) ?? -1),
       );
-    if (!this.successes.has(conversationId))
-      this.successes.set(conversationId, -1);
+    this.record(conversationId);
     let failures = this.failures.get(conversationId);
     if (!failures) {
       failures = new Map();
       this.failures.set(conversationId, failures);
     }
     failures.set(source, {
-      at: ++this.clock,
-      sequence: sequence ?? this.sequences.get(conversationId) ?? -1,
+      at: started,
+      sequence: watermark,
     });
     this.notify(conversationId);
   }
@@ -103,6 +143,7 @@ class WorkObservation {
     source: Source = 'history',
   ) {
     this.ensureLifecycle();
+    this.record(conversationId);
     const wasUnavailable = this.unavailable(conversationId);
     if (sequence !== undefined)
       this.sequences.set(
@@ -117,6 +158,10 @@ class WorkObservation {
   streamObserved(activity: ConversationTurnActivity) {
     const id = activity.conversationId;
     if (!this.successes.has(id) && !this.failures.has(id)) return;
+    this.streamWatermarks.set(
+      id,
+      Math.max(activity.asOfSequence, this.streamWatermarks.get(id) ?? -1),
+    );
     const wasUnavailable = this.unavailable(id);
     for (const [source, failure] of this.failures.get(id) ?? [])
       if (activity.asOfSequence > failure.sequence)
@@ -145,6 +190,8 @@ class WorkObservation {
     return success === -1 ? undefined : false;
   }
   private drop(conversationId: string) {
+    this.records.delete(conversationId);
+    this.streamWatermarks.delete(conversationId);
     this.streamSuccesses.delete(conversationId);
     this.sequences.delete(conversationId);
     this.failures.delete(conversationId);
@@ -187,6 +234,8 @@ class WorkObservation {
         event.type === 'removed' &&
         event.query.queryKey[0] === 'work-observation'
       ) {
+        this.records.clear();
+        this.streamWatermarks.clear();
         this.streamSuccesses.clear();
         this.sequences.clear();
         this.failures.clear();

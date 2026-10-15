@@ -67,11 +67,13 @@ uses a muted style without a pulsing indicator or running clock. The transcript'
 background-work indicator also says **Last known**. Each reader keeps its own failure until that reader succeeds; loading older
 history does not clear a failed current-history read. A live update past the
 failed observation’s sequence supersedes that failure individually: it verifies
-current status, while the history pane keeps any history-read error until its
+current status, even if the older read fails after that update. The sequence is
+captured when the read starts. The history pane keeps any history-read error until its
 reader recovers. Hiding and
 showing a row preserves its last-known status. Observations are released when
 the conversation is absent from the loaded inventory and no row or reader
-references it, or its authority query cache is cleared. Other conversations and
+references it, or its authority query cache is cleared. A released reader cannot
+recreate an observation when its pending read settles. Other conversations and
 Stations retain their own observations. Use **Resync** on the
 conversation or **Refresh inbox** to request fresh observations.
 
