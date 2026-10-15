@@ -99,8 +99,10 @@ it, and a command that throws or is refused undoes only itself.
 
 ## Host boundary rows and terminal facts
 
-Boundary binding is available for the phase-2b integration; Station's boundary
-coordinator has not switched to it yet. The binding supports the default
+Station's production boundary coordinator uses this binding for create,
+transition, remove, accepted-turn recording, terminal observation and listing.
+Station retains sealed-task admission, storage-error classification and
+process-owner reconciliation. The binding supports the default
 `owner_json` layout (`ownerEncoding: 'json'`) and separate `owner_id`,
 `owner_pid`, `owner_birth`, `owner_identity_kind` columns (`'columns'`). Both
 layouts retain `boundary_id`, `thread_id`, `state`, `purpose`,

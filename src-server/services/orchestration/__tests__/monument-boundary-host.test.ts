@@ -20,6 +20,7 @@ import type {
   SessionTurnBoundaryCoordinator,
   SessionTurnBoundaryRecord,
 } from '../session-turn-boundary.js';
+import { createSqliteSessionTurnBoundaryCoordinator } from '../sqlite-session-turn-boundary.js';
 import { legacyTurnBoundaryCoordinator } from './fixtures/legacy-turn-boundary.js';
 import {
   at,
@@ -446,7 +447,7 @@ test('a backward transition out of accepted violates the host constraint without
   expect(rows(old['db'])).toEqual(before);
 });
 
-test('alternating old SQL and new kernel writers share one database for 400 turns', async () => {
+test('alternating frozen SQL and the production Monument coordinator share one database for 400 turns', async () => {
   const root = makeTempDir('monument-mixed-boundaries-');
   const reference = open(join(root, 'reference.sqlite'));
   closes.push(() => {
@@ -462,13 +463,27 @@ test('alternating old SQL and new kernel writers share one database for 400 turn
     throw new Error('Expected production SQL coordinators');
   const peer = new DatabaseSync(join(root, 'shared.sqlite'));
   closes.push(() => peer.close());
-  const kernel = openSqliteKernelStorage({ database: peer, tables });
+  const migratedWriter = createSqliteSessionTurnBoundaryCoordinator({
+    db: peer,
+    head: () =>
+      Number(
+        (
+          peer
+            .prepare(
+              'SELECT high_water FROM orchestration_stream_identity WHERE singleton = 1',
+            )
+            .get() as { high_water: number }
+        ).high_water,
+      ),
+    reconcileTerminals: () => {},
+    transactionLost: (cause) => new Error('Host transaction lost', { cause }),
+  });
   let ordinal = 0;
   const compare = async (command: BoundaryCommand) => {
     const answer =
       ordinal++ % 2 === 0
         ? legacy(oldWriter, command)
-        : await kernel.execute(command, context());
+        : legacy(migratedWriter, command);
     expect(answer).toEqual(legacy(referenceCoordinator, command));
     expect(rows(peer)).toEqual(rows(reference['db']));
   };
