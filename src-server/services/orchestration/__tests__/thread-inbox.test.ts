@@ -1131,4 +1131,39 @@ describe('thread inbox (#3568)', () => {
     expect(queueFollowUp(world, 'b').outcome).toBe('queued');
     await callsSettleAt(9);
   });
+
+  test('R3-3: a device is judged at placement against the time its message was queued', async () => {
+    let clock = Date.UTC(2026, 9, 20, 12);
+    const asked: number[] = [];
+    const world = boot(path(), {
+      now: () => clock,
+      deviceMaySend: (deviceId, since) => {
+        asked.push(since);
+        return deviceId === 'phone';
+      },
+    });
+    await runningFirstTurn(world);
+    const queuedAt = clock;
+    expect(
+      world.inbox.submit({
+        conversationId: THREAD,
+        clientTurnId: 'from-phone',
+        payload: {
+          ...payload,
+          clientOrigin: {
+            version: 1,
+            actor: { kind: 'device', deviceId: 'phone' },
+            reported: { version: 1, surface: 'web', build: null },
+          },
+        },
+      }).outcome,
+    ).toBe('queued');
+    clock += 60_000;
+    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await settle(world);
+    expect(followUpSends()).toEqual([FOLLOW_UP]);
+    // At submit and at placement, both against the time it was queued.
+    expect(asked.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(asked)).toEqual(new Set([queuedAt]));
+  });
 });
