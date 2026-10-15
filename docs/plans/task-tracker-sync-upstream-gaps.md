@@ -4,8 +4,9 @@ Status: blocked on upstream contracts, inspected 2026-10-15 against Station
 `6b4e443ae26` and the installed `@kontourai/flow-agents@6.5.1`. This is a
 bounded implementation handoff, not a delivery claim. No tracker write was
 performed. [Owner decision 4](../design/work-plane-composition.md#decisions-owner-ratified-2026-07-20)
-requires Flow Agents to own sync semantics. The requested stop-on-missing-contract
-rule applies to both items below; Station behavior remains unchanged.
+requires Flow Agents to own sync semantics. [Station #3703](https://github.com/kontourai/station/issues/3703)
+asked for both items below and to stop at any missing upstream contract rather
+than reimplement it; Station behavior remains unchanged.
 
 ## Verified starting points
 
@@ -62,7 +63,7 @@ implemented or qualified by this handoff.
 
 ## Close-on-merge blocker: arbitrary change observation
 
-The research correctly identified normalized `open|merged` observations, but
+The research behind #3703 correctly identified normalized `open|merged` observations, but
 those belong to the authenticated publish operation. The installed
 `build/src/cli/change-provider.d.ts` exposes `checkCapability` and
 `createOrRecover`; the latter can create a PR. It cannot be used as a read-only
@@ -136,5 +137,5 @@ live tracker observations.
 - **NOT_VERIFIED:** baseline/injected/restored behavioral fault injection for
   those new behaviors; no implementation was added to mutate. Existing tests
   can establish only the retained behavior, not the requested migration.
-- Gate, focused-test and readiness results are recorded in the implementation
-  handoff. No push, PR, hosted qualification or real tracker write is claimed.
+- Gate, focused-test and readiness results are recorded on the pull request for
+  #3703. No hosted qualification or real tracker write is claimed.

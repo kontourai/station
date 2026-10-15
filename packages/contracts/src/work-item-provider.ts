@@ -26,8 +26,9 @@ import type { TaskAssignmentClaimActor, TaskStatus } from './task-graph.js';
  * Flow Agents 6.5.1 exports mutation adapters, but its live read CLI returns
  * a filtered ready queue, not the exact-item observation needed for safe
  * write-back. This presentation seam remains read-only pending that upstream
- * contract (kontourai/flow-agents#1508); see
- * docs/plans/task-tracker-sync-upstream-gaps.md (Decision 4).
+ * contract (kontourai/flow-agents#1508; Decision 4 in
+ * docs/design/work-plane-composition.md). Gaps are recorded in
+ * docs/plans/task-tracker-sync-upstream-gaps.md.
  * `WorkItemProviderCapabilities` below is how a backend declares that today;
  * both shipped backends declare `supportsStatusWrite: false`.
  */
