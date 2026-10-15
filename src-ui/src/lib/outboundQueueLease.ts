@@ -64,8 +64,8 @@ function recordUnlockedRenderer(bootId: string): void {
       JSON.stringify(ids.slice(-UNLOCKED_RENDERERS_MAX)),
     );
   } catch {
-    // Unrecorded: other windows read this renderer as gone once its claim is
-    // old, as they did before this record existed.
+    // Unrecorded: other windows read this renderer as gone (its lock is not
+    // held), as they did before this record existed.
   }
 }
 

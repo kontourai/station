@@ -55,6 +55,12 @@ export interface QueuedOutboundTurn {
   status: OutboundDispatchStatus;
   lastError?: string;
   lastAttemptAt?: number;
+  /**
+   * When a send of it last hit a temporary gate (`deferred`, typically a
+   * turn still running). A flush leaves it alone for
+   * `OUTBOUND_DEFER_RETRY_MS` after that, whatever starts the flush.
+   */
+  deferredAt?: number;
   /** Private claim facts are persisted only so another tab cannot replay. */
   dispatchBootId?: string;
   claimedAt?: number;
@@ -382,6 +388,14 @@ export interface LiveOutboundDispatch {
  * then answers `received`, which leaves the row alone.
  */
 export const OUTBOUND_ORPHAN_GRACE_MS = 2 * 60 * 1000;
+
+/**
+ * The backstop against a send loop: a row whose send was deferred is not
+ * claimed again for this long. A trigger that fires sooner (a turn ending
+ * right after) finds it skipped, so the flush hook schedules one retry for
+ * when the wait ends (`deferredAt` is public on each row).
+ */
+export const OUTBOUND_DEFER_RETRY_MS = 1_500;
 
 /** Oldest-first ordinary-cache ceiling. Protected evidence is never evicted. */
 export const OUTBOUND_QUEUE_MAX_ENTRIES = 50;
@@ -1454,6 +1468,7 @@ async function releaseDeferred(
       next[index] = {
         ...next[index]!,
         status: 'pending',
+        deferredAt: Date.now(),
         dispatchBootId: undefined,
         claimedAt: undefined,
       };
@@ -1508,6 +1523,11 @@ async function claimNext(
           !entry.heldBy &&
           rowBelongsToStation(entry, station) &&
           !blockedSessions.has(entry.sessionId) &&
+          // Deferred moments ago: whatever retriggered this pass, wait.
+          !(
+            entry.deferredAt !== undefined &&
+            claimedAt - entry.deferredAt < OUTBOUND_DEFER_RETRY_MS
+          ) &&
           !entries.slice(0, index).some(
             (earlier) =>
               earlier.sessionId === entry.sessionId &&

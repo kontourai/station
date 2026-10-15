@@ -9,6 +9,7 @@ import {
   _resetOutboundQueueChangeChannel,
   _resetOutboundQueueStorage,
   _setOutboundQueueStorage,
+  OUTBOUND_DEFER_RETRY_MS,
   outboundDispatch,
 } from '../lib/outboundQueue';
 
@@ -921,5 +922,171 @@ describe('useOutboundQueueFlush', () => {
       );
       expect(sendMessage).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('useOutboundQueueFlush: a message deferred because a turn is running', () => {
+  const channels: Array<{
+    name: string;
+    listeners: Set<(event: { data: unknown }) => void>;
+  }> = [];
+  class FakeChannel {
+    readonly listeners = new Set<(event: { data: unknown }) => void>();
+    constructor(readonly name: string) {
+      channels.push(this);
+    }
+    addEventListener(_t: string, l: (event: { data: unknown }) => void) {
+      this.listeners.add(l);
+    }
+    removeEventListener(_t: string, l: (event: { data: unknown }) => void) {
+      this.listeners.delete(l);
+    }
+    postMessage(data: unknown) {
+      for (const channel of channels)
+        if (channel !== this && channel.name === this.name)
+          for (const listener of channel.listeners) listener({ data });
+    }
+    close() {}
+  }
+  let stored: unknown;
+  const row = () =>
+    ((stored as { turns?: Array<Record<string, unknown>> }).turns ?? [])[0];
+  const settle = (ms: number) =>
+    new Promise((resolve) => setTimeout(resolve, ms));
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    channels.length = 0;
+    _resetOutboundQueueChangeChannel();
+    vi.stubGlobal('BroadcastChannel', FakeChannel);
+    stored = [
+      {
+        clientTurnId: 'busy',
+        sessionId: 'session-1',
+        conversationId: 'session-1',
+        agentSlug: 'codex',
+        content: 'after the running turn',
+        createdAt: Date.now(),
+        attempts: 0,
+        status: 'pending',
+      },
+    ];
+    _setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, value) => {
+        stored = value;
+      },
+      updateItem: async (_key, updater) => {
+        stored = updater(stored);
+      },
+    });
+    activeChatsStore.initChat('session-1', {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Queued chat',
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    _resetOutboundQueueChangeChannel();
+    activeChatsStore.removeChat('session-1');
+    _resetOutboundQueueStorage();
+  });
+
+  it('a slow deferred send is not re-sent by its own release: at most 2 sends in 2s', async () => {
+    sendMessage.mockImplementation(async () => {
+      await settle(60);
+      return { kind: 'deferred' };
+    });
+    renderHook(() => useOutboundQueueFlush('http://api.test'));
+    await waitFor(() => expect(sendMessage).toHaveBeenCalled());
+    await settle(2_000);
+    expect(sendMessage.mock.calls.length).toBeLessThanOrEqual(2);
+    expect(row()).toMatchObject({ status: 'pending', attempts: 0 });
+  });
+
+  it("another window's claim and deferral of a message start no send here", async () => {
+    sendMessage.mockResolvedValue({ kind: 'deferred' });
+    renderHook(() => useOutboundQueueFlush('http://api.test'));
+    await waitFor(() => expect(sendMessage).toHaveBeenCalled());
+    await settle(500);
+    const before = sendMessage.mock.calls.length;
+    const setRow = (patch: Record<string, unknown>) => {
+      const record = stored as { turns: Array<Record<string, unknown>> };
+      stored = { ...record, turns: [{ ...record.turns[0], ...patch }] };
+    };
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      setRow({
+        status: 'invoking',
+        dispatchBootId: 'other-window',
+        claimedAt: Date.now(),
+      });
+      new FakeChannel('station-outbound-queue').postMessage('changed');
+      await settle(150);
+      setRow({
+        status: 'pending',
+        dispatchBootId: undefined,
+        claimedAt: undefined,
+      });
+      new FakeChannel('station-outbound-queue').postMessage('changed');
+      await settle(150);
+    }
+    expect(sendMessage).toHaveBeenCalledTimes(before);
+  });
+
+  it('a message deferred moments before the turn completes is sent once afterwards', async () => {
+    sendMessage.mockResolvedValue({ kind: 'deferred' });
+    renderHook(() => useOutboundQueueFlush('http://api.test'));
+    await waitFor(() => expect(sendMessage).toHaveBeenCalled());
+    await settle(300);
+    const before = sendMessage.mock.calls.length;
+    sendMessage.mockResolvedValue({
+      kind: 'accepted',
+      providerTurnId: 'provider-after',
+    });
+    // The running turn completes (turn.completed -> reconcileDurableTurn),
+    // inside the deferral's wait: that pass skips it, and the retry sends it.
+    await outboundDispatch.completeAcceptedTurn('session-1', 'running-turn');
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(before + 1), {
+      timeout: OUTBOUND_DEFER_RETRY_MS + 3_000,
+    });
+    await waitFor(() => expect(row()).toMatchObject({ status: 'accepted' }));
+    await settle(OUTBOUND_DEFER_RETRY_MS);
+    expect(sendMessage).toHaveBeenCalledTimes(before + 1);
+  }, 15_000);
+
+  it('a chat with a turn running is not sent to, and its message goes as soon as the turn ends', async () => {
+    sendMessage.mockResolvedValue({
+      kind: 'accepted',
+      providerTurnId: 'provider-after',
+    });
+    // The server's record: a turn is open in this conversation.
+    activeChatsStore.updateChat('session-1', {
+      conversationId: 'session-1',
+      conversationActivity: {
+        conversationId: 'session-1',
+        asOfSequence: 1,
+        openTurn: {
+          turnId: 'running-turn',
+          threadId: 'thread-1',
+          startedAt: '2026-10-15T00:00:00.000Z',
+          trigger: 'user',
+        },
+      },
+    } as never);
+    renderHook(() => useOutboundQueueFlush('http://api.test'));
+    await waitFor(() =>
+      expect(
+        activeChatsStore.getSnapshot()['session-1']?.outboundQueuedTurns,
+      ).toHaveLength(1),
+    );
+    await settle(500);
+    expect(sendMessage).not.toHaveBeenCalled();
+    // The turn ends: the record no longer has an open turn.
+    activeChatsStore.updateChat('session-1', {
+      conversationActivity: { conversationId: 'session-1', asOfSequence: 2 },
+    } as never);
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+    expect(sendMessage.mock.calls[0]?.[6]).toBe('busy');
   });
 });

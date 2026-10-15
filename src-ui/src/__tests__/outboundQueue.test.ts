@@ -5,6 +5,7 @@ import {
   _resetOutboundQueueStorage,
   _setOutboundQueueStorage,
   classifyUndeliverableSend,
+  OUTBOUND_DEFER_RETRY_MS,
   OUTBOUND_QUEUE_MAX_AGE_MS,
   OUTBOUND_QUEUE_MAX_ENTRIES,
   OutboundDispatchCapacityError,
@@ -124,25 +125,39 @@ describe('OutboundDispatchModule', () => {
     expect(send).toHaveBeenCalledOnce();
   });
 
-  it('#749 releases a post-claim deferral without consuming an attempt', async () => {
-    await outboundDispatch.enqueue(turn('deferred-open', 'session-deferred'));
-    const initialAttempts = (await outboundDispatch.snapshot())[0]!.attempts;
-    const defer = vi.fn(async () => ({ kind: 'deferred' as const }));
+  it('#749 releases a post-claim deferral without consuming an attempt, and claims it again only after the wait', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      await outboundDispatch.enqueue(turn('deferred-open', 'session-deferred'));
+      const initialAttempts = (await outboundDispatch.snapshot())[0]!.attempts;
+      const defer = vi.fn(async () => ({ kind: 'deferred' as const }));
 
-    await outboundDispatch.flush(defer);
-    await outboundDispatch.flush(defer);
-    expect(defer).toHaveBeenCalledTimes(2);
-    expect(await outboundDispatch.snapshot()).toEqual([
-      expect.objectContaining({
-        clientTurnId: 'deferred-open',
-        status: 'pending',
-        attempts: initialAttempts,
-      }),
-    ]);
+      await outboundDispatch.flush(defer);
+      expect(defer).toHaveBeenCalledTimes(1);
+      // The backstop: a pass started right after the deferral, by whatever
+      // trigger, leaves the row alone.
+      await outboundDispatch.flush(defer);
+      vi.advanceTimersByTime(OUTBOUND_DEFER_RETRY_MS - 100);
+      await outboundDispatch.flush(defer);
+      expect(defer).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(100);
+      await outboundDispatch.flush(defer);
+      expect(defer).toHaveBeenCalledTimes(2);
+      expect(await outboundDispatch.snapshot()).toEqual([
+        expect.objectContaining({
+          clientTurnId: 'deferred-open',
+          status: 'pending',
+          attempts: initialAttempts,
+        }),
+      ]);
 
-    const send = vi.fn(async () => accepted('provider-deferred'));
-    await outboundDispatch.flush(send);
-    expect(send).toHaveBeenCalledOnce();
+      vi.advanceTimersByTime(OUTBOUND_DEFER_RETRY_MS);
+      const send = vi.fn(async () => accepted('provider-deferred'));
+      await outboundDispatch.flush(send);
+      expect(send).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('consumes matched early evidence on completion and ignores duplicate terminals on tuple reuse', async () => {

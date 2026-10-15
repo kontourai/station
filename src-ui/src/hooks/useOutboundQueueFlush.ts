@@ -14,7 +14,10 @@
 import { useConnectionStatus } from '@kontourai/station-connect';
 import { useCallback, useEffect, useRef } from 'react';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
-import type { ChatUIState } from '../contexts/active-chats-state';
+import {
+  type ChatUIState,
+  isTurnInFlight,
+} from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { conversationCanMutate } from '../contexts/conversation-open-policy';
 import type {
@@ -211,9 +214,14 @@ export function useOutboundQueueFlush(apiBase: string): void {
               reconcileRetryDelayMs = 0;
             }
           }
+          // A chat with a turn running is not sent to: its send would only be
+          // deferred (the end of the turn starts the next pass).
           const blockedSessionIds = new Set(
             Object.entries(activeChatsStore.getSnapshot())
-              .filter(([, chat]) => !conversationCanMutate(chat))
+              .filter(
+                ([, chat]) =>
+                  !conversationCanMutate(chat) || isTurnInFlight(chat),
+              )
               .map(([sessionId]) => sessionId),
           );
           const outcome = await outboundDispatch.flush(
@@ -300,12 +308,19 @@ export function useOutboundQueueFlush(apiBase: string): void {
     let projection = Promise.resolve();
     let unsubscribe: () => void = () => {};
     let ownerRecheck: ReturnType<typeof setTimeout> | undefined;
+    let deferredRetry:
+      | { at: number; timer: ReturnType<typeof setTimeout> }
+      | undefined;
     void Promise.all([
       import('../lib/outboundQueue'),
       import('./outboundQueueProjection'),
       import('../lib/outboundQueueReporting'),
     ]).then(
-      ([{ outboundDispatch }, { projectOutboundQueueEntries }, reporter]) => {
+      ([
+        { outboundDispatch, OUTBOUND_DEFER_RETRY_MS },
+        { projectOutboundQueueEntries },
+        reporter,
+      ]) => {
         if (!active) return;
         // Keys the last projection showed held back by an earlier row.
         let lastBlocked = new Set<string>();
@@ -342,6 +357,36 @@ export function useOutboundQueueFlush(apiBase: string): void {
                 (key) => !blocked.has(key) && sendableHere(key),
               );
               lastBlocked = blocked;
+              // A row deferred moments ago is skipped by every pass until its
+              // wait ends (OUTBOUND_DEFER_RETRY_MS); one retry then, so a
+              // trigger that came too soon (a turn ending) never strands it.
+              const retryAt = Math.min(
+                ...entries
+                  .filter(
+                    (entry) =>
+                      entry.status === 'pending' &&
+                      !entry.heldBy &&
+                      entry.deferredAt !== undefined &&
+                      entry.deferredAt + OUTBOUND_DEFER_RETRY_MS > Date.now(),
+                  )
+                  .map((entry) => entry.deferredAt! + OUTBOUND_DEFER_RETRY_MS),
+              );
+              if (
+                Number.isFinite(retryAt) &&
+                (!deferredRetry || retryAt < deferredRetry.at)
+              ) {
+                if (deferredRetry) clearTimeout(deferredRetry.timer);
+                deferredRetry = {
+                  at: retryAt,
+                  timer: setTimeout(
+                    () => {
+                      deferredRetry = undefined;
+                      if (active && status === 'connected') triggerFlush(true);
+                    },
+                    retryAt - Date.now() + 10,
+                  ),
+                };
+              }
               if (freed.length > 0 && status === 'connected')
                 triggerFlush(false, 'send-only');
             } catch (error) {
@@ -384,6 +429,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
     return () => {
       active = false;
       if (ownerRecheck) clearTimeout(ownerRecheck);
+      if (deferredRetry) clearTimeout(deferredRetry.timer);
       unsubscribe();
     };
   }, [status, triggerFlush]);
@@ -407,12 +453,20 @@ export function useOutboundQueueFlush(apiBase: string): void {
         Object.entries(activeChatsStore.getSnapshot())
           .filter(
             ([, chat]) =>
+              // Sendable now: open for writing and no turn running (the end
+              // of a turn is what lets a message held back by it go).
               conversationCanMutate(chat) &&
+              !isTurnInFlight(chat) &&
               chat.outboundQueuedTurns?.some(
-                // A copy another window holds is sent only on the user's
-                // Send, never by a flush; it appearing here (that window just
-                // held it) must not start a pass that takes it back.
-                (turn) => turn.status === 'pending' && !turn.heldElsewhere,
+                // A row on its way counts as waiting too: a claim and its
+                // release (a send deferred because a turn is running, here
+                // or in another window) must not read as the chat newly
+                // gaining a waiting row, or each release starts the next
+                // send. A copy another window holds is sent only on the
+                // user's Send, never by a flush.
+                (turn) =>
+                  (turn.status === 'pending' || turn.status === 'invoking') &&
+                  !turn.heldElsewhere,
               ),
           )
           .map(([sessionId]) => sessionId),
