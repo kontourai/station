@@ -16,16 +16,18 @@ import {
 import { captureBrowserRelayRoute } from '../lib/browserRelayRouteBinding';
 import {
   getLocalUiSessionAttempt,
-  recheckLocalUiSessionAfterPairing,
+  recheckLocalUiSession,
   resolveLocalUiSession,
   subscribeLocalUiSessionAttempt,
 } from '../lib/local-ui-bootstrap';
 import { LOCAL_UI_SESSION_ATTEMPT_LIMIT } from '../lib/local-ui-session-retry';
 import { probeServerConnection } from '../lib/serverHealth';
 import { primeNativeNotifications } from '../platform/native/notify';
+import { Button } from './Button';
 import { ElapsedWait } from './ElapsedWait';
 import { LazyBoundary } from './LazyBoundary';
 import { SkeletonBlock } from './state';
+import './LocalUiSessionGate.css';
 
 const loadGuidedConnect = () =>
   import('./GuidedConnect').then((module) => ({
@@ -96,10 +98,11 @@ export function LocalUiSessionGate({
     authenticated: boolean;
   } | null>(null);
   const [relayOnboardingOpen, setRelayOnboardingOpen] = useState(false);
-  const pairingRecheck = useRef<Promise<
+  const sessionCheck = useRef<Promise<
     Awaited<ReturnType<typeof resolveLocalUiSession>>
   > | null>(null);
   const [sampleOpen, setSampleOpen] = useState(false);
+  const [checkingRecovery, setCheckingRecovery] = useState(false);
   const resolutionRequest = useRef(0);
   const [accessStartedAt] = useState(Date.now);
   // Deliberately NOT passed as `useDegradedQueryState`'s `resetKey`: the
@@ -118,10 +121,20 @@ export function LocalUiSessionGate({
     let active = true;
     const resolve = () => {
       const current = ++resolutionRequest.current;
-      void resolveLocalUiSession(apiBase).then((next) => {
-        if (active && current === resolutionRequest.current)
-          setResolution(next);
-      });
+      const pending = resolveLocalUiSession(apiBase);
+      sessionCheck.current = pending;
+      setCheckingRecovery(true);
+      void pending
+        .then((next) => {
+          if (active && current === resolutionRequest.current)
+            setResolution(next);
+        })
+        .finally(() => {
+          if (active && sessionCheck.current === pending) {
+            sessionCheck.current = null;
+            setCheckingRecovery(false);
+          }
+        });
     };
     const acceptLauncherLink = () => {
       if (
@@ -130,7 +143,6 @@ export function LocalUiSessionGate({
         )
       )
         return;
-      pairingRecheck.current = null;
       resolve();
     };
     resolve();
@@ -138,7 +150,7 @@ export function LocalUiSessionGate({
     return () => {
       active = false;
       resolutionRequest.current += 1;
-      pairingRecheck.current = null;
+      sessionCheck.current = null;
       window.removeEventListener('hashchange', acceptLauncherLink);
     };
   }, [apiBase]);
@@ -219,26 +231,47 @@ export function LocalUiSessionGate({
       : ({ kind: 'access-required' } as const)
     : resolution;
 
-  const handleSessionEstablished = useCallback(() => {
-    // A connection-manager success can be surfaced twice while its modal
-    // completes. Keep the resulting authenticated identity check singular.
-    if (!pairingRecheck.current) {
+  const recheckSession = useCallback(() => {
+    if (!sessionCheck.current) {
       const current = ++resolutionRequest.current;
-      const pending = recheckLocalUiSessionAfterPairing(apiBase);
-      pairingRecheck.current = pending;
+      const pending = recheckLocalUiSession(apiBase);
+      sessionCheck.current = pending;
+      setCheckingRecovery(true);
       void pending
         .then((next) => {
           if (current === resolutionRequest.current) setResolution(next);
         })
         .finally(() => {
-          if (pairingRecheck.current === pending) pairingRecheck.current = null;
+          if (sessionCheck.current === pending) {
+            sessionCheck.current = null;
+            setCheckingRecovery(false);
+          }
         });
     }
+  }, [apiBase]);
+
+  const handleSessionEstablished = useCallback(() => {
+    recheckSession();
     // First usable session in this browser: the moment the boot-time prime
     // skips on a fresh device (see PlatformProfileContext). Idempotent, so a
     // boot prime makes this a no-op.
     void primeNativeNotifications();
-  }, [apiBase]);
+  }, [recheckSession]);
+
+  useEffect(() => {
+    if (effectiveResolution?.kind !== 'host-unavailable') return;
+    const resume = () => {
+      if (document.visibilityState === 'visible') recheckSession();
+    };
+    window.addEventListener('online', resume);
+    window.addEventListener('focus', resume);
+    document.addEventListener('visibilitychange', resume);
+    return () => {
+      window.removeEventListener('online', resume);
+      window.removeEventListener('focus', resume);
+      document.removeEventListener('visibilitychange', resume);
+    };
+  }, [effectiveResolution?.kind, recheckSession]);
 
   if (!effectiveResolution) {
     // The ONE loading treatment that legitimately replaces the shell: nothing
@@ -317,15 +350,10 @@ export function LocalUiSessionGate({
       // deadline. Rename it there in the same change.
       <main className="local-ui-session-recovery" aria-live="polite">
         <h1>Reconnecting to this Station</h1>
-        <p role="alert">
-          Station&rsquo;s host process is down or recovering — it answered that
-          way {LOCAL_UI_SESSION_ATTEMPT_LIMIT} times in a row. This
-          browser&rsquo;s current access stays in place; reload after the host
-          restarts.
-        </p>
-        <button type="button" onClick={() => window.location.reload()}>
+        <p role="alert">Keep Station running on your computer, then retry.</p>
+        <Button onClick={recheckSession} disabled={checkingRecovery}>
           Try again
-        </button>
+        </Button>
       </main>
     );
   }

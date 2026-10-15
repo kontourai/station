@@ -99,3 +99,18 @@ role-specific branches introduced an advisory complexity finding (cyclomatic
 32). The desktop/native/mobile access paths remain explicit in their existing
 owner; a later decomposition should preserve the shared connection ceremonies
 and the tested narrow-desktop recovery route.
+
+## Round four
+
+- Coding names the conversation once; composer controls own Agent and engine/model.
+- Global setup reminders stay on Home without an open conversation. Coding-engine
+  repair belongs to that Agent choice, never an unrelated global reminder.
+- Same-origin browser outages no longer recommend another host address. Access
+  repair goes directly to the selected Station. Cold-start recovery retries
+  without reload and resumes on foreground/online; refusals do not auto-retry.
+- Pairing dialog sizing includes its padding; mobile inputs avoid Safari focus zoom.
+- Terminal work is explicitly outside this round.
+
+Round-four capture artifacts are a dated local audit, not public product
+contracts or release qualification. Source and regression receipts are separate
+from Safari simulator evidence and physical-device acceptance.

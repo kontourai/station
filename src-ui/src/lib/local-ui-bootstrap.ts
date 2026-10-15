@@ -332,11 +332,10 @@ export function resolveLocalUiSession(
 }
 
 /**
- * A completed pairing may have set the HttpOnly session cookie after the gate
- * cached an access-required result. Only that explicit success signal may
- * discard the cached result; ordinary failures remain deduplicated.
+ * Re-read access after pairing or an explicit host-recovery action. Consumed
+ * launcher fragments stay consumed; authentication refusals do not auto-retry.
  */
-export function recheckLocalUiSessionAfterPairing(
+export function recheckLocalUiSession(
   apiBase: string,
 ): Promise<LocalUiSessionResolution> {
   sessionResolution = undefined;

@@ -69,6 +69,11 @@ Devices. If it says this device cannot create pairing codes, run
 `station-nightly environment offer` on the computer running your Nightly install
 (or `./station environment offer` from a source checkout). Approve the phone’s
 request there with `station-nightly environment access approve --latest --force`.
+If Station restarts, keep it running and choose **Try again**. The browser
+rechecks access without reloading. Returning to the app or restoring the network
+also retries an unavailable host. If access was refused, **Request access**
+starts a new approval request for the selected Station.
+
 Use the launcher and home for the same Station throughout. The regular browser
 sign-in link does not grant pairing-administration authority.
 

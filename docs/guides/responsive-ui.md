@@ -189,7 +189,11 @@ The mobile chat header keeps the conversation title on one line with the
 assistant beneath it. Coding omits the repeated conversation crumb on its chat
 page; pane drill-ins retain the return-to-chat crumb. Project and conversation switching remain directly
 reachable. The Project control’s New chats caption names future context;
-it does not move the open conversation. A disconnected
+it does not move the open conversation. A phone browser retries an unavailable Station without reloading, and
+rechecks on foreground or network return. A refused credential waits for explicit
+pairing; Request access opens the selected Station directly. Pairing inputs keep
+a 16px floor on phones to avoid Safari zoom, and the dialog includes its padding
+inside the available width. A disconnected
 phone starts with pairing and a computer-setup handoff. Host addresses and broker
 routes are under **Other ways to connect**. Native capability and coarse-pointer
 presentation determine that screen; narrow desktop browsers retain access to

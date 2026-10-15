@@ -627,8 +627,10 @@ Discovered Codex rollouts continue through app-server `thread/fork`, returning a
 ## Header simplification, October 2026
 
 The desktop chat title leads, with assistant and reported engine/model context
-on a second line. Coding keeps the title in its own breadcrumb and retains the
-assistant context in the shared bar. Phone Coding leaves the conversation
+on a second line. Coding keeps the title in its own breadcrumb. Its bar omits the assistant,
+engine/model, future-chat Project and Git strip; Agent and engine/model controls
+stay beside the composer, while Project and file context remain in their owning
+surfaces. Imported conversations retain their origin. Phone Coding leaves the conversation
 title in the chat header and uses its breadcrumb for Inbox and pane navigation.
 Working chats open a keyboard-operable
 menu. On mobile, the title is one line with assistant context beneath it. The direct
