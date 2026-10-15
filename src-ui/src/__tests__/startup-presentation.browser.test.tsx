@@ -58,7 +58,7 @@ describe('cold-launch presentation in the browser', () => {
             fixture.ready = () => flushSync(() => setPhase('ready'));
             fixture.wait = () => flushSync(() => setPhase('waiting'));
             fixture.fail = () => flushSync(() => setPhase('failed'));
-            return <><StartupHandoff/>{phase === 'waiting' ? <StartupScreen message="Preparing this device"/> : phase === 'failed' ? <div role="alert"><button>Reload Station</button></div> : new URL(location.href).searchParams.has('sheet') ? <SplitPaneLayout label="agents" title="Agents" items={[]} selectedId="new" onSelect={()=>{}} onSearch={()=>{}} onDeselect={fixture.wait} unselectedDetailOpen><h1>New agent</h1></SplitPaneLayout> : <><button onClick={fixture.wait}>Ready workspace</button>{createPortal(<button id="portal-action" style={{position:'fixed',inset:0,zIndex:10000}} onClick={fixture.wait}>Portal action</button>,document.body)}</>}</>;
+            return <><StartupHandoff/>{phase === 'waiting' ? <StartupScreen message="Preparing this device"/> : phase === 'failed' ? <div role="alert"><button>Reload Station</button></div> : new URL(location.href).searchParams.has('sheet') ? <SplitPaneLayout label="agents" title="Agents" items={[]} selectedId="new" onSelect={()=>{}} onSearch={()=>{}} onDeselect={fixture.wait} unselectedDetailOpen><h3>New agent</h3></SplitPaneLayout> : <><button onClick={fixture.wait}>Ready workspace</button>{createPortal(<button id="portal-action" style={{position:'fixed',inset:0,zIndex:10000}} onClick={fixture.wait}>Portal action</button>,document.body)}</>}</>;
           }
           flushSync(() => createRoot(document.getElementById('root')).render(<StrictMode><App/></StrictMode>));
         `,
