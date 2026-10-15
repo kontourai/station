@@ -137,11 +137,7 @@ test('one list makes the source clear and attaching tools preserves the draft an
   expect(h.latest().tools.autoApprove).toContain('mcp/station-docs/read');
   expect(h.latest().tools.askBeforeUse).toContain('mcp/station-docs/write');
   expect(h.writes).toHaveLength(0);
-  fireEvent.click(
-    screen.getByText('Details', {
-      selector: 'summary[aria-label="Details for read"]',
-    }),
-  );
+  fireEvent.click(screen.getByLabelText('Details for Read a guide'));
   expect(screen.getByText('Find setup instructions.')).toBeTruthy();
 });
 test('a Project admin requests installation and sees durable pending state without changing the agent', async () => {
@@ -215,10 +211,12 @@ test('publisher read annotations still require Ask and approval edits change the
   h.source.tools[0]!.classificationSource = 'publisher';
   fireEvent.click(await screen.findByRole('button', { name: 'Add' }));
   expect(h.latest().tools.askBeforeUse).toContain('mcp/station-docs/read');
-  fireEvent.click(screen.getByLabelText('Details for read'));
-  fireEvent.change(screen.getByLabelText('Approval for Read a guide'), {
-    target: { value: 'always' },
-  });
+  fireEvent.change(
+    screen.getByRole('combobox', { name: 'Approval for Read a guide' }),
+    {
+      target: { value: 'always' },
+    },
+  );
   expect(h.latest().tools.autoApprove).toContain('mcp/station-docs/read');
 });
 

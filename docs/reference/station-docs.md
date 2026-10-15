@@ -233,9 +233,10 @@ has its own delivery and authorization boundary.
 Third-party MCP servers are configured as integrations and can be attached to an Agent. Delivery to an external engine follows that engine's transport and credential-custody policy; an empty environment does not grant a server arbitrary authority. The built-in Station Docs server has a verified runtime identity and no credential requirement. Station Control is a separate capability with its own authorization and delivery requirements.
 
 Open an Agent's **Tools → Add tools** list. Each source shows where it came
-from. Choose **Add**, or open a source to select individual actions. Action
-**Details** holds descriptions and approvals; **About this source** holds
-provenance, **Refresh actions** and connection settings. Station-classified reads
+from. Choose **Add**, or open a source to select individual actions. Click an
+action name for its description; approvals sit beside selected actions.
+**About this source** holds provenance, Project sharing, **Refresh actions**
+and connection settings. Station-classified reads
 default to Always allow; changes and unknown actions default to Ask me on
 Station and Claude. **Tool settings** holds harness options; browser/workflow
 options remain under **Advanced**. Changes apply to new chats.

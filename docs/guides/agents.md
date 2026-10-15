@@ -51,9 +51,9 @@ Choose **Add tools**, search the list, then choose **Add**. The list covers MCP
 sources and tool-providing plugins. Engine-native tools use their engine’s
 settings. Each row shows its
 source: Station, a registry, a plugin, or a connection on this Station. Open a
-source for its description and actions. **Details** holds each action's
-description and approval choice; **About this source** holds provenance and
-connection settings. Click a registry name to browse its tools without leaving
+source for its description and actions. Click an action name for its description;
+approval choices sit beside selected actions. **About this source** holds
+provenance, Project sharing and connection settings. Click a registry name to browse its tools without leaving
 the draft. Catalog browsing retains Project permissions and approval defaults.
 **Origin not recorded** means provenance is missing, invalid, or no longer
 matches the saved connection; it does not describe connection health.

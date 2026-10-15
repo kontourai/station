@@ -7,6 +7,7 @@ import {
 import { lazy, Suspense, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Checkbox } from '../../components/Checkbox';
+import { ArrowDownGlyph } from '../../components/icons/Glyph';
 import { PageHeaderScope } from '../../components/page-frame';
 import { SkeletonList } from '../../components/state';
 import type { Tool } from '../../types';
@@ -264,14 +265,12 @@ export function AgentToolLibrary({
         <Button variant="ghost" onClick={() => setSelected(undefined)}>
           Back
         </Button>
-        <div className="agent-tool-library__identity">
-          <strong>{source.name}</strong>
-          {origin(source)}
-        </div>
-        {source.description && (
-          <p className="editor-hint">{source.description}</p>
-        )}
-        <div className="agent-tool-library__actions">
+        <div className="agent-tool-library__header">
+          <div className="agent-tool-library__identity">
+            <h3>{source.name}</h3>
+            {origin(source)}
+            {source.description && <p>{source.description}</p>}
+          </div>
           {source.installed && source.enabled && source.permitted ? (
             <Button
               variant="secondary"
@@ -285,7 +284,7 @@ export function AgentToolLibrary({
                 ? 'Station engine required'
                 : attached
                   ? 'Select all'
-                  : 'Add to agent'}
+                  : 'Add all tools'}
             </Button>
           ) : (
             <Button
@@ -308,70 +307,69 @@ export function AgentToolLibrary({
             </Button>
           )}
         </div>
-        {form.tools.mcpServers.includes(source.id) && (
-          <small>
-            {['station', 'claude'].includes(engineId)
-              ? 'Approval choices are in each action’s details'
-              : 'Approvals controlled by the engine'}
-          </small>
-        )}
-        {tools.map((tool) => {
-          const key = getIntegrationToolKey(source.id, tool);
-          const checked =
-            attached &&
-            (patterns.includes('*') ||
-              patterns.includes(`${source.id}_*`) ||
-              patterns.includes(key));
-          return (
-            <div className="agent-tool-library__tool" key={key}>
-              <Checkbox
-                checked={checked}
-                disabled={
-                  !view.canManageAgents ||
-                  !source.enabled ||
-                  !source.permitted ||
-                  tool.disabled ||
-                  !['station', 'claude', 'codex'].includes(engineId)
-                }
-                onChange={() =>
-                  setForm((current) =>
-                    applyNewToolApprovalDefaults(
-                      toggleIntegrationToolEnabled(
+        <div className="agent-tool-library__tool-list">
+          {tools.map((tool) => {
+            const key = getIntegrationToolKey(source.id, tool);
+            const title = tool.title || tool.name.replaceAll('_', ' ');
+            const checked =
+              attached &&
+              (patterns.includes('*') ||
+                patterns.includes(`${source.id}_*`) ||
+                patterns.includes(key));
+            return (
+              <div className="agent-tool-library__tool" key={key}>
+                <Checkbox
+                  checked={checked}
+                  disabled={
+                    !view.canManageAgents ||
+                    !source.enabled ||
+                    !source.permitted ||
+                    tool.disabled ||
+                    !['station', 'claude', 'codex'].includes(engineId)
+                  }
+                  onChange={() =>
+                    setForm((current) =>
+                      applyNewToolApprovalDefaults(
+                        toggleIntegrationToolEnabled(
+                          current,
+                          source.id,
+                          key,
+                          tools,
+                          catalogs,
+                        ),
                         current,
                         source.id,
-                        key,
                         tools,
-                        catalogs,
+                        engineId,
                       ),
-                      current,
-                      source.id,
-                      tools,
-                      engineId,
-                    ),
-                  )
-                }
-              >
-                {tool.title || tool.name.replaceAll('_', ' ')}
-              </Checkbox>
-              <span
-                className="agent-tool-library__classification"
-                title={
-                  tool.classificationSource === 'publisher'
-                    ? 'Reported by the source; approval still defaults to Ask me.'
-                    : undefined
-                }
-              >
-                {tool.readOnly === true
-                  ? 'Read'
-                  : tool.readOnly === false
-                    ? 'Write'
-                    : 'Unclassified'}
-              </span>
-              <details>
-                <summary aria-label={`Details for ${tool.name}`}>
-                  Details
-                </summary>
-                <p>{tool.description}</p>
+                    )
+                  }
+                >
+                  <span className="sr-only">{title}</span>
+                </Checkbox>
+                <details className="agent-tool-library__tool-description">
+                  <summary aria-label={`Details for ${title}`}>
+                    <span className="agent-tool-library__tool-name">
+                      {title}
+                    </span>
+                    <span
+                      className="agent-tool-library__classification"
+                      title={
+                        tool.classificationSource === 'publisher'
+                          ? 'Reported by the source; approval still defaults to Ask me.'
+                          : undefined
+                      }
+                    >
+                      {tool.readOnly === true
+                        ? 'Read'
+                        : tool.readOnly === false
+                          ? 'Write'
+                          : 'Unclassified'}
+                    </span>
+                    <ArrowDownGlyph className="agent-tool-library__caret" />
+                  </summary>
+                  <p>{tool.description || 'No description provided.'}</p>
+                </details>
                 {checked && (
                   <AgentToolApproval
                     form={form}
@@ -383,13 +381,16 @@ export function AgentToolLibrary({
                     disabled={!view.canManageAgents || !source.permitted}
                   />
                 )}
-              </details>
-            </div>
-          );
-        })}
+              </div>
+            );
+          })}
+        </div>
         {attached && ['station', 'claude', 'codex'].includes(engineId) && (
           <details className="agent-tool-picker__details">
-            <summary>Advanced</summary>
+            <summary>
+              <ArrowDownGlyph className="agent-tool-library__caret" />
+              Advanced
+            </summary>
             <Checkbox
               checked={patterns.includes(`${source.id}_*`)}
               disabled={!view.canManageAgents || !source.permitted}
@@ -418,67 +419,77 @@ export function AgentToolLibrary({
             </Checkbox>
           </details>
         )}
-        <details className="agent-tool-picker__details">
-          <summary>About this source</summary>
-          <dl>
-            <dt>From</dt>
-            <dd>{source.from}</dd>
-            {source.origin?.version && (
-              <>
-                <dt>Version</dt>
-                <dd>{source.origin.version}</dd>
-              </>
+        <details className="agent-tool-picker__details agent-tool-library__settings">
+          <summary>
+            <ArrowDownGlyph className="agent-tool-library__caret" />
+            About this source
+          </summary>
+          <div className="agent-tool-library__settings-body">
+            <dl>
+              <dt>From</dt>
+              <dd>{source.from}</dd>
+              {source.origin?.version && (
+                <>
+                  <dt>Version</dt>
+                  <dd>{source.origin.version}</dd>
+                </>
+              )}
+              {source.origin?.location && (
+                <>
+                  <dt>Location</dt>
+                  <dd>{source.origin.location}</dd>
+                </>
+              )}
+            </dl>
+            {(!source.origin || source.origin.kind === 'unavailable') && (
+              <p>
+                Origin metadata is missing, invalid, or no longer matches this
+                connection.
+              </p>
             )}
-            {source.origin?.location && (
-              <>
-                <dt>Location</dt>
-                <dd>{source.origin.location}</dd>
-              </>
+            <div className="agent-tool-library__connection-actions">
+              {source.installed && source.kind === 'integration' && (
+                <Button
+                  variant="ghost"
+                  pending={change.isPending}
+                  onClick={() => void refresh(source).catch(() => {})}
+                >
+                  Refresh actions
+                </Button>
+              )}
+              {view.operator && source.kind === 'integration' && (
+                <Button variant="ghost" onClick={() => setSetup(source.id)}>
+                  Connection settings
+                </Button>
+              )}
+            </div>
+            {source.personalAccount && view.project && (
+              <ToolAccountPanel
+                sourceId={source.id}
+                project={view.project}
+                actorId={actor}
+              />
             )}
-          </dl>
-          {(!source.origin || source.origin.kind === 'unavailable') && (
-            <p>
-              Origin metadata is missing, invalid, or no longer matches this
-              connection.
-            </p>
-          )}
-          {source.installed && source.kind === 'integration' && (
-            <Button
-              variant="ghost"
-              pending={change.isPending}
-              onClick={() => void refresh(source).catch(() => {})}
-            >
-              Refresh actions
-            </Button>
-          )}
-          {source.personalAccount && view.project && (
-            <ToolAccountPanel
-              sourceId={source.id}
-              project={view.project}
-              actorId={actor}
-            />
-          )}
-          {view.operator && !source.operatorOnly && (
-            <Checkbox
-              checked={source.sharedWithProjects !== false}
-              onChange={(shared) =>
-                void change
-                  .mutateAsync({
-                    path: `/sources/${encodeURIComponent(source.id)}/sharing`,
-                    method: 'PUT',
-                    body: { expectedActor: actor, shared },
-                  })
-                  .catch(() => {})
-              }
-            >
-              Available to Projects
-            </Checkbox>
-          )}
-          {view.operator && source.kind === 'integration' && (
-            <Button variant="ghost" onClick={() => setSetup(source.id)}>
-              Connection settings
-            </Button>
-          )}
+            {view.operator && !source.operatorOnly && (
+              <div className="agent-tool-library__sharing">
+                <Checkbox
+                  disabled={change.isPending}
+                  checked={source.sharedWithProjects !== false}
+                  onChange={(shared) =>
+                    void change
+                      .mutateAsync({
+                        path: `/sources/${encodeURIComponent(source.id)}/sharing`,
+                        method: 'PUT',
+                        body: { expectedActor: actor, shared },
+                      })
+                      .catch(() => {})
+                  }
+                >
+                  Available to Projects
+                </Checkbox>
+              </div>
+            )}
+          </div>
         </details>
         {change.isError && <p role="alert">{change.error.message}</p>}
       </div>
@@ -561,7 +572,10 @@ export function AgentToolLibrary({
       {change.isError && <p role="alert">{change.error.message}</p>}
       {view.operator && (
         <details className="agent-tool-picker__details">
-          <summary>Connect your own source</summary>
+          <summary>
+            <ArrowDownGlyph className="agent-tool-library__caret" />
+            Connect your own source
+          </summary>
           <Button variant="ghost" onClick={() => setSetup('new')}>
             Connect a tool source
           </Button>
