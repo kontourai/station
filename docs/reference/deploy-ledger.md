@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-15T16:13:01Z | nightly-npm | 0.7.0-nightly.2479.38761672945 | `df22f5f` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38761672945) |
 | 2026-10-15T14:51:19Z | nightly-npm | 0.7.0-nightly.2479.38748549060 | `912944d` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38748549060) |
 | 2026-10-15T10:40:35Z | nightly-npm | 0.7.0-nightly.2479.38704016490 | `95bfa48` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38704016490) |
 | 2026-10-15T08:33:41Z | nightly-npm | 0.7.0-nightly.2479.38688611844 | `884f77c` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38688611844) |
@@ -272,6 +273,21 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-15T16:13:01Z · nightly-npm · 0.7.0-nightly.2479.38761672945
+
+- Ship SHA: `df22f5f3a722617aad8d6855f211ef798e81b74e`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2479.38761672945 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `912944d` ([full sha](https://github.com/kontourai/station/commit/912944dc07b210f2748d304142047bad80841d6a)):
+
+**Other**
+
+- [#3666](https://github.com/kontourai/station/pull/3666) refactor(knowledge): move legacy documents onto ProjectFileTransactions
 
 ## 2026-10-15T14:51:19Z · nightly-npm · 0.7.0-nightly.2479.38748549060
 

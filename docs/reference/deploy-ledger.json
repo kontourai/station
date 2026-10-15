@@ -1,5 +1,34 @@
 [
   {
+    "timestampUtc": "2026-10-15T16:13:01Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2479.38761672945",
+    "sha": "df22f5f3a722617aad8d6855f211ef798e81b74e",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38761672945",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2479.38761672945 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "912944dc07b210f2748d304142047bad80841d6a",
+      "groups": {
+        "feat": [],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#3666](https://github.com/kontourai/station/pull/3666) refactor(knowledge): move legacy documents onto ProjectFileTransactions"
+        ]
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-10-15T14:51:19Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2479.38748549060",
