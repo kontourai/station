@@ -316,8 +316,8 @@ function refreshSessionReadModelOnFact(
  * the native request queue until session history and status are refused. So
  * while a read is in flight this only remembers that another is owed, and
  * asks again once that read settles. `fetchOrchestrationSessions` explicitly
- * applies `DEFAULT_CLIENT_REQUEST_TIMEOUT_MS` to the request and body read,
- * so a stalled read fails and releases the owed refresh.
+ * bounds headers and body inactivity by `DEFAULT_CLIENT_REQUEST_TIMEOUT_MS`,
+ * so a stalled read settles while a progressing slow read can finish.
  */
 function requestSessionReadModelRefresh(apiBase: string): void {
   const state = sessionReadModelRefreshState(apiBase);
