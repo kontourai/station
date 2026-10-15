@@ -20,7 +20,10 @@ function namingEvent(
   metadata: Record<string, unknown>,
   method: 'session.started' | 'session.configured' = 'session.started',
   eventId = `${threadId}:${method}`,
-): CanonicalRuntimeEvent {
+): Extract<
+  CanonicalRuntimeEvent,
+  { method: 'session.started' | 'session.configured' }
+> {
   return {
     eventId,
     threadId,
@@ -214,6 +217,14 @@ describe('parent naming query parity', () => {
       });
       store.close();
       store = new EventStore(path);
+      parity();
+      peer
+        .prepare('UPDATE orchestration_events SET method = ? WHERE id = ?')
+        .run('turn.completed', 'legacy:session.configured');
+      parity();
+      peer
+        .prepare('UPDATE orchestration_events SET method = ? WHERE id = ?')
+        .run('session.configured', 'legacy:session.configured');
       parity();
       store.deleteThread('conflict');
       // Retaining only a later configured mention must also remove its start provenance.
@@ -441,7 +452,7 @@ describe('parent mention append durability', () => {
       eventStore: store,
       eventBus: new EventBus(),
       adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
-      logger: { debug() {}, warn() {}, info() {}, error() {} },
+      logger: { debug() {}, warn() {} },
     });
     svc.initialize();
     const statements: Array<{ sql: string; values: SQLInputValue[] }> = [];
@@ -478,7 +489,7 @@ describe('parent mention append durability', () => {
           .all(...statement.values)
           .map((row) => String(row.detail))
           .join(' | ');
-        expect(plan).toContain('MULTI-INDEX OR');
+        expect(plan).toMatch(/SEARCH .* USING INDEX/);
         expect(plan).not.toMatch(
           /SCAN (orchestration_events|orchestration_session_parent_mentions)/,
         );
