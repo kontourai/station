@@ -117,12 +117,19 @@ vi.mock('../components/chat/ChatInputArea', () => ({
     queuedRetryNotice,
   }: {
     sendFailureNotice?: string;
-    queuedRetryNotice?: { text: string; onDiscard: () => void };
+    queuedRetryNotice?: {
+      text: string;
+      onDiscard: () => void;
+      confirm?: boolean;
+    };
   }) => (
     <div
       data-testid="chat-input-area"
       data-send-failure={sendFailureNotice}
       data-queued-retry={queuedRetryNotice?.text}
+      data-queued-retry-confirm={
+        queuedRetryNotice ? String(queuedRetryNotice.confirm) : undefined
+      }
     >
       {queuedRetryNotice && (
         <button type="button" onClick={queuedRetryNotice.onDiscard}>
@@ -387,6 +394,42 @@ describe('ChatDockBody queued-retry notice', () => {
     fireEvent.click(within(area).getByRole('button', { name: 'Discard' }));
     expect(handler).toHaveBeenCalledOnce();
     expect(clearEphemeralMessagesSpy).toHaveBeenCalledWith('pill-session');
+  });
+
+  test('asks the composer to confirm first only for a notice whose action asks first', async () => {
+    const view = renderDock(
+      buildSession({
+        status: 'queued',
+        messages: [
+          { role: 'user', content: 'hello', timestamp: 1 },
+          queuedRetry({
+            label: 'Discard…',
+            handler: vi.fn(),
+            confirm: 'unconfirmed-discard',
+          } as never),
+        ],
+      } as Partial<ChatSession>),
+    );
+    expect(
+      (await screen.findByTestId('chat-input-area')).getAttribute(
+        'data-queued-retry-confirm',
+      ),
+    ).toBe('true');
+    view.unmount();
+    renderDock(
+      buildSession({
+        status: 'queued',
+        messages: [
+          { role: 'user', content: 'hello', timestamp: 1 },
+          queuedRetry({ label: 'Discard', handler: vi.fn() }),
+        ],
+      } as Partial<ChatSession>),
+    );
+    expect(
+      (await screen.findByTestId('chat-input-area')).getAttribute(
+        'data-queued-retry-confirm',
+      ),
+    ).toBe('false');
   });
 
   test('hands the composer nothing once the chat is no longer queued', async () => {

@@ -194,7 +194,12 @@ export type ChatMessage = {
 };
 
 export type EphemeralMessage = ChatMessage & {
-  action?: { label: string; handler: () => void };
+  action?: {
+    label: string;
+    handler: () => void;
+    /** Ask first with the shared unconfirmed-message discard. */
+    confirm?: 'unconfirmed-discard';
+  };
   terminalSession?: boolean;
   /** #1796: rendered by `FullAccessRefusalCard`, never as Markdown. */
   fullAccessRefusal?: FullAccessRefusalNotice;
@@ -349,6 +354,16 @@ export type ChatUIState = {
     waitingForStation?: string;
     /** Held by another window or a closed one; sent only by the user. */
     heldElsewhere?: true;
+    /**
+     * Pending, but an earlier row of the same chat was not sent: the outbox
+     * keeps a chat's order, so this one waits until that one is retried or
+     * discarded.
+     */
+    behindUnsent?: true;
+    /** No answer came back; Station's delivery lookup decides it. */
+    awaitingLookup?: true;
+    /** Claimed by a renderer still running: its send is under way there. */
+    sendUnderWay?: true;
   }>;
   inputHistory: string[];
   historyIndex?: number;
@@ -399,6 +414,20 @@ export type ChatUIState = {
    * Session-scoped and not persisted — a dispatch cannot outlive its page.
    */
   pendingClientTurnId?: string;
+  /**
+   * Keys this window sent in this session whose turn Station has not started
+   * (as far as this window knows), newest last and bounded. A bubble whose key
+   * is here but which has no other delivery fact reads "Not confirmed" rather
+   * than delivered. Session-scoped and not persisted, like `deliveryChecks`.
+   */
+  localSendKeys?: readonly string[];
+  /**
+   * The pending send's key when its outbox row was written before the
+   * request (the send survives the app closing). Absent when the send went
+   * without one: attachments, a visual skill, or storage that failed or was
+   * too slow.
+   */
+  durableClientTurnId?: string;
   /**
    * What Station said about this chat's own sends, by send key: the delivery
    * lookup's answer while a request is slow, and `started` once Station
@@ -1670,7 +1699,12 @@ export function createEphemeralMessageState(
     role: ChatRole;
     content: string;
     attachments?: any[];
-    action?: { label: string; handler: () => void };
+    action?: {
+      label: string;
+      handler: () => void;
+      /** Ask first with the shared unconfirmed-message discard. */
+      confirm?: 'unconfirmed-discard';
+    };
     sendFailure?: boolean;
     queuedRetry?: boolean;
   },

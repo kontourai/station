@@ -1,0 +1,7 @@
+{
+  "revision": "a68418e7f11fc8f5b7f496e31fade922bb153276",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the tests/android/mobile-layout.spec.ts change against the matrix row for Home / continuity rail, which cites Android mobile-layout for mobile geometry. The touch-target sweep now skips an element only when it is inside aria-hidden=true AND has tabIndex below 0 (StartComposer's clipped file input added by #3673); every focusable or non-aria-hidden visible control is still measured, and fault injection (a 20px start-composer tool button, and the same input made focusable) turned the sweep red naming the element. The row's claim of mobile geometry coverage stays accurate; no spec was added or removed and no other matrix row is affected.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/android/mobile-layout.spec.ts"]}
+  ]
+}
