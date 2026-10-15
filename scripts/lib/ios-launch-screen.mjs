@@ -1,23 +1,13 @@
-import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import YAML from 'yaml';
+import { iosIconChannelForConfig } from '../ios-channel-icons.mjs';
 
 /** Restore launch resources after Tauri regenerates the selected app project. */
-export function stageIosLaunchScreen(root) {
+export function stageIosLaunchScreen(
+  root,
+  { channel = iosIconChannelForConfig(root) } = {},
+) {
   const apple = join(root, 'src-desktop/gen/apple');
-  const project = YAML.parse(readFileSync(join(apple, 'project.yml'), 'utf8'));
-  const identifier =
-    project.targets?.station_iOS?.settings?.base?.PRODUCT_BUNDLE_IDENTIFIER ??
-    project.settingGroups?.app?.base?.PRODUCT_BUNDLE_IDENTIFIER;
-  const channel = identifier?.startsWith('io.kontourai.station.dev.')
-    ? 'dev'
-    : {
-        'io.kontourai.station': 'stable',
-        'io.kontourai.station.beta': 'beta',
-        'io.kontourai.station.nightly': 'nightly',
-      }[identifier];
-  if (!channel)
-    throw new Error(`Unknown generated iOS Station identity: ${identifier}`);
   copyFileSync(
     join(root, 'scripts/templates/ios/LaunchScreen.storyboard'),
     join(apple, 'LaunchScreen.storyboard'),

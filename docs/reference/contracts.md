@@ -28,7 +28,7 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
 | `@kontourai/station-contracts/skill-experience` | Inert v1 Skill definitions and explicit stage/rich-pane declarations, host-observed inventory identity, canonical start inputs and retained Session invocation views; see [experience contract](skill-experiences.md) |
 | `@kontourai/station-contracts/attention` | Attention projections and exact approval/permission request references and inspection states |
-| `@kontourai/station-contracts/environment-security` | Public handshake and compatibility declarations, scoped Device/Station pairing, receiver-owned additive grant kind, and secret-free `PeerEnrollmentInput`/`PeerEnrollment` metadata. A missing legacy kind denotes Device access; these declarations grant no Project membership or execution consent. See [peer enrollment](sdk.md#station-peer-enrollment). |
+| `@kontourai/station-contracts/environment-security` | Public handshake and compatibility declarations, scoped Device/Station pairing, receiver-owned additive grant kind, and secret-free `PeerEnrollmentInput`/`PeerEnrollment` metadata; explicit `access:devices` administration scope and `device-access` revocation provenance. A missing legacy kind denotes Device access; these declarations grant no Project membership or execution consent. See [peer enrollment](sdk.md#station-peer-enrollment). |
 | `@kontourai/station-contracts/station-groups` | Station groups for people (#3557): the Admin/Member vocabulary and default, the governed permissions and each group's ceiling, the pure `capScopeToGroup`, and the `StationPerson`/`StationGroupAssignment` shapes `GET /api/pairing/people` returns. Groups only cap a person-tied Device's governed permissions; they grant nothing, never include `access:manage`, and are not Project roles |
 | `@kontourai/station-contracts/auth` | Auth status, renew results, user identity/detail models |
 | `@kontourai/station-contracts/authority-observation` | Closed credential-bound authority observation: current home identity, resolved principal echo (kind+id only), and verified grant tier; authorization-neutral, grants nothing |
@@ -377,9 +377,20 @@ send is refused with `provider_session_start_failed`, and the client keeps the
 message queued with the reason and Retry without re-sending it on its own. If
 it is still starting after the wait, the send is refused with the retryable
 code `provider_session_starting`, and the client queues the message and
-re-sends it. A retry whose idempotency key an earlier attempt still holds, or
-released without sending, is refused with the retryable code
-`client_turn_in_flight` and re-sent with the same key. When the client's
+re-sends it. A retry whose idempotency key an earlier attempt still holds
+waits for that attempt's turn (up to five minutes). If none arrives, or the
+attempt released the key without sending, the retry is refused with the
+retryable code `client_turn_in_flight` and re-sent with the same key; that
+holds however long the attempt has held the key, because its turn may still
+be delivered. A retry whose earlier attempt may already have reached the
+engine and will never resolve is refused with the non-retryable
+`foreground_message_indeterminate` instead, and nothing is sent again. That
+happens at once when the attempt's owner died after it began invoking. When
+the attempt's engine call failed after it began, it happens only in the
+Station process that made the attempt: at once for a new retry, and at the
+next poll of the wait for a retry already waiting. Another Station process
+sharing the store cannot see that the attempt gave up, so there the retry is
+treated as for a held key. When the client's
 automatic re-sends run out, the message stays queued with a reason and Retry.
 A Claude send's own `turn.started` is published when the engine starts
 running it, so a send queued behind such a turn starts after it ends. That

@@ -1483,8 +1483,10 @@ can reduce them. Earlier summaries remain in `legacySummary` as unverified
 migration evidence, excluded from current totals. `unallocated` keeps missing
 or ambiguous date/model/provider/principal allocations explicit. `tokenReports`
 distinguishes a measured zero from an unmeasured compatibility sum. Optional
-`reportedCostUsd` and `estimatedCostUsd` remain separate. Ordinary usage and
-rescan responses omit `byPrincipal`.
+`reportedCostUsd` and `estimatedCostUsd` remain separate, including in Agent
+buckets alongside their combined compatibility `cost`. An omitted component is
+unreported; a supplied zero is measured. Ordinary usage and rescan responses omit
+`byPrincipal`.
 A completed scan does not prove historical totals or every provider's accounting
 are complete. The date map is `byDate`, not `byDay`.
 Optional `from`/`to` date strings filter `byDate` and add `rangeSummary`; other
@@ -3516,11 +3518,32 @@ sealing, activation, cancellation, recovery and evidence limits.
 ---
 
 
+## Administer paired-device access
+
+The operator credential or a current ordinary Device explicitly granted
+`access:devices` can use these exact method/path pairs:
+
+- `GET /api/pairing/devices`
+- `POST /api/pairing/devices/:deviceId/scope` with `{ scope: string[], expectedScope?: string, resetFullAccess?: boolean }`
+- `DELETE /api/pairing/devices/:deviceId`
+- `DELETE /api/pairing/devices/:deviceId/record` (already revoked only)
+
+A person-bound Device also needs the Admin group ceiling. Only the operator can
+add or remove `access:devices`; delegated administrators may change other device
+scopes, including `approval:full-access`. A stale `expectedScope` is 409
+`scope_changed`. Authority is checked again after body parsing; revocation or
+scope withdrawal before commit refuses the change. Internal/delegation callers,
+personal tokens and legacy `access:manage` do not qualify. The separate
+account-bound guest allowlist excludes these routes even with the scope.
+Existing full-access reset reports and live-connection retirement still apply.
+Successful mutations log credential-free `station.device_access.changed` records;
+revocation provenance uses `device-access` for a delegated administrator.
+
 ## People and Station groups
 
-Like the device list, `GET` is admitted by the pairing family's boundary (the
-operator credential or the desktop's own local grant); changing a group needs
-the operator credential itself, as changing a device's access does:
+People `GET` is admitted by the pairing family's operator/local-grant boundary;
+`access:devices` does not admit it. Changing a group needs the operator
+credential itself:
 
 - `GET /api/pairing/people` returns `{ people: StationPerson[] }`: everyone
   with a group assignment, a live device tied to them, or a personal access

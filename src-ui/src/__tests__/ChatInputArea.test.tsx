@@ -1822,6 +1822,56 @@ describe('ChatInputArea dock reservation', () => {
     }
   });
 
+  test('an out-of-flow sibling (the hidden status region) takes no room from the composer', () => {
+    class QuietObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', QuietObserver);
+    const clientHeight = vi
+      .spyOn(HTMLElement.prototype, 'clientHeight', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains('chat-dock__body') ? 300 : 0;
+      });
+    // Exaggerated so the decision flips on it: counted, the region's box
+    // (150) plus the composer (200) would not fit the 300px dock.
+    const rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const height = this.classList.contains('chat-input')
+          ? 200
+          : this.classList.contains('sr-only')
+            ? 150
+            : 0;
+        return { height, top: 0, bottom: height } as DOMRect;
+      });
+    try {
+      const view = render(
+        <div className="chat-dock__body">
+          <div className="chat-messages" />
+          <div
+            className="sr-only"
+            role="status"
+            style={{ position: 'absolute' }}
+          />
+          <div className="sr-only" style={{ position: 'fixed' }} />
+          <ChatInputArea {...renderProps({ dockHeight: 300 })} />
+        </div>,
+      );
+      const body = view.container.querySelector('.chat-dock__body');
+      expect(body?.hasAttribute('data-composer-priority')).toBe(false);
+      expect(
+        (view.container.querySelector('.chat-input') as HTMLElement).style
+          .minHeight,
+      ).toBe('200px');
+    } finally {
+      clientHeight.mockRestore();
+      rect.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   test('typing does not rebuild the observers', () => {
     const constructed = vi.fn();
     class CountingObserver {
