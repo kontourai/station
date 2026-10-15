@@ -34,6 +34,7 @@ describe('cold-launch presentation in the browser', () => {
         contents: `
           import React, {StrictMode, useState} from 'react';
           import {createRoot} from 'react-dom/client';
+          import {createPortal} from 'react-dom';
           import {flushSync} from 'react-dom';
           import {StartupHandoff} from './src-ui/src/components/StartupHandoff';
           import {StartupScreen} from './src-ui/src/components/StartupScreen';
@@ -56,9 +57,9 @@ describe('cold-launch presentation in the browser', () => {
             fixture.ready = () => flushSync(() => setPhase('ready'));
             fixture.wait = () => flushSync(() => setPhase('waiting'));
             fixture.fail = () => flushSync(() => setPhase('failed'));
-            return <><StartupHandoff/>{phase === 'waiting' ? <StartupScreen message="Preparing this device"/> : phase === 'failed' ? <div role="alert"><button>Reload Station</button></div> : <button onClick={fixture.wait}>Ready workspace</button>}</>;
+            return <><StartupHandoff/>{phase === 'waiting' ? <StartupScreen message="Preparing this device"/> : phase === 'failed' ? <div role="alert"><button>Reload Station</button></div> : <><button onClick={fixture.wait}>Ready workspace</button>{createPortal(<button id="portal-action" style={{position:'fixed',inset:0,zIndex:10000}} onClick={fixture.wait}>Portal action</button>,document.body)}</>}</>;
           }
-          createRoot(document.getElementById('root')).render(<StrictMode><App/></StrictMode>);
+          flushSync(() => createRoot(document.getElementById('root')).render(<StrictMode><App/></StrictMode>));
         `,
       },
       bundle: true,
@@ -102,7 +103,9 @@ describe('cold-launch presentation in the browser', () => {
     const page = await browser.newPage({
       reducedMotion: reduced ? 'reduce' : 'no-preference',
     });
-    await page.clock.install();
+    const epoch = new Date('2026-10-15T00:00:00Z');
+    await page.clock.install({ time: epoch });
+    await page.clock.pauseAt(epoch);
     const html = readFileSync(
       resolve(ROOT, 'src-ui/index.html'),
       'utf8',
@@ -142,7 +145,8 @@ describe('cold-launch presentation in the browser', () => {
     return page;
   }
 
-  const intro = (page: Page) => page.locator('body > .station-startup');
+  const intro = (page: Page) =>
+    page.locator('.station-startup-frame[open] > .station-startup');
 
   test('a visible intro completes the word before a brief fade, without waiting for loading effects', async () => {
     const page = await open();
@@ -154,10 +158,22 @@ describe('cold-launch presentation in the browser', () => {
       await page.evaluate(() => window.startupFixture.ready());
       await page.clock.runFor(700);
       expect(await intro(page).count()).toBe(1);
+      expect(
+        await page.evaluate(
+          () =>
+            document
+              .elementFromPoint(innerWidth / 2, innerHeight / 2)
+              ?.closest('.station-startup') !== null,
+        ),
+      ).toBe(true);
+      await page.keyboard.press('Tab');
+      expect(await page.evaluate(() => document.activeElement?.id)).not.toBe(
+        'portal-action',
+      );
       expect(await page.locator('#root').evaluate((root) => root.inert)).toBe(
         true,
       );
-      await page.clock.runFor(200);
+      await page.clock.runFor(250);
       expect(await intro(page).getAttribute('class')).toContain(
         'station-startup--leaving',
       );
@@ -169,7 +185,7 @@ describe('cold-launch presentation in the browser', () => {
       expect(await page.locator('#root').evaluate((root) => root.inert)).toBe(
         false,
       );
-      await page.getByRole('button', { name: 'Ready workspace' }).click();
+      await page.getByRole('button', { name: 'Portal action' }).click();
       expect(await intro(page).count()).toBe(0);
       expect(
         await page

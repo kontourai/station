@@ -1,10 +1,25 @@
 @import url("@kontourai/ui/fonts.css");
 @import url("@kontourai/ui/tokens");
 
+.station-startup-frame {
+  inset: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  background: transparent;
+}
+
+.station-startup-frame::backdrop {
+  background: transparent;
+}
+
 .station-startup {
   position: fixed;
   inset: 0;
-  z-index: var(--k-z-toast);
   background: var(--k-bg);
   color: var(--k-text);
   font-family: var(--k-font-ui);

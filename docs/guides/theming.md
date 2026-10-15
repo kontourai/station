@@ -88,7 +88,8 @@ after the native startup window is admitted; time behind the native cover does
 not count. A ready hidden or covered app skips the unseen intro. Native readiness
 continues to own window reveal and its Restart/Quit recovery.
 Startup failures dismiss branding immediately. While the intro covers the app,
-the underlying root is inert and hidden from assistive technology; handoff
+the modal top layer covers dock/dialog stacking and makes body portals inert;
+the underlying root is also hidden from assistive technology. Handoff
 restores access and removes the animation and observers. Later connection,
 authority and route waits use state primitives and do not replay the launch
 intro. Warm resume of the same document does not recreate it. Route-level waits still use the state

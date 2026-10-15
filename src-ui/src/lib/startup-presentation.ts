@@ -2,6 +2,7 @@ import { startStartupAnimation } from './startup-animation';
 
 const surface = document.querySelector<HTMLElement>('#root .station-startup');
 const root = document.getElementById('root');
+const frame = surface ? document.createElement('dialog') : undefined;
 const pending = new Map<symbol, string>();
 const FADE_MS = 150;
 let mounted = false;
@@ -14,10 +15,13 @@ let stopAnimation: (() => void) | undefined;
 let recoveryObserver: MutationObserver | undefined;
 
 function finish() {
+  if (!surface?.isConnected) return;
   window.clearTimeout(fadeTimer);
   stopAnimation?.();
   stopAnimation = undefined;
-  surface?.remove();
+  frame?.close();
+  frame?.remove();
+  pending.clear();
   if (root) {
     root.inert = false;
     root.removeAttribute('aria-hidden');
@@ -97,7 +101,12 @@ export function dismissInitialStartup() {
 if (surface && root) {
   // React replaces the root's children; the one launch presentation survives
   // those bootstrap handoffs and fades over the committed application.
-  document.body.append(surface);
+  frame!.className = 'station-startup-frame';
+  frame!.setAttribute('aria-label', 'Starting Station');
+  frame!.append(surface);
+  document.body.append(frame!);
+  frame!.addEventListener('cancel', finish);
+  frame!.showModal();
   root.inert = true;
   root.setAttribute('aria-hidden', 'true');
   const canvas = surface.querySelector<HTMLCanvasElement>('canvas');
@@ -112,10 +121,15 @@ if (surface && root) {
       onUnavailable: finish,
     });
   }
-  document.addEventListener('visibilitychange', reconsider);
-  motion?.addEventListener('change', reconsider);
-  recoveryObserver = new MutationObserver(() => {
-    if (root.querySelector('[role="alert"]')) finish();
-  });
-  recoveryObserver.observe(root, { childList: true, subtree: true });
+  if (!surface.isConnected) {
+    stopAnimation?.();
+    stopAnimation = undefined;
+  } else {
+    document.addEventListener('visibilitychange', reconsider);
+    motion?.addEventListener('change', reconsider);
+    recoveryObserver = new MutationObserver(() => {
+      if (root.querySelector('[role="alert"]')) finish();
+    });
+    recoveryObserver.observe(root, { childList: true, subtree: true });
+  }
 }
