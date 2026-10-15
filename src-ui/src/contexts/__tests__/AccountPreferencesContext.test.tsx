@@ -250,7 +250,8 @@ test('a cached mount re-reads saved preferences even when the app default disabl
 });
 
 test('unknown authority holds an inherited choice; a different verified account retires it', async () => {
-  activeChatsStore.initChat('inherited-default', {
+  activeChatsStore.initChat('inherited-default');
+  activeChatsStore.updateChat('inherited-default', {
     queuedApprovalMode: 'never',
     queuedApprovalDefaultNamespace: 'person-a',
   });
