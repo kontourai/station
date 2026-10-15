@@ -555,7 +555,6 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
           );
           await screen.findByRole('button', {
             name: 'Reconnecting',
-            exact: true,
           });
         }
         await act(async () => {
@@ -568,7 +567,6 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
           );
           await screen.findByRole('button', {
             name: 'Catching up',
-            exact: true,
           });
           act(() =>
             setStreamConnectionState('http://localhost:3242', 'caught-up'),
