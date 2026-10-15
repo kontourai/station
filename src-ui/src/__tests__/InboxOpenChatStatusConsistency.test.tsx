@@ -1579,6 +1579,7 @@ describe('stream epoch changes', () => {
             status: 'resolved',
             conversation: {
               id: 'T',
+              source: 'runtime',
               agentSlug: agentId('demo-agent'),
               title: 'Mismatch demo chat',
               createdAt: FOLD_SESSION_CREATED_AT,
@@ -1626,6 +1627,7 @@ describe('stream epoch changes', () => {
       );
       const conversation: ConversationListItem = {
         id: 'T',
+        source: 'runtime',
         agentSlug: agentId('demo-agent'),
         title: 'Mismatch demo chat',
         createdAt: FOLD_SESSION_CREATED_AT,
@@ -1711,7 +1713,6 @@ describe('stream epoch changes', () => {
         );
         act(() => sendSnapshot(`cache-${source}-new`, 1));
         await act(async () => settleOld());
-        expect(client.getQueryData(key)).toBeUndefined();
         // Reconcile a render that retained the pre-reset query result. The query
         // reset cannot retract props already captured by a mounted consumer.
         retiredFeed = renderWithProviders(<RetiredFeed />, client);
@@ -1724,6 +1725,7 @@ describe('stream epoch changes', () => {
           activeChatsStore.getSnapshot()[CHAT_TAB]?.conversationActivity
             ?.asOfSequence,
         ).toBe(2);
+        expect(client.getQueryData(key)).toBeUndefined();
       } finally {
         retiredFeed?.unmount();
         feed?.unmount();
