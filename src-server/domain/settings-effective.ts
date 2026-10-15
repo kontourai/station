@@ -19,14 +19,12 @@
 
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { ProjectSettingsOverrides } from '@kontourai/station-contracts/project-settings-overrides';
-import {
-  APP_SETTINGS_REGISTRY,
-  acceptsSettingValue,
-} from '@kontourai/station-contracts/settings-registry';
+import { APP_SETTINGS_REGISTRY } from '@kontourai/station-contracts/settings-registry';
 import {
   isSeededAppConfigValue,
   SEEDED_APP_CONFIG_KEYS,
 } from './app-config-seed.js';
+import { resolveSettingEnvironment } from './settings-environment.js';
 import { isStoredValue } from './settings-registry-server.js';
 
 /**
@@ -75,6 +73,7 @@ export function resolveEffectiveAppSetting(
   input: {
     config: AppConfig;
     projectOverrides?: ProjectSettingsOverrides;
+    environment?: Record<string, string | undefined>;
   },
 ): EffectiveAppSetting | undefined {
   const definition = REGISTRY_BY_KEY.get(key);
@@ -96,15 +95,21 @@ export function resolveEffectiveAppSetting(
       : { value: stored, source: 'station' };
   }
 
-  const envFallback = definition.envFallback;
-  if (envFallback) {
-    const raw = process.env[envFallback];
+  if (definition.envFallback) {
+    const environment = resolveSettingEnvironment(
+      definition,
+      input.environment,
+    );
     // Same two-part test the provenance builder applies: set, and ACCEPTED
     // by this field's validator. Naming the environment for a value the
     // resolver discards as malformed is the claim-without-a-derivation this
     // whole seam exists to prevent.
-    if (isStoredValue(raw) && acceptsSettingValue(definition, raw!.trim())) {
-      return { value: raw!.trim(), source: 'env', envVar: envFallback };
+    if (environment.envVar && environment.value !== undefined) {
+      return {
+        value: environment.value,
+        source: 'env',
+        envVar: environment.envVar,
+      };
     }
   }
 

@@ -806,6 +806,9 @@ describe('pairing-route-scopes: table-driven lookups', () => {
       'orchestration:operate',
     ],
     ['GET', '/api/usage-telemetry/disclosure', 'orchestration:read'],
+    ['GET', '/api/usage-telemetry/delivery-status', 'orchestration:read'],
+    ['POST', '/api/usage-telemetry/connection-checks/product', 'access:manage'],
+    ['POST', '/api/usage-telemetry/connection-checks/otel', 'access:manage'],
     [
       'POST',
       '/api/usage-telemetry/disclosure/acknowledgements',

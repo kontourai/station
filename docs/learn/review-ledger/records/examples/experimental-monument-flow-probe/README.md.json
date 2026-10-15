@@ -1,0 +1,21 @@
+{
+  "path": "examples/experimental-monument-flow-probe/README.md",
+
+  "kind": "historical",
+
+  "state": "source-reviewed",
+
+  "summary": "Parked #3574 experiment at a pinned kernel and Flow Agents source revision; recommends Tier 1 after public-command fit/gap analysis.",
+
+  "limits": "Prototype only; no actual Flow driver, OS liveness, provider, migration, publication, hosted qualification or independent review.",
+
+  "sources": [
+    "examples/experimental-monument-flow-probe/adapter.mjs",
+
+    "examples/experimental-monument-flow-probe/probe.test.mjs"
+  ],
+
+  "checks": [
+    "49 focused cases passed: 45 exported conformance cases on reused public SQLite adapter and four consumer cases; no new storage engine. Clean baseline e4eb7bb07d3 passed, executing before invoking commit failed two effect-count assertions, restored implementation passed."
+  ]
+}
