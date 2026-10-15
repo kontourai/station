@@ -10,14 +10,13 @@ import { spawnSync } from 'node:child_process';
 import {
   cpSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   checkConsumerManifest,
   checkPublishConfigParity,
@@ -30,8 +29,9 @@ const REPO = resolve(import.meta.dirname, '..', '..');
 const SCRIPT = join(REPO, 'scripts', 'monument-pack-smoke.mjs');
 const CASE_TIMEOUT = 120_000;
 
-const scratch = mkdtempSync(join(tmpdir(), 'monument-pack-smoke-test-'));
-afterAll(() => rmSync(scratch, { recursive: true, force: true }));
+const scratch = trackTempDirs({ lifetime: 'file' })(
+  'monument-pack-smoke-test-',
+);
 
 function run(args: string[]) {
   const result = spawnSync(process.execPath, [SCRIPT, ...args], {
