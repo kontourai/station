@@ -580,7 +580,8 @@ it('column owners round-trip exactly and a legacy birthless owner is not rewritt
     records: [{ owner: { id: exact.id, pid: 27, identityKind: 'unverified' } }],
   });
   const binding = tables();
-  if (!binding.turnBoundary || binding.turnBoundary === 'unused')
+  const boundary = binding.turnBoundary;
+  if (!boundary || boundary === 'unused')
     throw new Error('Expected boundary binding');
   expect(() =>
     openSqliteKernelStorage({
@@ -588,7 +589,7 @@ it('column owners round-trip exactly and a legacy birthless owner is not rewritt
       tables: {
         ...binding,
         turnBoundary: {
-          ...binding.turnBoundary,
+          ...boundary,
           creationSequence: { column: 'state', read: () => 42 },
         },
       },
