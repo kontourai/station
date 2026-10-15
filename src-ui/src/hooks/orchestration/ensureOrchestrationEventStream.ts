@@ -430,9 +430,8 @@ export function ensureOrchestrationEventStream(
           if (client)
             for (const session of caughtUp.sessions) {
               if (session.conversationActivity)
-                workObservation(client).observed(
-                  session.conversationActivity.conversationId,
-                  session.conversationActivity.asOfSequence,
+                workObservation(client).streamObserved(
+                  session.conversationActivity,
                 );
             }
           hasReceivedSnapshot = true;
@@ -470,9 +469,8 @@ export function ensureOrchestrationEventStream(
         if (client)
           for (const session of payload.sessions) {
             if (session.conversationActivity)
-              workObservation(client).observed(
-                session.conversationActivity.conversationId,
-                session.conversationActivity.asOfSequence,
+              workObservation(client).streamObserved(
+                session.conversationActivity,
               );
           }
         hasReceivedSnapshot = true;

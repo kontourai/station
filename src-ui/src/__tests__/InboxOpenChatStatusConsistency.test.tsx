@@ -790,29 +790,125 @@ it('inventory notifications stay linear across conversation subscribers', async 
   }
 });
 
-it('evicts a closed conversation only after its final subscriber leaves', () => {
+it('a failed row stays last known across unmount and same-sequence replay', async () => {
+  historyRead.mockResolvedValueOnce(historyPage);
   const client = new QueryClient();
   const observation = workObservation(client);
-  const releaseReader = observation.subscribe('closed', () => {});
-  const releaseRow = observation.subscribe('closed', () => {});
-  const releaseOther = observation.subscribe('other', () => {});
-  observation.observed('closed', 100);
-  observation.failed('closed');
-  observation.failed('other');
-  releaseReader();
-  expect(observation.unavailable('closed')).toBe(true);
-  releaseRow();
-  expect(observation.unavailable('closed')).toBeUndefined();
-  expect(observation.unavailable('other')).toBe(true);
-  const releaseReopened = observation.subscribe('closed', () => {});
-  observation.failed('closed');
-  observation.streamObserved({
-    ...SESSIONS[0]!.conversationActivity!,
-    conversationId: 'closed',
-    asOfSequence: 1,
+  const view = renderWithProviders(
+    <>
+      <HistoryReader />
+      <DockInbox />
+    </>,
+    client,
+  );
+  await waitFor(() => expect(historyRead).toHaveBeenCalledTimes(1));
+  historyRead.mockRejectedValueOnce(new Error('offline'));
+  await act(async () => screen.getByText('Read history').click());
+  await screen.findByText('Last known: Needs approval');
+  view.unmount();
+  renderWithProviders(<DockInbox />, client);
+  expect(screen.getByText('Last known: Needs approval')).toBeTruthy();
+  act(() =>
+    observation.streamObserved({
+      ...SESSIONS[0]!.conversationActivity!,
+      conversationId: 'T',
+      asOfSequence: 3,
+    }),
+  );
+  expect(screen.getByText('Last known: Needs approval')).toBeTruthy();
+  act(() =>
+    observation.streamObserved({
+      ...SESSIONS[0]!.conversationActivity!,
+      conversationId: 'T',
+      asOfSequence: 4,
+    }),
+  );
+  expect(screen.queryByText('Last known: Needs approval')).toBeNull();
+});
+
+it('older-history recovery cannot clear a failing main history reader', async () => {
+  historyRead.mockResolvedValueOnce({
+    ...historyPage,
+    hasMore: true,
+    nextCursor: 'older',
   });
-  expect(observation.unavailable('closed')).toBe(false);
-  releaseReopened();
-  releaseOther();
+  function OlderReader() {
+    const history = useSessionEventWindow('http://test.local', 'T');
+    return (
+      <button type="button" onClick={() => void history.loadOlder()}>
+        {history.hasMore ? 'Probe older' : 'Probe waiting'}
+      </button>
+    );
+  }
+  const client = new QueryClient();
+  renderWithProviders(
+    <>
+      <OlderReader />
+      <DockInbox />
+    </>,
+    client,
+  );
+  await screen.findByText('Probe older');
+  historyRead.mockRejectedValueOnce(new Error('independent reader offline'));
+  renderWithProviders(<HistoryReader />, client);
+  await screen.findByText('Last known: Needs approval');
+  historyRead.mockRejectedValueOnce(new Error('older offline'));
+  await act(async () => screen.getByText('Probe older').click());
+  historyRead.mockResolvedValueOnce(historyPage);
+  await act(async () => screen.getByText('Probe older').click());
+  expect(screen.getByText('Last known: Needs approval')).toBeTruthy();
+  historyRead.mockResolvedValueOnce(historyPage);
+  await act(async () => screen.getByText('Read history').click());
+  expect(screen.queryByText('Last known: Needs approval')).toBeNull();
+});
+
+it('inventory removal drops tracked records and refresh leaves untracked conversations alone', async () => {
+  const client = new QueryClient();
+  const observation = workObservation(client);
+  const view = renderWithProviders(<DockInbox />, client);
+  act(() => observation.failed('T'));
+  expect(screen.getByText('Last known: Needs approval')).toBeTruthy();
+  view.unmount();
+  await client.fetchQuery({
+    queryKey: ['conversation-inventory'],
+    queryFn: async () => ({
+      pages: [
+        {
+          items: [
+            {
+              id: 'untracked',
+              activity: { conversationId: 'untracked', asOfSequence: 100 },
+            },
+          ],
+        },
+      ],
+    }),
+  });
+  expect(observation.unavailable('T')).toBeUndefined();
+  expect(observation.unavailable('untracked')).toBeUndefined();
+  const remount = renderWithProviders(<DockInbox />, client);
+  expect(screen.queryByText('Last known: Needs approval')).toBeNull();
+  remount.unmount();
   client.clear();
+});
+
+it('clearing the query cache releases retained observation failures and fences', async () => {
+  const client = new QueryClient();
+  const observation = workObservation(client);
+  const view = renderWithProviders(<DockInbox />, client);
+  act(() => {
+    observation.observed('T', 100);
+    observation.failed('T');
+  });
+  expect(screen.getByText('Last known: Needs approval')).toBeTruthy();
+  view.unmount();
+  client.clear();
+  expect(observation.unavailable('T')).toBeUndefined();
+  renderWithProviders(<DockInbox />, client);
+  expect(screen.queryByText('Last known: Needs approval')).toBeNull();
+  act(() => observation.failed('T'));
+  expect(screen.getByText('Last known: Needs approval')).toBeTruthy();
+  act(() => client.clear());
+  expect(observation.unavailable('T')).toBeUndefined();
+  expect(screen.queryByText('Last known: Needs approval')).toBeNull();
 });

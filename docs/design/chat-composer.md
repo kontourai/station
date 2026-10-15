@@ -211,9 +211,10 @@ reads as "Last known: …" without animated dots while its observation is
 unverified. The inbox, sidebar, Home, and mobile picker share this freshness:
 a failed conversation read marks only that conversation; a failed inbox read
 marks the retained list. Rows prefix the computed status with "Last known:"
-and suppress pulsing and elapsed clocks. A successful read or a newer stream
-activity observation verifies the affected conversation again, independently of
-other conversations and Station authorities. History
+and suppress pulsing and elapsed clocks. Each observation source clears only its own failed read. A newer stream
+activity past the failed watermark may supersede those failures. Unmounting a row
+preserves failures and sequence fences; inventory removal or authority cache
+clear releases them. Other conversations and Station authorities remain independent. History
 Retry refreshes the capability observation before reloading. The desktop
 inbox footer offers Refresh, which reconnects the same stream and re-reads the
 session list and conversation inventory; when the last read failed, the footer

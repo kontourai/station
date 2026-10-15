@@ -41,15 +41,16 @@ export async function resolveConversationOpenAuthoritatively(
   try {
     const resolution = await resolveConversationOpen(conversationId, apiBase);
     if (resolution.status === 'unavailable')
-      observation?.failed(conversationId, started);
+      observation?.failed(conversationId, started, 'open');
     else if (resolution.status === 'resolved')
       observation?.observed(
         conversationId,
         (resolution.activity ?? resolution.conversation.activity)?.asOfSequence,
+        'open',
       );
     return resolution;
   } catch (error) {
-    observation?.failed(conversationId, started);
+    observation?.failed(conversationId, started, 'open');
     throw error;
   }
 }

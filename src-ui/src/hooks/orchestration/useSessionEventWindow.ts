@@ -214,7 +214,13 @@ export function useSessionEventWindow(
       const capability = await fetchSessionEventWindowCapability(apiBase);
       if (capability !== true) {
         if (requestGeneration !== generation.current) return;
-        observation?.failed(threadId, observationStart);
+        observation?.failed(
+          threadId,
+          observationStart,
+          'history',
+          activeChatsStore.getChatForExecutionSession(threadId)
+            ?.conversationActivity?.asOfSequence,
+        );
         const upgradeRequired = capability === false;
         setUpgradeRequired(upgradeRequired);
         setError(
@@ -282,7 +288,13 @@ export function useSessionEventWindow(
         requestSerial !== requestSerialRef.current
       )
         return;
-      observation?.failed(threadId, observationStart);
+      observation?.failed(
+        threadId,
+        observationStart,
+        'history',
+        activeChatsStore.getChatForExecutionSession(threadId)
+          ?.conversationActivity?.asOfSequence,
+      );
       const failure = cause instanceof Error ? cause : new Error(String(cause));
       setError(failure);
       setUpgradeRequired(false);
@@ -331,7 +343,7 @@ export function useSessionEventWindow(
       setSessionLineage(page.sessionLineage);
       setHandoffs(page.handoffs ?? []);
       setContextBoundaries(page.contextBoundaries ?? []);
-      observation?.observed(threadId, page.watermark);
+      observation?.observed(threadId, page.watermark, 'older-history');
       setError(undefined);
       if (page.watermark !== watermarkRef.current) {
         await reload();
@@ -343,7 +355,12 @@ export function useSessionEventWindow(
     } catch (cause) {
       if (controller.signal.aborted) return;
       if (requestGeneration !== generation.current) return;
-      observation?.failed(threadId, observationStart);
+      observation?.failed(
+        threadId,
+        observationStart,
+        'older-history',
+        watermarkRef.current,
+      );
       setError(cause instanceof Error ? cause : new Error(String(cause)));
     } finally {
       if (
