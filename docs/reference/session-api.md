@@ -205,7 +205,10 @@ another device and a restart.
   `turnId`, once Station sent it). Sent when the conversation is idle and
   holds nothing, it takes the live path, whose turn claim answers with the
   turn already started. The same key with a different message is refused
-  `409` with `code: "inbox_key_conflict"`. An inbox holds at most 50 unsettled
+  `409` with `code: "inbox_key_conflict"`. A send, held or not, under a key
+  the inbox holds for someone else in a state it may still send (`queued`,
+  `sending`, `unconfirmed`) is refused `409` with `code: "inbox_key_held"`,
+  so nobody takes the turn another person's message waits for. An inbox holds at most 50 unsettled
   messages; past that a send is refused `409` with
   `code: "conversation_inbox_full"`.
 - Only a plain continuation can be held: no attachments, approval pick, input
@@ -225,7 +228,8 @@ Station sends held messages one at a time, in the order received, each after
 the turn before it ends, as the person who sent it, through the conversation's
 persisted binding. Just before sending it checks again that the sender may
 still send to the conversation and that their device is still paired with
-the scope to; otherwise the message is `refused` (`not_permitted` or
+the scope to (for one tied to an account, that the account is enabled and
+was not signed out everywhere since the message was queued); otherwise the message is `refused` (`not_permitted` or
 `device_not_permitted`) and nothing is sent. It never stores a full-access
 grant: an engine restarted to take a held message starts confined. Each
 message keeps its `clientTurnId`, so the
@@ -238,10 +242,12 @@ to prove it (it stopped mid-send) is `unconfirmed`: it is never sent again,
 and the messages behind it wait until someone dismisses it. One whose send
 did not answer within ten minutes is `unconfirmed` with `start_deadline`
 until Station can tell: it becomes `sent` if the ledger shows its turn
-started, or waits again if no Session took its key. While a held message
+started, or waits again if no Session took its key, but only once that send
+has answered, so the abandoned send and a new one never run together. While a held message
 waits on a Session that is starting, Station looks again when the Session
 reports a change, and on a schedule (2, 10, 30 and 120 seconds, then every two
-minutes): at most 30 such re-checks until a message is sent.
+minutes): at most 30 such re-checks until a message is sent or a new one is
+accepted.
 
 ```
 GET    /api/orchestration/conversations/<conversationId>/inbox
@@ -256,10 +262,15 @@ own text). `reasonCode` is one of `not_permitted`, `device_not_permitted`,
 `may_have_been_sent`, `start_deadline`, `unreadable_entry`, `session_ended`,
 `execution_engine_changed`, `provider_session_start_failed`,
 `model_not_advertised`, `continuation_workspace_unbound`,
-`continuation_workspace_direct_mismatch`, or `start_refused` for any other
+`continuation_workspace_direct_mismatch`,
+`continuation_workspace_project_context_missing`,
+`continuation_workspace_corrupt_worktree_binding`,
+`continuation_workspace_worktree_gone`,
+`continuation_workspace_different_project`,
+`continuation_workspace_worktree_moved`, or `start_refused` for any other
 refusal. Every client of the conversation sees the same list, except that
-someone else's message that may still be sent (`queued`, `sending`) is shown
-without its `clientTurnId`. A
+someone else's message that may still be sent (`queued`, `sending`,
+`unconfirmed`) is shown without its `clientTurnId`. A
 conversation you may not read, or a Station without an inbox, answers `404`.
 `DELETE` withdraws a waiting message (its sender only), or dismisses an
 `unconfirmed` or `refused` one (anyone who may send to the conversation, so

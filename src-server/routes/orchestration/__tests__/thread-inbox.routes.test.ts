@@ -911,4 +911,40 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       { clientTurnId: 'plain' },
     ]);
   });
+
+  test('R3-4: a send under a key the inbox holds for someone else is refused inbox_key_held, queued or not', async () => {
+    const world = station();
+    await world.busy();
+    const held = await world.send('owner-key', 'then summarize', {
+      whenBusy: 'queue',
+    });
+    expect(held.status, await held.clone().text()).toBe(202);
+    // The reader may read and continue the conversation, so the live path
+    // would otherwise take the key's turn claim.
+    for (const extra of [{}, { whenBusy: 'queue' }]) {
+      const squat = await world.as(READER, () =>
+        world.send('owner-key', 'from the reader', extra),
+      );
+      expect(squat.status, await squat.clone().text()).toBe(409);
+      expect(await squat.json()).toMatchObject({ code: 'inbox_key_held' });
+    }
+    // Someone who may not read the conversation is not told about the key.
+    const stranger = await world.as(STRANGER, () =>
+      world.send('owner-key', 'from a stranger'),
+    );
+    expect(await stranger.text()).not.toContain('inbox_key_held');
+    // The sender's own resend still answers its entry.
+    const again = await world.send('owner-key', 'then summarize', {
+      whenBusy: 'queue',
+    });
+    expect(again.status).toBe(202);
+    world.adapter.holdTurns = false;
+    world.adapter.complete();
+    await eventually(() =>
+      expect(world.prompts()).toEqual(['read the file', 'then summarize']),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(world.prompts()).toEqual(['read the file', 'then summarize']);
+    expect(world.adapter.turns.at(-1)?.clientTurnId).toBe('owner-key');
+  });
 });

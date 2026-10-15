@@ -395,15 +395,18 @@ export class EnvironmentSecurityService {
    * #3568: whether the device or personal access token that queued a chat
    * message may still send one: live (not revoked, not expired) and holding,
    * after its person's group cap (#3557), the scope the live route itself
-   * requires, read from the route table rather than restated here.
+   * requires, read from the route table rather than restated here. One tied
+   * to an account also needs it current: enabled, and not signed out
+   * everywhere at or after `since` (when the message was queued).
    */
-  deviceMaySendChat(credentialId: string): boolean {
+  deviceMaySendChat(credentialId: string, since?: number): boolean {
     const required = requiredPairingScope('POST', '/api/orchestration/chat');
     return (
       required !== undefined &&
       (this.#devicePairingService?.credentialHoldsScope(
         credentialId,
         required,
+        since,
       ) ??
         false)
     );

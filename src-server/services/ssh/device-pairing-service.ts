@@ -2190,12 +2190,21 @@ export class DevicePairingService {
    * #3568: whether the credential with id `credentialId` is still live and
    * still holds `scope` after its person's group cap (#3557), whatever kind
    * it is: a paired device (not revoked, not pending enrolment) or a personal
-   * access token (not revoked, not expired, its account still current). The
-   * one by-id lookup for an action recorded earlier and performed later, so
-   * revoking or narrowing either kind stops it. A device is judged by its own
-   * grant, not an alias's: an id names the device, not the credential used.
+   * access token (not revoked, not expired). Either kind tied to an account
+   * also needs that account current (#3586): it exists, is enabled, and was
+   * not signed out everywhere at or after `since` (the action's own time;
+   * for a token, never earlier than its making). A live request from such a
+   * device needs a signed-in account session; this is the part of that
+   * check that can be asked later. The one by-id lookup for an action
+   * recorded earlier and performed later, so revoking or narrowing either
+   * kind stops it. A device is judged by its own grant, not an alias's: an
+   * id names the device, not the credential used.
    */
-  credentialHoldsScope(credentialId: string, scope: PairingScope): boolean {
+  credentialHoldsScope(
+    credentialId: string,
+    scope: PairingScope,
+    since?: number,
+  ): boolean {
     const device = this.#registry.devices.find(
       (item) => item.id === credentialId,
     );
@@ -2203,6 +2212,8 @@ export class DevicePairingService {
       return (
         device.revokedAt === null &&
         device.pendingEnrollmentId === undefined &&
+        (device.principalBinding === undefined ||
+          this.#accountStandingCurrent(device.principalBinding, since)) &&
         pairingScopeIncludes(this.#capScope(publicDevice(device)), scope)
       );
     const token = this.#tokens
@@ -2210,7 +2221,10 @@ export class DevicePairingService {
       .find(
         (candidate) =>
           candidate.id === credentialId &&
-          this.#accountStandingCurrent(candidate.binding, candidate.createdAt),
+          this.#accountStandingCurrent(
+            candidate.binding,
+            Math.max(candidate.createdAt, since ?? candidate.createdAt),
+          ),
       );
     return (
       token !== undefined &&

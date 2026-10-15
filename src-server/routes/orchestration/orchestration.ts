@@ -1964,7 +1964,13 @@ export function createOrchestrationRoutes(
      */
     threadInbox?: Pick<
       ThreadInboxDelivery,
-      'mustQueue' | 'submit' | 'list' | 'entry' | 'cancel' | 'deliveryOutcome'
+      | 'mustQueue'
+      | 'submit'
+      | 'list'
+      | 'entry'
+      | 'cancel'
+      | 'deliveryOutcome'
+      | 'heldByOther'
     >;
     delegationResults?: Pick<
       DelegationResultDelivery,
@@ -2445,6 +2451,34 @@ export function createOrchestrationRoutes(
 
       const { principal, userId, ownerAttribution, fullAccessGrant } =
         resolveDispatchActor(deps, c);
+      // #3568: a key the conversation's inbox holds for someone else, in a
+      // state it may still send, is theirs. A send under it would take the
+      // turn claim their message waits for, so it is refused, whether or not
+      // this send asks to be queued, and however the key was learned. Only a
+      // caller who may read the conversation is told; anyone else goes on to
+      // the dispatch, which refuses a conversation they may not read.
+      if (
+        body.conversationId &&
+        body.clientTurnId &&
+        deps.threadInbox?.heldByOther(
+          body.conversationId,
+          body.clientTurnId,
+          userId,
+        ) &&
+        (await orchestrationService.readSession(
+          body.conversationId,
+          readAuthorityFor(c),
+        ))
+      )
+        return c.json(
+          {
+            success: false,
+            error:
+              "This message key belongs to someone else's queued message. Send under a new key.",
+            code: 'inbox_key_held',
+          },
+          409,
+        );
       if (body.expectedInputRequest) {
         const context = orchestrationService.inspectInputReplyContext(
           body.expectedInputRequest,

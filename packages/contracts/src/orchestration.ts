@@ -1587,7 +1587,8 @@ export interface ConversationInboxEntry {
   /**
    * The send's idempotency key; resending the same body answers this entry.
    * Absent on someone else's entry that may still be sent (`queued`,
-   * `sending`): a send under the same key would take its turn.
+   * `sending`, `unconfirmed`). A send under such a key is refused
+   * `inbox_key_held`.
    */
   clientTurnId?: string;
   /** Only follow-ups today; steer and display-only kinds may follow. */
@@ -1608,7 +1609,12 @@ export interface ConversationInboxEntry {
    * `start_deadline`, `unreadable_entry`, `session_ended`,
    * `execution_engine_changed`, `provider_session_start_failed`,
    * `model_not_advertised`, `continuation_workspace_unbound`,
-   * `continuation_workspace_direct_mismatch`, or `start_refused` for any
+   * `continuation_workspace_direct_mismatch`,
+   * `continuation_workspace_project_context_missing`,
+   * `continuation_workspace_corrupt_worktree_binding`,
+   * `continuation_workspace_worktree_gone`,
+   * `continuation_workspace_different_project`,
+   * `continuation_workspace_worktree_moved`, or `start_refused` for any
    * other refusal.
    */
   reasonCode?: string;

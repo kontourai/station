@@ -287,6 +287,16 @@ function projectThreadInboxEntry(
   };
 }
 
+/**
+ * States in which an entry may still be sent: waiting, being sent, or
+ * `unconfirmed` (a start abandoned at its deadline may be queued again).
+ */
+const MAY_STILL_SEND: ReadonlySet<InboxEntryRecord['state']> = new Set([
+  'queued',
+  'placing',
+  'unconfirmed',
+]);
+
 /** Positions (1 = next) of the entries still waiting, by key. */
 function waitingPositions(
   entries: readonly InboxEntryRecord[],
@@ -442,10 +452,13 @@ export interface ThreadInboxDeliveryPorts {
    */
   mayContinue(conversationId: string, userId: string): boolean;
   /**
-   * Whether a paired device is still unrevoked and still holds the scope a
-   * live send needs. A device-sent entry is refused without it (fail closed).
+   * Whether a paired device or personal access token is still unrevoked and
+   * still holds the scope a live send needs, and (account-tied) its account
+   * is enabled and not signed out everywhere at or after `since`, the time
+   * the entry was queued. A device-sent entry is refused without it (fail
+   * closed).
    */
-  deviceMaySend?(deviceId: string): boolean;
+  deviceMaySend?(deviceId: string, since: number): boolean;
   /** The turn ledger's answer for the key across the whole conversation. */
   inspectDelivery(
     conversationId: string,
@@ -516,6 +529,12 @@ const START_REFUSAL_CODES: ReadonlySet<string> = new Set([
   EXECUTION_ENGINE_CHANGED_CODE,
   PROVIDER_SESSION_START_FAILED_CODE,
   MODEL_NOT_ADVERTISED_CODE,
+  // Every `ContinuationWorkspaceError` code (execution-target-execution.ts).
+  'continuation_workspace_project_context_missing',
+  'continuation_workspace_corrupt_worktree_binding',
+  'continuation_workspace_worktree_gone',
+  'continuation_workspace_different_project',
+  'continuation_workspace_worktree_moved',
   'continuation_workspace_unbound',
   'continuation_workspace_direct_mismatch',
 ]);
@@ -547,8 +566,9 @@ export class ThreadInboxDelivery {
   >();
   /**
    * The periodic re-check per conversation: `fired` counts timer firings
-   * only, and survives until a placement clears it, so a call past the cap
-   * never starts the count again.
+   * only, and survives until a placement clears it or a newly accepted
+   * message resets it, so a re-check call past the cap never starts the
+   * count again.
    */
   private readonly retries = new Map<
     string,
@@ -558,6 +578,14 @@ export class ThreadInboxDelivery {
       timer: ReturnType<typeof setTimeout> | undefined;
     }
   >();
+  /**
+   * Keys whose start was abandoned at its deadline but has not answered yet,
+   * per conversation. While one is here the ledger cannot be trusted: a cold
+   * start claims the key only once its Session exists, so `not-received`
+   * would re-queue a start that is still running. A restart empties it, and
+   * the old process is gone with its start, so the ledger is trusted then.
+   */
+  private readonly abandoned = new Map<string, Set<string>>();
   private unsubscribe: (() => void) | undefined;
   private stopped = false;
 
@@ -639,16 +667,20 @@ export class ThreadInboxDelivery {
     payload: ThreadInboxPayload;
   }): ThreadInboxSubmission {
     const inbox = this.inboxOf(input.conversationId);
-    if (this.refusalFor(inbox, input.payload))
+    const now = this.now();
+    if (this.refusalFor(inbox, input.payload, now))
       return { outcome: 'not-permitted' };
     const result = this.ports.store.submit({
       ...input,
       conversationId: inbox,
-      now: this.now(),
+      now,
     });
     if (result.kind === 'conflict') return { outcome: 'conflict' };
     if (result.kind === 'capacity')
       return { outcome: 'capacity', limit: result.limit };
+    // A newly accepted message gets the full re-check budget again, even if
+    // an earlier one spent it.
+    if (result.kind === 'accepted') this.resetRetryBudget(inbox);
     // The turn may have ended before this committed: look once now.
     this.drive(inbox, false);
     return {
@@ -662,8 +694,8 @@ export class ThreadInboxDelivery {
   /**
    * Every retained entry of the conversation, in the order they are sent.
    * The key of someone else's entry that may still be sent (`queued`,
-   * `sending`) is left out for `viewerUserId`: knowing it, a send under the
-   * same key would take the turn the entry is waiting for.
+   * `sending`, or `unconfirmed`, which a later drive may queue again) is
+   * left out for `viewerUserId`.
    */
   list(
     conversationId: string,
@@ -678,13 +710,35 @@ export class ThreadInboxDelivery {
       );
       if (
         viewerUserId === undefined ||
-        (entry.state !== 'queued' && entry.state !== 'placing') ||
+        !MAY_STILL_SEND.has(entry.state) ||
         decodePayload(entry.payload)?.actor.userId === viewerUserId
       )
         return projected;
       const { clientTurnId: _hidden, ...withoutKey } = projected;
       return withoutKey;
     });
+  }
+
+  /**
+   * Whether the inbox holds `clientTurnId` for someone other than `userId`
+   * in a state it may still send (`queued`, `sending`, `unconfirmed`). A
+   * live send under that key would take the turn claim the entry waits for,
+   * so `/chat` refuses it.
+   */
+  heldByOther(
+    conversationId: string,
+    clientTurnId: string,
+    userId: string,
+  ): boolean {
+    const record = this.ports.store.read(
+      this.inboxOf(conversationId),
+      clientTurnId,
+    );
+    return (
+      record !== undefined &&
+      MAY_STILL_SEND.has(record.state) &&
+      decodePayload(record.payload)?.actor.userId !== userId
+    );
   }
 
   /** One entry as `list` shows it. */
@@ -760,6 +814,7 @@ export class ThreadInboxDelivery {
   private refusalFor(
     conversationId: string,
     payload: ThreadInboxPayload,
+    since: number,
   ): PlacementOutcome | undefined {
     if (!this.ports.mayContinue(conversationId, payload.actor.userId))
       return {
@@ -770,7 +825,7 @@ export class ThreadInboxDelivery {
     const actor = payload.clientOrigin?.actor;
     if (
       actor?.kind === 'device' &&
-      this.ports.deviceMaySend?.(actor.deviceId) !== true
+      this.ports.deviceMaySend?.(actor.deviceId, since) !== true
     )
       return {
         reasonCode: 'device_not_permitted',
@@ -845,6 +900,7 @@ export class ThreadInboxDelivery {
   /** The start, bounded: past the deadline it may still reach the engine. */
   private async startWithin(
     conversationId: string,
+    clientTurnId: string,
     work: Promise<SessionStartResult>,
   ): Promise<SessionStartResult | typeof DEADLINE> {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -859,12 +915,21 @@ export class ThreadInboxDelivery {
     work.catch(() => undefined);
     try {
       const answer = await Promise.race([work, deadline]);
-      // Abandoned at its deadline: when it does answer, read the ledger again.
-      if (answer === DEADLINE)
-        void work.then(
-          () => this.drive(conversationId, false),
-          () => this.drive(conversationId, false),
-        );
+      // Abandoned at its deadline but still running: no Session holding the
+      // key does not mean it may be queued again until it answers; then the
+      // ledger is read again.
+      if (answer === DEADLINE) {
+        const keys = this.abandoned.get(conversationId) ?? new Set<string>();
+        keys.add(clientTurnId);
+        this.abandoned.set(conversationId, keys);
+        const answered = () => {
+          keys.delete(clientTurnId);
+          if (keys.size === 0 && this.abandoned.get(conversationId) === keys)
+            this.abandoned.delete(conversationId);
+          this.drive(conversationId, false);
+        };
+        void work.then(answered, answered);
+      }
       return answer;
     } finally {
       clearTimeout(timer);
@@ -875,7 +940,8 @@ export class ThreadInboxDelivery {
    * An entry abandoned at its start deadline, judged again from the ledger:
    * `started` anywhere settles it `placed`; no Session holding the key (the
    * abandoned start never claimed it, or was refused cleanly) queues it
-   * again. Anything else leaves it `unconfirmed`. Returns whether it moved.
+   * again, but only once a start this process abandoned has answered.
+   * Anything else leaves it `unconfirmed`. Returns whether it moved.
    */
   private resolveAbandoned(
     conversationId: string,
@@ -893,7 +959,13 @@ export class ThreadInboxDelivery {
       );
       return true;
     }
-    if (held?.outcome === 'not-received') {
+    // `not-received` proves nothing while the abandoned start still runs in
+    // this process (a cold start claims the key only once its Session
+    // exists): queuing it again would start it a second time alongside it.
+    if (
+      held?.outcome === 'not-received' &&
+      !this.abandoned.get(conversationId)?.has(head.key)
+    ) {
       this.ports.store.resolveUnconfirmed(head, 'queued', {}, this.now());
       return true;
     }
@@ -957,7 +1029,7 @@ export class ThreadInboxDelivery {
       }
       // The live send's own rule, checked again: a sender or device that
       // lost the right since it queued is refused, and nothing is sent.
-      const refusal = this.refusalFor(conversationId, payload);
+      const refusal = this.refusalFor(conversationId, payload, entry.createdAt);
       if (refusal) {
         store.settle(entry, 'refused', refusal, this.now());
         continue;
@@ -969,6 +1041,7 @@ export class ThreadInboxDelivery {
         // again into a successor Session.
         started = await this.startWithin(
           conversationId,
+          entry.key,
           startUnlessDelivered({
             conversationId,
             inspect: () =>
@@ -1047,7 +1120,7 @@ export class ThreadInboxDelivery {
   /**
    * The periodic re-check, one pending per conversation: the delays in
    * order, then the last one again, at most `max(delays, maxRetries)` firings
-   * in all until a placement resets the count. It runs only while the inbox
+   * in all until a placement or a newly accepted message resets the count. It runs only while the inbox
    * still holds a waiting entry. It covers a busy flag that outlives its
    * terminal, a start that ends with no terminal event, and a drive that
    * failed mid-placement (`redrive`).
@@ -1091,6 +1164,12 @@ export class ThreadInboxDelivery {
     );
     timer.unref?.();
     state.timer = timer;
+  }
+
+  /** A new message: the re-check count starts again; a pending timer stays. */
+  private resetRetryBudget(conversationId: string): void {
+    const retry = this.retries.get(conversationId);
+    if (retry) retry.fired = 0;
   }
 
   private clearRetry(conversationId: string): void {

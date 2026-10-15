@@ -987,4 +987,148 @@ describe('thread inbox (#3568)', () => {
       },
     ]);
   });
+
+  test('R3-1: a start abandoned at its deadline but still running is never started again alongside it', async () => {
+    let calls = 0;
+    let inFlight = 0;
+    let maxInFlight = 0;
+    let world: World | undefined;
+    world = boot(path(), {
+      placementDeadlineMs: 50,
+      // A cold start: nothing claims the key until the Session is there, so
+      // for the first 400 ms the ledger reads `not-received`.
+      start: async ({ threadId, payload: sent, clientTurnId }) => {
+        calls += 1;
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        try {
+          if (calls === 1)
+            await new Promise((resolve) => setTimeout(resolve, 400));
+          const result = (await world!.service.dispatch({
+            type: 'sendTurn',
+            input: { threadId, input: sent.message, clientTurnId },
+          })) as ProviderTurnStartResult;
+          return {
+            outcome: 'started',
+            conversationId: threadId,
+            sessionId: threadId,
+            turnId: result.turnId,
+          };
+        } finally {
+          inFlight -= 1;
+        }
+      },
+    });
+    await runningFirstTurn(world);
+    queueFollowUp(world);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await eventuallyTrue(
+      () => world!.inbox.list(THREAD)[0]?.state === 'unconfirmed',
+      1_000,
+    );
+    // Drives while the abandoned start is still held.
+    for (let index = 0; index < 3; index += 1) {
+      await emit(world, 'session.state-changed', {
+        sessionId: THREAD,
+        state: 'ready',
+      });
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    expect(calls).toBe(1);
+    await eventuallyTrue(
+      () => world!.inbox.list(THREAD)[0]?.state === 'sent',
+      3_000,
+    );
+    await settle(world);
+    expect(maxInFlight).toBe(1);
+    expect(calls).toBe(1);
+    expect(followUpSends()).toEqual([FOLLOW_UP]);
+  });
+
+  test("R3-4: someone else's unconfirmed entry is listed without its key, and its key reads as held", async () => {
+    const READER = 'human:local:reader';
+    permitted.add(READER);
+    const world = boot(path(), {
+      placementDeadlineMs: 50,
+      start: async () => new Promise(() => {}),
+    });
+    await runningFirstTurn(world);
+    queueFollowUp(world, 'owner-key');
+    expect(world.inbox.heldByOther(THREAD, 'owner-key', READER)).toBe(true);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    await settle(world);
+    expect(world.inbox.list(THREAD, OWNER)).toMatchObject([
+      { clientTurnId: 'owner-key', state: 'unconfirmed' },
+    ]);
+    const asReader = world.inbox.list(THREAD, READER);
+    expect(asReader).toMatchObject([{ state: 'unconfirmed' }]);
+    expect(asReader[0]).not.toHaveProperty('clientTurnId');
+    expect(world.inbox.heldByOther(THREAD, 'owner-key', READER)).toBe(true);
+    expect(world.inbox.heldByOther(THREAD, 'owner-key', OWNER)).toBe(false);
+    // Dismissed, it may never be sent, and the key is no longer held.
+    expect(world.inbox.cancel(THREAD, 'owner-key', READER).kind).toBe(
+      'cancelled',
+    );
+    expect(world.inbox.heldByOther(THREAD, 'owner-key', READER)).toBe(false);
+  });
+
+  test.each([
+    'continuation_workspace_project_context_missing',
+    'continuation_workspace_corrupt_worktree_binding',
+    'continuation_workspace_worktree_gone',
+    'continuation_workspace_different_project',
+    'continuation_workspace_worktree_moved',
+  ])(
+    'R3-5: a continuation workspace refusal keeps its code %s',
+    async (code) => {
+      const world = boot(path(), {
+        start: async () => {
+          throw Object.assign(new Error('workspace detail'), { code });
+        },
+      });
+      await runningFirstTurn(world);
+      queueFollowUp(world);
+      await emit(world, 'turn.completed', { turnId: 'turn-1' });
+      await settle(world);
+      expect(world.inbox.list(THREAD)).toMatchObject([
+        {
+          state: 'refused',
+          reasonCode: code,
+          reason: 'Station could not send this message. Nothing was sent.',
+        },
+      ]);
+    },
+  );
+
+  test('R3-6: a newly accepted message gets the re-check budget again; a resubmit does not', async () => {
+    let calls = 0;
+    const world = boot(path(), {
+      retryDelaysMs: [5],
+      maxRetries: 3,
+      start: async () => {
+        calls += 1;
+        throw Object.assign(new Error('starting'), {
+          code: 'provider_session_starting',
+        });
+      },
+    });
+    await runningFirstTurn(world);
+    queueFollowUp(world, 'a');
+    // Reaches `expected`, then stays there: nothing more is scheduled.
+    const callsSettleAt = async (expected: number) => {
+      await eventuallyTrue(() => calls >= expected, 3_000);
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await world.inbox.idle();
+      expect(calls).toBe(expected);
+    };
+    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    // The terminal's drive and three firings: the budget is spent.
+    await callsSettleAt(4);
+    // The same submission again is not a new message: one drive, no firing.
+    expect(queueFollowUp(world, 'a').outcome).toBe('queued');
+    await callsSettleAt(5);
+    // A new key: its submit's drive, then three firings again.
+    expect(queueFollowUp(world, 'b').outcome).toBe('queued');
+    await callsSettleAt(9);
+  });
 });

@@ -4455,8 +4455,8 @@ export function configureRuntimeRoutes(
           service.canUserReadSession(conversationId, authority)
         );
       },
-      deviceMaySend: (deviceId) =>
-        context.environmentSecurityService.deviceMaySendChat(deviceId),
+      deviceMaySend: (deviceId, since) =>
+        context.environmentSecurityService.deviceMaySendChat(deviceId, since),
       inspectDelivery: (conversationId, clientTurnId) =>
         service.inspectTurnDelivery(
           conversationId,
