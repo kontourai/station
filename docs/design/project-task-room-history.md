@@ -24,7 +24,15 @@ is the awaitable worker/SQLite settlement seam; the still-synchronous
 A response timeout, worker error, exit, or broken worker protocol settles all
 in-flight storage requests as `unavailable`. The adapter terminates that worker
 and waits for its connection to close before a later request lazily starts a
-replacement. Each request can start at most one worker; failed operations are
+replacement. Requests wait for the latest retirement even if a concurrent
+failure replaces it during a microtask. Retirement waits, including `close()`,
+are bounded by the five-second worker response budget; a timeout returns
+`unavailable` without starting a replacement. A rejected termination also
+settles as `unavailable`. For one second after a generation fails, requests
+return `unavailable` without spawning a worker. This caps repeated startup,
+migration and WAL setup at one attempt per second per history during polling
+storms while allowing recovery on the next poll after the cooldown and
+retirement complete. Each request can start at most one worker; failed operations are
 never automatically replayed, and there is no background restart loop. Closing
 the history disables replacement. This recovers availability after a worker
 failure; it does not remove contention with synchronous main-thread writers on

@@ -48,6 +48,8 @@ export const PROJECT_TASK_ROOM_LIMITS = Object.freeze({
   workerResponseMs: 5_000,
 });
 const ROOM_WRITE_ADMISSION_MS = 1_000;
+// Cap failed-worker startup/migration churn at one attempt per second per history.
+const WORKER_FAILURE_COOLDOWN_MS = 1_000;
 
 /**
  * How long the room worker waits for SQLite's write lock before a request
@@ -994,23 +996,51 @@ function createWorkerStorage(
   let retiring: Promise<unknown> = Promise.resolve();
   let closed = false;
   let failedOnce = false;
+  let retryAfter = 0;
+
+  async function waitForRetirement(
+    observed: Promise<unknown>,
+  ): Promise<boolean> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const timeout = new Promise<false>((resolve) => {
+        timer = setTimeout(
+          () => resolve(false),
+          PROJECT_TASK_ROOM_LIMITS.workerResponseMs,
+        );
+      });
+      return await Promise.race([observed.then(() => true), timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 
   return {
     async request(value, beforeCommit) {
-      await retiring;
-      if (closed) return { kind: 'unavailable' };
+      if (closed || performance.now() < retryAfter)
+        return { kind: 'unavailable' };
+      let observed: Promise<unknown>;
+      do {
+        observed = retiring;
+        if (!(await waitForRetirement(observed)))
+          return { kind: 'unavailable' };
+      } while (observed !== retiring);
+      if (closed || performance.now() < retryAfter)
+        return { kind: 'unavailable' };
       if (!current) {
         try {
           const generation = createGeneration(() => {
             if (closed || current !== generation) return;
             current = undefined;
             failedOnce = true;
+            retryAfter = performance.now() + WORKER_FAILURE_COOLDOWN_MS;
             // Release the old connection before a later request starts a worker.
-            retiring = generation.close();
+            retiring = generation.close().catch(() => undefined);
           });
           current = generation;
         } catch {
           failedOnce = true;
+          retryAfter = performance.now() + WORKER_FAILURE_COOLDOWN_MS;
           return { kind: 'unavailable' };
         }
       }
@@ -1019,9 +1049,17 @@ function createWorkerStorage(
     },
     async close() {
       closed = true;
-      await retiring;
-      return current
-        ? current.close()
+      const generation = current;
+      current = undefined;
+      if (generation) retiring = generation.close().catch(() => undefined);
+      let observed: Promise<unknown>;
+      do {
+        observed = retiring;
+        if (!(await waitForRetirement(observed)))
+          return { kind: 'unavailable' };
+      } while (observed !== retiring);
+      return generation
+        ? { kind: isKind(await retiring, 'closed') ? 'closed' : 'unavailable' }
         : { kind: failedOnce ? 'unavailable' : 'closed' };
     },
   };
@@ -1040,6 +1078,7 @@ function createWorkerStorage(
         databasePath,
         ...limits,
         lockWaitMs,
+        // Test-only once faults re-arm for each replacement generation.
         faultAfterCommitOnce,
         unavailableAfterCommitOnce,
       },
@@ -1078,7 +1117,6 @@ function createWorkerStorage(
           (message.phase !== 'authorize' && message.phase !== 'admit-new-write')
         ) {
           failAll();
-          void worker.terminate();
           return;
         }
         const entry = pending.get(message.id as number);
@@ -1111,7 +1149,6 @@ function createWorkerStorage(
       }
       if (!isPlainOwn(message, ['id', 'result'])) {
         failAll();
-        void worker.terminate();
         return;
       }
       const id = (message as { id: unknown }).id;

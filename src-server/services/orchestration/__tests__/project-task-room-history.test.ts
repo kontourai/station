@@ -37,6 +37,50 @@ import { createProjectTaskRoomWorkingState } from '../project-task-room-working-
 import { SessionExecutionCoordinator } from '../session-execution-coordinator.js';
 import { runSessionStartWithBoundary } from '../session-turn-boundary.js';
 
+const workerConstructions = vi.hoisted(() => ({ count: 0 }));
+// Track construction while retaining the real worker and SQLite implementation.
+vi.mock('node:worker_threads', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:worker_threads')>();
+  return {
+    ...actual,
+    Worker: new Proxy(actual.Worker, {
+      construct(target, args, newTarget) {
+        workerConstructions.count += 1;
+        return Reflect.construct(target, args, newTarget);
+      },
+    }),
+  };
+});
+
+function delayWorkerTermination() {
+  const terminate = Worker.prototype.terminate;
+  let release!: () => void;
+  let started!: () => void;
+  let termination: Promise<number> | undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const entered = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const spy = vi
+    .spyOn(Worker.prototype, 'terminate')
+    .mockImplementationOnce(function (this: Worker) {
+      started();
+      termination = gate.then(() => terminate.call(this));
+      return termination;
+    });
+  return {
+    entered,
+    release,
+    async finish() {
+      release();
+      await termination;
+      spy.mockRestore();
+    },
+  };
+}
+
 const TEST_RETENTION = 16;
 function sortJson(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortJson);
@@ -1666,6 +1710,7 @@ describe('ProjectTaskRoomHistory v2', () => {
         kind: 'unavailable',
       });
       expect(contention).toMatchObject({ message: 'database is locked' });
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
       const recovered = await room.open({ grant: grant('discover') });
       expect(['opened', 'existing']).toContain(recovered.kind);
       writer.exec('INSERT INTO main_thread_writes VALUES (2)');
@@ -1704,6 +1749,7 @@ describe('ProjectTaskRoomHistory v2', () => {
         { kind: 'unavailable' },
       ]);
       transport.mockRestore();
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
       await expect(
         room.open({ grant: grant('discover') }),
       ).resolves.toMatchObject({
@@ -1720,6 +1766,238 @@ describe('ProjectTaskRoomHistory v2', () => {
       });
     } finally {
       transport?.mockRestore();
+      await room.close();
+    }
+  });
+
+  it('does not construct a replacement until the retired real worker finishes terminating', async () => {
+    const room = history();
+    await room.open({ grant: grant('discover') });
+    const constructions = workerConstructions.count;
+    const retirement = delayWorkerTermination();
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(10_000);
+    const transport = vi
+      .spyOn(Worker.prototype, 'postMessage')
+      .mockImplementationOnce(() => {
+        throw new Error('transport failed');
+      });
+    let replacement: Promise<unknown> | undefined;
+    try {
+      await expect(
+        room.read({ grant: grant('history-read') }),
+      ).resolves.toEqual({ kind: 'unavailable' });
+      await retirement.entered;
+      transport.mockRestore();
+      clock.mockReturnValue(11_000);
+      let settled = false;
+      replacement = room
+        .read({ grant: grant('history-read') })
+        .then((result) => {
+          settled = true;
+          return result;
+        });
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(
+        workerConstructions.count,
+        'replacement constructed before termination',
+      ).toBe(constructions);
+      expect(settled, 'replacement request settled before termination').toBe(
+        false,
+      );
+      retirement.release();
+      await expect(replacement).resolves.toMatchObject({
+        kind: 'available',
+        records: [],
+      });
+      expect(workerConstructions.count).toBe(constructions + 1);
+    } finally {
+      transport.mockRestore();
+      await retirement.finish();
+      await replacement;
+      clock.mockRestore();
+      await room.close();
+    }
+  });
+
+  it('rechecks retirement when a sibling transport failure replaces it in the same microtask turn', async () => {
+    const room = history();
+    await room.open({ grant: grant('discover') });
+    const constructions = workerConstructions.count;
+    const retirement = delayWorkerTermination();
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(10_000);
+    const transport = vi
+      .spyOn(Worker.prototype, 'postMessage')
+      .mockImplementationOnce(() => {
+        // The failure records 10s; the sibling resumes after the cooldown at 11s.
+        clock.mockReturnValueOnce(10_000).mockReturnValue(11_000);
+        throw new Error('sibling transport failed');
+      });
+    let sibling: Promise<unknown> | undefined;
+    try {
+      const first = room.read({ grant: grant('history-read') });
+      let settled = false;
+      sibling = room.read({ grant: grant('history-read') }).then((result) => {
+        settled = true;
+        return result;
+      });
+      await expect(first).resolves.toEqual({ kind: 'unavailable' });
+      await retirement.entered;
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(
+        workerConstructions.count,
+        'sibling constructed a worker against a stale retirement',
+      ).toBe(constructions);
+      expect(settled, 'sibling skipped the new retirement').toBe(false);
+      transport.mockRestore();
+      retirement.release();
+      await expect(sibling).resolves.toMatchObject({
+        kind: 'available',
+        records: [],
+      });
+      expect(workerConstructions.count).toBe(constructions + 1);
+    } finally {
+      transport.mockRestore();
+      await retirement.finish();
+      await sibling;
+      clock.mockRestore();
+      await room.close();
+    }
+  });
+
+  it('bounds later requests and close when worker termination never settles', async () => {
+    const room = history();
+    await room.open({ grant: grant('discover') });
+    const constructions = workerConstructions.count;
+    const retirement = delayWorkerTermination();
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(10_000);
+    const transport = vi
+      .spyOn(Worker.prototype, 'postMessage')
+      .mockImplementationOnce(() => {
+        throw new Error('transport failed');
+      });
+    try {
+      await expect(
+        room.read({ grant: grant('history-read') }),
+      ).resolves.toEqual({ kind: 'unavailable' });
+      await retirement.entered;
+      transport.mockRestore();
+      clock.mockReturnValue(11_000);
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+      let readResult: unknown;
+      let closeResult: unknown;
+      const read = room
+        .read({ grant: grant('history-read') })
+        .then((result) => {
+          readResult = result;
+        });
+      await new Promise((resolve) => setImmediate(resolve));
+      const closing = room.close().then((result) => {
+        closeResult = result;
+      });
+      await vi.advanceTimersByTimeAsync(
+        PROJECT_TASK_ROOM_LIMITS.workerResponseMs,
+      );
+      expect(readResult, 'request exceeded the retirement budget').toEqual({
+        kind: 'unavailable',
+      });
+      expect(closeResult, 'close exceeded the retirement budget').toEqual({
+        kind: 'unavailable',
+      });
+      await Promise.all([read, closing]);
+      expect(workerConstructions.count).toBe(constructions);
+    } finally {
+      vi.useRealTimers();
+      transport.mockRestore();
+      await retirement.finish();
+      clock.mockRestore();
+      await room.close();
+    }
+  });
+
+  it('contains a rejected worker termination and allows later recovery', async () => {
+    const room = history();
+    await room.open({ grant: grant('discover') });
+    const terminate = Worker.prototype.terminate;
+    const retirement = vi
+      .spyOn(Worker.prototype, 'terminate')
+      .mockImplementationOnce(async function (this: Worker) {
+        await terminate.call(this);
+        throw new Error('termination rejected after exit');
+      });
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(10_000);
+    const transport = vi
+      .spyOn(Worker.prototype, 'postMessage')
+      .mockImplementationOnce(() => {
+        throw new Error('transport failed');
+      });
+    try {
+      await expect(
+        room.read({ grant: grant('history-read') }),
+      ).resolves.toEqual({ kind: 'unavailable' });
+      transport.mockRestore();
+      // Await the actual rejected terminate result so the recovery sees its rejection.
+      await expect(retirement.mock.results[0].value).rejects.toThrow(
+        'termination rejected after exit',
+      );
+      clock.mockReturnValue(11_000);
+      await expect(
+        room.read({ grant: grant('history-read') }),
+      ).resolves.toMatchObject({ kind: 'available', records: [] });
+    } finally {
+      transport.mockRestore();
+      retirement.mockRestore();
+      clock.mockRestore();
+      await room.close();
+    }
+  });
+
+  it('refuses poll storms for one second after failure without constructing workers', async () => {
+    const room = history();
+    await room.open({ grant: grant('discover') });
+    const constructions = workerConstructions.count;
+    const retirement = delayWorkerTermination();
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(10_000);
+    const transport = vi
+      .spyOn(Worker.prototype, 'postMessage')
+      .mockImplementationOnce(() => {
+        throw new Error('transport failed');
+      });
+    try {
+      await expect(
+        room.read({ grant: grant('history-read') }),
+      ).resolves.toEqual({ kind: 'unavailable' });
+      transport.mockRestore();
+      const polls = () =>
+        Promise.all(
+          Array.from({ length: 20 }, () =>
+            room.read({ grant: grant('history-read') }),
+          ),
+        );
+      let duringRetirement: unknown;
+      const storm = polls().then((results) => {
+        duringRetirement = results;
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(duringRetirement, 'cooldown polls waited for termination').toEqual(
+        Array.from({ length: 20 }, () => ({ kind: 'unavailable' })),
+      );
+      await storm;
+      clock.mockReturnValue(10_999);
+      expect(await polls()).toEqual(
+        Array.from({ length: 20 }, () => ({ kind: 'unavailable' })),
+      );
+      expect(workerConstructions.count).toBe(constructions);
+      clock.mockReturnValue(11_000);
+      retirement.release();
+      const recovered = await polls();
+      expect(recovered.every((result) => result.kind === 'available')).toBe(
+        true,
+      );
+      expect(workerConstructions.count).toBe(constructions + 1);
+    } finally {
+      transport.mockRestore();
+      await retirement.finish();
+      clock.mockRestore();
       await room.close();
     }
   });
