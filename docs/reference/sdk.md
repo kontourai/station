@@ -4371,7 +4371,7 @@ for the independent Device and peer choices and current trusted-session limits.
 
 ### Keyed orchestration input conflicts
 
-Existing keyed foreground, background and continuation sends can return HTTP
+Existing keyed foreground, background, continuation and explicit handoff sends can return HTTP
 409 with `code: client_turn_input_conflict` when the key already names different
 submitted input. Execution callers receive `ChatHttpError` with that status and
 code; no new provider turn is accepted. Resubmit the original input to replay its
