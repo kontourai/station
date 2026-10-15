@@ -21,6 +21,7 @@ must not be confused with permission to run a local service.
 | Problem | Change | Acceptance boundary |
 | --- | --- | --- |
 | Codex Instructions locks after one character | Validate authored instructions against system or first-message delivery; keep warnings editable | Stateful editor typing/clearing, real new Codex chat, first-turn runtime receipt |
+| Phone Coding splits chat from an empty work area | Keep chat in the central workbench; preserve ambient dock and app toolbar ownership | Single-controller integration and actual Safari keyboard captures |
 | Coding composer falls below viewport | Bound layout route height, preserve flowing page scroll | Long transcript browser geometry and app at 1280 × 800; Settings remains scrollable |
 | Header mixes conversation, assistant and future-project context | Title above assistant/model; running chats use a real menu; mobile future-project choice moves to actions | 280–850px real CSS, keyboard menu, phone title/actions |
 | Agent Chat action forgets the clicked Agent | Use typed selection including its owning Project | Real rail action through production parser; baseline red, fixed and mutation/restoration |

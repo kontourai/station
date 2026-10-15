@@ -297,3 +297,12 @@ for controlled geometry. Its simulated keyboard does not replace a real
 browser/native keyboard run. The [testing guide](testing.md) explains how to
 record PASS, FAIL and NOT_VERIFIED without turning missing prerequisites into
 success.
+
+### Coding on a phone
+
+The built-in Coding layout keeps Chat in its workbench at phone widths, with
+Files, Diff, and Terminal available as drill-ins. It suspends the ambient chat
+controller and leaves unrelated dock state intact. Its chat header does not
+repeat the app toolbar’s navigation and Station controls. VisualViewport fitting
+bounds the workbench above the on-screen keyboard; actual device and browser
+checks remain necessary.
