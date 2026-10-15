@@ -33,12 +33,15 @@ the list's Discard… withdraw it only after the shared confirmation, which says
 that a message which already arrived cannot be taken back. Every open window
 re-reads the queue's finished keys on the cross-window change channel and when it
 comes back into view, so a discard in one window removes the bubble in all.
-That channel refreshes what a window shows. It starts a send there only when the
-refreshed list holds a message that window may send now (for example, one held
-back by another window's send that has since settled, even if that window then
-closed), and that send never re-holds the window's queued follow-ups (which would
-take back a follow-up a duplicated tab also holds, and that tab would do the
-same in turn). A send another window has claimed reads "Sending", with no Check,
+That channel refreshes what a window shows. It starts a send there only when a
+message the window could not send before, because an earlier message of its chat
+went first, now can (for example, the other window's send that held it back has
+settled, even if that window then closed). A message that could not be sent for
+another reason, such as a turn still running, is not retried on every notice. That
+send only sends: it asks Station about nothing and never re-holds the window's
+queued follow-ups (which would take back a follow-up a duplicated tab also holds,
+and that tab would do the same in turn). A queued message tried while a turn is
+still running waits without using up one of its attempts. A send another window has claimed reads "Sending", with no Check,
 only while that window is proven running (it holds its renderer lock); a claim
 left by a window that closed or crashed reads "No answer yet" like its bubble,
 with Check and Discard…, and the discard checks again that the window is gone.
