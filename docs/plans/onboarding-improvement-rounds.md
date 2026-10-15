@@ -121,8 +121,8 @@ from Safari simulator evidence and physical-device acceptance.
 
 The final recovery pass retires superseded history-capability requests before
 they can consume recovery attempts or create orphaned timers. Optional MCP
-prompt lookups now cancel with their query, retain HTTP error metadata and the
-existing request deadline, and do not retry automatically.
+prompt lookups now cancel with their query, retain HTTP error metadata, apply
+a 30-second request deadline, and do not retry automatically.
 
 At `987c661c12a`, 75 focused checks passed; restoring the old production owners
 caused six intended failures, and restoration passed all 75 again. Independent
