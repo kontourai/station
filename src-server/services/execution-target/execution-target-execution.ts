@@ -94,6 +94,13 @@ export interface ForegroundMessageInput {
   ambientContext?: string;
   clientTurnId?: string;
   /**
+   * #3568: stops only the bounded wait a same-key retry spends joining
+   * another attempt's turn, when the caller goes away. The route passes its
+   * request's signal here. It is never a send's signal: a send must still go
+   * through once Station has it (`sendTurn`'s own `signal` contract).
+   */
+  joinWaitSignal?: AbortSignal;
+  /**
    * #2436: an approval-posture decision this send carries (made before the
    * chat had a session, or while its client was offline). It is recorded
    * BEFORE this send's session start and turn, so the spawn is already in it,
@@ -390,6 +397,7 @@ export interface ExecutionTargetExecutionDependencies
     access: EnvironmentAccess,
     sessionId: string,
     clientTurnId: string,
+    signal?: AbortSignal,
   ) => Promise<
     | { outcome: 'started'; turnId: string }
     | { outcome: 'indeterminate' | 'in-flight' }
@@ -771,6 +779,7 @@ export async function executeForegroundMessage(
         resolved.access,
         holder,
         clientTurnId,
+        input.joinWaitSignal,
       );
       decision =
         joined.outcome === 'started'

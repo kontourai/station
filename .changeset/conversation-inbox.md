@@ -12,6 +12,9 @@ gains the `queued` outcome, and the new `ConversationInboxEntry` describes a
 held message. The SDK adds `queueExecutionMessage`, `listConversationInbox` and
 `cancelConversationInboxEntry`. Contracts export
 `CONTINUATION_WORKSPACE_REFUSAL_CODES`, the codes a continuation refused for
-its persisted workspace answers with (and a held message's `reasonCode`). A Station that predates the inbox ignores
+its persisted workspace answers with (and a held message's `reasonCode`).
+A refused send whose key another attempt still holds (`client_turn_in_flight`)
+now answers `409` rather than `400` on `/chat` and `/chat/:id/continue`; the
+code is unchanged and still means retry with the same key. A Station that predates the inbox ignores
 `whenBusy` and refuses a busy send as before, so keep the message on that
 refusal.

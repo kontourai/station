@@ -4948,12 +4948,14 @@ export class OrchestrationService {
   async joinHeldTurnKey(
     sessionId: string,
     clientTurnId: string,
+    /** Stops only this wait (the caller went away); nothing is sent either way. */
+    signal?: AbortSignal,
   ): Promise<
     | { outcome: 'started'; turnId: string }
     | { outcome: 'indeterminate' | 'in-flight' }
   > {
     this.initialize();
-    const held = await this.awaitHeldTurnKey(sessionId, clientTurnId);
+    const held = await this.awaitHeldTurnKey(sessionId, clientTurnId, signal);
     if (held.kind === 'turn')
       return { outcome: 'started', turnId: held.turnId };
     return {

@@ -1181,6 +1181,8 @@ interface ForegroundMessageRequest {
   }) => ChatAttachmentInput[];
   ambientContext?: string;
   clientTurnId?: string;
+  /** #3568: stops only a same-key retry's join wait (`ForegroundMessageInput.joinWaitSignal`). */
+  joinWaitSignal?: AbortSignal;
   /** #2436: see `ForegroundMessageInput.setApprovalMode`. */
   setApprovalMode?: ApprovalMode;
   setApprovalModeBasedOn?: number | null;
@@ -1210,6 +1212,8 @@ interface ForegroundMessageRequest {
 
 interface ContinueForegroundMessageRequest {
   conversationId: string;
+  /** #3568: stops only a same-key retry's join wait (`ForegroundMessageInput.joinWaitSignal`). */
+  joinWaitSignal?: AbortSignal;
   environment?: EnvironmentRef;
   model?: ExecutionModelRequest;
   /** #2436: see `ForegroundMessageInput.setApprovalMode`. */
@@ -2646,6 +2650,8 @@ export function createOrchestrationRoutes(
         // #2873: the scope decision above, run again where the engine spawns.
         ...(scoped.spawn ? { dispatchCwdAdmission: scoped.spawn } : {}),
         clientOrigin: resolveClientOriginForRequest(c.req.raw),
+        // Only the join wait a same-key retry may spend; never the send.
+        joinWaitSignal: c.req.raw.signal,
       } as ForegroundMessageRequest;
       // #3568: a follow-up to a busy conversation waits in its inbox rather
       // than being refused. Only for a caller that may read the conversation,
@@ -3355,6 +3361,8 @@ export function createOrchestrationRoutes(
           ownerAttribution,
           fullAccessGrant,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
+          // Only the join wait a same-key retry may spend; never the send.
+          joinWaitSignal: c.req.raw.signal,
         });
         if (!isForegroundDispatchHandle(data)) {
           return c.json(

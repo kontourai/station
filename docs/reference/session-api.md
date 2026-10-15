@@ -195,8 +195,8 @@ the retry carries are bound to that turn. A key another attempt still holds
 joins that attempt: the retry waits (bounded) for its turn and answers with
 it, or is refused `409` with the retryable `code: "client_turn_in_flight"` if
 it does not resolve in time. That includes a claim the delivery lookup calls
-`indeterminate` only because it is old, while its owner lives (#3660): it may
-still deliver. Only a key that may have reached the agent with nothing left
+`indeterminate` only because it is old, its owner alive or unknown (#3660): it
+may still deliver. Only a key that may have reached the agent with nothing left
 to resolve it (the attempt gave it up after a possible effect, its process
 died after it may have invoked the engine, or its record expired) is refused
 `409` with `code: "foreground_message_indeterminate"`. Nothing new is sent in
@@ -285,7 +285,10 @@ restart the old send is gone, and the ledger decides). While a held message
 waits on a Session that is starting, Station looks again when the Session
 reports a change, and on a schedule (2, 10, 30 and 120 seconds, then every two
 minutes): at most 30 such re-checks until a message is sent or a new one is
-accepted.
+accepted. A held message whose key another attempt still holds, including a
+claim that is only old (owner alive or unknown, which may still deliver),
+stays `queued` and is never sent twice. It holds the messages behind it until
+that attempt resolves or its sender withdraws it.
 
 ```
 GET    /api/orchestration/conversations/<conversationId>/inbox

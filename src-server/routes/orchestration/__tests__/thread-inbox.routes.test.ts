@@ -323,8 +323,8 @@ describe('POST /chat whenBusy queue (#3568)', () => {
           INTERNAL_SESSION_READ_SCOPE,
         ),
       // As production composes it (station-control-delegation.ts).
-      joinConversationTurnKey: (_access, sessionId, clientTurnId) =>
-        service.joinHeldTurnKey(sessionId, clientTurnId),
+      joinConversationTurnKey: (_access, sessionId, clientTurnId, signal) =>
+        service.joinHeldTurnKey(sessionId, clientTurnId, signal),
       resolveEnvironmentAccess: async () => ({
         apiBase: 'http://inbox.station',
         environmentId: ENVIRONMENT,
@@ -602,7 +602,25 @@ describe('POST /chat whenBusy queue (#3568)', () => {
           )
         ).json()) as { data: Record<string, unknown> }
       ).data;
+    /** `send`, with the request's own abort signal. */
+    const sendAbortable = (
+      clientTurnId: string,
+      message: string,
+      signal: AbortSignal,
+    ) =>
+      app.request('/api/orchestration/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        signal,
+        body: JSON.stringify({
+          message,
+          conversationId: CONVERSATION,
+          clientTurnId,
+          target: { environment: { kind: 'current' }, agent: AGENT },
+        }),
+      });
     return {
+      sendAbortable,
       continueRefusal,
       lookupData,
       sendTurnGate,
@@ -1394,5 +1412,37 @@ describe('POST /chat whenBusy queue (#3568)', () => {
       status: 200,
       body: { data: { providerTurnId: firstTurn } },
     });
+  });
+
+  test('R8-2: a same-key retry joining another attempt stops waiting when its request is aborted; nothing is sent', async () => {
+    const world = station();
+    expect((await world.send('first', 'read the file')).status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    world.adapter.holdNextSend = true;
+    const firstAttempt = world.send('k1', 'and then this');
+    await eventually(() => expect(world.adapter.releaseHeldSend).toBeDefined());
+    const abort = new AbortController();
+    let settled = false;
+    const retry = world
+      .sendAbortable('k1', 'and then this', abort.signal)
+      .then((response) => {
+        settled = true;
+        return response;
+      });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(settled).toBe(false);
+    abort.abort();
+    // It answers without the held attempt resolving (the join would otherwise
+    // wait for it, up to five minutes).
+    await eventually(() => expect(settled).toBe(true));
+    const answer = await retry;
+    expect(answer.status).toBe(409);
+    expect(await answer.json()).toMatchObject({
+      code: 'client_turn_in_flight',
+    });
+    world.adapter.releaseHeldSend?.();
+    expect((await firstAttempt).status).toBe(200);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(sendsOf(world, 'and then this')).toHaveLength(1);
   });
 });

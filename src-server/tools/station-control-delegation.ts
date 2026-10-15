@@ -6493,9 +6493,14 @@ export async function executeExecutionTargetMessage(
       _access: EnvironmentAccess,
       sessionId: string,
       clientTurnId: string,
+      signal?: AbortSignal,
     ) =>
       typeof orchestrationService.joinHeldTurnKey === 'function'
-        ? await orchestrationService.joinHeldTurnKey(sessionId, clientTurnId)
+        ? await orchestrationService.joinHeldTurnKey(
+            sessionId,
+            clientTurnId,
+            signal,
+          )
         : { outcome: 'in-flight' as const },
     resolveConversationSession: async (
       _access: EnvironmentAccess,

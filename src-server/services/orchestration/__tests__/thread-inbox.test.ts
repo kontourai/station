@@ -1208,4 +1208,45 @@ describe('thread inbox (#3568)', () => {
       1_000,
     );
   });
+
+  test('R8-1: a head whose key a live owner holds past the in-flight bound (age-only) stays queued, is never sent, and its sender can withdraw it', async () => {
+    let starts = 0;
+    const world = boot(path(), {
+      retryDelaysMs: [5],
+      maxRetries: 3,
+      // #3660: a live or unknown owner's claim this old may still deliver.
+      inspectDelivery: () => ({
+        outcome: 'indeterminate',
+        ageOnly: true,
+        sessionId: THREAD,
+      }),
+      start: async () => {
+        starts += 1;
+        return {
+          outcome: 'started',
+          conversationId: THREAD,
+          sessionId: THREAD,
+          turnId: 'never',
+        };
+      },
+    });
+    await runningFirstTurn(world);
+    queueFollowUp(world, 'a');
+    queueFollowUp(world, 'b');
+    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    // The terminal's drive and the bounded re-checks, all spent.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await world.inbox.idle();
+    expect(starts).toBe(0);
+    expect(world.inbox.list(THREAD)).toMatchObject([
+      { clientTurnId: 'a', state: 'queued' },
+      { clientTurnId: 'b', state: 'queued' },
+    ]);
+    // It holds the queue until it resolves or is withdrawn.
+    expect(world.inbox.cancel(THREAD, 'a', OWNER).kind).toBe('cancelled');
+    expect(world.inbox.list(THREAD)[0]).toMatchObject({
+      clientTurnId: 'a',
+      state: 'cancelled',
+    });
+  });
 });
