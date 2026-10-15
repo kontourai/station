@@ -179,57 +179,83 @@ test.describe('subagent transcript cards', () => {
     );
   });
 
-  test('a captured Codex spawn has one inline card without a tool row on desktop and full-screen mobile', async ({
-    page,
-  }, testInfo) => {
-    await page.setViewportSize({ width: 1280, height: 1100 });
-    await page.goto(`/?chat=${encodeURIComponent(CONVERSATION_ID)}`);
-    await dismissSetupLauncher(page);
-    await openChatRegion(page);
-    await waitForMockOrchestrationSse(page);
-    const captured = JSON.parse(
-      JSON.stringify(capturedCodexEvents[0]).replaceAll(
-        'thread-codex',
-        SESSION_ID,
-      ),
-    ) as Record<string, unknown>[];
-    for (const event of captured) await emit(page, event);
-    const card = page.getByTestId('subagent-card');
-    await expect(card).toHaveCount(1);
-    await expect(card.getByText('Completed')).toBeVisible();
-    await expect(card.getByText('gpt-5.5')).toBeVisible();
-    await expect(card.getByText('done', { exact: true })).toBeVisible();
-    await expect(card.locator('.subagent-card__elapsed')).toHaveText('0:05');
-    await card.scrollIntoViewIfNeeded();
-    await expectDockFits(page);
-    const desktopBox = await card.boundingBox();
-    expect(desktopBox).not.toBeNull();
-    expect(desktopBox!.x).toBeGreaterThanOrEqual(0);
-    expect(desktopBox!.x + desktopBox!.width).toBeLessThanOrEqual(1280);
-    await page.screenshot({
-      path: testInfo.outputPath('subagent-card-codex-desktop.png'),
+  for (const standalone of [false, true])
+    test(`a captured Codex ${standalone ? 'standalone' : 'inline'} card fits desktop and full-screen mobile`, async ({
+      page,
+    }, testInfo) => {
+      await page.setViewportSize({ width: 1280, height: 1100 });
+      await page.goto(`/?chat=${encodeURIComponent(CONVERSATION_ID)}`);
+      await dismissSetupLauncher(page);
+      await openChatRegion(page);
+      await waitForMockOrchestrationSse(page);
+      const captured = JSON.parse(
+        JSON.stringify(capturedCodexEvents[0]).replaceAll(
+          'thread-codex',
+          SESSION_ID,
+        ),
+      ) as Record<string, unknown>[];
+      const events = standalone
+        ? [
+            {
+              provider: 'codex',
+              threadId: SESSION_ID,
+              createdAt: STARTED_AT,
+              eventId: 'standalone-start',
+              method: 'turn.started',
+              turnId: '00000000-0000-7000-8000-000000000002',
+              prompt: 'Run the child without prose',
+            },
+            ...captured.filter(
+              (event) => event.method !== 'content.text-delta',
+            ),
+          ]
+        : captured;
+      for (const event of events) await emit(page, event);
+      const card = page.getByTestId('subagent-card');
+      await expect(card).toHaveCount(1);
+      if (standalone)
+        await expect(card.locator('xpath=..')).toHaveAttribute(
+          'data-chat-message-key',
+          /^subagent:/,
+        );
+      await expect(card.getByText('Completed')).toBeVisible();
+      await expect(card.getByText('gpt-5.5')).toBeVisible();
+      await expect(card.getByText('done', { exact: true })).toBeVisible();
+      await expect(card.locator('.subagent-card__elapsed')).toHaveText('0:05');
+      await card.scrollIntoViewIfNeeded();
+      await expectDockFits(page);
+      const desktopBox = await card.boundingBox();
+      expect(desktopBox).not.toBeNull();
+      expect(desktopBox!.x).toBeGreaterThanOrEqual(0);
+      expect(desktopBox!.x + desktopBox!.width).toBeLessThanOrEqual(1280);
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `subagent-card-codex${standalone ? '-standalone' : ''}-desktop.png`,
+        ),
+      });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page
+        .getByRole('button', { name: 'Chat actions', exact: true })
+        .click();
+      await page
+        .getByRole('menu', { name: 'Chat actions' })
+        .getByRole('menuitem', { name: 'Full screen', exact: true })
+        .click();
+      await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
+      await card.getByRole('button').click();
+      await card.scrollIntoViewIfNeeded();
+      await expect(card.getByText('done', { exact: true })).toHaveCount(2);
+      await expectDockFits(page);
+      const box = await card.boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.y).toBeGreaterThanOrEqual(0);
+      expect(box!.y + box!.height).toBeLessThanOrEqual(844);
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `subagent-card-codex${standalone ? '-standalone' : ''}-mobile-390.png`,
+        ),
+      });
     });
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page
-      .getByRole('button', { name: 'Chat actions', exact: true })
-      .click();
-    await page
-      .getByRole('menu', { name: 'Chat actions' })
-      .getByRole('menuitem', { name: 'Full screen', exact: true })
-      .click();
-    await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
-    await card.getByRole('button').click();
-    await card.scrollIntoViewIfNeeded();
-    await expect(card.getByText('done', { exact: true })).toHaveCount(2);
-    await expectDockFits(page);
-    const box = await card.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.y).toBeGreaterThanOrEqual(0);
-    expect(box!.y + box!.height).toBeLessThanOrEqual(844);
-    await page.screenshot({
-      path: testInfo.outputPath('subagent-card-codex-mobile-390.png'),
-    });
-  });
 
   test('a spawned subagent gets one inline card that goes from Running to Completed and opens its result', async ({
     page,

@@ -17,13 +17,16 @@ import type {
   ChildWorkDelta,
   ChildWorkItem,
 } from '@kontourai/station-contracts/child-work';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { _setApiBase } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -81,6 +84,7 @@ import { activeChatsStore } from '../contexts/active-chats-store';
 import { applyChildWorkToChat } from '../hooks/orchestration/childWorkHandlers';
 import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
 import type { ChatSession } from '../types';
+import terminalCaptures from './fixtures/codex-child-only-terminal-events.json';
 import childOnlySteerEvents from './fixtures/codex-steer-child-only-events.json';
 import capturedCodexEvents from './fixtures/codex-subagent-transcript-events.json';
 import museWorkflowEvents from './fixtures/muse-workflow-transcript-events.json';
@@ -285,6 +289,10 @@ function stubFetch(): void {
     'fetch',
     vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
+      // The user-row task picker can load after its lazy boundary settles.
+      // This transcript fixture has no Tasks to attach an input to.
+      if (url === `${API_BASE}/api/tasks`)
+        return Response.json({ success: true, data: [] });
       if (url.includes('/checkpoints'))
         return Response.json({ success: true, data: [] });
       if (url.includes(`/child-work/a1b2c3/transcript`))
@@ -363,6 +371,280 @@ describe('subagent transcript cards', () => {
     _setApiBase('');
   });
 
+  // Observable invariant at the mounted caller: the independent input child
+  // identities must each have exactly one card on both live and cold paths.
+  // Removing standalone placement loses the prose-free cases below.
+  test.each([
+    ...capturedCodexEvents.map((events, index) => ({
+      name: `Codex capture ${index}`,
+      events,
+    })),
+    ...childOnlySteerEvents.map((events, index) => ({
+      name: `steer capture ${index}`,
+      events,
+    })),
+    ...terminalCaptures.map(({ status, events }) => ({
+      name: `real Codex ${status}`,
+      events,
+    })),
+    ...[
+      'last-segment',
+      'new-turn',
+      'queued',
+      'two-children',
+      'steer-before-prose',
+    ].map((name) => {
+      const capture = childOnlySteerEvents[0] as CanonicalRuntimeEvent[];
+      const start = capture.find((event) => event.method === 'turn.started')!;
+      const spawn = capture.find(
+        (event) =>
+          event.method === 'child-work.updated' &&
+          event.delta.kind === 'snapshot',
+      )!;
+      const steer = capture.find(
+        (event) =>
+          event.method === 'turn.started' && event.inputKind === 'steer',
+      )!;
+      const end = {
+        ...start,
+        eventId: 'end',
+        method: 'turn.completed',
+        finishReason: 'stop',
+      };
+      const next = [
+        {
+          ...start,
+          eventId: 'next-start',
+          turnId: 'next',
+          prompt: 'Next turn',
+        },
+        {
+          ...start,
+          eventId: 'next-text',
+          method: 'content.text-delta',
+          turnId: 'next',
+          itemId: 'next-text',
+          delta: 'Next answer.',
+        },
+        { ...end, eventId: 'next-end', turnId: 'next' },
+      ];
+      const early = {
+        ...start,
+        eventId: 'early',
+        method: 'content.text-delta',
+        itemId: 'early',
+        delta: 'Earlier answer.',
+      };
+      const second = {
+        ...spawn,
+        eventId: 'second-spawn',
+        delta: {
+          ...(spawn.method === 'child-work.updated' &&
+          spawn.delta.kind === 'snapshot'
+            ? spawn.delta
+            : {}),
+          running: (spawn.method === 'child-work.updated' &&
+          spawn.delta.kind === 'snapshot'
+            ? spawn.delta.running
+            : []
+          ).map((item) => ({
+            ...item,
+            childId: 'second',
+            title: 'Second child',
+          })),
+        },
+      };
+      const events =
+        name === 'last-segment'
+          ? [start, early, steer, spawn, end]
+          : name === 'new-turn' || name === 'queued'
+            ? [start, spawn, end, ...next]
+            : name === 'two-children'
+              ? [start, spawn, second, steer, end]
+              : [start, spawn, steer, end];
+      return { name, events };
+    }),
+    {
+      name: 'Claude tool-row',
+      events: spawningTurn().map((entry) => entry.event),
+    },
+    {
+      name: 'Muse shared-call',
+      events: [
+        runtimeEvent(STARTED_AT, {
+          provider: 'muse',
+          threadId: 'muse-session-1',
+          method: 'turn.started',
+          turnId: 'turn-1',
+          prompt: 'Workflow',
+        }).event,
+        runtimeEvent(STARTED_AT, {
+          provider: 'muse',
+          threadId: 'muse-session-1',
+          method: 'tool.started',
+          turnId: 'turn-1',
+          itemId: 'call_workflow_1',
+          toolCallId: 'call_workflow_1',
+          toolName: 'workflow',
+          arguments: {},
+        }).event,
+        ...museWorkflowEvents,
+      ],
+    },
+    {
+      name: '65-child history',
+      events: [
+        ...spawningTurn()
+          .slice(0, 3)
+          .map((entry) => entry.event),
+        ...Array.from({ length: 65 }, (_, index) => {
+          const item: ChildWorkItem = {
+            ...runningChild,
+            childId: `history-${index}`,
+            title: `History child ${index}`,
+          };
+          return [
+            childWork(STARTED_AT, { kind: 'upsert', item }).event,
+            ...settles(`History result ${index}`, item).map(
+              (entry) => entry.event,
+            ),
+          ];
+        }).flat(),
+      ],
+    },
+  ])(
+    'each child renders exactly once live and on replay: $name',
+    async ({ name, events: raw }) => {
+      const events = raw as CanonicalRuntimeEvent[];
+      const expected = new Map<string, string>();
+      for (const event of events) {
+        if (event.method !== 'child-work.updated') continue;
+        const delta = event.delta;
+        const items =
+          delta.kind === 'snapshot'
+            ? delta.running
+            : delta.kind === 'upsert'
+              ? [delta.item]
+              : [];
+        for (const item of items)
+          expected.set(item.childId, item.title ?? item.childId);
+      }
+      expect(expected.size).toBeGreaterThan(0);
+      const session = {
+        ...chatSession(),
+        currentSessionId: events[0].threadId,
+      };
+      const live = {
+        ...session,
+        orchestrationTurnOpen: true,
+        openTurnId: events.find((event) => 'turnId' in event && event.turnId)
+          ?.turnId,
+        status: 'sending' as const,
+        orchestrationStatus: 'running' as const,
+      };
+      const setEvents = (input: CanonicalRuntimeEvent[]) => {
+        windowEvents.current = input.map((event, index) => ({
+          sequence: index + 1,
+          event,
+        }));
+      };
+      const assertOnce = async () => {
+        await act(async () => {});
+        const cards = screen.queryAllByTestId('subagent-card');
+        expect(cards).toHaveLength(expected.size);
+        for (const [id, title] of expected)
+          expect(
+            cards.filter((card) =>
+              within(card).queryByText(title, { exact: true }),
+            ),
+            id,
+          ).toHaveLength(1);
+        return cards.map((card) =>
+          card
+            .closest('.chat-message-anchor')
+            ?.getAttribute('data-chat-message-key'),
+        );
+      };
+      setEvents(events.filter((event) => event.method !== 'turn.completed'));
+      const view = renderTranscript(live);
+      const liveKeys = await assertOnce();
+      setEvents(events);
+      await act(async () => view.rerender(session));
+      const settledKeys = await assertOnce();
+      const card = screen.getAllByTestId('subagent-card')[0];
+      if (name === 'last-segment')
+        expect(
+          screen.getByText('Also check this').compareDocumentPosition(card) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      if (name === 'new-turn' || name === 'queued')
+        expect(
+          card.compareDocumentPosition(screen.getByText('Next turn')) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+
+      for (const key of liveKeys.filter((key) => key?.startsWith('subagent:')))
+        expect(settledKeys).toContain(key);
+      cleanup();
+      renderTranscript(session);
+      expect(await assertOnce()).toEqual(settledKeys);
+      expect(unexpectedRequests).toEqual([]);
+    },
+  );
+
+  test('a standalone card stays in its own turn and keeps its DOM node when later same-turn prose arrives', async () => {
+    const capture = childOnlySteerEvents[0] as CanonicalRuntimeEvent[];
+    const start = capture.find((event) => event.method === 'turn.started')!;
+    const spawn = capture.find(
+      (event) => event.method === 'child-work.updated',
+    )!;
+    const events: CanonicalRuntimeEvent[] = [start, spawn];
+    const setEvents = () => {
+      windowEvents.current = events.map((event, index) => ({
+        sequence: index + 1,
+        event,
+      }));
+    };
+    setEvents();
+    const session = { ...chatSession(), currentSessionId: start.threadId };
+    const view = renderTranscript(session);
+    const card = await findCard();
+    const anchor = card.closest('.chat-message-anchor');
+    expect(anchor?.getAttribute('data-chat-turn-id')).toBe(start.turnId);
+    events.push({
+      ...start,
+      method: 'content.text-delta',
+      eventId: 'later-prose',
+      itemId: 'later-prose',
+      delta: 'Later same-turn prose.',
+    });
+    setEvents();
+    await act(async () => view.rerender(session));
+    expect(await findCard()).toBe(card);
+    expect(screen.getAllByTestId('subagent-card')).toHaveLength(1);
+    expect(
+      card.compareDocumentPosition(screen.getByText('Later same-turn prose.')) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    if (
+      spawn.method !== 'child-work.updated' ||
+      spawn.delta.kind !== 'snapshot'
+    )
+      throw new Error('Expected captured spawn snapshot');
+    events.push({
+      ...start,
+      method: 'tool.started',
+      eventId: 'late-tool',
+      toolCallId: spawn.delta.running[0].parent!.toolCallId!,
+      itemId: 'late-tool',
+      toolName: 'spawn_agent',
+      arguments: {},
+    });
+    setEvents();
+    await act(async () => view.rerender(session));
+    expect(screen.getAllByTestId('subagent-card')).toEqual([card]);
+  });
+
   test.each(capturedCodexEvents.map((events, index) => ({ events, index })))(
     'captured Codex spawn format $index renders a completed card at its spawn position without a tool row',
     async ({ events, index }) => {
@@ -371,6 +653,9 @@ describe('subagent transcript cards', () => {
         event,
       }));
       renderTranscript({ ...chatSession(), currentSessionId: 'thread-codex' });
+      await waitFor(() =>
+        expect(document.body.textContent).toContain('The subagent'),
+      );
       const card = await findCard();
       expect(screen.getAllByTestId('subagent-card')).toHaveLength(1);
       expect(within(card).getByText('Completed')).toBeTruthy();
@@ -508,11 +793,16 @@ describe('subagent transcript cards', () => {
       };
       const view = renderTranscript(liveSession);
       const assertCard = async () => {
+        await waitFor(() =>
+          expect(document.body.textContent).toContain(
+            prose.replaceAll('`', ''),
+          ),
+        );
         const card = await findCard();
         expect(screen.getAllByTestId('subagent-card')).toHaveLength(1);
         const text = document.body.textContent ?? '';
         expect(text.indexOf(card.textContent ?? '')).toBeLessThan(
-          text.indexOf(prose),
+          text.indexOf(prose.replaceAll('`', '')),
         );
         return card;
       };

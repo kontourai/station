@@ -56,10 +56,13 @@ import { ScrollToBottomButton } from './ScrollToBottomButton';
 import { SessionSummaryCard } from './SessionSummaryCard';
 import { SmoothStreamingMessage } from './SmoothStreamingMessage';
 import { StreamingMessage } from './StreamingMessage';
+import { SubagentTranscriptCard } from './SubagentTranscriptCard';
 import { ToolCallDisplay } from './ToolCallDisplay';
 import { TranscriptVirtualizer } from './TranscriptVirtualizer';
 import {
+  type ChildTranscriptRow,
   foldTranscriptChildren,
+  projectTranscriptChildRows,
   TranscriptChildrenContext,
   TranscriptTurnContext,
 } from './transcript-child-work';
@@ -260,8 +263,8 @@ function ChatMessageListComponent({
     ],
   );
   const transcriptChildren = useMemo(
-    () => foldTranscriptChildren(approvalEvents, activeSession.messages),
-    [approvalEvents, activeSession.messages],
+    () => foldTranscriptChildren(approvalEvents),
+    [approvalEvents],
   );
   const sendMessage = useSendMessage(apiBase);
   const sheetRequests = useMemo(
@@ -459,7 +462,8 @@ function ChatMessageListComponent({
         isTurnStreamLive(activeSession) &&
         activeSession.currentSessionId === child.item.reporterThreadId &&
         activeSession.openTurnId === child.spawn?.turnId;
-      if (inLoadedRow || inStreamingRow) represented.add(key);
+      if (child.spawn?.standalone || inLoadedRow || inStreamingRow)
+        represented.add(key);
     }
     const visible = loaded.filter(
       (message) =>
@@ -496,8 +500,12 @@ function ChatMessageListComponent({
       previousTranscriptRows.current,
     );
     previousTranscriptRows.current = projected;
-    return projected;
-  }, [activeSession.id, messages]);
+    return projectTranscriptChildRows(
+      projected,
+      transcriptChildren,
+      approvalEvents,
+    );
+  }, [activeSession.id, messages, transcriptChildren, approvalEvents]);
   const transcriptRowsRef = useRef(transcriptRows);
   transcriptRowsRef.current = transcriptRows;
 
@@ -518,13 +526,15 @@ function ChatMessageListComponent({
     const onReveal = (event: Event) => {
       const detail = (event as CustomEvent<RevealApprovalDetail>).detail;
       if (!detail?.requestId) return;
-      const row = transcriptRowsRef.current.find((candidate) =>
-        (candidate.message.contentParts ?? []).some(
-          (part) =>
-            part.approvalId === detail.requestId &&
-            (detail.threadId === undefined ||
-              part.approvalThreadId === detail.threadId),
-        ),
+      const row = transcriptRowsRef.current.find(
+        (candidate) =>
+          candidate.kind !== 'subagent' &&
+          (candidate.message.contentParts ?? []).some(
+            (part) =>
+              part.approvalId === detail.requestId &&
+              (detail.threadId === undefined ||
+                part.approvalThreadId === detail.threadId),
+          ),
       );
       if (!row) return;
       isUserScrolledUpRef.current = true;
@@ -580,7 +590,7 @@ function ChatMessageListComponent({
   useLayoutEffect(() => {
     const element = messagesContainerRef.current;
     if (!element || !currentReaderRestoreRequest) return;
-    if (messages.length > VIRTUALIZE_AFTER_MESSAGE_COUNT) return;
+    if (transcriptRows.length > VIRTUALIZE_AFTER_MESSAGE_COUNT) return;
     const restored = currentReaderRestoreRequest.anchor
       ? restoreChatScrollAnchor(element, currentReaderRestoreRequest.anchor)
       : false;
@@ -592,7 +602,7 @@ function ChatMessageListComponent({
     if (restored) visibleAnchorRef.current = captureChatScrollAnchor(element);
   }, [
     currentReaderRestoreRequest,
-    messages.length,
+    transcriptRows.length,
     noteProgrammaticScroll,
     writeProgrammaticScroll,
   ]);
@@ -677,7 +687,7 @@ function ChatMessageListComponent({
     void transcriptRows;
     // The virtualizer owns keyed row+offset preservation for long transcripts.
     // A DOM anchor here can point at a recycled node and fight that correction.
-    if (messages.length > VIRTUALIZE_AFTER_MESSAGE_COUNT) return;
+    if (transcriptRows.length > VIRTUALIZE_AFTER_MESSAGE_COUNT) return;
     const el = messagesContainerRef.current;
     if (!el || !isUserScrolledUpRef.current || !visibleAnchorRef.current) {
       return;
@@ -686,7 +696,7 @@ function ChatMessageListComponent({
       noteProgrammaticScroll(el);
     }
     visibleAnchorRef.current = captureChatScrollAnchor(el);
-  }, [messages.length, transcriptRows, noteProgrammaticScroll]);
+  }, [transcriptRows, noteProgrammaticScroll]);
 
   // Container resize is the important keyboard/composer path. Keep a reader's
   // scrollTop stable; only an already-pinned conversation follows the bottom.
@@ -1232,10 +1242,17 @@ function ChatMessageListComponent({
     return renderDefaultMessage(msg, idx);
   };
 
-  // Work activities render inline, inside the message row, in reading order
-  // (see `projectTranscriptMessages`'s doc comment) — there is no separate
-  // fold/work row kind any more.
-  const renderTranscriptRow = (row: TranscriptRow) => {
+  const renderTranscriptRow = (row: ChildTranscriptRow) => {
+    if (row.kind === 'subagent')
+      return (
+        <div
+          className="chat-message-anchor"
+          data-chat-message-key={row.id}
+          data-chat-turn-id={row.child.spawn?.turnId}
+        >
+          <SubagentTranscriptCard child={row.child} />
+        </div>
+      );
     const messageId = (row.message as ChatMessage & { id?: string }).id;
     return (
       <div
@@ -1257,6 +1274,7 @@ function ChatMessageListComponent({
                   messageId: row.message.id,
                   firstRow: !transcriptRows.some(
                     (candidate) =>
+                      candidate.kind !== 'subagent' &&
                       candidate.index < row.index &&
                       candidate.message.role === 'assistant' &&
                       candidate.message.sessionId === row.message.sessionId &&
@@ -1438,7 +1456,7 @@ function ChatMessageListComponent({
               </div>
             )}
             {historyNotice}
-            {messages.length === 0 && !isStreaming ? (
+            {transcriptRows.length === 0 && !isStreaming ? (
               (emptyState ?? (
                 <ChatEmptyState
                   agentSlug={activeSession.agentSlug}
@@ -1447,8 +1465,8 @@ function ChatMessageListComponent({
               ))
             ) : (
               <>
-                {messages.length > 0 &&
-                  (messages.length > VIRTUALIZE_AFTER_MESSAGE_COUNT ? (
+                {transcriptRows.length > 0 &&
+                  (transcriptRows.length > VIRTUALIZE_AFTER_MESSAGE_COUNT ? (
                     <TranscriptVirtualizer
                       rows={transcriptRows}
                       scrollElement={messagesContainerRef}

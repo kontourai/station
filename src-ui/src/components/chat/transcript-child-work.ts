@@ -7,9 +7,13 @@ import {
   createEmptyChildWorkRegistry,
 } from '@kontourai/station-contracts/child-work';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { observedAssistantMessageId } from '@kontourai/station-shared/runtime-event-projection';
+import {
+  observedAssistantMessageId,
+  projectRuntimeEventsToMessages,
+} from '@kontourai/station-shared/runtime-event-projection';
 import { createContext, useContext } from 'react';
 import type { RunBlock, ToolCallLike } from './tool-call-runs';
+import type { TranscriptRow } from './transcriptProjection';
 
 /** Loaded transcript children retain their spawn anchors and all settled results.
  * Each child uses the contract fold independently: live-registry retention must
@@ -19,6 +23,9 @@ export interface TranscriptChild {
   item: ChildWorkItem;
   spawn?: {
     turnId: string;
+    eventIndex: number;
+    standalone: boolean;
+    toolAnchor: boolean;
     messageId?: string;
     textOffset: number;
     turnTextOffset: number;
@@ -53,7 +60,6 @@ function reporterOf(delta: ChildWorkDelta): string {
 
 export function foldTranscriptChildren(
   events: readonly { event: CanonicalRuntimeEvent }[] | undefined,
-  assistantRows?: readonly { role: string; id?: string }[],
 ): TranscriptChildren {
   if (!events?.length) return EMPTY;
   const registries = new Map<
@@ -65,24 +71,13 @@ export function foldTranscriptChildren(
   const textOffsets = new Map<string, number>();
   const anchors = new Map<string, string>();
   const turnTextOffsets = new Map<string, number>();
-  const nextSegment = new Map<string, string>();
-  const renderedRows = assistantRows
-    ? new Set(
-        assistantRows
-          .filter((row) => row.role === 'assistant')
-          .map((row) => row.id),
-      )
-    : undefined;
   const tools = new Set<string>();
   const lastToolByTurn = new Map<string, string>();
-  for (const { event } of events) {
+  for (const [eventIndex, { event }] of events.entries()) {
     if (event.method === 'turn.started') {
       const turn = JSON.stringify([event.threadId, event.turnId]);
       const messageId = observedAssistantMessageId(event.eventId);
-      const previous = anchors.get(turn);
       if (messageId) {
-        if (previous && event.inputKind === 'steer')
-          nextSegment.set(previous, messageId);
         anchors.set(turn, messageId);
       }
       // A steer flushes the preceding assistant row in the shared projection.
@@ -134,6 +129,16 @@ export function foldTranscriptChildren(
         : delta.kind === 'upsert'
           ? [delta.item]
           : [];
+    // Ask the canonical row projector about the spawn prefix rather than
+    // maintaining a second list of event shapes that happen to create rows.
+    const spawnRows = running.some(
+      (item) => !spawns.has(childWorkKey(item)) && item.parent?.turnId,
+    )
+      ? projectRuntimeEventsToMessages(
+          events.slice(0, eventIndex + 1).map((entry) => entry.event),
+          { stableIds: true },
+        )
+      : [];
     for (const item of running) {
       const key = childWorkKey(item);
       if (!registries.has(key))
@@ -141,6 +146,33 @@ export function foldTranscriptChildren(
       if (!spawns.has(key) && item.parent?.turnId)
         spawns.set(key, {
           turnId: item.parent.turnId,
+          eventIndex,
+          // A segment empty at spawn stays standalone even if prose arrives.
+          // This decision is replayable and never reparents an existing card.
+          standalone: !spawnRows.some(
+            (row) =>
+              row.role === 'assistant' &&
+              row.metadata?.sessionId === event.threadId &&
+              (anchors.has(
+                JSON.stringify([event.threadId, item.parent!.turnId]),
+              )
+                ? row.id ===
+                  anchors.get(
+                    JSON.stringify([event.threadId, item.parent!.turnId]),
+                  )
+                : !row.metadata?.turnId ||
+                  row.metadata.turnId === item.parent!.turnId),
+          ),
+          toolAnchor: spawnRows.some(
+            (row) =>
+              row.role === 'assistant' &&
+              row.metadata?.sessionId === event.threadId &&
+              row.parts.some(
+                (part) =>
+                  part.type === 'tool-invocation' &&
+                  part.toolCallId === item.parent?.toolCallId,
+              ),
+          ),
           messageId: anchors.get(
             JSON.stringify([event.threadId, item.parent.turnId]),
           ),
@@ -183,29 +215,15 @@ export function foldTranscriptChildren(
   for (const [key, registry] of registries) {
     const item = registry.items[key];
     if (!item) continue;
-    let spawn = spawns.get(key);
-    // Child-only segments produce no assistant row. Follow only same-turn
-    // steers to the next rendered row; never steal an existing row's card.
-    while (
-      spawn?.messageId &&
-      renderedRows &&
-      !renderedRows.has(spawn.messageId)
-    ) {
-      const messageId = nextSegment.get(spawn.messageId);
-      if (!messageId) break;
-      spawn = {
-        ...spawn,
-        messageId,
-        textOffset: 0,
-        afterToolCallId: undefined,
-      };
-    }
-    const toolAnchor = Boolean(
-      item.parent?.toolCallId &&
-        tools.has(
-          JSON.stringify([item.reporterThreadId, item.parent.toolCallId]),
-        ),
-    );
+    const spawn = spawns.get(key);
+    const toolAnchor =
+      spawn?.toolAnchor ??
+      Boolean(
+        item.parent?.toolCallId &&
+          tools.has(
+            JSON.stringify([item.reporterThreadId, item.parent.toolCallId]),
+          ),
+      );
     if (!spawn && !toolAnchor) continue;
     children.set(key, {
       item,
@@ -238,6 +256,7 @@ export function useTranscriptChildrenForCall(
   const turn = useContext(TranscriptTurnContext);
   return [...children.values()].filter(
     (child) =>
+      (child.toolAnchor || !child.spawn?.standalone) &&
       child.item.parent?.toolCallId === toolCallId &&
       (!turn?.threadId || child.item.reporterThreadId === turn.threadId),
   );
@@ -263,6 +282,7 @@ export function useTranscriptChildBlocks<P extends ToolCallLike>(
   const pending = [...children.entries()].filter(
     ([, child]) =>
       !child.toolAnchor &&
+      !child.spawn?.standalone &&
       (!child.item.parent?.toolCallId ||
         !renderedCalls.has(child.item.parent.toolCallId)) &&
       child.spawn &&
@@ -319,5 +339,62 @@ export function useTranscriptChildBlocks<P extends ToolCallLike>(
   }
   for (const [key, child] of pending)
     result.push({ type: 'subagent', key, child });
+  return result;
+}
+
+export type ChildTranscriptRow =
+  | TranscriptRow
+  | {
+      readonly id: string;
+      readonly kind: 'subagent';
+      readonly child: TranscriptChild;
+    };
+
+/** Insert orphaned spawn blocks before the next event-backed row, never in
+ * a later turn. Stable child keys survive live completion and cold replay.
+ */
+export function projectTranscriptChildRows(
+  rows: readonly TranscriptRow[],
+  children: TranscriptChildren,
+  events: readonly { event: CanonicalRuntimeEvent }[] | undefined,
+): readonly ChildTranscriptRow[] {
+  const positions = new Map<string, number>();
+  events?.forEach(({ event }, index) => {
+    if (event.method === 'turn.started') {
+      positions.set(`${event.eventId}:user`, index);
+      positions.set(`${event.eventId}:assistant`, index + 0.5);
+    }
+  });
+  const pending = [...children.entries()].filter(
+    ([, child]) => !child.toolAnchor && child.spawn?.standalone,
+  );
+  if (!pending.length) return rows;
+  const result: ChildTranscriptRow[] = [];
+  const append = (key: string, child: TranscriptChild) => {
+    result.push({ id: `subagent:${key}`, kind: 'subagent', child });
+  };
+  for (const row of rows) {
+    const position =
+      positions.get(row.message.id ?? '') ??
+      positions.get(`${row.message.sourceEventId}:user`);
+    // The segment's assistant row starts before its contents, but an empty
+    // segment's card must precede any prose that arrives after its spawn.
+    for (let i = 0; i < pending.length; ) {
+      const [key, child] = pending[i];
+      if (
+        (position !== undefined && position > child.spawn!.eventIndex) ||
+        (row.message.role === 'assistant' &&
+          row.message.sessionId === child.item.reporterThreadId &&
+          (!row.message.turnId || row.message.turnId === child.spawn!.turnId) &&
+          (!child.spawn!.messageId ||
+            row.message.id === child.spawn!.messageId))
+      ) {
+        append(key, child);
+        pending.splice(i, 1);
+      } else i += 1;
+    }
+    result.push(row);
+  }
+  for (const [key, child] of pending) append(key, child);
   return result;
 }

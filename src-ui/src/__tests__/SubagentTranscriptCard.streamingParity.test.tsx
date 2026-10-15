@@ -48,6 +48,32 @@ const child: ChildWorkItem = {
 function events(): { sequence: number; event: CanonicalRuntimeEvent }[] {
   return [
     {
+      sequence: -1,
+      event: {
+        eventId: 'turn-start',
+        provider: 'claude',
+        threadId: THREAD,
+        createdAt: child.startedAt!,
+        method: 'turn.started',
+        turnId: 'turn-1',
+        prompt: 'Survey records',
+      },
+    },
+    {
+      sequence: 0,
+      event: {
+        eventId: 'tool-start',
+        provider: 'claude',
+        threadId: THREAD,
+        createdAt: child.startedAt!,
+        method: 'tool.started',
+        turnId: 'turn-1',
+        toolCallId: TOOL_CALL,
+        toolName: 'Agent',
+        arguments: {},
+      },
+    },
+    {
       sequence: 1,
       event: {
         eventId: 'evt-1',
