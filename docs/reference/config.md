@@ -262,7 +262,7 @@ Defines a single agent. The directory name is the agent's slug.
 | field | type | required | description |
 |---|---|---|---|
 | `name` | string | yes | Display name shown in the UI |
-| `prompt` | string | yes | System prompt for this agent. Supports `{{key}}` template variables |
+| `prompt` | string | yes | Agent instructions. Supports `{{key}}` template variables; delivered through the engine’s system channel where supported, or with the first message on first-turn engines such as Codex. |
 | `description` | string | no | Short description shown in agent pickers |
 | `icon` | string | no | Icon identifier for the UI |
 | `model` | string | no | Legacy model selection fallback. `execution.modelId` and the selected Model connection determine current routing; the ID is not necessarily a Bedrock model. |

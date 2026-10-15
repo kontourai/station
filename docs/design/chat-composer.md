@@ -564,10 +564,12 @@ screenshots.
 
 ## Mobile conversation focus (2026-09-05)
 
-Owner-directed revision (clarified 2026-09-05): project switching and
-conversation switching are primary phone-header actions. Both stay directly
-reachable with readable current context and 44px touch targets at 320px,
-390px, and 412px widths. Neither requires opening Chat actions first.
+The September 2026 revision kept project and conversation switching directly
+in the phone header. The October onboarding round separates their meanings:
+conversation switching and New chat stay direct, with 44px targets;
+**Chat actions → Project for new chats** changes future chat context. It does
+not move or rebind the current conversation. The title and assistant remain
+readable without competing with that future-project control.
 The **Chats and tasks** picker keeps the shared **New chat** action at the lower
 right, outside the scrolling list. Its accessible name and hover label are
 **New chat**; the mobile header uses its icon-only chat-bubble-plus form.

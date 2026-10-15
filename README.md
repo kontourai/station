@@ -167,8 +167,8 @@ a workspace directory, and running it behind your own authenticated ingress.
    readiness before starting work. The [Connections guide](docs/guides/connections.md)
    lists the engines and adoption rules.
 2. Open a local project.
-3. Start a direct chat for a quick question, or create a Task for work you
-   want to keep.
+3. Start a chat for ordinary work. Chats retain their history. Create a Task
+   when you need a tracked deliverable or workflow.
 4. Follow the Task's execution and inspect the evidence its workflow records.
 
 If something is not ready, Station keeps the setup action visible. Run

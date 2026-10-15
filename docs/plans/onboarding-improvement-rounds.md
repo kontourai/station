@@ -1,6 +1,6 @@
 # Onboarding improvement rounds
 
-Status: implementation in progress, 2026-10-15. This is an execution plan,
+Status: local implementation and verification, 2026-10-15. This is an execution plan,
 not release qualification. Evidence and comparisons live in
 [the audit report](../strategy/onboarding-20261015/report.html).
 
@@ -23,6 +23,7 @@ must not be confused with permission to run a local service.
 | Codex Instructions locks after one character | Validate authored instructions against system or first-message delivery; keep warnings editable | Stateful editor typing/clearing, real new Codex chat, first-turn runtime receipt |
 | Coding composer falls below viewport | Bound layout route height, preserve flowing page scroll | Long transcript browser geometry and app at 1280 × 800; Settings remains scrollable |
 | Header mixes conversation, assistant and future-project context | Title above assistant/model; running chats use a real menu; mobile future-project choice moves to actions | 280–850px real CSS, keyboard menu, phone title/actions |
+| Agent Chat action forgets the clicked Agent | Use typed selection including its owning Project | Real rail action through production parser; baseline red, fixed and mutation/restoration |
 | Project setup sends users to management | Open the server-returned applied layout through canonical navigation | Selected layout only, create-once retry, no-layout fallback |
 | Redundant project chat callout | Remove callout/helper and their obsolete tests | Project-bound HomeStartComposer handoff keeper |
 | Location chip silently changes chat into task | Label the action Run a task | Task launch remains explicit; remote admission unchanged |
