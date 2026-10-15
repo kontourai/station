@@ -495,16 +495,16 @@ describe('configureRuntimeRoutes: delegated result delivery wiring (#3158)', () 
   test.each(['indeterminate', 'expired'] as const)(
     '#3568 R2-1: a delivery whose key a Session of the parent may have taken (%s) is never continued',
     async (outcome) => {
-    const { base, emit, store } = await setup();
-    support.inspect = () => ({ outcome });
-    await delegate(base, 'sdk-in-process');
-    settleChild(emit);
-    await vi.waitFor(() =>
-      expect(
-        store.delegationResultStore().listForChild(CHILD)[0],
-      ).toMatchObject({ state: 'claimed', unconfirmed: `start:${PARENT}` }),
-    );
-    expect(support.continued).toHaveLength(0);
+      const { base, emit, store } = await setup();
+      support.inspect = () => ({ outcome });
+      await delegate(base, 'sdk-in-process');
+      settleChild(emit);
+      await vi.waitFor(() =>
+        expect(
+          store.delegationResultStore().listForChild(CHILD)[0],
+        ).toMatchObject({ state: 'claimed', unconfirmed: `start:${PARENT}` }),
+      );
+      expect(support.continued).toHaveLength(0);
     },
   );
 
