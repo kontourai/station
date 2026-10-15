@@ -5,7 +5,6 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
-import { scaleLivenessMs } from '../../../scripts/lib/liveness-scale.mjs';
 import {
   ToolServerCredentialStore,
   toolServerCredentialStoreMutationLockPath,
@@ -35,6 +34,7 @@ function deferred<T>() {
 }
 
 interface ContendedMutation {
+  testBudgetMs: number;
   imports: string;
   lock: string;
   childMutation: string;
@@ -42,11 +42,18 @@ interface ContendedMutation {
 }
 
 async function runContendedMutation({
+  testBudgetMs,
   imports,
   lock,
   childMutation,
   parentMutation,
 }: ContendedMutation): Promise<void> {
+  // Worker setup clears the runner's scaling environment; its configured
+  // test budget retains the resolved host-pressure allowance.
+  const readyBudgetMs = Math.floor(testBudgetMs / 3);
+  // Once contention exists, release before the production 10-second lock
+  // deadline even when the outer test budget permits a longer wait.
+  const progressBudgetMs = Math.min(5_000, Math.floor(testBudgetMs / 30));
   const lifecycleUrl = new URL(
     '../../../packages/shared/src/lifecycle-events.ts',
     import.meta.url,
@@ -128,8 +135,8 @@ async function runContendedMutation({
          process.exit(2);
        }`,
       lock,
-      String(scaleLivenessMs(10_000)),
-      String(scaleLivenessMs(1_000)),
+      String(readyBudgetMs),
+      String(progressBudgetMs),
     ],
     { stdio: ['ignore', 'ignore', 'pipe', 'ipc'], windowsHide: true },
   );
@@ -163,7 +170,7 @@ async function runContendedMutation({
   });
   const guard = setTimeout(
     () => failed.reject(new Error('lock holder handshake did not complete')),
-    scaleLivenessMs(20_000),
+    Math.floor((testBudgetMs * 2) / 3),
   );
   child.on('message', (message: unknown) => {
     if (!message || typeof message !== 'object' || !('type' in message)) {
@@ -229,7 +236,7 @@ async function runContendedMutation({
 }
 
 describe('integration configuration cross-process mutation', () => {
-  test('a synchronous child holder does not block generic JSON RMW and both process updates survive', async () => {
+  test('a synchronous child holder does not block generic JSON RMW and both process updates survive', async ({ task }) => {
     const root = mkdtempSync(join(tmpdir(), 'station-json-process-'));
     roots.push(root);
     const path = join(root, 'state.json');
@@ -237,6 +244,7 @@ describe('integration configuration cross-process mutation', () => {
     const storageUrl = new URL('../file-storage-helpers.ts', import.meta.url)
       .href;
     await runContendedMutation({
+      testBudgetMs: task.timeout,
       imports: `import { mutateJsonFile } from ${JSON.stringify(storageUrl)};`,
       lock: `${path}.mutation`,
       childMutation: `await mutateJsonFile(${JSON.stringify(path)}, {}, (current) => ({ ...current, child: true }));`,
@@ -253,7 +261,7 @@ describe('integration configuration cross-process mutation', () => {
     });
   });
 
-  test('a synchronous child holder does not block credential RMW and both process updates survive', async () => {
+  test('a synchronous child holder does not block credential RMW and both process updates survive', async ({ task }) => {
     const root = mkdtempSync(join(tmpdir(), 'station-credential-process-'));
     roots.push(root);
     const store = new ToolServerCredentialStore(root);
@@ -263,6 +271,7 @@ describe('integration configuration cross-process mutation', () => {
       import.meta.url,
     ).href;
     await runContendedMutation({
+      testBudgetMs: task.timeout,
       imports: `import { ToolServerCredentialStore } from ${JSON.stringify(credentialStoreUrl)};`,
       lock: toolServerCredentialStoreMutationLockPath(root),
       childMutation: `await new ToolServerCredentialStore(${JSON.stringify(root)}).upsert('shared', 'CHILD', 'child');`,
@@ -276,7 +285,7 @@ describe('integration configuration cross-process mutation', () => {
     );
   });
 
-  test('a synchronous CLI holder does not block the server event loop and both updates survive', async () => {
+  test('a synchronous CLI holder does not block the server event loop and both updates survive', async ({ task }) => {
     const root = mkdtempSync(join(tmpdir(), 'station-integration-process-'));
     roots.push(root);
     const portabilityUrl = new URL(
@@ -285,6 +294,7 @@ describe('integration configuration cross-process mutation', () => {
     ).href;
     mkdirSync(join(root, 'integrations'), { recursive: true });
     await runContendedMutation({
+      testBudgetMs: task.timeout,
       imports: `import { writeIntegration } from ${JSON.stringify(portabilityUrl)};`,
       lock: toolServerIntegrationMutationLockPath(root, 'merge-cli-ui'),
       childMutation: `await writeIntegration('merge-cli-ui', { id: 'merge-cli-ui', kind: 'mcp', env: { CLI_TOKEN: 'cli' } }, ${JSON.stringify(root)});`,
