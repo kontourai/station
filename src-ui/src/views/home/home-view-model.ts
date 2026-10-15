@@ -35,7 +35,6 @@ import { chatWaitsOnUser } from '../../utils/waiting-approvals';
 import { isPeerDelegationRecord } from './work-item-open-policy';
 
 export interface HomeWorkItem {
-  observationUnavailable?: boolean;
   id: string;
   /** Durable conversation identity when this row represents one. */
   conversationId?: string;

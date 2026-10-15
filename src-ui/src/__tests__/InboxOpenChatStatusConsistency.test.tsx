@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { ORCHESTRATION_STREAM_CAUGHT_UP_EVENT } from '@kontourai/station-contracts/runtime-events';
+
 /**
  * #3077: one chat, two inboxes, one status line.
  *
@@ -468,6 +470,48 @@ describe('inbox observation freshness', () => {
     }
   });
 
+  it('a fresh caught-up snapshot verifies the retained row without a list refresh', async () => {
+    historyRead.mockRejectedValueOnce(new Error('offline'));
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    renderWithProviders(
+      <>
+        <HistoryReader />
+        <DockInbox />
+      </>,
+      client,
+    );
+    await screen.findByText('Last known: Needs approval');
+    const release = ensureOrchestrationEventStream('http://test.local', client);
+    try {
+      act(() =>
+        streams.get('http://test.local')!({
+          event: ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
+          id: '20',
+          data: JSON.stringify({
+            sessions: [
+              {
+                ...SESSIONS[0]!,
+                conversationId: 'T',
+                conversationActivity: {
+                  ...SESSIONS[0]!.conversationActivity,
+                  asOfSequence: 4,
+                },
+              },
+            ],
+          }),
+        }),
+      );
+      await waitFor(() =>
+        expect(screen.queryByText('Last known: Needs approval')).toBeNull(),
+      );
+      expect(screen.getByText('Needs approval')).toBeTruthy();
+    } finally {
+      release();
+    }
+  });
+
   it('another conversation and another Station authority remain current', async () => {
     historyRead.mockRejectedValue(new Error('offline'));
     const client = new QueryClient({
@@ -481,26 +525,28 @@ describe('inbox observation freshness', () => {
       client,
     );
     await waitFor(() =>
-      expect(
-        workObservation(client, 'http://test.local').unavailable('other'),
-      ).toBe(true),
+      expect(workObservation(client).unavailable('other')).toBe(true),
     );
     // The failed reader belongs to another conversation, so T stays live.
     expect(within(first.container).getByText('Needs approval')).toBeTruthy();
     first.unmount();
+    // AuthorityQueryProvider creates a distinct client for each verified
+    // Station/principal/grant namespace; endpoint aliases are not authority.
+    const otherStation = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
     const second = renderWithProviders(
       <>
         <HistoryReader station="http://other-station.test" />
         <DockInbox />
       </>,
-      client,
+      otherStation,
     );
-    await waitFor(() =>
-      expect(
-        workObservation(client, 'http://other-station.test').unavailable('T'),
-      ).toBe(true),
-    );
-    expect(within(second.container).getByText('Needs approval')).toBeTruthy();
+    await within(second.container).findByText('Last known: Needs approval');
+    const originalStation = renderWithProviders(<DockInbox />, client);
+    expect(
+      within(originalStation.container).getByText('Needs approval'),
+    ).toBeTruthy();
     const otherAuthority = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });

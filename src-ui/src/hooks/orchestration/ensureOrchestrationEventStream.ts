@@ -428,9 +428,9 @@ export function ensureOrchestrationEventStream(
           });
           const client = currentStreamQueryClient(apiBase);
           if (client)
-            for (const session of payload.sessions) {
+            for (const session of caughtUp.sessions) {
               if (session.conversationActivity)
-                workObservation(client, apiBase).observed(
+                workObservation(client).observed(
                   session.conversationActivity.conversationId,
                   session.conversationActivity.asOfSequence,
                 );
@@ -470,7 +470,7 @@ export function ensureOrchestrationEventStream(
         if (client)
           for (const session of payload.sessions) {
             if (session.conversationActivity)
-              workObservation(client, apiBase).observed(
+              workObservation(client).observed(
                 session.conversationActivity.conversationId,
                 session.conversationActivity.asOfSequence,
               );
@@ -486,9 +486,7 @@ export function ensureOrchestrationEventStream(
         );
         const client = currentStreamQueryClient(apiBase);
         if (client && payload.conversation?.activity)
-          workObservation(client, apiBase).streamObserved(
-            payload.conversation.activity,
-          );
+          workObservation(client).streamObserved(payload.conversation.activity);
       } else if (raw.event === SERVER_EVENTS.ORCHESTRATION_EVENT) {
         if (!cursor.admit(raw.id)) return;
         if (parseStreamSequence(raw.id) !== undefined)
@@ -512,9 +510,7 @@ export function ensureOrchestrationEventStream(
         );
         const client = currentStreamQueryClient(apiBase);
         if (client && payload.conversation?.activity)
-          workObservation(client, apiBase).streamObserved(
-            payload.conversation.activity,
-          );
+          workObservation(client).streamObserved(payload.conversation.activity);
         refreshSessionReadModelOnFact(apiBase, payload.event);
       } else if (
         raw.event === SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED

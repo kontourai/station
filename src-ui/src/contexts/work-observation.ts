@@ -6,9 +6,9 @@ import type {
 import { type QueryClient, QueryClientContext } from '@tanstack/react-query';
 import { useContext, useSyncExternalStore } from 'react';
 
-// Query clients belong to verified authorities. Never persist these observations
+// Query clients belong to verified Station/principal/grant namespaces. Never persist these observations
 // or share them with another principal using the same Station endpoint.
-const authorities = new WeakMap<QueryClient, Map<string, WorkObservation>>();
+const authorities = new WeakMap<QueryClient, WorkObservation>();
 const INBOX = Symbol('inbox');
 type Scope = string | typeof INBOX;
 
@@ -144,25 +144,20 @@ class WorkObservation {
   }
 }
 
-export function workObservation(client: QueryClient, apiBase: string) {
-  let stations = authorities.get(client);
-  if (!stations) {
-    stations = new Map();
-    authorities.set(client, stations);
-  }
-  let observation = stations.get(apiBase);
+export function workObservation(client: QueryClient) {
+  let observation = authorities.get(client);
   if (!observation) {
     observation = new WorkObservation(client);
-    stations.set(apiBase, observation);
+    authorities.set(client, observation);
   }
   return observation;
 }
 
 const noopSubscribe = () => () => {};
 const emptySnapshot = () => 0;
-export function useWorkObservation(apiBase: string) {
+export function useWorkObservation() {
   const client = useContext(QueryClientContext);
-  const observation = client ? workObservation(client, apiBase) : undefined;
+  const observation = client ? workObservation(client) : undefined;
   useSyncExternalStore(
     observation?.subscribe ?? noopSubscribe,
     observation?.snapshot ?? emptySnapshot,

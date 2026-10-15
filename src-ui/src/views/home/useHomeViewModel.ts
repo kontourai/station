@@ -25,7 +25,6 @@ import {
 } from '../../hooks/useIsMobile';
 import type { NavigationView } from '../../types';
 import { buildHomeWorkItems, type HomeWorkItem } from './home-view-model';
-import { useObservedWorkItems } from './useInboxWorkItems';
 import { useWorkFacts } from './useWorkFacts';
 import type { WorkFactsById } from './work-facts';
 import {
@@ -99,7 +98,7 @@ function useHomeWorkData(): HomeWorkData {
       ),
     [inventory.data],
   );
-  const derivedWorkItems = useMemo(() => {
+  const workItems = useMemo(() => {
     const items = buildHomeWorkItems({
       chats: {},
       sessions: sessions.data ?? [],
@@ -130,7 +129,6 @@ function useHomeWorkData(): HomeWorkData {
     sessions.data,
     tasks.data,
   ]);
-  const workItems = useObservedWorkItems(derivedWorkItems);
   const factSources = useMemo(
     () => ({ tasks: tasks.data ?? [], remoteEnvironments }),
     [remoteEnvironments, tasks.data],

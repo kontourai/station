@@ -464,7 +464,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const taskSwitcherTriggerRef = useRef<HTMLButtonElement>(null);
   // Get data from contexts
   const { apiBase } = useApiBase();
-  const workObservation = useWorkObservation(apiBase);
+  const workObservation = useWorkObservation();
   const requestAuthority = useHostRequestAuthorityScope();
   // #3159: inbox rows drag a conversation reference under this scope;
   // stable across renders for the inbox panel's `memo()`.

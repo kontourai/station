@@ -116,7 +116,7 @@ export function useSessionEventWindow(
   reconcileRevision = 0,
   legacySessionId?: string,
 ): SessionEventWindowReader {
-  const observation = useWorkObservation(apiBase);
+  const observation = useWorkObservation();
   const readerKey = threadId
     ? JSON.stringify([apiBase, threadId, legacySessionId])
     : undefined;

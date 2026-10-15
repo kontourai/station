@@ -256,9 +256,10 @@ export function workStatus(
   item: HomeWorkItem,
   now: number,
   facts?: WorkFacts,
+  observationUnavailable = false,
 ): WorkStatus {
   const known = rungFor(item, facts);
-  const rung = item.observationUnavailable
+  const rung = observationUnavailable
     ? {
         ...known,
         word: `Last known: ${known.word}`,

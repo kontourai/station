@@ -1,8 +1,6 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { useMemo } from 'react';
-import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useOpenChatInbox } from '../../contexts/open-chats-store';
-import { useWorkObservation } from '../../contexts/work-observation';
 import type { AgentSummary } from '../../types';
 import {
   buildHomeWorkItems,
@@ -35,7 +33,7 @@ export function useInboxWorkItems(
 ): HomeWorkItem[] {
   const { items: openChatItems, currentSessionIdByConversation } =
     useOpenChatInbox(agents, sessions, resolveModelLabel);
-  const items = useMemo(
+  return useMemo(
     () =>
       buildHomeWorkItems({
         chats: {},
@@ -52,25 +50,6 @@ export function useInboxWorkItems(
       resolveModelLabel,
       sessions,
     ],
-  );
-  return useObservedWorkItems(items);
-}
-
-export function useObservedWorkItems(items: HomeWorkItem[]): HomeWorkItem[] {
-  const { apiBase } = useApiBase();
-  const observation = useWorkObservation(apiBase);
-  const revision = observation?.snapshot();
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the external store revision invalidates this projection while the observer identity stays stable.
-  return useMemo(
-    () =>
-      items.map((item) => ({
-        ...item,
-        observationUnavailable:
-          item.kind !== 'remote-session' &&
-          item.kind !== 'task' &&
-          observation?.unavailable(item.conversationId ?? item.id),
-      })),
-    [items, observation, revision],
   );
 }
 
