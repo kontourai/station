@@ -223,8 +223,13 @@ Response publishers use the read token's `current()` check before applying
 history activity or an open-resolution chat patch (option B). This covers
 initial history, older pages, picker opens, retries, and binding revalidation,
 including an epoch replacement while an open is awaiting focus. Imperative
-picker opens and active retries retain the observation until the command
-settles, so an unrelated inventory refresh cannot retire an in-flight read.
+picker opens and active retries retain the observation until settlement or
+epoch/cache invalidation, so an unrelated inventory refresh cannot retire an
+in-flight read. Open resolution uses an explicit 30-second SDK timeout; the
+imperative command also has a 30-second total bound covering awaited hydration
+and focus. A timeout aborts the request and shows the existing recovery/error
+state. Epoch invalidation releases the pin and aborts immediately, without
+waiting for transport settlement; retired commands cannot publish or focus.
 Mounted revalidators and history readers retain it through their subscription. The same
 boundary resets and cancels cached inventory and sessions queries; their
 activity feed accepts only rows still held by the current query cache. Stream

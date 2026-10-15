@@ -1887,3 +1887,265 @@ it('same-epoch active retry survives an unrelated inventory first-page refresh w
     client.clear();
   }
 });
+
+// The SDK resolver is real here: controller mocks alone cannot expose transport stalls.
+describe('bounded imperative open lifetime', () => {
+  it.each([
+    ['picker', 'headers'],
+    ['picker', 'body'],
+    ['retry', 'headers'],
+    ['retry', 'body'],
+  ] as const)(
+    '%s recovers and releases an unlisted record when open %s stall',
+    async (command, phase) => {
+      const actual = await vi.importActual<
+        typeof import('@kontourai/station-sdk/conversation-open')
+      >('@kontourai/station-sdk/conversation-open');
+      const client = new QueryClient();
+      const observation = workObservation(client);
+      const recovery = vi.fn();
+      const update = vi.fn();
+      const open = vi.fn();
+      let signal: AbortSignal | undefined;
+      vi.useFakeTimers();
+      vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(), ms);
+        return controller.signal;
+      });
+      vi.stubGlobal(
+        'fetch',
+        vi.fn((_url: unknown, init?: RequestInit) => {
+          signal = init?.signal ?? undefined;
+          if (phase === 'headers')
+            return new Promise<Response>((_resolve, reject) => {
+              signal?.addEventListener('abort', () => reject(signal?.reason), {
+                once: true,
+              });
+            });
+          return Promise.resolve(
+            new Response(
+              new ReadableStream({
+                start(controller) {
+                  controller.enqueue(
+                    new TextEncoder().encode('{"success":true,"data":'),
+                  );
+                  signal?.addEventListener(
+                    'abort',
+                    () => controller.error(signal?.reason),
+                    { once: true },
+                  );
+                },
+              }),
+            ),
+          );
+        }),
+      );
+      openRead.mockImplementationOnce(actual.resolveConversationOpen);
+      try {
+        let settled = false;
+        const opening = (
+          command === 'picker'
+            ? openConversationForDock(delta6Resolution(1).conversation, {
+                apiBase: 'http://test.local',
+                observation,
+                open,
+                projectName: () => undefined,
+                findTab: () => CHAT_TAB,
+                updateChat: update,
+                setRecovery: recovery,
+              })
+            : retryActiveConversationForDock(
+                CHAT_TAB,
+                'T',
+                'http://test.local',
+                update,
+                recovery,
+                undefined,
+                observation,
+              )
+        ).then(() => {
+          settled = true;
+        });
+        await vi.waitFor(() => expect(signal).toBeDefined());
+        observation.failed('T', observation.begin(), 'history', 10);
+        const token = observation.read('T', 'history')!;
+        await client.fetchQuery({
+          queryKey: ['conversation-inventory'],
+          queryFn: async () => ({
+            pages: [{ items: [], hasMore: true }],
+            pageParams: [undefined],
+          }),
+        });
+        expect(token.current()).toBe(true);
+        expect(observation.unavailable('T')).toBe(true);
+        // vi.waitFor may advance fake time while transport setup completes.
+        await vi.advanceTimersByTimeAsync(29_000);
+        expect(settled).toBe(false);
+        expect(recovery).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1_000);
+        expect(settled).toBe(true);
+        await opening;
+        expect(signal?.aborted).toBe(true);
+        expect(recovery).toHaveBeenCalledOnce();
+        if (command === 'picker')
+          expect(recovery).toHaveBeenCalledWith({
+            conversation: delta6Resolution(1).conversation,
+            status: 'error',
+          });
+        expect(open).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+        expect(token.current()).toBe(false);
+        expect(observation.unavailable('T')).toBeUndefined();
+      } finally {
+        client.clear();
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
+  it.each(['picker', 'retry'] as const)(
+    'epoch replacement immediately releases and aborts a pending real-SDK %s',
+    async (command) => {
+      const actual = await vi.importActual<
+        typeof import('@kontourai/station-sdk/conversation-open')
+      >('@kontourai/station-sdk/conversation-open');
+      const client = new QueryClient();
+      const observation = workObservation(client);
+      const recovery = vi.fn();
+      const update = vi.fn();
+      const open = vi.fn();
+      let signal: AbortSignal | undefined;
+      let finish!: (response: Response) => void;
+      // Deliberately ignores abort: pin release must not wait for transport settlement.
+      vi.stubGlobal(
+        'fetch',
+        vi.fn((_url: unknown, init?: RequestInit) => {
+          signal = init?.signal ?? undefined;
+          return new Promise<Response>((resolve) => {
+            finish = resolve;
+          });
+        }),
+      );
+      openRead.mockImplementationOnce(actual.resolveConversationOpen);
+      try {
+        const opening =
+          command === 'picker'
+            ? openConversationForDock(delta6Resolution(1).conversation, {
+                apiBase: 'http://test.local',
+                observation,
+                open,
+                projectName: () => undefined,
+                findTab: () => CHAT_TAB,
+                updateChat: update,
+                setRecovery: recovery,
+              })
+            : retryActiveConversationForDock(
+                CHAT_TAB,
+                'T',
+                'http://test.local',
+                update,
+                recovery,
+                undefined,
+                observation,
+              );
+        await waitFor(() => expect(signal).toBeDefined());
+        observation.failed('T', observation.begin(), 'history', 10);
+        await client.fetchQuery({
+          queryKey: ['conversation-inventory'],
+          queryFn: async () => ({
+            pages: [{ items: [], hasMore: true }],
+            pageParams: [undefined],
+          }),
+        });
+        expect(observation.unavailable('T')).toBe(true);
+        observation.resetStreamEpoch();
+        // Synchronous assertions, before any fetch rejection or promise continuation.
+        expect(observation.unavailable('T')).toBeUndefined();
+        expect(signal?.aborted).toBe(true);
+        await opening;
+        finish(Response.json({ success: true, data: delta6Resolution(100) }));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(open).not.toHaveBeenCalled();
+        expect(update).not.toHaveBeenCalled();
+        expect(recovery).not.toHaveBeenCalled();
+        expect(observation.unavailable('T')).toBeUndefined();
+      } finally {
+        client.clear();
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
+  it('picker hydration cannot retain a pin or focus after the command deadline', async () => {
+    const actual = await vi.importActual<
+      typeof import('@kontourai/station-sdk/conversation-open')
+    >('@kontourai/station-sdk/conversation-open');
+    const client = new QueryClient();
+    const observation = workObservation(client);
+    const recovery = vi.fn();
+    const update = vi.fn();
+    let finish!: (opened: boolean) => void;
+    const open = vi.fn<Parameters<typeof openConversationForDock>[1]['open']>(
+      () =>
+        new Promise<boolean>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({ success: true, data: delta6Resolution(1) }),
+      ),
+    );
+    openRead.mockImplementationOnce(actual.resolveConversationOpen);
+    try {
+      let settled = false;
+      const opening = openConversationForDock(
+        delta6Resolution(1).conversation,
+        {
+          apiBase: 'http://test.local',
+          observation,
+          open,
+          projectName: () => undefined,
+          findTab: () => CHAT_TAB,
+          updateChat: update,
+          setRecovery: recovery,
+        },
+      ).then(() => {
+        settled = true;
+      });
+      await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
+      const token = observation.read('T', 'history')!;
+      await client.fetchQuery({
+        queryKey: ['conversation-inventory'],
+        queryFn: async () => ({
+          pages: [{ items: [], hasMore: true }],
+          pageParams: [undefined],
+        }),
+      });
+      expect(token.current()).toBe(true);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(settled).toBe(true);
+      await opening;
+      expect(recovery).toHaveBeenCalledWith({
+        conversation: delta6Resolution(1).conversation,
+        status: 'error',
+      });
+      expect(token.current()).toBe(false);
+      const execution = open.mock.calls[0]?.[7];
+      expect(execution?.signal?.aborted).toBe(true);
+      expect(execution?.beforeFocus?.()).toBe(false);
+      finish(true);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(update).not.toHaveBeenCalled();
+    } finally {
+      client.clear();
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+});

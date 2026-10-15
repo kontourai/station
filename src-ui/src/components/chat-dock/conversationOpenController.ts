@@ -34,13 +34,17 @@ export async function resolveConversationOpenAuthoritatively(
   apiBase: string,
   observation?: ReturnType<typeof workObservation>,
   isCurrent?: () => boolean,
+  signal?: AbortSignal,
 ): Promise<ConversationOpenResolution> {
   const read = observation?.read(conversationId, 'open', isCurrent);
   const { resolveConversationOpen } = await import(
     '@kontourai/station-sdk/conversation-open'
   );
   try {
-    const resolution = await resolveConversationOpen(conversationId, apiBase);
+    const resolution = await resolveConversationOpen(conversationId, apiBase, {
+      timeoutMs: CONVERSATION_OPEN_TIMEOUT_MS,
+      signal,
+    });
     if (resolution.status === 'unavailable') read?.failed();
     else if (resolution.status === 'resolved')
       read?.observed(
@@ -299,6 +303,58 @@ export function conversationOpenPatch(
   };
 }
 
+const CONVERSATION_OPEN_TIMEOUT_MS = 30_000;
+
+function retainConversationOpenRead(
+  conversationId: string,
+  observation?: ReturnType<typeof workObservation>,
+  isCurrent?: () => boolean,
+) {
+  const controller = new AbortController();
+  const read = observation?.read(conversationId, 'open', isCurrent);
+  let retired = false;
+  const current = () =>
+    !retired && read?.current() !== false && isCurrent?.() !== false;
+  let unsubscribe: (() => void) | undefined;
+  const release = () => {
+    retired = true;
+    const remove = unsubscribe;
+    unsubscribe = undefined;
+    remove?.();
+  };
+  // Inventory refreshes retain this reader; epoch/cache invalidation retires it.
+  unsubscribe = observation?.subscribe(conversationId, () => {
+    if (!current()) {
+      release();
+      controller.abort();
+    }
+  });
+  // Bound the entire command, including any awaited hydration or focus.
+  const timer = setTimeout(
+    () => controller.abort(new Error('Conversation open timed out')),
+    CONVERSATION_OPEN_TIMEOUT_MS,
+  );
+  return {
+    current,
+    signal: controller.signal,
+    wait: <T>(pending: Promise<T>): Promise<T> =>
+      new Promise((resolve, reject) => {
+        const aborted = () => reject(controller.signal.reason);
+        controller.signal.addEventListener('abort', aborted, { once: true });
+        if (controller.signal.aborted) aborted();
+        pending
+          .then(resolve, reject)
+          .finally(() =>
+            controller.signal.removeEventListener('abort', aborted),
+          );
+      }),
+    release: () => {
+      clearTimeout(timer);
+      release();
+    },
+  };
+}
+
 /** Resolve, open, and bind one picker/recovery row as a single UI command. */
 export async function openConversationForDock(
   conversation: ConversationListItem | string,
@@ -306,32 +362,35 @@ export async function openConversationForDock(
 ): Promise<boolean> {
   const conversationId =
     typeof conversation === 'string' ? conversation : conversation.id;
-  // Inventory pagination must not retire an imperative open before it publishes.
-  const releaseRead = effects.observation?.subscribe(conversationId, () => {});
-  const read = effects.observation?.read(
+  const read = retainConversationOpenRead(
     conversationId,
-    'open',
+    effects.observation,
     effects.isCurrent,
   );
-  const isCurrent = () =>
-    read?.current() !== false && effects.isCurrent?.() !== false;
+  const isCurrent = read.current;
   try {
-    const resolution = await resolveConversationOpenAuthoritatively(
-      conversationId,
-      effects.apiBase,
-      effects.observation,
-      isCurrent,
+    const resolution = await read.wait(
+      resolveConversationOpenAuthoritatively(
+        conversationId,
+        effects.apiBase,
+        effects.observation,
+        isCurrent,
+        read.signal,
+      ),
     );
     if (!isCurrent()) return false;
-    const outcome = await commitConversationOpen({
-      resolution,
-      open: effects.open,
-      projectName: effects.projectName,
-      findTab: effects.findTab,
-      isCurrent,
-      readChat: effects.readChat,
-      agentName: effects.agentName,
-    });
+    const outcome = await read.wait(
+      commitConversationOpen({
+        resolution,
+        open: effects.open,
+        projectName: effects.projectName,
+        findTab: effects.findTab,
+        isCurrent: () => isCurrent() && !read.signal.aborted,
+        readChat: effects.readChat,
+        agentName: effects.agentName,
+        signal: read.signal,
+      }),
+    );
     if (!isCurrent()) return false;
     if (outcome.kind === 'recovery') {
       if (typeof conversation === 'string') return false;
@@ -347,7 +406,7 @@ export async function openConversationForDock(
     effects.setRecovery({ conversation, status: 'error' });
     return true;
   } finally {
-    releaseRead?.();
+    read.release();
   }
 }
 
@@ -360,25 +419,27 @@ export async function retryActiveConversationForDock(
   readChat?: (tabId: string) => Partial<ChatUIState> | undefined,
   observation?: ReturnType<typeof workObservation>,
 ): Promise<void> {
-  const releaseRead = observation?.subscribe(conversationId, () => {});
-  const read = observation?.read(conversationId, 'open');
+  const read = retainConversationOpenRead(conversationId, observation);
   try {
-    const resolution = await resolveConversationOpenAuthoritatively(
-      conversationId,
-      apiBase,
-      observation,
-      read?.current,
+    const resolution = await read.wait(
+      resolveConversationOpenAuthoritatively(
+        conversationId,
+        apiBase,
+        observation,
+        read.current,
+        read.signal,
+      ),
     );
-    if (read?.current() === false) return;
+    if (!read.current()) return;
     updateChat(
       sessionId,
       conversationOpenPatch(resolution, readChat?.(sessionId)),
     );
   } catch {
-    if (read?.current() === false) return;
+    if (!read.current()) return;
     onUnavailable();
   } finally {
-    releaseRead?.();
+    read.release();
   }
 }
 
@@ -390,6 +451,7 @@ export async function commitConversationOpen({
   isCurrent,
   readChat,
   agentName,
+  signal,
 }: {
   resolution: ConversationOpenResolution;
   open: (
@@ -400,13 +462,18 @@ export async function commitConversationOpen({
     model?: string,
     updatedAt?: string,
     acceptedModel?: string,
-    execution?: { hydrateMessages: true; beforeFocus?: () => boolean },
+    execution?: {
+      hydrateMessages: true;
+      beforeFocus?: () => boolean;
+      signal?: AbortSignal;
+    },
   ) => boolean | Promise<boolean>;
   projectName: (projectSlug: string | undefined) => string | undefined;
   findTab: (conversationId: string) => string | undefined;
   isCurrent?: () => boolean;
   readChat?: (tabId: string) => Partial<ChatUIState> | undefined;
   agentName?: (agentId: string) => string | undefined;
+  signal?: AbortSignal;
 }): Promise<ConversationOpenCommit> {
   const conversation = resolution.conversation;
   if (
@@ -434,7 +501,11 @@ export async function commitConversationOpen({
     conversation.model,
     conversation.updatedAt,
     conversation.acceptedModel,
-    { hydrateMessages: true, ...(isCurrent ? { beforeFocus: isCurrent } : {}) },
+    {
+      hydrateMessages: true,
+      ...(isCurrent ? { beforeFocus: isCurrent } : {}),
+      ...(signal ? { signal } : {}),
+    },
   );
   if (!opened) {
     return {

@@ -1301,7 +1301,7 @@ automatically use the host's native or encrypted broker transport. For those
 hosts, choose client/Session operations that cover the required workflow and
 accept an explicit API base and current request options.
 
-### `resolveConversationOpen(conversationId, apiBase?): Promise<ConversationOpenResolution>`
+### `resolveConversationOpen(conversationId, apiBase?, options?): Promise<ConversationOpenResolution>`
 
 Resolves one inventory row under the server's request-derived authority before
 a caller treats it as a writable Session. The discriminated result is
@@ -1309,7 +1309,9 @@ a caller treats it as a writable Session. The discriminated result is
 carry a current Session identity and a server-derived
 `canContinue` decision. Transport, rejection, and invalid wire failures throw a
 typed `ConversationOpenResolutionFailure` rather than degrading to an empty
-chat.
+chat. Optional `options.signal` cancels the request and `options.timeoutMs`
+sets its deadline, including JSON body consumption. The UI authoritative-open
+reader explicitly sets 30 seconds; this does not enable a global SDK deadline.
 
 Import this exceptional-path API from
 `@kontourai/station-sdk/conversation-open`. Keeping it on a dedicated subpath
