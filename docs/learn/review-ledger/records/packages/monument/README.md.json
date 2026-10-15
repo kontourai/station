@@ -32,7 +32,11 @@
 
     "src-server/services/orchestration/__tests__/monument-boundary-host.test.ts",
 
-    "src-server/services/orchestration/__tests__/fixtures/monument-boundary.ts"
+    "src-server/services/orchestration/__tests__/fixtures/monument-boundary.ts",
+
+    "packages/monument/src/adapter.ts",
+
+    "packages/monument/src/testing/conformance.ts"
   ],
 
   "checks": []

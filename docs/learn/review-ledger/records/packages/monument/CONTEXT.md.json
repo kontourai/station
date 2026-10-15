@@ -14,7 +14,9 @@
 
     "packages/monument/src/step.ts",
 
-    "packages/monument/src/sqlite.ts"
+    "packages/monument/src/sqlite.ts",
+
+    "packages/monument/src/adapter.ts"
   ],
 
   "checks": []
