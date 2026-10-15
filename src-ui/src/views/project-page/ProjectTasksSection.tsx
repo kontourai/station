@@ -18,7 +18,7 @@ import {
   useWorkItemsQuery,
 } from '@kontourai/station-sdk';
 import type { FormEvent } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { WorkflowStatusLine } from '../../components/flow/WorkflowStatusLine';
 import { ProjectTaskBoard } from '../../components/ProjectTaskBoard';
@@ -115,6 +115,7 @@ export function ProjectTasksSection({
   presentation?: 'list' | 'board';
 }) {
   const { navigate } = useNavigation();
+  const dispatchReasonId = useId();
   const starterId =
     typeof window !== 'undefined'
       ? new URLSearchParams(window.location.search).get('starter')
@@ -613,6 +614,16 @@ export function ProjectTasksSection({
                         Claimed by {actorLabel(taskClaim.actor)}
                       </div>
                     )}
+                  {!selectedTask.agentId?.trim() && (
+                    <div
+                      className="project-page__task-detail-meta"
+                      role="status"
+                      id={dispatchReasonId}
+                    >
+                      Dispatch needs an agent, and this Task has none. New Tasks
+                      use the first agent selected in Project settings › Agents.
+                    </div>
+                  )}
                   {workflowMatch && (
                     <WorkflowStatusLine
                       entry={{
@@ -639,12 +650,10 @@ export function ProjectTasksSection({
                   <button
                     className="project-page__add-btn"
                     type="button"
-                    title={
-                      taskClaim?.state === 'claimed-by-other' && taskClaim.actor
-                        ? `Claimed by ${actorLabel(taskClaim.actor)}`
-                        : !selectedTask.agentId?.trim()
-                          ? 'Assign an agent to this Task before dispatching.'
-                          : undefined
+                    aria-describedby={
+                      !selectedTask.agentId?.trim()
+                        ? dispatchReasonId
+                        : undefined
                     }
                     disabled={
                       !selectedTask.agentId?.trim() ||
@@ -661,11 +670,6 @@ export function ProjectTasksSection({
                   </button>
                 </div>
               </div>
-              {!selectedTask.agentId?.trim() && (
-                <p role="status">
-                  Assign an agent to this Task before dispatching.
-                </p>
-              )}
               <dl className="project-page__task-binding">
                 <div>
                   <dt>Working directory</dt>

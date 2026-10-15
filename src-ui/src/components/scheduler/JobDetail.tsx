@@ -9,6 +9,7 @@ import {
   useRunsQuery,
   useSchedulerJobs,
 } from '../../hooks/useScheduler';
+import { isPlainLeftClick } from '../../utils/attentionOpen';
 import { Button } from '../Button';
 import { Dialog } from '../Dialog';
 import {
@@ -255,14 +256,7 @@ export function JobDetail({
           <a
             href={taskHref}
             onClick={(event) => {
-              if (
-                event.button !== 0 ||
-                event.metaKey ||
-                event.ctrlKey ||
-                event.shiftKey ||
-                event.altKey
-              )
-                return;
+              if (!isPlainLeftClick(event)) return;
               event.preventDefault();
               navigate(taskHref);
             }}

@@ -424,7 +424,12 @@ describe('ProjectTasksSection', () => {
       });
       expect(button.disabled).toBe(true);
       expect(screen.getByRole('status').textContent).toContain(
-        'Assign an agent to this Task before dispatching.',
+        'Dispatch needs an agent, and this Task has none.',
+      );
+      const reason = screen.getByRole('status');
+      expect(button.getAttribute('aria-describedby')).toBe(reason.id);
+      expect(reason.textContent).toContain(
+        'New Tasks use the first agent selected in Project settings › Agents.',
       );
       fireEvent.click(button);
       expect(dispatchTask).not.toHaveBeenCalled();
@@ -492,6 +497,15 @@ describe('ProjectTasksSection', () => {
     );
 
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/tasks/task-2'));
+    const listInvalidation = invalidateQueries.mock.calls.findIndex(
+      ([filters]) =>
+        JSON.stringify(filters.queryKey) ===
+        JSON.stringify(['tasks', 'project-alpha']),
+    );
+    expect(listInvalidation).toBeGreaterThanOrEqual(0);
+    expect(
+      invalidateQueries.mock.invocationCallOrder[listInvalidation],
+    ).toBeLessThan(navigate.mock.invocationCallOrder[0]);
 
     navigate.mockReset();
     fireEvent.click(screen.getByRole('button', { name: 'Open Task' }));

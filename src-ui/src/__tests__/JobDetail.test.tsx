@@ -134,30 +134,37 @@ describe('JobDetail run-history status column', () => {
   });
 });
 
-test('opens the monitor Task through canonical navigation at the real Task route', () => {
-  schedulerJobs.mockReturnValue({
-    data: [
-      {
-        name: JOB_NAME,
-        provider: 'station',
-        prompt: '',
-        enabled: true,
-        monitor: {
-          kind: 'github-pull-request',
-          objective: 'review-ready',
-          target: 'https://github.com/kontourai/station/pull/1',
-          projectId: 'project-alpha',
-          agentId: 'reviewer',
+test.each([false, true])(
+  'opens the monitor Task with canonical navigation only for a plain click (metaKey=%s)',
+  (metaKey) => {
+    schedulerJobs.mockReturnValue({
+      data: [
+        {
+          name: JOB_NAME,
+          provider: 'station',
+          prompt: '',
+          enabled: true,
+          monitor: {
+            kind: 'github-pull-request',
+            objective: 'review-ready',
+            target: 'https://github.com/kontourai/station/pull/1',
+            projectId: 'project-alpha',
+            agentId: 'reviewer',
+          },
+          monitorState: { triggeredTaskId: 'task with space' },
         },
-        monitorState: { triggeredTaskId: 'task with space' },
-      },
-    ],
-  });
-  renderWithRuns([]);
-  const link = screen.getByRole('link', { name: 'task with space' });
-  expect(link.getAttribute('href')).toBe('/tasks/task%20with%20space');
-  fireEvent.click(link);
-  expect(navigate).toHaveBeenCalledExactlyOnceWith(
-    '/tasks/task%20with%20space',
-  );
-});
+      ],
+    });
+    renderWithRuns([]);
+    const link = screen.getByRole('link', { name: 'task with space' });
+    expect(link.getAttribute('href')).toBe('/tasks/task%20with%20space');
+    fireEvent.click(link, { metaKey });
+    if (metaKey) {
+      expect(navigate).not.toHaveBeenCalled();
+      return;
+    }
+    expect(navigate).toHaveBeenCalledExactlyOnceWith(
+      '/tasks/task%20with%20space',
+    );
+  },
+);
