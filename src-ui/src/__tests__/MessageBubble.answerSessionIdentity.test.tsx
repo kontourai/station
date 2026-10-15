@@ -53,6 +53,9 @@ vi.mock('../components/chat/ConnectedAnswerBasisAffordance', () => ({
 const createProposalTask = vi.hoisted(() => vi.fn());
 vi.mock('@kontourai/station-sdk', async (original) => ({
   ...(await original<typeof import('@kontourai/station-sdk')>()),
+  useQueryClient: () => ({
+    invalidateQueries: vi.fn().mockResolvedValue(undefined),
+  }),
   useCreateTaskMutation: () => ({
     mutateAsync: createProposalTask,
     isPending: false,

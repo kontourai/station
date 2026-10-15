@@ -1,4 +1,8 @@
-import { useCreateTaskMutation } from '@kontourai/station-sdk';
+import {
+  taskQueries,
+  useCreateTaskMutation,
+  useQueryClient,
+} from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useProjects } from '../../contexts/ProjectsContext';
@@ -20,6 +24,7 @@ export function TaskProposalCard({
   agentId?: string;
 }) {
   const create = useCreateTaskMutation();
+  const queryClient = useQueryClient();
   const { navigate } = useNavigation();
   const { projects } = useProjects();
   const [selectedProject, setSelectedProject] = useState(projectId ?? '');
@@ -42,6 +47,11 @@ export function TaskProposalCard({
         shapingSource: { sessionId, turnId },
       });
       setAcceptedId(task.id);
+      await queryClient.invalidateQueries({
+        queryKey: taskQueries.list(selectedProject).queryKey,
+        exact: true,
+        refetchType: 'all',
+      });
       navigate(`/tasks/${encodeURIComponent(task.id)}`);
     } catch {
       setFailed(true);
