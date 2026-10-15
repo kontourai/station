@@ -132,24 +132,26 @@ async function runContendedMutation({
   let mutationSettled = false;
   let mutation: Promise<unknown> | undefined;
   let progress: NodeJS.Immediate | undefined;
-  let guard: NodeJS.Timeout | undefined;
-  const closed = new Promise<void>((resolve) =>
-    child.once('close', () => resolve()),
-  );
+  let progressError: Error | null = null;
+  const closed = Promise.withResolvers<{
+    code: number | null;
+    signal: NodeJS.Signals | null;
+  }>();
   const ready = Promise.withResolvers<void>();
   const failed = Promise.withResolvers<never>();
   let locked = false;
   child.once('error', failed.reject);
   child.once('close', (code, signal) => {
-    if (!locked || code !== 0 || signal) {
+    if (!locked) {
       failed.reject(
         new Error(
           `lock holder exited code=${code} signal=${signal} ready=${locked}: ${stderr}`,
         ),
       );
     }
+    closed.resolve({ code, signal });
   });
-  guard = setTimeout(
+  const guard = setTimeout(
     () => failed.reject(new Error('lock holder handshake did not complete')),
     scaleLivenessMs(20_000),
   );
@@ -163,6 +165,7 @@ async function runContendedMutation({
       ready.resolve();
     } else if (message.type === 'contended') {
       progress = setImmediate(() => {
+        if (releaseReason !== undefined) return;
         if (mutationSettled) {
           failed.reject(
             new Error('parent mutation completed before the holder released'),
@@ -171,7 +174,7 @@ async function runContendedMutation({
         }
         progressed = true;
         child.send('progress', (error) => {
-          if (error) failed.reject(error);
+          if (error) progressError = error;
         });
       });
     } else if (message.type === 'released' && 'reason' in message) {
@@ -188,7 +191,12 @@ async function runContendedMutation({
     // Observe rejection immediately, but report the holder's causal release
     // result before any secondary mutation error from the negative control.
     void mutation.catch(() => {});
-    await Promise.race([closed, failed.promise]);
+    const result = await Promise.race([closed.promise, failed.promise]);
+    if (result.code !== 0 || result.signal) {
+      throw new Error(
+        `lock holder exited code=${result.code} signal=${result.signal}: ${stderr}`,
+      );
+    }
     expect(
       releaseReason,
       'parent must service the held-lock challenge before watchdog release',
@@ -197,13 +205,14 @@ async function runContendedMutation({
       progressed,
       'parent event-loop progress while its mutation was contending',
     ).toBe(true);
+    if (progressError) throw progressError;
     await mutation;
   } finally {
     clearTimeout(guard);
     clearImmediate(progress);
     if (child.exitCode === null && child.signalCode === null)
       child.kill('SIGKILL');
-    await closed;
+    await closed.promise;
     // Drain an already-started operation before afterEach removes its root.
     await mutation?.catch(() => {});
   }
