@@ -8,7 +8,11 @@ import {
 } from '../../session-turn-boundary.js';
 import type { SqliteDatabase } from '../../sqlite-database.js';
 
-class EventAppendTransactionLostError extends Error {}
+class EventAppendTransactionLostError extends Error {
+  constructor(options?: { cause?: unknown }) {
+    super('The legacy append transaction was lost', options);
+  }
+}
 export function legacyTurnBoundaryCoordinator(
   db: SqliteDatabase & { readonly isTransaction?: boolean },
   reconcileTerminals: (threadId: string) => void,
