@@ -440,6 +440,8 @@ describe('ProjectTasksSection', () => {
       expect(settingsLink.getAttribute('href')).toBe(
         '/projects/project-alpha/edit?section=agents',
       );
+      fireEvent.click(settingsLink, { metaKey: true });
+      expect(navigate).not.toHaveBeenCalled();
       fireEvent.click(settingsLink);
       expect(navigate).toHaveBeenCalledWith('/projects/project-alpha/edit', {
         section: 'agents',
