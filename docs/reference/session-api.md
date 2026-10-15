@@ -212,11 +212,16 @@ another device and a restart.
   so nobody takes the turn another person's message waits for. Only a caller
   who may read the conversation is told so; anyone else gets the dispatch's
   ordinary refusal for a conversation they may not read. While Station is
-  still sending a held message whose send it gave up waiting for (below), a
-  send under its key that would take the live path, from anyone including
-  its own sender, is refused `409` with the retryable
-  `code: "client_turn_in_flight"`: retry it with the same key once that send
-  has answered. An inbox holds at most 50 unsettled
+  sending a held message (from the moment its send begins, and past the point
+  where Station gives up waiting for it, below), a send under its key that
+  would take the live path is refused `409` with the retryable
+  `code: "client_turn_in_flight"`. That goes to its own sender (anyone else
+  is refused `inbox_key_held` first), or to anyone once the message is
+  dismissed: dismissing it does not stop a send already under way, so the
+  key stays refused until that send answers or Station restarts. Retry with
+  the same key after that. While a conversation is moving to a new Session,
+  Station cannot hold a follow-up, so a `whenBusy` send then takes the live
+  path too. An inbox holds at most 50 unsettled
   messages; past that a send is refused `409` with
   `code: "conversation_inbox_full"`.
 - Only a plain continuation can be held: no attachments, approval pick, input

@@ -10,6 +10,8 @@ turn is running, and Station sends the message itself when that turn ends,
 across a closed app, another device or a restart. `TurnDeliveryInspection`
 gains the `queued` outcome, and the new `ConversationInboxEntry` describes a
 held message. The SDK adds `queueExecutionMessage`, `listConversationInbox` and
-`cancelConversationInboxEntry`. A Station that predates the inbox ignores
+`cancelConversationInboxEntry`. Contracts export
+`CONTINUATION_WORKSPACE_REFUSAL_CODES`, the codes a continuation refused for
+its persisted workspace answers with (and a held message's `reasonCode`). A Station that predates the inbox ignores
 `whenBusy` and refuses a busy send as before, so keep the message on that
 refusal.

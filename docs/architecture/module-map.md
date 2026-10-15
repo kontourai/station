@@ -1392,9 +1392,12 @@ never started a second time alongside itself.
 Someone else's entry that may still be sent (`queued`, `placing`,
 `unconfirmed`) is listed without its key, and `/chat` and
 `/chat/:id/continue` refuse a send under such a key (`inbox_key_held`), and a
-live send under a key whose abandoned start still runs, from any sender
-(`client_turn_in_flight`, `inFlight`), both only to a caller who may read the
-conversation. An `unconfirmed` entry
+live send under a key the inbox is starting now, from before the start begins
+until it answers, including past its deadline (`client_turn_in_flight`,
+`inFlight`, the in-memory `startsInProgress` set): to its own sender, or to
+anyone once the entry is dismissed (a dismissal does not end the start, so
+the key stays refused until it answers or Station restarts). Both go only to a
+caller who may read the conversation. An `unconfirmed` entry
 is never sent again and holds the ones behind it until someone who may send to
 the conversation dismisses it; only the sender withdraws a waiting one.
 Refusal reasons are stable codes with fixed messages. The delivery lookup

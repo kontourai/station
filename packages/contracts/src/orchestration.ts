@@ -1588,9 +1588,10 @@ export interface ConversationInboxEntry {
    * The send's idempotency key; resending the same body answers this entry.
    * Absent on someone else's entry that may still be sent (`queued`,
    * `sending`, `unconfirmed`). A send under such a key (`/chat` or
-   * `/chat/:id/continue`) is refused `inbox_key_held`; one Station is still
-   * sending after giving up waiting is refused `client_turn_in_flight` for
-   * any sender.
+   * `/chat/:id/continue`) is refused `inbox_key_held`. While Station is
+   * sending an entry, a live send of its key is refused `client_turn_in_flight`
+   * to its own sender, or to anyone once the entry is dismissed (until that
+   * send answers or Station restarts).
    */
   clientTurnId?: string;
   /** Only follow-ups today; steer and display-only kinds may follow. */

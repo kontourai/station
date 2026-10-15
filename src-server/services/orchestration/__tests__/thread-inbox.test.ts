@@ -1166,4 +1166,46 @@ describe('thread inbox (#3568)', () => {
     expect(asked.length).toBeGreaterThanOrEqual(2);
     expect(new Set(asked)).toEqual(new Set([queuedAt]));
   });
+
+  test('R5-4: a key is in flight from its start until it answers, and a dismissal does not end that', async () => {
+    const READER = 'human:local:reader';
+    permitted.add(READER);
+    let answer!: () => void;
+    const world = boot(path(), {
+      placementDeadlineMs: 50,
+      start: () =>
+        new Promise((resolve) => {
+          answer = () =>
+            resolve({
+              outcome: 'started',
+              conversationId: THREAD,
+              sessionId: THREAD,
+              turnId: 'turn-late',
+            });
+        }),
+    });
+    await runningFirstTurn(world);
+    queueFollowUp(world, 'owner-key');
+    expect(world.inbox.inFlight(THREAD, 'owner-key')).toBe(false);
+    await emit(world, 'turn.completed', { turnId: 'turn-1' });
+    // Before its deadline: started, not answered.
+    await eventuallyTrue(() => answer !== undefined, 1_000);
+    expect(world.inbox.list(THREAD)).toMatchObject([{ state: 'sending' }]);
+    expect(world.inbox.inFlight(THREAD, 'owner-key')).toBe(true);
+    // Past it, and dismissed: the send already under way still runs.
+    await eventuallyTrue(
+      () => world.inbox.list(THREAD)[0]?.state === 'unconfirmed',
+      1_000,
+    );
+    expect(world.inbox.cancel(THREAD, 'owner-key', READER).kind).toBe(
+      'cancelled',
+    );
+    expect(world.inbox.heldByOther(THREAD, 'owner-key', READER)).toBe(false);
+    expect(world.inbox.inFlight(THREAD, 'owner-key')).toBe(true);
+    answer();
+    await eventuallyTrue(
+      () => !world.inbox.inFlight(THREAD, 'owner-key'),
+      1_000,
+    );
+  });
 });
