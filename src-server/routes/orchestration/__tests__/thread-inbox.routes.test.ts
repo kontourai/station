@@ -1423,12 +1423,12 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     await eventually(() => expect(world.adapter.releaseHeldSend).toBeDefined());
     const abort = new AbortController();
     let settled = false;
-    const retry = world
-      .sendAbortable('k1', 'and then this', abort.signal)
-      .then((response) => {
-        settled = true;
-        return response;
-      });
+    const retry = Promise.resolve(
+      world.sendAbortable('k1', 'and then this', abort.signal),
+    ).then((response) => {
+      settled = true;
+      return response;
+    });
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(settled).toBe(false);
     abort.abort();
