@@ -125,15 +125,18 @@ export type OutboundDispatchTurn = Omit<
   heldHere?: true;
   /**
    * A send that got no answer, released by its own renderer for Station's
-   * delivery lookup (`unanswered`): nothing sends it until the lookup says
-   * Station never received it, then it goes once with its key.
+   * delivery lookup (`unanswered`), or claimed by a renderer proven gone (its
+   * Web Lock is no longer held): nothing sends it until the lookup says
+   * Station never received it, then it goes once with its key. Either can be
+   * withdrawn with `dismissUnconfirmed`.
    */
   awaitingLookup?: true;
   /**
-   * An `invoking` row whose claim belongs to a renderer that is still
-   * running (another window, or this one's drain): its send is under way
-   * there. Without it, an `invoking` row's owner is gone or unknown, and the
-   * row waits for Station's delivery lookup.
+   * An `invoking` row whose send is under way: claimed by another renderer
+   * proven running (its Web Lock is held), or by a pass of this renderer's
+   * own flush that is still in its transport call. Without it the row waits
+   * for Station's delivery lookup: its owner is gone, unknown, or (a claim of
+   * this renderer's that no pass holds) never finished writing back.
    */
   sendUnderWay?: true;
 };
@@ -736,6 +739,8 @@ const listeners = new Set<() => void>();
 const unavailableClaims = new Set<string>();
 /** Live sends this renderer is still waiting on (see `liveInFlight`). */
 const liveOwned = new Set<string>();
+/** Keys a flush pass of this renderer has claimed and not yet let go. */
+const drainInFlight = new Set<string>();
 /**
  * The claim each live send of this renderer currently holds, by key: an
  * abandoned attempt (its write landed late and a re-send adopted the row)
@@ -931,6 +936,7 @@ let knownBootId: string | undefined;
 function publicTurn(
   entry: QueuedOutboundTurn,
   underWay: ReadonlySet<string> = new Set(),
+  ownerGone: ReadonlySet<string> = new Set(),
 ): OutboundDispatchTurn {
   const {
     dispatchBootId: _dispatchBootId,
@@ -945,7 +951,9 @@ function publicTurn(
     ...(entry.heldBy && entry.heldBy.bootId === knownBootId
       ? { heldHere: true as const }
       : {}),
-    ...(awaitingLookup(entry) ? { awaitingLookup: true as const } : {}),
+    ...(awaitingLookup(entry) || ownerGone.has(entry.clientTurnId)
+      ? { awaitingLookup: true as const }
+      : {}),
     ...(underWay.has(entry.clientTurnId)
       ? { sendUnderWay: true as const }
       : {}),
@@ -954,22 +962,32 @@ function publicTurn(
 
 /**
  * The stored rows as callers see them. Whether a claimed send is still under
- * way is read from its owner's liveness now: only a renderer proven running
- * counts (an unknown one does not).
+ * way is read now. This renderer's own claim counts only while a flush pass
+ * of its holds it (one whose write-back failed is not "sending" for ever).
+ * Another renderer's counts while it is proven running; one proven gone is
+ * released like an unanswered send; an unknown one is neither.
  */
 async function publicTurns(): Promise<OutboundDispatchTurn[]> {
   const rows = await readStored();
+  const self = await rendererBootId();
   const underWay = new Set<string>();
+  const ownerGone = new Set<string>();
   for (const row of rows) {
     if (
-      row.status === 'invoking' &&
-      row.dispatchBootId !== undefined &&
-      !liveOwned.has(row.clientTurnId) &&
-      (await ownerLiveness(row.dispatchBootId)) === true
+      row.status !== 'invoking' ||
+      row.dispatchBootId === undefined ||
+      liveOwned.has(row.clientTurnId)
     )
-      underWay.add(row.clientTurnId);
+      continue;
+    if (row.dispatchBootId === self) {
+      if (drainInFlight.has(row.clientTurnId)) underWay.add(row.clientTurnId);
+      continue;
+    }
+    const live = await ownerLiveness(row.dispatchBootId);
+    if (live === true) underWay.add(row.clientTurnId);
+    else if (live === false) ownerGone.add(row.clientTurnId);
   }
-  return rows.map((row) => publicTurn(row, underWay));
+  return rows.map((row) => publicTurn(row, underWay, ownerGone));
 }
 
 /** An `invoking` row no renderer holds a claim on: released for the lookup. */
@@ -1164,7 +1182,11 @@ async function mutateState<T>(
     result: T;
     changed: boolean;
   },
+  /** The caller already holds the queue lock (it is not re-entrant). */
+  options: { locked?: boolean } = {},
 ): Promise<T> {
+  const locked = <R>(run: () => Promise<R>) =>
+    options.locked ? run() : withQueueLock(run);
   let result!: T;
   let changed = false;
   // The retired list is read and written beside the queue record, inside
@@ -1199,9 +1221,9 @@ async function mutateState<T>(
     if (nextRetired !== retired) await retiredStorage.set(nextRetired);
   };
   if (storage.updateWithRetired) {
-    await withQueueLock(applyAtomic);
+    await locked(applyAtomic);
   } else if (storage.updateItem) {
-    await withQueueLock(apply);
+    await locked(apply);
   } else {
     await serialize(async () => {
       const retired = parseRetired(await retiredStorage.get());
@@ -1623,34 +1645,64 @@ async function discard(clientTurnId: string): Promise<void> {
 }
 
 async function dismissUnconfirmed(clientTurnId: string): Promise<void> {
-  await mutateState((state) => {
-    const entry = state.turns.find(
+  // Under the queue lock throughout: a claim is withdrawn only if its owner
+  // is proven gone at the moment of the write, never on an earlier reading.
+  await withQueueLock(async () => {
+    const row = (await readStored()).find(
       (candidate) => candidate.clientTurnId === clientTurnId,
     );
-    if (!entry) return { state, result: undefined, changed: false };
-    if (
-      (entry.status !== 'may-have-started' && !awaitingLookup(entry)) ||
-      unavailableClaims.has(clientTurnId)
-    ) {
-      throw new Error(
-        'Only a message that may have reached the agent can be dismissed this way.',
-      );
-    }
-    return {
-      state: withRetired(
-        {
-          ...state,
-          turns: state.turns.filter(
-            (candidate) => candidate.clientTurnId !== clientTurnId,
-          ),
-        },
-        clientTurnId,
-        'discarded',
-      ),
-      result: undefined,
-      changed: true,
-    };
+    const goneClaim =
+      row?.status === 'invoking' &&
+      row.dispatchBootId !== undefined &&
+      !liveOwned.has(clientTurnId) &&
+      (await ownerLiveness(row.dispatchBootId)) === false
+        ? row.dispatchBootId
+        : undefined;
+    await mutateState((state) => dismissal(state, clientTurnId, goneClaim), {
+      locked: true,
+    });
   });
+}
+
+function dismissal(
+  state: OutboundQueueState,
+  clientTurnId: string,
+  goneClaim: string | undefined,
+): { state: OutboundQueueState; result: undefined; changed: boolean } {
+  // Rechecked inside the write: a claim since re-taken by another renderer
+  // is no longer the one proven gone.
+  const entry = state.turns.find(
+    (candidate) => candidate.clientTurnId === clientTurnId,
+  );
+  if (!entry) return { state, result: undefined, changed: false };
+  const claimedByGone =
+    goneClaim !== undefined &&
+    entry.status === 'invoking' &&
+    entry.dispatchBootId === goneClaim;
+  if (
+    (entry.status !== 'may-have-started' &&
+      !awaitingLookup(entry) &&
+      !claimedByGone) ||
+    unavailableClaims.has(clientTurnId)
+  ) {
+    throw new Error(
+      'Only a message that may have reached the agent can be dismissed this way.',
+    );
+  }
+  return {
+    state: withRetired(
+      {
+        ...state,
+        turns: state.turns.filter(
+          (candidate) => candidate.clientTurnId !== clientTurnId,
+        ),
+      },
+      clientTurnId,
+      'discarded',
+    ),
+    result: undefined,
+    changed: true,
+  };
 }
 
 async function edit(
@@ -1809,6 +1861,7 @@ async function flush(
     }
     if (!claimed) return unavailable ? 'unavailable' : 'drained';
     const capability = claimCapability(claimed);
+    drainInFlight.add(claimed.clientTurnId);
     try {
       const result = await transport(publicTurn(claimed), capability.public);
       if (!capability.settled()) {
@@ -1846,6 +1899,8 @@ async function flush(
         );
         unavailable ||= settled === 'unavailable';
       }
+    } finally {
+      drainInFlight.delete(claimed.clientTurnId);
     }
     const state = capability.state();
     unavailable ||= capability.outcome() === 'unavailable';
@@ -2528,6 +2583,7 @@ export function _setOutboundQueueStorage(
   mutationTail = Promise.resolve();
   unavailableClaims.clear();
   liveOwned.clear();
+  drainInFlight.clear();
   liveClaimOf.clear();
 }
 
@@ -2544,6 +2600,7 @@ export function _resetOutboundQueueStorage(): void {
   mutationTail = Promise.resolve();
   unavailableClaims.clear();
   liveOwned.clear();
+  drainInFlight.clear();
   liveClaimOf.clear();
 }
 

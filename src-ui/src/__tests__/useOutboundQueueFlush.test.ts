@@ -407,6 +407,120 @@ describe('useOutboundQueueFlush', () => {
     }
   }, 20_000);
 
+  it("sends a message held back by another window's send once that send settles there, even with that window closed", async () => {
+    const channels: Array<{
+      name: string;
+      listeners: Set<(event: { data: unknown }) => void>;
+    }> = [];
+    class FakeChannel {
+      readonly listeners = new Set<(event: { data: unknown }) => void>();
+      constructor(readonly name: string) {
+        channels.push(this);
+      }
+      addEventListener(_t: string, l: (event: { data: unknown }) => void) {
+        this.listeners.add(l);
+      }
+      removeEventListener(_t: string, l: (event: { data: unknown }) => void) {
+        this.listeners.delete(l);
+      }
+      postMessage(data: unknown) {
+        for (const channel of channels)
+          if (channel !== this && channel.name === this.name)
+            for (const listener of channel.listeners) listener({ data });
+      }
+      close() {}
+    }
+    // An earlier test may have left the queue's channel open on another
+    // implementation; this one listens on the fake.
+    _resetOutboundQueueChangeChannel();
+    vi.stubGlobal('BroadcastChannel', FakeChannel);
+    // Window B is running, so its send blocks this chat's later message.
+    const held = new Set(['station-outbound-renderer:window-b']);
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      locks: {
+        request: async (
+          _name: string,
+          optionsOrCallback: unknown,
+          maybeCallback?: () => Promise<unknown>,
+        ) =>
+          (
+            (typeof optionsOrCallback === 'function'
+              ? optionsOrCallback
+              : maybeCallback) as () => Promise<unknown>
+          )(),
+        query: async () => ({ held: [...held].map((name) => ({ name })) }),
+      },
+    });
+    const now = Date.now();
+    const base = {
+      sessionId: 'session-1',
+      conversationId: 'session-1',
+      agentSlug: 'codex',
+    };
+    let stored: unknown = [
+      {
+        ...base,
+        clientTurnId: 'b-sending',
+        content: 'sent from window B',
+        createdAt: now,
+        attempts: 1,
+        status: 'invoking',
+        dispatchBootId: 'window-b',
+        claimedAt: now,
+      },
+      {
+        ...base,
+        clientTurnId: 'a-waiting',
+        content: 'written in this window, after it',
+        createdAt: now + 1,
+        attempts: 0,
+        status: 'pending',
+      },
+    ];
+    _setOutboundQueueStorage({
+      getItem: async () => stored,
+      setItem: async (_key, value) => {
+        stored = value;
+      },
+      updateItem: async (_key, updater) => {
+        stored = updater(stored);
+      },
+    });
+    sendMessage.mockResolvedValue({
+      kind: 'accepted',
+      providerTurnId: 'provider-turn-a',
+    });
+    try {
+      renderHook(() => useOutboundQueueFlush('http://api.test'));
+      await waitFor(() =>
+        expect(
+          activeChatsStore
+            .getSnapshot()
+            ['session-1']?.outboundQueuedTurns?.some(
+              (turn) => turn.clientTurnId === 'a-waiting',
+            ),
+        ).toBe(true),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      expect(sendMessage).not.toHaveBeenCalled();
+      // B's send settles there (its row leaves the outbox), B closes, and
+      // B's notice is the only thing this window hears.
+      const record = stored as { turns: Array<Record<string, unknown>> };
+      stored = {
+        ...record,
+        turns: record.turns.filter((turn) => turn.clientTurnId !== 'b-sending'),
+      };
+      held.clear();
+      new FakeChannel('station-outbound-queue').postMessage('changed');
+      await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+      expect(sendMessage.mock.calls[0]?.[6]).toBe('a-waiting');
+    } finally {
+      vi.unstubAllGlobals();
+      _resetOutboundQueueChangeChannel();
+    }
+  });
+
   it('replays the model and provider options captured when the turn was queued', async () => {
     let stored: unknown;
     _setOutboundQueueStorage({

@@ -1960,4 +1960,51 @@ describe('ChatInputArea queued-retry Discard', () => {
     ).toBeNull();
     expect(document.activeElement).toBe(discard);
   });
+
+  test.each([
+    [
+      'Escape',
+      (dialog: HTMLElement) =>
+        fireEvent.keyDown(
+          dialog.contains(document.activeElement)
+            ? (document.activeElement as HTMLElement)
+            : dialog,
+          { key: 'Escape' },
+        ),
+    ],
+    [
+      'a tap outside',
+      (dialog: HTMLElement) => fireEvent.pointerDown(dialog.parentElement!),
+    ],
+  ] as const)(
+    '%s keeps the message and gives focus back to Discard…',
+    async (_how, dismiss) => {
+      const onDiscard = vi.fn();
+      renderChatInputArea({
+        queuedRetryNotice: {
+          text: "Send wasn't confirmed — queued to retry automatically",
+          onDiscard,
+          confirm: true,
+        },
+      });
+      const discard = screen.getByRole('button', { name: 'Discard…' });
+      discard.focus();
+      fireEvent.click(discard);
+      const dialog = screen.getByRole('alertdialog', {
+        name: 'Discard this message?',
+      });
+      expect(document.activeElement).toBe(
+        screen.getByRole('button', { name: 'Keep it' }),
+      );
+      dismiss(dialog);
+      await waitFor(() =>
+        expect(
+          screen.queryByRole('alertdialog', { name: 'Discard this message?' }),
+        ).toBeNull(),
+      );
+      await waitFor(() => expect(document.activeElement).toBe(discard));
+      expect(discard.getAttribute('aria-expanded')).toBe('false');
+      expect(onDiscard).not.toHaveBeenCalled();
+    },
+  );
 });

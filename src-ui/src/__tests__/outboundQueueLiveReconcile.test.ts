@@ -242,6 +242,95 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     expect(orphaned?.sendUnderWay).toBeUndefined();
   });
 
+  it("a closed window's claim can be withdrawn like an unanswered send; a running or unknown one cannot", async () => {
+    const first = await freshRenderer();
+    await first.outboundDispatch.beginLive(intent);
+    const ownerLock = [...heldLocks];
+    const second = await freshRenderer();
+    // Running: under way, not withdrawable.
+    expect((await second.outboundDispatch.open())[0]?.awaitingLookup).toBe(
+      undefined,
+    );
+    await expect(
+      second.outboundDispatch.dismissUnconfirmed('key-live-1'),
+    ).rejects.toThrow(/Only a message that may have reached the agent/);
+    // Unknown (no Web Locks): never counted as gone.
+    const withLocks = navigator;
+    vi.stubGlobal('navigator', { ...navigator, locks: undefined });
+    expect((await second.outboundDispatch.open())[0]?.awaitingLookup).toBe(
+      undefined,
+    );
+    await expect(
+      second.outboundDispatch.dismissUnconfirmed('key-live-1'),
+    ).rejects.toThrow(/Only a message that may have reached the agent/);
+    vi.stubGlobal('navigator', withLocks);
+    // Proven gone: listed like an unanswered send, and withdrawable.
+    kill();
+    expect((await second.outboundDispatch.open())[0]).toMatchObject({
+      status: 'invoking',
+      awaitingLookup: true,
+    });
+    // ...but the write rechecks: an owner seen gone, then running again
+    // before the dismissal, keeps its message.
+    for (const name of ownerLock) heldLocks.add(name);
+    await expect(
+      second.outboundDispatch.dismissUnconfirmed('key-live-1'),
+    ).rejects.toThrow(/Only a message that may have reached the agent/);
+    expect(await second.outboundDispatch.snapshot()).toHaveLength(1);
+    kill();
+    await second.outboundDispatch.dismissUnconfirmed('key-live-1');
+    expect(await second.outboundDispatch.snapshot()).toEqual([]);
+    expect((await second.outboundDispatch.retiredKeys()).discarded).toContain(
+      'key-live-1',
+    );
+  });
+
+  it("this window's own claim reads as under way only while one of its flush passes holds it", async () => {
+    const queue = await freshRenderer();
+    const { rendererBootId } = await import('../lib/outboundQueueLease');
+    const now = Date.now();
+    // A claim of this renderer's whose write-back never landed.
+    value = [
+      {
+        ...intent,
+        clientTurnId: 'stuck-own-claim',
+        createdAt: now,
+        attempts: 1,
+        status: 'invoking',
+        dispatchBootId: rendererBootId,
+        claimedAt: now,
+      },
+    ];
+    const [stuck] = await queue.outboundDispatch.open();
+    expect(stuck).toMatchObject({ status: 'invoking' });
+    expect(stuck?.sendUnderWay).toBeUndefined();
+    // A pass of this window's flush in its transport call: under way.
+    value = [{ ...intent, createdAt: now, attempts: 0, status: 'pending' }];
+    let release!: () => void;
+    const inTransport = new Promise<void>((resolve) => {
+      let entered!: () => void;
+      const entry = new Promise<void>((done) => {
+        entered = done;
+      });
+      const flushing = queue.outboundDispatch.flush(async () => {
+        entered();
+        await new Promise<void>((done) => {
+          release = done;
+        });
+        return { kind: 'accepted' as const, providerTurnId: 'turn-1' };
+      });
+      void entry.then(resolve);
+      void flushing;
+    });
+    await inTransport;
+    expect((await queue.outboundDispatch.open())[0]).toMatchObject({
+      clientTurnId: 'key-live-1',
+      status: 'invoking',
+      sendUnderWay: true,
+    });
+    release();
+  });
+
   it('a failed lookup changes nothing', async () => {
     const second = await killedMidSend();
     await second.outboundDispatch.reconcile(

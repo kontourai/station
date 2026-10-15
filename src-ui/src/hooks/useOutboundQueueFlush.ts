@@ -69,6 +69,24 @@ function heldOutboundIntents(
   return intents;
 }
 
+/**
+ * A row this window would send now: pending, not held by any window, for
+ * this Station, behind no unsent message, in a chat that may be written to.
+ */
+function hasSendableRow(): boolean {
+  return Object.values(activeChatsStore.getSnapshot()).some(
+    (chat) =>
+      conversationCanMutate(chat) &&
+      chat.outboundQueuedTurns?.some(
+        (turn) =>
+          turn.status === 'pending' &&
+          !turn.heldElsewhere &&
+          !turn.waitingForStation &&
+          !turn.behindUnsent,
+      ),
+  );
+}
+
 // Module-level (not a `useRef`) so mounting this hook twice — StrictMode's
 // double-invoked effects, or a fast remount — can never run two overlapping
 // drain passes; a `useRef` would only guard a SINGLE instance's re-renders,
@@ -108,7 +126,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
   const previousStatusRef = useRef(status);
 
   const triggerFlush = useCallback(
-    (rerunIfBusy = false) => {
+    (rerunIfBusy = false, syncHeldCopies = true) => {
       if (flushing) {
         // Only a request for a change the running pass cannot have seen (a
         // chat that just became writable). Queue notifications are not: the
@@ -135,13 +153,17 @@ export function useOutboundQueueFlush(apiBase: string): void {
           // that was mid-drain at a reload to pending, and the restored queue
           // must take it back before the flush could send it too (one
           // message, one sender).
-          await outboundDispatch
-            .syncHeld(
-              heldOutboundIntents(activeChatsStore.getSnapshot()).map(
-                (intent) => ({ ...intent, station: stationRef.current }),
-              ),
-            )
-            .catch(() => undefined);
+          // Not on a pass another window's change started: re-holding here
+          // would take back a key a duplicated tab also holds, and its own
+          // notice would come back and do the same.
+          if (syncHeldCopies)
+            await outboundDispatch
+              .syncHeld(
+                heldOutboundIntents(activeChatsStore.getSnapshot()).map(
+                  (intent) => ({ ...intent, station: stationRef.current }),
+                ),
+              )
+              .catch(() => undefined);
           if (reconcileRetryTimer) clearTimeout(reconcileRetryTimer);
           reconcileRetryTimer = undefined;
           if (received > 0) {
@@ -252,7 +274,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
     ]).then(
       ([{ outboundDispatch }, { projectOutboundQueueEntries }, reporter]) => {
         if (!active) return;
-        const refreshProjection = () => {
+        const refreshProjection = (afterProjection?: () => void) => {
           projection = projection.then(async () => {
             try {
               const entries = await outboundDispatch.open();
@@ -275,6 +297,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
                   ownerRecheck = undefined;
                   if (active) refreshProjection();
                 }, OWNER_RECHECK_MS);
+              afterProjection?.();
             } catch (error) {
               if (!active) return;
               reporter.reportOutboundQueueUnavailable(
@@ -292,11 +315,18 @@ export function useOutboundQueueFlush(apiBase: string): void {
           outboundDispatch.subscribe(handleQueueChanged),
           // Another window's change (a Discard there, a send it settled)
           // reaches this one only through the queue's cross-window channel.
-          // It only refreshes what this window shows: a flush here would
-          // re-hold this tab's follow-ups (`syncHeld`), taking a shared key
-          // back from a duplicated tab, whose own notice would come back and
-          // do the same, forever.
-          outboundDispatch.subscribeRemoteChange(refreshProjection),
+          // It refreshes what this window shows, and sends only when that
+          // shows a message this window may send now (the send that held it
+          // back settled there, and that window may have closed). That pass
+          // never re-holds this tab's follow-ups (`syncHeld`): taking a
+          // shared key back from a duplicated tab would bring its notice
+          // back here, forever.
+          outboundDispatch.subscribeRemoteChange(() =>
+            refreshProjection(() => {
+              if (status === 'connected' && hasSendableRow())
+                triggerFlush(false, false);
+            }),
+          ),
         ];
         if (typeof document !== 'undefined') {
           // A hidden window can miss a message on that channel; coming back
