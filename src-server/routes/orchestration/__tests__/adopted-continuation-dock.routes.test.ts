@@ -631,6 +631,40 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
     },
   );
 
+  test.each(['chat', 'chat/background', 'continue'])(
+    '#3567: the production %s executor preserves raw submission identity through auth and dispatch',
+    async (route) => {
+      const f = await fixture({ engineAgent: true });
+      const child = await f.adopt(f.attached('claude', f.project));
+      const path =
+        route === 'continue'
+          ? `/api/orchestration/chat/${encodeURIComponent(child)}/continue`
+          : `/api/orchestration/${route}`;
+      const body = (message: string) => ({
+        ...(route === 'continue'
+          ? {}
+          : dockFollowUp('claude', child, 'station', message)),
+        message,
+        clientTurnId: 'key-3567',
+      });
+      const first = await f.request(path, body(' A '));
+      expect(first.status, first.text).toBe(200);
+      const changed = await f.request(path, body('A'));
+      expect(changed.status, changed.text).toBe(409);
+      expect(changed.body).toMatchObject({
+        success: false,
+        code: 'client_turn_input_conflict',
+      });
+      expect(f.engines.claude.turns).toHaveLength(1);
+      const replay = await f.request(path, body(' A '));
+      expect(replay.status, replay.text).toBe(200);
+      expect(replay.body.data.providerTurnId).toBe(
+        first.body.data.providerTurnId,
+      );
+      expect(f.engines.claude.turns).toHaveLength(1);
+    },
+  );
+
   test('a project-only follow-up that names another project is refused', async () => {
     const f = await fixture({ engineAgent: true });
     const child = await f.adopt(f.attached('claude', f.folder));
