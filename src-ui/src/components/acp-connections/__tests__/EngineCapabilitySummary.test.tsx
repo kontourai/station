@@ -4,7 +4,7 @@ import {
   ENGINE_CAPABILITY_MATRICES,
   UNKNOWN_EXTERNAL_ENGINE_MATRIX,
 } from '@kontourai/station-contracts/engine-capability-matrix';
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import {
   deriveCapabilityChips,
@@ -178,5 +178,20 @@ describe('EngineCapabilitySummary derivations', () => {
     expect(
       gates.querySelectorAll('.engine-capability-summary__chip'),
     ).toHaveLength(0);
+  });
+});
+
+
+describe('engine recovery disclosure', () => {
+  it('discloses unsupported crash continuation even when live steering exists', () => {
+    render(
+      <EngineCapabilitySummary
+        matrix={ENGINE_CAPABILITY_MATRICES.claude}
+        connectionName="Claude Code"
+      />,
+    );
+    expect(screen.getByText('Recovery and delivery')).toBeTruthy();
+    expect(screen.getByText('A running turn cannot continue after a Station restart.')).toBeTruthy();
+    expect(screen.getByText('Pending approvals do not survive an engine restart.')).toBeTruthy();
   });
 });
