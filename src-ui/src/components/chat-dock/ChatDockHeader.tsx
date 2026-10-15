@@ -412,8 +412,6 @@ export function ChatDockHeader({
                   key={session.id}
                   className="chat-dock__activity-item"
                   onClick={() => {
-                    // Return focus to the indicator before hiding the selected row.
-                    activityButton.current?.focus();
                     chatControls?.focusSession(session.id);
                     setActivityOpen(false);
                   }}

@@ -6,6 +6,8 @@ import {
 } from '@playwright/test';
 import { test } from './helpers/fixture-audit';
 import {
+  DEFAULT_CONVERSATION_LOOKUPS,
+  DEFAULT_CONVERSATIONS,
   dismissSetupLauncher,
   emitMockOrchestrationEvent,
   installMockOrchestrationConversationEventWindow,
@@ -31,7 +33,7 @@ const CONVERSATION_ID = 'conv-1';
 const PHONE = { width: 390, height: 844 } as const;
 const DESKTOP = { width: 1280, height: 800 } as const;
 
-async function seedChat(page: Page) {
+async function seedChat(page: Page, several = false) {
   // Presence reporting is outside this journey; keep it off the shared server.
   await page.route('**/api/presence/focus', (route) =>
     route.fulfill({ status: 204 }),
@@ -44,10 +46,12 @@ async function seedChat(page: Page) {
       JSON.stringify({ version: 2, values: { developerToolsEnabled: true } }),
     );
   });
-  await seedActiveChats(page, [
-    {
-      sessionId: SESSION_ID,
-      conversationId: CONVERSATION_ID,
+  await seedActiveChats(
+    page,
+    (several ? [1, 2] : [1]).map((index) => ({
+      sessionId: `session-${index}`,
+      conversationId: `conv-${index}`,
+      title: `Working chat ${index}`,
       agentSlug: 'dev-agent',
       model: 'claude-sonnet',
       provider: 'codex',
@@ -55,10 +59,36 @@ async function seedChat(page: Page) {
       orchestrationSessionStarted: true,
       ephemeralMessages: [],
       inputHistory: [],
-    },
-  ]);
+    })),
+  );
   await installMockOrchestrationSse(page);
-  await seedOrchestrationRoutes(page);
+  await seedOrchestrationRoutes(
+    page,
+    several
+      ? {
+          conversations: [
+            ...DEFAULT_CONVERSATIONS,
+            {
+              id: 'conv-2',
+              title: 'Working chat 2',
+              createdAt: '2026-10-14T08:00:00.000Z',
+              updatedAt: '2026-10-14T08:00:00.000Z',
+              messageCount: 0,
+            },
+          ],
+          conversationLookups: {
+            ...DEFAULT_CONVERSATION_LOOKUPS,
+            'conv-2': {
+              id: 'conv-2',
+              currentSessionId: 'session-2',
+              agentSlug: 'dev-agent',
+              projectSlug: 'dev',
+              title: 'Working chat 2',
+            },
+          },
+        }
+      : undefined,
+  );
   await installMockOrchestrationEventWindow(page, 'codex', {
     [SESSION_ID]: [
       {
@@ -82,28 +112,30 @@ async function seedChat(page: Page) {
   await installMockOrchestrationConversationEventWindow(
     page,
     (conversationId) =>
-      conversationId === CONVERSATION_ID ? [SESSION_ID] : [],
+      conversationId === CONVERSATION_ID
+        ? [SESSION_ID]
+        : several && conversationId === 'conv-2'
+          ? ['session-2']
+          : [],
   );
   await page.route('**/api/orchestration/sessions/read-model', (route) =>
     route.fulfill({
       json: {
         success: true,
-        data: [
-          {
-            threadId: SESSION_ID,
-            provider: 'codex',
-            status: 'running',
-            lifecycleState: 'running',
-            hasActiveTurn: false,
-            controlMode: 'station-owned',
-            answerability: { answerable: true },
-            isLoaded: true,
-            isPersisted: true,
-            eventCount: 2,
-            createdAt: '2026-10-14T08:00:00.000Z',
-            updatedAt: '2026-10-14T08:00:01.000Z',
-          },
-        ],
+        data: (several ? [1, 2] : [1]).map((index) => ({
+          threadId: `session-${index}`,
+          provider: 'codex',
+          status: 'running',
+          lifecycleState: 'running',
+          hasActiveTurn: false,
+          controlMode: 'station-owned',
+          answerability: { answerable: true },
+          isLoaded: true,
+          isPersisted: true,
+          eventCount: 2,
+          createdAt: '2026-10-14T08:00:00.000Z',
+          updatedAt: '2026-10-14T08:00:01.000Z',
+        })),
       },
     }),
   );
@@ -380,9 +412,9 @@ for (const theme of ['light', 'dark'] as const) {
   });
 }
 
-async function openWorkingChat(page: Page) {
+async function openWorkingChat(page: Page, several = false) {
   await page.setViewportSize(DESKTOP);
-  await seedChat(page);
+  await seedChat(page, several);
   await page.goto('/?dock=open&maximize=true&chat=conv-1');
   await dismissSetupLauncher(page);
   await waitForMockOrchestrationSse(page);
@@ -419,7 +451,7 @@ for (const key of ['Enter', 'Space']) {
   });
 }
 
-test('working chat selection returns keyboard focus to the indicator', async ({
+test('working chat selection keeps composer focus when its turn completes', async ({
   page,
 }, testInfo) => {
   const activity = await openWorkingChat(page);
@@ -440,10 +472,8 @@ test('working chat selection returns keyboard focus to the indicator', async ({
   await expect(chats.getByRole('button').first()).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(chats).toBeHidden();
-  await expect(activity).toBeFocused();
-  expect(await page.evaluate(() => document.activeElement?.tagName)).toBe(
-    'BUTTON',
-  );
+  const composer = page.locator('.chat-input textarea');
+  await expect(composer).toBeFocused();
 
   await activity.hover();
   await expect(chats).toBeVisible();
@@ -456,4 +486,54 @@ test('working chat selection returns keyboard focus to the indicator', async ({
   await expect(chats).toBeVisible();
   await page.mouse.move(0, 0);
   await expect(chats).toBeHidden();
+  await activity.focus();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  await expect(composer).toBeFocused();
+  await emitMockOrchestrationEvent(page, 'orchestration:event', {
+    event: {
+      provider: 'codex',
+      threadId: SESSION_ID,
+      method: 'turn.completed',
+      turnId: 'keyboard-active',
+      createdAt: new Date().toISOString(),
+      outputText: 'Working chat completed.',
+    },
+  });
+  await expect(activity).toHaveCount(0);
+  await expect(composer).toBeFocused();
+});
+
+test('working chat selection focuses the selected composer among several chats', async ({
+  page,
+}) => {
+  await openWorkingChat(page, true);
+  await emitMockOrchestrationEvent(page, 'orchestration:event', {
+    event: {
+      provider: 'codex',
+      threadId: 'session-2',
+      method: 'turn.started',
+      turnId: 'second-active',
+      createdAt: new Date().toISOString(),
+      prompt: 'Second working chat',
+    },
+  });
+  const activity = page.getByRole('button', {
+    name: '2 chats working',
+    exact: true,
+  });
+  await expect(activity).toBeVisible();
+  await activity.focus();
+  await page.keyboard.press('Enter');
+  const selected = page
+    .locator('.chat-dock__activity-dropdown')
+    .getByRole('button', { name: /Working chat 2/ });
+  await selected.focus();
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/chat=conv-2/);
+  const composer = page.locator('.chat-input textarea');
+  await expect(composer).toBeFocused();
+  await composer.fill('Draft for the selected chat');
+  await expect(composer).toHaveValue('Draft for the selected chat');
 });

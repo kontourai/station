@@ -1423,6 +1423,43 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     },
     [focusSession, isFullscreenPlacement, setImportedSessionId],
   );
+  const [composerFocusSession, setComposerFocusSession] = useState<
+    string | null
+  >(null);
+  useEffect(() => {
+    if (!composerFocusSession || activeSessionId !== composerFocusSession)
+      return;
+    let frame = 0;
+    let attempts = 0;
+    const focusComposer = () => {
+      const composer = chatInput.textareaRef.current;
+      if (composer && !composer.disabled && !composer.readOnly)
+        composer.focus();
+      if (composer && document.activeElement === composer) {
+        setComposerFocusSession(null);
+        return;
+      }
+      backgroundTasksTriggerRef.current?.focus();
+      // A chat switch can briefly disable the composer while opening it.
+      if (++attempts < 60 && !composer?.readOnly)
+        frame = requestAnimationFrame(focusComposer);
+      else setComposerFocusSession(null);
+    };
+    focusComposer();
+    return () => cancelAnimationFrame(frame);
+  }, [
+    composerFocusSession,
+    activeSessionId,
+    chatInput.textareaRef,
+    backgroundTasksTriggerRef,
+  ]);
+  const selectWorkingChat = useCallback(
+    (sessionId: string) => {
+      focusSessionInPane(sessionId);
+      setComposerFocusSession(sessionId);
+    },
+    [focusSessionInPane],
+  );
   const closeImportedSession = useCallback(
     () => setImportedSessionId(null),
     [setImportedSessionId],
@@ -2445,7 +2482,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               chatControls={{
                 sessions,
                 unreadCount,
-                focusSession: focusSessionInPane,
+                focusSession: selectWorkingChat,
                 onNewChat: () => setShowNewChatModal(true),
                 setShowChatSettings,
               }}
