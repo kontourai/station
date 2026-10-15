@@ -372,7 +372,7 @@ export function TaskRoomRail({
       <section>
         <h3>Goal</h3>
         {goal ? (
-          <LazyMarkdown>{goal}</LazyMarkdown>
+          <LazyMarkdown loadingProjection="Loading brief…">{goal}</LazyMarkdown>
         ) : (
           <p>
             {document.isLoading
@@ -401,7 +401,9 @@ export function TaskRoomRail({
             ))}
           </ul>
         ) : doneSection || (goalSection === undefined && excerpt) ? (
-          <LazyMarkdown>{doneSection || excerpt}</LazyMarkdown>
+          <LazyMarkdown loadingProjection="Loading brief…">
+            {doneSection || excerpt}
+          </LazyMarkdown>
         ) : (
           <p>Add a checklist in the brief.</p>
         )}

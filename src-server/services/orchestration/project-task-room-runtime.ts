@@ -59,7 +59,10 @@ import type {
   ProjectTaskRoomLinkAuthority,
   ProjectTaskRoomOutputFeedbackTargets,
 } from './project-task-room-history.js';
-import { projectTaskRoomChannelId } from './project-task-room-history.js';
+import {
+  PROJECT_TASK_ROOM_LIMITS,
+  projectTaskRoomChannelId,
+} from './project-task-room-history.js';
 import type { ProjectTaskRoomRevisionEvidencePort } from './project-task-room-revision-evidence-bridge.js';
 import type { ProjectTaskRoomWorkingState } from './project-task-room-working-state.js';
 import { createOrchestrationRunId } from './run-projection.js';
@@ -649,10 +652,25 @@ export class ProjectTaskRoomRuntime {
       if (opened.kind !== 'opened' && opened.kind !== 'existing') return;
       // The existing text body accepts agent-publish authority. Envelope correlation
       // retains exact Session/turn identity without a new history storage format.
-      const text =
-        Buffer.byteLength(answer.text, 'utf8') <= 16 * 1024
-          ? answer.text
-          : `${Buffer.from(answer.text).subarray(0, 15000).toString('utf8')}\n\n_Answer shortened for the room. Open full run for the complete answer._`;
+      const fits = (value: string) =>
+        value.length <= PROJECT_TASK_ROOM_LIMITS.stringBytes &&
+        Buffer.byteLength(
+          JSON.stringify({ kind: 'human-message', text: value }),
+          'utf8',
+        ) <= PROJECT_TASK_ROOM_LIMITS.bodyBytes;
+      let text = answer.text;
+      if (!fits(text)) {
+        const notice =
+          '\n\n_Answer shortened for the room. Open full run for the complete answer._';
+        let end = Math.min(
+          answer.text.length,
+          PROJECT_TASK_ROOM_LIMITS.stringBytes - notice.length,
+        );
+        do {
+          text = answer.text.slice(0, end) + notice;
+          end = Math.floor(end / 2);
+        } while (!fits(text));
+      }
       const result = await this.#history.append({
         grant: this.#issueAgent(current.scope, principal, 'agent-publish'),
         intent: {

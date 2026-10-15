@@ -366,7 +366,9 @@ export function GuestSharedTaskView({
               hidden={tab !== 'Brief'}
             >
               <h6>Shared document</h6>
-              <LazyMarkdown skipHtml>{document.data.text}</LazyMarkdown>
+              <LazyMarkdown skipHtml loadingProjection="Loading brief…">
+                {document.data.text}
+              </LazyMarkdown>
             </div>
           ) : document.data ? (
             <p role="status">{documentState(document.data.kind)}</p>

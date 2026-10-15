@@ -692,7 +692,9 @@ export function TaskRoomEditorPane({
       {!editing && (
         <div className="task-room-brief-rendered">
           {text ? (
-            <LazyMarkdown>{text}</LazyMarkdown>
+            <LazyMarkdown loadingProjection="Loading brief…">
+              {text}
+            </LazyMarkdown>
           ) : (
             <p>
               Add a goal and a Done when checklist to give this Task direction.

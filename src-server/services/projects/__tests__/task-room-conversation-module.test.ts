@@ -65,13 +65,21 @@ class RoomAdapter extends GateTestAdapter {
   override async sendTurn(input: ProviderSendTurnInput) {
     this.turns.push(input);
     const turnId = `turn-${this.turns.length}`;
+    const createdAt = new Date().toISOString();
+    const session = this.sessions.get(input.threadId);
+    if (!session) throw new Error('Missing provider session');
+    this.sessions.set(input.threadId, {
+      ...session,
+      status: 'running',
+      updatedAt: createdAt,
+    });
     this.events.push({
       eventId: randomUUID(),
       provider: this.provider,
       threadId: input.threadId,
       turnId,
       method: 'turn.started',
-      createdAt: new Date().toISOString(),
+      createdAt,
     });
     return { threadId: input.threadId, turnId };
   }
@@ -88,6 +96,13 @@ class RoomAdapter extends GateTestAdapter {
       turnId,
       createdAt: new Date().toISOString(),
     };
+    const session = this.sessions.get(threadId);
+    if (!session) throw new Error('Missing provider session');
+    this.sessions.set(threadId, {
+      ...session,
+      status: 'ready',
+      updatedAt: base.createdAt,
+    });
     this.events.push({
       ...base,
       eventId: randomUUID(),
@@ -435,7 +450,11 @@ test('room requests start the Task and publish canonical answers and continued t
     expect(f.adapter.turns[1].input).toContain('Please refine it');
     expect(f.adapter.turns[1].input).toContain('# Task brief: Make the room');
     expect(await f.agentCount()).toBe(1);
-    f.adapter.answer(sessionId, 'turn-2', 'Refined answer.');
+    f.adapter.answer(
+      sessionId,
+      'turn-2',
+      `Refined answer. ${'Useful detail. '.repeat(900)}`,
+    );
     await vi.waitFor(async () =>
       expect(
         (await f.history()).filter(
@@ -448,6 +467,16 @@ test('room requests start the Task and publish canonical answers and continued t
         (record) => record.correlationId === `room-thread:${sessionId}`,
       ),
     ).toMatchObject({ body: { text: 'Please refine it' } });
+    const continuedAnswer = (await f.history()).find(
+      (record) => record.causationId === 'turn-2',
+    );
+    expect(continuedAnswer?.body).toMatchObject({
+      kind: 'human-message',
+      text: expect.stringContaining('Answer shortened for the room'),
+    });
+    if (continuedAnswer?.body.kind !== 'human-message')
+      throw new Error('Missing continued answer');
+    expect(continuedAnswer.body.text.length).toBeLessThanOrEqual(8 * 1024);
     expect(f.adapter.sessions.size).toBe(1);
     await f.room.reconcileAgentLifecycles([f.task.id]);
     expect(
