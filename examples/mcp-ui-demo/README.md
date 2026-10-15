@@ -34,7 +34,7 @@ node examples/mcp-ui-demo/server.mjs   # speaks MCP over stdio
 
    Add via Connections → Tools, or `POST /integrations`; newly created sources
    start disabled. Enable the source in Connections, then open an Agent's
-   **Add tools** picker and choose **Refresh tools** to discover its actions
+   **Add tools** picker and open the source’s **About this source → Refresh actions** to discover its actions
    before attaching them. Select `status_panel` to add it to the Agent.
 
 2. **Reference it from a layout** as an `mcp-tool-ui` component:
