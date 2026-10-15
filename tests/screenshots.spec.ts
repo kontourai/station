@@ -1134,10 +1134,9 @@ function projectDetailFixture(
  * and a plain object literal's two callbacks cannot share the `withRoute`
  * cleanup closures any other way.
  */
-function overlayDockProjectMismatchHooks(): Pick<
-  Screen,
-  'beforeGoto' | 'afterGoto'
-> {
+function overlayDockProjectMismatchHooks(
+  resyncOnly = false,
+): Pick<Screen, 'beforeGoto' | 'afterGoto'> {
   let cleanups: (() => Promise<void>)[] = [];
   return {
     beforeGoto: async (page) => {
@@ -1192,10 +1191,45 @@ function overlayDockProjectMismatchHooks(): Pick<
           }),
         ),
       ];
+      if (resyncOnly) {
+        cleanups.push(
+          await withRoute(page, '**/api/conversations**', async (route) => {
+            if (
+              new URL(route.request().url()).pathname !== '/api/conversations'
+            ) {
+              await route.fallback();
+              return;
+            }
+            if (route.request().method() !== 'GET')
+              return rejectUnexpectedFixtureRequest(route);
+            await route.fulfill({
+              status: 503,
+              json: { success: false, error: 'temporarily_unavailable' },
+            });
+          }),
+        );
+      }
     },
     afterGoto: async (page) => {
       try {
         await assertNoStrayProjectModal(page);
+        if (resyncOnly) {
+          await expect(
+            page.getByRole('button', {
+              name: 'Status unavailable — resync this conversation',
+              exact: true,
+            }),
+          ).toBeVisible();
+          if ((page.viewportSize()?.width ?? 0) > 600) {
+            await expect(
+              page.getByRole('button', { name: 'Refresh inbox', exact: true }),
+            ).toBeVisible();
+            await expect(
+              page.getByText("Couldn't refresh. Showing the last known list."),
+            ).toBeVisible();
+          }
+          return;
+        }
         // The dock's own inbox "ACTIVE NOW" row resolves this fixture
         // session's title asynchronously (a live query racing the seeded
         // sessionStorage title) — waiting for its settled text here, before
@@ -1243,7 +1277,7 @@ function overlayDockProjectMismatchHooks(): Pick<
         ).toBeVisible({ timeout: 10_000 });
         await expect(
           page.getByRole('button', {
-            name: 'Status unavailable — repair the connection',
+            name: 'Status unavailable — resync this conversation',
             exact: true,
           }),
         ).toBeVisible({ timeout: 10_000 });
@@ -1251,7 +1285,7 @@ function overlayDockProjectMismatchHooks(): Pick<
           .poll(() =>
             page
               .getByRole('button', {
-                name: 'Status unavailable — repair the connection',
+                name: 'Status unavailable — resync this conversation',
                 exact: true,
               })
               .evaluate(
@@ -2449,6 +2483,18 @@ const SCREENS: Screen[] = [
     viewport: DESKTOP,
     ...overlayDockProjectMismatchHooks(),
   },
+  ...(
+    [
+      ['desktop-conversation-resync', DESKTOP],
+      ['mobile-conversation-resync', MOBILE],
+    ] as const
+  ).map(([name, viewport]) => ({
+    name,
+    title: `${name.startsWith('mobile') ? 'Mobile' : 'Desktop'} — Conversation status unavailable`,
+    path: '/?dock=open&chat=gallery-mismatch-conversation',
+    viewport,
+    ...overlayDockProjectMismatchHooks(true),
+  })),
   {
     name: 'overlay-project-switcher-populated',
     title: 'Overlay — Project switcher sheet with a real project row',
@@ -2675,7 +2721,7 @@ const SCREENS: Screen[] = [
 async function statusRasterState(page: Page) {
   return page
     .getByRole('button', {
-      name: 'Status unavailable — repair the connection',
+      name: 'Status unavailable — resync this conversation',
       exact: true,
     })
     .locator('..')
@@ -3117,7 +3163,7 @@ test('build gallery — capture key screens', async ({ page }) => {
               const before = await statusRasterState(page);
               const retiredCount = await page
                 .getByRole('button', {
-                  name: 'Status unavailable — repair the connection',
+                  name: 'Status unavailable — resync this conversation',
                   exact: true,
                 })
                 .locator('..')
