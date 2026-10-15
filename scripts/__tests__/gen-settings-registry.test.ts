@@ -100,8 +100,7 @@ describe('settings registry generator', () => {
     const scratch = mkdtempSync(join(tmpdir(), 'settings-registry-keys-'));
     const outputPath = join(scratch, 'settings-registry.json');
     try {
-      // The first floor cannot see this: every entry is still here, so the
-      // count is 45 and passes. What is gone is the key that resolves `help`.
+      // The entry count still passes; only the keys that resolve help are gone.
       const keyless = {
         ...sources,
         catalog: sources.catalog.map(
@@ -125,12 +124,13 @@ describe('settings registry generator', () => {
         false,
       );
 
-      // And the two floors are independent: 39 entries that all keep their
-      // keys clears this floor and is stopped by the other one, so neither
-      // is standing in for the other.
+      // Keep enough keyed rows regardless of where the catalog displays them.
       const short = {
         ...sources,
-        catalog: sources.catalog.slice(0, MINIMUM_REGISTRY_ENTRIES - 1),
+        catalog: [
+          ...sources.catalog.filter((entry) => entry.configKeys?.length),
+          ...sources.catalog.filter((entry) => !entry.configKeys?.length),
+        ].slice(0, MINIMUM_REGISTRY_ENTRIES - 1),
       };
       expect(
         buildRegistryDocument(short).settings.filter(
