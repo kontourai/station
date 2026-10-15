@@ -4,38 +4,11 @@ import { PageHeaderScope } from '../../components/page-frame';
 import { SkeletonList } from '../../components/state';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 
-const Registry = lazy(() =>
-  import('../RegistryView').then((module) => ({
-    default: module.RegistryView,
-  })),
-);
 const Connections = lazy(() =>
   import('../IntegrationsView').then((module) => ({
     default: module.IntegrationsView,
   })),
 );
-
-export function AgentToolDiscovery({
-  onInstalled,
-}: {
-  onInstalled: () => void;
-}) {
-  return (
-    <PageHeaderScope>
-      <div className="agent-tool-discovery">
-        <Suspense
-          fallback={<SkeletonList count={3} label="Loading catalogs" />}
-        >
-          <Registry
-            initialTab="integrations"
-            toolPicker
-            onInstalled={onInstalled}
-          />
-        </Suspense>
-      </div>
-    </PageHeaderScope>
-  );
-}
 
 export function AgentToolConnection({
   id,

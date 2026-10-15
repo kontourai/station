@@ -88,7 +88,7 @@ function effectiveAgentToolPatterns(form: AgentFormData): string[] {
     : [];
 }
 
-export function addIntegration(
+function addIntegration(
   form: AgentFormData,
   integrationId: string,
 ): AgentFormData {
