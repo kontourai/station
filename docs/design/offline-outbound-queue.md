@@ -33,6 +33,13 @@ the list's Discard… withdraw it only after the shared confirmation, which says
 that a message which already arrived cannot be taken back. Every open window
 re-reads the queue's finished keys on the cross-window change channel and when it
 comes back into view, so a discard in one window removes the bubble in all.
+That channel only refreshes what a window shows; it never starts a send there
+(a send pass would take back a follow-up a duplicated tab also holds, and that
+tab would do the same in turn). A send another window has claimed reads
+"Sending", with no Check, only while that window is proven running (it holds its
+renderer lock); a claim left by a window that closed or crashed reads "No answer
+yet" like its bubble, with Check. While any send reads "Sending" this way the
+list looks again every few seconds, since a window that closes says nothing.
 The lookup settles released rows, and rows whose app was closed, at the next
 launch or reconnect: never received → sent again with the same key; started →
 done; received → asked again later; possibly started, or the conversation runs

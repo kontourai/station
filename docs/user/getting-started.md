@@ -444,7 +444,7 @@ until Station answers instead.
 Until the agent has a message, its bubble is outlined rather than filled, with a
 short label:
 
-- **Sending…**
+- **Sending…**, also while another open window of the app is sending it
 - **Received**, which adds **safe to close** when Station keeps running without
   the app, or **keep the app open** when the app's own Station stops with it
 - **Saved on this device · sends when connected**

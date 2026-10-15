@@ -470,8 +470,13 @@ simple per-device preference rather than claiming to detect an attached keyboard
   still queued and the dock gives the composer priority, the controls row
   repeats a labelled **Discard**: a 44px touch target that adds no height (the
   row is already a touch row), described by the notice's words, doing what the
-  transcript's Discard does. Both controls leave the same state: the turn is
-  discarded and, when none remains, the stale notice is dropped. The
+  transcript's Discard does. When the message may already have reached
+  Station, that control reads **Discard…** and asks first, with the shared
+  risk statement. The composer clips what overflows it in such a dock, so the
+  question opens as the composer's own popover (a sheet on a phone) rather
+  than inside it: focus moves to **Keep it**, and Keep it, Escape or a tap
+  outside returns focus to Discard…. Both controls leave the same state: the
+  turn is discarded and, when none remains, the stale notice is dropped. The
   transcript's Discard, like every transcript notice action, is also 44px on a
   phone or touch screen. The queued turn and its Retry stay in
   the dock body), the chip strip drops to one scrolling row, and only then does
