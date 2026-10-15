@@ -86,14 +86,14 @@
    matches :focus-visible on a text field, so the inner outline drew a second,
    square ring inside the rounded one. The resize grip is too small to drag
    with a finger; a long draft scrolls inside the field instead. */
-@media (pointer: coarse) {
-  .start-composer__box .start-composer__input:focus-visible {
-    /* Match the global focus rule's priority; the box keeps its focus border. */
-    outline: none !important;
-  }
-  .start-composer__input {
-    resize: none;
-  }
+.start-composer[data-coarse-pointer]
+  .start-composer__box
+  .start-composer__input:focus-visible {
+  /* Match the global focus rule's priority; the box keeps its focus border. */
+  outline: none !important;
+}
+.start-composer[data-coarse-pointer] .start-composer__input {
+  resize: none;
 }
 .start-composer__bar {
   display: flex;

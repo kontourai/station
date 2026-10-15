@@ -2,6 +2,7 @@ import type { STTState } from '@kontourai/station-sdk';
 import { type ReactNode, type RefObject, useLayoutEffect, useRef } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useFileAttachment } from '../../hooks/useFileAttachment';
+import { useDockSlotDevice } from '../../hooks/useIsMobile';
 import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
 import { MODEL_NOT_REPORTED } from '../../utils/modelCapabilities';
 import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
@@ -229,6 +230,7 @@ export function StartComposer({
   /** Feedback and setup that belong to this draft. */
   children?: ReactNode;
 }) {
+  const { coarsePointer } = useDockSlotDevice();
   const ownTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fieldRef = textareaRef ?? ownTextareaRef;
   // Typed, restored or cleared: the compact box fits what it now holds.
@@ -248,6 +250,7 @@ export function StartComposer({
   return (
     <form
       className={`start-composer${compact ? ' start-composer--compact' : ''}`}
+      data-coarse-pointer={coarsePointer || undefined}
       aria-label="Start work"
       onSubmit={(event) => {
         event.preventDefault();
