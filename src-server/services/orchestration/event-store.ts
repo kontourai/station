@@ -13601,8 +13601,16 @@ export class EventStore {
         },
         (error: unknown) => {
           if (this.messageSearchBackfillClosed) return;
-          logger.warn('Message search backfill failed', { error });
-          if (isSqliteContentionError(error)) {
+          const contended = isSqliteContentionError(error);
+          logger.warn('Message search backfill failed', {
+            error,
+            databasePath: this.databasePath,
+            recovery: contended ? 'retry-in-2s' : 'restart-required',
+          });
+          // Non-contention faults stop scheduled backfill until restart;
+          // warn with the database and recovery action instead of throwing
+          // from the detached scheduler callback.
+          if (contended) {
             // Projection and watermark roll back together. Re-read the same
             // durable window on the next pass, including after budget expiry.
             const retry = setTimeout(

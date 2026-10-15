@@ -96,6 +96,59 @@ afterEach(() => {
   rmSync(directory, { recursive: true, force: true });
 });
 
+test.each([
+  'success',
+  'contended-then-successful retry',
+  'budget exhaustion',
+  'non-busy error',
+] as const)(
+  'restores the shared connection busy_timeout after %s',
+  async (outcome) => {
+    const database = events['db'];
+    expect(database.prepare('PRAGMA busy_timeout').get()).toMatchObject({
+      timeout: 5000,
+    });
+    if (outcome === 'non-busy error') {
+      database.exec(`CREATE TRIGGER reject_background_event
+        BEFORE INSERT ON orchestration_events
+        BEGIN SELECT RAISE(ABORT, 'background event rejected'); END`);
+    }
+    const contended =
+      outcome === 'contended-then-successful retry' ||
+      outcome === 'budget exhaustion';
+    if (contended) peer.exec('BEGIN IMMEDIATE');
+    const append = vi.spyOn(events, 'appendEventIfAbsent');
+    const pending = events.appendEventIfAbsentInBackground(event('timeout'));
+    try {
+      if (outcome === 'contended-then-successful retry') {
+        await new Promise<void>((resolve) => setTimeout(resolve, 25));
+        expect(append).toHaveBeenCalled();
+        expect(events.listEvents(threadId)).toEqual([]);
+        peer.exec('ROLLBACK');
+      }
+      if (outcome === 'budget exhaustion') {
+        await expect(pending).rejects.toThrow(/database is locked|SQLITE_BUSY/);
+      } else if (outcome === 'non-busy error') {
+        await expect(pending).rejects.toThrow('background event rejected');
+        expect(append).toHaveBeenCalledTimes(1);
+      } else {
+        await expect(pending).resolves.toBe(1);
+      }
+      // This must be the shared main connection: PRAGMAs on the peer cannot
+      // detect leaving synchronous foreground writers with a zero timeout.
+      expect(database.prepare('PRAGMA busy_timeout').get()).toMatchObject({
+        timeout: 5000,
+      });
+      events.assertNoOuterTransactionForPublication();
+    } finally {
+      if (peer.isTransaction) peer.exec('ROLLBACK');
+      await pending.catch(() => {});
+      append.mockRestore();
+    }
+  },
+  15_000,
+);
+
 // Cold following first appends the envelope; a warm poll first upserts the
 // Session. Both must let the real room worker's under-lock authorization run.
 test.each(['envelope', 'session'] as const)(
@@ -169,10 +222,11 @@ test.each(['envelope', 'session'] as const)(
               },
             });
       await locked;
-      const started = performance.now();
+      let started = 0;
       const beforeWrite = () => {
         if (attempted) return;
         attempted = true;
+        started = performance.now();
         // Schedule authorization only when the actual SQLite writer is about
         // to collide, after discovery/path I/O has finished. Keep the real
         // synchronous implementation, including its lock acquisition.
