@@ -92,6 +92,7 @@ import {
   evaluateSessionWait,
   type SessionWaitFoldEvent,
 } from './session-turn-wait.js';
+import type { ContinuationWorkspaceError } from '../execution-target/execution-target-execution.js';
 import type { SqliteDatabase } from './sqlite-database.js';
 
 /** The inbox is the only machine this kernel storage keeps. */
@@ -517,19 +518,12 @@ function errorText(error: unknown): string {
 }
 
 /**
- * The refusal codes an entry may record as its `reasonCode`, a closed list:
- * the start refusals a continuation can answer with, by their contract
- * names. Anything else is `start_refused`, so a reader never sees a code
- * nobody documented. The inbox's own codes are set where they arise:
- * `not_permitted`, `device_not_permitted`, `may_have_been_sent`,
- * `start_deadline` and `unreadable_entry`.
+ * Every `ContinuationWorkspaceError` code. Listed here rather than imported:
+ * that module's runtime imports (projects, worktree provisioning) would join
+ * `EventStore`'s import graph, which opens this inbox. The type check below
+ * fails to compile when the error gains a code this list lacks.
  */
-const START_REFUSAL_CODES: ReadonlySet<string> = new Set([
-  SESSION_ENDED_REJECTION_CODE,
-  EXECUTION_ENGINE_CHANGED_CODE,
-  PROVIDER_SESSION_START_FAILED_CODE,
-  MODEL_NOT_ADVERTISED_CODE,
-  // Every `ContinuationWorkspaceError` code (execution-target-execution.ts).
+const CONTINUATION_WORKSPACE_REFUSAL_CODES = [
   'continuation_workspace_project_context_missing',
   'continuation_workspace_corrupt_worktree_binding',
   'continuation_workspace_worktree_gone',
@@ -537,6 +531,33 @@ const START_REFUSAL_CODES: ReadonlySet<string> = new Set([
   'continuation_workspace_worktree_moved',
   'continuation_workspace_unbound',
   'continuation_workspace_direct_mismatch',
+] as const satisfies readonly ContinuationWorkspaceError['code'][];
+type RequireNever<T extends never> = T;
+type MissingContinuationWorkspaceRefusalCode = RequireNever<
+  Exclude<
+    ContinuationWorkspaceError['code'],
+    (typeof CONTINUATION_WORKSPACE_REFUSAL_CODES)[number]
+  >
+>;
+
+/**
+ * The refusal codes an entry may record as its `reasonCode`, a closed list:
+ * the start refusals a continuation can answer with, by their contract
+ * names. Anything else is `start_refused`, so a reader never sees a code
+ * nobody documented. The inbox's own codes are set where they arise:
+ * `not_permitted`, `device_not_permitted`, `may_have_been_sent`,
+ * `start_deadline` and `unreadable_entry`.
+ */
+// `MissingContinuationWorkspaceRefusalCode` is `never` when the list above is
+// complete (it does not compile otherwise), so this is a set of strings.
+const START_REFUSAL_CODES: ReadonlySet<string> = new Set<
+  string | MissingContinuationWorkspaceRefusalCode
+>([
+  SESSION_ENDED_REJECTION_CODE,
+  EXECUTION_ENGINE_CHANGED_CODE,
+  PROVIDER_SESSION_START_FAILED_CODE,
+  MODEL_NOT_ADVERTISED_CODE,
+  ...CONTINUATION_WORKSPACE_REFUSAL_CODES,
 ]);
 
 /**
@@ -738,6 +759,18 @@ export class ThreadInboxDelivery {
       record !== undefined &&
       MAY_STILL_SEND.has(record.state) &&
       decodePayload(record.payload)?.actor.userId !== userId
+    );
+  }
+
+  /**
+   * Whether a start of `clientTurnId` this process abandoned at its deadline
+   * is still running. The ledger may not hold the key yet, so a live send
+   * under it, by anyone, would be a second send; `/chat` refuses it.
+   */
+  inFlight(conversationId: string, clientTurnId: string): boolean {
+    return (
+      this.abandoned.get(this.inboxOf(conversationId))?.has(clientTurnId) ===
+      true
     );
   }
 

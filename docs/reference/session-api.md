@@ -209,7 +209,14 @@ another device and a restart.
   `POST /chat/<conversationId>/continue`, held or not, under a key
   the inbox holds for someone else in a state it may still send (`queued`,
   `sending`, `unconfirmed`) is refused `409` with `code: "inbox_key_held"`,
-  so nobody takes the turn another person's message waits for. An inbox holds at most 50 unsettled
+  so nobody takes the turn another person's message waits for. Only a caller
+  who may read the conversation is told so; anyone else gets the dispatch's
+  ordinary refusal for a conversation they may not read. While Station is
+  still sending a held message whose send it gave up waiting for (below), a
+  send under its key that would take the live path, from anyone including
+  its own sender, is refused `409` with the retryable
+  `code: "client_turn_in_flight"`: retry it with the same key once that send
+  has answered. An inbox holds at most 50 unsettled
   messages; past that a send is refused `409` with
   `code: "conversation_inbox_full"`.
 - Only a plain continuation can be held: no attachments, approval pick, input
@@ -221,7 +228,11 @@ another device and a restart.
   Station would let send it then: the conversation's owner, or a reader the
   personal Station lets continue it, from a paired device or personal access
   token that is still live and still holds the scope `POST /chat` requires
-  (`orchestration:operate`). Any other busy send, and every send to a Station
+  (`orchestration:operate`). A device or token tied to an account also needs
+  that account enabled; Station checks this through its own local-account
+  directory, so a Station without one (an account-tied person signed in
+  through any other provider) never holds a follow-up from an account-bound
+  device, and that send takes the live path. Any other busy send, and every send to a Station
   without an inbox (a hosted Station, or one that predates it, which ignores
   the field), is answered as before.
 
@@ -244,7 +255,10 @@ and the messages behind it wait until someone dismisses it. One whose send
 did not answer within ten minutes is `unconfirmed` with `start_deadline`
 until Station can tell: it becomes `sent` if the ledger shows its turn
 started, or waits again if no Session took its key, but only once that send
-has answered, so the abandoned send and a new one never run together. While a held message
+has answered, so the abandoned send and a new one never run together. A
+send that never answers at all leaves its message `unconfirmed`, holding the
+messages behind it, until someone dismisses it or Station restarts (after a
+restart the old send is gone, and the ledger decides). While a held message
 waits on a Session that is starting, Station looks again when the Session
 reports a change, and on a schedule (2, 10, 30 and 120 seconds, then every two
 minutes): at most 30 such re-checks until a message is sent or a new one is

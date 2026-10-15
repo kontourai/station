@@ -1391,7 +1391,10 @@ process (a cold start claims the key only once its Session exists), so it is
 never started a second time alongside itself.
 Someone else's entry that may still be sent (`queued`, `placing`,
 `unconfirmed`) is listed without its key, and `/chat` and
-`/chat/:id/continue` refuse a send under such a key (`inbox_key_held`). An `unconfirmed` entry
+`/chat/:id/continue` refuse a send under such a key (`inbox_key_held`), and a
+live send under a key whose abandoned start still runs, from any sender
+(`client_turn_in_flight`, `inFlight`), both only to a caller who may read the
+conversation. An `unconfirmed` entry
 is never sent again and holds the ones behind it until someone who may send to
 the conversation dismisses it; only the sender withdraws a waiting one.
 Refusal reasons are stable codes with fixed messages. The delivery lookup

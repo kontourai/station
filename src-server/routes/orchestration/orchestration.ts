@@ -53,6 +53,7 @@ import {
   APPROVAL_MODES,
   type ApprovalMode,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
+  CLIENT_TURN_IN_FLIGHT_CODE,
   type DelegationProvenance,
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
@@ -1971,6 +1972,7 @@ export function createOrchestrationRoutes(
       | 'cancel'
       | 'deliveryOutcome'
       | 'heldByOther'
+      | 'inFlight'
     >;
     delegationResults?: Pick<
       DelegationResultDelivery,
@@ -2325,6 +2327,42 @@ export function createOrchestrationRoutes(
     );
   };
 
+  /**
+   * #3568: a key whose inbox start was abandoned at its deadline but is still
+   * running in this process. The ledger cannot hold the key yet (a cold start
+   * claims it once its Session exists), so a live send under it, from anyone
+   * including its own sender, would be a second send. It is refused with the
+   * retryable `client_turn_in_flight`: once the start answers, the same key
+   * is answered by the turn claim or placed by the inbox, once. The same
+   * read gate as `inboxKeyHeldRefusal` applies.
+   */
+  const inboxKeyInFlightRefusal = async (
+    c: Context,
+    conversationId: string | undefined,
+    clientTurnId: string | undefined,
+  ): Promise<Response | undefined> => {
+    if (
+      !conversationId ||
+      !clientTurnId ||
+      !deps.threadInbox?.inFlight(conversationId, clientTurnId) ||
+      !(await orchestrationService.readSession(
+        conversationId,
+        readAuthorityFor(c),
+      ))
+    )
+      return undefined;
+    return c.json(
+      {
+        success: false,
+        error:
+          'Station is still sending this queued message. Nothing new was sent; try again in a moment.',
+        code: CLIENT_TURN_IN_FLIGHT_CODE,
+        retryable: true,
+      },
+      409,
+    );
+  };
+
   /** #3568: what `/chat` answers for a follow-up it handed to the inbox. */
   const queuedFollowUpResponse = (
     c: Context,
@@ -2660,6 +2698,14 @@ export function createOrchestrationRoutes(
           queueOnBusyRefusal = undefined;
         }
       }
+      // Not held, so this send takes the live path: never under a key the
+      // inbox is still sending.
+      const keyInFlight = await inboxKeyInFlightRefusal(
+        c,
+        body.conversationId,
+        body.clientTurnId,
+      );
+      if (keyInFlight) return keyInFlight;
       // Admitted: from here until the route answers, the delivery lookup says
       // Station has this send (a cold session start can take a long time
       // before the turn ledger holds anything).
@@ -3257,6 +3303,12 @@ export function createOrchestrationRoutes(
           userId,
         );
         if (keyHeld) return keyHeld;
+        const keyInFlight = await inboxKeyInFlightRefusal(
+          c,
+          param(c, 'conversationId'),
+          body.clientTurnId,
+        );
+        if (keyInFlight) return keyInFlight;
         const data = await deps.continueForegroundMessage({
           ...body,
           ...(body.environment

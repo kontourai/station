@@ -336,6 +336,11 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         return { turnId: dispatched.result.turnId };
       },
     };
+    /**
+     * Set to hold the inbox's next start before it reaches the continuation,
+     * as a cold start does before any Session holds the key.
+     */
+    const inboxStartGate: { wait?: Promise<void> } = {};
     /** Set to lose the inbox's answer after the engine took the turn (a crash). */
     const crashAfterStart: { armed: boolean; release?: () => void } = {
       armed: false,
@@ -376,6 +381,9 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         // The continuation a placement makes, through the same foreground
         // execution the route uses, as the recorded sender.
         start: async ({ conversationId, payload, clientTurnId }) => {
+          const gate = inboxStartGate.wait;
+          inboxStartGate.wait = undefined;
+          if (gate) await gate;
           try {
             const handle = await executeForegroundMessage(
               {
@@ -521,6 +529,7 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         },
       );
     return {
+      inboxStartGate,
       continuations,
       continueSend,
       root,
@@ -989,5 +998,57 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     expect(world.continuations).toEqual([
       { clientTurnId: 'reader-key', userId: READER },
     ]);
+  });
+
+  test('R4-1: while an abandoned start still runs, its own sender cannot send its key live on either route', async () => {
+    const world = station({ placementDeadlineMs: 50 });
+    await world.busy();
+    const held = await world.send('owner-key', 'then summarize', {
+      whenBusy: 'queue',
+    });
+    expect(held.status).toBe(202);
+    let release!: () => void;
+    world.inboxStartGate.wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    world.adapter.holdTurns = false;
+    world.adapter.complete();
+    // Abandoned at its deadline, still held before any Session took the key.
+    await eventually(() =>
+      expect(world.inbox.list(CONVERSATION)).toMatchObject([
+        { clientTurnId: 'owner-key', state: 'unconfirmed' },
+      ]),
+    );
+    expect(world.inbox.inFlight(CONVERSATION, 'owner-key')).toBe(true);
+    const refusals = [
+      // `/chat` without `whenBusy`.
+      await world.send('owner-key', 'then summarize'),
+      // `/chat` with `whenBusy`, but naming another Agent: the live path.
+      await world.send('owner-key', 'then summarize', {
+        whenBusy: 'queue',
+        target: { environment: { kind: 'current' }, agent: agentId('writer') },
+      }),
+      // The composer's continue route.
+      await world.continueSend('owner-key', 'then summarize'),
+    ];
+    for (const refused of refusals) {
+      expect(refused.status, await refused.clone().text()).toBe(409);
+      expect(await refused.json()).toMatchObject({
+        code: 'client_turn_in_flight',
+        retryable: true,
+      });
+    }
+    expect(world.continuations).toEqual([]);
+    expect(world.prompts()).toEqual(['read the file']);
+    // The abandoned start answers: it is sent once, and nothing else is.
+    release();
+    await eventually(() =>
+      expect(world.inbox.list(CONVERSATION)).toMatchObject([
+        { clientTurnId: 'owner-key', state: 'sent' },
+      ]),
+    );
+    expect(world.inbox.inFlight(CONVERSATION, 'owner-key')).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(world.prompts()).toEqual(['read the file', 'then summarize']);
   });
 });
