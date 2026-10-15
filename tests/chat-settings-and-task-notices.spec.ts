@@ -586,6 +586,21 @@ async function selectDelayedWorkingChat(page: Page) {
   return { composer, release };
 }
 
+async function finishDelayedOpen(
+  page: Page,
+  composer: Locator,
+  release: () => void,
+) {
+  release();
+  await expect(composer).toBeEnabled();
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+}
+
 test('delayed working chat selection preserves deliberate Station home focus', async ({
   page,
 }) => {
@@ -597,8 +612,7 @@ test('delayed working chat selection preserves deliberate Station home focus', a
     });
     await home.focus();
     await expect(home).toBeFocused();
-    release();
-    await expect(composer).toBeEnabled();
+    await finishDelayedOpen(page, composer, release);
     await expect(home).toBeFocused();
   } finally {
     release();
@@ -615,8 +629,7 @@ test('delayed working chat request stays cancelled after keyboard reselection', 
     await page.keyboard.press('ControlOrMeta+2');
     await expect(page).toHaveURL(/chat=conv-2/);
     await expect(composer).toBeDisabled();
-    release();
-    await expect(composer).toBeEnabled();
+    await finishDelayedOpen(page, composer, release);
     await expect(composer).not.toBeFocused();
   } finally {
     release();
@@ -645,8 +658,7 @@ test('delayed working chat selection restores composer focus after resizing to 3
         }),
     );
     await expect(composer).toBeDisabled();
-    release();
-    await expect(composer).toBeEnabled();
+    await finishDelayedOpen(page, composer, release);
     await expect(composer).toBeFocused();
   } finally {
     release();

@@ -1446,9 +1446,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       element === document.body ||
       (element instanceof Element && !!element.closest('.chat-dock__activity'));
     const dialogOpen = () =>
-      !!document.querySelector(
-        '[role="dialog"], [role="alertdialog"], dialog[open]',
-      );
+      Array.from(
+        document.querySelectorAll(
+          '[role="dialog"], [role="alertdialog"], dialog[open]',
+        ),
+      ).some((dialog) => !dialog.closest('[aria-hidden="true"], [hidden]'));
     if (dialogOpen() || !mayRestoreFocus(document.activeElement)) {
       setPendingComposerFocus(null);
       return;
@@ -1470,7 +1472,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['role', 'open'],
+      attributeFilter: ['role', 'open', 'aria-hidden', 'hidden'],
     });
     return () => {
       document.removeEventListener('focusin', onFocusIn);
