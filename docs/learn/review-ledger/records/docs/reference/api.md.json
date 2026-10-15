@@ -414,7 +414,19 @@
 
     "src-server/routes/system/resource-posture-routes.ts",
 
-    "packages/contracts/src/system-status.ts"
+    "packages/contracts/src/system-status.ts",
+
+    "packages/contracts/src/tool-library.ts",
+
+    "src-server/routes/tool-library.ts",
+
+    "src-server/runtime/routes/tool-library-runtime.ts",
+
+    "src-server/services/plugins/tool-library-service.ts",
+
+    "src-server/services/plugins/tool-library-catalog.ts",
+
+    "src-server/services/plugins/install-registry-integration.ts"
   ],
 
   "checks": [

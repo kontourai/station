@@ -972,7 +972,13 @@
 
     "pnpm-lock.yaml#/snapshots",
 
-    "src-server/knowledge-index/embedding-identity.ts"
+    "src-server/knowledge-index/embedding-identity.ts",
+
+    "src-server/services/plugins/tool-library-service.ts",
+
+    "src-server/runtime/routes/tool-library-runtime.ts",
+
+    "src-server/services/projects/project-native-tools.ts"
   ],
 
   "checks": [

@@ -180,7 +180,11 @@
 
     "packages/contracts/package.json#/exports",
 
-    "packages/contracts/package.json#/files"
+    "packages/contracts/package.json#/files",
+
+    "packages/contracts/package.json",
+
+    "packages/contracts/src/tool-library.ts"
   ],
 
   "checks": [

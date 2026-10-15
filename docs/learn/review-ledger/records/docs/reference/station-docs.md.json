@@ -116,7 +116,11 @@
 
     "src-ui/src/components/monitoring/FleetRoutingReceipts.tsx",
 
-    "src-ui/src/hooks/useActiveChatSessionLifecycle.ts"
+    "src-ui/src/hooks/useActiveChatSessionLifecycle.ts",
+
+    "src-ui/src/views/agent-editor/AgentToolLibrary.tsx",
+
+    "src-ui/src/views/agent-editor/AgentEditorToolsTab.tsx"
   ],
 
   "checks": [

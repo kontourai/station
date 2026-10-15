@@ -82,7 +82,15 @@
 
     "packages/shared/src/mcp-tool-selection.ts",
 
-    "src-server/runtime/tools/tool-approval.ts"
+    "src-server/runtime/tools/tool-approval.ts",
+
+    "src-server/services/plugins/tool-library-service.ts",
+
+    "src-server/runtime/agents/runtime-agent-builder.ts",
+
+    "src-server/services/projects/project-native-tools.ts",
+
+    "src-server/services/orchestration/session-agent-resolution.ts"
   ],
 
   "checks": [
