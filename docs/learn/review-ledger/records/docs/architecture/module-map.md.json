@@ -996,7 +996,13 @@
 
     "src-server/runtime/frameworks/__tests__/voltagent-model-input.test.ts",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts",
+
+    "packages/contracts/src/task-graph.ts",
+
+    "src-server/routes/orchestration/tasks.ts",
+
+    "src-ui/src/contexts/active-chats-state.ts"
   ],
 
   "checks": [

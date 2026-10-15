@@ -150,7 +150,13 @@
 
     "src-ui/src/components/modals/TaskChatStart.css",
 
-    "src-server/runtime/frameworks/voltagent-adapter.ts"
+    "src-server/runtime/frameworks/voltagent-adapter.ts",
+
+    "packages/contracts/src/task-graph.ts",
+
+    "src-server/routes/orchestration/tasks.ts",
+
+    "src-ui/src/contexts/active-chats-state.ts"
   ],
 
   "checks": [
