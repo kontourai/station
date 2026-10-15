@@ -185,6 +185,14 @@ safe area and on-screen keyboard), stays below dialogs, and hides while a
 maximized chat or a detail sheet fills the screen. Use it only for creating
 something; Connections is the first adopter.
 
+The mobile chat header keeps the conversation title on one line with the
+assistant beneath it. **Chat actions → Project for new chats** changes the
+context for a future chat; it does not move the open conversation. A disconnected
+phone starts with pairing and a computer-setup handoff. Host addresses and broker
+routes are under **Other ways to connect**. Native capability and coarse-pointer
+presentation determine that screen; narrow desktop browsers retain access to
+their current Station.
+
 The mobile header's **New chat** uses an icon-only chat-bubble-plus control in
 the same toolbar button family as its neighbours, retaining its accessible
 name. Source and component checks establish these placements and disabled

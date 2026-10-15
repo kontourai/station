@@ -67,7 +67,8 @@ live in Settings.
 
 New chat opens the shared start composer. Home renders it inline, and an
 operator's Project page renders a compact version above its activity with
-the Project fixed. Project and Station controls sit above the text box;
+the Project fixed. The duplicate project chat callout has been removed; the
+composer is the Project’s entry to a new chat. Project and Station controls sit above the text box;
 separate Agent and Engine & model controls sit inside it beside Start and the overflow
 for visual skills. The Agent list retains each Agent's repair action: a row that cannot start is
 dimmed and disabled with its one fixing button, and shows a state badge only
@@ -113,9 +114,7 @@ of these routes require separate evidence from the source and controlled tests.
 Home keeps a screen-reader page title while the shared composer owns the
 visible start heading. An empty Home does not add a second welcome question.
 
-The **on <host>** control names the answering Station's host projection, or
-**on Project default** when the Project has a saved execution environment. It
-opens the existing task launcher with the current message, Project, Agent and
+The **Run a task…** control opens the existing task launcher with the current message, Project, Agent and
 explicit Station/engine/model/options selection, and with its Station/worker/model routing controls expanded. The launcher
 loads the selected environment's own worker inventory and retains portable
 Project/resource admission and the explicit no-fallback refusals. **Run task**
@@ -622,3 +621,17 @@ pre-merge browser smoke must exercise the journey rather than wait for Nightly.
 An indeterminate wait may show elapsed observation time, clearly identified as time waiting in this view. It must not invent a completion estimate. Access requests with a persisted expiry show a countdown from that expiry; the clock itself is not a live-region announcement.
 
 Discovered Codex rollouts continue through app-server `thread/fork`, returning a distinct native child ID. Cleanup archives the confirmed child. This is separate from resuming an existing Station-owned Codex session, which uses `thread/resume`.
+
+## Header simplification, October 2026
+
+The desktop chat title leads, with assistant and reported engine/model context
+on a second line. Coding keeps the title in its own breadcrumb and retains the
+assistant context in the shared bar. Working chats open a keyboard-operable
+menu. On mobile, the title is one line with assistant context beneath it; the
+**Project for new chats** choice lives in **Chat actions** so it does not imply
+that picking a project moves the current conversation.
+
+Earlier Project before/after illustrations on this page are historical
+comparisons. Their duplicate callout and older dock chrome are not current
+acceptance evidence. See the [current improvement round](../plans/onboarding-improvement-rounds.md)
+for actual captures and remaining Terminal and pairing work.
