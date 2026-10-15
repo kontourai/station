@@ -129,6 +129,10 @@ export class TurnIdempotencyStore {
     );
     switch (result.kind) {
       case 'claimed':
+        // A fresh claim is a new attempt: a retained marker left from an
+        // earlier row of this key (one its thread's deletion removed) must not
+        // make the new, genuinely in-flight claim read as given up.
+        this.retained.delete(key);
         turnDedupClaims.add(1, {
           outcome: result.reclaimed ? 'reclaimed' : 'claimed',
         });
@@ -136,6 +140,14 @@ export class TurnIdempotencyStore {
       case 'resolved':
         return { claimed: false, value: result.value };
       case 'contended':
+        // A claim this owner retained after a possible effect stays
+        // unresolved in the row, so the kernel calls it contended, but no
+        // owner will ever resolve it. Answer it as {@link inspect} does, so a
+        // same-key resend is refused at once instead of waiting it out.
+        if (this.givenUp(key)) {
+          turnDedupClaims.add(1, { outcome: 'indeterminate' });
+          return { claimed: false, indeterminate: true };
+        }
         turnDedupClaims.add(1, { outcome: 'contended' });
         return { claimed: false };
       case 'indeterminate':
@@ -231,8 +243,8 @@ export class TurnIdempotencyStore {
   /**
    * Records that this owner abandoned its unresolved claim of `key` after it
    * may have started the effect. Writes nothing durable: the claim stays
-   * exactly as it is; only {@link inspect} answers it `indeterminate` instead
-   * of `in-flight`.
+   * exactly as it is; only this owner's {@link inspect} and {@link claim}
+   * answer it `indeterminate` instead of `in-flight` and `contended`.
    */
   retain(key: string): void {
     this.retained.delete(key);
@@ -241,6 +253,28 @@ export class TurnIdempotencyStore {
       const oldest = this.retained.values().next().value;
       if (oldest !== undefined) this.retained.delete(oldest);
     }
+  }
+  /**
+   * Whether this owner retained its still-unresolved claim of `key` after a
+   * possible effect, so no owner will ever resolve it: the row is unresolved,
+   * owned by this owner, and marked retained. Never true for another owner's
+   * claim, however old, and it probes no process.
+   */
+  givenUp(key: string): boolean {
+    if (!this.retained.has(key)) return false;
+    const result = this.persistence.execute(
+      { type: 'turnDedup.read', key },
+      this.liveness,
+    );
+    if (result.kind === 'refused')
+      throw new Error(
+        `Turn claim read refused by ${result.participant}: ${result.reason}`,
+      );
+    return (
+      result.kind === 'found' &&
+      result.record.value === null &&
+      result.record.owner?.id === this.owner.id
+    );
   }
   /** Whether any row (pending or resolved) still holds the key. */
   held(key: string): boolean {
@@ -272,6 +306,9 @@ export async function awaitTurnResolution(
     // Released without a result (its owner refused before any effect):
     // nothing will resolve it, so stop waiting rather than run out the clock.
     if (!store.held(key)) return undefined;
+    // Given up by its owner in this process after a possible effect: it will
+    // never resolve either. The caller tells this apart with `givenUp`.
+    if (store.givenUp(key)) return undefined;
     await new Promise((resolve) => setTimeout(resolve, intervalMs));
   }
   return store.read(key);
