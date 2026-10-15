@@ -1,0 +1,7 @@
+{
+  "revision": "16c411213960190578f7b9d4fa55982d81db305d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-reviewed after the fix round removed the unused ProjectDocumentTransactionFaults type re-export from project-file-transactions.ts and un-exported a constant in project-document-transactions.ts. The ProjectFileTransactions section's claims (mutateDocuments/readDocuments, lock order, journal protocol, recovery or refusal) are unchanged and still match the source.","inputs":["docs/architecture/module-map.md","src-server/domain/project-file-transactions.ts"]}
+  ]
+}

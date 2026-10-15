@@ -1027,6 +1027,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // knowledge-root journal/lock, proving prepared multi-file recovery and
   // cross-process serialization without sharing an in-memory test double.
   'src-server/knowledge-store/adapters/__tests__/file-transactions.test.ts',
+  // Real Node writers (the pre-move KnowledgeFileTransactions document writer
+  // and the current ProjectFileTransactions owner) crash or hold a namespace
+  // lock, proving journal recovery and cross-build exclusion on legacy docs.
+  'src-server/services/knowledge/__tests__/knowledge-document-transactions.process.test.ts',
   // The observer's FIFO proof swaps a real pipe exactly at native open and
   // kills only its own child after proving the old flags remain blocked.
   'src-server/knowledge-store/__tests__/knowledge-record-observation.process.test.ts',

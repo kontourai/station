@@ -1,5 +1,43 @@
 [
   {
+    "timestampUtc": "2026-10-15T14:51:19Z",
+    "channel": "nightly-npm",
+    "version": "0.7.0-nightly.2479.38748549060",
+    "sha": "912944dc07b210f2748d304142047bad80841d6a",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/38748549060",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.7.0-nightly.2479.38748549060 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "95bfa48dd8da3a1a59ee2797fb2cc5049aad99e6",
+      "groups": {
+        "feat": [
+          "[#3662](https://github.com/kontourai/station/pull/3662) feat(chat): show each sent message's delivery state on its bubble",
+          "[#3675](https://github.com/kontourai/station/pull/3675) feat(monument): prepare host-backed turn boundaries (phase 2b, part 1)"
+        ],
+        "fix": [
+          "[#3672](https://github.com/kontourai/station/pull/3672) fix(ui): resync unavailable conversations and refresh the inbox",
+          "[#3673](https://github.com/kontourai/station/pull/3673) fix(chat): unify composer file and dictation controls",
+          "[#3668](https://github.com/kontourai/station/pull/3668) fix(knowledge): bind search to the embedding generation and current excerpts; refill topK after authorization",
+          "[#3667](https://github.com/kontourai/station/pull/3667) fix(ui): stop request storms that saturate the native request queue"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#3689](https://github.com/kontourai/station/pull/3689) test(ui): keep useDockSlotDevice in the NewChatModal useIsMobile mocks",
+          "[#3687](https://github.com/kontourai/station/pull/3687) perf(docs): reuse value digests during history replay"
+        ]
+      },
+      "note": null,
+      "commitCount": 8
+    }
+  },
+  {
     "timestampUtc": "2026-10-15T10:40:35Z",
     "channel": "nightly-npm",
     "version": "0.7.0-nightly.2479.38704016490",

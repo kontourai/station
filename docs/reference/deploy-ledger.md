@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-15T14:51:19Z | nightly-npm | 0.7.0-nightly.2479.38748549060 | `912944d` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38748549060) |
 | 2026-10-15T10:40:35Z | nightly-npm | 0.7.0-nightly.2479.38704016490 | `95bfa48` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38704016490) |
 | 2026-10-15T08:33:41Z | nightly-npm | 0.7.0-nightly.2479.38688611844 | `884f77c` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38688611844) |
 | 2026-10-15T06:57:02Z | nightly-npm | 0.7.0-nightly.2479.38682073239 | `79d6de5` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38682073239) |
@@ -271,6 +272,34 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-15T14:51:19Z · nightly-npm · 0.7.0-nightly.2479.38748549060
+
+- Ship SHA: `912944dc07b210f2748d304142047bad80841d6a`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2479.38748549060 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `95bfa48` ([full sha](https://github.com/kontourai/station/commit/95bfa48dd8da3a1a59ee2797fb2cc5049aad99e6)):
+
+**Features**
+
+- [#3662](https://github.com/kontourai/station/pull/3662) feat(chat): show each sent message's delivery state on its bubble
+- [#3675](https://github.com/kontourai/station/pull/3675) feat(monument): prepare host-backed turn boundaries (phase 2b, part 1)
+
+**Fixes**
+
+- [#3672](https://github.com/kontourai/station/pull/3672) fix(ui): resync unavailable conversations and refresh the inbox
+- [#3673](https://github.com/kontourai/station/pull/3673) fix(chat): unify composer file and dictation controls
+- [#3668](https://github.com/kontourai/station/pull/3668) fix(knowledge): bind search to the embedding generation and current excerpts; refill topK after authorization
+- [#3667](https://github.com/kontourai/station/pull/3667) fix(ui): stop request storms that saturate the native request queue
+
+**Other**
+
+- [#3689](https://github.com/kontourai/station/pull/3689) test(ui): keep useDockSlotDevice in the NewChatModal useIsMobile mocks
+- [#3687](https://github.com/kontourai/station/pull/3687) perf(docs): reuse value digests during history replay
 
 ## 2026-10-15T10:40:35Z · nightly-npm · 0.7.0-nightly.2479.38704016490
 
