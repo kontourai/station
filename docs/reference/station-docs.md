@@ -175,7 +175,7 @@ A Task is a durable, user-addressable work identity belonging to a Project. It s
 
 A task carries typed references — to files, artifacts, receipts, sessions, runs, or external work items — and those references preserve exact identity. Similar titles or paths are not treated as correlation.
 
-The task workspace is the surface that reopens one task with its identity, workspace binding, changed files, artifacts, receipts, and session correlation in one place, so you can pick work back up without reconstructing context.
+The task workspace reopens one Task on Chat, with an autosaved Brief and kept Results. Details retains workspace bindings, changed files, Basis, receipts and exact Session correlation. Opening the Task makes the viewer present; explicit agent requests bring their answers back into that conversation.
 
 A Task's captured workspace is re-evaluated as `available`, `ambiguous`, or
 `unavailable` when reopened. Available bindings permit the relevant local

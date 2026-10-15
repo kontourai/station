@@ -14,8 +14,9 @@ matters: work can exist before an engine is ready to execute it.
 
 ![A Project with a saved Task and workspace details.](media/project-with-task.png)
 
-The Task's shared document and conversation keep revisions and discussion with
-that work. In this example a person saved a document; the room history records
+The Task's shared brief and conversation keep revisions and discussion with
+that work. The capture below is replaced with the chat-first Task's Brief tab;
+the document was saved through the real autosave path. In this example a person saved a document; the room history records
 revision evidence. This does not demonstrate an external Agent editing alongside
 them. The current editor uses the available width and gives a multi-paragraph
 brief room to breathe. [#2844](https://github.com/kontourai/station/issues/2844)
