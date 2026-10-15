@@ -1,0 +1,7 @@
+{
+  "revision": "1a54c7d084cb4d51fa36b3a8d0344834320ad3fb",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Fix round 10: reread continuity, recovery and freshness claims against controller, dock actions, lifecycle and message store. Current-command and per-tab hydration ownership block stale messages and adopted-tab cleanup; unadopted cleanup and healthy 36-second hydration remain covered. Controlled hook tests and desktop/mobile browser journey pass; no native or hosted qualification claimed.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/conversationOpenController.ts"]}
+  ]
+}

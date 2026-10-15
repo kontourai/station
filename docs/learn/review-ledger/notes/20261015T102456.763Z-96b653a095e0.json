@@ -1,0 +1,7 @@
+{
+  "revision": "1a54c7d084cb4d51fa36b3a8d0344834320ad3fb",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Fix round 10: reread first chat, external conversation and Continue an Attached Session journeys against lifecycle/controller. Ownership protects reopening during database epoch replacement without altering setup, continuation identity, consent or healthy hydration. No prose change needed.","inputs":["docs/user/getting-started.md","src-ui/src/hooks/useActiveChatSessionLifecycle.ts"]}
+  ]
+}
