@@ -1928,13 +1928,16 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   const userSheet = page.getByRole('dialog', { name: 'Your message actions' });
   await expect(userSheet.getByRole('button', { name: /^Copy/ })).toHaveCount(0);
   // The Task pin and the message's actions are one row: pin at the start,
-  // the actions at the end, listed in the sheet itself (no second ⋯).
-  const userActions = userSheet.getByRole('menu', { name: 'Message actions' });
-  await expect(userActions.getByRole('menuitem').first()).toBeVisible();
+  // the actions at the end, listed in the sheet itself (no second ⋯), as a
+  // group of plain buttons (a menu role would promise arrow-key handling the
+  // sheet does not have).
+  const userActions = userSheet.getByRole('group', { name: 'Message actions' });
+  await expect(userActions.getByRole('button').first()).toBeVisible();
+  await expect(userSheet.getByRole('menuitem')).toHaveCount(0);
   await expect(
     userSheet.getByRole('button', { name: 'More message actions' }),
   ).toHaveCount(0);
-  for (const item of await userActions.getByRole('menuitem').all()) {
+  for (const item of await userActions.getByRole('button').all()) {
     const box = await item.boundingBox();
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
   }
