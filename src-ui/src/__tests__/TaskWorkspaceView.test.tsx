@@ -7,9 +7,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   fireEvent,
-  render,
+  render as rtlRender,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -87,6 +88,12 @@ const pluginsResult: {
   data: Array<{ enabled?: boolean; manifest?: { capabilities?: string[] } }>;
 } = { data: [] };
 const bindStarterWork = vi.hoisted(() => vi.fn());
+const roomCommand = vi.hoisted(() =>
+  vi.fn(async () => ({
+    kind: 'available',
+    snapshot: { result: { outcome: 'joined' } },
+  })),
+);
 const roomAgentBinding = vi.hoisted(() => vi.fn());
 const roomAgentSend = vi.hoisted(() => vi.fn());
 const starterQueryClient = vi.hoisted(() => ({
@@ -95,6 +102,19 @@ const starterQueryClient = vi.hoisted(() => ({
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   telemetry: { track: vi.fn() },
+  getJson: vi.fn(
+    async () => new Response(JSON.stringify({ success: true, data: [] })),
+  ),
+  mutateJson: vi.fn(),
+  updateTaskStatus: vi.fn(),
+  useCreateTaskReferenceMutation: () => ({
+    isPending: false,
+    mutateAsync: vi.fn(),
+  }),
+  useUpdateTaskStatusMutation: () => ({
+    isPending: false,
+    mutateAsync: vi.fn(),
+  }),
   bindStarterWork: (...args: unknown[]) => bindStarterWork(...args),
   useQueryClient: () => starterQueryClient,
   useTaskGraphQuery: () => queryResult,
@@ -152,7 +172,18 @@ vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
     data: { records: [] },
     isError: false,
     isFetching: false,
-    refetch: vi.fn(),
+    refetch: vi.fn(async () => ({
+      data: {
+        context: {
+          version: 'station.task-room-context/v1',
+          digest: 'a'.repeat(64),
+          title: 'Task',
+          description: '',
+          documentRevision: 'r1',
+          text: '',
+        },
+      },
+    })),
   }),
   useSubmitTaskRoomAgentRequestMutation: (...args: unknown[]) => {
     roomAgentBinding(...args);
@@ -167,7 +198,7 @@ vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
   useProjectTaskRoomStream: () => vi.fn(),
   useCommandProjectTaskRoomLiveMutation: () => ({
     isPending: false,
-    mutateAsync: vi.fn(),
+    mutateAsync: roomCommand,
   }),
   usePlanProjectTaskRoomEditMutation: () => ({
     isPending: false,
@@ -216,6 +247,24 @@ import {
 import { formatClaimValue } from '../views/task-workspace/TaskTurnReferenceView';
 import type { WorkspacePaneHostLockManager } from '../workspace-panes/workspacePaneHostLease';
 
+function render(
+  ui: Parameters<typeof rtlRender>[0],
+  options?: Parameters<typeof rtlRender>[1],
+) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const view = rtlRender(ui, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+    ...options,
+  });
+  const details = screen.queryByRole('tab', { name: 'Details' });
+  if (details) fireEvent.click(details);
+  return view;
+}
+
 function graph(overrides: Record<string, unknown> = {}) {
   return {
     task: {
@@ -224,7 +273,7 @@ function graph(overrides: Record<string, unknown> = {}) {
       title: 'Inspect the workspace',
       description: '',
       priority: 'normal',
-      status: 'running',
+      status: 'in_progress',
       createdBy: 'user',
       createdAt: '2026-07-19T00:00:00.000Z',
       updatedAt: '2026-07-19T00:00:00.000Z',
@@ -388,6 +437,52 @@ describe('TaskWorkspaceView', () => {
     };
   });
 
+  test('opens on Chat and keeps the live brief draft while switching between the four Task views', () => {
+    roomDocumentResult.data = {
+      kind: 'snapshot',
+      revision: 'r1',
+      text: '# Goal\nA useful room',
+    };
+    roomDiscoveryResult = {
+      data: {
+        kind: 'existing',
+        capabilities: {
+          historyRead: true,
+          messageWrite: true,
+          documentRead: true,
+          documentWrite: true,
+          live: true,
+        },
+      },
+      isLoading: false,
+    };
+    rtlRender(
+      <QueryClientProvider client={new QueryClient()}>
+        <TaskWorkspaceView taskId="task-alpha" />
+      </QueryClientProvider>,
+    );
+    expect(
+      screen.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
+    ).toBe('true');
+    expect(screen.queryByRole('textbox', { name: 'Task brief' })).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
+    const editor = screen.getByRole('textbox', { name: 'Task brief' });
+    fireEvent.change(editor, { target: { value: '# Goal\nA revised room' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'Chat' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
+    expect(
+      (
+        screen.getByRole('textbox', {
+          name: 'Task brief',
+        }) as HTMLTextAreaElement
+      ).value,
+    ).toBe('# Goal\nA revised room');
+    fireEvent.click(screen.getByRole('tab', { name: 'Results' }));
+    expect(screen.getByRole('list', { name: 'Kept results' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
+    expect(screen.getByText('Raw room history')).toBeTruthy();
+  });
+
   test('renders a retained Task as orphaned when its Project has been deleted', () => {
     projectsResult.data = [];
 
@@ -451,6 +546,7 @@ describe('TaskWorkspaceView', () => {
     expect(
       screen.getByRole('region', { name: 'Task room workspace' }),
     ).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
     expect(screen.getByDisplayValue('Retained async context')).toBeTruthy();
     expect(screen.getByText(/Task room is unavailable/i)).toBeTruthy();
   });
@@ -483,9 +579,7 @@ describe('TaskWorkspaceView', () => {
         <TaskWorkspaceView taskId="task-alpha" />
       </QueryClientProvider>,
     );
-    fireEvent.click(
-      await screen.findByRole('tab', { name: 'Task conversation' }),
-    );
+    fireEvent.click(await screen.findByRole('tab', { name: 'Chat' }));
     fireEvent.click(
       await screen.findByRole('button', { name: 'Ask an agent' }),
     );
@@ -493,11 +587,16 @@ describe('TaskWorkspaceView', () => {
       screen.getByRole('option', { name: 'Researcher @researcher' }),
     );
     fireEvent.click(
-      screen.getByRole('checkbox', { name: 'Include Task brief' }),
+      screen.getByRole('checkbox', {
+        name: 'Brief attached to agent requests',
+      }),
     );
-    fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
-      target: { value: 'Probe this idea' },
-    });
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Message the Task' }),
+      {
+        target: { value: 'Probe this idea' },
+      },
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
     await waitFor(() => expect(roomAgentSend).toHaveBeenCalledOnce());
     expect(roomAgentBinding).toHaveBeenCalledWith(
@@ -538,7 +637,11 @@ describe('TaskWorkspaceView', () => {
       </QueryClientProvider>,
     );
 
-    expect(screen.getByText('The exact completed answer.')).toBeTruthy();
+    expect(
+      within(screen.getByRole('tabpanel', { name: 'Details' })).getByText(
+        'The exact completed answer.',
+      ),
+    ).toBeTruthy();
     expect(
       screen.getByLabelText('Answer provenance for turn turn-answer'),
     ).toBeTruthy();
@@ -1036,7 +1139,11 @@ describe('TaskWorkspaceView', () => {
 
     render(<TaskWorkspaceView taskId="task-alpha" />);
 
-    expect(screen.getByText('The answer is still readable.')).toBeTruthy();
+    expect(
+      within(screen.getByRole('tabpanel', { name: 'Details' })).getByText(
+        'The answer is still readable.',
+      ),
+    ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Open Basis' })).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Open Whole Task Basis' }),
@@ -1072,7 +1179,7 @@ describe('TaskWorkspaceView', () => {
       isLoading: false,
     };
     roomDocumentResult = {
-      data: { kind: 'snapshot', document: { blocks: [] } },
+      data: { kind: 'snapshot', revision: 'revision-1', text: '' },
       isLoading: false,
       isFetching: false,
       refetch: vi.fn(),
@@ -1204,7 +1311,11 @@ describe('TaskWorkspaceView', () => {
     expect(screen.getByText('task-alpha')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Add capabilities' })).toBeTruthy();
     expect(screen.queryByText('Task experiences')).toBeNull();
-    expect(screen.queryByText(/^(complete|completed|done)$/i)).toBeNull();
+    expect(
+      within(screen.getByRole('tabpanel', { name: 'Details' })).queryByText(
+        /^(complete|completed|done)$/i,
+      ),
+    ).toBeNull();
   });
 
   test('does not promote arbitrary external metadata into first-party authority', () => {
@@ -1232,7 +1343,11 @@ describe('TaskWorkspaceView', () => {
       screen.getByRole('button', { name: /attacker\.example/i }),
     ).toBeTruthy();
     expect(screen.queryByText('Authority: Builder Kit')).toBeNull();
-    expect(screen.queryByText(/^(complete|completed|done)$/i)).toBeNull();
+    expect(
+      within(screen.getByRole('tabpanel', { name: 'Details' })).queryByText(
+        /^(complete|completed|done)$/i,
+      ),
+    ).toBeNull();
   });
 
   test('keeps stale workspace identity visible but disables local inspection', () => {

@@ -42,8 +42,10 @@ import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { clientOriginDetail } from '../utils/clientOrigin';
 import { errorText } from '../utils/errorText';
 import { ProjectTaskRoomProvider } from '../workspace-panes/ProjectTaskRoomContext';
-import { ProjectTaskRoomConversation } from '../workspace-panes/ProjectTaskRoomConversation';
-import { ProjectTaskRoomPresence } from '../workspace-panes/ProjectTaskRoomPresence';
+import {
+  ProjectTaskRoomConversation,
+  TaskRoomHistoryDetails,
+} from '../workspace-panes/ProjectTaskRoomConversation';
 import { TaskRoomEditorPane } from '../workspace-panes/TaskRoomEditorPane';
 import { WorkspacePaneHost } from '../workspace-panes/WorkspacePaneHost';
 import {
@@ -61,6 +63,12 @@ import {
   type TaskOutputPromotion,
   TaskOutputsSection,
 } from './task-workspace/TaskOutputsSection';
+import {
+  TaskRoomHeader,
+  TaskRoomRail,
+  TaskRoomResultCount,
+  TaskRoomResults,
+} from './task-workspace/TaskRoomPage';
 import { TaskTurnReferenceView } from './task-workspace/TaskTurnReferenceView';
 import { TaskUserInputReferences } from './task-workspace/TaskUserInputReferences';
 import './page-layout.css';
@@ -183,13 +191,6 @@ function isTaskNotFound(error: unknown): boolean {
   return error instanceof Error && /\b404\b|not found/i.test(error.message);
 }
 
-function statusBadgeVariant(status: string) {
-  if (status === 'done') return 'success' as const;
-  if (status === 'blocked' || status === 'canceled') return 'warning' as const;
-  if (status === 'running') return 'info' as const;
-  return 'muted' as const;
-}
-
 export function TaskWorkspaceView({ taskId }: { taskId: string }) {
   const { data: graph, isLoading, error, refetch } = useTaskGraphQuery(taskId);
   const projectsQuery = useScopedProjectsQuery() as {
@@ -231,11 +232,17 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
   return (
     <>
       {starterLinkUnverified && <StarterLinkRetry task={graph.task} />}
-      <TaskWorkspaceContent
+      <ProjectTaskRoomProvider
+        key={`${taskId}:${graph.task.createdAt}`}
         taskId={taskId}
-        graph={graph}
-        projectSlug={taskProject.slug}
-      />
+      >
+        <TaskWorkspaceContent
+          taskId={taskId}
+          graph={graph}
+          projectSlug={taskProject.slug}
+          projectId={taskProject.id}
+        />
+      </ProjectTaskRoomProvider>
     </>
   );
 }
@@ -364,11 +371,14 @@ function TaskWorkspaceContent({
   taskId,
   graph,
   projectSlug,
+  projectId,
 }: {
   taskId: string;
   graph: TaskGraph;
   projectSlug: string;
+  projectId: string;
 }) {
+  const [tab, setTab] = useState('Chat');
   const references = useMemo(() => taskReferences(graph), [graph]);
   // AW-4: the list is derived from what this Station has actually
   // installed, not from a hardcoded filter. An optional experience appears
@@ -434,24 +444,120 @@ function TaskWorkspaceContent({
   );
   return (
     <div className="page page--full task-workspace">
-      <TaskHeader task={graph.task} />
-      <div className="task-workspace__body">
-        <section className="task-workspace__section" aria-label="Task brief">
-          <h3 className="task-workspace__section-title">
-            What we're working toward
-          </h3>
-          <p>
-            {graph.task.description ||
-              'Discuss the objective, questions, and next steps with your team in the shared conversation.'}
-          </p>
-        </section>
-        {activeExperience.id === 'direct' ? (
-          <TaskRoomWorkspaceSection
+      <TaskRoomHeader
+        task={graph.task}
+        projectSlug={projectSlug}
+        projectId={projectId}
+        onDetails={() => setTab('Details')}
+      />
+      <div className="task-room-tabs" role="tablist" aria-label="Task views">
+        {['Chat', 'Brief', 'Results', 'Details', 'About'].map((name) => (
+          <Button
+            key={name}
+            role="tab"
+            aria-selected={tab === name}
+            aria-controls={`task-panel-${name}`}
+            id={`task-tab-${name}`}
+            className={name === 'About' ? 'task-room-mobile-tab' : ''}
+            onClick={() => setTab(name)}
+            onKeyDown={(event) => {
+              if (
+                !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)
+              )
+                return;
+              const tabs = Array.from(
+                event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                  '[role="tab"]',
+                ) ?? [],
+              ).filter((button) => button.offsetParent !== null);
+              const index = tabs.indexOf(event.currentTarget);
+              const next =
+                event.key === 'Home'
+                  ? 0
+                  : event.key === 'End'
+                    ? tabs.length - 1
+                    : (index +
+                        (event.key === 'ArrowRight' ? 1 : -1) +
+                        tabs.length) %
+                      tabs.length;
+              event.preventDefault();
+              tabs[next]?.focus();
+              tabs[next]?.click();
+            }}
+          >
+            {name}
+            {name === 'Results' && <TaskRoomResultCount task={graph.task} />}
+          </Button>
+        ))}
+      </div>
+      <div
+        className="task-room-main"
+        hidden={tab !== 'Chat'}
+        role="tabpanel"
+        id="task-panel-Chat"
+        aria-labelledby="task-tab-Chat"
+      >
+        <ProjectTaskRoomConversation
+          taskId={taskId}
+          projectSlug={projectSlug}
+          taskCreatedAt={graph.task.createdAt}
+        />
+        <aside className="task-room-rail">
+          <TaskRoomRail
             task={graph.task}
             projectSlug={projectSlug}
-            onOpenActionChange={captureBasisHostOpen}
+            onBrief={() => setTab('Brief')}
+            onResults={() => setTab('Results')}
           />
-        ) : null}
+        </aside>
+      </div>
+      <div
+        className="task-room-panel"
+        hidden={tab !== 'Brief'}
+        role="tabpanel"
+        id="task-panel-Brief"
+        aria-labelledby="task-tab-Brief"
+      >
+        <h2>Brief</h2>
+        <p className="task-room-hint">
+          The shared plan for this Task. Changes save automatically.
+        </p>
+        <TaskRoomEditorPane taskId={taskId} />
+      </div>
+      <div
+        className="task-room-panel"
+        hidden={tab !== 'Results'}
+        role="tabpanel"
+        id="task-panel-Results"
+        aria-labelledby="task-tab-Results"
+      >
+        <TaskRoomResults task={graph.task} />
+      </div>
+      <div
+        className="task-room-panel"
+        hidden={tab !== 'About'}
+        role="tabpanel"
+        id="task-panel-About"
+        aria-labelledby="task-tab-About"
+      >
+        <TaskRoomRail
+          task={graph.task}
+          projectSlug={projectSlug}
+          onBrief={() => setTab('Brief')}
+          onResults={() => setTab('Results')}
+        />
+      </div>
+      <div
+        className="task-workspace__body"
+        hidden={tab !== 'Details'}
+        role="tabpanel"
+        id="task-panel-Details"
+        aria-labelledby="task-tab-Details"
+      >
+        <TaskRoomWorkspaceSection
+          task={graph.task}
+          onOpenActionChange={captureBasisHostOpen}
+        />
         <TaskExperienceNavigation
           experiences={experiences}
           activeExperienceId={activeExperience.id}
@@ -468,13 +574,16 @@ function TaskWorkspaceContent({
             projectId={graph.task.projectId}
           />
         </WorkspacePaneHostOpenContext.Provider>
+        <TaskRoomHistoryDetails taskId={taskId} />
         <TaskUserInputReferences taskId={taskId} />
         <TaskOutputsSection
           task={graph.task}
           promotion={outputPromotion}
           onPromotionSettled={(promotion, success) => {
-            if (success)
+            if (success) {
               operations.clear(promotion.relativePath, promotion.title);
+              setTab('Results');
+            }
             setOutputPromotion(null);
           }}
         />
@@ -505,9 +614,9 @@ function TaskWorkspaceContent({
               onSelect={setSelection}
               outputOperations={operations}
               promotionPending={outputPromotion !== null}
-              onRequestOutput={(relativePath, title, operationId) =>
-                setOutputPromotion({ relativePath, title, operationId })
-              }
+              onRequestOutput={(relativePath, title, operationId) => {
+                setOutputPromotion({ relativePath, title, operationId });
+              }}
             />
           </>
         ) : (
@@ -521,11 +630,9 @@ function TaskWorkspaceContent({
 /** Durable promoted workspace-file snapshots; no RelationGraph mirror. */
 function TaskRoomWorkspaceSection({
   task,
-  projectSlug,
   onOpenActionChange,
 }: {
   task: TaskRecord;
-  projectSlug: string;
   onOpenActionChange(action: WorkspacePaneHostOpenAction | null): void;
 }) {
   const discovery = useProjectTaskRoomDiscoveryQuery(task.id);
@@ -575,54 +682,44 @@ function TaskRoomWorkspaceSection({
           Task room degraded: {composition.degradedCapabilities.join(', ')}.
         </p>
       ) : null}
-      <ProjectTaskRoomProvider taskId={task.id}>
-        <ProjectTaskRoomPresence taskId={task.id} />
-        <WorkspacePaneHost
-          document={composition.document}
-          runtime={hostRuntime}
-          onOpenActionChange={onOpenActionChange}
-          presentationLabel={(instance) =>
-            resolveWorkspaceBasisMcpPaneOccurrence(instance)?.descriptor.name ??
-            null
-          }
-          renderPane={(instance) => {
-            const mcpBasis = resolveWorkspaceBasisMcpPaneOccurrence(instance);
-            return instance.descriptorId ===
-              WORKSPACE_TASK_ROOM_EDITOR_DESCRIPTOR_ID ? (
-              <TaskRoomEditorPane
-                taskId={task.id}
-                runtime={hostRuntime}
-                instanceId={instance.instanceId}
+
+      <WorkspacePaneHost
+        document={composition.document}
+        runtime={hostRuntime}
+        onOpenActionChange={onOpenActionChange}
+        presentationLabel={(instance) =>
+          resolveWorkspaceBasisMcpPaneOccurrence(instance)?.descriptor.name ??
+          null
+        }
+        renderPane={(instance) => {
+          const mcpBasis = resolveWorkspaceBasisMcpPaneOccurrence(instance);
+          return instance.descriptorId ===
+            WORKSPACE_TASK_ROOM_EDITOR_DESCRIPTOR_ID ? (
+            <p>The shared document is in the Brief tab.</p>
+          ) : instance.descriptorId ===
+            WORKSPACE_TASK_ROOM_CHAT_DESCRIPTOR_ID ? (
+            <p>The conversation is in the Chat tab.</p>
+          ) : instance.descriptorId === WORKSPACE_BASIS_PANE_DESCRIPTOR.id ? (
+            <Suspense
+              fallback={<SkeletonBlock count={3} label="Loading Basis" />}
+            >
+              <LazyTaskBasisWorkspacePane
+                descriptor={WORKSPACE_BASIS_PANE_DESCRIPTOR}
+                instance={instance}
               />
-            ) : instance.descriptorId ===
-              WORKSPACE_TASK_ROOM_CHAT_DESCRIPTOR_ID ? (
-              <ProjectTaskRoomConversation
-                taskId={task.id}
-                projectSlug={projectSlug}
-                taskCreatedAt={task.createdAt}
+            </Suspense>
+          ) : mcpBasis ? (
+            <Suspense
+              fallback={<SkeletonBlock count={3} label="Loading Basis App" />}
+            >
+              <LazyTaskBasisMcpWorkspacePane
+                descriptor={mcpBasis.descriptor}
+                instance={instance}
               />
-            ) : instance.descriptorId === WORKSPACE_BASIS_PANE_DESCRIPTOR.id ? (
-              <Suspense
-                fallback={<SkeletonBlock count={3} label="Loading Basis" />}
-              >
-                <LazyTaskBasisWorkspacePane
-                  descriptor={WORKSPACE_BASIS_PANE_DESCRIPTOR}
-                  instance={instance}
-                />
-              </Suspense>
-            ) : mcpBasis ? (
-              <Suspense
-                fallback={<SkeletonBlock count={3} label="Loading Basis App" />}
-              >
-                <LazyTaskBasisMcpWorkspacePane
-                  descriptor={mcpBasis.descriptor}
-                  instance={instance}
-                />
-              </Suspense>
-            ) : null;
-          }}
-        />
-      </ProjectTaskRoomProvider>
+            </Suspense>
+          ) : null;
+        }}
+      />
     </section>
   );
 }
@@ -764,13 +861,7 @@ function TaskExperienceBoundary({
 }
 
 function TaskHeader({ task }: { task: TaskRecord }) {
-  return (
-    <DetailHeader
-      title={task.title}
-      subtitle={`Task ${task.id}`}
-      badge={{ label: task.status, variant: statusBadgeVariant(task.status) }}
-    />
-  );
+  return <DetailHeader title={task.title} subtitle={`Task ${task.id}`} />;
 }
 
 function TaskIdentitySection({ task }: { task: TaskRecord }) {
@@ -1090,7 +1181,7 @@ function LocalReferenceContent(
           pendingLabel="Keeping output…"
           aria-label={`Keep ${props.path} as output`}
         >
-          Keep as output
+          Keep
         </Button>
         <span>{props.path}</span>
       </div>

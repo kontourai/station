@@ -43,7 +43,7 @@ export function useTaskRoomAgentRequestsQuery(
     queryKey: requestKey(taskId, incarnation, scope),
     enabled: enabled && !!scope && !!incarnation,
     retry: false,
-    refetchInterval: enabled ? 5_000 : false,
+    refetchInterval: false,
     queryFn: async ({ signal }) => {
       const captured = current(scope);
       const result = await fetchTaskRoomAgentRequests(

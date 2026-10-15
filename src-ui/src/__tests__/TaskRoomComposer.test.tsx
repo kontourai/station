@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
     text: 'Agreed brief.',
   },
   refetch: vi.fn(),
+  status: vi.fn(),
   agent: vi.fn(),
   message: vi.fn(),
   scope: {
@@ -33,6 +34,10 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 }));
 vi.mock('../hooks/useUnsavedGuard', () => ({
   useUnsavedGuard: () => ({ DiscardModal: () => null }),
+}));
+vi.mock('@kontourai/station-sdk', () => ({ updateTaskStatus: mocks.status }));
+vi.mock('../workspace-panes/ProjectTaskRoomContext', () => ({
+  useProjectTaskRoomContext: () => undefined,
 }));
 vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
   TaskRoomWorkNotSentError: class extends Error {},
@@ -116,7 +121,7 @@ beforeEach(() => {
 
 test('keyboard autocomplete selects an exact recipient and only Send invokes it', async () => {
   render(<TaskRoomComposer {...props} />);
-  const textbox = screen.getByRole('textbox', { name: 'Message' });
+  const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
   fireEvent.change(textbox, { target: { value: '@res', selectionStart: 4 } });
   expect(screen.getAllByRole('option')).toHaveLength(1);
   fireEvent.keyDown(textbox, { key: 'Enter' });
@@ -139,7 +144,7 @@ test('keyboard autocomplete selects an exact recipient and only Send invokes it'
 
 test('Escape and composing input keep literal mentions as human discussion', async () => {
   render(<TaskRoomComposer {...props} />);
-  const textbox = screen.getByRole('textbox', { name: 'Message' });
+  const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
   fireEvent.compositionStart(textbox);
   fireEvent.change(textbox, { target: { value: '@res', selectionStart: 4 } });
   fireEvent.keyDown(textbox, { key: 'Enter', isComposing: true });
@@ -163,7 +168,7 @@ test('lost acknowledgement freezes intent and an explicit retry reuses the opera
   fireEvent.click(
     screen.getByRole('option', { name: 'Researcher @researcher' }),
   );
-  const textbox = screen.getByRole('textbox', { name: 'Message' });
+  const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
   fireEvent.change(textbox, {
     target: { value: 'Explore this', selectionStart: 12 },
   });
@@ -204,7 +209,7 @@ test('changing the connection cannot send the existing draft to the new Station'
 
 test('a filtered empty picker clears its lookup without deleting the surrounding message', () => {
   render(<TaskRoomComposer {...props} />);
-  const textbox = screen.getByRole('textbox', { name: 'Message' });
+  const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
   fireEvent.change(textbox, {
     target: { value: 'Please @zzzz investigate', selectionStart: 12 },
   });
@@ -214,100 +219,79 @@ test('a filtered empty picker clears its lookup without deleting the surrounding
   expect(mocks.agent).not.toHaveBeenCalled();
 });
 
-test('the previewed brief stays selected through background edits and request-only is explicit', async () => {
+test('send attaches the latest saved brief by default and request-only is explicit', async () => {
   const view = render(<TaskRoomComposer {...props} />);
-  const textbox = screen.getByRole('textbox', { name: 'Message' });
+  const textbox = screen.getByRole('textbox', { name: 'Message the Task' });
   fireEvent.change(textbox, { target: { value: '@res', selectionStart: 4 } });
   fireEvent.keyDown(textbox, { key: 'Enter' });
-  expect(screen.getByText('Agreed brief.')).toBeTruthy();
   mocks.brief = {
     ...mocks.brief,
     digest: 'b'.repeat(64),
     text: 'Edited brief.',
   };
+  mocks.refetch.mockResolvedValue({
+    data: { context: mocks.brief },
+    isError: false,
+  });
   view.rerender(<TaskRoomComposer {...props} />);
-  expect(screen.queryByText('Edited brief.')).toBeNull();
   fireEvent.change(textbox, { target: { value: 'Investigate' } });
   fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
   await waitFor(() => expect(mocks.agent).toHaveBeenCalledOnce());
-  expect(mocks.agent.mock.calls[0][0].context.digest).toBe('a'.repeat(64));
+  expect(mocks.agent.mock.calls[0][0].context.digest).toBe('b'.repeat(64));
   fireEvent.change(textbox, { target: { value: '@res', selectionStart: 4 } });
   fireEvent.keyDown(textbox, { key: 'Enter' });
-  fireEvent.click(screen.getByRole('checkbox', { name: 'Include Task brief' }));
-  expect(screen.getByText('Only your request text will be sent.')).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole('checkbox', { name: 'Brief attached to agent requests' }),
+  );
   fireEvent.change(textbox, { target: { value: 'Request only' } });
   fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
   await waitFor(() => expect(mocks.agent).toHaveBeenCalledTimes(2));
   expect(mocks.agent.mock.calls[1][0].context).toBeUndefined();
 });
 
-test.each(['send', 'recipient'] as const)(
-  'a late brief refresh cannot replace the pinned preview after %s',
-  async (action) => {
-    let release!: (result: {
-      data: { context: typeof mocks.brief };
-      isError: boolean;
-    }) => void;
-    mocks.refetch.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          release = resolve;
-        }),
-    );
-    if (action === 'send')
-      mocks.agent.mockRejectedValueOnce(new Error('lost acknowledgement'));
-    const view = render(<TaskRoomComposer {...props} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Ask an agent' }));
-    fireEvent.click(
-      screen.getByRole('option', { name: 'Researcher @researcher' }),
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Use latest brief' }));
-    await waitFor(() => expect(mocks.refetch).toHaveBeenCalledOnce());
-    if (action === 'send') {
-      fireEvent.change(screen.getByRole('textbox', { name: 'Message' }), {
-        target: { value: 'Investigate' },
-      });
-      fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
-      await screen.findByText(/Request acknowledgement is unavailable/);
-    } else {
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Remove Researcher' }),
-      );
-      mocks.brief = {
-        ...mocks.brief,
-        digest: 'c'.repeat(64),
-        text: 'New recipient brief.',
-      };
-      view.rerender(<TaskRoomComposer {...props} />);
-      fireEvent.click(screen.getByRole('button', { name: 'Ask an agent' }));
-      fireEvent.click(screen.getByRole('option', { name: 'Builder @builder' }));
-    }
-    await act(async () =>
-      release({
-        data: {
-          context: {
-            ...mocks.brief,
-            digest: 'b'.repeat(64),
-            text: 'Late brief.',
-          },
-        },
-        isError: false,
+test('an authority change during latest-brief preflight retains the draft and invokes no agent', async () => {
+  let release!: (value: unknown) => void;
+  mocks.refetch.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        release = resolve;
       }),
-    );
-    expect(screen.queryByText('Late brief.')).toBeNull();
-    expect(
-      screen.getByText(
-        action === 'send' ? 'Agreed brief.' : 'New recipient brief.',
-      ),
-    ).toBeTruthy();
-    if (action === 'send') {
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Retry same agent request' }),
-      );
-      await waitFor(() => expect(mocks.agent).toHaveBeenCalledTimes(2));
-      expect(mocks.agent.mock.calls[1][0]).toEqual(
-        mocks.agent.mock.calls[0][0],
-      );
-    }
-  },
-);
+  );
+  const view = render(<TaskRoomComposer {...props} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Ask an agent' }));
+  fireEvent.click(
+    screen.getByRole('option', { name: 'Researcher @researcher' }),
+  );
+  fireEvent.change(screen.getByRole('textbox'), {
+    target: { value: 'Private draft' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
+  await waitFor(() => expect(mocks.refetch).toHaveBeenCalledOnce());
+  mocks.scope.authorityKey = 'other-host';
+  view.rerender(<TaskRoomComposer {...props} />);
+  await act(async () =>
+    release({ data: { context: mocks.brief }, isError: false }),
+  );
+  expect(mocks.agent).not.toHaveBeenCalled();
+  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe(
+    'Private draft',
+  );
+});
+
+test('slash commands change real Task status through its existing mutation path', async () => {
+  mocks.status.mockReset().mockResolvedValue({ status: 'review' });
+  render(<TaskRoomComposer {...props} />);
+  fireEvent.change(screen.getByRole('textbox'), {
+    target: { value: '/review' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Send to task room' }));
+  await waitFor(() =>
+    expect(mocks.status).toHaveBeenCalledWith({
+      taskId: props.taskId,
+      status: 'review',
+      apiBase: mocks.scope.apiBase,
+    }),
+  );
+  expect(mocks.agent).not.toHaveBeenCalled();
+  expect(mocks.message).not.toHaveBeenCalled();
+});

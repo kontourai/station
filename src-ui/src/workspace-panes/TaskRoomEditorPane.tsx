@@ -63,6 +63,7 @@ export function TaskRoomEditorPane({
     intentId: string;
     intentDigest: string;
     observedDocument: object;
+    submittedText: string;
   }>();
   const [settlement, setSettlement] = useState<
     'unchanged' | 'committed' | 'duplicate'
@@ -432,6 +433,7 @@ export function TaskRoomEditorPane({
     observedDocument: object,
     settledTaskId: string,
     generation: number,
+    submittedText: string,
   ) {
     if (!isCurrentOperation(generation)) return;
     let adopted =
@@ -468,7 +470,7 @@ export function TaskRoomEditorPane({
     setSettlement(settled.kind);
     setAppliedDocument(adopted);
     setAuthoritativeText(adopted.text);
-    setText(adopted.text);
+    setText((current) => (current === submittedText ? adopted.text : current));
   }
   async function save() {
     if (
@@ -501,6 +503,7 @@ export function TaskRoomEditorPane({
       setRejection('The shared document changed. Review it before retrying.');
       return;
     }
+    const submittedText = text;
     const saveTaskId = taskId;
     const generation = operationGeneration.current;
     const plannedDocumentGeneration = documentAuthorityGeneration.current;
@@ -513,6 +516,7 @@ export function TaskRoomEditorPane({
           intentId: string;
           intentDigest: string;
           observedDocument: object;
+          submittedText: string;
         }
       | undefined;
     try {
@@ -547,6 +551,7 @@ export function TaskRoomEditorPane({
         intentId: planned.intentId,
         intentDigest: planned.digest,
         observedDocument,
+        submittedText,
       };
       setPossibleEffect(intent);
       if (!isCurrentOperation(generation)) return;
@@ -560,6 +565,7 @@ export function TaskRoomEditorPane({
           intent.observedDocument,
           saveTaskId,
           generation,
+          submittedText,
         );
       } else if (settled.kind === 'rejected') {
         if (!isCurrentOperation(generation)) return;
@@ -590,6 +596,7 @@ export function TaskRoomEditorPane({
           possibleEffect.observedDocument,
           taskId,
           generation,
+          possibleEffect.submittedText,
         );
       } else if (settled.kind === 'rejected') {
         if (!isCurrentOperation(generation)) return;
@@ -600,6 +607,30 @@ export function TaskRoomEditorPane({
       /* Keep the identical receipt visible; its effect remains unknown. */
     }
   }
+  const saveLatest = useRef(save);
+  saveLatest.current = save;
+  useEffect(() => {
+    void text;
+    if (
+      !dirty ||
+      !writable ||
+      possibleEffect ||
+      rejection ||
+      plan.isPending ||
+      batch.isPending
+    )
+      return;
+    const timer = window.setTimeout(() => void saveLatest.current(), 450);
+    return () => window.clearTimeout(timer);
+  }, [
+    text,
+    dirty,
+    writable,
+    possibleEffect,
+    rejection,
+    plan.isPending,
+    batch.isPending,
+  ]);
   const status =
     document.isLoading || room.isLoading
       ? 'Loading the shared document.'
@@ -628,7 +659,7 @@ export function TaskRoomEditorPane({
                             : rejection
                               ? 'Save refused. Your draft is retained for retry.'
                               : dirty
-                                ? 'Unsaved changes.'
+                                ? 'Saving brief…'
                                 : 'Shared document ready.';
   return (
     <section className="task-room-editor" aria-label="Task room editor">
@@ -643,7 +674,7 @@ export function TaskRoomEditorPane({
       {document.isError ? (
         <p role="alert">The latest shared document read failed.</p>
       ) : null}
-      <label htmlFor={`task-room-editor-${id}`}>Task document</label>
+      <label htmlFor={`task-room-editor-${id}`}>Task brief</label>
       <textarea
         id={`task-room-editor-${id}`}
         ref={editorRef}
@@ -680,6 +711,7 @@ export function TaskRoomEditorPane({
               exitedEpochMs: browserEpochMs(),
             });
         }}
+        onBlur={() => void saveLatest.current()}
         onPointerDown={stopWatching}
         onKeyDown={stopWatching}
         onSelect={(event) =>
@@ -718,19 +750,15 @@ export function TaskRoomEditorPane({
       >
         Resync document
       </button>
-      <button
-        type="button"
-        onClick={() => void save()}
-        disabled={
-          !writable ||
-          !dirty ||
-          !!possibleEffect ||
-          plan.isPending ||
-          batch.isPending
-        }
-      >
-        {rejection ? 'Retry save' : 'Save shared document'}
-      </button>
+      {rejection ? (
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={!writable || plan.isPending || batch.isPending}
+        >
+          Retry autosave
+        </button>
+      ) : null}
       {possibleEffect ? (
         <button
           type="button"

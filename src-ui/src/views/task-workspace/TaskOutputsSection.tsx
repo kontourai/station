@@ -201,7 +201,7 @@ export function TaskOutputsSection({
         <Empty
           variant="compact"
           label="Outputs will appear here"
-          description="Open a safely resolved local reference, then choose Keep as output."
+          description="Open a safely resolved local reference, then choose Keep."
         />
       )}
       {confirming ? (
@@ -254,16 +254,18 @@ export function TaskOutputsSection({
   );
 }
 
-function TaskOutputRow({
+export function TaskOutputRow({
   taskId,
   taskCreatedAt,
   output,
   onDelete,
+  compact = false,
 }: {
+  compact?: boolean;
   taskId: string;
   output: TaskOutputRecord;
   taskCreatedAt: string;
-  onDelete: (trigger: HTMLButtonElement) => void;
+  onDelete?: (trigger: HTMLButtonElement) => void;
 }) {
   const [showContent, setShowContent] = useState(false);
   const [contentReady, setContentReady] = useState(false);
@@ -277,10 +279,14 @@ function TaskOutputRow({
         <strong>{output.title}</strong>
         <span>{output.materialization.mediaType}</span>
         <span>{bytes(output.materialization.byteLength)}</span>
-        <span title={output.materialization.digest}>
-          {output.materialization.digest}
-        </span>
-        <span>{output.source.relativePath}</span>
+        {!compact && (
+          <>
+            <span title={output.materialization.digest}>
+              {output.materialization.digest}
+            </span>
+            <span>{output.source.relativePath}</span>
+          </>
+        )}
         <time dateTime={output.createdAt}>{time(output.createdAt)}</time>
       </div>
       <div className="task-outputs__actions">
@@ -297,18 +303,20 @@ function TaskOutputRow({
         >
           {showContent ? 'Hide' : 'View'}
         </Button>
-        <Button
-          size="sm"
-          ref={deleteRef}
-          onClick={() =>
-            guard(() => {
-              if (deleteRef.current) onDelete(deleteRef.current);
-            })
-          }
-          aria-label={`Delete output ${output.title}`}
-        >
-          Delete
-        </Button>
+        {onDelete && (
+          <Button
+            size="sm"
+            ref={deleteRef}
+            onClick={() =>
+              guard(() => {
+                if (deleteRef.current) onDelete?.(deleteRef.current);
+              })
+            }
+            aria-label={`Delete output ${output.title}`}
+          >
+            Delete
+          </Button>
+        )}
       </div>
       {showContent ? (
         <>

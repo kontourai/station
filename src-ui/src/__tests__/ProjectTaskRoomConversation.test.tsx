@@ -1,185 +1,198 @@
 /** @vitest-environment jsdom */
-
 import type { ProjectTaskRoomBrowserRecord } from '@kontourai/station-contracts/project-task-room-browser';
-import { render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
+import { beforeEach, expect, test, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  discovery: {
-    data: { kind: 'unavailable' } as Record<string, unknown>,
-    isLoading: false,
-  },
-  stream: 'live' as 'live' | 'terminal',
   records: [] as ProjectTaskRoomBrowserRecord[],
+  writable: true,
+  stream: 'live',
+  continue: vi.fn(),
+  keep: vi.fn(),
+  focus: vi.fn(),
+  stop: vi.fn(),
+  running: false,
+}));
+vi.mock('@kontourai/station-sdk', () => ({
+  useCreateTaskReferenceMutation: () => ({
+    mutateAsync: mocks.keep,
+    isPending: false,
+  }),
+}));
+vi.mock('@kontourai/station-sdk/client', () => ({
+  continueDelegatedTask: mocks.continue,
+  interruptDelegatedTask: mocks.stop,
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => ({
-    apiBase: 'http://station.test',
-    authorityKey: 'test',
+    apiBase: 'http://station',
+    authorityKey: 'owner',
     isCurrent: () => true,
   }),
 }));
+vi.mock('../contexts/open-chats-store', () => ({
+  openChatsStore: { focus: mocks.focus },
+}));
+vi.mock('../components/chat/LazyMarkdown', () => ({
+  LazyMarkdown: ({ children }: { children: string }) => <div>{children}</div>,
+}));
 vi.mock('../hooks/useUnsavedGuard', () => ({
-  useUnsavedGuard: () => ({ DiscardModal: () => null }),
+  useUnsavedGuard: () => ({
+    DiscardModal: () => null,
+    guard: (action: () => void) => action(),
+  }),
+}));
+vi.mock('../workspace-panes/TaskRoomComposer', () => ({
+  TaskRoomComposer: ({ writable }: { writable: boolean }) => (
+    <textarea aria-label="Message the Task" disabled={!writable} />
+  ),
 }));
 vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
-  TaskRoomWorkNotSentError: class extends Error {},
-  useTaskRoomAgentOptionsQuery: () => ({
-    data: { targets: [] },
-    isLoading: false,
-    isError: false,
+  useProjectTaskRoomDiscoveryQuery: () => ({
+    data: {
+      kind: 'existing',
+      capabilities: { historyRead: true, messageWrite: mocks.writable },
+    },
   }),
-  useTaskRoomAgentRequestsQuery: () => ({
-    data: { records: [] },
-    isError: false,
-    isFetching: false,
-    refetch: vi.fn(),
-  }),
-  useSubmitTaskRoomAgentRequestMutation: () => ({
-    isPending: false,
-    mutateAsync: vi.fn(),
-  }),
-  useProjectTaskRoomDiscoveryQuery: () => mocks.discovery,
   useProjectTaskRoomHistoryQuery: () => ({
     data: { pages: [{ kind: 'available', records: mocks.records }] },
-    isError: false,
-    hasNextPage: false,
-    isFetchingNextPage: false,
-    fetchNextPage: vi.fn(),
+    refetch: vi.fn(),
   }),
-  useAppendProjectTaskRoomHumanMessageMutation: () => ({
-    isPending: false,
-    isError: false,
-    mutateAsync: vi.fn(),
-  }),
+  useTaskRoomAgentRequestsQuery: () => ({ refetch: vi.fn() }),
 }));
 vi.mock('../workspace-panes/ProjectTaskRoomContext', () => ({
   useProjectTaskRoomContext: () => ({
-    discovery: mocks.discovery,
     stream: mocks.stream,
+    live: {
+      participants: mocks.running
+        ? [
+            {
+              publication: 'published',
+              actor: { actorId: 'claude', kind: 'agent', label: 'Claude' },
+              work: { sessionId: 'session-1', workState: 'working' },
+            },
+          ]
+        : [],
+    },
   }),
 }));
 
 import { ProjectTaskRoomConversation } from '../workspace-panes/ProjectTaskRoomConversation';
 
-beforeEach(() => {
-  mocks.discovery.isLoading = false;
-  mocks.discovery.data = { kind: 'unavailable' };
-  mocks.stream = 'live';
-  mocks.records = [];
-});
-
-describe('ProjectTaskRoomConversation capability states', () => {
-  test.each([
-    [true, true, 'Room history is readable and messages can be sent.', false],
-    [true, false, 'Room history is readable and read-only.', true],
-    [
-      false,
-      true,
-      'Message sending is available, but room history is not readable.',
-      false,
-    ],
-    [false, false, 'Room history and message writing are unavailable.', true],
-  ])(
-    'names history=%s write=%s without collapsing capability truth',
-    (historyRead, messageWrite, copy, disabled) => {
-      mocks.discovery.data = {
-        kind: 'existing',
-        capabilities: { historyRead, messageWrite, revisionLinks: false },
-      };
-      render(
-        <ProjectTaskRoomConversation
-          taskId="task-1"
-          projectSlug="demo"
-          taskCreatedAt="2026-09-30T12:00:00.000Z"
-        />,
-      );
-      expect(screen.getAllByRole('status')[0].textContent).toBe(copy);
-      expect(
-        screen.getByRole('textbox', { name: 'Message' }).matches(':disabled'),
-      ).toBe(disabled);
-    },
-  );
-
-  test('presents read-only capabilities and disables messages for a terminal room', () => {
-    mocks.discovery.data = {
-      kind: 'existing',
-      capabilities: {
-        historyRead: true,
-        messageWrite: true,
-        revisionLinks: false,
-      },
-    };
-    mocks.stream = 'terminal';
-    render(
+function mount() {
+  return render(
+    <QueryClientProvider
+      client={
+        new QueryClient({ defaultOptions: { queries: { retry: false } } })
+      }
+    >
       <ProjectTaskRoomConversation
         taskId="task-1"
-        projectSlug="demo"
-        taskCreatedAt="2026-09-30T12:00:00.000Z"
-      />,
-    );
-    expect(screen.getAllByRole('status')[0].textContent).toBe(
-      'Room history is readable and read-only.',
-    );
-    expect(
-      screen.getByRole('textbox', { name: 'Message' }).matches(':disabled'),
-    ).toBe(true);
-  });
-});
-
-test('room review distinguishes a previous Task incarnation while retaining exact output identity', () => {
-  const digest = `sha256:${'a'.repeat(64)}` as const;
-  mocks.discovery.data = {
-    kind: 'existing',
-    capabilities: {
-      historyRead: true,
-      messageWrite: false,
-      revisionLinks: false,
+        projectSlug="project"
+        taskCreatedAt="2026-10-01T00:00:00.000Z"
+      />
+    </QueryClientProvider>,
+  );
+}
+function record(sequence: number, agent = false): ProjectTaskRoomBrowserRecord {
+  return {
+    actor: {
+      kind: agent ? 'agent' : 'human',
+      label: agent ? 'Claude' : 'Alice',
     },
+    sequence,
+    body: {
+      kind: 'human-message',
+      text: agent ? 'Answer in markdown' : 'Hello room',
+    },
+    occurredAt: '2026-10-15T10:04:00.000Z',
+    digests: { proposal: 'a'.repeat(64), checkpoint: 'b'.repeat(64) },
+    integrity: 'L0',
+    ...(agent
+      ? { execution: { sessionId: 'session-1', turnId: `turn-${sequence}` } }
+      : {}),
   };
-  mocks.records = [
-    {
-      actor: { kind: 'human', label: 'Reviewer' },
-      sequence: 1,
-      body: {
-        kind: 'output-feedback',
-        target: {
-          outputId: 'previous-output',
-          digest,
-          taskCreatedAt: '2026-09-30T12:00:00.000Z',
-        },
-        review: 'accepted',
-        text: 'Reviewed earlier bytes',
-      },
-      digests: { proposal: 'a'.repeat(64), checkpoint: 'b'.repeat(64) },
-      integrity: 'L0',
-    },
-  ];
-  const view = render(
-    <ProjectTaskRoomConversation
-      taskId="task-1"
-      projectSlug="demo"
-      taskCreatedAt="2026-10-03T12:00:00.000Z"
-    />,
+}
+beforeEach(() => {
+  mocks.records = [];
+  mocks.writable = true;
+  mocks.stream = 'live';
+  mocks.running = false;
+  mocks.keep.mockReset().mockResolvedValue({});
+  mocks.continue.mockReset().mockResolvedValue({ sessionId: 'session-1' });
+  mocks.focus.mockReset();
+  mocks.stop.mockReset().mockResolvedValue({});
+});
+test('groups consecutive human messages and keeps names, avatars and times', () => {
+  mocks.records = [record(1), record(2)];
+  mount();
+  const list = screen.getByRole('list', { name: 'Task room history' });
+  expect(within(list).getAllByText('Alice')).toHaveLength(1);
+  expect(list.querySelectorAll('time')).toHaveLength(2);
+  expect(list.querySelector('.task-room-avatar')).toBeTruthy();
+});
+test('agent answers open in the dock, can be kept, and replies continue the exact session in a thread', async () => {
+  mocks.records = [record(1, true), record(2, true)];
+  mount();
+  expect(screen.getAllByText('Answer in markdown')).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Open full run' }));
+  expect(mocks.focus).toHaveBeenCalledWith({ sessionId: 'session-1' });
+  fireEvent.click(screen.getByRole('button', { name: 'Keep' }));
+  await waitFor(() =>
+    expect(mocks.keep).toHaveBeenCalledWith({
+      taskId: 'task-1',
+      kind: 'turn',
+      sessionId: 'session-1',
+      turnId: 'turn-1',
+      sourceSurface: 'task-room',
+    }),
   );
-  const history = screen.getByRole('list', { name: 'Task room history' });
-  expect(history.textContent).toContain(
-    'Earlier Task version. Reviewer accepted this version',
-  );
-  expect(history.textContent).toContain('previous-output');
-  expect(history.textContent).toContain(digest);
-  expect(
-    screen.getByText(
-      'Output reviews are human statements. Task status is unchanged.',
+  fireEvent.click(screen.getByRole('button', { name: '1 reply' }));
+  const thread = screen.getByRole('region', { name: 'Agent thread' });
+  expect(within(thread).getAllByText('Answer in markdown')).toHaveLength(2);
+  fireEvent.change(within(thread).getByRole('textbox'), {
+    target: { value: 'Refine this answer' },
+  });
+  fireEvent.click(within(thread).getByRole('button', { name: 'Send reply' }));
+  await waitFor(() =>
+    expect(mocks.continue).toHaveBeenCalledWith(
+      'http://station',
+      'session-1',
+      expect.objectContaining({
+        message: 'Refine this answer',
+        taskRoomReply: expect.objectContaining({ taskId: 'task-1' }),
+      }),
+      expect.anything(),
     ),
-  ).toBeTruthy();
-  view.rerender(
-    <ProjectTaskRoomConversation
-      taskId="task-1"
-      projectSlug="demo"
-      taskCreatedAt="2026-09-30T12:00:00.000Z"
-    />,
   );
-  expect(history.textContent).toContain('Reviewer accepted this version');
-  expect(history.textContent).not.toContain('Earlier Task version');
+});
+test('running agents have one inline status with functional Watch and Stop', async () => {
+  mocks.running = true;
+  mount();
+  expect(screen.getAllByText('is working')).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Watch' }));
+  expect(mocks.focus).toHaveBeenCalledWith({ sessionId: 'session-1' });
+  fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
+  await waitFor(() =>
+    expect(mocks.stop).toHaveBeenCalledWith(
+      'http://station',
+      'session-1',
+      {},
+      expect.anything(),
+    ),
+  );
+});
+test('terminal authorization disables the composer', () => {
+  mocks.stream = 'terminal';
+  mount();
+  expect((screen.getByRole('textbox') as HTMLTextAreaElement).disabled).toBe(
+    true,
+  );
 });

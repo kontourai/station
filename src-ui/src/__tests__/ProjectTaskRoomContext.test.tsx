@@ -118,7 +118,9 @@ function ThrowingDocumentConsumer() {
 }
 
 beforeEach(() => {
-  mocks.command.mockReset();
+  mocks.command
+    .mockReset()
+    .mockResolvedValue({ kind: 'available', snapshot: snapshot('Alice') });
   mocks.restart.mockReset();
   mocks.stream = undefined;
   mocks.streamGeneration = 0;
@@ -219,7 +221,11 @@ test('heartbeats a joined viewer beyond the production live TTL', async () => {
   );
   act(() => mocks.stream?.onRoom?.(snapshot('self')));
   await act(() => vi.advanceTimersByTimeAsync(31_000));
-  expect(mocks.command.mock.calls).toEqual([
+  expect(
+    mocks.command.mock.calls.filter(
+      ([command]) => command.command === 'heartbeat',
+    ),
+  ).toEqual([
     [{ command: 'heartbeat' }],
     [{ command: 'heartbeat' }],
     [{ command: 'heartbeat' }],
@@ -240,7 +246,11 @@ test('does not heartbeat when the viewer has no joined participant', async () =>
   );
   act(() => mocks.stream?.onRoom?.(snapshot('peer')));
   await act(() => vi.advanceTimersByTimeAsync(31_000));
-  expect(mocks.command).not.toHaveBeenCalled();
+  expect(
+    mocks.command.mock.calls.filter(
+      ([command]) => command.command === 'heartbeat',
+    ),
+  ).toEqual([]);
   expect(mocks.streamGeneration).toBe(0);
 });
 
@@ -336,4 +346,22 @@ test('keeps SSE authoritative over delayed commands and makes terminal absorbing
   expect(screen.getByText('no-live')).toBeTruthy();
   expect(screen.queryByText('resurrected')).toBeNull();
   expect(screen.queryByText('queued-same-generation')).toBeNull();
+});
+
+test('opening the Task joins and publishes presence; pagehide and unmount depart', async () => {
+  const view = render(
+    <ProjectTaskRoomProvider taskId="task-1">
+      <Consumer />
+    </ProjectTaskRoomProvider>,
+  );
+  await act(async () => {});
+  expect(mocks.command.mock.calls.map(([command]) => command.command)).toEqual([
+    'join',
+    'announce',
+  ]);
+  fireEvent(window, new Event('pagehide'));
+  await act(async () => {});
+  expect(mocks.command).toHaveBeenLastCalledWith({ command: 'depart' });
+  view.unmount();
+  expect(mocks.command).toHaveBeenLastCalledWith({ command: 'depart' });
 });

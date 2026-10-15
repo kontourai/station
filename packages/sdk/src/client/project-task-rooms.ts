@@ -453,6 +453,7 @@ export async function commandProjectTaskRoomLive(
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...opts?.headers },
         body: JSON.stringify(command),
+        keepalive: command.command === 'depart',
       }),
     ),
     taskId,

@@ -9,6 +9,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Empty, SkeletonList } from '../../components/state';
+import { RoomAvatar } from '../../workspace-panes/ProjectTaskRoomPresence';
 import {
   GuestAccountRequired,
   requireGuestAccount,
@@ -71,6 +72,7 @@ export function GuestSharedTaskView({
 }) {
   const client = useQueryClient();
   const [selectedTaskId, setSelectedTaskId] = useState<string>();
+  const [tab, setTab] = useState('Chat');
   const [notice, setNotice] = useState<string>();
   const taskTriggers = useRef(new Map<string, HTMLButtonElement>());
   const onScopeLostRef = useRef(onScopeLost);
@@ -275,6 +277,7 @@ export function GuestSharedTaskView({
                 onClick={() => {
                   setNotice(undefined);
                   setSelectedTaskId(summary.task.id);
+                  setTab('Chat');
                 }}
               >
                 Read shared Task
@@ -285,7 +288,7 @@ export function GuestSharedTaskView({
       )}
       {selected && (
         <section
-          className="account-entry__shared-task-detail"
+          className="account-entry__shared-task-detail task-room-guest"
           aria-label={`${selected.task.title} shared content`}
         >
           <div className="account-entry__shared-task-heading">
@@ -302,6 +305,22 @@ export function GuestSharedTaskView({
               Close
             </Button>
           </div>
+          <div
+            className="task-room-tabs"
+            role="tablist"
+            aria-label="Shared Task views"
+          >
+            {['Chat', 'Brief'].map((name) => (
+              <Button
+                key={name}
+                role="tab"
+                aria-selected={tab === name}
+                onClick={() => setTab(name)}
+              >
+                {name}
+              </Button>
+            ))}
+          </div>
           {(history.isPending || document.isPending) && (
             <SkeletonList count={2} label="Reading shared Task content" />
           )}
@@ -309,7 +328,10 @@ export function GuestSharedTaskView({
             <p role="alert">Shared Task content is unavailable.</p>
           )}
           {history.data?.kind === 'available' ? (
-            <div className="account-entry__shared-history">
+            <div
+              className="account-entry__shared-history"
+              hidden={tab !== 'Chat'}
+            >
               <h6>Shared messages</h6>
               {history.data.hasMore && (
                 <p role="status">
@@ -326,6 +348,7 @@ export function GuestSharedTaskView({
                 <ol>
                   {history.data.records.map((record) => (
                     <li key={record.sequence}>
+                      <RoomAvatar name={record.actor.label} />
                       <strong>{record.actor.label}</strong>
                       <p>{record.body.text}</p>
                     </li>
@@ -337,7 +360,10 @@ export function GuestSharedTaskView({
             <p role="status">{historyState(history.data.kind)}</p>
           ) : null}
           {document.data?.kind === 'snapshot' ? (
-            <div className="account-entry__shared-document">
+            <div
+              className="account-entry__shared-document"
+              hidden={tab !== 'Brief'}
+            >
               <h6>Shared document</h6>
               <pre>{document.data.text}</pre>
             </div>
@@ -349,3 +375,5 @@ export function GuestSharedTaskView({
     </section>
   );
 }
+
+import '../TaskWorkspaceView.css';
