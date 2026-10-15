@@ -219,7 +219,7 @@ button.agent-tool-library__origin {
 }
 .agent-tool-library__classification {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .agent-tool-library__catalog-heading {
   display: flex;
@@ -264,7 +264,7 @@ button.agent-tool-library__origin {
 }
 .agent-tool-library__tool {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 9rem;
+  grid-template-columns: 44px minmax(0, 1fr) 11rem;
   align-items: start;
   column-gap: var(--k-space-2);
   padding-block: var(--k-space-1);
