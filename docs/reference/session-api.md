@@ -190,11 +190,18 @@ Sessions. A continuation can move to a new Session (the one it used ended, or
 the request names a model its engine cannot switch to mid-Session), so before
 it may do that Station reads the turn ledger for the key across every Session
 of the conversation. A key whose turn already started is answered with that
-turn (`providerTurnId`), whatever the retry changed. One that may have reached
-the agent is refused `409` with `code: "foreground_message_indeterminate"`,
-and one another attempt still holds is refused with the retryable
-`code: "client_turn_in_flight"`. Nothing is sent in any of these cases. A
-handoff is deduplicated under its own key and is not part of this check.
+turn (`providerTurnId`), whatever the retry changed, and staged attachments
+the retry carries are bound to that turn. A key another attempt still holds
+joins that attempt: the retry waits (bounded) for its turn and answers with
+it, or is refused `409` with the retryable `code: "client_turn_in_flight"` if
+it does not resolve in time. That includes a claim the delivery lookup calls
+`indeterminate` only because it is old, while its owner lives (#3660): it may
+still deliver. Only a key that may have reached the agent with nothing left
+to resolve it (the attempt gave it up after a possible effect, its process
+died after it may have invoked the engine, or its record expired) is refused
+`409` with `code: "foreground_message_indeterminate"`. Nothing new is sent in
+any of these cases. A handoff is deduplicated under its own key and is not
+part of this check.
 
 ### Let Station hold a follow-up
 
