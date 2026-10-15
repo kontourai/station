@@ -213,7 +213,8 @@
     "./harness-questions": "./src/harness-questions.ts",
     "./input-request": "./src/input-request.ts",
     "./mcp-elicitation": "./src/mcp-elicitation.ts",
-    "./mcp-prompts": "./src/mcp-prompts.ts"
+    "./mcp-prompts": "./src/mcp-prompts.ts",
+    "./account-preferences": "./src/account-preferences.ts"
   },
   "dependencies": {
     "@kontourai/datum": "0.8.0",

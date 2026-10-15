@@ -147,6 +147,7 @@ export function approvalModeChipLabel(mode: ApprovalMode): string {
 type ApprovalModeSource =
   | 'session override'
   | 'agent default'
+  | 'account default'
   | 'station default'
   | 'adapter default';
 
@@ -176,12 +177,14 @@ export function resolveEffectiveApprovalMode({
   engineConnectionId,
   sessionOverride,
   agentDefault,
+  personalDefault,
   stationDefault,
 }: {
   engineConnectionId?: string | null;
   sessionOverride?: unknown;
   /** The session's Agent's own default (`execution.approvalMode`). */
   agentDefault?: unknown;
+  personalDefault?: unknown;
   /**
    * This Station's `AppConfig.defaultApprovalMode`. Applies only to an
    * engine whose adapter reads the knob at all — passing it for any other
@@ -211,6 +214,18 @@ export function resolveEffectiveApprovalMode({
       mode: agentDefaultMode,
       label: `${approvalModeLabel(agentDefaultMode)} (agent default)`,
       source: 'agent default',
+    };
+  }
+
+  if (
+    approvalModeKnobSupported(engineConnectionId) &&
+    isApprovalMode(personalDefault) &&
+    personalDefault !== 'connection-default'
+  ) {
+    return {
+      mode: personalDefault,
+      label: `${approvalModeLabel(personalDefault)} (your default)`,
+      source: 'account default',
     };
   }
 

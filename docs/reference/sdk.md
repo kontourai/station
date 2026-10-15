@@ -4368,3 +4368,17 @@ outcome-unknown, persistence-failed and cancelled. Connected means the peer
 credential was saved, not that a Project checkout, Agent or execution offer is
 ready. See [the connection guide](../guides/connections.md#saved-station-addresses)
 for the independent Device and peer choices and current trusted-session limits.
+
+## Account preferences
+
+The React-free client entry exports `getAccountPreferences(apiBase, options)`
+and `patchAccountPreferences(apiBase, patch, options, onlyMissing?)` for
+`/api/me/preferences`. Use captured request authority in `options.requestScope`.
+The server derives the owner; callers never supply an account or tenant id.
+Omitted fields stay unchanged; null resets a field. Engine defaults merge by
+engine, and null for one engine removes only that engine's default. Import uses
+`onlyMissing: true` (the fourth argument) to fill unset fields atomically.
+
+These preferences follow one person across devices connected to the same
+Station. They grant no execution permissions and do not provide cross-Station
+cloud synchronization. See the [settings architecture](../design/settings-architecture.md#account-preferences-and-device-settings).

@@ -342,6 +342,8 @@ export function installAccountBoundDeviceGate(
         ) ||
         isAccountBoundGuestAdminLeaf(path, method) ||
         isAccountBoundOwnTokenLeaf(path, method) ||
+        (path === '/api/me/preferences' &&
+          (method === 'GET' || method === 'HEAD' || method === 'PATCH')) ||
         path === '/api/account-auth' ||
         path.startsWith('/api/account-auth/') ||
         // #481 groundwork: the credential-bound authority observation is an

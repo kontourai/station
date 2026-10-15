@@ -11,6 +11,14 @@ link opens the owning section and attempts to reveal the control. Platform
 restrictions and delayed rendering can prevent that reveal. This reference
 explains the URL, catalog endpoint, and how to use its results.
 
+**General → Your account** has the stable section id `account-preferences`.
+Its personal engine defaults have ids `personal-codex-approval`,
+`personal-claude-approval` and `personal-muse-approval`; migration is
+`account-preference-sync`. Portable settings retain their existing ids and now
+report `account` scope. This means account storage on the connected Station when
+identity is verified, with a device-local fallback for callers without a person.
+See [the settings architecture](../design/settings-architecture.md#account-preferences-and-device-settings).
+
 ## The URL shape
 
 ```text
@@ -108,7 +116,7 @@ Read `GET /config/app` for values.
 | `id` | Stable control identity; the `highlight` parameter. |
 | `label` | The control's heading as Settings renders it. |
 | `help` | One sentence stating what is different about Station because this setting holds the value it holds. Absent when the control has no registry definition behind it. |
-| `scope` | Which authority owns an edit: `station`, `defaults`, `device`, `mixed`, `temporary`, or `informational` (`informational` and `temporary` are not persisted settings). |
+| `scope` | Which authority owns an edit: `account`, `station`, `defaults`, `device`, `mixed`, `temporary`, or `informational` (`informational` and `temporary` are not persisted settings). |
 | `section` | The settings section; the `view` parameter. |
 | `route` | The deep link, already assembled. Prefer this over building the URL. |
 | `configKey` | The primary `AppConfig` or device-settings key behind the control, when it has one. |

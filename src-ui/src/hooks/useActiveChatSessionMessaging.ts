@@ -28,6 +28,7 @@ import {
   skillExperienceInputErrors,
 } from '@kontourai/station-shared/skill-experience-values';
 import { useCallback } from 'react';
+import { useAccountPreferences } from '../contexts/AccountPreferencesContext';
 import { useActiveChatActions } from '../contexts/ActiveChatsContext';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
 import {
@@ -384,6 +385,7 @@ export function useSendMessage(
   };
   const invalidate = useInvalidateQuery();
   const queryClient = useQueryClient();
+  const accountPreferences = useAccountPreferences();
   const {
     namespace: experienceNamespace,
     status: experienceAuthorityStatus,
@@ -434,6 +436,7 @@ export function useSendMessage(
         onDurable?: () => void;
         /** Retire recovery actions whose originating submission was superseded. */
         claimRetry?: () => boolean;
+        skipPersonalApprovalDefault?: boolean;
         /** State-bound capability supplied only by OutboundDispatchModule. */
         dispatch?: OutboundDispatchClaim;
         executionSnapshot?: {
@@ -450,7 +453,27 @@ export function useSendMessage(
       if (isReplayThread(sessionId))
         throw new Error('Replay conversations are read-only.');
       const allChats = activeChatsStore.getSnapshot();
-      const currentState = allChats[sessionId];
+      let currentState = allChats[sessionId];
+      const firstInteractiveSend =
+        !conversationId &&
+        !currentState?.conversationId &&
+        !currentState?.orchestrationSessionStarted &&
+        !options?.dispatch;
+      if (
+        firstInteractiveSend &&
+        (accountPreferences.status === 'loading' ||
+          accountPreferences.status === 'error' ||
+          accountPreferences.saving)
+      ) {
+        addEphemeralMessage(sessionId, {
+          role: 'system',
+          content:
+            accountPreferences.status === 'error'
+              ? 'Account preferences could not be loaded. Reload saved preferences in Settings before starting this chat.'
+              : 'Wait for account preferences to finish loading or saving before starting this chat.',
+        });
+        return false;
+      }
       const submittedDraft = content;
       const experienceDraft = options?.dispatch
         ? undefined
@@ -723,6 +746,46 @@ export function useSendMessage(
       // "Continue" after tool-calls/length) since those are genuinely new
       // turns, not a resend of this one. It is also the bubble's id, so the
       // turn's `turn.started` (which carries it) matches this message.
+      if (
+        currentState &&
+        firstInteractiveSend &&
+        !options?.skipPersonalApprovalDefault &&
+        currentState.queuedApprovalMode === undefined &&
+        (options?.executionSnapshot
+          ? options.executionSnapshot.executionOnCurrentStation
+          : currentState?.executionOnCurrentStation) !== false
+      ) {
+        const catalog = queryClient.getQueryData<ObservedAgentCatalog>([
+          'agents',
+        ]);
+        const selectedAgent =
+          (options?.executionSnapshot
+            ? options.executionSnapshot.executionAgentId
+            : currentState?.executionAgentId) ?? agentSlug;
+        const engine = observedEngine(catalog, selectedAgent);
+        const engineId =
+          engine?.kind === 'connection' ? engine.connectionId : undefined;
+        const agentDefault = catalog?.agents?.find(
+          (agent) => agent.slug === selectedAgent,
+        )?.execution?.approvalMode;
+        const personalDefault =
+          (!agentDefault || agentDefault === 'connection-default') &&
+          (engineId === 'codex' || engineId === 'claude' || engineId === 'muse')
+            ? engineId === 'codex'
+              ? accountPreferences.data?.values.interactiveApprovalModes?.codex
+              : engineId === 'claude'
+                ? accountPreferences.data?.values.interactiveApprovalModes
+                    ?.claude
+                : accountPreferences.data?.values.interactiveApprovalModes?.muse
+            : undefined;
+        if (personalDefault) {
+          currentState = {
+            ...currentState,
+            queuedApprovalMode: personalDefault,
+          };
+          updateChat(sessionId, { queuedApprovalMode: personalDefault });
+        }
+      }
       const resolvedTurnId = turnId ?? randomCorrelationId();
       const transaction = prepareSendTransaction({
         state: currentState,
@@ -1219,6 +1282,7 @@ export function useSendMessage(
                               queueOnBusy: options?.queueOnBusy,
                               onAdmission,
                               claimRetry: options?.claimRetry,
+                              skipPersonalApprovalDefault: true,
                             },
                           ),
                         options?.onAdmission,
@@ -1658,6 +1722,9 @@ export function useSendMessage(
     },
     [
       addEphemeralMessage,
+      accountPreferences.data,
+      accountPreferences.status,
+      accountPreferences.saving,
       experienceNamespace,
       experienceAuthorityStatus,
       agentConnections,

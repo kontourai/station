@@ -1,0 +1,167 @@
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
+import { Hono } from 'hono';
+import { afterEach, describe, expect, test } from 'vitest';
+import { AccountPreferencesStore } from '../../../services/identity/account-preferences.js';
+import { createAccountPreferencesRoutes } from '../account-preferences.js';
+
+const homes: string[] = [];
+afterEach(async () => {
+  for (const home of homes.splice(0))
+    await rm(home, { recursive: true, force: true });
+});
+
+async function fixture() {
+  const home = await mkdtemp(join(tmpdir(), 'station-account-preferences-'));
+  homes.push(home);
+  const app = new Hono();
+  const build = () =>
+    createAccountPreferencesRoutes({
+      store: new AccountPreferencesStore(home),
+      resolvePrincipal: (c) =>
+        humanPrincipal(
+          c.req.header('x-test-person') === 'unbound' ? 'device' : 'fixture',
+          c.req.header('x-test-person') === 'other' ? 'other' : 'person',
+          'Fixture person',
+        ),
+      tenantId: (request) => request.headers.get('x-test-tenant') ?? undefined,
+      isInternal: (request) => request.headers.has('x-test-internal'),
+    });
+  app.route('/api/me', build());
+  const call = (
+    patch?: unknown,
+    headers?: Record<string, string | undefined>,
+    target = app,
+  ) =>
+    target.request('/api/me/preferences', {
+      method: patch === undefined ? 'GET' : 'PATCH',
+      headers: new Headers(
+        Object.entries({
+          ...headers,
+          'Content-Type': 'application/json',
+        }).filter((pair): pair is [string, string] => pair[1] !== undefined),
+      ),
+      ...(patch === undefined ? {} : { body: JSON.stringify(patch) }),
+    });
+  return { home, call, build };
+}
+
+describe('account preference HTTP persistence', () => {
+  test('two devices of one person share durable preferences while another person and tenant remain separate', async () => {
+    const f = await fixture();
+    expect((await f.call()).status).toBe(200);
+    expect(
+      (
+        await f.call(
+          { theme: 'light', interactiveApprovalModes: { codex: 'never' } },
+          { 'x-test-device': 'phone' },
+        )
+      ).status,
+    ).toBe(200);
+    const desktop = await f.call(undefined, { 'x-test-device': 'desktop' });
+    expect(await desktop.json()).toMatchObject({
+      data: {
+        values: {
+          theme: 'light',
+          interactiveApprovalModes: { codex: 'never' },
+        },
+      },
+    });
+    for (const headers of [
+      { 'x-test-person': 'other' },
+      { 'x-test-tenant': 'other-tenant' },
+    ]) {
+      expect(await (await f.call(undefined, headers)).json()).toMatchObject({
+        data: { values: {} },
+      });
+    }
+    const restarted = new Hono().route('/api/me', f.build());
+    expect(
+      await (await f.call(undefined, undefined, restarted)).json(),
+    ).toEqual(await (await f.call()).json());
+  });
+
+  test('independent concurrent field updates survive, and reset removes only the named account preference', async () => {
+    const f = await fixture();
+    const results = await Promise.all([
+      f.call({ theme: 'light' }),
+      f.call({ diffWrap: true }),
+    ]);
+    expect(results.map((response) => response.status)).toEqual([200, 200]);
+    expect(await (await f.call()).json()).toMatchObject({
+      data: { values: { theme: 'light', diffWrap: true } },
+    });
+    const store = new AccountPreferencesStore(f.home);
+    const owner = {
+      principalId: humanPrincipal('fixture', 'person', 'Fixture person').id,
+    };
+    await store.patch(owner, { theme: 'dark', chatShowReasoning: true }, true);
+    expect(store.read(owner).values).toMatchObject({
+      theme: 'light',
+      chatShowReasoning: true,
+    });
+    await store.patch(owner, { interactiveApprovalModes: { codex: 'auto' } });
+    await store.patch(owner, { interactiveApprovalModes: { claude: 'ask' } });
+    await store.patch(owner, { interactiveApprovalModes: { codex: null } });
+    expect(store.read(owner).values.interactiveApprovalModes).toEqual({
+      claude: 'ask',
+    });
+    await store.patch(owner, {
+      chatShowReasoning: null,
+      interactiveApprovalModes: null,
+    });
+    expect((await f.call({ theme: null })).status).toBe(200);
+    expect(await (await f.call()).json()).toEqual({
+      success: true,
+      data: { schemaVersion: 1, values: { diffWrap: true } },
+    });
+  });
+
+  test.each([
+    { chatDockWidth: 500 },
+    { sttProvider: 'remote' },
+    { principalId: 'another-person' },
+    { featureSettings: { pushNotificationsEnabled: true } },
+    { approvalGrant: 'full-access' },
+    { interactiveApprovalModes: { unknown: 'never' } },
+    { chatFontSize: 200 },
+    { modelPickerPreferences: { favorites: ['x'] } },
+  ])(
+    'rejects nonportable, unknown, or malformed input %j without changing saved state',
+    async (patch) => {
+      const f = await fixture();
+      expect((await f.call({ theme: 'dark' })).status).toBe(200);
+      expect((await f.call(patch)).status).toBe(400);
+      expect(await (await f.call()).json()).toMatchObject({
+        data: { values: { theme: 'dark' } },
+      });
+    },
+  );
+
+  test('unbound devices and internal callers cannot store personal preferences', async () => {
+    const f = await fixture();
+    for (const headers of [
+      { 'x-test-person': 'unbound' },
+      { 'x-test-internal': 'true' },
+    ]) {
+      expect((await f.call(undefined, headers)).status).toBe(403);
+      expect((await f.call({ theme: 'dark' }, headers)).status).toBe(403);
+    }
+    expect(await (await f.call()).json()).toMatchObject({
+      data: { values: {} },
+    });
+  });
+
+  test('a corrupt saved record is reported rather than replaced by defaults or a later patch', async () => {
+    const f = await fixture();
+    await f.call({ theme: 'light' });
+    const [file] = await readdir(join(f.home, 'config', 'account-preferences'));
+    const path = join(f.home, 'config', 'account-preferences', file!);
+    await writeFile(path, '{broken');
+    expect((await f.call()).status).toBe(503);
+    expect((await f.call({ diffWrap: false })).status).toBe(503);
+    expect(await readFile(path, 'utf8')).toBe('{broken');
+  });
+});

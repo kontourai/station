@@ -61,6 +61,7 @@ function scopeBadgeLabel(
   provenance: SettingProvenanceEntry | undefined,
   containerScope?: 'station' | 'device',
 ): string | undefined {
+  if (catalogScope === 'account') return 'Your account';
   if (provenance?.source === 'file' && provenance.scope === 'project')
     return 'Project';
   // #2144 slice 7: a label that only restates the enclosing group's caption

@@ -47,6 +47,59 @@ routes do not depend on it, and disabling it does not remove an existing root.
 The earlier description of the flag as inert is obsolete.
 `defaultChatFontSize` and `workspaceCheckpoints` gained Station-configuration rows.
 
+## Account preferences and device settings
+
+Personal display choices now belong to the authenticated person on this Station:
+theme, accent, chat font and reasoning/tool visibility, answer delivery, diff
+style/wrapping, auto-hide, model-picker preferences, the conversation-delete
+confirmation and Developer navigation. The account preference contract is
+[`account-preferences.ts`](../../packages/contracts/src/account-preferences.ts).
+The device registry remains the defaults and legacy-storage owner for those
+keys; an active account overlays it without copying account values into the
+browser's device envelope.
+
+Device scope retains microphone and output providers, push permission, haptics,
+Return behavior, keyboard shortcuts, panel dimensions/placement and navigation
+state, connection credentials and device grants. Project model/workspace defaults
+and shared Station configuration retain their existing ownership. A stored
+preference never grants execution access.
+
+`GET/PATCH /api/me/preferences` resolves the person through the canonical request
+principal owner. A verified local operator has operator preferences; an unbound
+paired Device or a tenant without a person keeps device-local preferences.
+Storage partitions the exact principal by the trusted tenant boundary, uses
+bounded schema validation and serialized atomic field patches, and reads fresh
+on requests. The client refreshes on activation, focus and reconnect. It reports
+loading and save failure separately from saved values. Account changes retire
+the in-memory overlay; late responses cannot populate the replacement authority.
+There is no cross-Station cloud synchronization.
+
+Migration is an explicit **Import previous preferences** action in Settings →
+General → Your account. It copies only portable choices that remain unset under
+the server's mutation lock. It keeps the old device record and never imports
+execution permissions, grants, hardware selection or geometry. Device reset
+excludes account preferences while an account is active. Per-setting resets
+remove the account value and use the registry default.
+
+Each supported engine has an optional personal approval default for new
+interactive chats. Resolution is explicit chat choice → Agent default → personal
+engine preference → Station default → engine configuration. The first human
+send carries the selected personal preference through the existing recorded
+approval decision path, including durable outbox replay. Existing chats,
+unattended starts and remote-Station execution do not inherit the initiating
+Station's personal preference. Engine capability and device authorization still
+apply. The composer distinguishes startup intent, confirmed engine mode,
+next-turn requests and restart-required refusal. Its picker changes this chat;
+**Also save for my new … chats** is a separate explicit action.
+
+Implementation owners: [account store](../../src-server/services/identity/account-preferences.ts),
+[personal route](../../src-server/routes/me/account-preferences.ts),
+[authority-bound client](../../src-ui/src/contexts/AccountPreferencesContext.tsx),
+[device facade](../../src-ui/src/lib/device-settings-store.ts), and
+[first-send caller](../../src-ui/src/hooks/useActiveChatSessionMessaging.ts).
+The earlier sections below retain their dated design context where they describe
+all browser preferences as device-only.
+
 ## 1. The problem
 
 Station's settings grew page-by-page, not model-first. The audit found:

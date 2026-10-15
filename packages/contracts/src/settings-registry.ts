@@ -19,7 +19,7 @@ import { type AppConfig, templateVariableFormatError } from './config.js';
  */
 
 /** Who or what a setting controls, per docs/design/settings-architecture.md §3. */
-export type SettingScope = 'station' | 'defaults' | 'device';
+export type SettingScope = 'station' | 'defaults' | 'device' | 'account';
 
 export type SettingValueDescriptor =
   | { kind: 'string'; minLength?: number; maxLength?: number; pattern?: string }
