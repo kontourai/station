@@ -135,6 +135,9 @@ BOARDS                                               +
 [live work / participants] [Schedule] [Customize] [Settings]
 ```
 
+[Implementation screenshots and local evidence](../reviews/workspace-map-20261015/README.md)
+record the exact reviewed revisions and limits.
+
 **Quiet tree refinement, accepted 2026-10-15.** The expanded desktop map is
 216px; its collapsed rail is 52px. Only the selected project's configured
 Layouts appear beneath it, as a vertical list. Up/Down/Home/End move within
