@@ -994,7 +994,9 @@
 
     "src-server/runtime/frameworks/voltagent-adapter.ts",
 
-    "src-server/runtime/frameworks/__tests__/voltagent-model-input.test.ts"
+    "src-server/runtime/frameworks/__tests__/voltagent-model-input.test.ts",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts"
   ],
 
   "checks": [
