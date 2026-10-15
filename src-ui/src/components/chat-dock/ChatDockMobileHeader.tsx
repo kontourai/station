@@ -5,12 +5,7 @@ import type {
 } from 'react';
 import { useId, useRef, useState } from 'react';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
-import {
-  ArrowDownGlyph,
-  FolderGlyph,
-  MenuGlyph,
-  NewChatGlyph,
-} from '../icons/Glyph';
+import { ArrowDownGlyph, MenuGlyph, NewChatGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import '../NewChatAction.css';
 import type { DockMoreAction } from './ChatDockHeaderMoreMenu';
@@ -129,7 +124,6 @@ export function ChatDockMobileHeader({
 }: ChatDockMobileHeaderProps) {
   const [isOverflowOpen, setIsOverflowOpen] = useState(false);
   const [isProjectOpen, setIsProjectOpen] = useState(false);
-  const projectTriggerRef = useRef<HTMLButtonElement>(null);
   const chatActionsTriggerRef = useRef<HTMLButtonElement>(null);
   const titleDescriptionId = useId();
   const activityDescriptionId = useId();
@@ -182,43 +176,10 @@ export function ChatDockMobileHeader({
             <ArrowDownGlyph />
           </button>
         ) : null}
-        {projectSwitcher && (
-          <button
-            ref={projectTriggerRef}
-            type="button"
-            className="chat-dock__mobile-project"
-            aria-label={`Switch project — ${projectSwitcher.projectName}`}
-            aria-haspopup="dialog"
-            aria-expanded={isProjectOpen}
-            data-dock-drag-passthrough=""
-            onClick={() => setIsProjectOpen(true)}
-          >
-            {/* Too narrow for words (a long chat title takes the bar), the
-                control shows only its glyph; its aria-label still names the
-                project. The CSS container query decides which shows. */}
-            <span
-              className="chat-dock__mobile-project-glyph"
-              aria-hidden="true"
-            >
-              <FolderGlyph />
-            </span>
-            <span className="chat-dock__mobile-project-lines">
-              <span
-                className="chat-dock__mobile-project-caption"
-                aria-hidden="true"
-              >
-                New chats
-              </span>
-              <span className="chat-dock__mobile-project-name">
-                {projectSwitcher.projectName}
-              </span>
-            </span>
-          </button>
-        )}
       </div>
       {isProjectOpen && projectSwitcher && (
         <ProjectSwitcherOverlay
-          anchorRef={projectTriggerRef}
+          anchorRef={chatActionsTriggerRef}
           boundProjectSlug={projectSwitcher.projectSlug}
           projects={projectSwitcher.projects}
           onOpenProject={projectSwitcher.onOpenProject}
@@ -308,6 +269,12 @@ export function ChatDockMobileHeader({
           }
           componentProps={{
             overflow,
+            newChatProject: projectSwitcher
+              ? {
+                  name: projectSwitcher.projectName,
+                  onChoose: () => setIsProjectOpen(true),
+                }
+              : undefined,
             projectScope,
             showConnection,
             onNewChat,

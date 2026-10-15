@@ -17,7 +17,7 @@ without adding a model API key:
    **Check connection** sends a short message using your model allowance.
 3. On Home, choose **Open local project** and select your repository folder.
    Station recommends and selects **Coding** after detecting Git. Choose
-   **Create**, then open **Coding** beneath the project in the sidebar.
+   **Create** to open the selected Coding workspace directly.
 4. Choose **Codex** in the Agent picker, write a request, and choose **Start**.
    A detected engine's default Agent is enough; creating another Agent is optional.
 5. To talk to the built-in **Station** assistant using the same Codex account,
@@ -30,8 +30,8 @@ For a customized Codex Agent, open **Customize → Agents → New agent → Use 
 AI app**, enter a name, select **Codex**, and choose its model and Project.
 In **Tools**, choose **Station** to add read-only controls; expand the row to
 inspect the selection. Save with **Create Agent**, then choose it in a new chat.
-Codex does not receive the editor's System Instructions from Station; the editor
-shows that capability limit. See the [Agents guide](https://github.com/kontourai/station/blob/main/docs/guides/agents.md#mcp-tool-configuration)
+Codex receives your instructions with the first message in each new chat, at
+the same priority as that message. You can edit or clear them before saving. See the [Agents guide](https://github.com/kontourai/station/blob/main/docs/guides/agents.md#mcp-tool-configuration)
 for tool selection and approval details.
 
 In **Coding**, use **Files** to open a project file, **Diff** to inspect changes,
@@ -39,6 +39,32 @@ and **Terminal** for a shell. These controls sit in the right-hand rail. Chat
 and its inbox remain available alongside them. A successful answer to a file
 question and a successful Station tool call establish different capabilities;
 check both before relying on the Agent for work.
+
+New installations start without importing conversations outside your Projects.
+To include those later, turn on **Conversations outside projects** in Settings.
+Existing installations retain their choice and previously imported history.
+
+## Connect your phone
+
+Your computer runs Station and the agents. Your phone connects to it to read
+replies, continue chats, and review work. Start on your computer:
+
+1. Install and launch Station there using the options below.
+2. Open **Customize → Connections → Computers → Add computer** and choose
+   **Control this Station from another device**. This opens the pairing screen.
+3. On your phone, open Station, choose **Pair with a code**, and use the
+   invitation from the computer. Keep the computer running.
+
+The address in that invitation must be reachable from your phone. `localhost`
+means the device you are using, so a computer’s localhost address does not reach
+it from a physical phone. Use the reachable address shown in the pairing flow;
+see [Connections](https://github.com/kontourai/station/blob/main/docs/guides/connections.md)
+for remote access. A pairing code grants access; it does not create a network route.
+
+If you have no Station yet, choose **I haven’t set up a Station yet** on your
+phone for the computer setup handoff. **Other ways to connect** contains host
+addresses and broker invitations. You can start with an ordinary chat; custom
+Agents, remote tasks, and layouts are optional.
 
 ## Ways To Run Station Today
 
@@ -84,7 +110,16 @@ needed.
 The install lives under `~/.station/installs/nightly`, keeps its data in
 `~/.station/instances/nightly`, and owns the `station-nightly` launcher
 (`~/.local/bin/station-nightly`, or `station-nightly.cmd` on Windows). Open
-`http://localhost:38000` when it finishes. Run the same command again to
+the single-use sign-in link printed when it finishes. For later launches on
+macOS/Linux, use one command:
+
+```bash
+~/.local/bin/station-nightly start
+```
+
+On Windows, use `station-nightly start` in PowerShell. The default browser
+address is `http://localhost:38000`; use the sign-in link when access is requested.
+Run the same install command again to
 upgrade, and `station-nightly --version` to see the installed build. Set
 `STATION_INSTALL_PUBLIC_MANIFEST_URL` to install from a different signed
 manifest instead. The Station Nightly desktop app uses the same ports and

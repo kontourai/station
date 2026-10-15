@@ -47,7 +47,7 @@ function workspaceControls() {
  * session count (the inbox enumerates the chats).
  */
 describe('ChatDockHeader in a bar that names the pane', () => {
-  test('joins the bar, omits its identity, and keeps New as a named icon with a tipped shortcut, with no Open and no session count', async () => {
+  test('joins the bar, retains assistant context, and keeps New as a named icon with a tipped shortcut, with no Open and no session count', async () => {
     const leading = document.createElement('span');
     const trailing = document.createElement('span');
     document.body.append(leading, trailing);
@@ -78,8 +78,8 @@ describe('ChatDockHeader in a bar that names the pane', () => {
       expect(container.querySelector('.chat-dock__header')).toBeNull();
       // No session count anywhere in the bar: the inbox enumerates them.
       expect(trailing.textContent).not.toMatch(/sessions?/i);
-      // The title is the bar's: the identity is not repeated.
-      expect(leading.textContent).not.toContain('Dev Agent Chat');
+      // CSS suppresses the duplicate title; assistant context remains in the slot.
+      expect(leading.textContent).toContain('Dev Agent Chat');
       expect(leading.textContent).toContain('Dev');
 
       // The verbs arrive with a lazily loaded chunk; a cold transform of it

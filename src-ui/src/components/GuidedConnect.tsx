@@ -11,6 +11,8 @@ import { ConnectionManagerModal } from '@kontourai/station-connect';
 import { pairingDeepLinkScheme } from '@kontourai/station-connect/pairing-deep-link';
 import { authenticatedFetch } from '@kontourai/station-sdk';
 import { lazy, Suspense, useState } from 'react';
+import { useCoarsePointer } from '../hooks/useCoarsePointer';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { checkHostCompatibility } from '../lib/compatibilityLoader';
 import { checkServerHealthDetailed } from '../lib/serverHealth';
 import { hasLocalStationForProfile } from '../platform/client-origin-surface';
@@ -59,6 +61,10 @@ export function GuidedConnect({
   const [openPanel, setOpenPanel] = useState<GuidedConnectPanel | null>(null);
   const [brokerOpen, setBrokerOpen] = useState(false);
   const profile = usePlatformProfile();
+  const compact = useIsMobile();
+  const coarse = useCoarsePointer();
+  const phone = profile.isMobile || (!profile.isTauri && compact && coarse);
+  const [needsStation, setNeedsStation] = useState(false);
   const isLocal = ['localhost', '127.0.0.1', '[::1]'].includes(
     window.location.hostname,
   );
@@ -73,14 +79,16 @@ export function GuidedConnect({
         <img src="/favicon.png" alt="" className="guided-connect__logo" />
         <h1 className="guided-connect__title">Connect to a Station</h1>
         <p className="guided-connect__description">
-          Choose the computer where you want to work.
+          {phone
+            ? 'Use your computer’s agents, chats, and projects from your phone.'
+            : 'Choose the computer where you want to work.'}
         </p>
         {notice && (
           <p role="alert" className="guided-connect__notice">
             {notice}
           </p>
         )}
-        {!profile.isTauri && (
+        {!profile.isTauri && !phone && (
           <section
             className="guided-connect__destination"
             aria-label="Current Station"
@@ -134,55 +142,91 @@ export function GuidedConnect({
           className="guided-connect__destination"
           aria-label="Another Station"
         >
-          <h2>On another computer</h2>
+          <h2>{phone ? 'Connect your phone' : 'On another computer'}</h2>
           <p>
-            Connect to the Station running there using its pairing code or
-            address.
+            {phone
+              ? 'On the computer running Station, open Connections → Computers → Add computer → Control this Station from another device. Keep that computer running while you work here.'
+              : 'Use a pairing code from the Station running on that computer.'}
+          </p>
+          <Button
+            variant="primary"
+            className="guided-connect__action guided-connect__action--primary"
+            onClick={() => setOpenPanel('pair-device')}
+          >
+            Pair with a code
+          </Button>
+          {phone && !profile.isTauri && !isLocal && (
+            <Button
+              className="guided-connect__action"
+              onClick={() => setOpenPanel('request-access')}
+            >
+              Request access to this Station
+            </Button>
+          )}
+        </section>
+        {phone && (
+          <section className="guided-connect__setup">
+            <Button
+              variant="ghost"
+              aria-expanded={needsStation}
+              onClick={() => setNeedsStation((value) => !value)}
+            >
+              I haven’t set up a Station yet
+            </Button>
+            {needsStation && (
+              <div>
+                <p>
+                  Install Station on a Mac, Windows, or Linux computer first.
+                  Your phone connects to that computer; you don’t need to
+                  install coding tools on your phone.
+                </p>
+                <a
+                  href="https://station.kontourai.io/#start"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Get Station for your computer
+                </a>
+                <p>
+                  Then return here with its pairing code. For a computer you
+                  don’t manage, ask its owner for access.
+                </p>
+              </div>
+            )}
+          </section>
+        )}
+        <details className="guided-connect__advanced">
+          <summary>Other ways to connect</summary>
+          <p>
+            Use an address from your Station’s owner, or a configured broker
+            invitation.
           </p>
           <div className="guided-connect__alternatives">
-            <button
-              type="button"
-              className="guided-connect__action"
-              onClick={() => setOpenPanel('pair-device')}
-            >
-              Pair with a code
-            </button>
-            <button
-              type="button"
+            <Button
               className="guided-connect__action"
               onClick={() => setOpenPanel('add')}
             >
               Enter a host address
-            </button>
-            {profile.isTauri ? (
+            </Button>
+            {(profile.isTauri || (phone && isLocal)) && (
               <Button
                 className="guided-connect__action"
-                aria-expanded={brokerOpen}
-                onClick={() => setBrokerOpen((current) => !current)}
+                onClick={() => setOpenPanel('request-access')}
               >
-                Set up a broker route
+                Request access
               </Button>
-            ) : (
-              <button
-                type="button"
-                className="guided-connect__action"
-                aria-expanded={brokerOpen}
-                onClick={() => setBrokerOpen((current) => !current)}
-              >
-                Use a broker invitation
-              </button>
             )}
-          </div>
-          {profile.isTauri && (
-            <button
-              type="button"
+            <Button
               className="guided-connect__action"
-              onClick={() => setOpenPanel('request-access')}
+              aria-expanded={brokerOpen}
+              onClick={() => setBrokerOpen((current) => !current)}
             >
-              Request access
-            </button>
-          )}
-        </section>
+              {profile.isTauri
+                ? 'Set up a broker route'
+                : 'Use a broker invitation'}
+            </Button>
+          </div>
+        </details>
         {brokerOpen && (
           <section
             className="guided-connect__broker"

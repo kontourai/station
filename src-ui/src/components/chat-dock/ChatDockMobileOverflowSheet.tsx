@@ -16,6 +16,7 @@ import type { ChatDockMobileOverflowActions } from './ChatDockMobileHeader';
  */
 export function ChatDockMobileOverflowSheet({
   overflow,
+  newChatProject,
   projectScope,
   showConnection,
   onNewChat,
@@ -24,6 +25,7 @@ export function ChatDockMobileOverflowSheet({
   onClose,
 }: {
   overflow: ChatDockMobileOverflowActions;
+  newChatProject?: { name: string; onChoose: () => void };
   showConnection?: boolean;
   onNewChat?: () => void;
   branchLabel?: string | null;
@@ -65,6 +67,19 @@ export function ChatDockMobileOverflowSheet({
             onClick={() => run(onNewChat)}
           >
             New chat
+          </button>
+        )}
+        {newChatProject && (
+          <button
+            type="button"
+            role="menuitem"
+            className="composer-actions-menu__item"
+            onClick={() => run(newChatProject.onChoose)}
+          >
+            Project for new chats
+            <span className="composer-actions-menu__item-hint">
+              {newChatProject.name}
+            </span>
           </button>
         )}
         {branchLabel && <p>{branchLabel}</p>}
