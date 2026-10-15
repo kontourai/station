@@ -1,3 +1,4 @@
+import { resolveAuthoredToolApproval } from '@kontourai/station-shared/mcp-tool-selection';
 /**
  * Streaming orchestration functions
  * Handles streaming pipeline setup, handler creation, and SSE output
@@ -183,7 +184,13 @@ export function createElicitationCallback(
         toolNameMapping as ReadonlyMap<string, MCPToolNameMappingEntry>,
       );
 
-      if (isApproved || isApprovedOriginal || isIntrinsic) {
+      const explicitAsk =
+        resolveAuthoredToolApproval(
+          [toolName, toolMapping?.original ?? toolName],
+          autoApprove,
+          agentSpec?.tools?.askBeforeUse,
+        ) === 'ask';
+      if (!explicitAsk && (isApproved || isApprovedOriginal || isIntrinsic)) {
         logger.info('[Elicitation] Auto-approved, returning true immediately', {
           toolName,
           originalName: toolMapping?.original,

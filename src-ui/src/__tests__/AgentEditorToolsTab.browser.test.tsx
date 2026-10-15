@@ -379,12 +379,95 @@ const stationTools: Tool[] = [
     name: 'Station',
     displayName: 'Station tools',
     tools: [
-      { name: 'list_agents', readOnly: true, group: 'Agents' },
+      {
+        name: 'list_agents',
+        readOnly: true,
+        classificationSource: 'station',
+        group: 'Agents',
+      },
       { name: 'search_knowledge', readOnly: true, group: 'Knowledge' },
       { name: 'delete_agent', readOnly: false, group: 'Agents' },
     ],
   },
 ];
+
+test('shows origin and descriptions on demand, and defaults new reviewed reads and unknown actions separately', () => {
+  let latest = createEmptyAgentForm();
+  const sources: Tool[] = [
+    {
+      id: 'station-control',
+      name: 'Station',
+      origin: { kind: 'station' },
+      description: 'Manage Station',
+      tools: [
+        {
+          name: 'read',
+          description: 'Read a project',
+          readOnly: true,
+          classificationSource: 'station',
+        },
+        {
+          name: 'write',
+          description: 'Update a project',
+          readOnly: false,
+          classificationSource: 'station',
+        },
+      ],
+    },
+    {
+      id: 'vendor',
+      name: 'Vendor',
+      origin: {
+        kind: 'registry',
+        registryName: 'Company catalog',
+        version: '1.2.3',
+      },
+      tools: [
+        {
+          name: 'read',
+          description: 'Vendor-reported read',
+          readOnly: true,
+          classificationSource: 'publisher',
+        },
+      ],
+    },
+  ];
+  render(
+    <Harness
+      initial={latest}
+      onForm={(form) => {
+        latest = form;
+      }}
+      availableTools={sources}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Add tools' }));
+  const picker = within(screen.getByRole('dialog', { name: 'Add tools' }));
+  fireEvent.click(picker.getByRole('button', { name: 'Station' }));
+  fireEvent.click(picker.getByRole('checkbox', { name: 'Read' }));
+  fireEvent.click(picker.getByRole('checkbox', { name: 'Write' }));
+  expect(latest.tools.autoApprove).toEqual(['station-control_read']);
+  expect(latest.tools.askBeforeUse).toEqual(['station-control_write']);
+  fireEvent.change(
+    picker.getByRole('combobox', { name: 'Approval for read' }),
+    { target: { value: 'ask' } },
+  );
+  expect(latest.tools.autoApprove).toEqual([]);
+  expect(latest.tools.askBeforeUse).toEqual([
+    'station-control_write',
+    'station-control_read',
+  ]);
+  fireEvent.click(picker.getByRole('button', { name: 'Vendor' }));
+  const vendor = within(picker.getByRole('region', { name: 'Vendor' }));
+  fireEvent.click(vendor.getByRole('checkbox', { name: 'Read' }));
+  expect(latest.tools.askBeforeUse).toContain('vendor_read');
+  expect(vendor.getByText('Details · Company catalog')).toBeTruthy();
+  expect(vendor.getByText('1.2.3')).toBeTruthy();
+  expect(vendor.getByText('Vendor-reported read')).toBeTruthy();
+  expect(
+    buildAgentPayload({ ...latest, slug: 'reviewer' }).tools?.askBeforeUse,
+  ).toContain('vendor_read');
+});
 
 test('adds Station tools to a Claude agent and saves read-only, empty and custom choices', () => {
   let latest = createEmptyAgentForm();

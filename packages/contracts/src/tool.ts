@@ -144,6 +144,7 @@ export interface ToolServerProbeResult {
     name: string;
     description?: string;
     group?: string;
+    readOnly?: boolean;
   }[];
   checkedAt: string;
   /** OAuth consent evidence attached to the existing probe/health projection. */
@@ -166,6 +167,7 @@ export interface ToolMetadata {
   iconUrl?: string;
   transport?: string;
   source?: string;
+  origin?: ToolOrigin;
   /**
    * True when the underlying `ToolDef.env` declares one or more entries.
    * Metadata-only signal — never the env values themselves — so UI surfaces
@@ -177,6 +179,26 @@ export interface ToolMetadata {
   enabled?: boolean;
   disabledTools?: string[];
   probe?: ToolServerProbeResult;
+}
+
+/** Installation provenance, separate from an execution or trust grant. */
+export interface ToolOrigin {
+  kind: 'station' | 'registry' | 'plugin' | 'manual' | 'unavailable';
+  registryId?: string;
+  registryName?: string;
+  itemId?: string;
+  pluginName?: string;
+  version?: string;
+  location?: string;
+}
+
+export interface ToolAccountStatus {
+  ownership: 'instance' | 'principal';
+  connectedAs: 'you-in-project' | 'you' | 'shared' | null;
+  personal?: { connected: boolean };
+  project?: { slug: string; connected: boolean };
+  shared: { usable: boolean; connected: boolean };
+  catalogAvailable?: boolean;
 }
 
 export interface Prerequisite {

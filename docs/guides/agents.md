@@ -52,7 +52,9 @@ by action name or description, or filter by source and category. **Station tools
 includes Station Control, Knowledge, and Documentation; categories describe what
 tools do, not which Project they belong to. Select an individual action to add
 only that action, or use **Select shown** to add the visible actions while
-preserving choices outside the filter. Adding tools does not auto-approve them.
+preserving choices outside the filter. On Station and Claude, newly added
+Station-classified reads default to **Always allow**; changes and unknown or
+source-reported actions default to **Ask me**. Existing choices are preserved.
 
 **Refresh tools** discovers the source's current actions without attaching it to
 the Agent. Discovery failures remain visible, including a connection check that
@@ -65,13 +67,24 @@ Individual selections stay fixed when a source gains tools. Enable **Include all
 current and future tools** only when the Agent should receive every action that
 source adds. Engines that cannot accept individual selections offer **Add source**
 and explain that the whole source is included. Disabled sources must be enabled
-in Connections first. Selecting tools grants no additional Project access.
+using **Set up** in the picker. Selecting tools grants no additional Project access.
+Future actions default to **Ask me** on Station and Claude; exact choices for
+reviewed actions override that source default.
+
+**Find more** searches server and plugin catalogs. Install a server or review a
+plugin's install consent, then use **Installed tools** to connect it and choose
+actions. **Connect server** opens manual setup without leaving the Agent draft.
+**Details** exposes server/action descriptions, action IDs, and the recorded
+registry or plugin, version and location. Older or changed execution definitions
+may show **Origin unavailable**; Station does not guess their source.
 
 The **Station** shortcut adds read-only built-in controls. Expand an added source
 to choose **Read only**, **All**, **None**, or individual tools. The category
 picker narrows the checklist; these shortcuts apply to that category and preserve
-choices elsewhere. The shield opens approval settings; the gear opens engine
-settings. **Advanced** contains browser and workflow options.
+choices elsewhere. Each selected action offers **Ask me** or **Always allow**
+on Station and Claude. Other engines show **Engine controlled**; an Agent saved
+with explicit Ask rules refuses to start on an engine that cannot deliver them.
+The gear opens engine settings. **Advanced** contains browser and workflow options.
 Saved changes apply to new chats. Hover over or click an info icon for field
 explanations and engine capabilities. Keyboard users can press Enter to open it,
 use arrow or Page keys to scroll long help, and press Escape to dismiss it.
@@ -116,6 +129,7 @@ External policy delivery follows the [engine policy contract](../conformance/too
 - `mcpLoading` — `on-demand` or `always`, delivered through Claude's `ENABLE_TOOL_SEARCH`; omission preserves the harness setting
 - `available` — allowlist of tool names exposed to the agent; omit or set `["*"]` to expose all tools from connected servers; an empty list exposes none from these integrations
 - `autoApprove` — patterns consulted for automatic approval; they do not override earlier runtime-generation, delegation or configuration-protection refusals. A pattern covers plain calls to a tool and never an escalation or a plan exit, even `*` (see [below](#what-autoapprove-never-covers))
+- `askBeforeUse` — requires a person on Station and Claude, even after a session grant or guardian allow. Exact choices override wildcard defaults; Ask wins equally specific conflicts. Earlier refusals and guardian denies still apply. Without an approval channel the call is denied
 - `unattendedAutoApprove` — explicit opt-in for tools the agent may run when nobody is there to confirm (see [Unattended runs](#unattended-runs))
 
 `tools.aliases` is retired. Older files still load because the loader removes

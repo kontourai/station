@@ -176,8 +176,18 @@ describe('Tool Routes', () => {
     const app = createToolRoutes(service as any, vi.fn());
     const result = await json(await app.request('/'));
     expect(result.data[0].tools).toEqual([
-      { name: 'weather_read', toolName: 'read', disabled: false },
-      { name: 'weather_weatherRead', toolName: 'weather_read', disabled: true },
+      {
+        name: 'weather_read',
+        toolName: 'read',
+        disabled: false,
+        classificationSource: 'publisher',
+      },
+      {
+        name: 'weather_weatherRead',
+        toolName: 'weather_read',
+        disabled: true,
+        classificationSource: 'publisher',
+      },
     ]);
     expect(result.data[0].disabledTools).toEqual(['weather_weatherRead']);
   });

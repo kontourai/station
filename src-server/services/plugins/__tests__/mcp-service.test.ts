@@ -76,6 +76,7 @@ const connectMCPMock = vi.mocked(connectMCP);
 
 function createMockConfigLoader() {
   const loader = withAtomicUpdate({
+    getProjectHomeDir: () => MCP_TEMP_ROOT,
     listIntegrations: vi
       .fn()
       .mockResolvedValue([{ id: 'mcp-1', name: 'Test' }]),

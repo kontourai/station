@@ -22,6 +22,19 @@ and category labels. The returned discovery is useful even when plugin-owned or
 personal-account state is not persisted in the ordinary integration listing.
 Metadata is for browsing; it grants no execution or credential authority.
 
+Integration metadata also carries `origin` (`station`, `registry`, `plugin`,
+`manual`, or `unavailable`), with source/version/location where recorded. This
+identifies installation provenance, not a trust or approval verdict. Local
+registry origin is bound to the saved execution definition; changed definitions
+withhold stale provenance.
+
+`useIntegrationAccountQuery(id, projectSlug?)` reads the account summary.
+`useStartIntegrationOAuthMutation()` accepts `{id, projectSlug?}` and returns an
+`authorizationUrl`. `useFinishIntegrationOAuthMutation()` accepts
+`{id, projectSlug?, callbackUrl}` for remote sign-in completion, evicts settled
+mutation variables and refreshes account/integration queries. Existing endpoint
+ownership checks still apply; a successful catalog install does not sign in.
+
 ## Agent development entry
 
 `@kontourai/station-sdk/agent` is the React-free Agent authoring and execution

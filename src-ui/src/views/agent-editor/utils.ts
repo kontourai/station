@@ -45,6 +45,9 @@ export function removeIntegration(
       unattendedAutoApprove: form.tools.unattendedAutoApprove.filter(
         (entry) => !entry.startsWith(prefix),
       ),
+      askBeforeUse: form.tools.askBeforeUse?.filter(
+        (entry) => !entry.startsWith(prefix),
+      ),
     },
   };
 }
@@ -168,6 +171,14 @@ export function selectIntegrationTools(
     tools: {
       ...added.tools,
       available,
+      askBeforeUse: added.tools.askBeforeUse?.flatMap((entry) => {
+        if (names !== 'all' && entry === `${prefix}*`) return names;
+        return !entry.startsWith(prefix) ||
+          names === 'all' ||
+          names.includes(entry)
+          ? [entry]
+          : [];
+      }),
       autoApprove: [
         ...new Set(
           added.tools.autoApprove.flatMap((entry) => {
@@ -182,6 +193,95 @@ export function selectIntegrationTools(
       ],
     },
   };
+}
+
+export function setIntegrationToolApproval(
+  form: AgentFormData,
+  integrationId: string,
+  key: string,
+  mode: 'always' | 'ask',
+  tools: Tool[],
+): AgentFormData {
+  const tool = tools.find(
+    (item) => getIntegrationToolKey(integrationId, item) === key,
+  );
+  const identities = tool
+    ? mcpToolIdentities(integrationId, tool.toolName || tool.name)
+    : [key];
+  const retain = (patterns: readonly string[] = []) =>
+    patterns.filter((pattern) => !identities.includes(pattern));
+  return {
+    ...form,
+    tools: {
+      ...form.tools,
+      autoApprove: [
+        ...retain(form.tools.autoApprove),
+        ...(mode === 'always' ? [key] : []),
+      ],
+      askBeforeUse: [
+        ...retain(form.tools.askBeforeUse),
+        ...(mode === 'ask' ? [key] : []),
+      ],
+    },
+  };
+}
+
+export function applyNewToolApprovalDefaults(
+  form: AgentFormData,
+  previous: AgentFormData,
+  integrationId: string,
+  tools: Tool[],
+  engineId: string,
+): AgentFormData {
+  if (!['station', 'claude'].includes(engineId)) return form;
+  const names = tools.map((tool) => tool.toolName || tool.name);
+  const before = previous.tools.mcpServers.includes(integrationId)
+    ? selectedMcpTools(
+        integrationId,
+        names,
+        effectiveAgentToolPatterns(previous),
+        previous.tools.mcpServers,
+      )
+    : [];
+  const after = selectedMcpTools(
+    integrationId,
+    names,
+    effectiveAgentToolPatterns(form),
+    form.tools.mcpServers,
+  );
+  const defaults =
+    after === undefined
+      ? {
+          ...form,
+          tools: {
+            ...form.tools,
+            askBeforeUse: [
+              ...new Set([
+                ...(form.tools.askBeforeUse ?? []),
+                `${integrationId}_*`,
+              ]),
+            ],
+          },
+        }
+      : form;
+  return tools.reduce((next, tool) => {
+    const name = tool.toolName || tool.name;
+    if (
+      before === undefined ||
+      before.includes(name) ||
+      (after !== undefined && !after.includes(name))
+    )
+      return next;
+    return setIntegrationToolApproval(
+      next,
+      integrationId,
+      getIntegrationToolKey(integrationId, tool),
+      tool.classificationSource === 'station' && tool.readOnly === true
+        ? 'always'
+        : 'ask',
+      tools,
+    );
+  }, defaults);
 }
 
 export function toggleIntegrationToolEnabled(

@@ -71,3 +71,73 @@
   color: var(--k-text-muted);
   font-size: var(--k-text-xs);
 }
+
+.agent-tool-picker__navigation,
+.agent-tool-picker__tool-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+.agent-tool-picker__navigation {
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+.agent-tool-picker__tool-heading > .cb {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+.agent-tool-picker__approval {
+  width: auto;
+  max-width: 100%;
+  font-size: var(--k-text-sm);
+}
+.agent-tool-picker__details {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.agent-tool-picker__details > summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.agent-tool-picker__details > summary:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+.agent-tool-picker__details p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin-block: var(--k-space-2);
+}
+.agent-tool-picker__details dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--k-space-2);
+}
+.agent-tool-picker__details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.agent-tool-picker__setup {
+  min-height: 60vh;
+}
+.agent-tool-picker__setup .split-pane-layout {
+  min-height: 55vh;
+}
+.agent-tool-discovery .page__card-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+}
+
+.agent-tool-catalog {
+  display: grid;
+  gap: var(--k-space-2);
+}
+.agent-tool-catalog__item .agent-tool-picker__source-heading > strong {
+  flex: 1;
+}
+.agent-tool-catalog__item .agent-tool-picker__source-heading > .button {
+  flex: 0 0 auto;
+}

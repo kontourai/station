@@ -294,6 +294,7 @@ interface AgentTools {
   mcpServers: string[];
   available?: string[];
   autoApprove?: string[];
+  askBeforeUse?: string[];
   unattendedAutoApprove?: string[];
   browser?: boolean;
 }

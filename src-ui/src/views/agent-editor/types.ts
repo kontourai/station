@@ -30,8 +30,8 @@ export interface AgentFormData {
    * the form models it — rather than being silently dropped on save, which is
    * exactly how `aliases` was lost (archive#2693).
    */
-  tools: Required<Omit<AgentTools, 'mcpMode' | 'mcpLoading'>> &
-    Pick<AgentTools, 'mcpMode' | 'mcpLoading'>;
+  tools: Required<Omit<AgentTools, 'mcpMode' | 'mcpLoading' | 'askBeforeUse'>> &
+    Pick<AgentTools, 'mcpMode' | 'mcpLoading' | 'askBeforeUse'>;
   /**
    * The spec's `tools` object exactly as loaded, so a save can distinguish an
    * ABSENT key from an authored-empty one and can carry through fields this

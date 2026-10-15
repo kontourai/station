@@ -83,8 +83,9 @@ stages, and the external adapters carry no unattended principal for them to
 read.
 
 Handing interaction back is also all Station does about consent on that path:
-in Ask mode the engine asks before tool calls its own rules and classifier do
-not already allow, and Station adds no floor over it. What that leaves open, and
+without an authored `askBeforeUse` rule, the engine asks before tool calls its
+own rules and classifier do not already allow. Explicit Ask rules are described
+below. What that leaves open, and
 what Station ships instead, is the Accepted-gap section below.
 
 ACP is partial at its protocol `requestPermission` callback through the same
@@ -94,6 +95,24 @@ policy check, and the external engine reports that identity. Codex
 has no Station pre-tool interception seam. Muse is also unsupported. An
 unknown engine receives an unsupported matrix entry; that does not mean Station
 intercepts or blocks all of that engine's tool calls.
+
+## Explicit per-tool Ask
+
+`tools.askBeforeUse` is delivered by Station and Claude. Matching exact choices
+in either approval list override wildcard defaults; Ask wins at equal
+specificity. A source-level Ask default therefore covers newly discovered
+actions while exact reviewed-read grants remain allowed. An effective Ask runs
+after generation, delegation and config-protection refusals and retains guardian
+denies; guardian allows, session grants and unattended grants cannot bypass it.
+Managed calls without an approval channel are denied.
+
+Claude's staged evaluator returns a required Ask as a `PreToolUse` permission
+ask; `canUseTool` also excludes it from automatic, guardian and session grants.
+Adapter tests exercise both callbacks, including repeated calls after a session
+answer. This is not fresh live-provider proof of every Claude permission mode;
+the earlier quota-blocked live run did not execute a tool. Codex, Muse and ACP
+cannot deliver this contract and refuse resolved Agents with nonempty Ask rules.
+Their picker labels approval as **Engine controlled**.
 
 ## Selected MCP tools
 

@@ -45,6 +45,35 @@ function baseInput(
 }
 
 describe('createSessionAgentResolver', () => {
+  test.each(['codex', 'acp'])(
+    'refuses %s execution when the saved profile requires unsupported per-tool prompts',
+    async (provider) => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({
+            tools: { mcpServers: [], askBeforeUse: ['reports_write'] },
+          }),
+        resolveToolServer: async () => null,
+        resolveSkillDir: async () => null,
+      });
+      await expect(resolver(baseInput({ provider }))).rejects.toThrow(
+        'cannot enforce',
+      );
+    },
+  );
+
+  test('delivers explicit Ask me rules to Claude even with no authored automatic grants', async () => {
+    const resolver = createSessionAgentResolver({
+      loadAgentSpec: async () =>
+        agentSpec({
+          tools: { mcpServers: [], askBeforeUse: ['reports_write'] },
+        }),
+      resolveToolServer: async () => null,
+      resolveSkillDir: async () => null,
+    });
+    const input = await resolver(baseInput({ provider: 'claude' }));
+    expect(input.agent?.askBeforeUse).toEqual(['reports_write']);
+  });
   test.each(['claude', 'station-agent'])(
     'verified %s execution rechecks the freshly loaded authored definition before delivering it',
     async (provider) => {

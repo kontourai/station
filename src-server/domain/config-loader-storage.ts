@@ -17,6 +17,7 @@ import {
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { normalizePersistedToolServerReason } from '../security/tool-server-reason.js';
 import { IntegrationIconAssets } from '../services/plugins/integration-icon-assets.js';
+import { readIntegrationOrigin } from '../services/plugins/integration-origin.js';
 import {
   removePrincipalToolServerCredentials,
   ToolServerCredentialStore,
@@ -359,6 +360,7 @@ export async function listIntegrationMetadata(
           : {}),
         transport: def.transport,
         source: def.command || def.endpoint,
+        origin: readIntegrationOrigin(projectHomeDir, def),
         enabled: def.enabled !== false,
         disabledTools: def.disabledTools,
         probe: sanitizeProbeProjection(def.probe),

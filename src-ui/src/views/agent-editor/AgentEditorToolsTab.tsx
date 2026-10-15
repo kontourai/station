@@ -11,22 +11,22 @@ import {
   PlusGlyph,
   SearchGlyph,
   SettingsGlyph,
-  ShieldGlyph,
 } from '../../components/icons/Glyph';
 import { IntegrationGlyph } from '../../components/icons/IntegrationGlyph';
+import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { Toggle } from '../../components/Toggle';
 import type { Tool } from '../../types';
 import { AgentEditorWorkflows } from './AgentEditorWorkflows';
+import { AgentToolApproval } from './AgentToolApproval';
 import { AgentToolPicker } from './AgentToolPicker';
 import type { AgentEditorFormProps } from './types';
 import {
   addIntegration,
+  applyNewToolApprovalDefaults,
   canonicalAgentToolPatterns,
   getIntegrationToolKey,
   removeIntegration,
   selectIntegrationTools,
-  toggleIntegrationAutoApprove,
-  toggleIntegrationToolAutoApprove,
   toggleIntegrationToolEnabled,
 } from './utils';
 
@@ -60,8 +60,13 @@ export function AgentEditorToolsTab({
 }) {
   const [search, setSearch] = useState('');
   const [browsing, setBrowsing] = useState(false);
+  const [connectionDirty, setConnectionDirty] = useState(false);
+  const [discardConnection, setDiscardConnection] = useState(false);
+  const closeBrowser = () => {
+    if (connectionDirty) setDiscardConnection(true);
+    else setBrowsing(false);
+  };
   const [groups, setGroups] = useState<Record<string, string>>({});
-  const [showApprovals, setShowApprovals] = useState(false);
   const disabled = locked || !!finding;
   const selected: Tool[] = form.tools.mcpServers.map(
     (id) =>
@@ -83,6 +88,8 @@ export function AgentEditorToolsTab({
           toolName: tool.toolName || tool.name,
           description: tool.description,
           group: tool.group,
+          readOnly: tool.readOnly,
+          classificationSource: tool.classificationSource,
           title: tool.title,
           enabled: !tool.disabled,
         }))
@@ -120,11 +127,19 @@ export function AgentEditorToolsTab({
                     .map(
                       (tool) => `station-control_${tool.toolName || tool.name}`,
                     );
-                  setForm((current) =>
-                    supportsSelection && readOnly?.length
-                      ? selectIntegrationTools(current, station.id, readOnly)
-                      : addIntegration(current, station.id),
-                  );
+                  setForm((current) => {
+                    const next =
+                      supportsSelection && readOnly?.length
+                        ? selectIntegrationTools(current, station.id, readOnly)
+                        : addIntegration(current, station.id);
+                    return applyNewToolApprovalDefaults(
+                      next,
+                      current,
+                      station.id,
+                      catalogFor(station),
+                      engineId,
+                    );
+                  });
                   setExpandedIntegrations((current) => ({
                     ...current,
                     [station.id]: true,
@@ -288,11 +303,17 @@ export function AgentEditorToolsTab({
                           !known.has(key),
                       )
                     : [];
-                  return selectIntegrationTools(
+                  return applyNewToolApprovalDefaults(
+                    selectIntegrationTools(
+                      current,
+                      integration.id,
+                      [...retained, ...undiscovered, ...keys],
+                      catalogs,
+                    ),
                     current,
                     integration.id,
-                    [...retained, ...undiscovered, ...keys],
-                    catalogs,
+                    tools,
+                    engineId,
                   );
                 };
                 const visible = scoped.filter(
@@ -485,18 +506,6 @@ export function AgentEditorToolsTab({
                               >
                                 None
                               </Button>
-                              <Button
-                                variant="ghost"
-                                className="agent-tools__approval-toggle"
-                                aria-label="Approvals"
-                                title="Approvals"
-                                aria-pressed={showApprovals}
-                                onClick={() =>
-                                  setShowApprovals((current) => !current)
-                                }
-                              >
-                                <ShieldGlyph />
-                              </Button>
                             </div>
                           )}
                         </div>
@@ -505,26 +514,6 @@ export function AgentEditorToolsTab({
                             This engine accepts the whole source. Individual
                             tool selection is unavailable.
                           </span>
-                        )}
-                        {showApprovals && (
-                          <div className="agent-tools__setting">
-                            <span>Auto-approve all</span>
-                            <Toggle
-                              label={`Auto-approve ${integration.displayName || integration.id}`}
-                              checked={form.tools.autoApprove.includes(
-                                `${prefix}*`,
-                              )}
-                              disabled={disabled}
-                              onChange={() =>
-                                setForm((current) =>
-                                  toggleIntegrationAutoApprove(
-                                    current,
-                                    integration.id,
-                                  ),
-                                )
-                              }
-                            />
-                          </div>
                         )}
                         {tools.length === 0 && (
                           <div className="agent-tools__actions">
@@ -560,12 +549,18 @@ export function AgentEditorToolsTab({
                                   }
                                   onChange={() =>
                                     setForm((current) =>
-                                      toggleIntegrationToolEnabled(
+                                      applyNewToolApprovalDefaults(
+                                        toggleIntegrationToolEnabled(
+                                          current,
+                                          integration.id,
+                                          key,
+                                          tools,
+                                          catalogs,
+                                        ),
                                         current,
                                         integration.id,
-                                        key,
                                         tools,
-                                        catalogs,
+                                        engineId,
                                       ),
                                     )
                                   }
@@ -578,29 +573,15 @@ export function AgentEditorToolsTab({
                                       )}
                                   </span>
                                 </Checkbox>
-                                {showApprovals && (
-                                  <Toggle
-                                    label={`Auto-approve ${tool.toolName || tool.name}`}
-                                    checked={
-                                      enabled &&
-                                      (form.tools.autoApprove.includes(
-                                        `${prefix}*`,
-                                      ) ||
-                                        form.tools.autoApprove.includes(key))
-                                    }
-                                    disabled={disabled || !enabled}
-                                    onChange={() =>
-                                      setForm((current) =>
-                                        toggleIntegrationToolAutoApprove(
-                                          current,
-                                          integration.id,
-                                          key,
-                                          tools,
-                                        ),
-                                      )
-                                    }
-                                  />
-                                )}
+                                <AgentToolApproval
+                                  form={form}
+                                  setForm={setForm}
+                                  integrationId={integration.id}
+                                  tool={tool}
+                                  tools={tools}
+                                  engineId={engineId}
+                                  disabled={disabled || !enabled}
+                                />
                               </div>
                             );
                           })}
@@ -617,12 +598,12 @@ export function AgentEditorToolsTab({
       {browsing && !disabled && (
         <Dialog
           title="Add tools"
-          subtitle="Browse by source or by what the tools do."
+          subtitle="Choose actions and approvals."
           closeLabel="Close tools"
-          onClose={() => setBrowsing(false)}
+          onClose={closeBrowser}
           size="lg"
           footer={
-            <Button variant="primary" onClick={() => setBrowsing(false)}>
+            <Button variant="primary" onClick={closeBrowser}>
               Done
             </Button>
           }
@@ -633,9 +614,22 @@ export function AgentEditorToolsTab({
             availableTools={availableTools}
             integrationTools={integrationTools}
             engineId={engineId}
+            onConnectionDirtyChange={setConnectionDirty}
           />
         </Dialog>
       )}
+      <ConfirmModal
+        isOpen={discardConnection}
+        title="Discard connection changes?"
+        message="The agent draft will be kept."
+        confirmLabel="Discard"
+        onCancel={() => setDiscardConnection(false)}
+        onConfirm={() => {
+          setDiscardConnection(false);
+          setConnectionDirty(false);
+          setBrowsing(false);
+        }}
+      />
       <details className="agent-tools__advanced">
         <summary>Advanced</summary>
         <div className="editor-field">

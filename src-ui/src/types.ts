@@ -460,6 +460,8 @@ export interface Tool {
   name: string;
   displayName?: string;
   source?: string;
+  origin?: import('@kontourai/station-contracts/tool').ToolOrigin;
+  builtin?: boolean;
   description?: string;
   kind?: 'mcp' | 'builtin' | 'custom';
   transport?: string;
@@ -471,12 +473,15 @@ export interface Tool {
   toolName?: string;
   group?: string;
   title?: string;
+  readOnly?: boolean;
+  classificationSource?: 'station' | 'publisher';
   probe?: import('@kontourai/station-contracts/tool').ToolServerProbeResult;
   tools?: {
     name: string;
     toolName?: string;
     description?: string;
     readOnly?: boolean;
+    classificationSource?: 'station' | 'publisher';
     group?: string;
     title?: string;
     disabled?: boolean;

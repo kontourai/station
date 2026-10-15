@@ -191,6 +191,11 @@
             "type": "string"
           }
         },
+        "askBeforeUse": {
+          "type": "array",
+          "description": "Tools that require explicit approval on Station and Claude, before automatic or session grants.",
+          "items": { "type": "string" }
+        },
         "autoApprove": {
           "type": "array",
           "description": "Tools that execute without user confirmation in attended chat. Unattended runs and delegated children do not honour patterns written against the original MCP name; use unattendedAutoApprove for those.",

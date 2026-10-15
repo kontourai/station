@@ -14,6 +14,7 @@ import {
 import type { AgentConfigurationMutationRunner } from '../../../runtime/types.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
+import { readIntegrationOrigin } from '../../../services/plugins/integration-origin.js';
 import { PluginContentLockCycleError } from '../../../services/plugins/plugin-content-integrity.js';
 import { PluginConsentRefusedError } from '../../../services/plugins/plugin-install-consent.js';
 
@@ -259,17 +260,32 @@ describe('Registry Routes', () => {
     expect(configLoader.saveIntegration).not.toHaveBeenCalled();
   });
 
-  test('registry install persists and reloads a new integration disabled', async () => {
+  test('registry install persists a disabled integration with its installing registry origin', async () => {
     const home = mkdtempSync(join(tmpdir(), 'station-registry-disabled-'));
     try {
       const { app, configLoader } = setup();
       configLoader.saveIntegration.mockImplementation((id, def) =>
         saveIntegrationConfig(home, id, def),
       );
-      __integrationProvider.getToolDef.mockResolvedValueOnce({
+      configLoader.getProjectHomeDir.mockReturnValue(home);
+      const definition = {
         id: 'filesystem',
-        kind: 'mcp',
+        kind: 'mcp' as const,
         command: 'npx',
+      };
+      const origin = {
+        kind: 'registry' as const,
+        registryName: 'Team catalog',
+        itemId: 'filesystem',
+        version: '2.0',
+      };
+      const provider = (
+        await import('../../../providers/registries/registry.js')
+      ).getIntegrationRegistryProvider();
+      provider.installWithDefinition = vi.fn().mockResolvedValue({
+        result: { success: true },
+        definition,
+        origin,
       });
 
       await app.request('/integrations/install', {
@@ -280,10 +296,13 @@ describe('Registry Routes', () => {
 
       const path = join(home, 'integrations', 'filesystem', 'integration.json');
       expect(readFileSync(path, 'utf8')).toContain('"enabled": false');
-      expect((await loadIntegrationConfig(home, 'filesystem')).enabled).toBe(
-        false,
-      );
+      const installed = await loadIntegrationConfig(home, 'filesystem');
+      expect(installed.enabled).toBe(false);
+      expect(readIntegrationOrigin(home, installed)).toEqual(origin);
     } finally {
+      delete (
+        await import('../../../providers/registries/registry.js')
+      ).getIntegrationRegistryProvider().installWithDefinition;
       rmSync(home, { recursive: true, force: true });
     }
   });

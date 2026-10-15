@@ -353,9 +353,10 @@ export function createToolRoutes(
                             : undefined,
                       })),
                   ];
-        const rows = [
-          ...new Map(entries.map((tool) => [tool.name, tool])).values(),
-        ];
+        const byName = new Map<string, (typeof entries)[number]>();
+        for (const tool of entries)
+          byName.set(tool.name, { ...byName.get(tool.name), ...tool });
+        const rows = [...byName.values()];
         return {
           ...t,
           ...(t.disabledTools
@@ -368,11 +369,17 @@ export function createToolRoutes(
               }
             : {}),
           builtin: isRuntimeManagedIntegrationId(t.id),
+          origin: isRuntimeManagedIntegrationId(t.id)
+            ? { kind: 'station', registryName: 'Station' }
+            : t.origin,
           usedBy: agentMap[t.id] || [],
           connected:
             mcpService.getConnectionStatus('default', t.id)?.connected ?? false,
           tools: rows.map((tool) => ({
             ...tool,
+            classificationSource: isRuntimeManagedIntegrationId(t.id)
+              ? 'station'
+              : 'publisher',
             name: normalizeToolName(`${t.id}_${tool.name}`),
             toolName: tool.name,
             disabled: mcpToolDisabled(t.id, tool.name, t.disabledTools),

@@ -354,6 +354,14 @@ export class JsonManifestRegistryProvider
     private readonly logger?: Pick<Logger, 'warn'>,
   ) {}
 
+  get displayName(): string {
+    try {
+      return new URL(this.manifestUrl).hostname || basename(this.manifestUrl);
+    } catch {
+      return basename(this.manifestUrl);
+    }
+  }
+
   get registryKey(): string {
     return this.getRegistryKey();
   }
@@ -987,6 +995,8 @@ export class JsonManifestRegistryProvider
    */
   integrationRegistry(): IIntegrationRegistryProvider {
     return {
+      registryKey: this.registryKey,
+      displayName: this.registryKey,
       listAvailable: async (): Promise<RegistryItem[]> => {
         const manifest = await this.fetchManifest();
         return (manifest.tools ?? []).map((tool) => ({

@@ -1,5 +1,6 @@
 import {
   useIntegrationsQuery,
+  useInvalidateQuery,
   useReconnectIntegrationMutation,
 } from '@kontourai/station-sdk';
 import { originalMcpToolName } from '@kontourai/station-shared/mcp-tool-selection';
@@ -9,8 +10,12 @@ import { Checkbox } from '../../components/Checkbox';
 import { ArrowDownGlyph } from '../../components/icons/Glyph';
 import { IntegrationGlyph } from '../../components/icons/IntegrationGlyph';
 import type { Tool } from '../../types';
+import { AgentToolApproval } from './AgentToolApproval';
+import { AgentToolDetails } from './AgentToolDetails';
+import { AgentToolConnection, AgentToolDiscovery } from './AgentToolDiscovery';
 import type { AgentEditorFormProps } from './types';
 import {
+  applyNewToolApprovalDefaults,
   canonicalAgentToolPatterns,
   getIntegrationToolKey,
   removeIntegration,
@@ -25,11 +30,15 @@ export function AgentToolPicker({
   availableTools,
   integrationTools,
   engineId,
+  onConnectionDirtyChange,
 }: Pick<
   AgentEditorFormProps,
   'form' | 'setForm' | 'availableTools' | 'integrationTools'
-> & { engineId: string }) {
+> & { engineId: string; onConnectionDirtyChange?: (dirty: boolean) => void }) {
   const [search, setSearch] = useState('');
+  const [section, setSection] = useState<'installed' | 'discover'>('installed');
+  const [setup, setSetup] = useState<string | null>(null);
+  const invalidate = useInvalidateQuery();
   const [source, setSource] = useState('');
   const [category, setCategory] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -79,6 +88,8 @@ export function AgentToolPicker({
             title: tool.title,
             description: tool.description,
             group: tool.group,
+            readOnly: tool.readOnly,
+            classificationSource: tool.classificationSource,
             enabled: !tool.disabled,
           }))
         : (integrationTools[integration.id] ?? []),
@@ -138,359 +149,471 @@ export function AgentToolPicker({
       : [];
   });
 
+  const updateSelection = (
+    current: typeof form,
+    id: string,
+    next: typeof form,
+  ) => applyNewToolApprovalDefaults(next, current, id, catalogs[id], engineId);
+  if (setup)
+    return (
+      <AgentToolConnection
+        id={setup}
+        onBack={() => {
+          setSetup(null);
+          onConnectionDirtyChange?.(false);
+        }}
+        onDirtyChange={onConnectionDirtyChange ?? (() => {})}
+      />
+    );
   return (
     <div className="agent-tool-picker">
-      <p className="editor-hint">
-        Choose what this agent can do. Save the agent to use these tools in new
-        chats.
-      </p>
-      {catalogQuery.isError && (
-        <div role="alert" className="editor-hint">
-          Could not load the latest tools.{' '}
-          <Button
-            variant="secondary"
-            onClick={() => void catalogQuery.refetch()}
-          >
-            Retry
-          </Button>
-        </div>
-      )}
-      {catalogQuery.isFetching && (
-        <p className="editor-hint" role="status">
-          Updating tools…
-        </p>
-      )}
-      <input
-        type="search"
-        className="editor-input"
-        aria-label="Search tools"
-        placeholder="Search tools by name or what they do"
-        value={search}
-        onChange={(event) => {
-          setSearch(event.target.value);
-          setExpanded({});
-        }}
-      />
-      <div className="agent-tool-picker__filters">
-        <select
-          className="editor-select"
-          aria-label="Tool source"
-          value={source}
-          onChange={(event) => {
-            setSource(event.target.value);
-            setExpanded({});
-          }}
+      <fieldset
+        className="agent-tool-picker__navigation"
+        aria-label="Tool library"
+      >
+        <Button
+          variant="secondary"
+          aria-pressed={section === 'installed'}
+          onClick={() => setSection('installed')}
         >
-          <option value="">All sources</option>
-          <option value="station">Station tools</option>
-          {availableTools
-            .filter(
-              (integration) =>
-                ![
-                  'station-control',
-                  'station-knowledge',
-                  'station-docs',
-                ].includes(integration.id),
-            )
-            .map((integration) => (
-              <option key={integration.id} value={integration.id}>
-                {integration.displayName || integration.name || integration.id}
-              </option>
-            ))}
-        </select>
-        <select
-          className="editor-select"
-          aria-label="Tool category"
-          value={category}
-          onChange={(event) => {
-            setCategory(event.target.value);
-            setExpanded({});
-          }}
+          Installed tools
+        </Button>
+        <Button
+          variant="secondary"
+          aria-pressed={section === 'discover'}
+          onClick={() => setSection('discover')}
         >
-          <option value="">All categories</option>
-          {categories.map((name) => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-        </select>
-      </div>
-      {!supportsSelection && (
-        <p className="editor-hint" role="status">
-          This engine accepts whole tool sources. Individual tool selection is
-          unavailable.
-        </p>
-      )}
-      {visibleSources.length === 0 ? (
-        <p className="editor-hint" role="status">
-          {availableTools.length
-            ? 'No tools match. Try another search or category.'
-            : 'No tool sources installed. Add an integration in Connections to make its tools available here.'}
-        </p>
+          Find more
+        </Button>
+        <Button variant="ghost" onClick={() => setSetup('new')}>
+          Connect server
+        </Button>
+      </fieldset>
+      {section === 'discover' ? (
+        <AgentToolDiscovery
+          onInstalled={() => {
+            void invalidate(['integrations']);
+          }}
+        />
       ) : (
-        visibleSources.map(({ integration, tools }) => {
-          const id = integration.id;
-          const allTools = catalogs[id];
-          const disabled = integration.enabled === false;
-          const added = attached(id);
-          const selectedCount = allTools.filter((tool) =>
-            selected(id, tool),
-          ).length;
-          const following =
-            added && (patterns.includes('*') || patterns.includes(`${id}_*`));
-          const missingSelections = patterns.filter(
-            (key) =>
-              key.startsWith(`${id}_`) &&
-              !key.includes('*') &&
-              !allTools.some((tool) => getIntegrationToolKey(id, tool) === key),
-          );
-          const label = integration.displayName || integration.name || id;
-          const open = expanded[id] ?? (!!query || !!category || !!source);
-          return (
-            <section
-              className="agent-tool-picker__source"
-              key={id}
-              aria-label={label}
+        <>
+          {catalogQuery.isError && (
+            <div role="alert" className="editor-hint">
+              Could not load the latest tools.{' '}
+              <Button
+                variant="secondary"
+                onClick={() => void catalogQuery.refetch()}
+              >
+                Retry
+              </Button>
+            </div>
+          )}
+          {catalogQuery.isFetching && (
+            <p className="editor-hint" role="status">
+              Updating tools…
+            </p>
+          )}
+          <input
+            type="search"
+            className="editor-input"
+            aria-label="Search tools"
+            placeholder="Search tools by name or what they do"
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setExpanded({});
+            }}
+          />
+          <div className="agent-tool-picker__filters">
+            <select
+              className="editor-select"
+              aria-label="Tool source"
+              value={source}
+              onChange={(event) => {
+                setSource(event.target.value);
+                setExpanded({});
+              }}
             >
-              <div className="agent-tool-picker__source-heading">
-                <IntegrationGlyph
-                  id={id}
-                  displayName={label}
-                  icon={integration.icon}
-                  iconUrl={integration.iconUrl}
-                  size={20}
-                />
-                <Button
-                  variant="ghost"
-                  aria-expanded={!!open}
-                  onClick={() =>
-                    setExpanded((current) => ({ ...current, [id]: !open }))
-                  }
+              <option value="">All sources</option>
+              <option value="station">Station tools</option>
+              {availableTools
+                .filter(
+                  (integration) =>
+                    ![
+                      'station-control',
+                      'station-knowledge',
+                      'station-docs',
+                    ].includes(integration.id),
+                )
+                .map((integration) => (
+                  <option key={integration.id} value={integration.id}>
+                    {integration.displayName ||
+                      integration.name ||
+                      integration.id}
+                  </option>
+                ))}
+            </select>
+            <select
+              className="editor-select"
+              aria-label="Tool category"
+              value={category}
+              onChange={(event) => {
+                setCategory(event.target.value);
+                setExpanded({});
+              }}
+            >
+              <option value="">All categories</option>
+              {categories.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+          {!supportsSelection && (
+            <p className="editor-hint" role="status">
+              This engine accepts whole tool sources. Individual tool selection
+              is unavailable.
+            </p>
+          )}
+          {!['station', 'claude'].includes(engineId) &&
+            !!form.tools.askBeforeUse?.length && (
+              <p role="alert" className="editor-hint">
+                This engine cannot enforce saved Ask me rules. Choose a
+                supported engine or clear those rules before starting.
+              </p>
+            )}
+          {visibleSources.length === 0 ? (
+            <p className="editor-hint" role="status">
+              {availableTools.length
+                ? 'No matching tools.'
+                : 'No sources yet. Find more or connect a server.'}
+            </p>
+          ) : (
+            visibleSources.map(({ integration, tools }) => {
+              const id = integration.id;
+              const allTools = catalogs[id];
+              const disabled = integration.enabled === false;
+              const added = attached(id);
+              const selectedCount = allTools.filter((tool) =>
+                selected(id, tool),
+              ).length;
+              const following =
+                added &&
+                (patterns.includes('*') || patterns.includes(`${id}_*`));
+              const missingSelections = patterns.filter(
+                (key) =>
+                  key.startsWith(`${id}_`) &&
+                  !key.includes('*') &&
+                  !allTools.some(
+                    (tool) => getIntegrationToolKey(id, tool) === key,
+                  ),
+              );
+              const label = integration.displayName || integration.name || id;
+              const open = expanded[id] ?? (!!query || !!category || !!source);
+              return (
+                <section
+                  className="agent-tool-picker__source"
+                  key={id}
+                  aria-label={label}
                 >
-                  {label}
-                  <span
-                    className={`agent-tools__chevron${open ? ' is-open' : ''}`}
-                  >
-                    <ArrowDownGlyph />
-                  </span>
-                </Button>
-                <span className="editor-hint">
-                  {added
-                    ? allTools.length
-                      ? `${selectedCount} selected`
-                      : 'Source added'
-                    : 'Not added'}
-                </span>
-              </div>
-              {integration.description && (
-                <p className="editor-hint">{integration.description}</p>
-              )}
-              {added && missingSelections.length > 0 && (
-                <p className="editor-hint">
-                  {missingSelections.length} saved selection(s) are not in this
-                  catalog. Refresh tools to check them.
-                </p>
-              )}
-              {disabled && (
-                <p className="editor-hint" role="status">
-                  Disabled in Connections. Enable this source there to use its
-                  tools.
-                </p>
-              )}
-              {integration.probe?.ok === false && (
-                <p className="editor-hint" role="alert">
-                  Could not discover tools.{' '}
-                  {integration.probe.error ||
-                    'Check this source in Connections, then refresh.'}
-                </p>
-              )}
-              {integration.probe &&
-                integration.probe.toolCount > allTools.length && (
-                  <p className="editor-hint">
-                    Showing {allTools.length} of {integration.probe.toolCount}{' '}
-                    discovered tools.
-                  </p>
-                )}
-              {open && (
-                <>
-                  <div className="agent-tool-picker__actions">
-                    {supportsSelection && tools.length > 0 ? (
-                      <Button
-                        variant="secondary"
-                        disabled={disabled}
-                        onClick={() =>
-                          setForm((current) => {
-                            const retained = allTools
-                              .filter(
-                                (tool) =>
-                                  !tools.includes(tool) &&
-                                  selected(id, tool, current),
-                              )
-                              .map((tool) => getIntegrationToolKey(id, tool));
-                            const unknown = canonicalAgentToolPatterns(
-                              current,
-                              catalogs,
-                            ).filter(
-                              (key) =>
-                                key.startsWith(`${id}_`) &&
-                                !key.includes('*') &&
-                                !allTools.some(
-                                  (tool) =>
-                                    getIntegrationToolKey(id, tool) === key,
-                                ),
-                            );
-                            return selectIntegrationTools(
-                              current,
-                              id,
-                              [
-                                ...new Set([
-                                  ...retained,
-                                  ...unknown,
-                                  ...tools
-                                    .filter((tool) => tool.enabled !== false)
-                                    .map((tool) =>
-                                      getIntegrationToolKey(id, tool),
-                                    ),
-                                ]),
-                              ],
-                              catalogs,
-                            );
-                          })
-                        }
-                      >
-                        Select shown
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="secondary"
-                        disabled={disabled || added}
-                        onClick={() =>
-                          setForm((current) =>
-                            selectIntegrationTools(
-                              current,
-                              id,
-                              'all',
-                              catalogs,
-                            ),
-                          )
-                        }
-                      >
-                        {added ? 'Added' : 'Add source'}
-                      </Button>
-                    )}
+                  <div className="agent-tool-picker__source-heading">
+                    <IntegrationGlyph
+                      id={id}
+                      displayName={label}
+                      icon={integration.icon}
+                      iconUrl={integration.iconUrl}
+                      size={20}
+                    />
                     <Button
                       variant="ghost"
-                      disabled={disabled || refresh.isPending}
-                      pending={refresh.isPending && refresh.variables === id}
-                      pendingLabel="Refreshing…"
+                      aria-expanded={!!open}
                       onClick={() =>
-                        refresh.mutate(id, {
-                          onSuccess: (result) =>
-                            setDiscoveries((current) => ({
-                              ...current,
-                              [id]: {
-                                listing: JSON.stringify(
-                                  availableTools.find(
-                                    (entry) => entry.id === id,
-                                  ),
-                                ),
-                                probe: result.probe,
-                              },
-                            })),
-                        })
+                        setExpanded((current) => ({ ...current, [id]: !open }))
                       }
                     >
-                      Refresh tools
-                    </Button>
-                    {added && (
-                      <Button
-                        variant="ghost"
-                        onClick={() =>
-                          setForm((current) => removeIntegration(current, id))
-                        }
+                      {label}
+                      <span
+                        className={`agent-tools__chevron${open ? ' is-open' : ''}`}
                       >
-                        Remove source
-                      </Button>
-                    )}
+                        <ArrowDownGlyph />
+                      </span>
+                    </Button>
+                    <span className="editor-hint">
+                      {added
+                        ? allTools.length
+                          ? `${selectedCount} selected`
+                          : 'Source added'
+                        : 'Not added'}
+                    </span>
                   </div>
-                  {refresh.isError && refresh.variables === id && (
-                    <p className="editor-hint" role="alert">
-                      Could not refresh tools. Check this integration in
-                      Connections.
-                    </p>
-                  )}
-                  {allTools.length === 0 && (
+                  <AgentToolDetails
+                    integration={integration}
+                    projectSlug={form.project || undefined}
+                  />
+                  {added && missingSelections.length > 0 && (
                     <p className="editor-hint">
-                      Tool names have not been discovered. Refresh to list them,
-                      or add the whole source, including future tools.
+                      {missingSelections.length} saved selection(s) are not in
+                      this catalog. Refresh tools to check them.
                     </p>
                   )}
-                  {supportsSelection && added && allTools.length > 0 && (
-                    <Checkbox
-                      checked={following}
-                      disabled={disabled}
-                      onChange={(include) =>
-                        setForm((current) =>
-                          selectIntegrationTools(
-                            current,
-                            id,
-                            include
-                              ? 'all'
-                              : allTools
-                                  .filter((tool) => tool.enabled !== false)
+                  {disabled && (
+                    <p className="editor-hint" role="status">
+                      Disabled. Connect and enable to use these tools.
+                    </p>
+                  )}
+                  {integration.probe?.ok === false && (
+                    <p className="editor-hint" role="alert">
+                      Could not discover tools.{' '}
+                      {integration.probe.error ||
+                        'Check this source in Connections, then refresh.'}
+                    </p>
+                  )}
+                  {integration.probe &&
+                    integration.probe.toolCount > allTools.length && (
+                      <p className="editor-hint">
+                        Showing {allTools.length} of{' '}
+                        {integration.probe.toolCount} discovered tools.
+                      </p>
+                    )}
+                  {open && (
+                    <>
+                      <div className="agent-tool-picker__actions">
+                        <Button variant="ghost" onClick={() => setSetup(id)}>
+                          {disabled ? 'Set up' : 'Connection'}
+                        </Button>
+                        {supportsSelection && tools.length > 0 ? (
+                          <Button
+                            variant="secondary"
+                            disabled={disabled}
+                            onClick={() =>
+                              setForm((current) => {
+                                const retained = allTools
+                                  .filter(
+                                    (tool) =>
+                                      !tools.includes(tool) &&
+                                      selected(id, tool, current),
+                                  )
                                   .map((tool) =>
                                     getIntegrationToolKey(id, tool),
+                                  );
+                                const unknown = canonicalAgentToolPatterns(
+                                  current,
+                                  catalogs,
+                                ).filter(
+                                  (key) =>
+                                    key.startsWith(`${id}_`) &&
+                                    !key.includes('*') &&
+                                    !allTools.some(
+                                      (tool) =>
+                                        getIntegrationToolKey(id, tool) === key,
+                                    ),
+                                );
+                                return updateSelection(
+                                  current,
+                                  id,
+                                  selectIntegrationTools(
+                                    current,
+                                    id,
+                                    [
+                                      ...new Set([
+                                        ...retained,
+                                        ...unknown,
+                                        ...tools
+                                          .filter(
+                                            (tool) => tool.enabled !== false,
+                                          )
+                                          .map((tool) =>
+                                            getIntegrationToolKey(id, tool),
+                                          ),
+                                      ]),
+                                    ],
+                                    catalogs,
                                   ),
-                            catalogs,
-                          ),
-                        )
-                      }
-                    >
-                      Include all current and future tools
-                    </Checkbox>
-                  )}
-                  {tools.map((tool) => {
-                    const key = getIntegrationToolKey(id, tool);
-                    return (
-                      <div className="agent-tool-picker__tool" key={key}>
-                        <Checkbox
-                          checked={selected(id, tool) && tool.enabled !== false}
-                          disabled={
-                            disabled ||
-                            tool.enabled === false ||
-                            !supportsSelection
+                                );
+                              })
+                            }
+                          >
+                            Select shown
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="secondary"
+                            disabled={disabled || added}
+                            onClick={() =>
+                              setForm((current) =>
+                                selectIntegrationTools(
+                                  current,
+                                  id,
+                                  'all',
+                                  catalogs,
+                                ),
+                              )
+                            }
+                          >
+                            {added ? 'Added' : 'Add source'}
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          disabled={disabled || refresh.isPending}
+                          pending={
+                            refresh.isPending && refresh.variables === id
                           }
-                          onChange={() =>
+                          pendingLabel="Refreshing…"
+                          onClick={() =>
+                            refresh.mutate(id, {
+                              onSuccess: (result) =>
+                                setDiscoveries((current) => ({
+                                  ...current,
+                                  [id]: {
+                                    listing: JSON.stringify(
+                                      availableTools.find(
+                                        (entry) => entry.id === id,
+                                      ),
+                                    ),
+                                    probe: result.probe,
+                                  },
+                                })),
+                            })
+                          }
+                        >
+                          Refresh tools
+                        </Button>
+                        {added && (
+                          <Button
+                            variant="ghost"
+                            onClick={() =>
+                              setForm((current) =>
+                                removeIntegration(current, id),
+                              )
+                            }
+                          >
+                            Remove source
+                          </Button>
+                        )}
+                      </div>
+                      {refresh.isError && refresh.variables === id && (
+                        <p className="editor-hint" role="alert">
+                          Could not refresh tools. Check this integration in
+                          Connections.
+                        </p>
+                      )}
+                      {allTools.length === 0 && (
+                        <p className="editor-hint">
+                          Tool names have not been discovered. Refresh to list
+                          them, or add the whole source, including future tools.
+                        </p>
+                      )}
+                      {supportsSelection && added && allTools.length > 0 && (
+                        <Checkbox
+                          checked={following}
+                          disabled={disabled}
+                          onChange={(include) =>
                             setForm((current) =>
-                              toggleIntegrationToolEnabled(
+                              updateSelection(
                                 current,
                                 id,
-                                key,
-                                allTools,
-                                catalogs,
+                                selectIntegrationTools(
+                                  current,
+                                  id,
+                                  include
+                                    ? 'all'
+                                    : allTools
+                                        .filter(
+                                          (tool) => tool.enabled !== false,
+                                        )
+                                        .map((tool) =>
+                                          getIntegrationToolKey(id, tool),
+                                        ),
+                                  catalogs,
+                                ),
                               ),
                             )
                           }
                         >
-                          {title(tool)}
+                          Include all current and future tools
                         </Checkbox>
-                        {tool.description && (
-                          <p className="editor-hint">{tool.description}</p>
-                        )}
-                        <span className="agent-tool-picker__category">
-                          {tool.group || 'Other'}
-                          {tool.enabled === false
-                            ? ' · Disabled in Connections'
-                            : ''}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-            </section>
-          );
-        })
+                      )}
+                      {tools.map((tool) => {
+                        const key = getIntegrationToolKey(id, tool);
+                        return (
+                          <div className="agent-tool-picker__tool" key={key}>
+                            <div className="agent-tool-picker__tool-heading">
+                              <Checkbox
+                                checked={
+                                  selected(id, tool) && tool.enabled !== false
+                                }
+                                disabled={
+                                  disabled ||
+                                  tool.enabled === false ||
+                                  !supportsSelection
+                                }
+                                onChange={() =>
+                                  setForm((current) =>
+                                    updateSelection(
+                                      current,
+                                      id,
+                                      toggleIntegrationToolEnabled(
+                                        current,
+                                        id,
+                                        key,
+                                        allTools,
+                                        catalogs,
+                                      ),
+                                    ),
+                                  )
+                                }
+                              >
+                                {title(tool)}
+                              </Checkbox>
+                              <span
+                                className="agent-tool-picker__category"
+                                title={
+                                  tool.classificationSource === 'station'
+                                    ? 'Classified by Station'
+                                    : 'Reported by the source; not independently verified'
+                                }
+                              >
+                                {tool.readOnly === true
+                                  ? 'Read'
+                                  : tool.readOnly === false
+                                    ? 'Changes'
+                                    : 'Unknown'}
+                              </span>
+                              {selected(id, tool) && (
+                                <AgentToolApproval
+                                  form={form}
+                                  setForm={setForm}
+                                  integrationId={id}
+                                  tool={tool}
+                                  tools={allTools}
+                                  engineId={engineId}
+                                  disabled={disabled || tool.enabled === false}
+                                />
+                              )}
+                            </div>
+                            <details className="agent-tool-picker__details">
+                              <summary>Details</summary>
+                              <p>
+                                {tool.description || 'No description supplied.'}
+                              </p>
+                              <code>{tool.toolName || tool.name}</code>
+                              <p>
+                                {tool.group || 'Other'}
+                                {tool.enabled === false ? ' · Disabled' : ''}
+                              </p>
+                            </details>
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+                </section>
+              );
+            })
+          )}
+        </>
       )}
     </div>
   );

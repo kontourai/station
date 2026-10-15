@@ -1,4 +1,5 @@
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
+import { resolveAuthoredToolApproval } from '@kontourai/station-shared/mcp-tool-selection';
 import type { AgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import type { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import { toolDenials } from '../../telemetry/metrics.js';
@@ -53,7 +54,7 @@ export type PreToolPolicyDecision =
       toolGrant?: true;
     }
   | { behavior: 'deny'; denial: ToolCallDenial }
-  | { behavior: 'ask' }
+  | { behavior: 'ask'; required?: true }
   | { behavior: 'defer' };
 
 /**
@@ -443,6 +444,31 @@ export function createStagedPreToolPolicyEvaluator(
           policyBlockQuotation(verdict),
         );
       }
+    }
+
+    const approvalName = options.identity?.delegationToolName ?? tool.toolName;
+    const explicitAsk =
+      resolveAuthoredToolApproval(
+        [
+          approvalName,
+          deps.toolNameMapping.get(approvalName)?.original ?? approvalName,
+        ],
+        deps.spec.tools?.autoApprove,
+        deps.spec.tools?.askBeforeUse,
+      ) === 'ask';
+    if (explicitAsk) {
+      const review = await reviewWithGuardian(deps, tool, invocation);
+      if (review.kind === 'decided' && review.decision.behavior === 'deny')
+        return review.decision;
+      if (invocation.delegation?.denyApprovals)
+        return delegatedApprovalDenial(tool.toolName, options.interaction);
+      if (options.interaction === 'managed' && !options.hasInteractiveApproval)
+        return deny(
+          'no_approval_channel',
+          tool.toolName,
+          'requires a person to approve this call.',
+        );
+      return { behavior: 'ask', required: true };
     }
 
     if (deps.isGranted(tool)) return { behavior: 'allow', toolGrant: true };

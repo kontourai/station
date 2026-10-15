@@ -160,3 +160,35 @@ export function canonicalDisabledMcpTools(
     ]),
   ];
 }
+
+/** Exact choices override source defaults; Ask wins equally specific rules. */
+export function resolveAuthoredToolApproval(
+  identities: readonly string[],
+  autoApprove: readonly string[] = [],
+  askBeforeUse: readonly string[] = [],
+): 'always' | 'ask' | undefined {
+  const matches = (pattern: string) => {
+    const expression = pattern
+      .split('*')
+      .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('.*');
+    return identities.some((identity) =>
+      new RegExp(`^${expression}$`).test(identity),
+    );
+  };
+  for (const wildcard of [false, true]) {
+    if (
+      askBeforeUse.some(
+        (pattern) => pattern.includes('*') === wildcard && matches(pattern),
+      )
+    )
+      return 'ask';
+    if (
+      autoApprove.some(
+        (pattern) => pattern.includes('*') === wildcard && matches(pattern),
+      )
+    )
+      return 'always';
+  }
+  return undefined;
+}

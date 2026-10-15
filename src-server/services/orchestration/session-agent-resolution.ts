@@ -273,6 +273,8 @@ async function resolveCapability<T>(
   return { resolved, undelivered };
 }
 
+class ToolApprovalDeliveryError extends Error {}
+
 export function createSessionAgentResolver(
   options: SessionAgentResolverOptions,
 ): ResolveSessionAgent {
@@ -314,6 +316,14 @@ export function createSessionAgentResolver(
             'Execution override could not resolve the selected Agent profile',
           );
         return input;
+      }
+      if (
+        spec.tools?.askBeforeUse?.length &&
+        !['station-agent', 'claude'].includes(input.provider)
+      ) {
+        throw new ToolApprovalDeliveryError(
+          'This engine cannot enforce the Agent’s Ask me tool rules.',
+        );
       }
 
       if (!channels) {
@@ -535,6 +545,8 @@ export function createSessionAgentResolver(
       if (spec.tools?.autoApprove !== undefined) {
         definition.autoApprove = spec.tools.autoApprove;
       }
+      if (spec.tools?.askBeforeUse !== undefined)
+        definition.askBeforeUse = spec.tools.askBeforeUse;
       // #90 D14: only an explicit `false` withholds the built-in browser
       // tools; anything else leaves the engine's default in place.
       if (spec.tools?.browser === false) definition.browserTools = false;
@@ -655,7 +667,11 @@ export function createSessionAgentResolver(
         },
       };
     } catch (error) {
-      if (input.metadata?.executionAgentId) throw error;
+      if (
+        input.metadata?.executionAgentId ||
+        error instanceof ToolApprovalDeliveryError
+      )
+        throw error;
       logger?.warn?.(
         `Session agent resolution failed for agent '${slug}'; continuing without a resolved agent definition.`,
         error,

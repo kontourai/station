@@ -208,6 +208,9 @@
               "group": {
                 "type": "string",
                 "maxLength": 100
+              },
+              "readOnly": {
+                "type": "boolean"
               }
             },
             "additionalProperties": false

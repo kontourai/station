@@ -121,6 +121,7 @@ export interface RegistryItem {
   description?: string;
   version?: string;
   source?: string;
+  toolOrigin?: import('./tool.js').ToolOrigin;
   status?: string;
   tags?: string[];
   installed: boolean;

@@ -235,7 +235,15 @@ describe('integration-registry-provider helpers', () => {
         installed: true,
         status: 'missing binary',
       },
-      { id: 'provider-tool', displayName: 'Provider Tool' },
+      {
+        id: 'provider-tool',
+        displayName: 'Provider Tool',
+        toolOrigin: {
+          kind: 'registry',
+          registryName: 'Registry provider',
+          itemId: 'provider-tool',
+        },
+      },
     ]);
   });
 });
