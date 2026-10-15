@@ -97,6 +97,15 @@
       "width": 1280,
       "height": 800,
       "sha256": "665ce2c4811a1003f5c625dc3ac942aefa4bf3bd44081e6d06605146d8ff7f2d"
+    },
+    {
+      "path": "round2-mobile-restart-failure.png",
+      "source": "/tmp/station-mobile-restart-failure.png",
+      "width": 402,
+      "height": 874,
+      "implementationSource": "7dfd9fa0cf7",
+      "sha256": "50547f495d04fd061067e39f85ef7e49d83386a1613aa93a7eec91f599ed8f3c",
+      "scope": "Final rebuild recovery failure in Safari; desktop later recovered automatically. This is negative evidence, not an after-success capture."
     }
   ]
 }
