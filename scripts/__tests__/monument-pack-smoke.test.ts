@@ -462,6 +462,7 @@ describe.skipIf(process.platform === 'win32')(
       const failures = await smokePackage({
         repoRoot: fakeRoot,
         tarball: ordinaryFailure,
+        spec: undefined,
       });
       expect(failures.join('\n')).toContain('plain node import failed');
       expect(
@@ -477,7 +478,7 @@ describe.skipIf(process.platform === 'win32')(
           `import {writeFileSync as ready} from 'node:fs';
           import {spawn as startChild} from 'node:child_process';
           startChild(process.execPath, ['-e', ${JSON.stringify(descendant)}], {stdio:'inherit',windowsHide:true});
-          ready(${JSON.stringify(marker)}, 'ready');
+          ready(${JSON.stringify(marker)}, String(process.pid));
           await new Promise(() => {});\n${readFileSync(path, 'utf8')}`,
         );
       });
@@ -501,6 +502,8 @@ describe.skipIf(process.platform === 'win32')(
         child.once('error', reject);
         child.once('close', resolve);
       });
+      void closed.catch(() => {});
+      const cleanupErrors: unknown[] = [];
       try {
         await vi.waitFor(
           () => {
@@ -524,7 +527,17 @@ describe.skipIf(process.platform === 'win32')(
         if (child.exitCode === null && child.signalCode === null)
           child.kill('SIGKILL');
         await closed;
+        for (const path of [marker, descendantPid]) {
+          if (!existsSync(path)) continue;
+          try {
+            process.kill(Number(readFileSync(path, 'utf8')), 'SIGKILL');
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ESRCH')
+              cleanupErrors.push(error);
+          }
+        }
       }
+      expect(cleanupErrors, 'interrupt-fixture cleanup').toEqual([]);
     });
 
     it('keeps publish credentials out of the packed code and the type-check', {
