@@ -86,6 +86,13 @@ import {
 } from './approval-authority.js';
 
 const taskCreateSchema = z.object({
+  shapingSource: z
+    .object({
+      sessionId: z.string().trim().min(1).max(4096),
+      turnId: z.string().trim().min(1).max(4096),
+    })
+    .strict()
+    .optional(),
   projectId: z.string().min(1),
   title: z.string().min(1),
   description: z.string().optional(),
@@ -630,9 +637,42 @@ export function createTaskRoutes(
     try {
       const service = serviceForRequest(c.req.raw);
       if (!service) return hostedNotFound(c);
+      const input: z.infer<typeof taskCreateSchema> = getBody(c);
+      let authorize: (() => boolean) | undefined;
+      if (input.shapingSource) {
+        const authority = options.readAuthorityForRequest?.(c.req.raw);
+        if (!authority || !options.readAssistantTurn) return hostedNotFound(c);
+        const { sessionId, turnId } = input.shapingSource;
+        authorize = () =>
+          options.isRequestPrincipalCurrent?.(c.req.raw) !== false &&
+          (options.canReadSession?.(sessionId, authority) ?? false);
+        if (!authorize()) return hostedNotFound(c);
+        const answer = await options.readAssistantTurn({
+          sessionId,
+          turnId,
+          authority,
+        });
+        if (answer.status === 'unavailable')
+          return c.json(
+            {
+              success: false,
+              error: 'Shaping answer is temporarily unavailable',
+            },
+            503,
+          );
+        if (
+          answer.status !== 'found' ||
+          (answer.projectSlug !== undefined &&
+            answer.projectSlug !== input.projectId) ||
+          !authorize()
+        )
+          return hostedNotFound(c);
+      }
       const data = await service.createTask(
-        getBody(c),
+        input,
         resolveClientOriginForRequest(c.req.raw),
+        undefined,
+        authorize,
       );
       return c.json({ success: true, data }, 201);
     } catch (error) {

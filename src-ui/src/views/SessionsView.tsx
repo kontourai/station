@@ -47,6 +47,7 @@ import { openChatsStore, useOpenChats } from '../contexts/open-chats-store';
 import { toastStore } from '../contexts/ToastContext';
 import { useShowSurface } from '../contexts/useShowSurface';
 import { copyToClipboard } from '../lib/clipboard';
+import { requestTaskShaping } from '../lib/task-shaping';
 import { relativeTime } from '../utils/relativeTime';
 import { orchestrationLifecycleLabel } from '../utils/session-state';
 import {
@@ -387,7 +388,7 @@ export function SessionsView({
   // it here can invalidate a valid browser session.
   const [filters, setFilters] = useState<ActivityFilters>(NO_ACTIVITY_FILTERS);
   const [isDelegationOpen, setIsDelegationOpen] = useState(false);
-  /** The row a "Delegate subtask…" was chosen from; null for "New task". */
+  /** The row whose Delegate subtask action opened the launcher. */
   const [delegationParent, setDelegationParent] =
     useState<OrchestrationSessionSummary | null>(null);
   const delegationReturnFocusRef = useRef<HTMLElement[]>([]);
@@ -1010,12 +1011,7 @@ export function SessionsView({
     setIsDelegationOpen(true);
   }
   const openTopLevelDelegation = () =>
-    openDelegation(
-      null,
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null,
-    );
+    requestTaskShaping({ projectSlug: delegationProjectSlug ?? undefined });
 
   const closeDelegation = () => {
     const chain = delegationReturnFocusRef.current;
@@ -1184,9 +1180,7 @@ export function SessionsView({
         )}
       </SplitPaneLayout>
 
-      {/* "New task" is always a TOP-LEVEL task (no parent), so the launcher
-          never silently files it as someone else's subtask; a subtask comes
-          only from a delegated row's "Delegate subtask…". */}
+      {/* Delegated rows keep their existing subtask launcher. */}
       <DelegationLauncher
         isOpen={isDelegationOpen}
         apiBase={apiBase}

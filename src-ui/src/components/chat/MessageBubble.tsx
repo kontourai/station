@@ -5,6 +5,7 @@ import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { isReplayThread } from '../../hooks/orchestration/replay/replay-registry';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMessageDeliveryState } from '../../hooks/useMessageDeliveryState';
+import { readTaskProposal } from '../../lib/task-shaping';
 import type { ChatMessage } from '../../types';
 import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
@@ -33,6 +34,7 @@ import {
   resolveTurnModelIdentity,
   turnCompletedNormally,
 } from './message-bubble/utils';
+import { TaskProposalCard } from './TaskProposalCard';
 import type { ToolApprovalOutcome } from './ToolCallDisplay';
 import { TranscriptMarker, transcriptMarkerLabel } from './TranscriptMarker';
 import './chat.css';
@@ -326,6 +328,13 @@ function MessageBubbleComponent({
       (activeSession.conversationId === undefined
         ? activeSession.id
         : undefined));
+  const taskProposal =
+    msg.role === 'assistant' &&
+    msg.answerEligible === true &&
+    msg.turnId &&
+    answerSessionId
+      ? readTaskProposal(textContent)
+      : null;
   // An execution Session is immutable history once it has produced a turn.
   // A conversation can point at another current Session after a handoff, so
   // resolving this row through `activeSession.agentSlug` would relabel old
@@ -927,9 +936,30 @@ function MessageBubbleComponent({
           }
         >
           <MessageContent
-            contentParts={msg.contentParts}
+            contentParts={
+              taskProposal
+                ? msg.contentParts?.map((part) =>
+                    part.type === 'text'
+                      ? {
+                          ...part,
+                          content: part.content?.replace(
+                            /```station-task-proposal\s*\n[\s\S]*?\n```/g,
+                            '',
+                          ),
+                        }
+                      : part,
+                  )
+                : msg.contentParts
+            }
             messageKey={anchorKey}
-            textContent={textContent}
+            textContent={
+              taskProposal
+                ? textContent.replace(
+                    /```station-task-proposal\s*\n[\s\S]*?\n```/g,
+                    '',
+                  )
+                : textContent
+            }
             chatFontSize={chatFontSize}
             showReasoning={showReasoning}
             showToolDetails={showToolDetails}
@@ -939,6 +969,15 @@ function MessageBubbleComponent({
               onToolApproval ? handleContentToolApproval : undefined
             }
           />
+          {taskProposal && msg.turnId && answerSessionId && (
+            <TaskProposalCard
+              proposal={taskProposal}
+              sessionId={answerSessionId}
+              turnId={msg.turnId}
+              projectId={activeSession.projectSlug}
+              agentId={rowAgentSlug}
+            />
+          )}
         </div>
         {msg.role === 'user' && msg.steerInterruptedRun && (
           <div className="message__steer-note">

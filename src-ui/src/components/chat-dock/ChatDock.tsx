@@ -84,6 +84,7 @@ import {
   type ProjectChatComposerDraft,
   UNNAMED_PROJECT_CHAT_ENTRY_SOURCE,
 } from '../../lib/projectChatEvents';
+import { requestTaskShaping } from '../../lib/task-shaping';
 import type { ChatSession, DockMode, FileAttachment } from '../../types';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import {
@@ -1335,6 +1336,24 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
    * row's business. Dropping either one silently changes what the row opens.
    */
   const dockMoreActions: DockMoreAction[] = [
+    ...(activeSession && !activeSession.replay
+      ? [
+          {
+            key: 'turn-into-task',
+            label: 'Turn into Task',
+            onSelect: () =>
+              requestTaskShaping({
+                projectSlug: activeSession.projectSlug,
+                source: {
+                  sessionId: activeSession.currentSessionId ?? activeSession.id,
+                  conversationId: activeSession.conversationId,
+                  agentSlug: activeSession.agentSlug,
+                  agentName: activeSession.agentName,
+                },
+              }),
+          },
+        ]
+      : []),
     ...copyActions,
     ...(activeSession?.conversationId && !activeSession.replay
       ? [

@@ -50,6 +50,21 @@ vi.mock('../components/chat/ConnectedAnswerBasisAffordance', () => ({
   }) => <output data-testid="basis-origin">{`${sessionId}/${turnId}`}</output>,
 }));
 
+const createProposalTask = vi.hoisted(() => vi.fn());
+vi.mock('@kontourai/station-sdk', async (original) => ({
+  ...(await original<typeof import('@kontourai/station-sdk')>()),
+  useCreateTaskMutation: () => ({
+    mutateAsync: createProposalTask,
+    isPending: false,
+  }),
+}));
+vi.mock('../contexts/NavigationContext', () => ({
+  useNavigation: () => ({ navigate: vi.fn() }),
+}));
+vi.mock('../contexts/ProjectsContext', () => ({
+  useProjects: () => ({ projects: [{ slug: 'alpha', name: 'Alpha' }] }),
+}));
+
 const { MessageBubble } = await import('../components/chat/MessageBubble');
 
 function row(message: ChatMessage, conversationId?: string) {
@@ -153,4 +168,62 @@ describe('MessageBubble answer Session identity', () => {
     );
     expect(screen.queryByTestId('input-origin')).toBeNull();
   });
+});
+
+const proposalText =
+  '```station-task-proposal\n' +
+  JSON.stringify({
+    title: 'Installer progress',
+    goal: 'See the current step.',
+    doneWhen: ['Steps have counts.'],
+    firstStep: 'Find the installer.',
+  }) +
+  '\n```';
+
+test('a completed chat answer renders a provisional Task card; user text and incomplete answers cannot offer acceptance', () => {
+  const view = render(
+    row(
+      {
+        role: 'assistant',
+        content: proposalText,
+        sessionId: 'original-session',
+        turnId: 'shape-turn',
+        answerEligible: true,
+      },
+      'conversation-1',
+    ),
+  );
+  expect(
+    screen.getByRole('region', { name: 'Task proposal' }).textContent,
+  ).toContain('Steps have counts.');
+  expect(createProposalTask).not.toHaveBeenCalled();
+  view.rerender(
+    row({ role: 'user', content: proposalText, turnId: 'shape-turn' }),
+  );
+  expect(screen.queryByRole('region', { name: 'Task proposal' })).toBeNull();
+  view.rerender(
+    row({
+      role: 'assistant',
+      content: proposalText,
+      turnId: 'shape-turn',
+      answerEligible: false,
+    }),
+  );
+  expect(screen.queryByRole('button', { name: 'Create Task' })).toBeNull();
+});
+
+test('a proposal with unknown source identity stays readable without offering acceptance', () => {
+  const view = render(
+    row(
+      {
+        role: 'assistant',
+        content: proposalText,
+        turnId: 'shape-turn',
+        answerEligible: true,
+      },
+      'conversation-1',
+    ),
+  );
+  expect(screen.queryByRole('region', { name: 'Task proposal' })).toBeNull();
+  expect(view.container.textContent).toContain('station-task-proposal');
 });

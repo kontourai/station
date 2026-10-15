@@ -555,6 +555,8 @@ export interface TaskRecord {
 }
 
 export interface TaskCreateInput {
+  /** Explicitly accepted chat proposal; creation atomically retains its source Session. */
+  shapingSource?: { sessionId: string; turnId: string };
   projectId: string;
   title: string;
   description?: string;
@@ -819,6 +821,14 @@ export function validateTaskCreateInput(input: TaskCreateInput): string[] {
   if (input.priority && !isTaskPriority(input.priority)) {
     errors.push(`priority must be one of: ${TASK_PRIORITIES.join(', ')}`);
   }
+  if (
+    input.shapingSource &&
+    (!isNonBlankString(input.shapingSource.sessionId) ||
+      !isNonBlankString(input.shapingSource.turnId))
+  )
+    errors.push('shapingSource requires an exact Session and turn');
+  if (input.shapingSource && !isNonBlankString(input.description))
+    errors.push('an accepted proposal requires a brief');
   errors.push(...validateTaskWorkspaceBinding(input.workspaceBinding));
   return errors;
 }

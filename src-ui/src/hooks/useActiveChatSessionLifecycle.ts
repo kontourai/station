@@ -155,6 +155,7 @@ export function useLaunchChat(apiBase: string) {
       projectSlug?: string,
       projectName?: string,
       execution?: ChatExecutionMetadata,
+      ambientContext?: string,
     ) => {
       const sessionId = createChatSession(
         agentSlug,
@@ -169,7 +170,18 @@ export function useLaunchChat(apiBase: string) {
       showChatPageOrDock(() => navigation.setDockState(true));
 
       if (initialMessage?.trim()) {
-        await sendMessage(sessionId, agentSlug, undefined, initialMessage);
+        if (ambientContext) {
+          await sendMessage(
+            sessionId,
+            agentSlug,
+            undefined,
+            initialMessage,
+            undefined,
+            ambientContext,
+          );
+        } else {
+          await sendMessage(sessionId, agentSlug, undefined, initialMessage);
+        }
       }
 
       return sessionId;

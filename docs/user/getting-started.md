@@ -536,12 +536,16 @@ unavailable.
 
 ## Start Your First Task
 
-1. Open a Project and create a Task for work you want to keep.
-2. Choose an Agent that is ready to run.
-3. Open the Task to follow its Sessions, files, artifacts, and evidence.
+1. Open a Project and choose **New Task**. Describe your idea and choose an Agent.
+2. Refine the idea in chat, or accept an immediate proposal for a clear one-liner.
+3. Choose **Create Task** on the proposal to keep its brief and linked chat. The Task opens with its Sessions, files, artifacts, and evidence.
+
+An existing chat can become a Task through **Turn into Task** in its More menu.
+The **Add to Task** picker also offers **New Task from this…** for an answer or input.
+Nothing is created by opening either shaping entry point; acceptance is explicit.
 
 After first-run setup, Home can offer **Start your first task** for a confirmed
-Project. It uses the ordinary Task form. If the Agent is unavailable, Station
+Project. This separate guided starter keeps its focused title entry and dispatch receipt. If the Agent is unavailable, Station
 shows the setup reason without creating a Task. If a start has an uncertain
 outcome, inspect that Task rather than creating another to retry it.
 

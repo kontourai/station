@@ -1261,100 +1261,17 @@ describe('SessionsView', () => {
     );
   });
 
-  test('offers a top-level worker launcher before any sessions exist', () => {
+  test('New task requests a shaping chat before any sessions exist', () => {
     sessions = [];
+    const listener = vi.fn();
+    window.addEventListener('station:shape-task', listener);
     renderView();
-
     fireEvent.click(screen.getByRole('button', { name: 'New task' }));
-
+    expect(listener).toHaveBeenCalledTimes(1);
     expect(
-      screen.getByRole('dialog', { name: 'Delegate a task' }),
-    ).toBeTruthy();
-    expect(screen.queryByText('Child worker of')).toBeNull();
-  });
-
-  /**
-   * archive#1245 — a call site the issue does not list, found by its sweep.
-   *
-   * `closeDelegation` was `requestAnimationFrame( =>
-   * delegationTriggerRef.current?.focus)` with no `isConnected` guard at all.
-   * The trigger is a per-row control in the sessions list, and delegating
-   * invalidates that list — so the launcher's own action is what removes it,
-   * which is archive#1126 exactly. It now goes through
-   * `@kontourai/station-shared/return-focus`.
-   *
-   * COVERAGE HONESTY: jsdom, wiring only. The module's post-focus verification
-   * needs a real browser (`tests/dialog-return-focus.spec.ts`); jsdom reports
-   * `.focus` on an unfocusable node as successful.
-   */
-  describe('delegation launcher return focus (station#1245)', () => {
-    function withStubbedFrame<T>(run: (fire: () => void) => T): T {
-      let callback: FrameRequestCallback | null = null;
-      vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-        callback = cb;
-        return 1;
-      });
-      vi.stubGlobal('cancelAnimationFrame', () => {});
-      try {
-        return run(() => {
-          act(() => {
-            (callback as FrameRequestCallback | null)?.(0);
-          });
-        });
-      } finally {
-        vi.unstubAllGlobals();
-      }
-    }
-
-    function openLauncher() {
-      const trigger = screen.getByRole('button', { name: 'New task' });
-      const starter = trigger.parentElement as HTMLElement;
-      trigger.focus();
-      fireEvent.click(trigger);
-      return { starter, trigger };
-    }
-
-    test('restores focus to the control that opened it', () => {
-      sessions = [];
-      renderView();
-      const { trigger } = openLauncher();
-
-      withStubbedFrame((fire) => {
-        fireEvent.click(
-          within(
-            screen.getByRole('dialog', { name: 'Delegate a task' }),
-          ).getByRole('button', { name: 'Cancel' }),
-        );
-        fire();
-      });
-
-      expect(document.activeElement).toBe(trigger);
-      expect(trigger.hasAttribute('tabindex')).toBe(false);
-    });
-
-    test('falls back to a surviving ancestor when delegating removed the trigger', () => {
-      sessions = [];
-      renderView();
-      const { starter, trigger } = openLauncher();
-      // The footer keeps a wrapper around the trigger; removing the trigger
-      // alone is what a refreshed pane does to a control it re-rendered.
-      const row = trigger;
-
-      withStubbedFrame((fire) => {
-        fireEvent.click(
-          within(
-            screen.getByRole('dialog', { name: 'Delegate a task' }),
-          ).getByRole('button', { name: 'Cancel' }),
-        );
-        // The refreshed list replaced the row the trigger lived on.
-        row.remove();
-        fire();
-      });
-
-      expect(document.activeElement).toBe(starter);
-      expect(document.activeElement).not.toBe(document.body);
-      expect(starter.getAttribute('tabindex')).toBe('-1');
-    });
+      screen.queryByRole('dialog', { name: 'Delegate a task' }),
+    ).toBeNull();
+    window.removeEventListener('station:shape-task', listener);
   });
 
   test('selects the exact session requested by the route', () => {

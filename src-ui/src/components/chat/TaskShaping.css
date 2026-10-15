@@ -1,0 +1,69 @@
+.task-proposal {
+  display: grid;
+  gap: var(--k-space-3);
+  padding: var(--k-space-4);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.task-proposal h3,
+.task-proposal h4,
+.task-proposal p,
+.task-proposal ul {
+  margin: 0;
+}
+.task-proposal h3 {
+  font-size: var(--k-text-lg);
+}
+.task-proposal h4 {
+  font-size: var(--k-text-md);
+}
+.task-proposal__eyebrow,
+.task-proposal__note {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.task-shaping-composer {
+  display: grid;
+  gap: var(--k-space-4);
+}
+.task-shaping-composer label,
+.task-proposal label {
+  display: grid;
+  gap: var(--k-space-2);
+}
+.task-shaping-composer textarea,
+.task-shaping-composer select,
+.task-proposal select {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-control);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font: inherit;
+}
+.task-shaping-composer textarea {
+  min-height: 140px;
+  resize: vertical;
+}
+.task-shaping-composer :is(textarea, select):focus-visible,
+.task-proposal select:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+
+.task-shaping-composer__context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-3);
+}
+.task-shaping-composer__context label {
+  flex: 1;
+  min-width: 0;
+}
