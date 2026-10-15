@@ -80,6 +80,37 @@ additional first-run, workspace, approval, contribution, and preview settings.
 | `attachedSessionsOutsideProjects` | boolean | `true` | Whether Activity follows Claude Code, Codex, Grok and OpenCode conversations on this machine whose folder belongs to no project (listed under No project). `false` stops following them from the next two-second poll, including transcripts already listed (their new messages stop arriving); nothing already imported is removed from Activity, from the search index or from paired devices' reach. Read every poll by [`attachedSessionsOutsideProjectsEnabled`](../../src-server/services/orchestration/attached-session-follow-service.ts); an unreadable configuration counts as `false`. Transcripts inside a project are followed either way, and a hosted Station never follows these. Settings → Advanced → Conversations outside projects (Station host). |
 | `knowledgeStores` | boolean | `false` | Enables personal conversation-root bootstrap in the Knowledge store path. It does not gate all Knowledge APIs, migrate existing data, or remove roots when turned off. Kept out of the general Settings UI. |
 
+### telemetry destinations
+
+These settings belong to the Station instance. They keep disclosed product
+observations separate from operator metrics/traces and from personal usage
+accounting. No destination is configured by default.
+
+| field | type | default | description |
+|---|---|---|---|
+| `telemetryEnabled` | boolean | `true` | Enables disclosed product observations only when a destination and current disclosure acknowledgement exist. A saved toggle precedes the canonical environment setting and its legacy alias. |
+| `productTelemetryEndpoint` | HTTP(S) URL | unset | Full product POST address; Station appends no path. A saved address precedes the environment address and does not inherit its key. |
+| `productTelemetryKeyRef` | SecretBinding ID | unset | Instance-owned reference with an exact product grant for the selected destination. Missing, revoked or ungranted references fail without environment fallback. |
+| `otelTelemetryEndpoint` | HTTP(S) URL | unset | OTLP HTTP base address, preceding the environment collector. Saving fences the previous process's exports; restart activates the new collector. |
+| `otelTelemetryKeyRef` | SecretBinding ID | unset | Instance-owned reference with an exact OTel grant for the collector. Saving requires restart activation and never borrows a product key. |
+
+URLs cannot contain embedded credentials, a query or a fragment. Destination
+and key-reference writes through the live route require the operator or an
+authenticated caller with `access:manage`; agents are refused. A key reference
+contains an identifier, never secret bytes. Create and grant it through
+Integrations → Advanced: Secret bindings; selecting or saving it does not
+grant authority implicitly. Invalid destination writes fail before persistence.
+
+Changing the product destination or reference withdraws observations queued
+for the previous destination and fences its requests and probes. The mounted
+configuration writer applies telemetry changes after validated persistence, before
+unrelated Agent activation; a later activation failure does not undo that
+withdrawal. Product telemetry constructed later during startup uses the current
+saved configuration rather than the earlier Agent configuration snapshot.
+Delivery status describes only the current process; a connection probe is not
+delivery acceptance. See [Usage telemetry](usage-telemetry.md#delivery-status-and-connection-checks)
+for consent, alias precedence, grant revocation and collector header limits.
+
 ### templateVariables
 
 Each entry defines a `{{key}}` replacement where Station calls its

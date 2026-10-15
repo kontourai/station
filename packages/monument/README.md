@@ -13,8 +13,14 @@ only to a name that already exists, so a public manifest would fail every
 release until the first version is published another way. Publishing is an
 owner decision.
 
-The package ships raw TypeScript source. Consumers need a bundler or a
-TypeScript-aware loader.
+The published package is compiled ES modules (`dist/*.js`) with type
+declarations (`dist/*.d.ts`), built by `npm run build`. It runs on plain Node 24
+with no bundler or loader. The `sqlite` and `testing` declarations refer to
+`node:` types, so TypeScript consumers need `@types/node`. Inside this
+workspace, Station resolves the same entry points to `src/*.ts`; the published
+entry points are `publishConfig.exports`, which only pnpm applies.
+`scripts/monument-pack-smoke.mjs` installs the packed tarball in a scratch
+directory and checks all of this.
 
 ## Entry points
 

@@ -136,6 +136,16 @@
 
     "src-server/services/agents/agent-audience.ts",
 
+    "src-server/domain/telemetry-configuration.ts",
+
+    "src-server/telemetry-delivery-state.ts",
+
+    "src-server/telemetry.ts",
+
+    "src-server/services/usage-telemetry-service.ts",
+
+    "src-ui/src/views/integrations/TelemetryDestinationGrants.tsx",
+
     "pnpm-lock.yaml#/packages",
 
     "pnpm-lock.yaml#/snapshots"
