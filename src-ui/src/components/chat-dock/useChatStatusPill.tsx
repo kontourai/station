@@ -130,8 +130,14 @@ export function useChatStatusPill({
       activeSession.conversationActivity?.openTurn?.threadId,
     ],
   );
-  // Approval is the pill's highest priority: any pending one is what it shows.
-  const presentingApproval = enabled && view === 'mounted' && approvalCount > 0;
+  const presentingApproval =
+    enabled &&
+    view === 'mounted' &&
+    approvalCount > 0 &&
+    !observationUnavailable &&
+    streamStatus?.kind !== 'blocked' &&
+    streamStatus?.kind !== 'reconnecting' &&
+    streamStatus?.kind !== 'catching-up';
   useEffect(() => {
     if (!presentingApproval) return;
     return claimApprovalThreads(threadIds);
@@ -174,6 +180,7 @@ export function useChatStatusPill({
     statusInPill: view !== 'unavailable',
     pill: (
       <LazyBoundary
+        key={activeSession.id}
         load={loadChatStatusPillView}
         shareAcrossMounts
         pending={null}

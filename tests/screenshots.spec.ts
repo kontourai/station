@@ -1232,6 +1232,15 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
         }),
       ).toBeHidden();
       await expect(resync).toBeHidden();
+      await expect(
+        page.getByLabel('Conversation status', { exact: true }),
+      ).toBeFocused();
+      await expect(
+        page.getByRole('status').filter({ hasText: 'Conversation resynced.' }),
+      ).toBeAttached();
+      await page.screenshot({
+        path: testInfo.outputPath(`resync-recovered-${width}.png`),
+      });
       expect(historyReads - failedHistoryReads).toBe(1);
       console.log('HISTORY_RECOVERY_REQUEST_COUNTS', {
         width,

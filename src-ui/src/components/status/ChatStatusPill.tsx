@@ -96,7 +96,25 @@ export function ChatStatusPill({
 }) {
   useEffect(trackPageVisibilityForStatusMotion, []);
   const detailsId = useId();
-  const hostRef = useRef<HTMLDivElement>(null);
+  const hostRef = useRef<HTMLElement>(null);
+  const resyncFocused = useRef(false);
+  const previousAction = useRef<ChatStatus['action']>(undefined);
+  const [recovered, setRecovered] = useState(false);
+  useEffect(() => {
+    const wasResync = previousAction.current === 'resync';
+    previousAction.current = status?.action;
+    if (status?.action === 'resync') setRecovered(false);
+    else if (
+      wasResync &&
+      status?.kind !== 'blocked' &&
+      status?.kind !== 'reconnecting' &&
+      status?.kind !== 'catching-up'
+    ) {
+      setRecovered(true);
+      if (resyncFocused.current) hostRef.current?.focus();
+      resyncFocused.current = false;
+    }
+  }, [status?.action, status?.kind]);
   const lastWidth = useRef<number | undefined>(undefined);
   const resizeAnimation = useRef<Animation | undefined>(undefined);
   useEffect(() => () => resizeAnimation.current?.cancel(), []);
@@ -265,9 +283,16 @@ export function ChatStatusPill({
   } as const;
 
   return (
-    <div className="chat-status-pill-host" ref={hostRef}>
+    <section
+      className="chat-status-pill-host"
+      ref={hostRef}
+      tabIndex={-1}
+      aria-label="Conversation status"
+    >
       <span className="sr-only" role="status" aria-live="polite">
-        {announcement}
+        {recovered
+          ? `Conversation resynced.${announcement ? ` ${announcement}` : ''}`
+          : announcement}
       </span>
       {current &&
         (actionable ? (
@@ -293,6 +318,16 @@ export function ChatStatusPill({
             aria-busy={
               current.action === 'resync' ? current.pending : undefined
             }
+            onFocus={() => {
+              resyncFocused.current = current.action === 'resync';
+            }}
+            onBlur={(event) => {
+              if (
+                event.relatedTarget instanceof HTMLElement &&
+                event.relatedTarget !== document.body
+              )
+                resyncFocused.current = false;
+            }}
             onClick={activate}
           >
             {body}
@@ -305,6 +340,6 @@ export function ChatStatusPill({
       {current && expanded && !leaving && current.details.length > 0 && (
         <PillDetails id={detailsId} lines={current.details} />
       )}
-    </div>
+    </section>
   );
 }

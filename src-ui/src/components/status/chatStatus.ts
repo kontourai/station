@@ -71,10 +71,9 @@ function epochMs(value: string | undefined): number | undefined {
 }
 
 /**
- * The one status a chat pane shows, by priority: a decision the user owes
- * (approval) outranks the transport (blocked, reconnecting, catching up),
- * which outranks the brief "restored" confirmation, which outranks what the
- * turn is doing (waiting on the user, working). Nothing live → undefined.
+ * The one status a chat pane shows: transport recovery, then failed-read
+ * recovery, then approvals, connection confirmation and turn activity.
+ * Cached approvals cannot hide repair while their observation is unverified.
  *
  * Pure; times are carried as epoch starts, never as rendered durations, so
  * the result does not go stale between renders. Every fact comes from the chat's own record or
@@ -84,17 +83,6 @@ export function deriveChatStatus(
   input: ChatStatusInput,
 ): ChatStatus | undefined {
   const { stream, activity } = input;
-  if (input.approvalCount > 0) {
-    return {
-      kind: 'approval',
-      tone: 'attention',
-      glyph: 'approval',
-      label: 'Needs approval',
-      count: input.approvalCount > 1 ? input.approvalCount : undefined,
-      details: [],
-      action: 'reveal-approval',
-    };
-  }
   if (stream?.kind === 'blocked') {
     return {
       kind: 'blocked',
@@ -133,6 +121,17 @@ export function deriveChatStatus(
       ],
       action: 'resync',
     };
+  if (input.approvalCount > 0) {
+    return {
+      kind: 'approval',
+      tone: 'attention',
+      glyph: 'approval',
+      label: 'Needs approval',
+      count: input.approvalCount > 1 ? input.approvalCount : undefined,
+      details: [],
+      action: 'reveal-approval',
+    };
+  }
   if (stream?.kind === 'restored') {
     return {
       kind: 'restored',
