@@ -184,7 +184,7 @@ test.each([403, 404, 503])(
     mount();
     await screen.findByText(/Receiver acknowledged 5 observations/);
     fireEvent.click(screen.getByRole('button', { name: 'Refresh status' }));
-    await screen.findByText('Refreshing delivery status…');
+    await screen.findByRole('status', { name: 'Refreshing delivery status' });
     expect(screen.queryByText(/Receiver acknowledged/)).toBeNull();
     await act(async () => {
       release(Response.json({ success: false }, { status: code }));
