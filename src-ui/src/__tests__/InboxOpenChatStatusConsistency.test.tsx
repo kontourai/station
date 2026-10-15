@@ -22,6 +22,7 @@
  */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { OrchestrationConversationEventWindow } from '@kontourai/station-contracts/orchestration';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -361,7 +362,17 @@ function HistoryReader({
   );
 }
 
-const historyPage = { events: [], watermark: 0, session: undefined };
+const historyPage = {
+  protocolVersion: 1,
+  conversationId: 'T',
+  currentSessionId: 'T',
+  session: SESSIONS[0]!,
+  events: [],
+  hasMore: false,
+  watermark: 3,
+  handoffs: [],
+  contextBoundaries: [],
+} satisfies OrchestrationConversationEventWindow;
 
 // These assertions cross the failed reader, shared items, and actual row renderer.
 describe('inbox observation freshness', () => {
@@ -513,7 +524,10 @@ describe('inbox observation freshness', () => {
 it('a failed history read removes the running row clock until recovery', async () => {
   historyRead
     .mockRejectedValueOnce(new Error('offline'))
-    .mockResolvedValue(historyPage);
+    .mockResolvedValue({
+      ...historyPage,
+      session: { ...SESSIONS[0]!, ...FOLD_FIXTURES.runningTool.summary },
+    });
   const sessions = [{ ...SESSIONS[0]!, ...FOLD_FIXTURES.runningTool.summary }];
   const view = renderWithProviders(
     <>
