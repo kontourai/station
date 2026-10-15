@@ -30,7 +30,10 @@ import {
 } from '../../contexts/ApiBaseContext';
 import { activeChatDurableId } from '../../contexts/active-chats-state';
 import { CONFIG_DEFAULTS, useConfig } from '../../contexts/ConfigContext';
-import { conversationCanMutate as canMutateConversation } from '../../contexts/conversation-open-policy';
+import {
+  conversationCanMutate as canMutateConversation,
+  conversationOpenPhase,
+} from '../../contexts/conversation-open-policy';
 import { useDeviceSettingsActions } from '../../contexts/DeviceSettingsContext';
 import {
   setShortcutContext,
@@ -1423,40 +1426,66 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     },
     [focusSession, isFullscreenPlacement, setImportedSessionId],
   );
-  const [composerFocusSession, setComposerFocusSession] = useState<
-    string | null
-  >(null);
+  const [pendingComposerFocus, setPendingComposerFocus] = useState<{
+    sessionId: string;
+  } | null>(null);
+  const composerReady =
+    !!activeSession &&
+    conversationOpenPhase(activeSession) === 'writable' &&
+    !!executionProfile &&
+    !activeSession.replay &&
+    isPaneOpen &&
+    !importedSessionId;
   useEffect(() => {
-    if (!composerFocusSession || activeSessionId !== composerFocusSession)
+    if (!pendingComposerFocus) return;
+    if (activeSessionId !== pendingComposerFocus.sessionId) {
+      setPendingComposerFocus(null);
       return;
-    let frame = 0;
-    let attempts = 0;
-    const focusComposer = () => {
-      const composer = chatInput.textareaRef.current;
-      if (composer && !composer.disabled && !composer.readOnly)
-        composer.focus();
-      if (composer && document.activeElement === composer) {
-        setComposerFocusSession(null);
-        return;
-      }
-      backgroundTasksTriggerRef.current?.focus();
-      // A chat switch can briefly disable the composer while opening it.
-      if (++attempts < 60 && !composer?.readOnly)
-        frame = requestAnimationFrame(focusComposer);
-      else setComposerFocusSession(null);
+    }
+    const mayRestoreFocus = (element: EventTarget | null) =>
+      element === document.body ||
+      (element instanceof Element && !!element.closest('.chat-dock__activity'));
+    const dialogOpen = () =>
+      !!document.querySelector(
+        '[role="dialog"], [role="alertdialog"], dialog[open]',
+      );
+    if (dialogOpen() || !mayRestoreFocus(document.activeElement)) {
+      setPendingComposerFocus(null);
+      return;
+    }
+    const composer = chatInput.textareaRef.current;
+    if (composerReady && composer && !composer.disabled && !composer.readOnly) {
+      setPendingComposerFocus(null);
+      composer.focus();
+      return;
+    }
+    const onFocusIn = (event: FocusEvent) => {
+      if (!mayRestoreFocus(event.target)) setPendingComposerFocus(null);
     };
-    focusComposer();
-    return () => cancelAnimationFrame(frame);
+    const observer = new MutationObserver(() => {
+      if (dialogOpen()) setPendingComposerFocus(null);
+    });
+    document.addEventListener('focusin', onFocusIn);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['role', 'open'],
+    });
+    return () => {
+      document.removeEventListener('focusin', onFocusIn);
+      observer.disconnect();
+    };
   }, [
-    composerFocusSession,
+    pendingComposerFocus,
     activeSessionId,
+    composerReady,
     chatInput.textareaRef,
-    backgroundTasksTriggerRef,
   ]);
   const selectWorkingChat = useCallback(
     (sessionId: string) => {
       focusSessionInPane(sessionId);
-      setComposerFocusSession(sessionId);
+      setPendingComposerFocus({ sessionId });
     },
     [focusSessionInPane],
   );

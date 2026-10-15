@@ -537,3 +537,118 @@ test('working chat selection focuses the selected composer among several chats',
   await composer.fill('Draft for the selected chat');
   await expect(composer).toHaveValue('Draft for the selected chat');
 });
+
+async function selectDelayedWorkingChat(page: Page) {
+  await openWorkingChat(page, true);
+  await emitMockOrchestrationEvent(page, 'orchestration:event', {
+    event: {
+      provider: 'codex',
+      threadId: 'session-2',
+      method: 'turn.started',
+      turnId: 'second-active',
+      createdAt: new Date().toISOString(),
+      prompt: 'Second working chat',
+    },
+  });
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let markRequested = () => {};
+  const requested = new Promise<void>((resolve) => {
+    markRequested = resolve;
+  });
+  await page.route('**/api/conversations/conv-2/open', async (route) => {
+    markRequested();
+    await held;
+    await route.fallback();
+  });
+  const activity = page.getByRole('button', {
+    name: '2 chats working',
+    exact: true,
+  });
+  await activity.focus();
+  await page.keyboard.press('Enter');
+  await page
+    .locator('.chat-dock__activity-dropdown')
+    .getByRole('button', { name: /Working chat 2/ })
+    .focus();
+  await page.keyboard.press('Enter');
+  const composer = page.locator('.chat-input textarea');
+  try {
+    await requested;
+    await expect(page).toHaveURL(/chat=conv-2/);
+    await expect(composer).toBeDisabled();
+  } catch (error) {
+    release();
+    throw error;
+  }
+  return { composer, release };
+}
+
+test('delayed working chat selection preserves deliberate Station home focus', async ({
+  page,
+}) => {
+  const { composer, release } = await selectDelayedWorkingChat(page);
+  try {
+    const home = page.getByRole('button', {
+      name: 'Station home',
+      exact: true,
+    });
+    await home.focus();
+    await expect(home).toBeFocused();
+    release();
+    await expect(composer).toBeEnabled();
+    await expect(home).toBeFocused();
+  } finally {
+    release();
+  }
+});
+
+test('delayed working chat request stays cancelled after keyboard reselection', async ({
+  page,
+}) => {
+  const { composer, release } = await selectDelayedWorkingChat(page);
+  try {
+    await page.keyboard.press('ControlOrMeta+1');
+    await expect(page).toHaveURL(/chat=conv-1/);
+    await page.keyboard.press('ControlOrMeta+2');
+    await expect(page).toHaveURL(/chat=conv-2/);
+    await expect(composer).toBeDisabled();
+    release();
+    await expect(composer).toBeEnabled();
+    await expect(composer).not.toBeFocused();
+  } finally {
+    release();
+  }
+});
+
+test('delayed working chat selection restores composer focus after resizing to 390px', async ({
+  page,
+}) => {
+  const { composer, release } = await selectDelayedWorkingChat(page);
+  try {
+    await page.setViewportSize(PHONE);
+    await expect(
+      page.getByRole('button', { name: 'Chat actions', exact: true }),
+    ).toBeVisible();
+    // Keep opening pending beyond the former 60-frame retry window.
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          let frames = 0;
+          const tick = () => {
+            if (++frames === 75) resolve();
+            else requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        }),
+    );
+    await expect(composer).toBeDisabled();
+    release();
+    await expect(composer).toBeEnabled();
+    await expect(composer).toBeFocused();
+  } finally {
+    release();
+  }
+});
