@@ -32,15 +32,15 @@ const PROJECT = {
 
 const AGENTS = [
   {
-    slug: 'claude',
+    slug: 'codex',
     // Long on purpose: the composer's Agent chip must end it in an ellipsis
     // inside the chip on a phone, not run it under the caret.
-    name: 'Claude Runtime for the workspace review lane',
-    description: 'Direct chat using Claude Runtime.',
+    name: 'Codex · via CLIProxyAPI (brian-media · Claude + Codex)',
+    description: 'Direct chat using Codex (brian-media proxy).',
     source: 'local',
     execution: {
-      agentConnectionId: 'claude',
-      modelId: 'claude-sonnet-4-20250514',
+      agentConnectionId: 'codex',
+      modelId: 'gpt-6.1-sol',
     },
   },
 ];
@@ -68,6 +68,7 @@ function json(body: unknown) {
 async function seedRoutes(
   page: Page,
   executionRequests: Array<Record<string, unknown>>,
+  textOnly = false,
 ) {
   const prepared = new Map<string, Record<string, unknown>>();
   await Promise.all([
@@ -81,14 +82,14 @@ async function seedRoutes(
             detected: { ollama: false, bedrock: false },
           },
           capabilities: {
-            chat: { ready: true, source: 'claude' },
-            runtime: { ready: true, source: 'claude' },
+            chat: { ready: true, source: 'codex' },
+            runtime: { ready: true, source: 'codex' },
             knowledge: { ready: false, source: null },
             acp: { ready: false, source: null },
           },
           recommendation: null,
           prerequisites: [],
-          clis: { codex: false, claude: true, 'kiro-cli': false },
+          clis: { claude: false, codex: true, 'kiro-cli': false },
         }),
       ),
     ),
@@ -116,7 +117,14 @@ async function seedRoutes(
       ),
     ),
     page.route('**/api/agents', (route) =>
-      route.fulfill(json({ success: true, data: AGENTS })),
+      route.fulfill(
+        json({
+          success: true,
+          data: textOnly
+            ? [{ ...AGENTS[0], name: 'Hypothetical text-only runtime' }]
+            : AGENTS,
+        }),
+      ),
     ),
     page.route('**/api/connections/agents', (route) =>
       route.fulfill(
@@ -124,15 +132,30 @@ async function seedRoutes(
           success: true,
           data: [
             agentConnectionFixture({
-              id: 'claude',
+              id: 'codex',
               kind: 'agent',
-              type: 'claude',
-              name: 'Claude Runtime',
+              type: textOnly ? 'acp' : 'codex',
+              name: textOnly
+                ? 'Hypothetical text-only runtime'
+                : 'Codex (brian-media proxy)',
               enabled: true,
-              // Declares document input; the Claude engine's own matrix
-              // refuses images, which the refusal case below relies on.
-              capabilities: ['agent-runtime', 'file-input'],
-              config: { defaultModel: 'claude-sonnet-4-20250514' },
+              // Only the hypothetical runtime refuses images. Real Codex and
+              // Claude Code adapters both declare image-input.
+              capabilities: textOnly
+                ? ['agent-runtime', 'file-input']
+                : ['agent-runtime', 'file-input', 'image-input'],
+              config: { defaultModel: 'gpt-6.1-sol' },
+              runtimeCatalog: {
+                source: 'live',
+                builtInModels: [],
+                models: [
+                  {
+                    id: 'gpt-6.1-sol',
+                    originalId: 'gpt-6.1-sol',
+                    name: 'CODEX (BRIAN-MEDIA PROXY) / GPT 6.1 Sol',
+                  },
+                ],
+              },
               status: 'ready',
               prerequisites: [],
             }),
@@ -147,7 +170,7 @@ async function seedRoutes(
       route.fulfill(
         json({
           success: true,
-          data: { defaultModel: 'claude-sonnet-4-20250514' },
+          data: { defaultModel: 'gpt-6.1-sol' },
         }),
       ),
     ),
@@ -155,7 +178,7 @@ async function seedRoutes(
       route.fulfill(
         json({
           success: true,
-          data: [{ provider: 'claude', activeSessions: 0, prerequisites: [] }],
+          data: [{ provider: 'codex', activeSessions: 0, prerequisites: [] }],
         }),
       ),
     ),
@@ -166,9 +189,9 @@ async function seedRoutes(
           data: executionRequests.map((request) => ({
             threadId: request.conversationId,
             conversationId: request.conversationId,
-            provider: 'claude',
-            model: 'claude-sonnet-4-20250514',
-            assignedAgentSlug: 'claude',
+            provider: 'codex',
+            model: 'gpt-6.1-sol',
+            assignedAgentSlug: 'codex',
             status: 'running',
             lifecycleState: 'running',
             createdAt: '2026-04-12T00:00:00Z',
@@ -187,17 +210,17 @@ async function seedRoutes(
       const turnId = `provider-turn-${executionRequests.length}`;
       await mockRuntimeConversation(page, {
         id: conversationId,
-        agentSlug: 'claude',
+        agentSlug: 'codex',
         title: 'Composer capability task',
-        provider: 'claude',
-        model: 'claude-sonnet-4-20250514',
+        provider: 'codex',
+        model: 'gpt-6.1-sol',
         canContinue: true,
         turns: () => [
           [
             {
               eventId: `${turnId}-started`,
               method: 'turn.started',
-              provider: 'claude',
+              provider: 'codex',
               threadId: conversationId,
               turnId,
               createdAt: '2026-04-12T00:00:00Z',
@@ -211,7 +234,7 @@ async function seedRoutes(
           foregroundMessageReceiptEnvelope({
             conversationId,
             providerTurnId: turnId,
-            agent: 'claude',
+            agent: 'codex',
           }),
         ),
       );
@@ -307,7 +330,7 @@ async function openDockStartComposer(page: Page) {
   const composer = modal.getByRole('form', { name: 'Start work' });
   await composer.getByRole('button', { name: /^Agent:/ }).click();
   const agents = page.getByRole('dialog', { name: 'Choose agent' });
-  const runtimeRow = agents.locator('[data-agent-slug="claude"]').first();
+  const runtimeRow = agents.locator('[data-agent-slug="codex"]').first();
   await expect(runtimeRow).toBeVisible({ timeout: 10_000 });
   await runtimeRow.click();
   return { composer, started: () => expect(modal).toBeHidden() };
@@ -323,7 +346,7 @@ async function openHomeStartComposer(page: Page) {
   await dismissSetupLauncher(page);
   const composer = page.getByRole('form', { name: 'Start work' });
   await expect(
-    composer.getByRole('button', { name: /^Agent: Claude Runtime/ }),
+    composer.getByRole('button', { name: /^Agent: Codex/ }),
   ).toBeVisible({ timeout: 15_000 });
   return {
     composer,
@@ -430,6 +453,34 @@ for (const [label, viewport] of [
 
     // The Agent chip's name ends before its caret, in an ellipsis.
     const agentChip = page.locator('.chat-input__agent-btn');
+    await expect(agentChip.locator('.chat-input__agent-name')).toHaveText(
+      AGENTS[0].name,
+    );
+    await expect(page.locator('.chat-input__model-name')).toHaveText(
+      'CODEX (BRIAN-MEDIA PROXY) / GPT 6.1 Sol',
+    );
+    const modelName = page.locator('.chat-input__model-name');
+    expect(
+      await modelName.evaluate(
+        (element) => getComputedStyle(element).textOverflow,
+      ),
+    ).toBe('ellipsis');
+    if (label === 'phone')
+      expect(
+        await modelName.evaluate(
+          (element) => element.scrollWidth > element.clientWidth,
+        ),
+      ).toBe(true);
+    for (const control of [
+      agentChip,
+      page.locator('.chat-input__model-btn'),
+      stop,
+    ]) {
+      const box = await control.boundingBox();
+      expect(box).toBeTruthy();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width);
+    }
     const [nameBox, caretBox, nameClipped] = await Promise.all([
       agentChip.locator('.chat-input__agent-name').boundingBox(),
       agentChip.locator('.choice-caret').boundingBox(),
@@ -514,7 +565,7 @@ test("a pasted image the new chat's engine cannot see keeps the message for the 
   await page.setViewportSize({ width: 1280, height: 860 });
   const executionRequests: Array<Record<string, unknown>> = [];
   await installMockOrchestrationSse(page);
-  const prepared = await seedRoutes(page, executionRequests);
+  const prepared = await seedRoutes(page, executionRequests, true);
   const { composer, started } = await openDockStartComposer(page);
   await composer
     .getByRole('textbox', { name: 'What would you like done?' })
@@ -545,6 +596,9 @@ test("a pasted image the new chat's engine cannot see keeps the message for the 
   // The chat's own intake answers for its engine, and the first send waits
   // for the person instead of going out without the file.
   await expect(messageComposer.getByText('cannot see images')).toBeVisible();
+  await expect(page.locator('.chat-input__agent-name')).toHaveText(
+    'Hypothetical text-only runtime',
+  );
   await expect(messageComposer.getByRole('textbox')).toHaveValue(
     'look at this screenshot',
   );
@@ -560,6 +614,12 @@ test.describe('on a touch phone', () => {
     page,
   }, testInfo) => {
     await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      Object.defineProperty(window, 'SpeechRecognition', { value: undefined });
+      Object.defineProperty(window, 'webkitSpeechRecognition', {
+        value: undefined,
+      });
+    });
     const executionRequests: Array<Record<string, unknown>> = [];
     await installMockOrchestrationSse(page);
     await seedRoutes(page, executionRequests);
@@ -567,6 +627,18 @@ test.describe('on a touch phone', () => {
     const field = composer.getByRole('textbox', {
       name: 'What would you like done?',
     });
+    const mic = composer.getByRole('button', {
+      name: 'Microphone unavailable',
+    });
+    await expect(mic).toHaveAttribute('aria-disabled', 'true');
+    // Tap the rendered trigger's hit area: Playwright treats aria-disabled
+    // buttons as inoperable even when their explanation remains tappable.
+    await composer.locator('.popover__trigger').filter({ has: mic }).tap();
+    await expect(
+      page.getByRole('dialog', { name: 'Microphone unavailable' }),
+    ).toContainText(/unavailable|not supported/i);
+    await evidence(page, testInfo, 'touch-microphone-reason-phone.png');
+    await page.keyboard.press('Escape');
     await field.tap();
     await field.fill('Fix the flaky upload test');
     const style = await field.evaluate((element) => {

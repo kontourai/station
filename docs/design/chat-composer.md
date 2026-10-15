@@ -436,7 +436,9 @@ simple per-device preference rather than claiming to detect an attached keyboard
   started on another Station takes text only, so Start with files attached
   refuses that and says why. Each composer owns its own dictation: a transcript goes only to
   the composer whose mic started it, and a composer that closes stops its
-  dictation and takes the transcript with it.
+  dictation and takes the transcript with it. An unavailable mic stays focusable;
+  tapping or activating it opens its reason, including when the composer cannot
+  accept dictation.
   Paste requires the browser to deliver clipboard files. Android keyboard
   image insertion into the native WebView is not qualified by the browser
   clipboard tests; use the paperclip's file picker when the keyboard refuses

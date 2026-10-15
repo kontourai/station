@@ -3,7 +3,9 @@
  *
  * Click to start recording; click again to stop and send the transcript.
  */
+
 import type { STTState } from '@kontourai/station-sdk';
+import { Popover } from '@kontourai/ui/react';
 import './VoiceOrb.css';
 
 interface VoiceOrbProps {
@@ -34,17 +36,27 @@ export function VoiceOrb({
     .filter(Boolean)
     .join(' ');
 
-  return (
+  const unavailable = disabled || !supported;
+  const reason = !supported
+    ? (unsupportedReason ?? 'Microphone input is unavailable.')
+    : 'Dictation is unavailable while this composer cannot accept input.';
+
+  const button = (
     <button
       type="button"
       className={className}
       data-testid="voice-orb"
-      onClick={() => (isListening ? onStop() : onStart())}
-      disabled={disabled || !supported}
+      onClick={() => {
+        if (!unavailable) {
+          if (isListening) onStop();
+          else onStart();
+        }
+      }}
+      aria-disabled={unavailable || undefined}
       aria-label={supported ? 'Speak message' : 'Microphone unavailable'}
       title={
-        !supported
-          ? (unsupportedReason ?? 'Microphone input is unavailable.')
+        unavailable
+          ? reason
           : isListening
             ? 'Click to stop'
             : isError
@@ -88,5 +100,17 @@ export function VoiceOrb({
         />
       </svg>
     </button>
+  );
+
+  return unavailable ? (
+    <Popover
+      ariaLabel="Microphone unavailable"
+      placement="top-end"
+      trigger={button}
+    >
+      <p>{reason}</p>
+    </Popover>
+  ) : (
+    button
   );
 }

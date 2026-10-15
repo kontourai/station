@@ -126,12 +126,10 @@ describe('ChatInputArea: one capability contract while a turn runs', () => {
   test('a composer that cannot take input still refuses both', async () => {
     renderComposer({ disabled: true });
     expect(
-      (
-        screen.getByRole('button', {
-          name: 'Speak message',
-        }) as HTMLButtonElement
-      ).disabled,
-    ).toBe(true);
+      screen
+        .getByRole('button', { name: 'Speak message' })
+        .getAttribute('aria-disabled'),
+    ).toBe('true');
     expect(
       (
         screen.getByRole('button', {
