@@ -1006,23 +1006,34 @@ describe('useOutboundQueueFlush: a message deferred because a turn is running', 
   });
 
   it("another window's claim and deferral of a message start no send here", async () => {
+    // The other window holds the send from the start: this window never
+    // deferred it, so only the trigger rule (not the deferral backstop)
+    // keeps it from sending when that window releases the row.
+    const setRow = (patch: Record<string, unknown>) => {
+      const turns = Array.isArray(stored)
+        ? (stored as Array<Record<string, unknown>>)
+        : (stored as { turns: Array<Record<string, unknown>> }).turns;
+      const next = [{ ...turns[0], ...patch }];
+      stored = Array.isArray(stored)
+        ? next
+        : { ...(stored as object), turns: next };
+    };
+    setRow({
+      status: 'invoking',
+      attempts: 1,
+      dispatchBootId: 'other-window',
+      claimedAt: Date.now(),
+    });
     sendMessage.mockResolvedValue({ kind: 'deferred' });
     renderHook(() => useOutboundQueueFlush('http://api.test'));
-    await waitFor(() => expect(sendMessage).toHaveBeenCalled());
-    await settle(500);
-    const before = sendMessage.mock.calls.length;
-    const setRow = (patch: Record<string, unknown>) => {
-      const record = stored as { turns: Array<Record<string, unknown>> };
-      stored = { ...record, turns: [{ ...record.turns[0], ...patch }] };
-    };
+    await waitFor(() =>
+      expect(
+        activeChatsStore.getSnapshot()['session-1']?.outboundQueuedTurns,
+      ).toHaveLength(1),
+    );
+    await settle(300);
     for (let cycle = 0; cycle < 3; cycle += 1) {
-      setRow({
-        status: 'invoking',
-        dispatchBootId: 'other-window',
-        claimedAt: Date.now(),
-      });
-      new FakeChannel('station-outbound-queue').postMessage('changed');
-      await settle(150);
+      // That window's send was deferred (a turn runs there): released...
       setRow({
         status: 'pending',
         dispatchBootId: undefined,
@@ -1030,8 +1041,16 @@ describe('useOutboundQueueFlush: a message deferred because a turn is running', 
       });
       new FakeChannel('station-outbound-queue').postMessage('changed');
       await settle(150);
+      // ...and claimed again by it.
+      setRow({
+        status: 'invoking',
+        dispatchBootId: 'other-window',
+        claimedAt: Date.now(),
+      });
+      new FakeChannel('station-outbound-queue').postMessage('changed');
+      await settle(150);
     }
-    expect(sendMessage).toHaveBeenCalledTimes(before);
+    expect(sendMessage).not.toHaveBeenCalled();
   });
 
   it('a message deferred moments before the turn completes is sent once afterwards', async () => {
