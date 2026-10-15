@@ -377,7 +377,9 @@ describe('collapsed project view navigation', () => {
     const trigger = screen.getByRole('button', { name: 'Demo Project views' });
     trigger.focus();
     fireEvent.click(trigger);
-    const popup = screen.getByRole('dialog', { name: 'Demo Project views' });
+    expect(
+      screen.getByRole('dialog', { name: 'Demo Project views' }),
+    ).toBeTruthy();
     expect(setProject).not.toHaveBeenCalled();
     expect(layoutsQueryMock).toHaveBeenLastCalledWith('demo', {
       enabled: true,
