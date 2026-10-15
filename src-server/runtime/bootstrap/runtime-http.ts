@@ -575,7 +575,7 @@ async function admitNativeDeviceProofRequest(
   // refused with no credential fallback.
   if (
     c.req.raw.headers.has('authorization') ||
-    /(?:^|;)\s*(?:__Host-)?station-device(?:-[a-f0-9]{16})?=/.test(
+    /(?:^|;)\s*(?:__Host-)?station-device(?:-[a-f0-9]{16})?\s*=/.test(
       c.req.raw.headers.get('cookie') ?? '',
     )
   )
@@ -1464,17 +1464,20 @@ export function parseSecureDeviceSessionCookie(
   recognizes?: (credential: string) => boolean,
 ): string | undefined {
   if (!value || value.length > 16 * 1024) return undefined;
-  const secureCookies = value.split(';').filter((segment) => {
+  const credential = parseDeviceSessionCookie(value, recognizes);
+  if (!credential) return undefined;
+  const hasSecureCredential = value.split(';').some((segment) => {
     const separator = segment.indexOf('=');
     return (
       separator > 0 &&
+      segment.slice(separator + 1).trim() === credential &&
       (segment.slice(0, separator).trim() === SECURE_DEVICE_SESSION_COOKIE ||
         /^__Host-station-device-[a-f0-9]{16}$/.test(
           segment.slice(0, separator).trim(),
         ))
     );
   });
-  return parseDeviceSessionCookie(secureCookies.join(';'), recognizes);
+  return hasSecureCredential ? credential : undefined;
 }
 
 function hasCredentialQuery(url: string): boolean {

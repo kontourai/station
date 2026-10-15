@@ -1326,8 +1326,15 @@ export function HostDevicePairingPanel({
         pollingPaused.current = true;
         setRequests([]);
         setDevices([]);
-        if (requestResponse.status === 403 || deviceResponse.status === 403)
-          setOperatorHandoff(true);
+        const authenticationFailed =
+          requestResponse.status === 401 || deviceResponse.status === 401;
+        setAuthBlocked(authenticationFailed);
+        setOperatorHandoff(!authenticationFailed);
+        setError(
+          authenticationFailed
+            ? "This device's access to this Station needs review. Reconnect it, then try again."
+            : 'This device cannot manage pairing requests. Continue on the computer running Station.',
+        );
         return;
       }
       if (requestBody) setRequests(requestBody.requests ?? []);
@@ -2294,6 +2301,18 @@ export function HostDevicePairingPanel({
               style={primaryBtnStyle}
             >
               {reconnecting ? 'Reconnecting…' : 'Reconnect this Station'}
+            </button>
+          )}
+          {authBlocked && !onReconnect && (
+            <button
+              type="button"
+              style={secondaryBtnStyle}
+              onClick={() => {
+                pollingPaused.current = false;
+                void refresh();
+              }}
+            >
+              Check connection again
             </button>
           )}
         </div>

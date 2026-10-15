@@ -34,6 +34,38 @@ function response(body: unknown, status = 200) {
   });
 }
 
+test('a polling authentication refusal is visible, pauses automatic retries, and can be checked explicitly', async () => {
+  vi.useFakeTimers();
+  const request = vi.fn(async () =>
+    response({ error: { code: 'authentication_required' } }, 401),
+  );
+  try {
+    render(
+      <HostDevicePairingPanel
+        apiBase="https://station.example.test"
+        publicEndpoint="https://station.example.test"
+        getCredential={() => undefined}
+        request={request}
+        onCancel={vi.fn()}
+      />,
+    );
+    await act(async () => undefined);
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /access.*needs review/i,
+    );
+    expect(request).toHaveBeenCalledTimes(2);
+    await act(async () => vi.advanceTimersByTimeAsync(3000));
+    expect(request).toHaveBeenCalledTimes(2);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check connection again' }),
+    );
+    await act(async () => undefined);
+    expect(request).toHaveBeenCalledTimes(4);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((next) => {
@@ -2657,7 +2689,9 @@ describe('device pairing panels', () => {
         screen.getByRole('button', { name: 'Create pairing code' }),
       );
 
-      expect((await screen.findByRole('alert')).textContent).toBe(expected);
+      expect(
+        (await screen.findByRole('alert')).querySelector('p')?.textContent,
+      ).toBe(expected);
       if (
         'error' in body &&
         typeof body.error === 'object' &&

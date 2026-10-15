@@ -100,6 +100,7 @@ export function LocalUiSessionGate({
     Awaited<ReturnType<typeof resolveLocalUiSession>>
   > | null>(null);
   const [sampleOpen, setSampleOpen] = useState(false);
+  const resolutionRequest = useRef(0);
   const [accessStartedAt] = useState(Date.now);
   // Deliberately NOT passed as `useDegradedQueryState`'s `resetKey`: the
   // degraded window measures how long this browser has been waiting for ONE
@@ -115,11 +116,11 @@ export function LocalUiSessionGate({
 
   useEffect(() => {
     let active = true;
-    let request = 0;
     const resolve = () => {
-      const current = ++request;
+      const current = ++resolutionRequest.current;
       void resolveLocalUiSession(apiBase).then((next) => {
-        if (active && current === request) setResolution(next);
+        if (active && current === resolutionRequest.current)
+          setResolution(next);
       });
     };
     const acceptLauncherLink = () => {
@@ -129,12 +130,15 @@ export function LocalUiSessionGate({
         )
       )
         return;
+      pairingRecheck.current = null;
       resolve();
     };
     resolve();
     window.addEventListener('hashchange', acceptLauncherLink);
     return () => {
       active = false;
+      resolutionRequest.current += 1;
+      pairingRecheck.current = null;
       window.removeEventListener('hashchange', acceptLauncherLink);
     };
   }, [apiBase]);
@@ -218,10 +222,18 @@ export function LocalUiSessionGate({
   const handleSessionEstablished = useCallback(() => {
     // A connection-manager success can be surfaced twice while its modal
     // completes. Keep the resulting authenticated identity check singular.
-    pairingRecheck.current ??= recheckLocalUiSessionAfterPairing(apiBase);
-    void pairingRecheck.current.then(setResolution).finally(() => {
-      pairingRecheck.current = null;
-    });
+    if (!pairingRecheck.current) {
+      const current = ++resolutionRequest.current;
+      const pending = recheckLocalUiSessionAfterPairing(apiBase);
+      pairingRecheck.current = pending;
+      void pending
+        .then((next) => {
+          if (current === resolutionRequest.current) setResolution(next);
+        })
+        .finally(() => {
+          if (pairingRecheck.current === pending) pairingRecheck.current = null;
+        });
+    }
     // First usable session in this browser: the moment the boot-time prime
     // skips on a fresh device (see PlatformProfileContext). Idempotent, so a
     // boot prime makes this a no-op.
