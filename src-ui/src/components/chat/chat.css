@@ -3253,10 +3253,14 @@
 }
 
 /* The phone sheet lists a user message's actions directly. */
+/* A fieldset (a group of buttons, not a menu) without its default chrome. */
 .message-details__menu {
   display: grid;
   gap: var(--k-space-1);
   min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 .message-details__menu > button {
   min-height: 44px;

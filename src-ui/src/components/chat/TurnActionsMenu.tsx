@@ -411,13 +411,9 @@ export function UserMessageActionsMenu({
   );
   if (inline)
     return (
-      <div
-        className="message-details__menu"
-        role="group"
-        aria-label="Message actions"
-      >
+      <fieldset className="message-details__menu" aria-label="Message actions">
         {rows(() => {})}
-      </div>
+      </fieldset>
     );
   return (
     <span className="turn-footer__actions-menu">
