@@ -69,3 +69,7 @@ Authoring rationale: the shared suite owns storage invariants. These four cases 
 **NOT_VERIFIED:** running the actual Flow driver, real CLI/provider invocation, signed acceptance callback/audit delivery, mission lease concurrency, physical process death, power-loss durability, migration from existing JSONL files, provider resume fidelity, published tarball consumption, hosted checks, and independent review. Simulated close/reopen is not a killed process. Successful conformance for SQLite reuse does not fill the command gaps above.
 
 Tier 2 should be reconsidered only after the driver can retain its prepared/started/measured semantics and accepted capture/event coverage through a reviewed public durability contract, with restart evidence at each partial commit and a real non-Station integration. Tier 1 remains useful now under the epic's experimental-package conditions.
+
+### Mutation receipt
+
+At clean commit `e4eb7bb07d3`, the full focused command above passed 49/49 (1.13 s). Injecting `const outcome = execute()` before the invoking transaction and returning that outcome made the same command exit 1: the failed-commit case observed one effect instead of zero, and the stale-retry case observed two instead of one (47 passed, 2 failed, 1.79 s). Restoring `adapter.mjs` byte-for-byte produced an empty Git diff and 49/49 passed again. This detects the consumer ordering regression without modifying kernel or Flow Agents source. The injected implementation is not committed.
