@@ -3243,12 +3243,13 @@
   background: var(--k-panel-raised);
 }
 
-/* The queued notice's Discard confirmation, in the composer and in the
-   transcript notice: a row of its own after its Discard… (below the
-   composer's controls, below the notice's button). */
-.chat-input__queued-retry-confirm,
+/* The queued notice's Discard confirmation: in the transcript notice a row
+   of its own under its Discard…; in the composer, its popover's content. */
 .ephemeral-message__confirm {
   margin-top: var(--k-space-2);
+}
+.composer-popover-panel.chat-input__queued-retry-confirm {
+  padding: var(--k-space-3);
 }
 
 /* The phone sheet lists a user message's actions directly. */

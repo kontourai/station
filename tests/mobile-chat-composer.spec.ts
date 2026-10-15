@@ -4950,6 +4950,208 @@ for (const [name, viewport, maximize] of [
   });
 }
 
+/**
+ * Adds rows to this browser's outbox beside the one a queued send wrote (same
+ * chat and Station), then tells the app the queue changed, as another window
+ * would. A window still running holds its renderer lock; a closed one does not.
+ */
+async function seedOutboxRows(page: Page, longText: string) {
+  await page.evaluate(async (pendingText) => {
+    await new Promise<void>((granted) => {
+      void navigator.locks.request(
+        'station-outbound-renderer:e2e-running-window',
+        () =>
+          new Promise<void>((release) => {
+            (
+              window as { e2eCloseRunningWindow?: () => void }
+            ).e2eCloseRunningWindow = release;
+            granted();
+          }),
+      );
+    });
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const open = indexedDB.open('station-outbound-queue');
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => resolve(open.result);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const store = database
+        .transaction('queue', 'readwrite')
+        .objectStore('queue');
+      const read = store.get('station-outbound-queue-v1');
+      read.onerror = () => reject(read.error);
+      read.onsuccess = () => {
+        const record = read.result as {
+          turns: Array<Record<string, unknown>>;
+        };
+        const written = record.turns[0]!;
+        const now = Date.now();
+        const base = {
+          sessionId: written.sessionId,
+          conversationId: written.conversationId,
+          agentSlug: written.agentSlug,
+          ...(written.projectSlug ? { projectSlug: written.projectSlug } : {}),
+          ...(written.station ? { station: written.station } : {}),
+          createdAt: now,
+        };
+        const write = store.put(
+          {
+            ...record,
+            turns: [
+              ...record.turns,
+              {
+                ...base,
+                clientTurnId: 'e2e-pending',
+                content: pendingText,
+                attempts: 0,
+                status: 'pending',
+              },
+              {
+                ...base,
+                clientTurnId: 'e2e-accepted',
+                content: 'Accepted message the agent is working on',
+                attempts: 1,
+                status: 'accepted',
+                providerTurnId: 'e2e-provider-turn',
+              },
+              {
+                ...base,
+                clientTurnId: 'e2e-running',
+                content: 'Sent from a window that is still open',
+                attempts: 1,
+                status: 'invoking',
+                dispatchBootId: 'e2e-running-window',
+                claimedAt: now,
+                lastAttemptAt: now,
+              },
+              {
+                ...base,
+                clientTurnId: 'e2e-closed',
+                content: 'Sent from a window that has closed',
+                attempts: 1,
+                status: 'invoking',
+                dispatchBootId: 'e2e-closed-window',
+                claimedAt: now,
+                lastAttemptAt: now,
+              },
+            ],
+          },
+          'station-outbound-queue-v1',
+        );
+        write.onerror = () => reject(write.error);
+        write.onsuccess = () => resolve();
+      };
+    });
+    database.close();
+    const channel = new BroadcastChannel('station-outbound-queue');
+    channel.postMessage('station-outbound-queue');
+    channel.close();
+  }, longText);
+}
+
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 1280, height: 900 },
+]) {
+  test(`outbox rows at ${viewport.width}px: text keeps its own two lines, accepted reads in sentence case, and Sending holds only while its window runs`, async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    // A full-height dock, so the list shows every row rather than the
+    // three-row window a composer-priority dock keeps.
+    const phone = viewport.width < 768;
+    await queueSendForRetry(page, viewport, { maximize: phone });
+    if (!phone)
+      await page
+        .getByRole('button', { name: 'Expand dock region to workspace' })
+        .click();
+    const longText = `A long follow-up kept on this device ${'that keeps on going '.repeat(30)}until the end`;
+    await seedOutboxRows(page, longText);
+    const list = page.locator('.queued-messages--outbox');
+    const row = (text: string) =>
+      list.locator('.queued-message', { hasText: text });
+
+    // Another window still running: its send is under way, with no Check.
+    const running = row('Sent from a window that is still open');
+    await expect(running.getByText('Sending', { exact: true })).toBeVisible();
+    await expect(running.getByRole('button', { name: 'Check' })).toHaveCount(0);
+    // A closed window's claim reads as its bubble does, with Check.
+    const closed = row('Sent from a window that has closed');
+    await expect(
+      closed.getByText(
+        'No answer yet · sends once Station confirms it never arrived',
+      ),
+    ).toBeVisible();
+    await expect(closed.getByRole('button', { name: 'Check' })).toBeVisible();
+    await expect(list.getByText(/1 sending/)).toBeVisible();
+
+    // The accepted note: sentence case, whole, under the message's own line.
+    const accepted = row('Accepted message the agent is working on');
+    const acceptedNote = accepted.getByText(
+      'Accepted · waiting for the agent to finish',
+    );
+    await expect(acceptedNote).toBeVisible();
+    const acceptedLayout = await accepted.evaluate((element) => {
+      const text = element.querySelector('.queued-message__text')!;
+      const note = element.querySelector('.queued-messages__label')!;
+      return {
+        rowWidth: element.getBoundingClientRect().width,
+        textWidth: text.getBoundingClientRect().width,
+        transform: getComputedStyle(note).textTransform,
+        noteClipped: note.scrollWidth > note.clientWidth + 1,
+        noteBelowText:
+          note.getBoundingClientRect().top >=
+          text.getBoundingClientRect().bottom - 1,
+      };
+    });
+    expect(acceptedLayout.transform).toBe('none');
+    expect(acceptedLayout.noteClipped).toBe(false);
+    expect(acceptedLayout.noteBelowText).toBe(true);
+    expect(acceptedLayout.textWidth).toBeGreaterThan(
+      acceptedLayout.rowWidth * 0.8,
+    );
+
+    // A long pending message: wraps across the row, at most two lines.
+    const pending = row('A long follow-up kept on this device');
+    const pendingLayout = await pending.evaluate((element) => {
+      const text = element.querySelector('.queued-message__text')!;
+      const body = element.querySelector('.queued-message__body')!;
+      // One line of the same text box, measured beside it.
+      const oneLine = body.cloneNode() as HTMLElement;
+      oneLine.textContent = 'x';
+      text.appendChild(oneLine);
+      const lineHeight = oneLine.getBoundingClientRect().height;
+      oneLine.remove();
+      return {
+        rowWidth: element.getBoundingClientRect().width,
+        textWidth: text.getBoundingClientRect().width,
+        lines: Math.round(body.getBoundingClientRect().height / lineHeight),
+        title: text.getAttribute('title'),
+      };
+    });
+    expect(pendingLayout.lines).toBe(2);
+    expect(pendingLayout.title).toBe(longText);
+    if (phone)
+      expect(pendingLayout.textWidth).toBeGreaterThan(
+        pendingLayout.rowWidth * 0.8,
+      );
+
+    // That window closes. Nothing announces it, yet its send stops reading
+    // as under way.
+    await page.evaluate(() =>
+      (
+        window as { e2eCloseRunningWindow?: () => void }
+      ).e2eCloseRunningWindow?.(),
+    );
+    await expect(
+      running.getByText(
+        'No answer yet · sends once Station confirms it never arrived',
+      ),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(running.getByText('Sending', { exact: true })).toHaveCount(0);
+  });
+}
+
 // The queue panel's Discard… (confirmed with "I checked, discard it") discards
 // the same turn as the notice's Discard. It must leave the same state: no stale
 // "queued to retry" notice, and no Discard for a turn that is gone.

@@ -1697,10 +1697,21 @@ export function ChatInputArea({
             </ResponsiveDialogSurface>
           )}
         </div>
-        {/* After the controls row, so it follows its Discard… in reading
-            and tab order. */}
+        {/* The composer clips what overflows it in a short dock, which is
+            the only dock that shows this Discard…. Its question opens as the
+            composer's own popover (a sheet on a phone): above everything,
+            after the button in reading order, Escape or a tap outside keeps
+            the message. */}
         {queuedRetryNotice?.confirm && queuedDiscard.open && (
-          <div className="chat-input__queued-retry-confirm">
+          <ResponsiveDialogSurface
+            layer="popover"
+            role="alertdialog"
+            ariaLabel="Discard this message?"
+            onClose={queuedDiscard.confirmProps.onKeep}
+            anchorRef={queuedDiscard.triggerProps.ref}
+            overlayClassName="composer-popover-overlay composer-popover-overlay--start"
+            panelClassName="composer-popover-panel chat-input__queued-retry-confirm"
+          >
             <UnconfirmedDiscardConfirm
               {...queuedDiscard.confirmProps}
               onConfirm={() => {
@@ -1708,7 +1719,7 @@ export function ChatInputArea({
                 queuedRetryNotice.onDiscard();
               }}
             />
-          </div>
+          </ResponsiveDialogSurface>
         )}
         {sessionReferencesOpen && (
           <React.Suspense

@@ -1939,7 +1939,13 @@ describe('ChatInputArea queued-retry Discard', () => {
     const confirm = screen.getByRole('group', {
       name: 'Discard this message?',
     });
-    // After the button in reading and tab order, and named by it.
+    // Its own popover (the composer clips what overflows it), after the
+    // button in reading and tab order, and named by it.
+    expect(
+      screen
+        .getByRole('alertdialog', { name: 'Discard this message?' })
+        .contains(confirm),
+    ).toBe(true);
     expect(
       discard.compareDocumentPosition(confirm) &
         Node.DOCUMENT_POSITION_FOLLOWING,
