@@ -1111,167 +1111,205 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
         replyText: () => 'Recovered conversation transcript',
       }),
   });
-  const removeHandshake = await withRoute(
-    page,
-    '**/.well-known/station/v1',
-    (route) => fulfillGalleryStationHandshake(route, true),
-  );
-  let historyFailed = true;
-  let historyReads = 0;
-  let releaseHistory!: () => void;
-  const historyPending = new Promise<void>((resolve) => {
-    releaseHistory = resolve;
-  });
-  const removeHistory = await withRoute(
-    page,
-    '**/api/orchestration/conversations/gallery-mismatch-conversation/event-window**',
-    async (route) => {
-      if (route.request().method() !== 'GET')
-        return rejectUnexpectedFixtureRequest(route);
-      historyReads++;
-      if (historyFailed) {
-        await route.fulfill({
-          status: 503,
-          json: {
-            success: false,
-            error: 'Recovery fixture history unavailable',
+  // This synthetic conversation is absent from the real server's snapshot.
+  // Keep its SSE transport open during recovery; the HTTP reads below still
+  // pass through the real SDK and ChatDock owners to explicit route fixtures.
+  await page.evaluate(() => {
+    const scope = window as Window & { __recoveryFetch?: typeof fetch };
+    scope.__recoveryFetch = window.fetch;
+    const original = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (new URL(url, location.href).pathname !== '/api/orchestration/events')
+        return original(input, init);
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            init?.signal?.addEventListener('abort', () => controller.close(), {
+              once: true,
+            });
           },
-        });
-        return;
-      }
-      await historyPending;
-      await route.fallback();
-    },
-  );
-  let releaseOpen!: () => void;
-  const openPending = new Promise<void>((resolve) => {
-    releaseOpen = resolve;
+        }),
+        { headers: { 'Content-Type': 'text/event-stream' } },
+      );
+    };
   });
-  let openReads = 0;
-  const removeOpen = await withRoute(
-    page,
-    '**/api/conversations/gallery-mismatch-conversation/open',
-    async (route) => {
-      if (route.request().method() !== 'GET')
-        return rejectUnexpectedFixtureRequest(route);
-      openReads++;
-      await openPending;
-      await route.fallback();
-    },
-  );
   try {
-    await resync.click();
-    const pending = page.getByRole('button', {
-      name: 'Resyncing conversation — resync this conversation',
-      exact: true,
-    });
-    await expect(pending).toBeDisabled();
-    await expect(pending).toHaveAttribute('aria-busy', 'true');
-    await expect(
-      page.getByRole('status').filter({ hasText: 'Resyncing conversation' }),
-    ).toBeAttached();
-    await expect.poll(() => openReads).toBe(1);
-    for (let i = 0; i < 5; i++) await page.keyboard.press('Enter');
-    expect(openReads).toBe(1);
-    await page.screenshot({
-      path: testInfo.outputPath(`resync-pending-${width}.png`),
-    });
-    releaseOpen();
-    await expect(
-      page.getByText(
-        "Station couldn't confirm Mismatch demo chat can continue.",
-        { exact: true },
-      ),
-    ).toBeHidden();
-    await expect(pending).toBeHidden();
-    expect(openReads).toBe(1);
-    await expect(
-      page.getByText('Recovery fixture history unavailable', { exact: false }),
-    ).toBeVisible({ timeout: 15_000 });
-    const failedHistoryReads = historyReads;
-    expect(failedHistoryReads).toBeGreaterThan(0);
-    historyFailed = false;
-    await resync.click();
-    await expect(pending).toBeDisabled();
-    await expect.poll(() => historyReads - failedHistoryReads).toBe(1);
-    for (let i = 0; i < 5; i++) await page.keyboard.press('Enter');
-    expect(historyReads - failedHistoryReads).toBe(1);
-    releaseHistory();
-    await expect(
-      page.getByText('Recovered conversation transcript', { exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByText('Recovery fixture history unavailable', { exact: false }),
-    ).toBeHidden();
-    await expect(resync).toBeHidden();
-    expect(historyReads - failedHistoryReads).toBe(1);
-    console.log('HISTORY_RECOVERY_REQUEST_COUNTS', {
-      width,
-      failedHistoryReads,
-      replacementReads: historyReads - failedHistoryReads,
-    });
-  } finally {
-    releaseOpen();
-    releaseHistory();
-    await removeOpen();
-    await removeHistory();
-    await removeHandshake();
-  }
-  if (width > 600) {
-    let releaseInventory!: () => void;
-    const inventoryPending = new Promise<void>((resolve) => {
-      releaseInventory = resolve;
-    });
-    let inventoryReads = 0;
-    const removeInventory = await withRoute(
+    const removeHandshake = await withRoute(
       page,
-      '**/api/conversations**',
+      '**/.well-known/station/v1',
+      (route) => fulfillGalleryStationHandshake(route, true),
+    );
+    let historyFailed = true;
+    let historyReads = 0;
+    let releaseHistory!: () => void;
+    const historyPending = new Promise<void>((resolve) => {
+      releaseHistory = resolve;
+    });
+    const removeHistory = await withRoute(
+      page,
+      '**/api/orchestration/conversations/gallery-mismatch-conversation/event-window**',
       async (route) => {
-        if (new URL(route.request().url()).pathname !== '/api/conversations')
-          return route.fallback();
         if (route.request().method() !== 'GET')
           return rejectUnexpectedFixtureRequest(route);
-        inventoryReads++;
-        await inventoryPending;
-        await route.fulfill({
-          json: { success: true, data: { items: [], hasMore: false } },
-        });
+        historyReads++;
+        if (historyFailed) {
+          await route.fulfill({
+            status: 503,
+            json: {
+              success: false,
+              error: 'Recovery fixture history unavailable',
+            },
+          });
+          return;
+        }
+        await historyPending;
+        await route.fallback();
+      },
+    );
+    let releaseOpen!: () => void;
+    const openPending = new Promise<void>((resolve) => {
+      releaseOpen = resolve;
+    });
+    let openReads = 0;
+    const removeOpen = await withRoute(
+      page,
+      '**/api/conversations/gallery-mismatch-conversation/open',
+      async (route) => {
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        openReads++;
+        await openPending;
+        await route.fallback();
       },
     );
     try {
-      await page
-        .getByRole('button', { name: 'Refresh inbox', exact: true })
-        .click();
-      const refreshing = page.getByRole('button', {
-        name: 'Refreshing inbox',
+      await resync.click();
+      const pending = page.getByRole('button', {
+        name: 'Resyncing conversation — resync this conversation',
         exact: true,
       });
-      await expect(refreshing).toBeDisabled();
-      await expect.poll(() => inventoryReads).toBe(1);
+      await expect(pending).toBeDisabled();
+      await expect(pending).toHaveAttribute('aria-busy', 'true');
+      await expect(
+        page.getByRole('status').filter({ hasText: 'Resyncing conversation' }),
+      ).toBeAttached();
+      await expect.poll(() => openReads).toBe(1);
       for (let i = 0; i < 5; i++) await page.keyboard.press('Enter');
-      expect(inventoryReads).toBe(1);
-      releaseInventory();
+      expect(openReads).toBe(1);
+      await page.screenshot({
+        path: testInfo.outputPath(`resync-pending-${width}.png`),
+      });
+      releaseOpen();
       await expect(
-        page.getByText("Couldn't refresh. Showing the last known list."),
+        page.getByText(
+          "Station couldn't confirm Mismatch demo chat can continue.",
+          { exact: true },
+        ),
       ).toBeHidden();
+      await expect(pending).toBeHidden();
+      expect(openReads).toBe(1);
       await expect(
-        page.getByRole('button', { name: 'Refresh inbox', exact: true }),
-      ).toBeEnabled();
-      expect(inventoryReads).toBe(1);
-      console.log('INBOX_RECOVERY_REQUEST_COUNTS', {
-        inventoryReads,
-        pendingActivations: 6,
+        page.getByText('Recovery fixture history unavailable', {
+          exact: false,
+        }),
+      ).toBeVisible({ timeout: 15_000 });
+      const failedHistoryReads = historyReads;
+      expect(failedHistoryReads).toBeGreaterThan(0);
+      historyFailed = false;
+      await resync.click();
+      await expect(pending).toBeDisabled();
+      await expect.poll(() => historyReads - failedHistoryReads).toBe(1);
+      for (let i = 0; i < 5; i++) await page.keyboard.press('Enter');
+      expect(historyReads - failedHistoryReads).toBe(1);
+      releaseHistory();
+      await expect(
+        page.getByText('Recovered conversation transcript', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText('Recovery fixture history unavailable', {
+          exact: false,
+        }),
+      ).toBeHidden();
+      await expect(resync).toBeHidden();
+      expect(historyReads - failedHistoryReads).toBe(1);
+      console.log('HISTORY_RECOVERY_REQUEST_COUNTS', {
+        width,
+        failedHistoryReads,
+        replacementReads: historyReads - failedHistoryReads,
       });
     } finally {
-      releaseInventory();
-      await removeInventory();
+      releaseOpen();
+      releaseHistory();
+      await removeOpen();
+      await removeHistory();
+      await removeHandshake();
     }
+    if (width > 600) {
+      let releaseInventory!: () => void;
+      const inventoryPending = new Promise<void>((resolve) => {
+        releaseInventory = resolve;
+      });
+      let inventoryReads = 0;
+      const removeInventory = await withRoute(
+        page,
+        '**/api/conversations**',
+        async (route) => {
+          if (new URL(route.request().url()).pathname !== '/api/conversations')
+            return route.fallback();
+          if (route.request().method() !== 'GET')
+            return rejectUnexpectedFixtureRequest(route);
+          inventoryReads++;
+          await inventoryPending;
+          await route.fulfill({
+            json: { success: true, data: { items: [], hasMore: false } },
+          });
+        },
+      );
+      try {
+        await expect(
+          page.getByText("Couldn't refresh. Showing the last known list."),
+        ).toBeVisible();
+        await page
+          .getByRole('button', { name: 'Refresh inbox', exact: true })
+          .click();
+        const refreshing = page.getByRole('button', {
+          name: 'Refreshing inbox',
+          exact: true,
+        });
+        await expect(refreshing).toBeDisabled();
+        await expect.poll(() => inventoryReads).toBe(1);
+        for (let i = 0; i < 5; i++) await page.keyboard.press('Enter');
+        expect(inventoryReads).toBe(1);
+        releaseInventory();
+        await expect(
+          page.getByText("Couldn't refresh. Showing the last known list."),
+        ).toBeHidden();
+        await expect(
+          page.getByRole('button', { name: 'Refresh inbox', exact: true }),
+        ).toBeEnabled();
+        expect(inventoryReads).toBe(1);
+        console.log('INBOX_RECOVERY_REQUEST_COUNTS', {
+          inventoryReads,
+          pendingActivations: 6,
+        });
+      } finally {
+        releaseInventory();
+        await removeInventory();
+      }
+    }
+    console.log('RECOVERY_REQUEST_COUNTS', {
+      width,
+      openReads,
+      pendingActivations: 6,
+    });
+  } finally {
+    await page.evaluate(() => {
+      const scope = window as Window & { __recoveryFetch?: typeof fetch };
+      if (scope.__recoveryFetch) window.fetch = scope.__recoveryFetch;
+      delete scope.__recoveryFetch;
+    });
   }
-  console.log('RECOVERY_REQUEST_COUNTS', {
-    width,
-    openReads,
-    pendingActivations: 6,
-  });
 }
 
 type GalleryProjectFixture = {
