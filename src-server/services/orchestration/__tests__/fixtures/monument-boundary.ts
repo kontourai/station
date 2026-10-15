@@ -32,6 +32,8 @@ function head(db: SqliteKernelDatabase) {
 export const tables: SqliteKernelTables = {
   turnDedup: 'unused',
   requestKeys: 'unused',
+  // #3568: the inbox is another machine this storage does not own.
+  inbox: 'unused',
   turnBoundary: {
     table: 'orchestration_turn_boundaries',
     ownerEncoding: 'columns',
