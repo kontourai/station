@@ -8,7 +8,9 @@ import {
   useNavigationActions,
 } from '../../contexts/NavigationContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
+import { Button } from '../Button';
 import { ProjectIcon } from '../icons/ProjectIcon';
+import { ErrorState, SkeletonBlock } from '../state';
 import {
   type ProjectLayoutChip,
   ProjectLayoutChips,
@@ -356,20 +358,18 @@ function ProjectSidebarViews({
   isError: boolean;
   retry: () => void;
 }) {
-  if (isPending)
-    return (
-      <p className="sidebar__views-message" role="status">
-        Loading views…
-      </p>
-    );
+  if (isPending) return <SkeletonBlock count={2} label="Loading views" />;
   if (isError)
     return (
-      <div className="sidebar__views-message" role="alert">
-        Unable to load views.
-        <button type="button" className="menu-row" onClick={retry}>
-          Retry
-        </button>
-      </div>
+      <ErrorState
+        variant="compact"
+        title="Unable to load views"
+        action={
+          <Button size="sm" onClick={retry}>
+            Retry
+          </Button>
+        }
+      />
     );
   if (chips.length === 0) return null;
   return <ProjectLayoutChips projectName={projectName} chips={chips} />;
