@@ -260,8 +260,8 @@ function ChatMessageListComponent({
     ],
   );
   const transcriptChildren = useMemo(
-    () => foldTranscriptChildren(approvalEvents),
-    [approvalEvents],
+    () => foldTranscriptChildren(approvalEvents, activeSession.messages),
+    [approvalEvents, activeSession.messages],
   );
   const sendMessage = useSendMessage(apiBase);
   const sheetRequests = useMemo(

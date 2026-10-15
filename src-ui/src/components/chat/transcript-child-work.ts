@@ -53,6 +53,7 @@ function reporterOf(delta: ChildWorkDelta): string {
 
 export function foldTranscriptChildren(
   events: readonly { event: CanonicalRuntimeEvent }[] | undefined,
+  assistantRows?: readonly { role: string; id?: string }[],
 ): TranscriptChildren {
   if (!events?.length) return EMPTY;
   const registries = new Map<
@@ -64,13 +65,26 @@ export function foldTranscriptChildren(
   const textOffsets = new Map<string, number>();
   const anchors = new Map<string, string>();
   const turnTextOffsets = new Map<string, number>();
+  const nextSegment = new Map<string, string>();
+  const renderedRows = assistantRows
+    ? new Set(
+        assistantRows
+          .filter((row) => row.role === 'assistant')
+          .map((row) => row.id),
+      )
+    : undefined;
   const tools = new Set<string>();
   const lastToolByTurn = new Map<string, string>();
   for (const { event } of events) {
     if (event.method === 'turn.started') {
       const turn = JSON.stringify([event.threadId, event.turnId]);
       const messageId = observedAssistantMessageId(event.eventId);
-      if (messageId) anchors.set(turn, messageId);
+      const previous = anchors.get(turn);
+      if (messageId) {
+        if (previous && event.inputKind === 'steer')
+          nextSegment.set(previous, messageId);
+        anchors.set(turn, messageId);
+      }
       // A steer flushes the preceding assistant row in the shared projection.
       textOffsets.set(turn, 0);
       lastToolByTurn.delete(turn);
@@ -169,7 +183,23 @@ export function foldTranscriptChildren(
   for (const [key, registry] of registries) {
     const item = registry.items[key];
     if (!item) continue;
-    const spawn = spawns.get(key);
+    let spawn = spawns.get(key);
+    // Child-only segments produce no assistant row. Follow only same-turn
+    // steers to the next rendered row; never steal an existing row's card.
+    while (
+      spawn?.messageId &&
+      renderedRows &&
+      !renderedRows.has(spawn.messageId)
+    ) {
+      const messageId = nextSegment.get(spawn.messageId);
+      if (!messageId) break;
+      spawn = {
+        ...spawn,
+        messageId,
+        textOffset: 0,
+        afterToolCallId: undefined,
+      };
+    }
     const toolAnchor = Boolean(
       item.parent?.toolCallId &&
         tools.has(

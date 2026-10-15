@@ -825,7 +825,9 @@ When an engine such as Codex reports a child without a tool-call row, the
 card uses the child's parent turn and the spawn event's text position.
 A steer binds the card to the assistant row containing its spawn, with text
 offsets local to that row; the live whole-turn shell retains its turn-wide
-offset. Each child appears once, including after a queued follow-up. The transcript's loaded `child-work.updated`
+offset. If the spawn segment has no assistant row, the card anchors to the
+next rendered segment of the same turn. Each child appears once, including
+after a queued follow-up. The transcript's loaded `child-work.updated`
 events retain every child whose spawn is loaded, independently of the live
 registry's settled-item retention limit. Completion notices carry child
 identity and remain visible only when no inline card represents that child.

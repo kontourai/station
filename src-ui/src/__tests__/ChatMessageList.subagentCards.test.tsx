@@ -81,6 +81,7 @@ import { activeChatsStore } from '../contexts/active-chats-store';
 import { applyChildWorkToChat } from '../hooks/orchestration/childWorkHandlers';
 import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTranscript';
 import type { ChatSession } from '../types';
+import childOnlySteerEvents from './fixtures/codex-steer-child-only-events.json';
 import capturedCodexEvents from './fixtures/codex-subagent-transcript-events.json';
 import museWorkflowEvents from './fixtures/muse-workflow-transcript-events.json';
 
@@ -269,6 +270,7 @@ function TranscriptHarness({ session }: { session: ChatSession }) {
       activeSession={{ ...session, messages: transcript.messages }}
       approvalEvents={transcript.enabled ? transcript.events : undefined}
       approvalEventsSettled={transcript.settled}
+      suppressStreamingRow={transcript.openTurnProjected}
       fontSize={13}
       showReasoning={false}
       showToolDetails={false}
@@ -308,19 +310,38 @@ function stubFetch(): void {
   );
 }
 
-function renderTranscript(session = chatSession()) {
+function renderTranscript(session = chatSession(), streamingShell = false) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const tree = () => (
     <QueryClientProvider client={client}>
       <ActiveChatsProvider>
-        <TranscriptHarness session={session} />
+        {streamingShell ? (
+          <ChatMessageList
+            activeSession={session}
+            approvalEvents={
+              windowEvents.current as Parameters<
+                typeof ChatMessageList
+              >[0]['approvalEvents']
+            }
+            fontSize={13}
+            showReasoning={false}
+            showToolDetails={false}
+          />
+        ) : (
+          <TranscriptHarness session={session} />
+        )}
       </ActiveChatsProvider>
     </QueryClientProvider>
   );
   const rendered = render(tree());
-  return { rerender: () => rendered.rerender(tree()) };
+  return {
+    rerender: (nextSession = session) => {
+      session = nextSession;
+      rendered.rerender(tree());
+    },
+  };
 }
 
 async function findCard(): Promise<HTMLElement> {
@@ -337,6 +358,7 @@ describe('subagent transcript cards', () => {
 
   afterEach(() => {
     cleanup();
+    activeChatsStore.removeChat('chat-tab');
     vi.unstubAllGlobals();
     _setApiBase('');
   });
@@ -446,6 +468,192 @@ describe('subagent transcript cards', () => {
         expect(screen.getByText('Follow-up answered.')).toBeTruthy();
     },
   );
+
+  // Captured through CodexAdapterTransport and the real steerTurn writer in
+  // round-2 review: both provider formats spawn before any assistant prose.
+  test.each(
+    childOnlySteerEvents.flatMap((events, capture) =>
+      [false, true].map((queued) => ({ events, capture, queued })),
+    ),
+  )(
+    'child-only Codex segment survives steer, completion and replay (capture $capture, queued $queued)',
+    async ({ events, queued }) => {
+      const start = events.find((event) => event.method === 'turn.started')!;
+      const turnId = start.turnId;
+      const completion = events.findIndex(
+        (event) => event.method === 'turn.completed',
+      );
+      windowEvents.current = events
+        .slice(0, completion)
+        .map((event, index) => ({ sequence: index + 1, event }));
+      const prose = events
+        .filter((event) => event.method === 'content.text-delta')
+        .map((event) => event.delta)
+        .join('');
+      activeChatsStore.initChat('chat-tab');
+      activeChatsStore.updateChat('chat-tab', {
+        streamingMessage: {
+          role: 'assistant',
+          content: prose,
+          contentParts: [],
+        },
+      });
+      const liveSession = {
+        ...chatSession(),
+        currentSessionId: 'thread-codex',
+        orchestrationTurnOpen: true,
+        openTurnId: turnId,
+        status: 'sending' as const,
+        orchestrationStatus: 'running' as const,
+      };
+      const view = renderTranscript(liveSession);
+      const assertCard = async () => {
+        const card = await findCard();
+        expect(screen.getAllByTestId('subagent-card')).toHaveLength(1);
+        const text = document.body.textContent ?? '';
+        expect(text.indexOf(card.textContent ?? '')).toBeLessThan(
+          text.indexOf(prose),
+        );
+        return card;
+      };
+      await assertCard();
+      const followUp = queued
+        ? [
+            {
+              ...start,
+              eventId: 'follow-start',
+              turnId: 'follow',
+              prompt: 'Queued follow-up',
+            },
+            {
+              ...start,
+              eventId: 'follow-text',
+              turnId: 'follow',
+              method: 'content.text-delta',
+              itemId: 'follow-text',
+              delta: 'Follow-up answered.',
+            },
+            {
+              ...start,
+              eventId: 'follow-end',
+              turnId: 'follow',
+              method: 'turn.completed',
+              finishReason: 'stop',
+            },
+          ]
+        : [];
+      windowEvents.current = [...events, ...followUp].map((event, index) => ({
+        sequence: index + 1,
+        event,
+      }));
+      const settledSession = {
+        ...chatSession(),
+        currentSessionId: 'thread-codex',
+      };
+      view.rerender(settledSession);
+      const settledCard = await assertCard();
+      expect(within(settledCard).getByText('Completed')).toBeTruthy();
+      const rowId = settledCard
+        .closest('.chat-message-anchor')
+        ?.getAttribute('data-chat-message-key');
+      if (queued) expect(screen.getByText('Follow-up answered.')).toBeTruthy();
+      cleanup();
+      renderTranscript(settledSession);
+      const replayCard = await assertCard();
+      expect(
+        replayCard
+          .closest('.chat-message-anchor')
+          ?.getAttribute('data-chat-message-key'),
+      ).toBe(rowId);
+      activeChatsStore.removeChat('chat-tab');
+    },
+  );
+
+  test('the live ChatMessageList caller places a post-steer spawn after both segments of prose', async () => {
+    const captured = capturedCodexEvents[0];
+    const spawn = captured.find(
+      (event) => event.method === 'child-work.updated',
+    )!;
+    const envelope = {
+      provider: 'codex',
+      threadId: 'thread-codex',
+      createdAt: STARTED_AT,
+      turnId: '00000000-0000-7000-8000-000000000002',
+    };
+    const events = [
+      {
+        ...envelope,
+        eventId: 'start',
+        method: 'turn.started',
+        prompt: 'Start',
+      },
+      {
+        ...envelope,
+        eventId: 'pre',
+        method: 'content.text-delta',
+        itemId: 'pre',
+        delta: 'Original plan.',
+      },
+      {
+        ...envelope,
+        eventId: 'steer',
+        method: 'turn.started',
+        inputKind: 'steer',
+        prompt: 'Change direction',
+      },
+      {
+        ...envelope,
+        eventId: 'post',
+        method: 'content.text-delta',
+        itemId: 'post',
+        delta: 'New plan.',
+      },
+      spawn,
+      {
+        ...envelope,
+        eventId: 'after',
+        method: 'content.text-delta',
+        itemId: 'post',
+        delta: 'After spawn.',
+      },
+    ];
+    windowEvents.current = events.map((event, index) => ({
+      sequence: index + 1,
+      event,
+    }));
+    activeChatsStore.initChat('chat-tab');
+    activeChatsStore.updateChat('chat-tab', {
+      streamingMessage: {
+        role: 'assistant',
+        content: 'Original plan.New plan.After spawn.',
+        contentParts: [],
+      },
+    });
+    renderTranscript(
+      {
+        ...chatSession(),
+        currentSessionId: 'thread-codex',
+        openTurnId: envelope.turnId,
+        orchestrationTurnOpen: true,
+        status: 'sending',
+        orchestrationStatus: 'running',
+      },
+      true,
+    );
+    const card = await findCard();
+    expect(screen.getAllByTestId('subagent-card')).toHaveLength(1);
+    const text = document.body.textContent ?? '';
+    expect(text).toContain('Original plan.New plan.');
+    expect(text.indexOf(card.textContent ?? '')).toBeGreaterThan(
+      text.indexOf('Original plan.New plan.') +
+        'Original plan.New plan.'.length -
+        1,
+    );
+    expect(text.indexOf('After spawn.')).toBeGreaterThan(
+      text.indexOf(card.textContent ?? ''),
+    );
+    activeChatsStore.removeChat('chat-tab');
+  });
 
   test('a Codex child spawned after a steer uses the new row and its local text offset', async () => {
     const captured = capturedCodexEvents[0];
