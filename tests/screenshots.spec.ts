@@ -1271,13 +1271,12 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
       await page.screenshot({
         path: testInfo.outputPath(`resync-recovered-${width}.png`),
       });
-      // The inventory is still unavailable until its own explicit recovery;
-      // the successful conversation read independently verifies this row.
+      // A successful history read cannot clear the independently failed inventory.
       if (width > 600) {
         const row = page
           .locator('.chat-dock-inbox [data-testid="inbox-row"]')
           .filter({ hasText: 'Mismatch demo chat' });
-        await expect(row.getByTestId('inbox-row-status')).not.toContainText(
+        await expect(row.getByTestId('inbox-row-status')).toContainText(
           'Last known:',
         );
       }
@@ -1355,6 +1354,16 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
         await expect(
           page.getByRole('button', { name: 'Refresh inbox', exact: true }),
         ).toBeEnabled();
+        const row = page
+          .locator('.chat-dock-inbox [data-testid="inbox-row"]')
+          .filter({ hasText: 'Mismatch demo chat' });
+        await expect(row.getByTestId('inbox-row-status')).not.toContainText(
+          'Last known:',
+        );
+        await page.screenshot({
+          path: join(GALLERY_DIR, `freshness-recovered-${width}.png`),
+          animations: 'disabled',
+        });
         expect(inventoryReads).toBe(1);
         console.log('INBOX_RECOVERY_REQUEST_COUNTS', {
           inventoryReads,
