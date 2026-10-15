@@ -972,7 +972,13 @@
 
     "pnpm-lock.yaml#/snapshots",
 
-    "src-server/knowledge-index/embedding-identity.ts"
+    "src-server/knowledge-index/embedding-identity.ts",
+
+    "src-server/services/projects/task-room-conversation-module.ts",
+
+    "src-ui/src/views/task-workspace/TaskRoomPage.tsx",
+
+    "packages/contracts/src/project-task-room-browser.ts"
   ],
 
   "checks": [

@@ -62,7 +62,9 @@
 
     "packages/contracts/package.json#/name",
 
-    "packages/contracts/package.json#/exports"
+    "packages/contracts/package.json#/exports",
+
+    "src-server/services/projects/task-room-conversation-module.ts"
   ],
 
   "checks": [
