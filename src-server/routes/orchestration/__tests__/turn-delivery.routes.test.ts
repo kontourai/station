@@ -347,7 +347,7 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
       release = resolve;
     });
     const first = send('conversation:concurrent-digest', 'K', 'A');
-    let identical: Promise<Response> | undefined;
+    let identical: Response | Promise<Response> | undefined;
     try {
       await eventually(() => expect(adapter.turns).toHaveLength(1));
       const changed = await send('conversation:concurrent-digest', 'K', 'B');
