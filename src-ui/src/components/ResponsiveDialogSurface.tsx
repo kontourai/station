@@ -361,6 +361,9 @@ export function ResponsiveDialogSurface({
 
   const containFocus = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented) return;
+    const panel = panelRef.current;
+    // React portal events bubble through owners outside their DOM subtree.
+    if (!panel?.contains(event.target as Node)) return;
     if (event.key === 'Escape' && dismissible) {
       event.preventDefault();
       event.stopPropagation();
@@ -384,7 +387,10 @@ export function ResponsiveDialogSurface({
     const activeControl = controls.find(
       (control) => control === document.activeElement,
     );
-    if (!activeControl) {
+    if (
+      document.activeElement === panel ||
+      !panel.contains(document.activeElement)
+    ) {
       event.preventDefault();
       (event.shiftKey ? last : first).focus();
     } else if (event.shiftKey && activeControl === first) {

@@ -10,6 +10,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { act, StrictMode, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { DialogHistoryHostBoundary } from '../components/DialogHistoryHost';
 import {
@@ -191,7 +192,7 @@ describe('ResponsiveDialogSurface', () => {
     { mobile: true, shiftKey: true },
     { mobile: true, shiftKey: false },
   ])(
-    'contains Tab from panel and non-control focus (mobile=$mobile, shift=$shiftKey)',
+    'contains Tab from initial panel focus and wraps boundaries (mobile=$mobile, shift=$shiftKey)',
     ({ mobile, shiftKey }) => {
       setMobileViewport(mobile);
       render(
@@ -217,12 +218,79 @@ describe('ResponsiveDialogSurface', () => {
 
       const heading = screen.getByRole('heading', { name: 'Details' });
       heading.focus();
-      expect(fireEvent.keyDown(heading, { key: 'Tab', shiftKey })).toBe(false);
-      expect(document.activeElement).toBe(shiftKey ? last : first);
+      expect(fireEvent.keyDown(heading, { key: 'Tab', shiftKey })).toBe(true);
+      expect(document.activeElement).toBe(heading);
 
       (shiftKey ? first : last).focus();
       fireEvent.keyDown(document.activeElement!, { key: 'Tab', shiftKey });
       expect(document.activeElement).toBe(shiftKey ? last : first);
+    },
+  );
+
+  test.each([true, false])(
+    'leaves portaled intermediate Tab to its owner (nested surface=$nested)',
+    (nested) => {
+      setMobileViewport(false);
+      const inputs = (
+        <>
+          <input aria-label="Inner first" />
+          <input aria-label="Inner second" />
+          <input aria-label="Inner third" />
+        </>
+      );
+      render(
+        <ResponsiveDialogSurface ariaLabel="Outer" onClose={vi.fn()}>
+          <button type="button">Outer first</button>
+          {nested ? (
+            <ResponsiveDialogSurface ariaLabel="Inner" onClose={vi.fn()}>
+              {inputs}
+            </ResponsiveDialogSurface>
+          ) : (
+            createPortal(inputs, document.body)
+          )}
+          <button type="button">Outer last</button>
+        </ResponsiveDialogSurface>,
+      );
+      const first = screen.getByRole('textbox', { name: 'Inner first' });
+      first.focus();
+      expect(fireEvent.keyDown(first, { key: 'Tab' })).toBe(true);
+      expect(document.activeElement).toBe(first);
+    },
+  );
+
+  test.each(['summary', 'contenteditable', 'shadow input'])(
+    'leaves native Tab alone from an internal %s',
+    (kind) => {
+      setMobileViewport(false);
+      render(
+        <ResponsiveDialogSurface ariaLabel="Native focus" onClose={vi.fn()}>
+          <button type="button">First</button>
+          <details open>
+            <summary>Advanced</summary>
+          </details>
+          <div contentEditable role="textbox" aria-label="Editable" />
+          <div data-testid="shadow-host" />
+          <button type="button">Last</button>
+        </ResponsiveDialogSurface>,
+      );
+      let target =
+        kind === 'summary'
+          ? screen.getByText('Advanced')
+          : screen.getByLabelText('Editable');
+      if (kind === 'shadow input') {
+        const shadow = screen
+          .getByTestId('shadow-host')
+          .attachShadow({ mode: 'open' });
+        target = document.createElement('input');
+        shadow.append(target);
+      }
+      target.focus();
+      expect(fireEvent.keyDown(target, { key: 'Tab', composed: true })).toBe(
+        true,
+      );
+      expect(document.activeElement).toBe(
+        kind === 'shadow input' ? screen.getByTestId('shadow-host') : target,
+      );
     },
   );
 
