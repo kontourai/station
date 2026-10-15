@@ -170,9 +170,11 @@ describe('cold-launch presentation in the browser', () => {
       expect(await page.evaluate(() => document.activeElement?.id)).not.toBe(
         'portal-action',
       );
-      expect(await page.locator('#root').evaluate((root) => root.inert)).toBe(
-        true,
-      );
+      expect(
+        await page
+          .locator('#root')
+          .evaluate((root) => root instanceof HTMLElement && root.inert),
+      ).toBe(true);
       await page.clock.runFor(250);
       expect(await intro(page).getAttribute('class')).toContain(
         'station-startup--leaving',
@@ -182,9 +184,11 @@ describe('cold-launch presentation in the browser', () => {
       ).toEqual([1, 1, 1, 1, 1, 1]);
       await page.clock.runFor(170);
       expect(await intro(page).count()).toBe(0);
-      expect(await page.locator('#root').evaluate((root) => root.inert)).toBe(
-        false,
-      );
+      expect(
+        await page
+          .locator('#root')
+          .evaluate((root) => root instanceof HTMLElement && root.inert),
+      ).toBe(false);
       await page.getByRole('button', { name: 'Portal action' }).click();
       expect(await intro(page).count()).toBe(0);
       expect(
@@ -206,9 +210,11 @@ describe('cold-launch presentation in the browser', () => {
         expect(
           await page.getByRole('button', { name: 'Ready workspace' }).count(),
         ).toBe(1);
-        expect(await page.locator('#root').evaluate((root) => root.inert)).toBe(
-          false,
-        );
+        expect(
+          await page
+            .locator('#root')
+            .evaluate((root) => root instanceof HTMLElement && root.inert),
+        ).toBe(false);
       } finally {
         await page.close();
       }
@@ -241,9 +247,11 @@ describe('cold-launch presentation in the browser', () => {
           failure,
         );
         expect(await intro(page).count()).toBe(0);
-        expect(await page.locator('#root').evaluate((root) => root.inert)).toBe(
-          false,
-        );
+        expect(
+          await page
+            .locator('#root')
+            .evaluate((root) => root instanceof HTMLElement && root.inert),
+        ).toBe(false);
         if (failure)
           expect(
             await page.getByRole('button', { name: 'Reload Station' }).count(),

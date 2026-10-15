@@ -41,9 +41,13 @@ function trackPath(
 export function startStartupAnimation(
   canvas: HTMLCanvasElement,
   {
-    isVisible = () => true,
+    isVisible = (): boolean => true,
     onFrame = (_elapsed: number) => {},
     onUnavailable = () => {},
+  }: {
+    isVisible?: () => boolean;
+    onFrame?: (elapsed: number) => void;
+    onUnavailable?: () => void;
   } = {},
 ): () => void {
   const candidate = canvas.getContext('2d');
