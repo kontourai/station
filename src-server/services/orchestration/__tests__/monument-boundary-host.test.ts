@@ -315,15 +315,24 @@ test.each(Array.from({ length: 400 }, (_, i) => i))(
                         ? 'SESSION_START_INDETERMINATE'
                         : 'PROVIDER_FAILED',
                   }
-                : {
-                    eventId,
-                    provider: 'claude',
-                    threadId,
-                    turnId: providerTurnId,
-                    createdAt: now,
-                    method: method === 0 ? 'turn.completed' : 'turn.aborted',
-                    reason: 'generated abort',
-                  };
+                : method === 0
+                  ? {
+                      eventId,
+                      provider: 'claude',
+                      threadId,
+                      turnId: providerTurnId,
+                      createdAt: now,
+                      method: 'turn.completed',
+                    }
+                  : {
+                      eventId,
+                      provider: 'claude',
+                      threadId,
+                      turnId: providerTurnId,
+                      createdAt: now,
+                      method: 'turn.aborted',
+                      reason: 'generated abort',
+                    };
           const replay =
             step === 2 ||
             step === 6 ||
