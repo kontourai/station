@@ -168,6 +168,12 @@ describe('cold-launch presentation in the browser', () => {
   const intro = (page: Page) =>
     page.locator('.station-startup-frame[open] > .station-startup');
 
+  test('the shared presentation imports without browser globals', async () => {
+    expect(typeof globalThis.document).toBe('undefined');
+    const presentation = await import('../lib/startup-presentation');
+    expect(presentation.initialStartupIsActive()).toBe(false);
+  });
+
   test('a mobile detail opened behind the intro receives its initial keyboard focus after handoff', async () => {
     const page = await open({ query: '?sheet', mobile: true });
     try {

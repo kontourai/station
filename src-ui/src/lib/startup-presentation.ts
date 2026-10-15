@@ -1,7 +1,9 @@
 import { startStartupAnimation } from './startup-animation';
 
-const surface = document.querySelector<HTMLElement>('#root .station-startup');
-const root = document.getElementById('root');
+const surface = globalThis.document?.querySelector<HTMLElement>(
+  '#root .station-startup',
+);
+const root = globalThis.document?.getElementById('root');
 const frame = surface ? document.createElement('dialog') : undefined;
 const pending = new Map<symbol, string>();
 const completionListeners = new Set<() => void>();
