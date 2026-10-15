@@ -374,18 +374,18 @@ describe('the Boards section is hidden until there is a Board', () => {
     expect(boardsHeader()).not.toBeNull();
   });
 
-  test('one Board brings the section back, above Projects', async () => {
+  test('one Board brings the section back, after Projects', async () => {
     boards.push({ id: boardId('daily'), slug: 'daily', name: 'Daily brief' });
     await renderSidebar(<ProjectSidebar />);
     const header = boardsHeader();
     expect(header).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Daily brief' })).toBeDefined();
-    // D3 puts Boards between Activity and Projects. Compared by document
+    // The workspace map puts personal Boards after Projects. Compared by document
     // order rather than by asserting a DOM parent, so a restyle that keeps
     // the order keeps this true.
     const projectsHeader = screen.getByText('Projects');
     expect(
-      header!.compareDocumentPosition(projectsHeader) &
+      projectsHeader.compareDocumentPosition(header!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     const activityRow = screen.getByRole('button', { name: 'Activity' });
@@ -1068,7 +1068,7 @@ describe('the Boards row menu behaves like the role it declares (#2083)', () => 
     expect(screen.queryByRole('menu')).toBeNull();
 
     act(() => {
-      fireEvent.click(screen.getByRole('button', { name: 'Expand sidebar' }));
+      window.dispatchEvent(new CustomEvent('toggle-sidebar'));
     });
     // Re-expanding must not reopen a menu nobody asked for — the second half
     // of the same defect, and the half a CSS-only fix would leave behind.

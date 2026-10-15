@@ -2,6 +2,7 @@ import {
   useBoardAvailabilityQuery,
   useProjectLayoutsQuery,
 } from '@kontourai/station-sdk';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   useNavigation,
   useNavigationActions,
@@ -13,6 +14,7 @@ import {
   ProjectLayoutChips,
 } from './ProjectLayoutChips';
 import { sidebarLayoutPaneId } from './pill-region-placement';
+import { SidebarPopover } from './SidebarPopover';
 import type { ProjectRowReorderProps } from './useProjectListReorder';
 
 /**
@@ -62,17 +64,24 @@ export function ProjectSidebarRow({
   // paths before any consumer sees them); reading `window.location` here
   // instead meant depending on a whole-store subscription to refresh it.
   const pathname = useNavigation((state) => state.pathname);
-  /**
-   * #2063: the chip row belongs to the project the reader is IN, which is the
-   * shape the design record draws (D3) — Campfit carries chips, Ferry and
-   * Thread carry only their counts. It also keeps the property the removed
-   * `expanded` state existed for: sidebar rows all mount with the project
-   * list, so an ungated read would put one layouts request AND one
-   * sidecar-directory scan per project on every boot. Selection, not a local
-   * disclosure toggle, is now what admits those two reads.
-   */
-  const showChips = isActive && !collapsed;
-  const { data: layouts } = useProjectLayoutsQuery(project.slug, {
+  // Layout and sidecar reads are demand-driven, including rail popups.
+  const [folded, setFolded] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Navigation and presentation changes dismiss transient row state.
+  useEffect(() => {
+    setMenuOpen(false);
+    setFolded(false);
+  }, [collapsed, pathname]);
+  const showChips =
+    (isActive && !collapsed && !folded) || (collapsed && menuOpen);
+  const {
+    data: layouts,
+    isPending,
+    isError,
+    refetch,
+  } = useProjectLayoutsQuery(project.slug, {
     enabled: showChips,
   });
   // Same gate, same reason: the server answers this by scanning the project's
@@ -94,6 +103,7 @@ export function ProjectSidebarRow({
         name: 'Board',
         current: isActive && pathname.endsWith('/session-board'),
         activate: () => {
+          closeMenu();
           navigate(`/projects/${project.slug}/session-board`);
           onNavigate?.();
         },
@@ -132,6 +142,7 @@ export function ProjectSidebarRow({
         // `rendersChatWorkspaceLayout` derivation — the only thing that
         // suspends the ambient regions — sees exactly what it saw before.
         activate: () => {
+          closeMenu();
           setLayout(project.slug, layout.slug);
           onNavigate?.();
         },
@@ -140,6 +151,10 @@ export function ProjectSidebarRow({
   }
 
   const handleClick = () => {
+    if (collapsed) {
+      setMenuOpen((open) => !open);
+      return;
+    }
     setProject(project.slug);
     onNavigate?.();
   };
@@ -167,33 +182,28 @@ export function ProjectSidebarRow({
         <button
           type="button"
           className={btnClass}
+          ref={triggerRef}
+          aria-label={collapsed ? `${project.name} views` : undefined}
+          aria-haspopup={collapsed ? 'dialog' : undefined}
+          aria-expanded={collapsed ? menuOpen : undefined}
           onClick={handleClick}
-          title={`Open ${project.name} workspace`}
+          title={
+            collapsed
+              ? `${project.name} views`
+              : `Open ${project.name} workspace`
+          }
         >
           <span
             className="sidebar__project-accent"
             style={{ backgroundColor: accent }}
             aria-hidden="true"
           />
-          {/* #2150: an initials monogram (`CA`, `FE`) at 18px is a smudge,
-              it would land in the accessible name ("CA Campfit"), and the
-              design record draws the accent bar beside it for identity -- so
-              an icon-less project never shows initials. A project WITH an
-              icon keeps the bar AND the icon: the bar is the colour every
-              surface shares, the icon is identity the user chose.
-              `ProjectIcon` draws only what the icon rule accepts, so a legacy
-              remote URL is never hotlinked from here.
-
-              Expanded, every row reserves the icon's slot, so names line up
-              whether or not a project has an icon. An icon-less project
-              leaves it empty: the bar already carries its colour, and a dot
-              there would read as a status or presence dot. The collapsed
-              rail has no names to align, so it draws only an icon there. */}
+          {/* Expanded rows reserve the icon slot; an iconless rail needs a legible identity. */}
           {collapsed ? (
             <ProjectIcon
               project={project}
               size={28}
-              fallback="none"
+              fallback="initials"
               className="sidebar__project-icon"
             />
           ) : (
@@ -222,8 +232,7 @@ export function ProjectSidebarRow({
                   `title` never surfaces without a pointer. The touch answer is
                   the tap itself — selecting the row opens the project page,
                   whose Live work section names these same lanes and lists the
-                  sessions behind the number. Adding the sentence inline in the
-                  rail would be a sidebar redesign, which this change is not.
+                  sessions behind the number. The popup keeps the project name visible before the reader navigates.
               */}
               <span
                 className="sidebar__project-live-count"
@@ -254,6 +263,17 @@ export function ProjectSidebarRow({
               Rendering stand-in avatars would claim people are here, so this
               renders nothing at all until #2066 ships the authority. */}
         </button>
+        {isActive && !collapsed && (
+          <button
+            type="button"
+            className="sidebar__project-disclosure"
+            aria-label={`${folded ? 'Expand' : 'Collapse'} ${project.name} views`}
+            aria-expanded={!folded}
+            onClick={() => setFolded((value) => !value)}
+          >
+            <span aria-hidden="true">{folded ? '›' : '⌄'}</span>
+          </button>
+        )}
         {showReorderHandle && (
           <button
             type="button"
@@ -281,9 +301,73 @@ export function ProjectSidebarRow({
         )}
       </div>
 
-      {showChips && chips.length > 0 && (
-        <ProjectLayoutChips projectName={project.name} chips={chips} />
+      {showChips && !collapsed && (
+        <ProjectSidebarViews
+          projectName={project.name}
+          chips={chips}
+          isPending={isPending}
+          isError={isError}
+          retry={() => void refetch()}
+        />
       )}
+      <SidebarPopover
+        open={collapsed && menuOpen}
+        anchorRef={triggerRef}
+        label={`${project.name} views`}
+        onClose={closeMenu}
+      >
+        <div className="sidebar__popover-heading">{project.name}</div>
+        <button
+          type="button"
+          className="menu-row"
+          onClick={() => {
+            closeMenu();
+            setProject(project.slug);
+            onNavigate?.();
+          }}
+        >
+          Open project
+        </button>
+        <ProjectSidebarViews
+          projectName={project.name}
+          chips={chips}
+          isPending={isPending}
+          isError={isError}
+          retry={() => void refetch()}
+        />
+      </SidebarPopover>
     </div>
   );
+}
+
+function ProjectSidebarViews({
+  projectName,
+  chips,
+  isPending,
+  isError,
+  retry,
+}: {
+  projectName: string;
+  chips: ProjectLayoutChip[];
+  isPending: boolean;
+  isError: boolean;
+  retry: () => void;
+}) {
+  if (isPending)
+    return (
+      <p className="sidebar__views-message" role="status">
+        Loading views…
+      </p>
+    );
+  if (isError)
+    return (
+      <div className="sidebar__views-message" role="alert">
+        Unable to load views.
+        <button type="button" className="menu-row" onClick={retry}>
+          Retry
+        </button>
+      </div>
+    );
+  if (chips.length === 0) return null;
+  return <ProjectLayoutChips projectName={projectName} chips={chips} />;
 }

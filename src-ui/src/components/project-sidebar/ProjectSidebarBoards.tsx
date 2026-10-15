@@ -21,11 +21,11 @@ import './ProjectSidebarBoards.css';
  * `docs/design/shell-ownership-and-boards.md`).
  *
  * A Board is a Layout owned by a principal rather than a project — the
- * project-less place D3 puts between Activity and Projects. This is NOT a
+ * project-less place the workspace map lists after Projects. This is NOT a
  * destination-registry entry, and that is the registry's own rule rather than
  * a shortcut: `sidebar: { order }` registers a fixed PLACE (Activity is the
  * only one), while a list of records the user creates and deletes at runtime
- * is rendered here the way Projects, Open chats and Drafts already are —
+ * is rendered here the way Projects are —
  * a `sidebar__section-label` header with a `+`, then a row per record.
  *
  * ## Hidden when empty

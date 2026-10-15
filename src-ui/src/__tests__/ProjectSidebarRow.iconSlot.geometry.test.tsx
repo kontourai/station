@@ -273,7 +273,7 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
       }
     });
 
-    test('the collapsed rail reserves no slot: an icon-less project keeps its bar alone', async () => {
+    test('the collapsed rail reserves no expanded slot and gives every project an identity', async () => {
       const page = await browser.newPage();
       try {
         await page.setContent(
@@ -282,7 +282,9 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
         expect(await page.locator('.sidebar__project-icon-slot').count()).toBe(
           0,
         );
-        expect(await page.locator('.sidebar__project-icon').count()).toBe(2);
+        expect(await page.locator('.sidebar__project-icon').count()).toBe(
+          CASES.length,
+        );
       } finally {
         await page.close();
       }

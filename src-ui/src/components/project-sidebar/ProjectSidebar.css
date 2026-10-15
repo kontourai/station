@@ -5,9 +5,9 @@
   flex-direction: column;
   background: var(--bg-secondary);
   border-right: 1px solid var(--border-primary);
-  width: 240px;
-  min-width: 240px;
-  max-width: 240px;
+  width: calc(var(--k-space-5) * 9);
+  min-width: calc(var(--k-space-5) * 9);
+  max-width: calc(var(--k-space-5) * 9);
   transition:
     width var(--motion-fast) var(--ease-standard),
     min-width var(--motion-fast) var(--ease-standard),
@@ -15,9 +15,9 @@
 }
 
 .sidebar--collapsed {
-  width: 48px;
-  min-width: 48px;
-  max-width: 48px;
+  width: calc(var(--k-space-6) + var(--k-space-4) + var(--k-space-1));
+  min-width: calc(var(--k-space-6) + var(--k-space-4) + var(--k-space-1));
+  max-width: calc(var(--k-space-6) + var(--k-space-4) + var(--k-space-1));
 }
 
 /* Header */
@@ -29,26 +29,28 @@
   border-bottom: 1px solid var(--border-primary);
   cursor: pointer;
   flex-shrink: 0;
-  min-height: 44px;
+  min-height: var(--app-toolbar-height);
+  height: var(--app-toolbar-height);
 }
 
 .sidebar--collapsed .sidebar__header {
+  height: auto;
   justify-content: center;
   flex-direction: column;
-  padding: 12px 4px;
+  padding: var(--k-space-2) var(--k-space-1);
   cursor: pointer;
   gap: 4px;
   text-align: center;
 }
 
 .sidebar--collapsed .sidebar__logo {
-  width: 32px;
-  height: 32px;
+  width: var(--k-space-5);
+  height: var(--k-space-5);
 }
 
 /* Desktop shell (macOS overlay title bar): the native traffic lights float
    over the top-left of the window, so inset the sidebar header around them.
-   Collapsed, the sidebar (48px) is narrower than the traffic-light cluster
+   Collapsed, the sidebar (52px) is narrower than the traffic-light cluster
    (~72px) — drop the logo below the lights and pad the toolbar so its content
    clears them too. */
 :root.is-desktop-mac .sidebar__header {
@@ -65,15 +67,16 @@
 }
 
 /* Mobile/column layout (archive#3316): a closed drawer also carries
-   `sidebar--collapsed`, but there is no 48px rail occupying the corner —
+   `sidebar--collapsed`, but there is no 52px rail occupying the corner —
    the toolbar sits at the window edge, so the 34px rail offset above left
    its first control under the traffic lights. Same specificity, later in
    this file, so it wins at mobile widths; --titlebar-inset-left is stamped
    by PlatformBootstrap on the macOS desktop shell only. */
 .sidebar__brand-name {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-direction: row;
+  gap: var(--k-space-1);
+  align-items: center;
   line-height: 1.1;
   min-width: 0;
   overflow: hidden;
@@ -90,7 +93,7 @@
    block itself is what leaked the wordmark into the 48px rail (#1795). */
 .sidebar__channel-badge {
   display: block;
-  margin-top: 2px;
+  margin-top: 0;
   color: var(--k-brand);
   font-size: var(--text-xs);
   text-transform: capitalize;
@@ -191,73 +194,6 @@
 
 .sidebar--collapsed .sidebar__section-label {
   display: none;
-}
-
-/* #3314: Open chats / Drafts disclosure headers — the nav groups' toggle
-   anatomy (aria-expanded button + chevron) in section-label clothing, plus a
-   hover/focus-revealed remove affordance. */
-.sidebar__section-label--disclosure {
-  padding: 0 4px 0 0;
-}
-
-.sidebar__section-toggle {
-  display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 28px;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-  padding: 4px 4px 4px 12px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.sidebar__section-toggle:hover,
-.sidebar__section-toggle:focus-visible {
-  color: var(--text-primary);
-}
-
-.sidebar__section-remove {
-  display: inline-flex;
-  flex-shrink: 0;
-  min-width: 24px;
-  min-height: 24px;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  opacity: 0;
-}
-
-.sidebar__section-label--disclosure:hover .sidebar__section-remove,
-.sidebar__section-label--disclosure:focus-within .sidebar__section-remove {
-  opacity: 1;
-}
-
-.sidebar__section-remove:hover,
-.sidebar__section-remove:focus-visible {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-}
-
-.sidebar--collapsed .sidebar__open-chats {
-  display: none;
-}
-
-.sidebar__recent-more span {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
 }
 
 /* The Projects header carries the "New Project" action (archive#1300), so
@@ -500,6 +436,16 @@
     inset: -13px;
   }
 
+  .sidebar__project-disclosure {
+    width: 44px;
+    height: 44px;
+  }
+
+  .sidebar__project-row-main:has(.sidebar__project-disclosure)
+    .sidebar__project-btn {
+    padding-right: calc(var(--k-space-6) * 2 + var(--k-space-3));
+  }
+
   .sidebar__reorder-handle {
     opacity: 1;
     width: 28px;
@@ -568,94 +514,95 @@
   box-shadow: 0 2px 0 0 var(--accent-primary);
 }
 
-.sidebar__collapsed-chats {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  min-height: 44px;
-  margin: 0 auto 4px;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-muted);
-}
-
-.sidebar__collapsed-chats:hover,
-.sidebar__collapsed-chats:focus-visible {
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
-
-/* Layout chips (#2063, design record D3). A wrapping row, not a list: the
-   chips are the project's children and read as one band under its name. They
-   wrap rather than scroll or truncate, because the tree they replace showed
-   every layout and a hidden chip is a layout a reader cannot reach from the
-   panel at all.
-
-   No `.sidebar--collapsed` rule: the row's own gate already covers it. The
-   class and the row's `collapsed` prop are the same value
-   (`effectiveCollapsed`, which is `!mobileOpen` on a phone), so a collapsed
-   rail and a closed drawer both render no chip row to hide. */
+/* Project views are a vertical composite: one tab stop, with Up/Down inside. */
 .sidebar__layout-chips {
   display: flex;
-  /* One row that scrolls, not a wrap (#2150). Four layouts wrapped to two
-     lines at the panel's 240px and five to three; the design record left
-     "the visual" undecided and this decides it: the chip row is a single
-     line, like `.region-tabs`, and overflow scrolls sideways with the
-     scrollbar hidden. The roving tab stop is unaffected -- every chip is
-     still in the DOM, so Arrow keys reach the off-screen ones and the
-     browser scrolls them into view on focus. */
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  scrollbar-width: none;
-  gap: 4px;
-  padding: 2px 12px 4px 30px;
-}
-
-.sidebar__layout-chips::-webkit-scrollbar {
-  display: none;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  margin: var(--k-space-1) var(--k-space-2) var(--k-space-2) var(--k-space-5);
+  padding-left: var(--k-space-2);
+  border-left: 1px solid var(--k-line);
 }
 
 .sidebar__layout-chip {
-  /* Flex, not the default inline box, so the phone-drawer floor below can
-     grow the chip to 44px without the label drifting off its centre. */
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 3px 8px;
-  background: var(--bg-tertiary);
-  border: 1px solid transparent;
-  /* --text-tertiary, not --text-muted (#2150). Measured on the light theme
-     when this was chosen, --text-muted (#707782) was 4.33:1 on the chip's
-     own fill -- under the 4.5:1 text floor -- and 4.52:1 on the panel.
-     @kontourai/ui 1.17 retinted it to #6a707b, which is 4.77:1 and 4.98:1.
-     --text-tertiary (#5b626b) is 5.9:1 and 6.2:1. Scoped to the panel's rows
-     rather than darkening --text-muted's 500 consumers. */
-  color: var(--text-tertiary);
+  min-height: var(--k-space-6);
+  width: 100%;
+  padding: var(--k-space-1) var(--k-space-2);
+  border: 0;
+  border-radius: var(--k-radius-control);
+  background: transparent;
+  color: var(--k-text-muted);
+  font: inherit;
+  font-size: var(--k-text-xs);
+  text-align: left;
+  overflow-wrap: anywhere;
   cursor: pointer;
-  font-size: var(--text-sm);
-  line-height: 1.4;
-  border-radius: 999px;
-  white-space: nowrap;
-  flex: 0 0 auto;
 }
 
 .sidebar__layout-chip:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
+  background: var(--k-panel-raised);
+  color: var(--k-text);
 }
 
 .sidebar__layout-chip--current {
-  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
-  border-color: color-mix(in srgb, var(--accent-primary) 40%, transparent);
-  color: var(--accent-primary);
+  background: color-mix(in srgb, var(--k-action) 12%, var(--k-panel));
+  color: var(--k-action);
   font-weight: 500;
 }
 
-.sidebar__layout-chip--current:hover {
-  background: color-mix(in srgb, var(--accent-primary) 20%, transparent);
+.sidebar__project-disclosure {
+  position: absolute;
+  right: var(--k-space-6);
+  top: 50%;
+  transform: translateY(-50%);
+  width: var(--k-space-5);
+  height: var(--k-space-6);
+  border: 0;
+  border-radius: var(--k-radius-control);
+  background: transparent;
+  color: var(--k-text-muted);
+  cursor: pointer;
+}
+
+.sidebar__project-row-main:has(.sidebar__project-disclosure)
+  .sidebar__project-btn {
+  padding-right: calc(var(--k-space-6) * 2);
+}
+
+.sidebar__views-message {
+  margin: var(--k-space-2) var(--k-space-3);
+  font-size: var(--k-text-xs);
+  color: var(--k-text-muted);
+}
+
+.sidebar__popover {
+  position: fixed;
+  z-index: var(--layer-navigation);
+  width: calc(var(--k-space-6) * 8);
+  max-width: calc(100vw - var(--k-space-4));
+  max-height: calc(100dvh - var(--k-space-4));
+  overflow-y: auto;
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-overlay);
+  background: var(--k-panel);
+  color: var(--k-text);
+  box-shadow: var(--shadow-menu);
+}
+
+.sidebar__popover-heading {
+  padding: var(--k-space-1) var(--k-space-2) var(--k-space-2);
+  font-size: var(--k-text-sm);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.sidebar__popover .sidebar__layout-chips {
+  margin: var(--k-space-2) 0 0;
+  padding: 0;
+  border-left: 0;
 }
 
 /* WHERE a chip's "Open in <region>" menu sits, and nothing else (#2158).
@@ -831,12 +778,14 @@
     padding-left: max(14px, var(--titlebar-inset-left, 0px));
   }
 
-  /* No hover on touch: the remove affordance is always visible, at the
-     44px floor the rest of the mobile sidebar controls use. */
-  .sidebar__section-remove {
-    min-width: 44px;
-    min-height: 44px;
-    opacity: 1;
+  .sidebar__project-disclosure {
+    width: 44px;
+    height: 44px;
+  }
+
+  .sidebar__project-row-main:has(.sidebar__project-disclosure)
+    .sidebar__project-btn {
+    padding-right: calc(var(--k-space-6) * 2 + var(--k-space-3));
   }
 
   .sidebar__nav-btn {

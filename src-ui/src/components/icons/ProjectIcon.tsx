@@ -51,8 +51,8 @@ interface ProjectIconProps {
  * remote hotlink), else the project's colour.
  *
  * Why the colour and not initials for the small fallback: at the 12–28px the
- * rows, sidebar and switcher draw, a two-letter monogram is a smudge, and the
- * sidebar already decided against it (#2150) — the colour is the identity
+ * rows, sidebar and switcher draw, a two-letter monogram is a smudge, and expanded sidebar rows
+ * reserve their icon slot without inventing a fallback — the colour is the identity
  * every surface shares (#3353), so an icon-less project looks the same
  * everywhere it appears.
  */

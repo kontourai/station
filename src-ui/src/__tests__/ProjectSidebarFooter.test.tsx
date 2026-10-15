@@ -145,6 +145,7 @@ function renderFooter(
     activePath: string;
     navigate: (path: string) => void;
     isMobile: boolean;
+    collapsed: boolean;
     onAfterNavigate: () => void;
   }> = {},
 ) {
@@ -152,6 +153,7 @@ function renderFooter(
     <ProjectSidebarFooter
       activePath={props.activePath ?? '/'}
       isMobile={props.isMobile ?? false}
+      collapsed={props.collapsed}
       navigate={props.navigate ?? vi.fn()}
       onAfterNavigate={props.onAfterNavigate}
     />,
@@ -697,4 +699,39 @@ describe('ProjectSidebarFooter', () => {
       expect(document.activeElement).toBe(button);
     }
   });
+});
+
+test('the collapsed footer keeps utilities reachable and Customize returns to More', async () => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    },
+  );
+  try {
+    const navigate = vi.fn();
+    renderFooter({ collapsed: true, navigate });
+    expect(screen.queryByRole('button', { name: 'Schedule' })).toBeNull();
+    const more = screen.getByRole('button', { name: 'Sidebar utilities' });
+    more.focus();
+    fireEvent.click(more);
+    expect(
+      screen.getByRole('dialog', { name: 'Sidebar utilities' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Schedule' }));
+    expect(navigate).toHaveBeenCalledWith('/schedule');
+    expect(
+      screen.queryByRole('dialog', { name: 'Sidebar utilities' }),
+    ).toBeNull();
+    more.focus();
+    fireEvent.click(more);
+    fireEvent.click(screen.getByRole('button', { name: 'Customize' }));
+    await screen.findByRole('dialog', { name: 'Customize' });
+    fireEvent.click(screen.getByRole('button', { name: 'Close Customize' }));
+    await waitFor(() => expect(document.activeElement).toBe(more));
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });

@@ -1,4 +1,7 @@
 import { useAgents } from '../../contexts/AgentsContext';
+import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
+import { useProjects } from '../../contexts/ProjectsContext';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import type { NavigationView } from '../../types';
 import { activatable } from '../../utils/activatable';
@@ -21,6 +24,9 @@ export function Header({
   onNavigate,
 }: HeaderProps) {
   const agents = useAgents();
+  const isMobile = useIsMobile();
+  const { projectSidebarCollapsed } = useDeviceSettings();
+  const { projects } = useProjects();
   const { productName: configuredProductName } = usePlatformProfile();
   const productName = configuredProductName ?? 'Station';
   const {
@@ -48,7 +54,7 @@ export function Header({
 
   return (
     <header className="app-toolbar" data-tauri-drag-region>
-      {/* Mobile: hamburger + logo (opens sidebar drawer) */}
+      {/* The same control opens the mobile drawer and toggles the desktop rail. */}
       <button
         type="button"
         className="app-toolbar__sidebar-toggle"
@@ -59,7 +65,14 @@ export function Header({
             }),
           )
         }
-        aria-label="Toggle menu"
+        aria-label={
+          isMobile
+            ? 'Toggle menu'
+            : projectSidebarCollapsed
+              ? 'Expand workspace map'
+              : 'Collapse workspace map'
+        }
+        aria-expanded={isMobile ? undefined : !projectSidebarCollapsed}
         aria-controls="mobile-navigation"
       >
         <MenuGlyph />
@@ -111,7 +124,9 @@ export function Header({
                   { role: 'link' },
                 )}
               >
-                {breadcrumb.projectSlug}
+                {projects.find(
+                  (project) => project.slug === breadcrumb.projectSlug,
+                )?.name ?? breadcrumb.projectSlug}
               </span>
               {breadcrumb.layoutSlug && (
                 <>

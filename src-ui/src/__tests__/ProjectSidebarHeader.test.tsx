@@ -76,11 +76,10 @@ describe('ProjectSidebarHeader', () => {
       />,
     );
 
-    const expand = screen.getByRole('button', { name: 'Expand sidebar' });
-    expect(expand.getAttribute('title')).toBe('Expand sidebar');
-    fireEvent.click(expand);
-    expect(expanded.onToggleCollapse).toHaveBeenCalledTimes(2);
-    expect(expanded.onGoHome).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('button', { name: 'Expand sidebar' })).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Station v0.1.2 home' }),
+    ).toBeTruthy();
   });
 
   test('keeps an installed channel out of the wordmark and visible as a badge', () => {

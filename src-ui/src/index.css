@@ -1184,7 +1184,17 @@ button:hover {
 
 /* Mobile: hamburger + logo in toolbar */
 .app-toolbar__sidebar-toggle {
-  display: none;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: var(--k-space-6);
+  height: var(--k-space-6);
+  border: 0;
+  border-radius: var(--k-radius-control);
+  background: transparent;
+  color: var(--k-text-muted);
+  cursor: pointer;
 }
 .app-toolbar__lockup {
   display: none;

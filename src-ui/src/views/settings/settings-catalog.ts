@@ -512,13 +512,6 @@ const SETTINGS_CATALOG_SOURCE = [
   },
   { id: 'theme', title: 'Theme', section: 'appearance', configKeys: ['theme'] },
   {
-    id: 'sidebar-sections',
-    title: 'Sidebar sections',
-    section: 'appearance',
-    keywords: ['open chats', 'drafts', 'sidebar', 'hide', 'remove'],
-    configKeys: ['sidebarSections'],
-  },
-  {
     id: 'haptic-feedback',
     title: 'Haptic feedback',
     section: 'appearance',

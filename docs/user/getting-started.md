@@ -325,6 +325,15 @@ in the app header. In fullscreen chat, where that header is hidden, Station
 management remains in the chat actions menu. **Projects** has the same add control
 for creating a project, including a short first-project prompt when empty.
 
+The workspace map lists Projects and their named Layouts, followed by your
+personal Boards. Select a project to see its configured views as child rows.
+Use Up/Down inside the view list, or the header's Layout picker, to change
+views. The header's sidebar button collapses the desktop map to a project
+rail; clicking a project icon opens its views without navigating first.
+The compact footer keeps live work, Schedule, Customize and Settings in one
+row, or under Sidebar utilities in the collapsed rail. Conversations and
+composer drafts stay in the chat dock and its inbox (⌘D).
+
 Selecting a project in the sidebar opens its workspace and makes it the default
 for new chats. An existing chat stays with its original project. The chat bar's
 **New chats** value lets you choose another default without leaving the workspace.

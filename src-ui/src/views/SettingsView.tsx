@@ -226,7 +226,6 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
     featureSettings,
     hapticsEnabled,
     developerToolsEnabled,
-    sidebarSections,
     confirmConversationDelete,
     // #2144 decision 2: these five had a device-settings contract row and no
     // Settings row, so the in-chat gear was the only place to change them.
@@ -1255,42 +1254,6 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                     <PageRow
                       {...settingsRow('theme')}
                       control={<ThemeToggle />}
-                    />
-                    {/* archive#3314: the restore path for a section removed via the
-                  sidebar's own × affordance. */}
-                    <PageRow
-                      {...settingsRow('sidebar-sections')}
-                      description="Show the Open chats and Drafts sections in the sidebar."
-                      control={
-                        <div className="settings__toggle-column">
-                          <div className="settings__toggle-line">
-                            <Toggle
-                              checked={!sidebarSections.openChatsHidden}
-                              onChange={(checked) =>
-                                setDeviceSetting('sidebarSections', {
-                                  ...sidebarSections,
-                                  openChatsHidden: !checked,
-                                })
-                              }
-                              label="Open chats in sidebar"
-                            />
-                            <span aria-hidden="true">Open chats</span>
-                          </div>
-                          <div className="settings__toggle-line">
-                            <Toggle
-                              checked={!sidebarSections.draftsHidden}
-                              onChange={(checked) =>
-                                setDeviceSetting('sidebarSections', {
-                                  ...sidebarSections,
-                                  draftsHidden: !checked,
-                                })
-                              }
-                              label="Drafts in sidebar"
-                            />
-                            <span aria-hidden="true">Drafts</span>
-                          </div>
-                        </div>
-                      }
                     />
                     {isMobile && (
                       <PageRow

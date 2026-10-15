@@ -45,7 +45,7 @@ export function ProjectSidebarHeader({
           )}
         </span>
       </button>
-      {!isMobile && (
+      {!isMobile && !collapsed && (
         <button
           type="button"
           className="sidebar__collapse-button"
