@@ -1,0 +1,7 @@
+{
+  "revision": "a687e68a80fc4627d228d46539ac3dd77566113f",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Re-reviewed the UsageAggregator delta: optional Agent reported/estimated cost markers preserve measured zero without changing retained observation totals, provider scopes, relay joins or authority. The monitoring paragraph remains accurate; no broader architecture claim changed.","inputs":["docs/architecture.md","src-server/analytics/usage-aggregator-state.ts"]}
+  ]
+}
