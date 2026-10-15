@@ -221,12 +221,12 @@ function progress() {
 }
 
 /** `task_updated` completed, then `task_notification` with the result. */
-function settles(summary: string) {
+function settles(summary: string, item = runningChild) {
   const identity = {
-    parent: runningChild.parent,
-    title: runningChild.title,
-    kindLabel: runningChild.kindLabel,
-    transcript: runningChild.transcript,
+    parent: item.parent,
+    title: item.title,
+    kindLabel: item.kindLabel,
+    transcript: item.transcript,
     backgrounded: true,
     depth: 1,
     startedAt: STARTED_AT,
@@ -236,7 +236,7 @@ function settles(summary: string) {
       kind: 'settle',
       producer: 'engine-subagent',
       reporterThreadId: THREAD,
-      childId: 'a1b2c3',
+      childId: item.childId,
       status: 'completed',
       identity: { ...identity, endedAt: ENDED_AT },
     }),
@@ -244,13 +244,13 @@ function settles(summary: string) {
       kind: 'settle',
       producer: 'engine-subagent',
       reporterThreadId: THREAD,
-      childId: 'a1b2c3',
+      childId: item.childId,
       status: 'completed',
       result: {
         summary,
         handle: {
           kind: 'transcript-file',
-          path: '/tmp/claude/tasks/a1b2c3.output',
+          path: `/tmp/claude/tasks/${item.childId}.output`,
         },
       },
       usage: { totalTokens: 48_210, toolUses: 37, durationMs: 1_024_000 },
@@ -376,6 +376,11 @@ describe('subagent transcript cards', () => {
         childId,
         parent: { toolCallId: call, turnId },
         title: `Review ${index}`,
+        transcript: {
+          kind: 'claude-subagent',
+          sessionId: SESSION_ID,
+          agentId: childId,
+        },
       };
       return [
         runtimeEvent(STARTED_AT, {
@@ -392,14 +397,16 @@ describe('subagent transcript cards', () => {
           reporterThreadId: THREAD,
           running: [item],
         }),
-        childWork(ENDED_AT, {
-          kind: 'settle',
-          producer: 'engine-subagent',
-          reporterThreadId: THREAD,
-          childId,
-          status: 'completed',
-          result: { summary: `Result ${index}` },
+        runtimeEvent(STARTED_AT, {
+          method: 'tool.completed',
+          turnId,
+          itemId: call,
+          toolCallId: call,
+          toolName: 'Agent',
+          status: 'success',
+          output: 'Async agent launched successfully.',
         }),
+        ...settles(`Result ${index}`, item),
       ];
     }).flat();
     windowEvents.current.unshift(
