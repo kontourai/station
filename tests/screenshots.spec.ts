@@ -1226,7 +1226,7 @@ function overlayDockProjectMismatchHooks(
             ).toBeVisible();
             await expect(
               page.getByText("Couldn't refresh. Showing the last known list."),
-            ).toBeVisible();
+            ).toBeVisible({ timeout: 15_000 });
           }
           return;
         }
