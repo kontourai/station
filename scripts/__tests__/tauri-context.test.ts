@@ -202,6 +202,8 @@ describe('tauri context', () => {
     'settles active owned probes before exiting on %s',
     async (signal) => {
       const directory = makeTempDir('station-tauri-cancelled-');
+      // Resolved before spawning: a failing `ps` must not strand the child.
+      const ownGroup = processGroupOf(process.pid);
       const child = spawn(
         process.execPath,
         [
@@ -233,7 +235,6 @@ describe('tauri context', () => {
       });
       const tools = ['rustc', 'cargo', 'rustup'];
       const pids: number[] = [];
-      const ownGroup = processGroupOf(process.pid);
       try {
         for (const tool of tools) {
           pids.push(
