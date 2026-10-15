@@ -157,6 +157,27 @@ async function seedRoutes(
         }),
       ),
     ),
+    page.route('**/api/orchestration/sessions/read-model', (route) =>
+      route.fulfill(
+        json({
+          success: true,
+          data: executionRequests.map((request) => ({
+            threadId: request.conversationId,
+            conversationId: request.conversationId,
+            provider: 'claude',
+            model: 'claude-sonnet-4-20250514',
+            assignedAgentSlug: 'claude',
+            status: 'running',
+            lifecycleState: 'running',
+            createdAt: '2026-04-12T00:00:00Z',
+            updatedAt: '2026-04-12T00:00:00Z',
+            isLoaded: true,
+            isPersisted: true,
+            eventCount: 1,
+          })),
+        }),
+      ),
+    ),
     page.route('**/api/orchestration/chat', async (route) => {
       const request = route.request().postDataJSON() as Record<string, unknown>;
       executionRequests.push(request);
@@ -436,6 +457,8 @@ for (const [label, viewport] of [
     await expect(
       page.getByRole('button', { name: 'Send', exact: true }),
     ).toBeVisible();
+    const stopAfter = await stop.boundingBox();
+    expect(stopAfter!.x).toBeCloseTo(stopBefore!.x, 0);
     await expect(
       page.getByRole('button', { name: 'Send mode: Queue' }),
     ).toBeVisible();
@@ -450,8 +473,6 @@ for (const [label, viewport] of [
     await evidence(page, testInfo, `running-turn-steer-${label}.png`);
     // Horizontally: at 390px a running turn's full row (Clear, Send, Queue,
     // Stop) wraps onto a second line, which is a separate, existing limit.
-    const stopAfter = await stop.boundingBox();
-    expect(stopAfter!.x).toBeCloseTo(stopBefore!.x, 0);
     await textarea.fill('');
 
     // Attach is not disabled by the running turn; a file joins the draft and
