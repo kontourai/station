@@ -522,7 +522,7 @@ function TaskWorkspaceContent({
         <p className="task-room-hint">
           The shared plan for this Task. Changes save automatically.
         </p>
-        <TaskRoomEditorPane taskId={taskId} />
+        <TaskRoomEditorPane taskId={taskId} startInPreview />
       </div>
       <div
         className="task-room-panel"

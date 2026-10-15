@@ -79,6 +79,13 @@ export function ProjectTaskRoomConversation({
   const [reply, setReply] = useState('');
   const [attachBrief, setAttachBrief] = useState(true);
   const [notice, setNotice] = useState('');
+  const openRun = async (sessionId: string) => {
+    setNotice('');
+    if (!(await openChatsStore.openConversation(sessionId)))
+      setNotice(
+        'This run could not be opened. Try again when the chat dock is ready.',
+      );
+  };
   const [uncertain, setUncertain] = useState(false);
   const keep = useCreateTaskReferenceMutation();
   const { DiscardModal, guard } = useUnsavedGuard(!!reply);
@@ -264,9 +271,7 @@ export function ProjectTaskRoomConversation({
               </Button>
               <Button
                 size="sm"
-                onClick={() =>
-                  openChatsStore.focus({ sessionId: execution.sessionId })
-                }
+                onClick={() => void openRun(execution.sessionId)}
               >
                 Open full run
               </Button>
@@ -315,9 +320,7 @@ export function ProjectTaskRoomConversation({
             <span>is {participant.work.workState}</span>
             <Button
               size="sm"
-              onClick={() =>
-                openChatsStore.focus({ sessionId: participant.work.sessionId })
-              }
+              onClick={() => void openRun(participant.work.sessionId)}
             >
               Watch
             </Button>

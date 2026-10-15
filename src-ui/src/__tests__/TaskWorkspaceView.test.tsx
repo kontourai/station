@@ -466,6 +466,7 @@ describe('TaskWorkspaceView', () => {
     ).toBe('true');
     expect(screen.queryByRole('textbox', { name: 'Task brief' })).toBeNull();
     fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit brief' }));
     const editor = screen.getByRole('textbox', { name: 'Task brief' });
     fireEvent.change(editor, { target: { value: '# Goal\nA revised room' } });
     fireEvent.click(screen.getByRole('tab', { name: 'Chat' }));

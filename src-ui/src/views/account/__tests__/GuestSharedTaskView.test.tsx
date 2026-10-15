@@ -94,7 +94,7 @@ test('opens only the clicked shared Task human history and document', async () =
           project: { id: 'project-a', slug: 'alpha' },
           task: { id: taskId, createdAt: '2026-09-20T00:00:00.000Z' },
           revision: 'revision-1',
-          text: '<script>not markup</script>\nVisible document',
+          text: '## Shared goal\n\nVisible document\n\n<script>not markup</script>',
         });
       return new Response(null, { status: 500 });
     }),
@@ -104,7 +104,11 @@ test('opens only the clicked shared Task human history and document', async () =
     await screen.findByRole('button', { name: 'Read shared Task' }),
   );
   expect(await screen.findByText('Visible message')).toBeTruthy();
-  expect(screen.getByText(/<script>not markup<\/script>/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
+  expect(
+    await screen.findByRole('heading', { name: 'Shared goal' }),
+  ).toBeTruthy();
+  expect(screen.getByText('Visible document')).toBeTruthy();
   expect(document.querySelector('script')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   await waitFor(() =>

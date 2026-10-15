@@ -156,6 +156,18 @@ beforeEach(() => {
 });
 
 describe('TaskRoomEditorPane', () => {
+  test('the Brief display renders Markdown and explicitly enters the same live editor', async () => {
+    await import('../components/chat/MarkdownRenderer');
+    mocks.document.data.text = '## Goal\nA useful shared plan';
+    render(<TaskRoomEditorPane taskId="task-1" startInPreview />);
+    expect(await screen.findByRole('heading', { name: 'Goal' })).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: 'Task brief' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit brief' }));
+    expect((editor() as HTMLTextAreaElement).value).toBe(
+      mocks.document.data.text,
+    );
+  });
+
   test('autosaves without a Save gesture and retains typing during an in-flight commit', async () => {
     let settle!: (value: unknown) => void;
     mocks.plan.mockResolvedValue(planned());

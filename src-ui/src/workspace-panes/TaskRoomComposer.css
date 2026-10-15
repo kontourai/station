@@ -91,11 +91,6 @@
 .task-room-composer > fieldset {
   grid-column: 1 / -1;
 }
-.task-room-composer > .button:last-of-type {
-  grid-column: 2;
-  grid-row: 4;
-  align-self: center;
-}
 .task-room-composer > [role="status"],
 .task-room-composer > [role="alert"] {
   grid-column: 1 / -1;

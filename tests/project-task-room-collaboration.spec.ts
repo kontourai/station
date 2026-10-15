@@ -428,6 +428,12 @@ test.describe
           owner.getByRole('tab', { name: 'Brief', exact: true }).click(),
           peer.getByRole('tab', { name: 'Brief', exact: true }).click(),
         ]);
+        await Promise.all([
+          owner
+            .getByRole('button', { name: 'Edit brief', exact: true })
+            .click(),
+          peer.getByRole('button', { name: 'Edit brief', exact: true }).click(),
+        ]);
         const ownerDocument = owner.getByRole('textbox', {
           name: 'Task brief',
         });
@@ -702,6 +708,9 @@ test.describe
           agentEdit.runId,
         );
         await owner.getByRole('tab', { name: 'Brief', exact: true }).click();
+        await owner
+          .getByRole('button', { name: 'Edit brief', exact: true })
+          .click();
         await expect(
           owner.getByRole('textbox', { name: 'Task brief' }),
         ).toHaveValue(agentText);

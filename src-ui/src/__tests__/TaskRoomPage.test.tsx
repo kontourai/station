@@ -16,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   answers: [] as unknown[],
   outputs: [] as unknown[],
+  brief:
+    '# Goal\nShip a calm chat room.\n\n## Done when\n- [x] Chat comes first\n- [ ] Answers return here',
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   getJson: mocks.get,
@@ -30,7 +32,7 @@ vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
   useProjectTaskRoomDocumentQuery: () => ({
     data: {
       kind: 'snapshot',
-      text: '# Goal\nShip a calm chat room.\n\n## Done when\n- [x] Chat comes first\n- [ ] Answers return here',
+      text: mocks.brief,
       revision: 'r1',
     },
   }),
@@ -92,6 +94,8 @@ function mount(children: React.ReactNode) {
   );
 }
 beforeEach(() => {
+  mocks.brief =
+    '# Goal\nShip a calm chat room.\n\n## Done when\n- [x] Chat comes first\n- [ ] Answers return here';
   mocks.answers = [];
   mocks.outputs = [];
   mocks.rename
@@ -208,4 +212,31 @@ test('results presents kept answers, file outputs and pull requests in a single 
   expect(within(list).getByText('Kept investigation')).toBeTruthy();
   expect(within(list).getByText('Design.md')).toBeTruthy();
   expect(within(list).getByText('team/app #41')).toBeTruthy();
+});
+
+test('rail uses the named sections and falls back to description or a readable excerpt', () => {
+  mocks.brief =
+    '## Notes\n- [ ] Not a completion item\n\n## Done when\n- [x] The accepted goal is met';
+  const view = mount(
+    <TaskRoomRail
+      task={{ ...task, description: 'Description goal' }}
+      projectSlug="project"
+      onBrief={vi.fn()}
+      onResults={vi.fn()}
+    />,
+  );
+  expect(screen.getByText('Description goal')).toBeTruthy();
+  expect(screen.queryByText('Not a completion item')).toBeNull();
+  expect(screen.getByText('The accepted goal is met')).toBeTruthy();
+  view.unmount();
+  mocks.brief = 'An unstructured plan still has useful context.';
+  mount(
+    <TaskRoomRail
+      task={task}
+      projectSlug="project"
+      onBrief={vi.fn()}
+      onResults={vi.fn()}
+    />,
+  );
+  expect(screen.getAllByText(mocks.brief).length).toBeGreaterThan(0);
 });

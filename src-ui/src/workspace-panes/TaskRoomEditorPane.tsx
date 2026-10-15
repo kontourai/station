@@ -12,6 +12,8 @@ import {
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { Button } from '../components/Button';
+import { LazyMarkdown } from '../components/chat/LazyMarkdown';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import {
   browserEpochMs,
@@ -42,8 +44,10 @@ export function TaskRoomEditorPane({
   taskId,
   runtime,
   instanceId,
+  startInPreview = false,
 }: {
   taskId: string;
+  startInPreview?: boolean;
   runtime?: WorkspacePaneHostRuntime;
   instanceId?: WorkspacePaneInstanceId;
 }) {
@@ -55,6 +59,7 @@ export function TaskRoomEditorPane({
   const plan = usePlanProjectTaskRoomEditMutation(taskId);
   const batch = useSubmitProjectTaskRoomBatchMutation(taskId);
   const [text, setText] = useState('');
+  const [editing, setEditing] = useState(!startInPreview);
   const [authoritativeText, setAuthoritativeText] = useState('');
   const [appliedDocument, setAppliedDocument] =
     useState<AuthoritativeRoomDocument>();
@@ -674,82 +679,105 @@ export function TaskRoomEditorPane({
       {document.isError ? (
         <p role="alert">The latest shared document read failed.</p>
       ) : null}
-      <label htmlFor={`task-room-editor-${id}`}>Task brief</label>
-      <textarea
-        id={`task-room-editor-${id}`}
-        ref={editorRef}
-        data-station-performance-surface="task-editor"
-        data-station-task-id={taskId}
-        data-station-working-revision={documentRevision}
-        value={text}
-        onChange={(event) => {
-          const enteredEpochMs = browserEpochMs();
-          const nextText = event.currentTarget.value;
-          setText(nextText);
-          setRejection(undefined);
-          setSettlement(undefined);
-          stopWatching();
-          if (shared)
-            void shared
-              .command({ command: 'typing', active: true })
-              .catch(() => {});
-          publishCursor({
-            anchor: event.currentTarget.selectionStart,
-            focus: event.currentTarget.selectionEnd,
-          });
-          if (
-            documentRevision &&
-            (import.meta.env.MODE === 'test' ||
-              import.meta.env.VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE ===
-                '1')
-          )
-            emitTaskInputPerformanceMark({
-              taskId,
-              workingRevision: documentRevision,
-              text: nextText,
-              enteredEpochMs,
-              exitedEpochMs: browserEpochMs(),
+      {startInPreview && (
+        <Button
+          onClick={() => {
+            if (editing) void saveLatest.current();
+            setEditing(!editing);
+          }}
+        >
+          {editing ? 'View brief' : 'Edit brief'}
+        </Button>
+      )}
+      {!editing && (
+        <div className="task-room-brief-rendered">
+          {text ? (
+            <LazyMarkdown>{text}</LazyMarkdown>
+          ) : (
+            <p>
+              Add a goal and a Done when checklist to give this Task direction.
+            </p>
+          )}
+        </div>
+      )}
+      <div hidden={!editing}>
+        <label htmlFor={`task-room-editor-${id}`}>Task brief</label>
+        <textarea
+          id={`task-room-editor-${id}`}
+          ref={editorRef}
+          data-station-performance-surface="task-editor"
+          data-station-task-id={taskId}
+          data-station-working-revision={documentRevision}
+          value={text}
+          onChange={(event) => {
+            const enteredEpochMs = browserEpochMs();
+            const nextText = event.currentTarget.value;
+            setText(nextText);
+            setRejection(undefined);
+            setSettlement(undefined);
+            stopWatching();
+            if (shared)
+              void shared
+                .command({ command: 'typing', active: true })
+                .catch(() => {});
+            publishCursor({
+              anchor: event.currentTarget.selectionStart,
+              focus: event.currentTarget.selectionEnd,
             });
-        }}
-        onBlur={() => void saveLatest.current()}
-        onPointerDown={stopWatching}
-        onKeyDown={stopWatching}
-        onSelect={(event) =>
-          publishCursor({
-            anchor: event.currentTarget.selectionStart,
-            focus: event.currentTarget.selectionEnd,
-          })
-        }
-        readOnly={!writable}
-        aria-describedby={`task-room-editor-status-${id}`}
-      />
-      <aside aria-label="Remote selections">
-        {remoteCursors.length ? (
-          <ul>
-            {remoteCursors.map((cursor) => {
-              const participant = shared?.live?.participants.find(
-                (candidate) => candidate.actor.actorId === cursor.actorId,
-              );
-              return (
-                <li key={cursor.actorId} data-actor-id={cursor.actorId}>
-                  {participant?.actor.kind === 'agent' ? 'Agent' : 'Human'}{' '}
-                  {participant?.actor.label ?? 'participant'}: selection{' '}
-                  {cursor.selection.anchor}–{cursor.selection.focus}
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <p>Remote selections appear here.</p>
-        )}
-      </aside>
-      <button
-        type="button"
-        onClick={() => void document.refetch()}
-        disabled={document.isFetching}
-      >
-        Resync document
-      </button>
+            if (
+              documentRevision &&
+              (import.meta.env.MODE === 'test' ||
+                import.meta.env
+                  .VITE_STATION_INTERACTIVE_WORKSPACE_PERFORMANCE === '1')
+            )
+              emitTaskInputPerformanceMark({
+                taskId,
+                workingRevision: documentRevision,
+                text: nextText,
+                enteredEpochMs,
+                exitedEpochMs: browserEpochMs(),
+              });
+          }}
+          onBlur={() => void saveLatest.current()}
+          onPointerDown={stopWatching}
+          onKeyDown={stopWatching}
+          onSelect={(event) =>
+            publishCursor({
+              anchor: event.currentTarget.selectionStart,
+              focus: event.currentTarget.selectionEnd,
+            })
+          }
+          readOnly={!writable}
+          aria-describedby={`task-room-editor-status-${id}`}
+        />
+        <aside aria-label="Remote selections">
+          {remoteCursors.length ? (
+            <ul>
+              {remoteCursors.map((cursor) => {
+                const participant = shared?.live?.participants.find(
+                  (candidate) => candidate.actor.actorId === cursor.actorId,
+                );
+                return (
+                  <li key={cursor.actorId} data-actor-id={cursor.actorId}>
+                    {participant?.actor.kind === 'agent' ? 'Agent' : 'Human'}{' '}
+                    {participant?.actor.label ?? 'participant'}: selection{' '}
+                    {cursor.selection.anchor}–{cursor.selection.focus}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p>Remote selections appear here.</p>
+          )}
+        </aside>
+        <button
+          type="button"
+          onClick={() => void document.refetch()}
+          disabled={document.isFetching}
+        >
+          Resync document
+        </button>
+      </div>
       {rejection ? (
         <button
           type="button"

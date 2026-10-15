@@ -239,9 +239,18 @@ function useResults(task: TaskRecord) {
 export function TaskRoomResults({ task }: { task: TaskRecord }) {
   const { answers, outputs, prs, unavailable } = useResults(task);
   const [selected, setSelected] = useState<string>();
+  const [runNotice, setRunNotice] = useState('');
+  const openRun = async (sessionId: string) => {
+    setRunNotice('');
+    if (!(await openChatsStore.openConversation(sessionId)))
+      setRunNotice(
+        'This run could not be opened. Try again when the chat dock is ready.',
+      );
+  };
   return (
     <section aria-label="Task results" className="task-room-results">
       <h2>Results</h2>
+      {runNotice && <p role="alert">{runNotice}</p>}
       <p className="task-room-hint">
         Answers, files, and pull requests kept for this Task.
       </p>
@@ -269,11 +278,7 @@ export function TaskRoomResults({ task }: { task: TaskRecord }) {
                   ?.replace(/^#+\s*/, '')
                   .slice(0, 120) || 'Kept answer'}
               </Button>
-              <Button
-                onClick={() =>
-                  openChatsStore.focus({ sessionId: answer.sessionId })
-                }
-              >
+              <Button onClick={() => void openRun(answer.sessionId)}>
                 Open full run
               </Button>
               {selected === answer.id && (
@@ -304,11 +309,7 @@ export function TaskRoomResults({ task }: { task: TaskRecord }) {
                 ? 'Closes Task when all kept PRs merge'
                 : 'Kept on this Task'}
             </span>
-            <Button
-              onClick={() =>
-                openChatsStore.focus({ sessionId: pr.provenance.sessionId })
-              }
-            >
+            <Button onClick={() => void openRun(pr.provenance.sessionId)}>
               Open full run
             </Button>
           </li>
@@ -343,17 +344,24 @@ export function TaskRoomRail({
     document.data?.kind === 'snapshot' || document.data?.kind === 'delta'
       ? document.data.text
       : '';
-  const lines = text.split('\n');
-  const goalStart = lines.findIndex((line) =>
-    /^#{1,6}\s+(goal|objective)\s*$/i.test(line),
-  );
-  const goalLines = goalStart >= 0 ? lines.slice(goalStart + 1) : lines;
-  const end = goalLines.findIndex((line) => /^#|^\s*[-*] \[[ x]\]/i.test(line));
-  const goal = goalLines
-    .slice(0, end < 0 ? undefined : end)
-    .join('\n')
-    .trim();
-  const checklist = lines.flatMap((line) => {
+  const section = (name: string) => {
+    const lines = text.split('\n');
+    const start = lines.findIndex((line) =>
+      new RegExp(`^#{1,6}\\s+${name}\\s*#*\\s*$`, 'i').test(line),
+    );
+    if (start < 0) return undefined;
+    const following = lines.slice(start + 1);
+    const end = following.findIndex((line) => /^#{1,6}\s/.test(line));
+    return following
+      .slice(0, end < 0 ? undefined : end)
+      .join('\n')
+      .trim();
+  };
+  const goalSection = section('Goal');
+  const doneSection = section('Done when');
+  const excerpt = text.trim().slice(0, 800);
+  const goal = goalSection || task.description?.trim() || excerpt;
+  const checklist = (doneSection ?? '').split('\n').flatMap((line) => {
     const match = /^\s*[-*] \[([ x])\] (.+)$/i.exec(line);
     return match
       ? [{ done: match[1].toLowerCase() === 'x', text: match[2] }]
@@ -388,10 +396,12 @@ export function TaskRoomRail({
                 >
                   {item.done ? '☑' : '☐'}
                 </span>
-                {item.text}
+                <LazyMarkdown>{item.text}</LazyMarkdown>
               </li>
             ))}
           </ul>
+        ) : doneSection || (goalSection === undefined && excerpt) ? (
+          <LazyMarkdown>{doneSection || excerpt}</LazyMarkdown>
         ) : (
           <p>Add a checklist in the brief.</p>
         )}

@@ -8,6 +8,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
+import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
 import { Empty, SkeletonList } from '../../components/state';
 import { RoomAvatar } from '../../workspace-panes/ProjectTaskRoomPresence';
 import {
@@ -365,7 +366,7 @@ export function GuestSharedTaskView({
               hidden={tab !== 'Brief'}
             >
               <h6>Shared document</h6>
-              <pre>{document.data.text}</pre>
+              <LazyMarkdown skipHtml>{document.data.text}</LazyMarkdown>
             </div>
           ) : document.data ? (
             <p role="status">{documentState(document.data.kind)}</p>

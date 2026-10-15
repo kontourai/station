@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   stream: 'live',
   continue: vi.fn(),
   keep: vi.fn(),
-  focus: vi.fn(),
+  openConversation: vi.fn().mockResolvedValue(true),
   stop: vi.fn(),
   running: false,
 }));
@@ -38,7 +38,7 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   }),
 }));
 vi.mock('../contexts/open-chats-store', () => ({
-  openChatsStore: { focus: mocks.focus },
+  openChatsStore: { openConversation: mocks.openConversation },
 }));
 vi.mock('../components/chat/LazyMarkdown', () => ({
   LazyMarkdown: ({ children }: { children: string }) => <div>{children}</div>,
@@ -127,7 +127,7 @@ beforeEach(() => {
   mocks.running = false;
   mocks.keep.mockReset().mockResolvedValue({});
   mocks.continue.mockReset().mockResolvedValue({ sessionId: 'session-1' });
-  mocks.focus.mockReset();
+  mocks.openConversation.mockReset().mockResolvedValue(true);
   mocks.stop.mockReset().mockResolvedValue({});
 });
 test('groups consecutive human messages and keeps names, avatars and times', () => {
@@ -143,7 +143,7 @@ test('agent answers open in the dock, can be kept, and replies continue the exac
   mount();
   expect(screen.getAllByText('Answer in markdown')).toHaveLength(1);
   fireEvent.click(screen.getByRole('button', { name: 'Open full run' }));
-  expect(mocks.focus).toHaveBeenCalledWith({ sessionId: 'session-1' });
+  expect(mocks.openConversation).toHaveBeenCalledWith('session-1');
   fireEvent.click(screen.getByRole('button', { name: 'Keep' }));
   await waitFor(() =>
     expect(mocks.keep).toHaveBeenCalledWith({
@@ -178,7 +178,7 @@ test('running agents have one inline status with functional Watch and Stop', asy
   mount();
   expect(screen.getAllByText('is working')).toHaveLength(1);
   fireEvent.click(screen.getByRole('button', { name: 'Watch' }));
-  expect(mocks.focus).toHaveBeenCalledWith({ sessionId: 'session-1' });
+  expect(mocks.openConversation).toHaveBeenCalledWith('session-1');
   fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
   await waitFor(() =>
     expect(mocks.stop).toHaveBeenCalledWith(
