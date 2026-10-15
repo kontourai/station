@@ -187,6 +187,8 @@ export function ChatStatusPill({
       : (shown?.label ?? '');
   useEffect(() => {
     if (status?.action === 'resync') recoveryPending.current = true;
+    // Blocked repair ends the attempt: a later reconnect is not its completion.
+    else if (status?.kind === 'blocked') recoveryPending.current = false;
     const completed =
       recoveryPending.current &&
       status?.action !== 'resync' &&
