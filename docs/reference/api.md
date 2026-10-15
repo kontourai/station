@@ -602,6 +602,14 @@ augmented with `builtin`, `usedBy`, recorded `connected` status, known tool
 names/descriptions, and `renderAllowed`. This is not a complete raw definition
 or proof that every listed tool can currently execute.
 
+`POST /integrations/:id/reconnect` returns a redacted definition with the latest
+`probe`. Check `probe.ok` independently of HTTP success. Successful discovery
+includes up to 200 `probe.tools` entries with raw `name`, optional `description`
+(up to 2,000 characters), and optional `group` (up to 100 characters). Legacy
+`probe.toolNames` remains available. Package-owned and personal-account probes
+can return this metadata without persisting it to a local integration definition.
+Discovery metadata is a browsing snapshot, not execution authority.
+
 ### Create Integration
 
 `POST /integrations` accepts the integration definition schema and returns

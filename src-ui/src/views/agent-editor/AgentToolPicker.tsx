@@ -3,7 +3,6 @@ import {
   useReconnectIntegrationMutation,
 } from '@kontourai/station-sdk';
 import { originalMcpToolName } from '@kontourai/station-shared/mcp-tool-selection';
-import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { Checkbox } from '../../components/Checkbox';
@@ -34,22 +33,14 @@ export function AgentToolPicker({
   const [source, setSource] = useState('');
   const [category, setCategory] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const queryClient = useQueryClient();
-  const discoveriesKey = ['integration-tool-discoveries'];
-  const { data: discoveries = {} } = useQuery<
-    Record<string, { source?: string; probe: Tool['probe'] }>
-  >({ queryKey: discoveriesKey, queryFn: skipToken });
+  const [discoveries, setDiscoveries] = useState<
+    Record<string, { listing: string; probe: Tool['probe'] }>
+  >({});
   const sourcesWithDiscovery = availableTools.map((integration): Tool => {
     const discovery = discoveries[integration.id];
-    if (!discovery || discovery.source !== integration.source)
+    if (!discovery || discovery.listing !== JSON.stringify(integration))
       return integration;
     const probe = discovery.probe;
-    if (
-      integration.probe &&
-      probe &&
-      integration.probe.checkedAt > probe.checkedAt
-    )
-      return integration;
     return {
       ...integration,
       probe,
@@ -247,6 +238,12 @@ export function AgentToolPicker({
           ).length;
           const following =
             added && (patterns.includes('*') || patterns.includes(`${id}_*`));
+          const missingSelections = patterns.filter(
+            (key) =>
+              key.startsWith(`${id}_`) &&
+              !key.includes('*') &&
+              !allTools.some((tool) => getIntegrationToolKey(id, tool) === key),
+          );
           const label = integration.displayName || integration.name || id;
           const open = expanded[id] ?? (!!query || !!category || !!source);
           return (
@@ -287,6 +284,12 @@ export function AgentToolPicker({
               </div>
               {integration.description && (
                 <p className="editor-hint">{integration.description}</p>
+              )}
+              {added && missingSelections.length > 0 && (
+                <p className="editor-hint">
+                  {missingSelections.length} saved selection(s) are not in this
+                  catalog. Refresh tools to check them.
+                </p>
               )}
               {disabled && (
                 <p className="editor-hint" role="status">
@@ -383,16 +386,17 @@ export function AgentToolPicker({
                       onClick={() =>
                         refresh.mutate(id, {
                           onSuccess: (result) =>
-                            queryClient.setQueryData<typeof discoveries>(
-                              discoveriesKey,
-                              (current) => ({
-                                ...current,
-                                [id]: {
-                                  source: integration.source,
-                                  probe: result.probe,
-                                },
-                              }),
-                            ),
+                            setDiscoveries((current) => ({
+                              ...current,
+                              [id]: {
+                                listing: JSON.stringify(
+                                  availableTools.find(
+                                    (entry) => entry.id === id,
+                                  ),
+                                ),
+                                probe: result.probe,
+                              },
+                            })),
                         })
                       }
                     >

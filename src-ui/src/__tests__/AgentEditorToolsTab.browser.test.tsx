@@ -344,23 +344,6 @@ test('refresh uses an unpersisted discovery result and reports a failed probe ev
     fireEvent.click(read);
     expect(latest.tools.available).toEqual(['reports_reports_read']);
     expect(picker.getByText('Read quarterly results')).toBeTruthy();
-    fireEvent.click(picker.getByRole('button', { name: 'Done' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Add tools' }));
-    fireEvent.click(
-      within(screen.getByRole('dialog', { name: 'Add tools' })).getByRole(
-        'button',
-        { name: 'Reports' },
-      ),
-    );
-    expect(
-      (
-        within(screen.getByRole('dialog', { name: 'Add tools' })).getByRole(
-          'checkbox',
-          { name: 'Reports read' },
-        ) as HTMLInputElement
-      ).checked,
-    ).toBe(true);
-    picker = within(screen.getByRole('dialog', { name: 'Add tools' }));
     await waitFor(() =>
       expect(
         (
@@ -375,6 +358,15 @@ test('refresh uses an unpersisted discovery result and reports a failed probe ev
       'textContent',
       expect.stringContaining('Operator consent is required'),
     );
+    fireEvent.click(picker.getByRole('button', { name: 'Done' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add tools' }));
+    picker = within(screen.getByRole('dialog', { name: 'Add tools' }));
+    fireEvent.click(picker.getByRole('button', { name: 'Reports' }));
+    expect(picker.queryByRole('checkbox', { name: 'Reports read' })).toBeNull();
+    expect(
+      picker.getByText(/saved selection.*not in this catalog/),
+    ).toBeTruthy();
+    expect(latest.tools.available).toEqual(['reports_reports_read']);
   } finally {
     fetchMock.mockRestore();
     _setApiBase('');
