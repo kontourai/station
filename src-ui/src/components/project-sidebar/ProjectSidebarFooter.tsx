@@ -56,55 +56,65 @@ export function ProjectSidebarFooter({
     navigate(path);
     if (isMobile) onAfterNavigate?.();
   };
+  const utilities = [
+    {
+      key: 'schedule',
+      label: SCHEDULE.label(),
+      icon: destinationIcon('schedule'),
+      current: activeDestination?.id === SCHEDULE.id,
+      onSelect: () => go(SCHEDULE.route),
+    },
+    {
+      key: 'customize',
+      label: 'Customize',
+      icon: destinationIcon('plugins'),
+      current: false,
+      onSelect: () => {
+        closeMore();
+        setCustomizeOpen(true);
+      },
+    },
+    {
+      key: 'settings',
+      label: SETTINGS.label(),
+      icon: <SettingsGlyph />,
+      current: activeDestination?.id === SETTINGS.id,
+      onSelect: () => go(SETTINGS.route),
+    },
+  ];
+  const utilityButtons = utilities.map((action) => (
+    <button
+      key={action.key}
+      ref={action.key === 'customize' ? customizeTriggerRef : undefined}
+      type="button"
+      className={`sidebar__footer-action${action.current ? ' sidebar__footer-action--active' : ''}`}
+      aria-current={action.current ? 'page' : undefined}
+      aria-label={action.label}
+      title={action.label}
+      aria-haspopup={action.key === 'customize' ? 'dialog' : undefined}
+      data-first-run-anchor={
+        action.key === 'customize' ? 'customize' : undefined
+      }
+      onClick={action.onSelect}
+    >
+      {action.icon}
+      {collapsed && (
+        <span className="sidebar__utility-label">{action.label}</span>
+      )}
+    </button>
+  ));
   const controls = (
     <>
       <ProjectSidebarPresenceTray
         onOpenActivity={isMobile ? onAfterNavigate : undefined}
       />
-      <div className="sidebar__footer-actions">
-        <button
-          type="button"
-          className={`sidebar__footer-action${activeDestination?.id === SCHEDULE.id ? ' sidebar__footer-action--active' : ''}`}
-          aria-current={
-            activeDestination?.id === SCHEDULE.id ? 'page' : undefined
-          }
-          aria-label="Schedule"
-          title="Schedule"
-          onClick={() => go(SCHEDULE.route)}
-        >
-          {destinationIcon('schedule')}
-          <span className="sidebar__utility-label">Schedule</span>
-        </button>
-        <button
-          ref={customizeTriggerRef}
-          type="button"
-          className="sidebar__footer-action"
-          aria-label="Customize"
-          title="Customize"
-          aria-haspopup="dialog"
-          data-first-run-anchor="customize"
-          onClick={() => {
-            closeMore();
-            setCustomizeOpen(true);
-          }}
-        >
-          {destinationIcon('plugins')}
-          <span className="sidebar__utility-label">Customize</span>
-        </button>
-        <button
-          type="button"
-          className={`sidebar__footer-action${activeDestination?.id === SETTINGS.id ? ' sidebar__footer-action--active' : ''}`}
-          aria-current={
-            activeDestination?.id === SETTINGS.id ? 'page' : undefined
-          }
-          aria-label="Settings"
-          title="Settings"
-          onClick={() => go(SETTINGS.route)}
-        >
-          <SettingsGlyph />
-          <span className="sidebar__utility-label">Settings</span>
-        </button>
-      </div>
+      {collapsed ? (
+        <nav className="sidebar__utility-menu" aria-label="Sidebar navigation">
+          {utilityButtons}
+        </nav>
+      ) : (
+        <div className="sidebar__footer-actions">{utilityButtons}</div>
+      )}
     </>
   );
   return (
