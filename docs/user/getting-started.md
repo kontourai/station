@@ -289,9 +289,9 @@ first; the controls show what **Start** will use:
   Station makes for the chat; the chip and list say which.
 - **⋯** holds **Use a visual skill**.
 
-**on <host>** opens **Run on a Station** with your message, Project and any explicit
-Station/engine/model/options choice kept.
-For a saved Project execution environment, the control says **on Project default**.
+**Run a task…** opens **Run on a Station** with your message, Project and any explicit
+Station/engine/model/options choice kept. Its tooltip names the current Station
+or saved Project default; this action starts a task rather than moving your chat.
 Choose a Station, worker and model there, then choose **Run task** to start a
 resumable task. Available workers come from that Station; unavailable
 destinations keep their refusal instead of falling back to this computer.

@@ -2,7 +2,7 @@
 
 Status: local implementation and verification, 2026-10-15. This is an execution plan,
 not release qualification. Evidence and comparisons live in
-[the audit report](../strategy/onboarding-20261015/report.html).
+[the round-two audit report](../strategy/onboarding-20261015/round-two.html).
 
 ## Product direction
 
