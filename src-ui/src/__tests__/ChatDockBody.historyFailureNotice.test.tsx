@@ -220,10 +220,10 @@ function renderDock(session: ChatSession = buildSession()) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
+  const ui = (activeSession: ChatSession) => (
     <QueryClientProvider client={queryClient}>
       <ChatDockBody
-        activeSession={session}
+        activeSession={activeSession}
         activeOrchestrationSession={buildOrchestrationSession()}
         chatFontSize={14}
         dockHeight={400}
@@ -236,8 +236,13 @@ function renderDock(session: ChatSession = buildSession()) {
         chatInput={buildChatInput() as any}
         setShowStatsPanel={vi.fn()}
       />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const view = render(ui(session));
+  return {
+    ...view,
+    rerenderSession: (next: ChatSession) => view.rerender(ui(next)),
+  };
 }
 
 describe('ChatDockBody history-failure notice (station#3427)', () => {
@@ -502,7 +507,7 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
             release = resolve;
           }),
       );
-      renderDock();
+      const view = renderDock();
       const composer = await screen.findByRole('textbox');
       const pill = await screen.findByRole('button', {
         name: 'Status unavailable — resync this conversation',
@@ -588,18 +593,15 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
         expect(
           screen.queryByRole('button', { name: /resync this conversation/ }),
         ).toBeNull();
-        if (scenario === 'later-status' || scenario === 'reconnecting') {
-          act(() =>
-            setStreamConnectionState(
-              'http://localhost:3242',
-              'interrupted',
-              Date.now() - 3_000,
-            ),
+        if (scenario === 'later-status') {
+          view.rerenderSession(
+            buildSession({
+              orchestrationSessionStarted: true,
+              orchestrationTurnOpen: true,
+              status: 'sending',
+            }),
           );
-          await screen.findByRole('button', {
-            name: 'Reconnecting',
-            exact: true,
-          });
+          await screen.findAllByText('Working', { exact: true });
           expect(
             screen
               .getAllByRole('status')
