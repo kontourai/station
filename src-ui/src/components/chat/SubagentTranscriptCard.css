@@ -62,6 +62,7 @@
 }
 
 .subagent-card__title {
+  max-width: 100%;
   min-width: 0;
   overflow: hidden;
   font-size: var(--k-text-sm);

@@ -343,7 +343,7 @@ describe('subagent transcript cards', () => {
 
   test.each(capturedCodexEvents.map((events, index) => ({ events, index })))(
     'captured Codex spawn format $index renders a completed card at its spawn position without a tool row',
-    async ({ events }) => {
+    async ({ events, index }) => {
       windowEvents.current = events.map((event, index) => ({
         sequence: index + 1,
         event,
@@ -353,6 +353,9 @@ describe('subagent transcript cards', () => {
       expect(screen.getAllByTestId('subagent-card')).toHaveLength(1);
       expect(within(card).getByText('Completed')).toBeTruthy();
       expect(within(card).getByText('done')).toBeTruthy();
+      expect(
+        within(card).getByText(index === 0 ? '0:33' : '0:14'),
+      ).toBeTruthy();
       const spawnAt = events.findIndex(
         (event) => event.method === 'child-work.updated',
       );
@@ -368,6 +371,127 @@ describe('subagent transcript cards', () => {
       expect(unexpectedRequests).toEqual([]);
     },
   );
+
+  test.each([false, true])(
+    'a same-turn Codex steer keeps one card at the original spawn (queued follow-up: %s)',
+    async (queuedFollowUp) => {
+      const captured = capturedCodexEvents[0];
+      const spawnAt = captured.findIndex(
+        (event) => event.method === 'child-work.updated',
+      );
+      const turnId = '00000000-0000-7000-8000-000000000002';
+      const envelope = {
+        provider: 'codex',
+        threadId: 'thread-codex',
+        createdAt: STARTED_AT,
+      };
+      const events = [
+        {
+          ...envelope,
+          eventId: 'review-start',
+          method: 'turn.started',
+          turnId,
+          prompt: 'Start',
+        },
+        ...captured.slice(0, spawnAt + 1),
+        {
+          ...envelope,
+          eventId: 'review-steer',
+          method: 'turn.started',
+          inputKind: 'steer',
+          turnId,
+          prompt: 'Also check this',
+        },
+        ...captured.slice(spawnAt + 1),
+        ...(queuedFollowUp
+          ? [
+              {
+                ...envelope,
+                eventId: 'queued-start',
+                method: 'turn.started',
+                turnId: 'queued-turn',
+                prompt: 'Queued follow-up',
+              },
+              {
+                ...envelope,
+                eventId: 'queued-answer',
+                method: 'content.text-delta',
+                turnId: 'queued-turn',
+                itemId: 'queued-text',
+                delta: 'Follow-up answered.',
+              },
+              {
+                ...envelope,
+                eventId: 'queued-end',
+                method: 'turn.completed',
+                turnId: 'queued-turn',
+                finishReason: 'stop',
+              },
+            ]
+          : []),
+      ];
+      windowEvents.current = events.map((event, index) => ({
+        sequence: index + 1,
+        event,
+      }));
+      renderTranscript({ ...chatSession(), currentSessionId: 'thread-codex' });
+      await screen.findAllByTestId('subagent-card');
+      const cards = screen.getAllByTestId('subagent-card');
+      expect(cards).toHaveLength(1);
+      const text = document.body.textContent ?? '';
+      expect(text.indexOf(cards[0].textContent ?? '')).toBeLessThan(
+        text.indexOf('Also check this'),
+      );
+      if (queuedFollowUp)
+        expect(screen.getByText('Follow-up answered.')).toBeTruthy();
+    },
+  );
+
+  test('a Codex child spawned after a steer uses the new row and its local text offset', async () => {
+    const captured = capturedCodexEvents[0];
+    const spawnAt = captured.findIndex(
+      (event) => event.method === 'child-work.updated',
+    );
+    const turnId = '00000000-0000-7000-8000-000000000002';
+    const envelope = {
+      provider: 'codex',
+      threadId: 'thread-codex',
+      createdAt: STARTED_AT,
+      turnId,
+    };
+    windowEvents.current = [
+      {
+        ...envelope,
+        eventId: 'start',
+        method: 'turn.started',
+        prompt: 'Start',
+      },
+      ...captured.slice(0, spawnAt),
+      {
+        ...envelope,
+        eventId: 'steer',
+        method: 'turn.started',
+        inputKind: 'steer',
+        prompt: 'Change direction',
+      },
+      {
+        ...envelope,
+        eventId: 'before-spawn',
+        method: 'content.text-delta',
+        itemId: 'steered-text',
+        delta: 'New plan.',
+      },
+      ...captured.slice(spawnAt),
+    ].map((event, index) => ({ sequence: index + 1, event }));
+    renderTranscript({ ...chatSession(), currentSessionId: 'thread-codex' });
+    const card = await findCard();
+    const row = card.closest('.chat-message-anchor');
+    expect(row?.textContent).toContain('New plan.');
+    expect(row?.textContent?.indexOf(card.textContent ?? '')).toBe(
+      (row?.textContent?.indexOf('New plan.') ?? -1) + 'New plan.'.length,
+    );
+    expect(screen.getAllByTestId('subagent-card')).toHaveLength(1);
+  });
 
   test('a Codex spawn follows the native tool row before it, even when no text separates them', async () => {
     const captured = capturedCodexEvents[0];

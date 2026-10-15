@@ -1,4 +1,5 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { observedAssistantMessageId } from '@kontourai/station-shared/runtime-event-projection';
 import React, {
   useCallback,
   useEffect,
@@ -1251,7 +1252,18 @@ function ChatMessageListComponent({
         <TranscriptTurnContext.Provider
           value={
             row.message.role === 'assistant'
-              ? { threadId: row.message.sessionId, turnId: row.message.turnId }
+              ? {
+                  threadId: row.message.sessionId,
+                  turnId: row.message.turnId,
+                  messageId: row.message.id,
+                  firstRow: !transcriptRows.some(
+                    (candidate) =>
+                      candidate.index < row.index &&
+                      candidate.message.role === 'assistant' &&
+                      candidate.message.sessionId === row.message.sessionId &&
+                      candidate.message.turnId === row.message.turnId,
+                  ),
+                }
               : undefined
           }
         >
@@ -1476,6 +1488,16 @@ function ChatMessageListComponent({
                       value={{
                         threadId: activeSession.currentSessionId,
                         turnId: activeSession.openTurnId,
+                        messageId:
+                          observedAssistantMessageId(
+                            approvalEvents?.findLast(
+                              ({ event }) =>
+                                event.method === 'turn.started' &&
+                                event.threadId ===
+                                  activeSession.currentSessionId &&
+                                event.turnId === activeSession.openTurnId,
+                            )?.event.eventId,
+                          ) ?? undefined,
                       }}
                     >
                       <ActiveStreamingMessage

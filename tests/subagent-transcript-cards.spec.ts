@@ -71,6 +71,35 @@ async function emit(page: Page, event: Record<string, unknown>) {
   );
 }
 
+async function expectDockFits(page: Page) {
+  for (const selector of [
+    '.chat-dock',
+    '.chat-dock__conversation-surface',
+    '.chat-dock__content-area',
+  ]) {
+    const surface = page.locator(selector);
+    await expect(surface).toBeVisible();
+    const geometry = await surface.evaluate((element) => ({
+      scrollWidth: element.scrollWidth,
+      clientWidth: element.clientWidth,
+      right: element.getBoundingClientRect().right,
+    }));
+    expect(geometry.scrollWidth, selector).toBeLessThanOrEqual(
+      geometry.clientWidth + 1,
+    );
+    expect(geometry.right, selector).toBeLessThanOrEqual(
+      page.viewportSize()!.width + 1,
+    );
+  }
+  const title = page.locator('.subagent-card__title');
+  const fits = await title.evaluate(
+    (element) =>
+      element.getBoundingClientRect().right <=
+      element.parentElement!.getBoundingClientRect().right + 1,
+  );
+  expect(fits).toBe(true);
+}
+
 test.describe('subagent transcript cards', () => {
   test.beforeEach(async ({ page }) => {
     liveSequence = 0;
@@ -170,7 +199,9 @@ test.describe('subagent transcript cards', () => {
     await expect(card.getByText('Completed')).toBeVisible();
     await expect(card.getByText('gpt-5.5')).toBeVisible();
     await expect(card.getByText('done', { exact: true })).toBeVisible();
+    await expect(card.locator('.subagent-card__elapsed')).toHaveText('0:33');
     await card.scrollIntoViewIfNeeded();
+    await expectDockFits(page);
     const desktopBox = await card.boundingBox();
     expect(desktopBox).not.toBeNull();
     expect(desktopBox!.x).toBeGreaterThanOrEqual(0);
@@ -190,6 +221,7 @@ test.describe('subagent transcript cards', () => {
     await card.getByRole('button').click();
     await card.scrollIntoViewIfNeeded();
     await expect(card.getByText('done', { exact: true })).toHaveCount(2);
+    await expectDockFits(page);
     const box = await card.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.y).toBeGreaterThanOrEqual(0);
@@ -277,6 +309,7 @@ test.describe('subagent transcript cards', () => {
     await expect(card.getByText('Reading the decision records')).toBeVisible();
     await expect(card.getByText('claude-opus-5-5')).toBeVisible();
     await expect(card.getByText('6:12')).toBeVisible();
+    await expectDockFits(page);
     await card.screenshot({
       path: testInfo.outputPath('subagent-card-running-desktop.png'),
     });
@@ -354,6 +387,7 @@ test.describe('subagent transcript cards', () => {
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
     await expect(card).toBeVisible();
     await card.scrollIntoViewIfNeeded();
+    await expectDockFits(page);
     const box = await card.boundingBox();
     expect(box?.width ?? 0).toBeLessThanOrEqual(390);
     // The card's one action keeps the 44px phone floor and stays on screen.

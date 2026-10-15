@@ -266,11 +266,12 @@ export interface CodexCaptureReplay {
  */
 export function replayCodexCapture(
   capture: readonly string[],
-  options: { limit?: number } = {},
+  options: { limit?: number; frameIntervalMs?: number } = {},
 ): CodexCaptureReplay {
-  const nowIso = () => '2026-09-23T00:00:00.000Z';
+  let frameTime = Date.parse('2026-09-23T00:00:00.000Z');
+  const nowIso = () => new Date(frameTime).toISOString();
   const transport = new CodexAdapterTransport(
-    () => new Date('2026-09-23T00:00:00.000Z'),
+    () => new Date(frameTime),
     async () => {},
   );
   const events: CanonicalRuntimeEvent[] = [];
@@ -292,6 +293,7 @@ export function replayCodexCapture(
   for (const line of capture.slice(0, options.limit ?? capture.length)) {
     const { dir, msg } = parse(line);
     if (dir !== 'server->client') continue;
+    frameTime += options.frameIntervalMs ?? 0;
     transport.handleStdoutLine(record, JSON.stringify(msg));
   }
   return {

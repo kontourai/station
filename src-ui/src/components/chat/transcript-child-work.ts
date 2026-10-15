@@ -7,6 +7,7 @@ import {
   createEmptyChildWorkRegistry,
 } from '@kontourai/station-contracts/child-work';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { observedAssistantMessageId } from '@kontourai/station-shared/runtime-event-projection';
 import { createContext, useContext } from 'react';
 import type { RunBlock, ToolCallLike } from './tool-call-runs';
 
@@ -16,7 +17,12 @@ import type { RunBlock, ToolCallLike } from './tool-call-runs';
  */
 export interface TranscriptChild {
   item: ChildWorkItem;
-  spawn?: { turnId: string; textOffset: number; afterToolCallId?: string };
+  spawn?: {
+    turnId: string;
+    messageId?: string;
+    textOffset: number;
+    afterToolCallId?: string;
+  };
   toolAnchor: boolean;
   /** The engine of the session that reported the child (its event envelope). */
   provider?: string;
@@ -55,9 +61,18 @@ export function foldTranscriptChildren(
   const spawns = new Map<string, TranscriptChild['spawn']>();
   const providers = new Map<string, string>();
   const textOffsets = new Map<string, number>();
+  const anchors = new Map<string, string>();
   const tools = new Set<string>();
   const lastToolByTurn = new Map<string, string>();
   for (const { event } of events) {
+    if (event.method === 'turn.started') {
+      const turn = JSON.stringify([event.threadId, event.turnId]);
+      const messageId = observedAssistantMessageId(event.eventId);
+      if (messageId) anchors.set(turn, messageId);
+      // A steer flushes the preceding assistant row in the shared projection.
+      textOffsets.set(turn, 0);
+      lastToolByTurn.delete(turn);
+    }
     if (event.method === 'tool.started' || event.method === 'tool.completed') {
       const call = JSON.stringify([event.threadId, event.toolCallId]);
       if (event.turnId && !tools.has(call))
@@ -106,6 +121,9 @@ export function foldTranscriptChildren(
       if (!spawns.has(key) && item.parent?.turnId)
         spawns.set(key, {
           turnId: item.parent.turnId,
+          messageId: anchors.get(
+            JSON.stringify([event.threadId, item.parent.turnId]),
+          ),
           afterToolCallId: lastToolByTurn.get(
             JSON.stringify([event.threadId, item.parent.turnId]),
           ),
@@ -163,7 +181,13 @@ export const TranscriptChildrenContext =
   createContext<TranscriptChildren>(EMPTY);
 
 export const TranscriptTurnContext = createContext<
-  { threadId?: string; turnId?: string } | undefined
+  | {
+      threadId?: string;
+      turnId?: string;
+      messageId?: string;
+      firstRow?: boolean;
+    }
+  | undefined
 >(undefined);
 
 export function useTranscriptChildrenForCall(
@@ -202,6 +226,9 @@ export function useTranscriptChildBlocks<P extends ToolCallLike>(
         !renderedCalls.has(child.item.parent.toolCallId)) &&
       child.spawn &&
       child.spawn.turnId === turn?.turnId &&
+      (child.spawn.messageId
+        ? child.spawn.messageId === turn?.messageId
+        : turn?.firstRow !== false) &&
       child.item.reporterThreadId === turn?.threadId,
   );
   if (!pending.length) return blocks;
