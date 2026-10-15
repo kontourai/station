@@ -21,6 +21,7 @@ export interface TranscriptChild {
     turnId: string;
     messageId?: string;
     textOffset: number;
+    turnTextOffset: number;
     afterToolCallId?: string;
   };
   toolAnchor: boolean;
@@ -62,6 +63,7 @@ export function foldTranscriptChildren(
   const providers = new Map<string, string>();
   const textOffsets = new Map<string, number>();
   const anchors = new Map<string, string>();
+  const turnTextOffsets = new Map<string, number>();
   const tools = new Set<string>();
   const lastToolByTurn = new Map<string, string>();
   for (const { event } of events) {
@@ -85,6 +87,10 @@ export function foldTranscriptChildren(
     if (event.method === 'content.text-delta') {
       const turn = JSON.stringify([event.threadId, event.turnId]);
       textOffsets.set(turn, (textOffsets.get(turn) ?? 0) + event.delta.length);
+      turnTextOffsets.set(
+        turn,
+        (turnTextOffsets.get(turn) ?? 0) + event.delta.length,
+      );
     }
     if (event.method === 'session.exited') {
       for (const [key, registry] of registries) {
@@ -127,6 +133,10 @@ export function foldTranscriptChildren(
           afterToolCallId: lastToolByTurn.get(
             JSON.stringify([event.threadId, item.parent.turnId]),
           ),
+          turnTextOffset:
+            turnTextOffsets.get(
+              JSON.stringify([event.threadId, item.parent.turnId]),
+            ) ?? 0,
           textOffset:
             textOffsets.get(
               JSON.stringify([event.threadId, item.parent.turnId]),
@@ -186,6 +196,7 @@ export const TranscriptTurnContext = createContext<
       turnId?: string;
       messageId?: string;
       firstRow?: boolean;
+      wholeTurn?: boolean;
     }
   | undefined
 >(undefined);
@@ -226,12 +237,15 @@ export function useTranscriptChildBlocks<P extends ToolCallLike>(
         !renderedCalls.has(child.item.parent.toolCallId)) &&
       child.spawn &&
       child.spawn.turnId === turn?.turnId &&
-      (child.spawn.messageId
-        ? child.spawn.messageId === turn?.messageId
-        : turn?.firstRow !== false) &&
+      (turn?.wholeTurn ||
+        (child.spawn.messageId
+          ? child.spawn.messageId === turn?.messageId
+          : turn?.firstRow !== false)) &&
       child.item.reporterThreadId === turn?.threadId,
   );
   if (!pending.length) return blocks;
+  const spawnOffset = (child: TranscriptChild) =>
+    turn?.wholeTurn ? child.spawn!.turnTextOffset : child.spawn!.textOffset;
   const result: (RunBlock<P> | ChildBlock)[] = [];
   let offset = 0;
   const seenCalls = new Set<string | undefined>();
@@ -250,12 +264,12 @@ export function useTranscriptChildBlocks<P extends ToolCallLike>(
     let start = 0;
     while (
       pending.length &&
-      pending[0][1].spawn!.textOffset <= offset + text.length &&
+      spawnOffset(pending[0][1]) <= offset + text.length &&
       (!pending[0][1].spawn!.afterToolCallId ||
         seenCalls.has(pending[0][1].spawn!.afterToolCallId))
     ) {
       const [key, child] = pending.shift()!;
-      const end = Math.max(start, child.spawn!.textOffset - offset);
+      const end = Math.max(start, spawnOffset(child) - offset);
       if (end > start)
         result.push({
           ...block,

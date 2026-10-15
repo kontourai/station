@@ -1,5 +1,4 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
-import { observedAssistantMessageId } from '@kontourai/station-shared/runtime-event-projection';
 import React, {
   useCallback,
   useEffect,
@@ -1488,16 +1487,7 @@ function ChatMessageListComponent({
                       value={{
                         threadId: activeSession.currentSessionId,
                         turnId: activeSession.openTurnId,
-                        messageId:
-                          observedAssistantMessageId(
-                            approvalEvents?.findLast(
-                              ({ event }) =>
-                                event.method === 'turn.started' &&
-                                event.threadId ===
-                                  activeSession.currentSessionId &&
-                                event.turnId === activeSession.openTurnId,
-                            )?.event.eventId,
-                          ) ?? undefined,
+                        wholeTurn: true,
                       }}
                     >
                       <ActiveStreamingMessage

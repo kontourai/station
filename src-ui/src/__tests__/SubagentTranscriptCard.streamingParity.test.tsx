@@ -155,6 +155,79 @@ describe('subagent card streaming parity', () => {
     expect(text.indexOf('After spawning the child.')).toBeGreaterThan(cardAt);
   });
 
+  test('a live whole-turn row keeps the Codex spawn before and after a same-turn steer', () => {
+    const captured = capturedCodexEvents[0];
+    const spawnAt = captured.findIndex(
+      (event) => event.method === 'child-work.updated',
+    );
+    const turnId = '00000000-0000-7000-8000-000000000002';
+    const envelope = {
+      provider: 'codex' as const,
+      threadId: 'thread-codex',
+      createdAt: captured[0].createdAt,
+      turnId,
+    };
+    const start: CanonicalRuntimeEvent = {
+      ...envelope,
+      eventId: 'start',
+      method: 'turn.started',
+      prompt: 'Start',
+    };
+    const steer: CanonicalRuntimeEvent = {
+      ...envelope,
+      eventId: 'steer',
+      method: 'turn.started',
+      inputKind: 'steer',
+      prompt: 'Change direction',
+    };
+    const before = captured
+      .slice(0, spawnAt)
+      .filter((event) => event.method === 'content.text-delta')
+      .map((event) => ('delta' in event ? event.delta : ''))
+      .join('');
+    useStreamingContent.mockReturnValue({
+      streamingText: `${before}Still working.`,
+      hasContent: true,
+      contentRevision: 1,
+      contentParts: [],
+    });
+    const tree = (steered: boolean) => (
+      <TranscriptChildrenContext.Provider
+        value={foldTranscriptChildren(
+          [
+            start,
+            ...(captured.slice(0, spawnAt + 1) as CanonicalRuntimeEvent[]),
+            ...(steered ? [steer] : []),
+          ].map((event) => ({ event })),
+        )}
+      >
+        <TranscriptTurnContext.Provider
+          value={{ threadId: 'thread-codex', turnId, wholeTurn: true }}
+        >
+          <StreamingMessage
+            sessionId="chat-tab"
+            agentIcon={<span>AI</span>}
+            agentIconStyle={{}}
+            fontSize={14}
+          />
+        </TranscriptTurnContext.Provider>
+      </TranscriptChildrenContext.Provider>
+    );
+    const view = render(tree(false));
+    for (const steered of [false, true]) {
+      view.rerender(tree(steered));
+      const card = screen.getByTestId('subagent-card');
+      expect(screen.getAllByTestId('subagent-card')).toHaveLength(1);
+      const text = document.body.textContent ?? '';
+      expect(text.indexOf(card.textContent ?? '')).toBeGreaterThan(
+        text.indexOf(before),
+      );
+      expect(text.indexOf('Still working.')).toBeGreaterThan(
+        text.indexOf(card.textContent ?? ''),
+      );
+    }
+  });
+
   test('the streaming row and the settled row draw the same card for one spawning call', () => {
     const children = foldTranscriptChildren(events());
     useStreamingContent.mockReturnValue({
