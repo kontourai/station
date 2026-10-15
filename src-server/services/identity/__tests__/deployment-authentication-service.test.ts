@@ -111,9 +111,9 @@ describe('deployment authentication identity boundary', () => {
   ])('refuses the device-cookie namespace for account cookie %s', (name) => {
     const adapter = provider();
     adapter.sessionCookies = [name];
-    expect(() => new DeploymentAuthenticationService(adapter, () => now)).toThrow(
-      'Unsupported deployment authentication provider contract.',
-    );
+    expect(
+      () => new DeploymentAuthenticationService(adapter, () => now),
+    ).toThrow('Unsupported deployment authentication provider contract.');
   });
 
   test('ignores unrelated device cookies and refuses duplicate or empty account credentials', async () => {

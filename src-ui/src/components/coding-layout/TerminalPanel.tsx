@@ -158,8 +158,7 @@ export function TerminalPanel({
       try {
         port = await fetchTerminalPort(apiBase);
       } catch {
-        if (!disposed)
-          setWsError('Terminal unavailable.');
+        if (!disposed) setWsError('Terminal unavailable.');
         return;
       }
       if (disposed) return;
