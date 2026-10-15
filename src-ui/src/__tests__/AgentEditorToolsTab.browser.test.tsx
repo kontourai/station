@@ -279,6 +279,29 @@ test('the tool browser explains whole-source engines and keeps disabled sources 
   expect(latest.tools.available).toEqual(['station-control_*']);
 });
 
+test('adding an undiscovered source asks before its future actions despite a global grant', () => {
+  let latest = createEmptyAgentForm();
+  latest.tools.autoApprove = ['*'];
+  render(
+    <Harness
+      initial={latest}
+      onForm={(form) => {
+        latest = form;
+      }}
+      availableTools={[
+        { id: 'reports', name: 'Reports', enabled: true, tools: [] },
+      ]}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Add tools' }));
+  const picker = within(screen.getByRole('dialog', { name: 'Add tools' }));
+  fireEvent.click(picker.getByRole('button', { name: 'Reports' }));
+  fireEvent.click(picker.getByRole('button', { name: 'Add source' }));
+  const saved = buildAgentPayload({ ...latest, slug: 'reviewer' });
+  expect(saved.tools?.available).toEqual(['reports_*']);
+  expect(saved.tools?.askBeforeUse).toEqual(['mcp__reports__*']);
+});
+
 test('refresh uses an unpersisted discovery result and reports a failed probe even on HTTP success', async () => {
   _setApiBase('http://station.example.test');
   const fetchMock = vi
@@ -446,27 +469,27 @@ test('shows origin and descriptions on demand, and defaults new reviewed reads a
   fireEvent.click(picker.getByRole('button', { name: 'Station' }));
   fireEvent.click(picker.getByRole('checkbox', { name: 'Read' }));
   fireEvent.click(picker.getByRole('checkbox', { name: 'Write' }));
-  expect(latest.tools.autoApprove).toEqual(['station-control_read']);
-  expect(latest.tools.askBeforeUse).toEqual(['station-control_write']);
+  expect(latest.tools.autoApprove).toEqual(['mcp__station-control__read']);
+  expect(latest.tools.askBeforeUse).toEqual(['mcp__station-control__write']);
   fireEvent.change(
     picker.getByRole('combobox', { name: 'Approval for read' }),
     { target: { value: 'ask' } },
   );
   expect(latest.tools.autoApprove).toEqual([]);
   expect(latest.tools.askBeforeUse).toEqual([
-    'station-control_write',
-    'station-control_read',
+    'mcp__station-control__write',
+    'mcp__station-control__read',
   ]);
   fireEvent.click(picker.getByRole('button', { name: 'Vendor' }));
   const vendor = within(picker.getByRole('region', { name: 'Vendor' }));
   fireEvent.click(vendor.getByRole('checkbox', { name: 'Read' }));
-  expect(latest.tools.askBeforeUse).toContain('vendor_read');
+  expect(latest.tools.askBeforeUse).toContain('mcp__vendor__read');
   expect(vendor.getByText('Details · Company catalog')).toBeTruthy();
   expect(vendor.getByText('1.2.3')).toBeTruthy();
   expect(vendor.getByText('Vendor-reported read')).toBeTruthy();
   expect(
     buildAgentPayload({ ...latest, slug: 'reviewer' }).tools?.askBeforeUse,
-  ).toContain('vendor_read');
+  ).toContain('mcp__vendor__read');
 });
 
 test('adds Station tools to a Claude agent and saves read-only, empty and custom choices', () => {

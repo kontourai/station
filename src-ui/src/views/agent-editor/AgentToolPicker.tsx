@@ -442,11 +442,15 @@ export function AgentToolPicker({
                             disabled={disabled || added}
                             onClick={() =>
                               setForm((current) =>
-                                selectIntegrationTools(
+                                updateSelection(
                                   current,
                                   id,
-                                  'all',
-                                  catalogs,
+                                  selectIntegrationTools(
+                                    current,
+                                    id,
+                                    'all',
+                                    catalogs,
+                                  ),
                                 ),
                               )
                             }

@@ -1136,9 +1136,11 @@ export class AgentPluginLoader {
       }).listIntegrations();
     const aliases = readRegistryInstallAliases(this.options.projectHomeDir);
     return this.listInstalled().flatMap((plugin) => {
-      const installed = Object.entries(aliases).find(
+      const matchingAliases = Object.entries(aliases).filter(
         ([, alias]) => alias.pluginName === plugin.manifest.name,
       );
+      const installed =
+        matchingAliases.length === 1 ? matchingAliases[0] : undefined;
       return plugin.tools.map((tool) => ({
         id: tool.id,
         kind: tool.kind,
@@ -1152,7 +1154,8 @@ export class AgentPluginLoader {
           version: plugin.manifest.version,
           ...(installed
             ? {
-                registryId: installed[0],
+                registryId: toolOriginLocation(installed[1].registryKey),
+                itemId: installed[0],
                 registryName: toolOriginLocation(installed[1].registryKey),
                 location: toolOriginLocation(installed[1].supplyChain?.source),
               }

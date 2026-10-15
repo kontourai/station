@@ -18,7 +18,8 @@ The managed Station engine delivers its full pre-tool chain through
 `beforeToolCall`. Claude Code is partial. For a session with a resolved Agent
 and its evaluator, `PreToolUse` runs Station's staged evaluator before the call.
 `canUseTool` also honors that Agent's matching `tools.autoApprove` patterns,
-for plain calls only (#2933). A pattern never answers an escalation or a plan
+for plain calls only (#2933) and only without an effective authored Ask rule.
+A pattern never answers an escalation or a plan
 exit, even `*`: it is allowed only where `toolRequestIsPlainCall` holds, the
 `tool` or `edit-mode` case of the session-grant computation below. That
 computation reads the engine's structured reason for the ask (#2932), so a
@@ -42,7 +43,8 @@ for a guardian allow, and the adapter keeps the allow under the engine's
 tool-use id, with the tool's name and a digest of the input the guardian
 reviewed (SHA-256 of the input's JSON with object keys sorted). If the engine
 then asks `canUseTool` about that call of that tool with the same input, the
-allow answers it only where `toolRequestIsPlainCall` holds, and it is used
+allow answers it only where `toolRequestIsPlainCall` holds and no effective
+authored Ask requires approval, and it is used
 once. A different input, which another `PreToolUse` hook's `updatedInput` can
 produce, consumes the allow without using it, and the request prompts. A
 chained Bash command is a plain call, so a guardian allow answers it,
@@ -98,7 +100,11 @@ intercepts or blocks all of that engine's tool calls.
 
 ## Explicit per-tool Ask
 
-`tools.askBeforeUse` is delivered by Station and Claude. Matching exact choices
+`tools.askBeforeUse` is delivered by Station and Claude. New picker choices
+use `mcp__<server>__<action>` approval keys and source defaults use
+`mcp__<server>__*`. Station derives these from loader provenance; Claude uses
+the SDK-owned MCP identity. Legacy flattened Always rules cannot override a
+source-qualified Ask default. Matching exact choices
 in either approval list override wildcard defaults; Ask wins at equal
 specificity. A source-level Ask default therefore covers newly discovered
 actions while exact reviewed-read grants remain allowed. An effective Ask runs

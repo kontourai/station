@@ -4,7 +4,10 @@ import type { AgentPolicyService } from '../../services/agents/agent-policy-serv
 import type { ApprovalGuardianService } from '../../services/approvals/approval-guardian.js';
 import { toolDenials } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
-import type { MCPToolNameMappingEntry } from '../tools/mcp-tool-names.js';
+import {
+  authoredToolApprovalIdentities,
+  type MCPToolNameMappingEntry,
+} from '../tools/mcp-tool-names.js';
 import type {
   InvocationContext,
   ToolCallContext,
@@ -450,8 +453,8 @@ export function createStagedPreToolPolicyEvaluator(
     const explicitAsk =
       resolveAuthoredToolApproval(
         [
-          approvalName,
-          deps.toolNameMapping.get(approvalName)?.original ?? approvalName,
+          tool.toolName,
+          ...authoredToolApprovalIdentities(approvalName, deps.toolNameMapping),
         ],
         deps.spec.tools?.autoApprove,
         deps.spec.tools?.askBeforeUse,

@@ -76,6 +76,10 @@ export function originalMcpToolName(
     : recordedName;
 }
 
+export function mcpToolApprovalKey(serverId: string, name: string): string {
+  return `mcp__${serverId}__${name}`;
+}
+
 export function mcpToolIdentities(serverId: string, name: string): string[] {
   const qualified = `${serverId}_${name}`;
   return [name, qualified, normalizeToolName(qualified)];
@@ -176,6 +180,12 @@ export function resolveAuthoredToolApproval(
       new RegExp(`^${expression}$`).test(identity),
     );
   };
+  const sourceAsk = askBeforeUse.some(
+    (pattern) =>
+      pattern.startsWith('mcp__') &&
+      pattern.endsWith('__*') &&
+      matches(pattern),
+  );
   for (const wildcard of [false, true]) {
     if (
       askBeforeUse.some(
@@ -185,7 +195,10 @@ export function resolveAuthoredToolApproval(
       return 'ask';
     if (
       autoApprove.some(
-        (pattern) => pattern.includes('*') === wildcard && matches(pattern),
+        (pattern) =>
+          pattern.includes('*') === wildcard &&
+          (!sourceAsk || pattern.startsWith('mcp__')) &&
+          matches(pattern),
       )
     )
       return 'always';

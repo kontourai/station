@@ -4988,79 +4988,93 @@ describe('ClaudeAdapter', () => {
   });
 
   describe('canUseTool honors the session agent tools.autoApprove (external autoApprove parity)', () => {
-    test('explicit Ask me forces the hook and keeps prompting despite automatic and session grants', async () => {
-      mockQuery.mockReturnValue(createMockQuery([]));
-      const evaluator = createStagedPreToolPolicyEvaluator({
-        spec: {
-          name: 'Reviewer',
-          prompt: 'Review tool calls',
-          tools: { mcpServers: [], askBeforeUse: ['reports_write'] },
-        },
-        toolNameMapping: new Map(),
-        isGranted: () => true,
-        logger: { info: vi.fn(), warn: vi.fn() },
-      });
-      const adapter = new ClaudeAdapter({
-        resolvePreToolPolicy: async () => evaluator,
-      });
-      const events = adapter.streamEvents()[Symbol.asyncIterator]();
-      const threadId = 'thread-explicit-ask';
-      await adapter.startSession({
-        provider: 'claude',
-        threadId,
-        agent: {
-          slug: 'reviewer',
-          autoApprove: ['*'],
-          askBeforeUse: ['reports_write'],
-        },
-      });
-      await events.next();
-      await events.next();
-      const options = mockQuery.mock.calls[0][0].options;
-      const hook = options.hooks.PreToolUse[0].hooks[0];
-      await expect(
-        hook(
-          {
-            hook_event_name: 'PreToolUse',
-            tool_name: 'mcp__reports__write',
-            tool_input: {},
-            tool_use_id: 'required-call',
+    test.each([
+      {
+        toolName: 'mcp__reports__write',
+        allows: ['*'],
+        asks: ['reports_write'],
+      },
+      {
+        toolName: 'mcp__reports_safe__read',
+        allows: ['mcp__reports__safe_read', 'reports_safe_read'],
+        asks: ['mcp__reports_safe__*'],
+      },
+    ])(
+      'explicit Ask forces the hook and repeated prompts for $toolName',
+      async ({ toolName, allows, asks }) => {
+        mockQuery.mockReturnValue(createMockQuery([]));
+        const evaluator = createStagedPreToolPolicyEvaluator({
+          spec: {
+            name: 'Reviewer',
+            prompt: 'Review tool calls',
+            tools: { mcpServers: [], autoApprove: allows, askBeforeUse: asks },
           },
-          'required-call',
-          { signal: new AbortController().signal },
-        ),
-      ).resolves.toMatchObject({
-        hookSpecificOutput: { permissionDecision: 'ask' },
-      });
-      for (const [index, decision] of (
-        ['acceptForSession', 'decline'] as const
-      ).entries()) {
-        const pending = options.canUseTool(
-          'mcp__reports__write',
-          {},
-          {
-            signal: new AbortController().signal,
-            toolUseID: `required-${index}`,
-            suggestions: [],
-          },
-        );
-        const request = await events.next();
-        expect(request.value).toMatchObject({
-          method: 'request.opened',
-          requestType: 'approval',
+          toolNameMapping: new Map(),
+          isGranted: () => true,
+          logger: { info: vi.fn(), warn: vi.fn() },
         });
-        await adapter.respondToRequest(
+        const adapter = new ClaudeAdapter({
+          resolvePreToolPolicy: async () => evaluator,
+        });
+        const events = adapter.streamEvents()[Symbol.asyncIterator]();
+        const threadId = 'thread-explicit-ask';
+        await adapter.startSession({
+          provider: 'claude',
           threadId,
-          request.value.requestId,
-          decision,
-        );
-        expect((await pending).behavior).toBe(index === 0 ? 'allow' : 'deny');
-        expect((await events.next()).value).toMatchObject({
-          method: 'request.resolved',
+          agent: {
+            slug: 'reviewer',
+            autoApprove: allows,
+            askBeforeUse: asks,
+          },
         });
-      }
-      await adapter.stopSession(threadId);
-    });
+        await events.next();
+        await events.next();
+        const options = mockQuery.mock.calls[0][0].options;
+        const hook = options.hooks.PreToolUse[0].hooks[0];
+        await expect(
+          hook(
+            {
+              hook_event_name: 'PreToolUse',
+              tool_name: toolName,
+              tool_input: {},
+              tool_use_id: 'required-call',
+            },
+            'required-call',
+            { signal: new AbortController().signal },
+          ),
+        ).resolves.toMatchObject({
+          hookSpecificOutput: { permissionDecision: 'ask' },
+        });
+        for (const [index, decision] of (
+          ['acceptForSession', 'decline'] as const
+        ).entries()) {
+          const pending = options.canUseTool(
+            toolName,
+            {},
+            {
+              signal: new AbortController().signal,
+              toolUseID: `required-${index}`,
+              suggestions: [],
+            },
+          );
+          const request = await events.next();
+          expect(request.value).toMatchObject({
+            method: 'request.opened',
+            requestType: 'approval',
+          });
+          await adapter.respondToRequest(
+            threadId,
+            request.value.requestId,
+            decision,
+          );
+          expect((await pending).behavior).toBe(index === 0 ? 'allow' : 'deny');
+          expect((await events.next()).value).toMatchObject({
+            method: 'request.resolved',
+          });
+        }
+        await adapter.stopSession(threadId);
+      },
+    );
 
     function withTimeout<T>(
       promise: Promise<T>,

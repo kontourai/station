@@ -1,3 +1,4 @@
+import { authoredToolApprovalIdentities } from '../tools/mcp-tool-names.js';
 /**
  * Framework-agnostic agent lifecycle hooks.
  *
@@ -130,7 +131,12 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
     resolveUnattendedGrant: deps.resolveUnattendedGrant,
     toolNameMapping: deps.toolNameMapping,
     isGranted: (tool) =>
-      isAutoApproved(tool.toolName, autoApprove) ||
+      authoredToolApprovalIdentities(tool.toolName, deps.toolNameMapping)
+        .filter(
+          (identity) =>
+            identity === tool.toolName || identity.startsWith('mcp__'),
+        )
+        .some((identity) => isAutoApproved(identity, autoApprove)) ||
       // #2584: the built-in's bounded-write tools, for every agent and run
       // (attended, unattended, delegated), by exact loader identity.
       isIntrinsicStationEngineGrant(tool.toolName, deps.toolNameMapping),

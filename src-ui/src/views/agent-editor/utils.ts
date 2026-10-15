@@ -1,4 +1,5 @@
 import {
+  mcpToolApprovalKey,
   mcpToolIdentities,
   selectedMcpTools,
 } from '@kontourai/station-shared/mcp-tool-selection';
@@ -28,6 +29,7 @@ export function removeIntegration(
   integrationId: string,
 ): AgentFormData {
   const prefix = `${integrationId}_`;
+  const approvalPrefix = mcpToolApprovalKey(integrationId, '');
   const servers = new Set(form.tools.mcpServers);
   servers.delete(integrationId);
   return {
@@ -40,13 +42,16 @@ export function removeIntegration(
         (entry) => !entry.startsWith(prefix),
       ),
       autoApprove: form.tools.autoApprove.filter(
-        (entry) => !entry.startsWith(prefix),
+        (entry) =>
+          !entry.startsWith(prefix) && !entry.startsWith(approvalPrefix),
       ),
       unattendedAutoApprove: form.tools.unattendedAutoApprove.filter(
         (entry) => !entry.startsWith(prefix),
       ),
       askBeforeUse: form.tools.askBeforeUse?.filter(
-        (entry) => !entry.startsWith(prefix),
+        (entry) =>
+          !entry.startsWith(prefix) &&
+          !entry.startsWith(`mcp__${integrationId}__`),
       ),
     },
   };
@@ -165,6 +170,16 @@ export function selectIntegrationTools(
     : patterns;
   const available = existing.filter((entry) => !entry.startsWith(prefix));
   available.push(...(names === 'all' ? [`${prefix}*`] : names));
+  const retainedApproval = (entry: string) =>
+    names === 'all' ||
+    (!entry.startsWith(prefix) &&
+      !entry.startsWith(mcpToolApprovalKey(integrationId, ''))) ||
+    names.includes(entry) ||
+    (catalogs[integrationId] ?? []).some(
+      (tool) =>
+        names.includes(getIntegrationToolKey(integrationId, tool)) &&
+        mcpToolApprovalKey(integrationId, tool.toolName || tool.name) === entry,
+    );
   return {
     ...added,
     toolsAvailableEdited: true,
@@ -172,22 +187,19 @@ export function selectIntegrationTools(
       ...added.tools,
       available,
       askBeforeUse: added.tools.askBeforeUse?.flatMap((entry) => {
-        if (names !== 'all' && entry === `${prefix}*`) return names;
-        return !entry.startsWith(prefix) ||
-          names === 'all' ||
-          names.includes(entry)
-          ? [entry]
-          : [];
+        if (
+          names !== 'all' &&
+          (entry === `${prefix}*` ||
+            entry === mcpToolApprovalKey(integrationId, '*'))
+        )
+          return names.length ? [entry] : [];
+        return retainedApproval(entry) ? [entry] : [];
       }),
       autoApprove: [
         ...new Set(
           added.tools.autoApprove.flatMap((entry) => {
             if (names !== 'all' && entry === `${prefix}*`) return names;
-            return !entry.startsWith(prefix) ||
-              names === 'all' ||
-              names.includes(entry)
-              ? [entry]
-              : [];
+            return retainedApproval(entry) ? [entry] : [];
           }),
         ),
       ],
@@ -205,8 +217,14 @@ export function setIntegrationToolApproval(
   const tool = tools.find(
     (item) => getIntegrationToolKey(integrationId, item) === key,
   );
+  const approvalKey = tool
+    ? mcpToolApprovalKey(integrationId, tool.toolName || tool.name)
+    : key;
   const identities = tool
-    ? mcpToolIdentities(integrationId, tool.toolName || tool.name)
+    ? [
+        ...mcpToolIdentities(integrationId, tool.toolName || tool.name),
+        approvalKey,
+      ]
     : [key];
   const retain = (patterns: readonly string[] = []) =>
     patterns.filter((pattern) => !identities.includes(pattern));
@@ -216,11 +234,11 @@ export function setIntegrationToolApproval(
       ...form.tools,
       autoApprove: [
         ...retain(form.tools.autoApprove),
-        ...(mode === 'always' ? [key] : []),
+        ...(mode === 'always' ? [approvalKey] : []),
       ],
       askBeforeUse: [
         ...retain(form.tools.askBeforeUse),
-        ...(mode === 'ask' ? [key] : []),
+        ...(mode === 'ask' ? [approvalKey] : []),
       ],
     },
   };
@@ -258,7 +276,7 @@ export function applyNewToolApprovalDefaults(
             askBeforeUse: [
               ...new Set([
                 ...(form.tools.askBeforeUse ?? []),
-                `${integrationId}_*`,
+                mcpToolApprovalKey(integrationId, '*'),
               ]),
             ],
           },

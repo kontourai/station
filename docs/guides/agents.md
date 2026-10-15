@@ -130,6 +130,11 @@ External policy delivery follows the [engine policy contract](../conformance/too
 - `available` — allowlist of tool names exposed to the agent; omit or set `["*"]` to expose all tools from connected servers; an empty list exposes none from these integrations
 - `autoApprove` — patterns consulted for automatic approval; they do not override earlier runtime-generation, delegation or configuration-protection refusals. A pattern covers plain calls to a tool and never an escalation or a plan exit, even `*` (see [below](#what-autoapprove-never-covers))
 - `askBeforeUse` — requires a person on Station and Claude, even after a session grant or guardian allow. Exact choices override wildcard defaults; Ask wins equally specific conflicts. Earlier refusals and guardian denies still apply. Without an approval channel the call is denied
+The picker writes approval keys as `mcp__<server>__<action>`, with
+`mcp__<server>__*` for future-tool Ask defaults. Legacy names remain readable;
+legacy flattened Always grants cannot override these source Ask defaults.
+These approval keys are separate from `available` selections.
+
 - `unattendedAutoApprove` — explicit opt-in for tools the agent may run when nobody is there to confirm (see [Unattended runs](#unattended-runs))
 
 `tools.aliases` is retired. Older files still load because the loader removes
@@ -280,8 +285,8 @@ prompts ([delivery boundary](../conformance/tool-policy-delivery.md)).
 An approval-guardian allow has the same limits on these engines (#2947). The
 guardian reviews the tool's name and arguments (and, on ACP, the call's
 title); it isn't shown the session's working directories or why the engine
-asks. On Claude Code its allow answers a plain call without a prompt, for the
-input it reviewed, and everything in the list above still reaches a person,
+asks. On Claude Code its allow answers a plain call without a prompt, unless an
+effective authored Ask rule requires approval, for the input it reviewed, and everything in the list above still reaches a person,
 including a read outside the working directories that the guardian allowed.
 Like a `Bash` pattern, a guardian allow answers a chained Bash command,
 including the chained-command gaps described above: an ask rule or an
@@ -311,9 +316,11 @@ child that cannot grant approvals is denied it.
 `autoApprove` is attended auto-approval. Attended chat matches a pattern against
 both the original MCP tool name (`station-control_delete_agent`) and the runtime
 name the model calls (`stationControl_deleteAgent`). Unattended runs match
-`autoApprove` against the runtime name only, so the usual
-`station-control_*` pattern does not apply there. Existing patterns that do
-match the runtime name, including `*`, keep working unattended as before.
+legacy `autoApprove` against the runtime name only, so the usual
+`station-control_*` pattern does not apply there. Exact loader-qualified
+`mcp__station-control__list_agents` keys also apply unattended. Existing patterns
+that match the runtime name, including `*`, keep working as before. Effective
+Ask rules still require a person.
 
 To let an agent run a tool unattended, list it in `unattendedAutoApprove`. For
 a scheduled job, an operator can instead record an unattended tool grant for

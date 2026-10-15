@@ -28,7 +28,10 @@ import { ReasoningHandler } from '../streaming/handlers/ReasoningHandler.js';
 import { ToolCallHandler } from '../streaming/handlers/ToolCallHandler.js';
 import type { InjectableStream } from '../streaming/InjectableStream.js';
 import { StreamPipeline } from '../streaming/StreamPipeline.js';
-import type { MCPToolNameMappingEntry } from '../tools/mcp-tool-names.js';
+import {
+  authoredToolApprovalIdentities,
+  type MCPToolNameMappingEntry,
+} from '../tools/mcp-tool-names.js';
 import {
   isAutoApproved,
   isIntrinsicStationEngineGrant,
@@ -168,7 +171,14 @@ export function createElicitationCallback(
       const toolName = request.toolName;
 
       // Check if auto-approved (check both normalized and original names)
-      const isApproved = isAutoApproved(toolName, autoApprove);
+      const isApproved = authoredToolApprovalIdentities(
+        toolName,
+        toolNameMapping,
+      )
+        .filter(
+          (identity) => identity === toolName || identity.startsWith('mcp__'),
+        )
+        .some((identity) => isAutoApproved(identity, autoApprove));
 
       // Also check if the original (non-normalized) name matches
       const toolMapping = Array.from(toolNameMapping.values()).find(
@@ -186,7 +196,7 @@ export function createElicitationCallback(
 
       const explicitAsk =
         resolveAuthoredToolApproval(
-          [toolName, toolMapping?.original ?? toolName],
+          authoredToolApprovalIdentities(toolName, toolNameMapping),
           autoApprove,
           agentSpec?.tools?.askBeforeUse,
         ) === 'ask';

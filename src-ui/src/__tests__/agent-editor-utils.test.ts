@@ -76,7 +76,7 @@ describe('agent-editor utils', () => {
       tools,
     );
     expect(next.tools.autoApprove).toEqual(['github_get_issue']);
-    expect(next.tools.askBeforeUse).toEqual(['filesystem_write_file']);
+    expect(next.tools.askBeforeUse).toEqual(['mcp__filesystem__write_file']);
   });
   test('including future tools saves an ask default with a reviewed read exception', () => {
     const previous = buildForm();
@@ -100,8 +100,19 @@ describe('agent-editor utils', () => {
       'station',
     );
     const saved = buildAgentPayload(next);
-    expect(saved.tools?.askBeforeUse).toEqual(['reports_*']);
-    expect(saved.tools?.autoApprove).toEqual(['reports_read']);
+    expect(saved.tools?.askBeforeUse).toEqual(['mcp__reports__*']);
+    expect(saved.tools?.autoApprove).toEqual(['mcp__reports__read']);
+  });
+
+  test('narrowing future selections preserves the exact Always exception', () => {
+    const form = buildForm();
+    form.tools.askBeforeUse = ['mcp__github__*'];
+    form.tools.autoApprove = ['mcp__github__find'];
+    const next = selectIntegrationTools(form, 'github', ['github_find'], {
+      github: toolList,
+    });
+    expect(next.tools.askBeforeUse).toEqual(['mcp__github__*']);
+    expect(next.tools.autoApprove).toEqual(['mcp__github__find']);
   });
 
   test('narrowing an ask-all source preserves prompts for retained actions', () => {
@@ -110,7 +121,7 @@ describe('agent-editor utils', () => {
     const next = selectIntegrationTools(form, 'github', ['github_run'], {
       github: toolList,
     });
-    expect(next.tools.askBeforeUse).toEqual(['github_run']);
+    expect(next.tools.askBeforeUse).toEqual(['github_*']);
   });
 
   test('slugify normalizes names', () => {
