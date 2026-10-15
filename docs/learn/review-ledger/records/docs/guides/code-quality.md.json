@@ -100,7 +100,9 @@
 
     "package.json#/engines",
 
-    "package.json#/packageManager"
+    "package.json#/packageManager",
+
+    ".fallowrc.json#/dynamicallyLoaded"
   ],
 
   "checks": [
