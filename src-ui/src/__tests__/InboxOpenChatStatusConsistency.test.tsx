@@ -1887,3 +1887,61 @@ it('same-epoch active retry survives an unrelated inventory first-page refresh w
     client.clear();
   }
 });
+
+it('older read begun after epoch replacement captures the current activity fence', async () => {
+  const client = new QueryClient();
+  const dock = renderWithProviders(<DockInbox />, client);
+  const release = ensureOrchestrationEventStream('http://test.local', client);
+  let history!: ReturnType<typeof useSessionTranscriptEvents>;
+  function Reader() {
+    history = useSessionTranscriptEvents(
+      'http://test.local',
+      { threadId: 'T', conversationId: 'T' },
+      true,
+    );
+    return null;
+  }
+  const snapshot = (epoch: string, seq: number) =>
+    streams.get('http://test.local')!({
+      event: 'orchestration:snapshot',
+      id: String(seq),
+      data: JSON.stringify({ epoch, sessions: [delta6Page(seq).session] }),
+    });
+  let view: ReturnType<typeof renderWithProviders> | undefined;
+  try {
+    act(() => snapshot('older-fence-old', 100));
+    historyRead.mockResolvedValueOnce(delta6Page(100));
+    view = renderWithProviders(<Reader />, client);
+    await waitFor(() => expect(history.hasMore).toBe(true));
+    expect(historyRead).toHaveBeenCalledOnce();
+    act(() => snapshot('older-fence-new', 1));
+    expect(historyRead).toHaveBeenCalledOnce();
+    historyRead.mockRejectedValueOnce(new Error('new epoch older read failed'));
+    await act(async () => {
+      await history.loadOlder();
+    });
+    await screen.findByText('Last known: Needs approval');
+    act(() =>
+      streams.get('http://test.local')!({
+        event: 'orchestration:activity',
+        data: JSON.stringify({
+          conversation: {
+            conversationId: 'T',
+            currentSessionId: 'T',
+            activity: delta6Page(2).session.conversationActivity,
+          },
+        }),
+      }),
+    );
+    expect(screen.queryByText('Last known: Needs approval')).toBeNull();
+    expect(
+      activeChatsStore.getSnapshot()[CHAT_TAB]?.conversationActivity
+        ?.asOfSequence,
+    ).toBe(2);
+  } finally {
+    view?.unmount();
+    release();
+    dock.unmount();
+    client.clear();
+  }
+});

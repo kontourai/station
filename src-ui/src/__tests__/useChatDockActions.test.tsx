@@ -424,12 +424,12 @@ describe('useChatDockActions placement-aware actions', () => {
 
   test('cancel during replay hydration tears down the child without focusing it', async () => {
     let finishHydration: (value: string) => void = () => {};
-    openConversationAction.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finishHydration = resolve;
-        }),
-    );
+    openConversationAction.mockImplementationOnce((...args) => {
+      args[8].initialized('hydrated-child');
+      return new Promise((resolve) => {
+        finishHydration = resolve;
+      });
+    });
     const controller = new AbortController();
     const setActiveSessionId = vi.fn();
     const { result } = renderHook(() =>

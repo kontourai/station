@@ -389,7 +389,11 @@ export async function commitConversationOpen({
     model?: string,
     updatedAt?: string,
     acceptedModel?: string,
-    execution?: { hydrateMessages: true; beforeFocus?: () => boolean },
+    execution?: {
+      hydrateMessages: true;
+      beforeFocus?: () => boolean;
+      isCurrent?: () => boolean;
+    },
   ) => boolean | Promise<boolean>;
   projectName: (projectSlug: string | undefined) => string | undefined;
   findTab: (conversationId: string) => string | undefined;
@@ -423,7 +427,10 @@ export async function commitConversationOpen({
     conversation.model,
     conversation.updatedAt,
     conversation.acceptedModel,
-    { hydrateMessages: true, ...(isCurrent ? { beforeFocus: isCurrent } : {}) },
+    {
+      hydrateMessages: true,
+      ...(isCurrent ? { beforeFocus: isCurrent, isCurrent } : {}),
+    },
   );
   if (!opened) {
     return {
