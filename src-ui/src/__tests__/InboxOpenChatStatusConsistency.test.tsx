@@ -1114,7 +1114,7 @@ it('stream evidence supersedes each failed reader at its own watermark', async (
 
 it('a released open reader cannot recreate a record after dock and picker release', async () => {
   const client = new QueryClient();
-  const observation = workObservation(client);
+  const o = workObservation(client);
   let rejectOpen!: (e: Error) => void;
   openRead.mockImplementationOnce(
     () =>
@@ -1184,7 +1184,7 @@ it('pending history and partial stream produce the same current status in both c
         conversationActivity: undefined,
       });
       const client = new QueryClient();
-      const observation = workObservation(client);
+      const o = workObservation(client);
       function OlderReader() {
         const history = useSessionEventWindow('http://test.local', 'T');
         return (
