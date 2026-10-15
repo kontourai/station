@@ -1,0 +1,7 @@
+{
+  "revision": "f6f64e40cee99a58c8a0237b09de98cdeef3483d",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the generated MCP delta: digest and SessionTurnBoundaryAuthority paragraph now describe production Monument writes/listing, host admission/error classification and outer append commit; remaining physical terminal reconciliation and read projection are explicitly pending. Static topic IDs, credential-free request behavior and manual/API limits remain unchanged. Checked generator output against the canonical module map; this is scoped source review, not live provider or publication proof.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}
