@@ -1,0 +1,19 @@
+{
+  "revision": "cfe4ac54b5838ea9e1c905a1447832f9f43286d2",
+
+  "notes": [
+    {"path":"docs/security/remote-access-threat-model.md","note":"Re-reviewed the personal-token paragraph after the reset change: resetEnvironment awaits clearPersonalTokens() before writing the new record (a failed clear aborts with nothing changed; test 'a reset that cannot revoke tokens changes nothing') and again after DevicePairingService.resetEnvironment (test 'a token minted while a reset runs does not survive it' mints between the passes). Narrowed the claim: a mint completing after the second pass is not caught, which the text now says. The reset recovery paragraph's 'clears every paired-device credential and personal access token' still holds.","inputs":["docs/security/remote-access-threat-model.md","src-server/services/ssh/environment-security-service.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"`station environment reset` sentence now says it clears paired-device authority and personal access tokens, matching EnvironmentSecurityService.resetEnvironment's two clearPersonalTokens passes. Credential rotate's claims (preserves environment id and device registry) are untouched by #3557 tokens.","inputs":["docs/reference/connect.md","src-server/services/ssh/environment-security-service.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Flagged for environment-security-service.ts (reset now revokes personal tokens). Its recovery text says rotation does not revoke device grants and that environment reset has a different identity/device-grant boundary, pointing to the threat model; still accurate, and the threat model now spells out the token revocation.","inputs":["docs/guides/deployment.md","src-server/services/ssh/environment-security-service.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Flagged for environment-security-service.ts. Its citations into that file (authorizeCredential, access:manage refusal, audit pseudonymization) are dated line references the doc says drift; the behaviours cited are unchanged by the reset/token edit (only resetEnvironment gained token revocation passes). D12/D13 already cover groups and tokens.","inputs":["docs/design/operator-device-access.md","src-server/services/ssh/environment-security-service.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Flagged because the threat model changed; it only links the threat model for remote-access posture of automations. The edit narrowed the personal-token reset claim, which automations neither cite nor depend on.","inputs":["docs/design/automations.md","docs/security/remote-access-threat-model.md"]},
+
+    {"path":"deploy/gcp-dev/README.md","note":"Flagged for environment-security-service.ts. Searched for environment reset, token and security-record claims: it makes none about resetEnvironment or personal access tokens, so the reset's added token revocation does not affect it.","inputs":["deploy/gcp-dev/README.md","src-server/services/ssh/environment-security-service.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Flagged for environment-security-service.ts. Searched for environment reset, token and security-record claims: none concern resetEnvironment or personal tokens; the ingress guidance is unaffected.","inputs":["deploy/public-ingress/README.md","src-server/services/ssh/environment-security-service.ts"]}
+  ]
+}

@@ -13,6 +13,7 @@ const editOutboundTurnMock = vi.fn();
 const reorderOutboundTurnMock = vi.fn();
 const mergeOutboundTurnsMock = vi.fn();
 const unmergeOutboundTurnMock = vi.fn();
+const sendHeldMock = vi.fn();
 
 vi.mock('../lib/outboundQueue', () => ({
   isWorkspaceRefusedTurn: (turn: { status: string; lastError?: string }) =>
@@ -24,6 +25,7 @@ vi.mock('../lib/outboundQueue', () => ({
     reorder: (...args: unknown[]) => reorderOutboundTurnMock(...args),
     merge: (...args: unknown[]) => mergeOutboundTurnsMock(...args),
     unmerge: (...args: unknown[]) => unmergeOutboundTurnMock(...args),
+    sendHeld: (...args: unknown[]) => sendHeldMock(...args),
   },
 }));
 
@@ -40,6 +42,33 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     for (const sessionId of Object.keys(activeChatsStore.getSnapshot())) {
       activeChatsStore.removeChat(sessionId);
     }
+  });
+
+  it('a copy held by another or a closed window offers Send and Discard only, and Send releases it', async () => {
+    sendHeldMock.mockResolvedValue(undefined);
+    render(
+      <OutboundQueuedMessages
+        sessionId="session-1"
+        turns={[
+          {
+            clientTurnId: 'held-away',
+            content: 'held elsewhere',
+            status: 'pending',
+            heldElsewhere: true,
+          },
+          { clientTurnId: 'after', content: 'after it', status: 'pending' },
+        ]}
+        onError={vi.fn()}
+        onRetry={vi.fn()}
+        onStartNewChat={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getAllByRole('button', { name: 'Edit message' }),
+    ).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /Merge/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(sendHeldMock).toHaveBeenCalledWith('held-away'));
   });
 
   it('deletes a pending offline message immediately', async () => {

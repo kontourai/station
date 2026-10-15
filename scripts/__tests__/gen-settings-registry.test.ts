@@ -284,6 +284,8 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'open-last-station': 'device',
   'tts-readback': 'device',
   'personal-knowledge-store': 'station',
+  // #3557: groups and personal access tokens are stored on the Station.
+  people: 'station',
 };
 
 describe('published write authority', () => {

@@ -1,0 +1,7 @@
+{
+  "revision": "8a09b8296f39ea32392fd23093ae32cf28727575",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Traced MessageBubble, MessageDetails, TurnActionsMenu and chat.css: phone rows carry a 44px copy icon ('Copy your message' / 'Copy answer') beside the 44px ⋯; the sheet offers attribution, model facts, provenance, ratings and the Task pin, never copy, and a user row with none of them has no ⋯; the settle time sits beside copy and ⋯; desktop copy is the same icon and no menu lists Copy. Updated the mobile message-row, settle-time and copy-naming prose. Executable: MessageBubble.mobileActions.test.tsx, MessageBubble.mobileSheetFallback.test.tsx and mobile-chat-composer.spec.ts 'mobile messages prioritize text'.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/MessageBubble.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

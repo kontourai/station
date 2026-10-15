@@ -1,0 +1,7 @@
+{
+  "revision": "8534457e44230bbac41d0060bed9cce96b0dcf9b",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed ChatDockBody delta at 8534457e44: long-loading feedback adds a visible status sentence; settings ownership, persistence and immediate-save behavior are unchanged. No prose change needed.","inputs":["docs/design/settings-architecture.md"]}
+  ]
+}

@@ -13,17 +13,20 @@
  * The operator (Owner) is implicit and never capped, and neither is a
  * device tied to no person (the operator's own), the operator credential,
  * a home-possession credential or a peer Station delegation. No group ever
- * includes `access:manage`: a paired device never becomes an administrator.
+ * includes legacy `access:manage`. Device administration instead requires
+ * the operator explicitly granting `access:devices`, and an Admin ceiling.
  */
 import {
   DEVICE_REQUESTABLE_EXTRA_SCOPES,
   PAIRING_SCOPE_ACCESS_APPROVE,
+  PAIRING_SCOPE_ACCESS_DEVICES,
   PAIRING_SCOPE_CONSENT_DECIDE,
   PAIRING_SCOPE_PRESETS,
   PAIRING_SCOPES,
   type PairingScope,
   parsePairingScope,
 } from './environment-security.js';
+import type { PersonalAccessToken } from './personal-tokens.js';
 
 export const STATION_GROUPS = ['admin', 'member'] as const;
 export type StationGroup = (typeof STATION_GROUPS)[number];
@@ -36,6 +39,7 @@ const GOVERNED: readonly PairingScope[] = [
   ...PAIRING_SCOPE_PRESETS.standard,
   ...DEVICE_REQUESTABLE_EXTRA_SCOPES,
   PAIRING_SCOPE_ACCESS_APPROVE,
+  PAIRING_SCOPE_ACCESS_DEVICES,
   PAIRING_SCOPE_CONSENT_DECIDE,
 ];
 export const STATION_GROUP_GOVERNED_SCOPES: readonly PairingScope[] =
@@ -55,7 +59,7 @@ export const STATION_GROUP_LABELS: Readonly<
   admin: {
     label: 'Admin',
     summary:
-      'Devices may have full device access, approve other devices and decide consent requests. Managing devices and accounts stays with the operator.',
+      'Devices may have full device access, approve other devices, decide consent requests and manage device access when explicitly granted. Accounts stay with the operator.',
   },
   member: {
     label: 'Member',
@@ -114,4 +118,12 @@ export interface StationPerson {
   /** False when the person sits in the default group by not being assigned. */
   assigned: boolean;
   devices: StationPersonDevice[];
+  /** #3557: their active personal access tokens (never secrets). */
+  tokens: PersonalAccessToken[];
+  /**
+   * #3557: whether a token can be made for them now: a live device ties
+   * them by a Tailscale identity (an account's devices need its session,
+   * which a script does not hold).
+   */
+  canHoldTokens: boolean;
 }

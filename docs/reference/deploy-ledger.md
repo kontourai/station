@@ -28,6 +28,21 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-15T08:33:41Z | nightly-npm | 0.7.0-nightly.2479.38688611844 | `884f77c` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38688611844) |
+| 2026-10-15T06:57:02Z | nightly-npm | 0.7.0-nightly.2479.38682073239 | `79d6de5` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38682073239) |
+| 2026-10-14T23:38:43Z | nightly-desktop | 0.1.11-nightly.2478.10 | `e73c9c3` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/38635623869) |
+| 2026-10-14T23:38:40Z | nightly-android | 0.1.11-nightly.2478.10 | `e73c9c3` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/38635623869) |
+| 2026-10-14T22:30:11Z | nightly-npm | 0.7.0-nightly.2478.38635623869 | `e73c9c3` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38635623869) |
+| 2026-10-14T21:24:13Z | nightly-npm | 0.7.0-nightly.2478.38627222279 | `c4fbda3` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38627222279) |
+| 2026-10-14T20:12:59Z | nightly-npm | 0.7.0-nightly.2478.38623913681 | `29dfae3` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38623913681) |
+| 2026-10-14T18:04:14Z | nightly-npm | 0.7.0-nightly.2478.38607024649 | `bdd182c` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38607024649) |
+| 2026-10-14T17:00:00Z | nightly-npm | 0.7.0-nightly.2478.38590998947 | `fcc314b` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38590998947) |
+| 2026-10-14T09:35:52Z | nightly-desktop | 0.1.11-nightly.2478.5 | `59ff630` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/38529818593) |
+| 2026-10-14T09:35:49Z | nightly-android | 0.1.11-nightly.2478.5 | `59ff630` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/38529818593) |
+| 2026-10-14T08:49:57Z | nightly-npm | 0.7.0-nightly.2478.38529818593 | `59ff630` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38529818593) |
+| 2026-10-14T07:48:13Z | nightly-npm | 0.7.0-nightly.2478.38522577676 | `bbc2538` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38522577676) |
+| 2026-10-14T06:53:48Z | nightly-npm | 0.7.0-nightly.2478.38521861278 | `f72f8ad` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38521861278) |
+| 2026-10-14T05:18:06Z | nightly-npm | 0.7.0-nightly.2478.38510962155 | `0e6a18f` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38510962155) |
 | 2026-10-14T03:59:31Z | nightly-npm | 0.7.0-nightly.2478.38503738124 | `ebc8c32` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38503738124) |
 | 2026-10-14T03:00:48Z | nightly-npm | 0.7.0-nightly.2478.38498029379 | `6ea16e9` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38498029379) |
 | 2026-10-13T20:47:53Z | nightly-npm | 0.7.0-nightly.2477.38449708392 | `26a8add` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/38449708392) |
@@ -255,6 +270,350 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-15T08:33:41Z · nightly-npm · 0.7.0-nightly.2479.38688611844
+
+- Ship SHA: `884f77c75f100dbc50e0de3c6bedc19cf90c76c7`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2479.38688611844 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `79d6de5` ([full sha](https://github.com/kontourai/station/commit/79d6de57f1d33ee87805e4811c078f9aae7aec46)):
+
+**Fixes**
+
+- [#3665](https://github.com/kontourai/station/pull/3665) fix(cli): keep --temp-home out of a Station instance tree
+
+## 2026-10-15T06:57:02Z · nightly-npm · 0.7.0-nightly.2479.38682073239
+
+- Ship SHA: `79d6de57f1d33ee87805e4811c078f9aae7aec46`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2479.38682073239 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `e73c9c3` ([full sha](https://github.com/kontourai/station/commit/e73c9c32084c2ede3c43738bad8fdf90d7cec806)):
+
+**Fixes**
+
+- [#3669](https://github.com/kontourai/station/pull/3669) fix(ci): retain primary Vitest errors and immutable failed reports
+- [#3660](https://github.com/kontourai/station/pull/3660) fix(orchestration): refuse a same-key resend of a retained claim as may-have-started at once
+- [#3534](https://github.com/kontourai/station/pull/3534) fix(profile): polish retained usage and preserve measurement gaps
+- [#3663](https://github.com/kontourai/station/pull/3663) fix(native): restore iOS channel icons and support Android themed launchers
+
+**Other**
+
+- [#3647](https://github.com/kontourai/station/pull/3647) chore: exempt Kontour packages from release age
+
+## 2026-10-14T23:38:43Z · nightly-desktop · 0.1.11-nightly.2478.10
+
+- Ship SHA: `e73c9c32084c2ede3c43738bad8fdf90d7cec806`
+- Artifact built at: `2026-10-14T22:43:58.041Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 38635623869)
+
+### Changelog
+
+Commits since `59ff630` ([full sha](https://github.com/kontourai/station/commit/59ff630e0e832be3e5c6400776411a9dae06a6b9)):
+
+**Features**
+
+- [#3659](https://github.com/kontourai/station/pull/3659) feat(security): allow explicitly authorized remote device administration
+- [#3652](https://github.com/kontourai/station/pull/3652) feat(chat): never lose or double-send a message when the app closes mid-send
+
+**Fixes**
+
+- [#3661](https://github.com/kontourai/station/pull/3661) fix(chat): announce the conversation load, and stop the composer measurement opening a gap
+- [#3658](https://github.com/kontourai/station/pull/3658) fix(chat): clarify loading and recover tool approval decisions
+
+**CI / workflow**
+
+- [#3653](https://github.com/kontourai/station/pull/3653) ci(docs): run Corpus with v1 manifests refused and the decisions gate
+
+**Other**
+
+- [#3656](https://github.com/kontourai/station/pull/3656) build(deps): bump @kontourai/veritas from 1.7.6 to 1.11.2
+- [#3657](https://github.com/kontourai/station/pull/3657) chore(decisions): check decision records with Corpus
+
+## 2026-10-14T23:38:40Z · nightly-android · 0.1.11-nightly.2478.10
+
+- Ship SHA: `e73c9c32084c2ede3c43738bad8fdf90d7cec806`
+- Artifact built at: `2026-10-14T23:00:56.654Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 38635623869)
+
+### Changelog
+
+Commits since `59ff630` ([full sha](https://github.com/kontourai/station/commit/59ff630e0e832be3e5c6400776411a9dae06a6b9)):
+
+**Features**
+
+- [#3659](https://github.com/kontourai/station/pull/3659) feat(security): allow explicitly authorized remote device administration
+- [#3652](https://github.com/kontourai/station/pull/3652) feat(chat): never lose or double-send a message when the app closes mid-send
+
+**Fixes**
+
+- [#3661](https://github.com/kontourai/station/pull/3661) fix(chat): announce the conversation load, and stop the composer measurement opening a gap
+- [#3658](https://github.com/kontourai/station/pull/3658) fix(chat): clarify loading and recover tool approval decisions
+
+**CI / workflow**
+
+- [#3653](https://github.com/kontourai/station/pull/3653) ci(docs): run Corpus with v1 manifests refused and the decisions gate
+
+**Other**
+
+- [#3656](https://github.com/kontourai/station/pull/3656) build(deps): bump @kontourai/veritas from 1.7.6 to 1.11.2
+- [#3657](https://github.com/kontourai/station/pull/3657) chore(decisions): check decision records with Corpus
+
+## 2026-10-14T22:30:11Z · nightly-npm · 0.7.0-nightly.2478.38635623869
+
+- Ship SHA: `e73c9c32084c2ede3c43738bad8fdf90d7cec806`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2478.38635623869 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `c4fbda3` ([full sha](https://github.com/kontourai/station/commit/c4fbda38af04949946620b1a7e3373a591ace03e)):
+
+**Fixes**
+
+- [#3661](https://github.com/kontourai/station/pull/3661) fix(chat): announce the conversation load, and stop the composer measurement opening a gap
+
+## 2026-10-14T21:24:13Z · nightly-npm · 0.7.0-nightly.2478.38627222279
+
+- Ship SHA: `c4fbda38af04949946620b1a7e3373a591ace03e`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2478.38627222279 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `29dfae3` ([full sha](https://github.com/kontourai/station/commit/29dfae3c54229b81aa3d2e49bbf05061fb23ec45)):
+
+**Features**
+
+- [#3659](https://github.com/kontourai/station/pull/3659) feat(security): allow explicitly authorized remote device administration
+
+## 2026-10-14T20:12:59Z · nightly-npm · 0.7.0-nightly.2478.38623913681
+
+- Ship SHA: `29dfae3c54229b81aa3d2e49bbf05061fb23ec45`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2478.38623913681 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `bdd182c` ([full sha](https://github.com/kontourai/station/commit/bdd182c0b3f00578373fe813628858225f7e7a95)):
+
+_No user-visible changes recorded for this slice._
+
+## 2026-10-14T18:04:14Z · nightly-npm · 0.7.0-nightly.2478.38607024649
+
+- Ship SHA: `bdd182c0b3f00578373fe813628858225f7e7a95`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2478.38607024649 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `fcc314b` ([full sha](https://github.com/kontourai/station/commit/fcc314b44f6936c2b280c42c522a552d7cbb7359)):
+
+**Fixes**
+
+- [#3658](https://github.com/kontourai/station/pull/3658) fix(chat): clarify loading and recover tool approval decisions
+
+## 2026-10-14T17:00:00Z · nightly-npm · 0.7.0-nightly.2478.38590998947
+
+- Ship SHA: `fcc314b44f6936c2b280c42c522a552d7cbb7359`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2478.38590998947 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `59ff630` ([full sha](https://github.com/kontourai/station/commit/59ff630e0e832be3e5c6400776411a9dae06a6b9)):
+
+**Features**
+
+- [#3652](https://github.com/kontourai/station/pull/3652) feat(chat): never lose or double-send a message when the app closes mid-send
+
+**CI / workflow**
+
+- [#3653](https://github.com/kontourai/station/pull/3653) ci(docs): run Corpus with v1 manifests refused and the decisions gate
+
+**Other**
+
+- [#3656](https://github.com/kontourai/station/pull/3656) build(deps): bump @kontourai/veritas from 1.7.6 to 1.11.2
+- [#3657](https://github.com/kontourai/station/pull/3657) chore(decisions): check decision records with Corpus
+
+## 2026-10-14T09:35:52Z · nightly-desktop · 0.1.11-nightly.2478.5
+
+- Ship SHA: `59ff630e0e832be3e5c6400776411a9dae06a6b9`
+- Artifact built at: `2026-10-14T08:50:11.132Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 38529818593)
+
+### Changelog
+
+Commits since `154624a` ([full sha](https://github.com/kontourai/station/commit/154624a8726d33e489d2c165471b876e69db76b5)):
+
+**Features**
+
+- [#3585](https://github.com/kontourai/station/pull/3585) feat(access): personal access tokens act as their person, never as more (#3557)
+- [#3649](https://github.com/kontourai/station/pull/3649) feat(chat): inline copy beside the phone ⋯, one copy icon, and a compact message sheet
+- [#3624](https://github.com/kontourai/station/pull/3624) feat(brand): ship the River app icon, channel palettes and square-tile marks
+- [#3635](https://github.com/kontourai/station/pull/3635) feat(delegation): deliver a delegated task's result to its parent conversation, exactly once (#3158)
+- [#3584](https://github.com/kontourai/station/pull/3584) feat(access): Station groups cap what a person's devices may use (#3557)
+- [#3620](https://github.com/kontourai/station/pull/3620) feat(execution): let a request state the engine its caller saw, as a refusal-only precondition
+- [#3607](https://github.com/kontourai/station/pull/3607) feat(monument): add the durable kernel package with a command-shaped storage port
+
+**Fixes**
+
+- [#3650](https://github.com/kontourai/station/pull/3650) fix(acp): keep a resumed session's replay out of the transcript; sends wait for a starting session
+- [#3645](https://github.com/kontourai/station/pull/3645) fix(status): release completed pill animation effects
+- [#3651](https://github.com/kontourai/station/pull/3651) fix(chat): stable transcript while loading, animated scroll-to-bottom, opt-in layout tracer
+- [#3648](https://github.com/kontourai/station/pull/3648) fix(station-control): start an agent's unscoped Session in its own Project; say why a scope refusal happened
+- [#3646](https://github.com/kontourai/station/pull/3646) fix(station-control): list the caller's own conversation in list_project_activity
+- [#3644](https://github.com/kontourai/station/pull/3644) fix: order session-terminal retirement by event sequence
+- [#3643](https://github.com/kontourai/station/pull/3643) fix(docs): bind release reviews to relevant manifest and lock values
+- [#3641](https://github.com/kontourai/station/pull/3641) fix(orchestration): retry a failed interrupted-turn recovery within the boot and surface exhaustion
+- [#3640](https://github.com/kontourai/station/pull/3640) fix(memory): report a torn transcript tail on read and write state files atomically
+- [#3637](https://github.com/kontourai/station/pull/3637) fix(knowledge): reject path-shaped default-store record IDs
+- [#3636](https://github.com/kontourai/station/pull/3636) fix(docs): allow ordinary reviews of deleted release declarations
+- [#3608](https://github.com/kontourai/station/pull/3608) fix(orchestration): change nothing observable before an event's append commits (#3561)
+- [#3631](https://github.com/kontourai/station/pull/3631) fix(ci): wait for qualification capacity instead of failing the merge-queue check
+- [#3630](https://github.com/kontourai/station/pull/3630) fix(deps): remove sprintf-js through compatible YAML CLI migration
+- [#3616](https://github.com/kontourai/station/pull/3616) fix(process): register detached Flow, plugin-draft and flow-agents spawns; drop null-birth records of gone owners
+- [#3606](https://github.com/kontourai/station/pull/3606) fix(chat): never resend a /chat turn that may have reached the agent; evicted dedup keys answer expired (#3581, #3559)
+- [#3626](https://github.com/kontourai/station/pull/3626) fix(sdk): accept current conversation execution metadata
+- [#3614](https://github.com/kontourai/station/pull/3614) fix(install): refuse a manifest older than the newest release an install accepted (#187)
+- [#3618](https://github.com/kontourai/station/pull/3618) fix(acp): settle a refused model at session start; do not send unchecked defaults
+- [#3615](https://github.com/kontourai/station/pull/3615) fix(liveness): decide reused PIDs, dead null-birth claims, malformed jobs and failed source-terminal repair (#3563 items 1-4)
+- [#3600](https://github.com/kontourai/station/pull/3600) fix(ci-health): attribute pull-request runs whose PR list is empty
+- [#3613](https://github.com/kontourai/station/pull/3613) fix(recovery): keep a failed startup obligation scan from latching credential reconciliation
+- [#3604](https://github.com/kontourai/station/pull/3604) fix(cli): fingerprint Station's server and UI on Windows before signalling them (#2675)
+- [#3578](https://github.com/kontourai/station/pull/3578) fix(process): register the Codex app-server and retain dead-leader groups instead of reaping them
+- [#3603](https://github.com/kontourai/station/pull/3603) fix(memory): keep a torn transcript tail from swallowing the next message
+- [#3602](https://github.com/kontourai/station/pull/3602) fix(orchestration): never read a dead dispatch's own turn.started as moved on
+
+**Docs**
+
+- [#3625](https://github.com/kontourai/station/pull/3625) docs: align docs-kit tagline with the README
+- [#3617](https://github.com/kontourai/station/pull/3617) docs(readme): align the tagline with the site and add a badge row
+
+**Other**
+
+- [#3642](https://github.com/kontourai/station/pull/3642) chore(docs): declare Corpus v2 purpose and building blocks
+- [#3634](https://github.com/kontourai/station/pull/3634) refactor(orchestration): run turn dedup and session-control request keys on Monument (#3565)
+- [#3632](https://github.com/kontourai/station/pull/3632) test(relay): derive ICE expiry from one issuance timestamp
+- [#3629](https://github.com/kontourai/station/pull/3629) test(dependency-advisory): pin the audit CLI test's clock and add the same-CLI expiry control (fixture clock defect)
+- [#3204](https://github.com/kontourai/station/pull/3204) test(connect): remove boot reset seam and stale native commentary
+- [#3599](https://github.com/kontourai/station/pull/3599) chore(ci): declare the live flaky label and update renamed workflow fixtures
+- [#3598](https://github.com/kontourai/station/pull/3598) chore(docs): advance the review coverage baseline and archive 316 landed notes
+
+## 2026-10-14T09:35:49Z · nightly-android · 0.1.11-nightly.2478.5
+
+- Ship SHA: `59ff630e0e832be3e5c6400776411a9dae06a6b9`
+- Artifact built at: `2026-10-14T08:49:32.681Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 38529818593)
+
+### Changelog
+
+Commits since `2479f38` ([full sha](https://github.com/kontourai/station/commit/2479f38b1ab062e2d9cd6df9f8fa2cdbeee1d136)):
+
+**Features**
+
+- [#3585](https://github.com/kontourai/station/pull/3585) feat(access): personal access tokens act as their person, never as more (#3557)
+- [#3649](https://github.com/kontourai/station/pull/3649) feat(chat): inline copy beside the phone ⋯, one copy icon, and a compact message sheet
+- [#3624](https://github.com/kontourai/station/pull/3624) feat(brand): ship the River app icon, channel palettes and square-tile marks
+- [#3635](https://github.com/kontourai/station/pull/3635) feat(delegation): deliver a delegated task's result to its parent conversation, exactly once (#3158)
+- [#3584](https://github.com/kontourai/station/pull/3584) feat(access): Station groups cap what a person's devices may use (#3557)
+
+**Fixes**
+
+- [#3650](https://github.com/kontourai/station/pull/3650) fix(acp): keep a resumed session's replay out of the transcript; sends wait for a starting session
+- [#3645](https://github.com/kontourai/station/pull/3645) fix(status): release completed pill animation effects
+- [#3651](https://github.com/kontourai/station/pull/3651) fix(chat): stable transcript while loading, animated scroll-to-bottom, opt-in layout tracer
+- [#3648](https://github.com/kontourai/station/pull/3648) fix(station-control): start an agent's unscoped Session in its own Project; say why a scope refusal happened
+- [#3646](https://github.com/kontourai/station/pull/3646) fix(station-control): list the caller's own conversation in list_project_activity
+- [#3644](https://github.com/kontourai/station/pull/3644) fix: order session-terminal retirement by event sequence
+- [#3643](https://github.com/kontourai/station/pull/3643) fix(docs): bind release reviews to relevant manifest and lock values
+- [#3641](https://github.com/kontourai/station/pull/3641) fix(orchestration): retry a failed interrupted-turn recovery within the boot and surface exhaustion
+- [#3640](https://github.com/kontourai/station/pull/3640) fix(memory): report a torn transcript tail on read and write state files atomically
+
+**Other**
+
+- [#3642](https://github.com/kontourai/station/pull/3642) chore(docs): declare Corpus v2 purpose and building blocks
+
+## 2026-10-14T08:49:57Z · nightly-npm · 0.7.0-nightly.2478.38529818593
+
+- Ship SHA: `59ff630e0e832be3e5c6400776411a9dae06a6b9`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2478.38529818593 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `bbc2538` ([full sha](https://github.com/kontourai/station/commit/bbc2538b7a1fe77f6e355bf10ded22c4995c4bf9)):
+
+**Features**
+
+- [#3585](https://github.com/kontourai/station/pull/3585) feat(access): personal access tokens act as their person, never as more (#3557)
+
+**Fixes**
+
+- [#3650](https://github.com/kontourai/station/pull/3650) fix(acp): keep a resumed session's replay out of the transcript; sends wait for a starting session
+
+## 2026-10-14T07:48:13Z · nightly-npm · 0.7.0-nightly.2478.38522577676
+
+- Ship SHA: `bbc2538b7a1fe77f6e355bf10ded22c4995c4bf9`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2478.38522577676 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `f72f8ad` ([full sha](https://github.com/kontourai/station/commit/f72f8adb36cad4468ddc571fcf5a63698796c7c9)):
+
+**Fixes**
+
+- [#3645](https://github.com/kontourai/station/pull/3645) fix(status): release completed pill animation effects
+- [#3651](https://github.com/kontourai/station/pull/3651) fix(chat): stable transcript while loading, animated scroll-to-bottom, opt-in layout tracer
+
+## 2026-10-14T06:53:48Z · nightly-npm · 0.7.0-nightly.2478.38521861278
+
+- Ship SHA: `f72f8adb36cad4468ddc571fcf5a63698796c7c9`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2478.38521861278 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `0e6a18f` ([full sha](https://github.com/kontourai/station/commit/0e6a18f1647a269284a614ce16cffd23604b2564)):
+
+**Features**
+
+- [#3649](https://github.com/kontourai/station/pull/3649) feat(chat): inline copy beside the phone ⋯, one copy icon, and a compact message sheet
+
+## 2026-10-14T05:18:06Z · nightly-npm · 0.7.0-nightly.2478.38510962155
+
+- Ship SHA: `0e6a18f1647a269284a614ce16cffd23604b2564`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.7.0-nightly.2478.38510962155 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `ebc8c32` ([full sha](https://github.com/kontourai/station/commit/ebc8c328dfd39eeb1b35f8d465812ae12c10ba33)):
+
+**Fixes**
+
+- [#3648](https://github.com/kontourai/station/pull/3648) fix(station-control): start an agent's unscoped Session in its own Project; say why a scope refusal happened
 
 ## 2026-10-14T03:59:31Z · nightly-npm · 0.7.0-nightly.2478.38503738124
 

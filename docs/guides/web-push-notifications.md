@@ -57,8 +57,10 @@ push service or displayed on screen.
 ### Authentication and UI state
 
 Subscribe/unsubscribe resolve the request credential to a paired device through
-`identifyDevice`. An operator credential alone is insufficient; an unidentified
-caller reaching the route gets `403 {error: 'device_pairing_required'}`. The
+`identifyDevice`. An operator credential alone is insufficient, and so is a
+personal access token (#3557: it is no device a notification reaches); an
+unidentified caller or a token reaching the route gets
+`403 {error: 'device_pairing_required'}`. The
 outer credential gate can reject earlier with
 `401 {error: {code: 'authentication_required'}}`. Current audit reasons distinguish
 `credential_invalid` and `credential_missing`; the response is not a unique

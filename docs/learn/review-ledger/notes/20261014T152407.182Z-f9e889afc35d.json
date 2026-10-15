@@ -1,0 +1,7 @@
+{
+  "revision": "3843b2f367569eb0c183374252017037e8e638e6",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed long-load feedback and corresponding mounted ChatDockBody test: visible waiting sentence joins existing Start new chat after the established escape delay; composer authority and disabled states are unchanged. The documented composer, attention and recovery claims remain accurate; no prose change required.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatDockBody.sessionFailureBanner.test.tsx"]}
+  ]
+}

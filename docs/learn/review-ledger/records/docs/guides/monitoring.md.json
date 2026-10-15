@@ -102,6 +102,20 @@
 
     "src-server/routes/system/resource-posture-routes.ts",
 
+    "src-ui/src/components/usage-stats/UsageBreakdownSection.tsx",
+
+    "src-ui/src/components/usage-stats/UsageDrillDownModal.tsx",
+
+    "src-ui/src/components/usage-stats/UsageSummaryCards.tsx",
+
+    "src-ui/src/components/usage-stats/period.ts",
+
+    "src-ui/src/components/usage-stats/UsageTrendChart.tsx",
+
+    "tests/profile.spec.ts",
+
+    "src-ui/src/components/usage-stats/UsageStatsPanel.css",
+
     "src-server/__tests__/telemetry.test.ts",
 
     "src-server/runtime/bootstrap/hosted-tenant-mode.ts",

@@ -1,0 +1,7 @@
+{
+  "revision": "8a09b8296f39ea32392fd23093ae32cf28727575",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"chat.css changes cover message-row copy/⋯ controls, the per-message sheet and desktop message chips; the guide's ⋯ references are the start composer's 'Use a visual skill' menu, unchanged. No prose change.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

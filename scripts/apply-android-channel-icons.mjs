@@ -10,6 +10,7 @@ import {
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { writeAndroidThemedIcon } from './lib/android-themed-icon.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { CHANNEL_PALETTES } from './lib/station-icon.mjs';
 
@@ -147,6 +148,7 @@ export function applyAndroidChannelIcons(
 `,
     );
     const values = join(destination, 'values');
+    writeAndroidThemedIcon(destination);
     mkdirSync(values, { recursive: true });
     writeFileSync(
       join(values, 'ic_launcher_background.xml'),

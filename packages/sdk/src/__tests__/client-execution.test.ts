@@ -6,6 +6,7 @@ import {
   ForegroundMessageIndeterminateError,
   getConversationContextBoundaryStatus,
   getConversationHandoffStatus,
+  getTurnDelivery,
   handoffExecutionMessage,
 } from '../client/execution';
 import { sendExecutionMessage } from '../client/send-execution-message';
@@ -234,6 +235,51 @@ describe('client execution', () => {
       'http://station.test/api/orchestration/conversations/conversation%2Fa/handoffs/handoff%2Fkey',
       expect.anything(),
     );
+  });
+
+  test("reads a send's delivery by its key, and never reads a refusal as not-received", async () => {
+    const data = {
+      outcome: 'received',
+      conversationId: 'conversation/a',
+      clientTurnId: 'turn/key',
+    };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: true, data }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      getTurnDelivery('http://station.test', 'conversation/a', 'turn/key'),
+    ).resolves.toEqual(data);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://station.test/api/orchestration/conversations/conversation%2Fa/turn-deliveries/turn%2Fkey',
+      expect.anything(),
+    );
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: true, data }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    await getTurnDelivery('http://station.test', 'c', 'k', {
+      projectSlug: 'my project',
+    });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'http://station.test/api/orchestration/conversations/c/turn-deliveries/k?projectSlug=my%20project',
+      expect.anything(),
+    );
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: false, error: 'Not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    // An older Station has no lookup: that must not read as "safe to resend".
+    await expect(
+      getTurnDelivery('http://station.test', 'conversation/a', 'turn/key'),
+    ).rejects.toBeInstanceOf(ClientChatHttpError);
   });
 
   test('reads durable context-boundary status with the idempotency key', async () => {

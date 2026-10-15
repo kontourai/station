@@ -17,6 +17,7 @@ import {
   installJourneyProfile,
   profileJourney,
 } from './helpers/journey-profile';
+import { mockLongTranscriptConversation } from './helpers/long-transcript-conversation';
 import {
   dismissSetupLauncher,
   emitMockOrchestrationEvent,
@@ -736,63 +737,12 @@ test('virtualizes a long real transcript while preserving reader controls on mob
   ];
   let liveTurnPersisted = false;
   const requestedWindows: string[] = [];
-  let messagesRequested = false;
-  await mockRuntimeConversation(page, {
-    id: threadId,
-    agentSlug: 'station',
+  const conversation = await mockLongTranscriptConversation(page, {
+    threadId,
     title: 'Long transcript',
-    provider: 'bedrock',
-    model: 'model-selected',
-    projectSlug: 'default',
-    canContinue: true,
     turns: () => (liveTurnPersisted ? [...turns, persistedLiveTurn] : turns),
     onWindow: (url) => requestedWindows.push(url),
   });
-  await page.route('**/api/orchestration/chat', (route) =>
-    route.fulfill(
-      json(
-        foregroundMessageReceiptEnvelope({
-          conversationId: threadId,
-          agent: 'agent:station',
-        }),
-      ),
-    ),
-  );
-  await page.route(
-    `**/agents/station/conversations/${threadId}/messages`,
-    (route) => {
-      messagesRequested = true;
-      return route.abort();
-    },
-  );
-  await page.route(/\/agents\/station\/conversations(?:\?.*)?$/, (route) =>
-    route.fulfill(
-      json({
-        success: true,
-        data: [
-          {
-            id: threadId,
-            title: 'Long transcript',
-            agentSlug: 'station',
-            updatedAt: '2026-07-19T10:00:00Z',
-          },
-        ],
-      }),
-    ),
-  );
-  await seedActiveChats(page, [
-    {
-      sessionId: threadId,
-      conversationId: threadId,
-      agentSlug: 'station',
-      projectSlug: 'default',
-      projectName: 'Default',
-      model: 'model-selected',
-      title: 'Long transcript',
-      provider: 'bedrock',
-      orchestrationSessionStarted: true,
-    },
-  ]);
 
   await page.goto(`/?dock=open&maximize=true&chat=${threadId}`);
   await dismissSetupLauncher(page);
@@ -804,7 +754,7 @@ test('virtualizes a long real transcript while preserving reader controls on mob
     'aria-label',
     'Conversation transcript',
   );
-  expect(messagesRequested).toBe(false);
+  expect(conversation.messagesRequested()).toBe(false);
   expect(requestedWindows).toHaveLength(1);
   expect(new URL(requestedWindows[0]).searchParams.get('turnLimit')).toBe('10');
   await page.waitForFunction(
@@ -1911,6 +1861,56 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   await expect(
     page.getByRole('button', { name: 'Provenance', exact: true }),
   ).toBeHidden();
+  // Copy rides beside each row's ⋯ — the question's and the answer's —
+  // instead of one sheet deep, at the same 44px floor.
+  const userRow = page.locator('.message-row--user');
+  const answerRow = page.locator('.message-row:not(.message-row--user)');
+  for (const [row, sheetName, copyName] of [
+    [userRow, 'Your message actions', 'Copy your message'],
+    [answerRow, 'Answer details and actions', 'Copy answer'],
+  ] as const) {
+    const copy = row.getByRole('button', { name: copyName, exact: true });
+    const trigger = row.getByRole('button', { name: sheetName, exact: true });
+    await expect(copy).toBeVisible();
+    await expect(trigger).toBeVisible();
+    // Both boxes from one layout read: two sequential boundingBox() calls can
+    // straddle a transcript reflow and disagree by a pixel or two.
+    const [copyBox, triggerBox] = await row.evaluate(
+      (element, [copyLabel, label]) => {
+        const box = (name: string) => {
+          const button = [...element.querySelectorAll('button')].find(
+            (candidate) => candidate.getAttribute('aria-label') === name,
+          );
+          const { x, y, width, height } = button!.getBoundingClientRect();
+          return { x, y, width, height };
+        };
+        return [box(copyLabel), box(label)];
+      },
+      [copyName, sheetName] as const,
+    );
+    expect(copyBox.width).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+    expect(copyBox.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+    // Side by side on one line, copy first.
+    expect(
+      Math.abs(
+        copyBox.y + copyBox.height / 2 - (triggerBox.y + triggerBox.height / 2),
+      ),
+    ).toBeLessThan(1);
+    expect(copyBox.x + copyBox.width).toBeLessThanOrEqual(triggerBox.x + 1);
+  }
+  // The answer's settle time shares the controls' line.
+  const timeAndCopyCentres = await answerRow.evaluate((element) =>
+    [
+      element.querySelector('.message-meta__time')!,
+      element.querySelector('button[aria-label="Copy answer"]')!,
+    ].map((node) => {
+      const { y, height } = node.getBoundingClientRect();
+      return y + height / 2;
+    }),
+  );
+  expect(
+    Math.abs(timeAndCopyCentres[0]! - timeAndCopyCentres[1]!),
+  ).toBeLessThan(1);
   await page.screenshot({
     path: testInfo.outputPath('mobile-chat-focused-390.png'),
   });
@@ -1921,13 +1921,47 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   });
   await expect(inputTask).toBeVisible();
   expect(await contrastRatio(inputTask)).toBeGreaterThanOrEqual(4.5);
+  const userSheet = page.getByRole('dialog', { name: 'Your message actions' });
+  await expect(userSheet.getByRole('button', { name: /^Copy/ })).toHaveCount(0);
+  // The Task pin and the ⋯ menu are one row: pin at the start, ⋯ at the end.
   await expect(
-    page.getByRole('button', { name: 'Copy message', exact: true }),
+    userSheet.getByRole('button', { name: 'More message actions' }),
   ).toBeVisible();
+  const userSheetRow = await userSheet.evaluate((sheet) => {
+    const rect = (node: Element) => node.getBoundingClientRect();
+    const pin = rect(
+      sheet.querySelector('button[aria-label="Add input to Task"]') ??
+        [...sheet.querySelectorAll('button')].find(
+          (button) => button.textContent?.trim() === 'Add input to Task',
+        )!,
+    );
+    const menu = rect(
+      sheet.querySelector('button[aria-label="More message actions"]')!,
+    );
+    const summary = rect(sheet.querySelector('.message-details__summary')!);
+    return {
+      pinCentre: pin.top + pin.height / 2,
+      menuCentre: menu.top + menu.height / 2,
+      pinLeft: pin.left,
+      menuRight: menu.right,
+      summaryLeft: summary.left,
+      summaryRight: summary.right,
+    };
+  });
+  expect(
+    Math.abs(userSheetRow.pinCentre - userSheetRow.menuCentre),
+  ).toBeLessThan(1);
+  expect(
+    Math.abs(userSheetRow.menuRight - userSheetRow.summaryRight),
+  ).toBeLessThan(1);
+  expect(userSheetRow.pinLeft).toBeLessThan(userSheetRow.summaryLeft + 16);
   await page.getByRole('button', { name: 'Close message details' }).click();
   await page
     .getByRole('button', { name: 'Answer details and actions', exact: true })
     .click();
+  const answerSheet = page.getByRole('dialog', {
+    name: 'Answer details and actions',
+  });
   for (const control of [
     page.getByRole('button', { name: 'More answer actions' }),
     page.getByRole('button', { name: 'Good response' }),
@@ -1938,6 +1972,26 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
     expect(box?.width ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
   }
+  // Short provenance and the actions share ONE row: chips at the start, the
+  // actions (one row of their own) at the end, no dead space under them.
+  const fitting = await answerSheetLayout(answerSheet);
+  expect(fitting.actionCentres).toHaveLength(3);
+  for (const centre of fitting.actionCentres) {
+    expect(Math.abs(centre - fitting.actionCentres[0]!)).toBeLessThan(1);
+  }
+  expect(Math.abs(fitting.lead.centre - fitting.actions.centre)).toBeLessThan(
+    1,
+  );
+  expect(fitting.lead.right).toBeLessThanOrEqual(fitting.actions.left);
+  expect(Math.abs(fitting.actions.right - fitting.summary.right)).toBeLessThan(
+    1,
+  );
+  expect(fitting.panelBottom - fitting.summary.bottom).toBeLessThanOrEqual(
+    MAX_SHEET_TAIL_PX,
+  );
+  await expect(answerSheet.getByRole('button', { name: /^Copy/ })).toHaveCount(
+    0,
+  );
   for (const theme of ['dark', 'light']) {
     await page.evaluate(
       (value) => document.documentElement.setAttribute('data-theme', value),
@@ -1948,6 +2002,23 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
       `mobile-answer-details-${theme}`,
       '[role="dialog"][aria-label="Answer details and actions"]',
     );
+    // One visual family: the overflow trigger draws exactly like the rating
+    // buttons beside it (it is a filled chip everywhere else).
+    const looks = await answerSheet.evaluate((sheet) =>
+      ['More answer actions', 'Good response'].map((name) => {
+        const style = getComputedStyle(
+          sheet.querySelector(`button[aria-label="${name}"]`)!,
+        );
+        return [
+          style.backgroundColor,
+          style.borderTopColor,
+          style.width,
+          style.height,
+          style.color,
+        ].join(' ');
+      }),
+    );
+    expect(looks[0]).toBe(looks[1]);
   }
   await page.getByRole('button', { name: 'Close message details' }).click();
   await header
@@ -1960,7 +2031,136 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   }
   await expect(page.getByTestId('chat-dock-mobile-connection')).toBeVisible();
   await page.getByRole('button', { name: 'Close actions menu' }).click();
+
+  // A Station label too long to share the row: the chips keep every
+  // character (wrapping, never truncated) and the actions move to a row of
+  // their own, still at the end.
+  const longStationName = 'https-very-long-station-name.example-tailnet.ts.net';
+  await page.addInitScript((name) => {
+    const stored = JSON.parse(
+      localStorage.getItem('station-connect-connections') ?? '[]',
+    ) as Array<{ id: string; name: string }>;
+    localStorage.setItem(
+      'station-connect-connections',
+      JSON.stringify(stored.map((entry) => ({ ...entry, name }))),
+    );
+  }, longStationName);
+  await page.reload();
+  await dismissSetupLauncher(page);
+  await page
+    .getByRole('button', { name: 'Answer details and actions', exact: true })
+    .click();
+  await expect(answerSheet.getByText(`via ${longStationName}`)).toBeVisible();
+  // Every character is shown: the pill wraps rather than ellipsing.
+  expect(
+    await answerSheet
+      .getByText(`via ${longStationName}`)
+      .evaluate((pill) => pill.scrollWidth <= pill.clientWidth),
+  ).toBe(true);
+  // The overflow menu loads lazily; measure once every action is present.
+  await expect(
+    answerSheet.getByRole('button', { name: 'More answer actions' }),
+  ).toBeVisible();
+  const wrapped = await answerSheetLayout(answerSheet);
+  expect(wrapped.actionCentres).toHaveLength(3);
+  for (const centre of wrapped.actionCentres) {
+    expect(Math.abs(centre - wrapped.actionCentres[0]!)).toBeLessThan(1);
+  }
+  expect(wrapped.actions.top).toBeGreaterThanOrEqual(wrapped.lead.bottom - 1);
+  expect(Math.abs(wrapped.actions.right - wrapped.summary.right)).toBeLessThan(
+    1,
+  );
+  expect(wrapped.panelBottom - wrapped.summary.bottom).toBeLessThanOrEqual(
+    MAX_SHEET_TAIL_PX,
+  );
+
+  // 320px with the thumbs-down reason open: the action group stays anchored
+  // at the end and wraps as a unit. The phone baseline that wraps every
+  // `__actions` row used to strand the ⋯ alone at the start.
+  await page.getByRole('button', { name: 'Close message details' }).click();
+  await page.setViewportSize({ width: 320, height: 700 });
+  const ratings: string[] = [];
+  await page.route('**/api/feedback/rate', (route) => {
+    if (route.request().method() !== 'POST') {
+      return rejectUnexpectedFixtureRequest(route);
+    }
+    ratings.push(route.request().postData() ?? '');
+    return route.fulfill(json({ success: true }));
+  });
+  await page
+    .getByRole('button', { name: 'Answer details and actions', exact: true })
+    .click();
+  await expect(
+    answerSheet.getByRole('button', { name: 'More answer actions' }),
+  ).toBeVisible();
+  // The sheet's title keeps one line at 320px.
+  const titleLines = await answerSheet.evaluate((sheet) => {
+    const strong = sheet.querySelector('.responsive-dialog-header strong')!;
+    const range = document.createRange();
+    range.selectNodeContents(strong);
+    return new Set(
+      [...range.getClientRects()].map((line) => Math.round(line.top)),
+    ).size;
+  });
+  expect(titleLines).toBe(1);
+  await answerSheet.getByRole('button', { name: 'Bad response' }).click();
+  await expect(answerSheet.getByPlaceholder('Why? (optional)')).toBeVisible();
+  await expect.poll(() => ratings.length).toBe(1);
+  // Let the reason field finish sliding open (its wrapper animates
+  // max-width) before reading the layout.
+  await expect
+    .poll(() =>
+      answerSheet
+        .locator('.message__rating-expand')
+        .evaluate((expand) => expand.getBoundingClientRect().width),
+    )
+    .toBeGreaterThan(140);
+  const narrow = await answerSheet.evaluate((sheet) => {
+    const rect = (node: Element) => node.getBoundingClientRect();
+    const menu = rect(
+      sheet.querySelector('button[aria-label="More answer actions"]')!,
+    );
+    const rating = rect(sheet.querySelector('.message__rating')!);
+    const reason = rect(sheet.querySelector('.message__rating-reason')!);
+    const summary = rect(sheet.querySelector('.message-details__summary')!);
+    return {
+      menu: { top: menu.top, bottom: menu.bottom, right: menu.right },
+      rating: { top: rating.top, right: rating.right },
+      reason: { left: reason.left, right: reason.right },
+      summary: { left: summary.left, right: summary.right },
+    };
+  });
+  expect(Math.abs(narrow.menu.right - narrow.summary.right)).toBeLessThan(1);
+  expect(narrow.rating.top).toBeGreaterThanOrEqual(narrow.menu.bottom - 1);
+  expect(Math.abs(narrow.rating.right - narrow.summary.right)).toBeLessThan(1);
+  expect(narrow.reason.left).toBeGreaterThanOrEqual(narrow.summary.left - 1);
+  expect(narrow.reason.right).toBeLessThanOrEqual(narrow.summary.right + 1);
 });
+
+/** Below the sheet's last row: its 8px body padding, the panel's 1px border
+ * and the overlay's 8px safe-area floor, and nothing else. */
+const MAX_SHEET_TAIL_PX = 17;
+
+/** One layout read of the answer sheet's summary row (the sheet may still be
+ * sliding in, so sequential boundingBox() calls can disagree). */
+async function answerSheetLayout(sheet: Locator) {
+  return sheet.evaluate((element) => {
+    const rect = (node: Element) => {
+      const { top, bottom, left, right, height } = node.getBoundingClientRect();
+      return { top, bottom, left, right, centre: top + height / 2 };
+    };
+    const actions = element.querySelector('.message-details__actions')!;
+    return {
+      summary: rect(element.querySelector('.message-details__summary')!),
+      lead: rect(element.querySelector('.message-details__lead')!),
+      actions: rect(actions),
+      actionCentres: [...actions.querySelectorAll('button')].map(
+        (button) => rect(button).centre,
+      ),
+      panelBottom: window.innerHeight,
+    };
+  });
+}
 
 /**
  * Escape dismisses the sheet and does nothing else — including after a row

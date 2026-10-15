@@ -1,0 +1,7 @@
+{
+  "revision": "8a09b8296f39ea32392fd23093ae32cf28727575",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed chat.css: the phone message sheet's rows wrap content-first without viewport queries except a 320px title step, the action group outranks the phone __actions baseline to stay end-anchored, and 44px targets hold in both themes; consistent with the guide. No prose change.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

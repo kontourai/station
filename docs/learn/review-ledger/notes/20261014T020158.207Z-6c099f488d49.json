@@ -1,0 +1,7 @@
+{
+  "revision": "988949305e1df68541059efcb1e81d3e5f8ea739",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Changed inputs: tests/e2e-manifest.mjs adds tests/transcript-load-stability.spec.ts to the product bucket (parallel-safe list plus an entry), and mobile-chat-composer.spec.ts now takes its long-transcript mocks from tests/helpers/long-transcript-conversation.ts with the same routes. The matrix rows are representative surface owners and carry no Chat row; its manifest/bucket/runner claims are unchanged. No prose change.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs","tests/mobile-chat-composer.spec.ts"]}
+  ]
+}

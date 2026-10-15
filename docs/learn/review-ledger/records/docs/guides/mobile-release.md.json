@@ -114,7 +114,11 @@
 
     "src-ui/src/__tests__/CoreUpdateLaunchCheck.test.tsx",
 
-    "src-ui/src/components/CoreUpdateLaunchCheck.tsx"
+    "src-ui/src/components/CoreUpdateLaunchCheck.tsx",
+
+    "scripts/write-ios-build-manifest.mjs",
+
+    "scripts/ios-simulator-build.mjs"
   ],
 
   "checks": [

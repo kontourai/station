@@ -1,0 +1,7 @@
+{
+  "revision": "e04411538de721384a9abdb3620291f66f9e863f",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed against the regenerated metrics reference: the only change is the station.acp.resume_sessions description adding the 'resumed' outcome. This review makes no claim about that counter; its statements remain accurate.","inputs":["docs/architecture/abstraction-review.md","docs/reference/metrics.md"]}
+  ]
+}

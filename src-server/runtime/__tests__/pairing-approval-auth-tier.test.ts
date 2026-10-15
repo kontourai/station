@@ -12,6 +12,7 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { agentConnectionFixture } from '../../../tests/helpers/connection-fixtures.js';
 import { credentialProfileAppHomeDir } from '../../providers/app-home/credential-profile-registry.js';
+import { createPersonalTokenRoutes } from '../../routes/access/personal-token-routes.js';
 import { createAppHomeRoutes } from '../../routes/connections/app-home.js';
 import { createAttentionRoutes } from '../../routes/orchestration/attention.js';
 import {
@@ -160,6 +161,10 @@ async function createHarness(
     undefined,
     undefined,
     () => security.devicePairing,
+  );
+  app.route(
+    '/api/access/tokens',
+    createPersonalTokenRoutes(security.devicePairing),
   );
   app.route(
     '/api/attention',
@@ -1204,6 +1209,7 @@ describe('#3557 Station groups at the HTTP boundary', () => {
           principalId: casey.principalId,
           group: 'admin',
           devices: [{ id: casey.device.id, effectiveScope: ELEVATED }],
+          canHoldTokens: true,
         },
       ],
     });
@@ -1245,5 +1251,237 @@ describe('#3557 Station groups at the HTTP boundary', () => {
       expect([401, 403], `${method} ${path}`).toContain(refused.status);
     }
     expect(harness.security.groupOf(casey.principalId)).toBe('admin');
+  });
+});
+
+describe('#3557 personal access tokens at the HTTP boundary', () => {
+  const STANDARD = 'orchestration:read orchestration:operate terminal:operate';
+  const pairPerson = async (
+    harness: Awaited<ReturnType<typeof createHarness>>,
+    login: string,
+    scope: string,
+  ) => {
+    const pairing = harness.security.devicePairing;
+    const offer = pairing.createOffer({ endpoint: ORIGIN, scope });
+    const request = pairing.requestPairing({
+      requesterPosition: 'off-box',
+      offerId: offer.offerId,
+      proof: offer.challenge,
+      deviceName: `${login} phone`,
+      source: 'tailnet',
+      requester: { provider: 'tailscale-serve', login },
+    });
+    const principalId = `human:tailscale-serve:${login}`;
+    pairing.confirmRequest(
+      request.requestId,
+      { kind: 'presented-credential' },
+      { principalId, kind: 'verified-ingress' },
+    );
+    return {
+      principalId,
+      ...pairing.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: request.requestId,
+      }),
+    };
+  };
+  const bearer = (credential: string, body?: unknown): RequestInit => ({
+    method: body === undefined ? 'GET' : 'POST',
+    headers: {
+      Authorization: `Bearer ${credential}`,
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+
+  test('a person mints a token from their own device; it reads as them and can do nothing more', async () => {
+    const harness = await createHarness();
+    const casey = await pairPerson(harness, 'casey', STANDARD);
+    const minted = await harness.request(
+      '/api/access/tokens',
+      bearer(casey.credential, {
+        name: 'CI',
+        scope: 'orchestration:read orchestration:operate',
+      }),
+    );
+    expect(minted.status).toBe(201);
+    const { secret, token } = (await minted.json()) as {
+      secret: string;
+      token: { id: string; ownerPrincipalId: string };
+    };
+    expect(token.ownerPrincipalId).toBe(casey.principalId);
+
+    expect(
+      (await harness.request('/api/attention', bearer(secret))).status,
+    ).toBe(200);
+    // A token neither manages tokens nor reaches device management.
+    expect(
+      (await harness.request('/api/access/tokens', bearer(secret))).status,
+    ).toBe(403);
+    expect(
+      [401, 403].includes(
+        (await harness.request('/api/pairing/devices', bearer(secret))).status,
+      ),
+    ).toBe(true);
+
+    // Never a Project's member administration, whatever its scope.
+    const administer = await harness.request(
+      '/api/projects/demo/access/invitations',
+      bearer(secret, {}),
+    );
+    expect(administer.status).toBe(403);
+    // The same person's device passes the boundary (the harness mounts no
+    // Project routes behind it), so the 403 is the token's alone.
+    expect(
+      (
+        await harness.request(
+          '/api/projects/demo/access/invitations',
+          bearer(casey.credential, {}),
+        )
+      ).status,
+    ).not.toBe(403);
+
+    const listed = await harness.request(
+      '/api/access/tokens',
+      bearer(casey.credential),
+    );
+    expect(await listed.json()).toMatchObject({
+      tokens: [{ id: token.id, name: 'CI' }],
+    });
+    const revoked = await harness.request(`/api/access/tokens/${token.id}`, {
+      ...bearer(casey.credential),
+      method: 'DELETE',
+    });
+    expect(revoked.status).toBe(200);
+    expect(
+      (await harness.request('/api/attention', bearer(secret))).status,
+    ).toBe(401);
+  });
+
+  test('a token never exceeds what the minting device may use, and only a device tied to a person mints', async () => {
+    const harness = await createHarness();
+    // A read-only device cannot reach the mint at all (it needs Operate);
+    // a device that operates but cannot read cannot mint a reading token.
+    const readOnly = await pairPerson(harness, 'erin', 'orchestration:read');
+    expect(
+      (
+        await harness.request(
+          '/api/access/tokens',
+          bearer(readOnly.credential, {
+            name: 'x',
+            scope: 'orchestration:read',
+          }),
+        )
+      ).status,
+    ).toBe(403);
+    const operateOnly = await pairPerson(
+      harness,
+      'dana',
+      'orchestration:operate',
+    );
+    const exceeded = await harness.request(
+      '/api/access/tokens',
+      bearer(operateOnly.credential, {
+        name: 'too much',
+        scope: 'orchestration:read',
+      }),
+    );
+    expect(exceeded.status).toBe(400);
+    expect(await exceeded.json()).toEqual({
+      error: { code: 'scope_exceeds_access' },
+    });
+
+    const mine = await harness.pairDevice('My phone');
+    for (const credential of [mine.credential, harness.operatorCredential]) {
+      const refused = await harness.request(
+        '/api/access/tokens',
+        bearer(credential, { name: 'x', scope: 'orchestration:read' }),
+      );
+      expect(refused.status).toBe(403);
+    }
+  });
+
+  test('a read-only person revokes a token the operator made for them', async () => {
+    const harness = await createHarness();
+    const erin = await pairPerson(harness, 'erin', 'orchestration:read');
+    const minted = await harness.request(
+      `/api/pairing/people/${encodeURIComponent(erin.principalId)}/tokens`,
+      bearer(harness.operatorCredential, {
+        name: 'Ops',
+        scope: 'orchestration:read',
+      }),
+    );
+    expect(minted.status).toBe(201);
+    const { secret, token } = (await minted.json()) as {
+      secret: string;
+      token: { id: string };
+    };
+    const revoked = await harness.request(`/api/access/tokens/${token.id}`, {
+      ...bearer(erin.credential),
+      method: 'DELETE',
+    });
+    expect(revoked.status).toBe(200);
+    expect(harness.security.verifyCredential(secret)).toBe(false);
+  });
+
+  test('the operator mints for a person; the desktop local grant cannot', async () => {
+    const harness = await createHarness();
+    const casey = await pairPerson(harness, 'casey', STANDARD);
+    const path = `/api/pairing/people/${encodeURIComponent(casey.principalId)}/tokens`;
+    const minted = await harness.request(
+      path,
+      bearer(harness.operatorCredential, {
+        name: 'Ops',
+        scope: 'orchestration:read orchestration:operate',
+        expiresInDays: 30,
+      }),
+    );
+    expect(minted.status).toBe(201);
+    const { secret } = (await minted.json()) as { secret: string };
+    expect(harness.security.identifyDevice(secret)?.principalBinding).toEqual(
+      casey.device.principalBinding,
+    );
+
+    // The token outlives Casey's last device; Casey stays listed with it.
+    const operator = { Authorization: `Bearer ${harness.operatorCredential}` };
+    expect(
+      (
+        await harness.request(`/api/pairing/devices/${casey.device.id}`, {
+          method: 'DELETE',
+          headers: operator,
+        })
+      ).status,
+    ).toBe(200);
+    expect(harness.security.verifyCredential(secret)).toBe(true);
+    const people = (await (
+      await harness.request('/api/pairing/people', { headers: operator })
+    ).json()) as {
+      people: { principalId: string; tokens: { name: string }[] }[];
+    };
+    expect(
+      people.people.find((person) => person.principalId === casey.principalId),
+    ).toMatchObject({ tokens: [{ name: 'Ops' }], canHoldTokens: false });
+
+    const mint = await harness.request(
+      '/.well-known/station/v1/pairing/local-grant',
+      harness.json({
+        secret: harness.localGrantSecret(),
+        deviceName: 'Desktop',
+      }),
+      '127.0.0.1',
+    );
+    const desktop = (await mint.json()) as { credential: string };
+    expect(
+      (
+        await harness.request(
+          path,
+          bearer(desktop.credential, {
+            name: 'x',
+            scope: 'orchestration:read',
+          }),
+        )
+      ).status,
+    ).toBe(401);
   });
 });

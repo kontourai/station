@@ -542,7 +542,7 @@ test.describe('Orchestration Chat Flow', () => {
     page,
   }) => {
     const browserHealth = await monitorBrowserHealth(page);
-    let answer: 'refuse' | 'settled' = 'refuse';
+    let answer: 'refuse' | 'unconfirmed' | 'settled' = 'refuse';
     let requestId = 'req-2917';
     let requestEventId = 'evt-req-2917';
     await page.route('**/api/system/status', async (route) => {
@@ -575,6 +575,17 @@ test.describe('Orchestration Chat Flow', () => {
       });
     });
     await page.route('**/api/orchestration/commands', async (route) => {
+      if (answer === 'unconfirmed') {
+        await route.fulfill({
+          status: 408,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            error:
+              'Request to https://brian-media.python-smelt.ts.net/api/orchestration/commands timed out after 15000ms',
+          }),
+        });
+        return;
+      }
       await route.fulfill({
         status: 409,
         headers: { [STATION_ENVELOPE_HEADER]: STATION_ENVELOPE_HEADER_VALUE },
@@ -605,7 +616,20 @@ test.describe('Orchestration Chat Flow', () => {
                     message: 'Answered elsewhere.',
                   },
                 }
-              : { success: false },
+              : answer === 'unconfirmed'
+                ? {
+                    success: true,
+                    data: {
+                      state: 'unavailable',
+                      reference: {
+                        threadId: 'session-1',
+                        requestId,
+                        requestEventId,
+                      },
+                      message: 'Station is unavailable.',
+                    },
+                  }
+                : { success: false },
           ),
         });
       },
@@ -954,18 +978,42 @@ test.describe('Orchestration Chat Flow', () => {
     await expectClearLayout('desktop right dock refused');
     await expectActionsContained('desktop right dock refused');
 
+    const desktopEnabledWidths = await card
+      .locator('.tool-call__approve-btn')
+      .evaluateAll((nodes) =>
+        nodes.map((node) => node.getBoundingClientRect().width),
+      );
+    answer = 'unconfirmed';
+    await allowOnce.click();
+    await expect(card.getByRole('alert')).toContainText(
+      'Delivery is not confirmed',
+    );
+    await expect(allowOnce).toBeDisabled();
+    const actionsBox = await card.locator('.tool-call__actions').boundingBox();
+    const detailsBox = await card.locator('.tool-call__details').boundingBox();
+    expect(
+      actionsBox!.y,
+      'decisions follow the command preview',
+    ).toBeGreaterThanOrEqual(detailsBox!.y + detailsBox!.height);
+    await expectClearLayout('desktop uncertain delivery');
+    await card.getByRole('button', { name: 'Check status' }).click();
+    await expect(card.getByRole('alert')).toContainText(
+      'Station still could not confirm',
+    );
+    await expect(allowOnce).toBeDisabled();
+    answer = 'settled';
+    await card.getByRole('button', { name: 'Check status' }).click();
+    await expect(card.getByRole('status')).toHaveText(
+      'This request is no longer open.',
+    );
+    await expectClearLayout('desktop inspected decision');
+
     // The disabled "no longer open" state of the inline buttons. Only a
     // desktop renders them since #3331 (a phone answers in the request
     // sheet), so this is where their disabled styling is pinned. The 720px
     // label-row check this test once made has no subject any more: 720px is
     // under the 768px phone query, where the row carries only Answer.
     answer = 'settled';
-    const desktopEnabledWidths = await card
-      .locator('.tool-call__approve-btn')
-      .evaluateAll((nodes) =>
-        nodes.map((node) => node.getBoundingClientRect().width),
-      );
-    await allowOnce.click();
     await expect(card.getByRole('status')).toHaveText(
       'This request is no longer open.',
     );

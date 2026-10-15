@@ -1,0 +1,7 @@
+{
+  "revision": "e75042970b706d7835d6eed04c48f048f4603118",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Searched for client_turn_in_flight, clientTurnId, same-key retry, foreground_message_indeterminate and givenUp claims. The SDK's indeterminate-retry and getTurnDelivery text and the ledger-migration row stay accurate; the change only narrows the post-wait indeterminate refusal to claims this process retained.","inputs":["docs/architecture.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

@@ -12,14 +12,34 @@ topic before creating another one. Update that owner with the behavior change.
 | Contributor or operator task | `docs/guides/` | Setup, implementation, operation, and verification |
 | Contract details | `docs/reference/` | Inputs, outputs, defaults, and errors |
 | Module ownership | `docs/architecture/` | Interfaces, composition, and source routing |
-| Proposal or decision | `docs/design/` or `docs/adr/` | Alternatives, rationale, and decision status |
+| Proposal | `docs/design/` | Alternatives, rationale, and status |
+| Decision | `docs/decisions/<slug>.md` | The current answer for one subject; see [Record a decision](#record-a-decision) |
 | Execution plan | `docs/plans/` | Implementation sequence for an issue |
 | Runnable example | `examples/` | Buildable extension with explicit prerequisites |
 
 Use lowercase, hyphen-separated names for new prose files. Keep established
 entry-point names such as `README.md`, `AGENTS.md`, and `CONTEXT.md`, and the
-numbered ADR convention. Prefer topic names over `new`, `final`, or bare issue
+existing numbered ADR filenames. Prefer topic names over `new`, `final`, or bare issue
 numbers. Link new guides from the documentation map or their owning guide.
+
+## Record a decision
+
+The numbered ADRs in `docs/adr/` are frozen history. Do not add, rename, or
+renumber one; fix only a typo or a broken link in an existing ADR. Record a new
+decision, or a changed answer to an old one, as `docs/decisions/<slug>.md` in
+[Corpus's decision record format](https://github.com/kontourai/corpus/blob/main/docs/decisions.md):
+frontmatter with a `status` of `current`, `superseded`, `merged`, or
+`needs-decision`, a one-line `subject`, the `decided` date, and `evidence`.
+Cite an ADR the record builds on or replaces as `adr` evidence whose `ref` is
+the ADR's path. ADR status words such as `accepted` are refused.
+
+Run `npm run gen:decisions-index` to regenerate `docs/decisions/index.md`, and
+`npm run check:decisions` to validate the records and the index. `ci:fast` runs
+that check in the required `fast-checks` lane against the pull request's or
+merge group's base, so a file added under `docs/adr/` fails there. Locally the
+base is `origin/main`, and only committed files are compared. Corpus is not on
+npm: both commands fetch it with `npm exec` from the commit that
+`scripts/corpus-decisions.mjs` pins, the same one the Docs kit gate uses.
 
 ## Make authority explicit
 
