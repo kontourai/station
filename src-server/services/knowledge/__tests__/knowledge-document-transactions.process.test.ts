@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { KnowledgeDocumentMeta } from '@kontourai/station-contracts/knowledge';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
@@ -14,10 +14,11 @@ import {
   readKnowledgeDocuments,
 } from '../knowledge-storage.js';
 
-const fixture = join(
-  dirname(fileURLToPath(import.meta.url)),
-  'fixtures',
-  'knowledge-document-transaction-child.ts',
+const fixture = fileURLToPath(
+  new URL(
+    './test-support/knowledge-document-transaction-child.ts',
+    import.meta.url,
+  ),
 );
 const tsx = join(process.cwd(), 'node_modules', '.bin', 'tsx');
 const JOURNAL = '.station-knowledge-transaction.json';
