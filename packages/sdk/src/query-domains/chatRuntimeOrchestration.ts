@@ -883,7 +883,7 @@ export async function fetchOrchestrationSessions(
   const resolvedApiBase = await resolveApiBase(apiBase);
   const response = await authenticatedFetch(
     `${resolvedApiBase}/api/orchestration/sessions/read-model`,
-    { timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS },
+    { progressTimeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS },
   );
   const result = (await response.json()) as {
     success: boolean;

@@ -256,6 +256,112 @@ async function fetchWithDeadline(
   return deadlineBoundBody(response, deadline, timedOut);
 }
 
+/** Opt-in header and body-idle bounds, with no total-duration deadline. */
+async function fetchWithProgressTimeout(
+  input: Parameters<typeof fetch>[0],
+  init: RequestInit | undefined,
+  timeoutMs: number,
+  url: string,
+  request: ClientAuthenticatedTransport,
+  readOnly?: boolean,
+): Promise<Response> {
+  const deadline = new AbortController();
+  const signal = init?.signal
+    ? AbortSignal.any([init.signal, deadline.signal])
+    : deadline.signal;
+  const method =
+    init?.method ?? (input instanceof Request ? input.method : 'GET');
+  const timedOut = () =>
+    new StationRequestTimeoutError(url, timeoutMs, { method, readOnly });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const reset = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => deadline.abort(timedOut()), timeoutMs);
+  };
+  reset();
+  let onAbort: () => void = () => {};
+  let response: Response;
+  try {
+    signal.throwIfAborted();
+    response = await Promise.race([
+      request(input, { ...init, signal }),
+      new Promise<never>((_resolve, reject) => {
+        onAbort = () => reject(signal.reason);
+        signal.addEventListener('abort', onAbort, { once: true });
+        if (signal.aborted) onAbort();
+      }),
+    ]);
+  } catch (error) {
+    clearTimeout(timer);
+    throw error;
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+  }
+  if (!response.body) {
+    clearTimeout(timer);
+    return response;
+  }
+  reset();
+  const reader = response.body.getReader();
+  const cleanup = () => {
+    clearTimeout(timer);
+    signal.removeEventListener('abort', onAbort);
+  };
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      onAbort = () => {
+        cleanup();
+        controller.error(signal.reason);
+        // Native transports may leave cancellation pending; settlement must not wait for it.
+        void reader.cancel(signal.reason).catch(() => {});
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+      if (signal.aborted) onAbort();
+    },
+    async pull(controller) {
+      try {
+        const chunk = await reader.read();
+        if (signal.aborted) return;
+        if (chunk.done) {
+          cleanup();
+          controller.close();
+          reader.releaseLock();
+        } else {
+          if (chunk.value.byteLength > 0) reset();
+          controller.enqueue(chunk.value);
+        }
+      } catch (error) {
+        if (signal.aborted) return;
+        cleanup();
+        controller.error(error);
+        void reader.cancel(error).catch(() => {});
+      }
+    },
+    cancel(reason) {
+      cleanup();
+      void reader.cancel(reason).catch(() => {});
+    },
+  });
+  const bounded = new Response(body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: response.headers,
+  });
+  return new Proxy(bounded, {
+    get(target, property) {
+      if (
+        property === 'url' ||
+        property === 'redirected' ||
+        property === 'type'
+      )
+        return response[property];
+      const value = Reflect.get(target, property, target);
+      if (property === 'constructor') return value;
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
+
 const BODY_READERS = new Set<PropertyKey>([
   'json',
   'text',
@@ -854,6 +960,8 @@ async function settleCredentialResponse(
  * pass `timeoutMs: null` to opt out of the host default.
  */
 export type AuthenticatedFetchInit = RequestInit & {
+  /** Opt-in header and body inactivity timeout; supersedes the total request deadline. */
+  progressTimeoutMs?: number;
   timeoutMs?: number | null;
   /** See `ClientRequestOptions['readOnly']` — the same declaration, for the
    * call sites that reach Station through `authenticatedFetch` directly. */
@@ -877,7 +985,13 @@ async function dispatchAuthenticatedFetch(
   input: Parameters<typeof fetch>[0],
   ...args: [init?: AuthenticatedFetchInit]
 ): Promise<Response> {
-  const { timeoutMs: initTimeoutMs, readOnly, ...rest } = args[0] ?? {};
+  const {
+    timeoutMs: initTimeoutMs,
+    progressTimeoutMs,
+    readOnly,
+    ...rest
+  } = args[0] ?? {};
+  const progressTimeout = normalizeTimeout(progressTimeoutMs);
   const init = args[0] === undefined ? undefined : (rest as RequestInit);
   const hasInitArgument = args.length > 0;
   const url = input instanceof Request ? input.url : input.toString();
@@ -900,6 +1014,15 @@ async function dispatchAuthenticatedFetch(
     // Arity is preserved deliberately: several suites pin `fetch(url)` vs
     // `fetch(url, undefined)` on this path, and adding a deadline must not
     // change the call shape when no deadline is configured.
+    if (progressTimeout !== undefined)
+      return fetchWithProgressTimeout(
+        input,
+        originInit,
+        progressTimeout,
+        url,
+        fetch,
+        readOnly,
+      );
     if (timeoutMs === undefined) {
       return hasInitArgument || originInit !== undefined
         ? fetch(input, originInit)
@@ -981,12 +1104,21 @@ async function dispatchAuthenticatedFetch(
     assertAuthority,
   );
   const response =
-    timeoutMs === undefined
-      ? await request(input, transportInit)
-      : await fetchWithDeadline(input, transportInit, timeoutMs, url, {
+    progressTimeout !== undefined
+      ? await fetchWithProgressTimeout(
+          input,
+          transportInit,
+          progressTimeout,
+          url,
           request,
-          ...(readOnly !== undefined ? { readOnly } : {}),
-        });
+          readOnly,
+        )
+      : timeoutMs === undefined
+        ? await request(input, transportInit)
+        : await fetchWithDeadline(input, transportInit, timeoutMs, url, {
+            request,
+            ...(readOnly !== undefined ? { readOnly } : {}),
+          });
   await settleCredentialResponse(
     url,
     response,

@@ -4198,9 +4198,13 @@ framing ends and the application's authority checks begin.
 ## Session read-model deadline
 
 `fetchOrchestrationSessions(apiBase?)` reads the session read-model with an
-explicit 30-second request deadline, including JSON body consumption. A stalled
-body rejects with `StationRequestTimeoutError`, allowing the stream's owed
-refresh to run after the query settles. This per-read bound does not enable a
+explicit 30-second timeout for receiving headers, then a 30-second inactivity
+timeout while consuming the JSON body. Each nonempty chunk resets the inactivity
+timeout, so a slow response can take longer than 30 seconds while progressing.
+There is no overall duration cap. A stalled response rejects with `StationRequestTimeoutError`, allowing the stream's owed
+refresh to run after the query settles; existing cached sessions remain available
+during retries. The opt-in `authenticatedFetch` option `progressTimeoutMs`
+supersedes a total request deadline for this call. This per-read bound does not enable a
 global browser deadline for uploads or installs. See the
 [fetcher](../../packages/sdk/src/query-domains/chatRuntimeOrchestration.ts) and
 [deadline transport](../../packages/sdk/src/client/http.ts).

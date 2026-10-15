@@ -10,13 +10,21 @@ import {
   ensureOrchestrationEventStream,
   resetSessionReadModelRefreshForTests,
 } from '../hooks/orchestration/ensureOrchestrationEventStream';
+import { stationQueryDefaults } from '../lib/queryDefaults';
 
 const frame =
   'event: orchestration:session-projection-updated\ndata: {"threadId":"probe"}\n\n';
 let sequence = 0;
 const cleanups: (() => void)[] = [];
 
-function setup(stallSecond: boolean) {
+type TransportMode =
+  | 'healthy'
+  | 'body-stall'
+  | 'headers-stall'
+  | 'slow'
+  | 'repeat-stall';
+
+function setup(mode: TransportMode, productionRetries = false) {
   resetSessionReadModelRefreshForTests();
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
   // jsdom's native AbortSignal.timeout does not use Vitest's clock.
@@ -47,11 +55,47 @@ function setup(stallSecond: boolean) {
       if (url !== `${origin}/api/orchestration/sessions/read-model`)
         throw new Error(`Unexpected request: ${url}`);
       const read = ++started;
-      if (stallSecond && read === 2) {
-        // A transport returns headers but never completes or aborts its body.
-        return new Response(new ReadableStream({ start() {} }), {
-          headers: { 'Content-Type': 'application/json' },
-        });
+      if (mode === 'headers-stall' && read === 2) {
+        // Deliberately non-cooperative: the SDK must settle even if abort is ignored.
+        return new Promise<Response>(() => {});
+      }
+      if (
+        (mode === 'body-stall' && read === 2) ||
+        (mode === 'repeat-stall' && read > 1)
+      ) {
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            async start(controller) {
+              await new Promise((resolve) => setTimeout(resolve, 5_000));
+              controller.enqueue(
+                new TextEncoder().encode('{"success":true,"data":['),
+              );
+            },
+          }),
+          {
+            headers: { 'Content-Type': 'application/json' },
+          },
+        );
+      }
+      if (mode === 'slow' && read === 1) {
+        const bytes = new TextEncoder().encode(
+          JSON.stringify({
+            success: true,
+            data: [{ threadId: 'slow-read', title: 'x'.repeat(1_000_000) }],
+          }),
+        );
+        let offset = 0;
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            async pull(controller) {
+              await new Promise((resolve) => setTimeout(resolve, 1_000));
+              const chunk = bytes.subarray(offset, offset + 25_001);
+              offset += chunk.byteLength;
+              controller.enqueue(chunk);
+              if (offset === bytes.byteLength) controller.close();
+            },
+          }),
+        );
       }
       await new Promise((resolve) => setTimeout(resolve, 3_000));
       return Response.json({
@@ -61,7 +105,9 @@ function setup(stallSecond: boolean) {
     }),
   );
   const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    defaultOptions: {
+      queries: productionRetries ? stationQueryDefaults() : { retry: false },
+    },
   });
   const results: unknown[] = [];
   const observer = new QueryObserver(client, {
@@ -100,30 +146,82 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test('a stalled SDK response body settles at its deadline and dispatches the owed refresh', async () => {
-  const p = setup(true);
-  expect(getClientRequestTimeout()).toBeUndefined();
+test.each(['body-stall', 'headers-stall'] as const)(
+  '%s settles and dispatches the owed refresh through the SDK',
+  async (mode) => {
+    const p = setup(mode);
+    const progressAt = mode === 'body-stall' ? 5_000 : 0;
+    expect(getClientRequestTimeout()).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(3_000);
+    p.push(frame);
+    await vi.advanceTimersByTimeAsync(100);
+    p.push(frame);
+    await vi.advanceTimersByTimeAsync(
+      DEFAULT_CLIENT_REQUEST_TIMEOUT_MS + progressAt - 101,
+    );
+    expect(p.started()).toBe(2);
+    await vi.advanceTimersByTimeAsync(2);
+    expect(p.started()).toBe(3);
+    expect(p.results).toContainEqual(
+      expect.objectContaining({
+        name: 'StationRequestTimeoutError',
+        timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+        method: 'GET',
+        mutation: false,
+      }),
+    );
+    expect(p.observer.getCurrentResult().data?.[0].threadId).toBe('read-1');
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(p.observer.getCurrentResult().data?.[0].threadId).toBe('read-3');
+    expect(p.client.isFetching({ queryKey: ['orchestration-sessions'] })).toBe(
+      0,
+    );
+  },
+);
+
+test('a progressing megabyte session list lands after 40 seconds despite projection events and production retries', async () => {
+  const p = setup('slow', true);
+  for (let second = 0; second < 41; second++) {
+    p.push(frame);
+    await vi.advanceTimersByTimeAsync(1_000);
+    if (second < 39) expect(p.started()).toBe(1);
+  }
+  expect(p.client.getQueryData(['orchestration-sessions'])).toEqual([
+    expect.objectContaining({
+      threadId: 'slow-read',
+      title: 'x'.repeat(1_000_000),
+    }),
+  ]);
+  expect(p.observer.getCurrentResult().data?.[0].threadId).toBe('slow-read');
+  expect(p.results).toEqual([]);
   await vi.advanceTimersByTimeAsync(3_000);
-  p.push(frame);
-  await vi.advanceTimersByTimeAsync(100);
-  p.push(frame);
-  await vi.advanceTimersByTimeAsync(DEFAULT_CLIENT_REQUEST_TIMEOUT_MS - 101);
-  expect(p.started()).toBe(2);
-  await vi.advanceTimersByTimeAsync(2);
-  expect(p.started()).toBe(3);
+  expect(p.observer.getCurrentResult().data?.[0].threadId).toBe('read-2');
+});
+
+test('repeated idle timeouts with production retries keep the last-known session list visible', async () => {
+  const p = setup('repeat-stall', true);
+  await vi.advanceTimersByTimeAsync(3_000);
+  for (let second = 0; second < 180; second++) {
+    p.push(frame);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(p.client.getQueryData(['orchestration-sessions'])).toEqual([
+      expect.objectContaining({ threadId: 'read-1' }),
+    ]);
+    expect(p.observer.getCurrentResult().data?.[0].threadId).toBe('read-1');
+  }
+  expect(p.started()).toBeGreaterThanOrEqual(5);
+  expect(p.started()).toBeLessThanOrEqual(7);
   expect(p.results).toContainEqual(
     expect.objectContaining({
       name: 'StationRequestTimeoutError',
-      timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+      method: 'GET',
+      mutation: false,
     }),
   );
-  await vi.advanceTimersByTimeAsync(3_000);
-  expect(p.observer.getCurrentResult().data?.[0].threadId).toBe('read-3');
-  expect(p.client.isFetching({ queryKey: ['orchestration-sessions'] })).toBe(0);
 });
 
 test('only the last registration release clears the pending settle subscription', async () => {
-  const p = setup(true);
+  const p = setup('body-stall');
   await vi.advanceTimersByTimeAsync(3_000);
   const cache = p.client.getQueryCache();
   const subscribe = cache.subscribe.bind(cache);
@@ -151,7 +249,7 @@ test('only the last registration release clears the pending settle subscription'
 });
 
 test('the last registration release clears the deferred refresh timer', async () => {
-  const p = setup(false);
+  const p = setup('healthy');
   await vi.advanceTimersByTimeAsync(3_000);
   p.push(frame);
   await vi.advanceTimersByTimeAsync(100);
