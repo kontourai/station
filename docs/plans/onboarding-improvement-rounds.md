@@ -131,7 +131,7 @@ source review reported no P1/P2 findings. This proves those bounded repairs.
 The rebuilt app restored desktop and Safari history after a Station restart,
 and a message sent from Safari completed a real `list_projects` call. The first
 desktop tool call after restart failed with an HTTP transport error; history
-also temporarily failed before recovering. Both intermittent failures remain
+also temporarily failed before recovering. The restart/repair failures tracked in [#3713](https://github.com/kontourai/station/issues/3713) remain
 unexplained and are not claimed fixed by the bounded repairs. Physical devices,
 native shells and release delivery remain unverified. Terminal remains outside
 this pass.
