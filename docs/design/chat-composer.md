@@ -212,9 +212,12 @@ unverified. The inbox, sidebar, Home, and mobile picker share this freshness:
 a failed conversation read marks only that conversation; a failed inbox read
 marks the retained list. Rows prefix the computed status with "Last known:"
 and suppress pulsing and elapsed clocks. Each observation source clears only its own failed read. A newer stream
-activity past the failed watermark may supersede those failures. Unmounting a row
-preserves failures and sequence fences; inventory removal or authority cache
-clear releases them. Other conversations and Station authorities remain independent. History
+activity supersedes each failed source whose watermark it exceeds, even when
+another source has a higher watermark. This proves current status, not history
+reader recovery; the history pane retains its own error UI. Unmounting a row
+preserves failures and sequence fences. Pruning requires absence from the loaded
+inventory and no subscribed rows or mounted readers; authority cache clear also
+releases them. Other conversations and Station authorities remain independent. History
 Retry refreshes the capability observation before reloading. The desktop
 inbox footer offers Refresh, which reconnects the same stream and re-reads the
 session list and conversation inventory; when the last read failed, the footer

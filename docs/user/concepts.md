@@ -66,9 +66,12 @@ conversation rows say **Last known:** before their computed status. The status
 uses a muted style without a pulsing indicator or running clock. The transcript's
 background-work indicator also says **Last known**. Each reader keeps its own failure until that reader succeeds; loading older
 history does not clear a failed current-history read. A live update past the
-failed observation’s sequence can verify the conversation again. Hiding and
+failed observation’s sequence supersedes that failure individually: it verifies
+current status, while the history pane keeps any history-read error until its
+reader recovers. Hiding and
 showing a row preserves its last-known status. Observations are released when
-the conversation leaves the inventory or its authority query cache is cleared. Other conversations and
+the conversation is absent from the loaded inventory and no row or reader
+references it, or its authority query cache is cleared. Other conversations and
 Stations retain their own observations. Use **Resync** on the
 conversation or **Refresh inbox** to request fresh observations.
 

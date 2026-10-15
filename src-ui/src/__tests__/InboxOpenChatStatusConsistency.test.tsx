@@ -26,6 +26,7 @@ import { ORCHESTRATION_STREAM_CAUGHT_UP_EVENT } from '@kontourai/station-contrac
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type {
   ConversationListItem,
+  ConversationOpenResolution,
   OrchestrationConversationEventWindow,
 } from '@kontourai/station-contracts/orchestration';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
@@ -181,6 +182,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
 
 import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import { ConversationOpenRevalidator } from '../components/chat-dock/ConversationOpenRevalidator';
+import { resolveConversationOpenAuthoritatively } from '../components/chat-dock/conversationOpenController';
 import { MobileTaskSwitcher } from '../components/chat-dock/MobileTaskSwitcher';
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
 import { activeChatsStore } from '../contexts/active-chats-store';
@@ -371,9 +373,12 @@ function HistoryReader({
 }) {
   const history = useSessionEventWindow(station, conversation);
   return (
-    <button type="button" onClick={() => void history.reload()}>
-      Read history
-    </button>
+    <>
+      <button type="button" onClick={() => void history.reload()}>
+        Read history
+      </button>
+      {history.error && <p role="alert">{history.error.message}</p>}
+    </>
   );
 }
 
@@ -948,4 +953,153 @@ it('a healthy inventory read cannot clear a failed sessions observation', async 
   });
   expect(screen.queryByText('Last known: Needs approval')).toBeNull();
   client.clear();
+});
+
+it('inventory omission preserves a failed open chat until its final mounted reader leaves', async () => {
+  const client = new QueryClient();
+  const observation = workObservation(client);
+  historyRead.mockRejectedValueOnce(new Error('history offline'));
+  const reader = renderWithProviders(<HistoryReader />, client);
+  const dock = renderWithProviders(<DockInbox />, client);
+  await screen.findByText('Last known: Needs approval');
+  await act(async () => {
+    await client.fetchQuery({
+      queryKey: ['conversation-inventory'],
+      queryFn: async () => ({
+        pages: [{ items: [], hasMore: true, nextCursor: 'older' }],
+      }),
+    });
+  });
+  expect(screen.getByRole('button', { name: ROW_NAME })).toBeTruthy();
+  expect(screen.getByText('Last known: Needs approval')).toBeTruthy();
+  dock.unmount();
+  // A mounted history reader still owns the failure even without a status row.
+  expect(observation.unavailable('T')).toBe(true);
+  expect(screen.getByRole('alert').textContent).toBe('history offline');
+  reader.unmount();
+  expect(observation.unavailable('T')).toBeUndefined();
+  client.clear();
+});
+
+it('stream evidence supersedes each failed reader at its own watermark', async () => {
+  const client = new QueryClient();
+  const observation = workObservation(client);
+  historyRead.mockResolvedValueOnce({
+    ...historyPage,
+    watermark: 10,
+    session: {
+      ...SESSIONS[0]!,
+      conversationActivity: {
+        ...SESSIONS[0]!.conversationActivity!,
+        asOfSequence: 10,
+      },
+    },
+  });
+  renderWithProviders(
+    <>
+      <HistoryReader />
+      <DockInbox />
+    </>,
+    client,
+  );
+  await waitFor(() => expect(historyRead).toHaveBeenCalledOnce());
+  await waitFor(() =>
+    expect(
+      activeChatsStore.getSnapshot()[CHAT_TAB]?.conversationActivity
+        ?.asOfSequence,
+    ).toBe(10),
+  );
+  historyRead.mockRejectedValueOnce(new Error('history offline'));
+  await act(async () => screen.getByText('Read history').click());
+  await screen.findByText('Last known: Needs approval');
+  const resolution = {
+    status: 'resolved',
+    conversation: {
+      id: 'T',
+      source: 'runtime',
+      agentSlug: agentId('demo-agent'),
+      title: 'Mismatch demo chat',
+      createdAt: FOLD_SESSION_CREATED_AT,
+      updatedAt: FOLD_SESSION_CREATED_AT,
+      messageCount: 1,
+      mutable: false,
+      answerability: { answerable: true },
+    },
+    currentSessionId: 'T',
+    activity: { ...SESSIONS[0]!.conversationActivity!, asOfSequence: 20 },
+    transcript: { available: true, owner: 'runtime', messageCount: 1 },
+    canContinue: true,
+    answerability: { answerable: true },
+    recoveryActions: [],
+  } satisfies ConversationOpenResolution;
+  openRead.mockResolvedValueOnce(resolution);
+  await act(async () => {
+    await resolveConversationOpenAuthoritatively(
+      'T',
+      'http://test.local',
+      observation,
+    );
+  });
+  // A successful open read at 20 does not recover history's failure at 10.
+  expect(screen.getByText('Last known: Needs approval')).toBeTruthy();
+  openRead.mockRejectedValueOnce(new Error('open offline'));
+  await act(async () => {
+    await expect(
+      resolveConversationOpenAuthoritatively(
+        'T',
+        'http://test.local',
+        observation,
+      ),
+    ).rejects.toThrow('open offline');
+  });
+  const release = ensureOrchestrationEventStream('http://test.local', client);
+  const stream = (sequence: number) =>
+    streams.get('http://test.local')!({
+      event: 'orchestration:activity',
+      data: JSON.stringify({
+        conversation: {
+          conversationId: 'T',
+          currentSessionId: 'T',
+          activity: {
+            ...SESSIONS[0]!.conversationActivity!,
+            asOfSequence: sequence,
+          },
+        },
+      }),
+    });
+  try {
+    act(() => stream(15));
+    expect(screen.getByText('Last known: Needs approval')).toBeTruthy();
+    openRead.mockResolvedValueOnce(resolution);
+    await act(async () => {
+      await resolveConversationOpenAuthoritatively(
+        'T',
+        'http://test.local',
+        observation,
+      );
+    });
+    expect(screen.queryByText('Last known: Needs approval')).toBeNull();
+    expect(screen.getByRole('alert').textContent).toBe('history offline');
+    // With both sources failing again, 25 exceeds both failure watermarks.
+    historyRead.mockRejectedValueOnce(new Error('history offline'));
+    await act(async () => screen.getByText('Read history').click());
+    openRead.mockRejectedValueOnce(new Error('open offline'));
+    await act(async () => {
+      await expect(
+        resolveConversationOpenAuthoritatively(
+          'T',
+          'http://test.local',
+          observation,
+        ),
+      ).rejects.toThrow('open offline');
+    });
+    expect(screen.getByText('Last known: Needs approval')).toBeTruthy();
+    act(() => stream(25));
+    expect(screen.queryByText('Last known: Needs approval')).toBeNull();
+    expect(screen.getByText('Needs approval')).toBeTruthy();
+    expect(screen.getByRole('alert').textContent).toBe('history offline');
+  } finally {
+    release();
+    client.clear();
+  }
 });

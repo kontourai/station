@@ -30,6 +30,7 @@ class WorkObservation {
   >();
   private successes = new Map<string, number>();
   private listeners = new Map<string, Set<() => void>>();
+  private inventoryIds?: Set<string>;
   private pending = new Set<string>();
   private batching = false;
   subscribe = (conversationId: string, listener: () => void) => {
@@ -46,6 +47,8 @@ class WorkObservation {
       listeners.delete(listener);
       if (listeners.size === 0) {
         this.listeners.delete(conversationId);
+        if (this.inventoryIds && !this.inventoryIds.has(conversationId))
+          this.drop(conversationId);
       }
     };
   };
@@ -65,8 +68,10 @@ class WorkObservation {
       for (const listener of this.listeners.get(id) ?? []) listener();
   }
   // Failures belong to their read source. Only that source's successful read clears
-  // them; stream evidence must advance past the failed watermark to supersede them.
-  // Visibility is not evidence: unsubscribe preserves failures and sequence fences.
+  // them. A stream observation supersedes each failure whose watermark it exceeds:
+  // it proves current status, not recovery of that reader. A history pane keeps
+  // its own error UI until its history read succeeds.
+  // Unsubscribe preserves evidence unless inventory also no longer references it.
   failed(
     conversationId: string,
     started = this.begin(),
@@ -88,7 +93,7 @@ class WorkObservation {
     }
     failures.set(source, {
       at: ++this.clock,
-      sequence: this.sequences.get(conversationId) ?? -1,
+      sequence: sequence ?? this.sequences.get(conversationId) ?? -1,
     });
     this.notify(conversationId);
   }
@@ -112,10 +117,14 @@ class WorkObservation {
   streamObserved(activity: ConversationTurnActivity) {
     const id = activity.conversationId;
     if (!this.successes.has(id) && !this.failures.has(id)) return;
-    if (activity.asOfSequence <= (this.sequences.get(id) ?? -1)) return;
+    const wasUnavailable = this.unavailable(id);
     for (const [source, failure] of this.failures.get(id) ?? [])
       if (activity.asOfSequence > failure.sequence)
         this.failures.get(id)?.delete(source);
+    if (activity.asOfSequence <= (this.sequences.get(id) ?? -1)) {
+      if (wasUnavailable !== this.unavailable(id)) this.notify(id);
+      return;
+    }
     this.streamSuccesses.set(id, ++this.clock);
     this.observed(id, activity.asOfSequence, 'stream');
     this.notify(id);
@@ -182,6 +191,7 @@ class WorkObservation {
         this.sequences.clear();
         this.failures.clear();
         this.successes.clear();
+        this.inventoryIds = undefined;
         failedLists.clear();
         startedLists.clear();
         this.notify();
@@ -257,12 +267,13 @@ class WorkObservation {
               : pageDirection === 'backward'
                 ? pages.slice(0, 1)
                 : pages;
+          const ids = new Set(
+            pages.flatMap((page) => page.items.map((item) => item.id)),
+          );
+          this.inventoryIds = ids;
           if (!pageDirection) {
-            const ids = new Set(
-              pages.flatMap((page) => page.items.map((item) => item.id)),
-            );
             for (const id of this.successes.keys())
-              if (!ids.has(id)) this.drop(id);
+              if (!ids.has(id) && !this.listeners.has(id)) this.drop(id);
           }
           for (const page of observedPages)
             for (const conversation of page.items) {
