@@ -119,7 +119,8 @@ export function AccountPreferencesProvider({
       write.pending.delete(write.id);
       if (Object.hasOwn(write.patch, 'modelPickerPreferences'))
         for (const queued of write.pending.values())
-          if (queued.revision === write.revision) queued.revision = data.revision;
+          if (queued.revision === write.revision)
+            queued.revision = data.revision;
       await write.client.cancelQueries({ queryKey: write.queryKey });
       if (write.scope.isCurrent()) {
         write.client.setQueryData(write.queryKey, data);
@@ -156,7 +157,10 @@ export function AccountPreferencesProvider({
         client: queryClient,
         pending,
         id,
-        revision: [...pending.values()].find((item) => Object.hasOwn(item.patch, 'modelPickerPreferences'))?.revision ?? query.data?.revision,
+        revision:
+          [...pending.values()].find((item) =>
+            Object.hasOwn(item.patch, 'modelPickerPreferences'),
+          )?.revision ?? query.data?.revision,
       };
       pending.set(id, write);
       publishPending();
