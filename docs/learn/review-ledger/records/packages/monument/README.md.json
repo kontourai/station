@@ -36,7 +36,9 @@
 
     "packages/monument/src/adapter.ts",
 
-    "packages/monument/src/testing/conformance.ts"
+    "packages/monument/src/testing/conformance.ts",
+
+    "packages/monument/src/decisions/turn-dedup.ts"
   ],
 
   "checks": []

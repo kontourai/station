@@ -990,7 +990,9 @@
 
     "src-server/domain/migrations/015-turn-dedup-input-digest.ts",
 
-    "src-server/routes/orchestration/__tests__/adopted-continuation-dock.routes.test.ts"
+    "src-server/routes/orchestration/__tests__/adopted-continuation-dock.routes.test.ts",
+
+    "src-server/services/orchestration/__tests__/turn-dedup-crash.process.test.ts"
   ],
 
   "checks": [

@@ -604,7 +604,9 @@
 
     "pnpm-lock.yaml#/snapshots",
 
-    "packages/sdk/src/client/http.ts"
+    "packages/sdk/src/client/http.ts",
+
+    "packages/sdk/src/__tests__/client-execution.test.ts"
   ],
 
   "checks": [
