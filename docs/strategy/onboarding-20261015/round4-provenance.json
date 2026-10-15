@@ -37,11 +37,44 @@
       "source": "3478e746a38",
       "note": "Actual Safari simulator: focused pairing input and open keyboard fit the viewport without horizontal zoom/clipping.",
       "sha256": "74d56959f86677327d66b8867b1c053d74b9164c274e5a6929993ed4b82fb35e"
+    },
+    {
+      "path": "round4-phone-reconnected.png",
+      "original": "station-r4-phone-restored-final.png",
+      "source": "3478e746a38",
+      "note": "Safari simulator after new request approval: Connected, old conversation restored, composer available. Recovery had a prolonged history wait.",
+      "sha256": "adf1387d90e81a5bc9d97dee17664546207563a5874cebd2ed15278d263e699b"
+    },
+    {
+      "path": "round4-phone-tool-failure.png",
+      "original": "station-r4-final-tool-failure.png",
+      "source": "3478e746a38",
+      "note": "New message after re-pair completed. Station list_projects was attempted once and failed with HTTP transport error; NOT a successful Station-tools result.",
+      "sha256": "ec4e19295d02fc446c8905f949fc9035c97b28468a0e2223ed1416b1bb97ea17"
     }
   ],
   "mutation": {
     "baseline": "14 passed",
     "injected": "2 failed,12 passed: repeated header identity and missing post-pair identity read",
     "restored": "14 passed"
+  },
+  "runtimeRecovery": {
+    "revokedTestDevice": "b4eec223-526d-436f-bf54-e250e68f143e",
+    "approvedRequest": "7ab4bf09-9e23-4c58-8e65-9f598d13f951",
+    "approval": "confirmed through exact operator CLI request",
+    "browserOutcome": "connected; history restored; a new message sent and assistant replied",
+    "stationTools": "FAIL: list_projects HTTP transport error after re-pair; earlier successful calls are historical",
+    "latency": "prolonged history wait remains an open defect; clearing old test tabs did not establish a cause",
+    "nativePhysical": "NOT_VERIFIED"
+  },
+  "checks": {
+    "revision": "643eba35f6ca79354ddd872346d6d99e2968941d",
+    "uiTypes": "PASS",
+    "connectTypes": "PASS",
+    "lint": "PASS with inherited48warnings74infos",
+    "codeHealth": "PASS no blockers",
+    "documentationFreshness": "PASS",
+    "veritas": "PASS0failures0warnings; veritas-1792100473276",
+    "ciFast": "TIMED_OUT; infrastructureErrors1, no successful qualification; request427f055c76dc1fede5f68261e3b40d2e2649976def7bb75b287c4542ddb3a7f4"
   }
 }
