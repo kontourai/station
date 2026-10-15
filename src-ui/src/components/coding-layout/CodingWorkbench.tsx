@@ -368,8 +368,7 @@ export function CodingWorkbench({
     paneHostOpen: page === 'chat' ? hostOpen : null,
     existingPreviewFor,
     focusExisting: focusExistingPreview,
-    // A phone's Chat is the dock, maximized while the Chat page is the page.
-    ownsMobileDock: page === 'chat',
+    ownsMobileDock: !centerChat && page === 'chat',
   });
 
   // ── Transitions: the entering page slides in from the side it came from —
