@@ -11,6 +11,7 @@ afterEach(() => {
   setClientCredentialResolver(undefined);
   setClientRequestTimeout(undefined);
   vi.useRealTimers();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -18,6 +19,49 @@ describe.each([
   { name: 'progress timeout', options: { progressTimeoutMs: 30_000 } },
   { name: 'total deadline', options: { timeoutMs: 30_000 } },
 ])('$name Request cancellation', ({ options }) => {
+  it('preserves the native first reason when a Request listener reentrantly aborts init', async () => {
+    const caller = new AbortController();
+    const explicit = new AbortController();
+    const first = new Error('first');
+    const second = new Error('second');
+    const input = new Request(URL_UNDER_TEST, { signal: caller.signal });
+    input.signal.addEventListener('abort', () => explicit.abort(second));
+    const native = AbortSignal.any([input.signal, explicit.signal]);
+    const callerListeners = [input.signal, explicit.signal].map((signal) =>
+      vi.spyOn(signal, 'addEventListener'),
+    );
+    let sentSignal: AbortSignal | null | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        sentSignal = init?.signal;
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              init?.signal?.addEventListener(
+                'abort',
+                () => controller.error(init.signal?.reason),
+                { once: true },
+              );
+            },
+          }),
+        );
+      }),
+    );
+    const response = await authenticatedFetch(input, {
+      ...options,
+      signal: explicit.signal,
+    });
+    const result = response.text().catch((error: unknown) => error);
+    caller.abort(first);
+    expect(native.reason).toBe(first);
+    expect(await result).toBe(first);
+    expect(sentSignal?.reason).toBe(first);
+    for (const listener of callerListeners) {
+      expect(listener).not.toHaveBeenCalled();
+    }
+  });
+
   it('rejects an already-aborted Request before dispatch', async () => {
     const caller = new AbortController();
     const reason = new Error('already unmounted');

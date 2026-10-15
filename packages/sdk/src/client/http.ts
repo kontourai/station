@@ -219,7 +219,7 @@ function resolveTimeoutMs(opts?: ClientRequestOptions): number | undefined {
   return clientRequestTimeoutMs;
 }
 
-/** Request-owned composition: AbortSignal.any is unavailable on iOS 16.4. */
+/** Native abort ordering where available, with an iOS 16.4 fallback. */
 function composeRequestSignals(
   deadline: AbortSignal,
   ...callers: Array<AbortSignal | null | undefined>
@@ -229,6 +229,9 @@ function composeRequestSignals(
   ];
   if (signals.length === 0) return { signal: deadline, cleanup() {} };
   signals.push(deadline);
+  if (typeof AbortSignal.any === 'function') {
+    return { signal: AbortSignal.any(signals), cleanup() {} };
+  }
   const controller = new AbortController();
   const listeners = new Map<AbortSignal, () => void>();
   const cleanup = () => {
@@ -239,7 +242,11 @@ function composeRequestSignals(
   };
   for (const signal of signals) {
     const abort = () => {
-      controller.abort(signal.reason);
+      // Reentrant listeners may have aborted several inputs before we run.
+      // Prefer the first aborted input in composition order; ordinary listeners
+      // cannot recover chronological abort order when multiple inputs aborted.
+      const aborted = signals.find((input) => input.aborted) ?? signal;
+      controller.abort(aborted.reason);
       cleanup();
     };
     if (signal.aborted) {
