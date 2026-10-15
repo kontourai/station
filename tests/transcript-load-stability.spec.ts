@@ -156,7 +156,30 @@ async function openThrottledConversation(
   ).toBeVisible({ timeout: 30_000 });
   await markTimeline(page, 'rows-visible');
   expect(requestedWindows).toHaveLength(1);
+  // The open read is still held, so the load is in progress and says so; the
+  // later `expectConversationLoaded` waits are not satisfied up front.
+  await expect(page.getByTestId('chat-dock-loading-announcement')).toHaveText(
+    /\S/,
+  );
+  await expect(page.locator('.chat-input textarea')).toHaveAttribute(
+    'placeholder',
+    'Loading chat…',
+  );
   return { conversationOpen, lateChunks, transcript, cdp };
+}
+
+/**
+ * The conversation has finished loading: the dock's loading announcement has
+ * gone quiet and the composer no longer names the wait.
+ */
+async function expectConversationLoaded(page: Page) {
+  await expect(page.getByTestId('chat-dock-loading-announcement')).toHaveText(
+    '',
+  );
+  await expect(page.locator('.chat-input textarea')).not.toHaveAttribute(
+    'placeholder',
+    'Loading chat…',
+  );
 }
 
 function phaseFrames(
@@ -191,7 +214,7 @@ test('a cold open on a throttled phone settles pinned to the newest message', as
 
   // The open read lands while the rows still show their source text.
   conversationOpen.release();
-  await expect(page.getByLabel('Loading chat')).toHaveCount(0);
+  await expectConversationLoaded(page);
   await markTimeline(page, 'open-resolved');
   await page.screenshot({
     path: testInfo.outputPath('02-open-resolved.png'),
@@ -261,10 +284,105 @@ test('a cold open on a throttled phone settles pinned to the newest message', as
       .filter((frame) => !frame.log && !frame.filler)
       .map((frame) => ({
         t: frame.t,
-        loadingSkeletons: frame.loadingSkeletons,
+        loadingAnnouncement: frame.loadingAnnouncement,
       })),
     'frames with no transcript region',
   ).toEqual([]);
+});
+
+/*
+ * The composer re-measures the room it reserves whenever a row beside it
+ * appears or leaves: the long-load controls, the loading announcement, the
+ * filler. That measurement used to lay the composer out one line shorter for
+ * a moment; the transcript took the line, the browser clamped its pinned
+ * scroll position to the taller box, and the next painted frame showed a
+ * one-line gap under the newest message.
+ */
+test('the composer measuring itself never opens a gap under the newest message', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  const { conversationOpen, lateChunks, transcript } =
+    await openThrottledConversation(page, { holdMarkdownRenderer: false });
+  lateChunks.release();
+  conversationOpen.release();
+  await expectConversationLoaded(page);
+  await waitForStableTranscript(page, 30);
+  await markTimeline(page, 'loaded');
+  await page.screenshot({ path: testInfo.outputPath('composer-loaded.png') });
+  // A draft that grows past one line, then is cleared again.
+  const draft = page.locator('.chat-input textarea');
+  await draft.click();
+  await page.keyboard.type('first line', { delay: 30 });
+  await page.keyboard.press('Shift+Enter');
+  await page.keyboard.type('second line', { delay: 30 });
+  await page.keyboard.press('Shift+Enter');
+  await page.keyboard.type('third', { delay: 30 });
+  await waitForStableTranscript(page, 10);
+  await markTimeline(page, 'typed');
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.press('Backspace');
+  await waitForStableTranscript(page, 10);
+  await markTimeline(page, 'cleared');
+  const timeline = await attachTimeline(page, testInfo, 'composer-timeline');
+  const rowsVisible = timeline.marks.find(
+    (mark) => mark.label === 'rows-visible',
+  )!.t;
+  const framed = timeline.frames.filter(
+    (frame) => frame.t >= rowsVisible && frame.log && frame.composer,
+  );
+  expect(framed.length).toBeGreaterThan(0);
+  expect(
+    framed
+      .filter((frame) => frame.distanceFromBottom > 1)
+      .map((frame) => ({ t: frame.t, gap: frame.distanceFromBottom })),
+    'frames that painted space under the newest message',
+  ).toEqual([]);
+  expect(
+    framed
+      .filter(
+        (frame) =>
+          Math.abs(frame.composer!.top - frame.composer!.regionBottom) > 0.5,
+      )
+      .map((frame) => frame.t),
+    'frames where the composer came loose from the transcript',
+  ).toEqual([]);
+  await expect(transcript).toBeVisible();
+});
+
+test("the long-load row keeps the transcript's inset on a phone", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  const { conversationOpen, lateChunks, transcript } =
+    await openThrottledConversation(page, { holdMarkdownRenderer: false });
+  lateChunks.release();
+  const sentence = page
+    .locator('.chat-dock__body > .session-history-controls')
+    .getByText('This conversation is taking longer to load.', {
+      exact: false,
+    });
+  await expect(sentence).toBeVisible({ timeout: 20_000 });
+  await page.screenshot({ path: testInfo.outputPath('long-wait-390.png') });
+  const gutter = await transcript.evaluate(
+    (element) => Number.parseFloat(getComputedStyle(element).paddingLeft) || 0,
+  );
+  const row = await page
+    .locator('.chat-dock__body > .session-history-controls')
+    .boundingBox();
+  const text = await sentence.boundingBox();
+  const viewport = page.viewportSize()!;
+  expect(gutter).toBeGreaterThan(0);
+  expect(row).not.toBeNull();
+  expect(text).not.toBeNull();
+  // The words sit inside the same gutter as the transcript's rows.
+  expect(text!.x - row!.x).toBeGreaterThanOrEqual(gutter - 0.5);
+  expect(text!.x).toBeGreaterThanOrEqual(gutter - 0.5);
+  expect(text!.x + text!.width).toBeLessThanOrEqual(
+    viewport.width - gutter + 0.5,
+  );
+  conversationOpen.release();
+  await expectConversationLoaded(page);
 });
 
 test('a reader scrolled up keeps their row while late content renders', async ({
@@ -274,7 +392,7 @@ test('a reader scrolled up keeps their row while late content renders', async ({
   const { conversationOpen, lateChunks, transcript } =
     await openThrottledConversation(page);
   conversationOpen.release();
-  await expect(page.getByLabel('Loading chat')).toHaveCount(0);
+  await expectConversationLoaded(page);
   await waitForStableTranscript(page);
 
   await transcript.hover();
@@ -499,7 +617,7 @@ test('Markdown that arrived before the transcript paints parsed, not as source t
     { holdMarkdownRenderer: false },
   );
   conversationOpen.release();
-  await expect(page.getByLabel('Loading chat')).toHaveCount(0);
+  await expectConversationLoaded(page);
   await waitForStableTranscript(page, 30);
   await markTimeline(page, 'settled');
   const timeline = await attachTimeline(page, testInfo, 'first-paint-timeline');

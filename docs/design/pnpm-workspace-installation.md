@@ -47,6 +47,12 @@ Disable pnpm's automatic installation before script execution and dependency
 scripts by default, so `pnpm run` cannot execute dependency hooks before this
 boundary. Existing verification preflight continues to reject stale installs.
 
+Third-party registry packages retain a 1,440-minute minimum release age.
+The `@kontourai/*` namespace is exempt, including transitive packages. This
+exemption does not grant lifecycle permissions or change integrity checks.
+The pinned pnpm 11 applies release-age policy to locked packages during frozen
+installation too; a frozen lock is not a release-age exemption.
+
 Use a hoisted layout during this migration to retain existing native and
 packaging consumers. Each worktree keeps its own installation graph. Use
 clone-or-copy imports to prevent native build or permission changes from

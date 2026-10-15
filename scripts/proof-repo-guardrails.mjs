@@ -6025,11 +6025,10 @@ const usageStatsUtils = readRequiredSource(
   '../src-ui/src/components/usage-stats/utils.ts',
 );
 for (const requiredHelper of [
-  'export function getAverageCostPerMessage',
+  'export function formatRecordedCost',
   'export function getTotalUsageConversations',
   'export function getTopUsageEntries',
   'export function getUsageModelDisplayName',
-  'export function getUsageAgentsForModel',
   'export function getAgentModelBreakdown',
 ]) {
   if (!usageStatsUtils.includes(requiredHelper)) {

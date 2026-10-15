@@ -65,7 +65,7 @@ import { createHash } from 'node:crypto';
  *                                       launchers and the Android 12 splash
  *                                       mask the foreground well inside its
  *                                       edges
- *   src-desktop/icons/<channel>/ios/AppIcon-*.png (stable, beta, nightly)
+ *   src-desktop/icons/<channel>/ios/AppIcon-*.png (stable, beta, nightly, dev)
  *                                     — from each channel's square master:
  *                                       the committed iOS asset-catalog sets.
  *                                       `tauri ios init` regenerates
@@ -74,10 +74,10 @@ import { createHash } from 'node:crypto';
  *                                       ios-channel-icons.mjs copies the
  *                                       channel's set over it after every
  *                                       init. The committed gen/apple catalog
- *                                       is the stable set (local and
- *                                       simulator builds reuse it as is).
- *                                       Dev has no iOS delivery and gets no
- *                                       set. tauri-cli is byte-deterministic
+ *                                       is the stable set; post-init resource
+ *                                       staging restores the selected channel.
+ *                                       Dev's set is for local simulators,
+ *                                       not store delivery. tauri-cli is byte-deterministic
  *                                       here: two runs on one master agree.
  *   gen/android app/src/debug mipmaps — from the dev Android master: the
  *                                       "Station Dev" launcher identity. The
@@ -103,7 +103,11 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assertOpaqueIosPngs } from './ios-channel-icons.mjs';
+import {
+  assertOpaqueIosPngs,
+  IOS_ICON_CHANNELS,
+} from './ios-channel-icons.mjs';
+import { writeAndroidThemedIcon } from './lib/android-themed-icon.mjs';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { canonicalizeIcns } from './lib/icns.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
@@ -129,12 +133,8 @@ const APPLE_ICONSET = join(
 const ANDROID_RES = (sourceSet) =>
   join(DESKTOP_DIR, 'gen', 'android', 'app', 'src', sourceSet, 'res');
 
-/** Channels that ship on iOS and therefore carry a committed catalog set. */
-export const IOS_ICON_SET_CHANNELS = Object.freeze([
-  'stable',
-  'beta',
-  'nightly',
-]);
+/** Includes the local development simulator, without enabling Dev delivery. */
+export const IOS_ICON_SET_CHANNELS = IOS_ICON_CHANNELS;
 export const iosIconSetDir = (channel) => join(ICONS_DIR, channel, 'ios');
 const ICON_CHANNELS = Object.keys(CHANNEL_PALETTES);
 const LIVE_ACTIVITY_ICON_DIR = join(
@@ -219,8 +219,8 @@ export const STARTUP_MARK_LIP = [${lip.join(', ')}] as const;
 async function renderMasters() {
   // Stable's macOS and square masters are committed (ROUNDED_MASTER and
   // icon-square-1024.png); the other channels' masters live in a temp dir
-  // for the fan-out. The square master only feeds iOS, which dev does not
-  // ship on.
+  // for the fan-out. The square master feeds the release and Dev simulator
+  // iOS catalogs.
   const masters = ICON_CHANNELS.flatMap((channel) => [
     ...(channel === 'stable' ? [] : [{ channel, target: 'macos' }]),
     ...(channel !== 'stable' && IOS_ICON_SET_CHANNELS.includes(channel)
@@ -337,7 +337,8 @@ const FAN_OUT_ROOTS = [
 ];
 const isFanOutOutput = (path) =>
   path.startsWith('src-desktop/gen/android/')
-    ? /\/res\/mipmap-[^/]+\/[^/]+$/.test(path)
+    ? /\/res\/mipmap-[^/]+\/[^/]+$/.test(path) ||
+      path.endsWith('/res/drawable/station_launcher_monochrome.xml')
     : !/\/(tray-[^/]+|README\.md)$/.test(path);
 
 /** Every committed file the manifest pins, as repository-relative paths. */
@@ -456,6 +457,7 @@ function copyAndroidMipmaps(outDir, resDir) {
     if (!density.startsWith('mipmap-')) continue;
     copyInto(join(androidOut, density), join(resDir, density));
   }
+  writeAndroidThemedIcon(resDir);
 }
 
 async function main() {
@@ -495,9 +497,8 @@ async function main() {
       /^Square.*Logo\.png$|^StoreLogo\.png$/.test(name),
     );
     copyInto(join(squareOut, 'ios'), APPLE_ICONSET);
-    // The committed catalog above is what local/simulator `tauri ios build`
-    // reuses; this committed set is what TestFlight delivery copies over the
-    // regenerated catalog. Both are the same square fan-out.
+    // The tracked seed is Stable; post-init staging restores the selected
+    // channel from the corresponding committed square fan-out.
     copyIosSet(squareOut, iosIconSetDir('stable'));
 
     // Android launchers come from each channel's adaptive-safe master. Keep
@@ -540,7 +541,11 @@ async function main() {
       }
     };
 
-    writeChannelSet({ channel: 'dev', rounded: paths['dev-macos'] });
+    writeChannelSet({
+      channel: 'dev',
+      rounded: paths['dev-macos'],
+      square: paths['dev-square'],
+    });
     writeChannelSet({
       channel: 'beta',
       rounded: paths['beta-macos'],
@@ -563,7 +568,7 @@ async function main() {
     }
   }
   console.log(
-    'Regenerated: Stable masters/platform sets, Dev/Beta/Nightly desktop + Android sets, Stable/Beta/Nightly iOS sets, favicons and the startup mark geometry',
+    'Regenerated: Stable masters/platform sets, Dev/Beta/Nightly desktop + Android sets, Stable/Beta/Nightly/Dev iOS sets, favicons and the startup mark geometry',
   );
 }
 
