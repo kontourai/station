@@ -408,6 +408,12 @@ export function smokePackage({ repoRoot, tarball, spec }) {
       'node_modules',
       ...PACKAGE_NAME.split('/'),
     );
+    if (!existsSync(join(packageRoot, 'package.json'))) {
+      failures.push(
+        `npm installed no ${PACKAGE_NAME} (expected ${packageRoot}); is the tarball or spec that package?`,
+      );
+      return failures;
+    }
     const manifest = JSON.parse(
       readFileSync(join(packageRoot, 'package.json'), 'utf8'),
     );
