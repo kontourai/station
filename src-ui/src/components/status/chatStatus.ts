@@ -26,6 +26,7 @@ export interface ChatStatus {
   clockFrom?: number;
   /** Pending approvals, shown as a badge when more than one. */
   count?: number;
+  pending?: boolean;
   /**
    * Lines shown when the pill is expanded. A line with `since` is followed by
    * the time elapsed since then, kept current while the details are open.
@@ -38,6 +39,7 @@ export interface ChatStatus {
 export interface ChatStatusInput {
   /** A history or continuation read failed; cached activity is not current proof. */
   observationUnavailable?: boolean;
+  resyncPending?: boolean;
   /** This chat's open approval requests. */
   approvalCount: number;
   stream?: ChatStreamStatus;
@@ -82,21 +84,6 @@ export function deriveChatStatus(
   input: ChatStatusInput,
 ): ChatStatus | undefined {
   const { stream, activity } = input;
-  if (input.observationUnavailable)
-    return {
-      kind: 'blocked',
-      tone: 'broken',
-      glyph: 'attention',
-      label: 'Status unavailable',
-      details: [
-        {
-          text: 'Station could not verify this conversation. The remote turn may still be running.',
-        },
-      ],
-      // The connection is fine; this conversation's reads failed. Re-read it
-      // rather than asking the user to re-pair the Station.
-      action: 'resync',
-    };
   if (input.approvalCount > 0) {
     return {
       kind: 'approval',
@@ -128,6 +115,24 @@ export function deriveChatStatus(
       action: 'details',
     };
   }
+  // Auth and reconnect status take priority over failed reads: Resync is
+  // offered again once transport recovery has settled.
+  if (input.observationUnavailable)
+    return {
+      kind: 'blocked',
+      tone: 'broken',
+      glyph: 'attention',
+      label: input.resyncPending
+        ? 'Resyncing conversation'
+        : 'Status unavailable',
+      pending: input.resyncPending,
+      details: [
+        {
+          text: 'Station could not verify this conversation. The remote turn may still be running.',
+        },
+      ],
+      action: 'resync',
+    };
   if (stream?.kind === 'restored') {
     return {
       kind: 'restored',

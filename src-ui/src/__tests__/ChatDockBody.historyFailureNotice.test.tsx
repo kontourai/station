@@ -13,7 +13,13 @@
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const agentsMock = vi.hoisted(() => ({ current: [] as any[] }));
@@ -299,25 +305,54 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
     expect(notice.textContent).not.toContain('should not print');
   });
 
-  test("the status pill's Resync re-reads the failed history and reconnects the Station's stream", async () => {
+  test('Resync coalesces pending history retries and announces recovery until the replacement settles', async () => {
     resyncStream.mockClear();
+    let release!: () => void;
     transcriptStateMock.current.enabled = true;
     transcriptStateMock.current.error = new Error(
       'Native request queue is full',
     );
     transcriptStateMock.current.messages = [
       { role: 'user', content: 'hi', timestamp: 1 },
-    ] as any;
+    ];
+    transcriptStateMock.current.reload.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
     renderDock();
-
     const pill = await screen.findByRole('button', {
       name: 'Status unavailable — resync this conversation',
     });
-    await act(async () => {
-      fireEvent.click(pill);
-    });
-    expect(transcriptStateMock.current.reload).toHaveBeenCalledOnce();
-    expect(resyncStream).toHaveBeenCalledWith('http://localhost:3242');
+    try {
+      // Same-tick activations exercise the owner guard before disabled paints.
+      act(() => {
+        for (let i = 0; i < 5; i++) fireEvent.click(pill);
+      });
+      const pending = await screen.findByRole('button', {
+        name: 'Resyncing conversation — resync this conversation',
+      });
+      expect(pending).toHaveProperty('disabled', true);
+      expect(pending.getAttribute('aria-busy')).toBe('true');
+      expect(
+        screen
+          .getAllByRole('status')
+          .some((status) => status.textContent === 'Resyncing conversation'),
+      ).toBe(true);
+      expect(transcriptStateMock.current.reload).toHaveBeenCalledTimes(1);
+      expect(resyncStream).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        transcriptStateMock.current.error = null;
+        release();
+      });
+      await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+      expect(
+        screen.queryByRole('button', { name: /resync this conversation/ }),
+      ).toBeNull();
+    } finally {
+      release?.();
+    }
   });
 
   test('background work the record last reported is shown as last known, not as current, while history is unavailable', async () => {

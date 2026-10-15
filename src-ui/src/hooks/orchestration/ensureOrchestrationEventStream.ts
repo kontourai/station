@@ -123,15 +123,14 @@ function notifyOrchestrationAuthorityChanged(apiBase: string): void {
   }
 }
 
-/**
- * The user's explicit "resync": reconnect this Station's orchestration stream
- * now. A fresh connect replays from the applied cursor or sends a snapshot,
- * so chats, the inbox and turn state are re-derived from the server instead
- * of from whatever the last frame said. The same restart an authority change
- * uses; nothing here invents a second reconnect path.
+/** Explicit resync restarts a live stream; auth-refused streams keep the
+ * same retry floor and single deferred retry as focus/online recovery.
+ * Only a credential change bypasses that floor.
  */
 export function resyncOrchestrationEventStream(apiBase: string): void {
-  notifyOrchestrationAuthorityChanged(apiBase);
+  const owned = activeSources.get(apiBase);
+  if (owned?.parked) ensureOrchestrationEventStream(apiBase);
+  else notifyOrchestrationAuthorityChanged(apiBase);
 }
 
 function reensureRequestedStreams(): void {

@@ -250,7 +250,7 @@ export function ChatStatusPill({
       )}
       {current.action === 'resync' && onResync && (
         <span className="chat-status-pill__action" aria-hidden="true">
-          Resync
+          {current.pending ? 'Resyncing…' : 'Resync'}
         </span>
       )}
     </span>
@@ -288,6 +288,10 @@ export function ChatStatusPill({
             aria-expanded={current.action === 'details' ? expanded : undefined}
             aria-controls={
               current.action === 'details' && expanded ? detailsId : undefined
+            }
+            disabled={current.action === 'resync' && current.pending}
+            aria-busy={
+              current.action === 'resync' ? current.pending : undefined
             }
             onClick={activate}
           >

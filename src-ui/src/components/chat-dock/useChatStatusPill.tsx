@@ -54,6 +54,7 @@ export function useChatStatusPill({
   enabled,
   windowRequests,
   observationUnavailable = false,
+  resyncPending = false,
   onResync,
 }: {
   activeSession: ChatSession;
@@ -62,6 +63,7 @@ export function useChatStatusPill({
   enabled: boolean;
   windowRequests?: readonly RevealApprovalDetail[];
   observationUnavailable?: boolean;
+  resyncPending?: boolean;
   /** Re-reads this conversation when its status could not be observed. */
   onResync?: () => void;
 }): { pill: ReactNode; statusInPill: boolean } {
@@ -93,6 +95,7 @@ export function useChatStatusPill({
   const stationOutlivesApp = useStationOutlivesApp();
   const input: ChatStatusInput = {
     observationUnavailable,
+    resyncPending,
     approvalCount,
     stream: streamStatus,
     turnLive,

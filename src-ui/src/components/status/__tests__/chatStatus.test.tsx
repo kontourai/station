@@ -95,6 +95,18 @@ describe('deriveChatStatus — one status, by priority', () => {
     // The remedy is re-reading this conversation, not re-pairing the Station.
     expect(status?.action).toBe('resync');
   });
+  test.each(['blocked', 'reconnecting', 'catching-up'] as const)(
+    'failed reads defer to %s transport recovery',
+    (kind) => {
+      const status = deriveChatStatus({
+        ...base,
+        observationUnavailable: true,
+        stream: { kind, blocked: kind === 'blocked', label: kind },
+      });
+      expect(status?.kind).toBe(kind);
+      expect(status?.action).toBe(kind === 'blocked' ? 'repair' : 'details');
+    },
+  );
   test('the live pill names a reported retry and includes only reported counters', () => {
     const reported = deriveChatStatus({
       ...base,

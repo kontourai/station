@@ -6,6 +6,7 @@ import { expect, type Page, type Route } from '@playwright/test';
 import { contrastRatio } from './helpers/color-contrast';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import { openChooserFromToggle } from './helpers/region-placement';
+import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
 import { runScreenshotCaptureSequence } from './helpers/screenshot-capture-sequence';
 
 /**
@@ -1074,6 +1075,129 @@ function orchestrationSessionFixture(session: {
         ],
       },
     });
+}
+
+/** Real ChatDock wiring: failed reads recover once, with pending responses held. */
+async function verifyConversationRecovery(page: Page): Promise<void> {
+  const testInfo = test.info();
+  const width = page.viewportSize()!.width;
+  const resync = page.getByRole('button', {
+    name: 'Status unavailable — resync this conversation',
+    exact: true,
+  });
+  const box = await resync.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+  if (width === 390) expect(box!.height).toBeGreaterThanOrEqual(44);
+  await mockRuntimeConversation(page, {
+    id: 'gallery-mismatch-conversation',
+    agentSlug: 'demo-agent',
+    title: 'Mismatch demo chat',
+    provider: 'claude',
+    model: 'test-model',
+    projectSlug: 'project-b',
+    canContinue: true,
+    turns: () => [],
+  });
+  let releaseOpen!: () => void;
+  const openPending = new Promise<void>((resolve) => {
+    releaseOpen = resolve;
+  });
+  let openReads = 0;
+  const removeOpen = await withRoute(
+    page,
+    '**/api/conversations/gallery-mismatch-conversation/open',
+    async (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      openReads++;
+      await openPending;
+      await route.fallback();
+    },
+  );
+  try {
+    await resync.click();
+    const pending = page.getByRole('button', {
+      name: 'Resyncing conversation — resync this conversation',
+      exact: true,
+    });
+    await expect(pending).toBeDisabled();
+    await expect(pending).toHaveAttribute('aria-busy', 'true');
+    await expect(
+      page.getByRole('status').filter({ hasText: 'Resyncing conversation' }),
+    ).toBeAttached();
+    await expect.poll(() => openReads).toBe(1);
+    for (let i = 0; i < 5; i++) await page.keyboard.press('Enter');
+    expect(openReads).toBe(1);
+    await page.screenshot({
+      path: testInfo.outputPath(`resync-pending-${width}.png`),
+    });
+    releaseOpen();
+    await expect(
+      page.getByText(
+        "Station couldn't confirm Mismatch demo chat can continue.",
+        { exact: true },
+      ),
+    ).toBeHidden();
+    await expect(pending).toBeHidden();
+    await expect(resync).toBeHidden();
+    expect(openReads).toBe(1);
+  } finally {
+    releaseOpen();
+    await removeOpen();
+  }
+  if (width > 600) {
+    let releaseInventory!: () => void;
+    const inventoryPending = new Promise<void>((resolve) => {
+      releaseInventory = resolve;
+    });
+    let inventoryReads = 0;
+    const removeInventory = await withRoute(
+      page,
+      '**/api/conversations**',
+      async (route) => {
+        if (new URL(route.request().url()).pathname !== '/api/conversations')
+          return route.fallback();
+        if (route.request().method() !== 'GET')
+          return rejectUnexpectedFixtureRequest(route);
+        inventoryReads++;
+        await inventoryPending;
+        await route.fulfill({
+          json: { success: true, data: { items: [], hasMore: false } },
+        });
+      },
+    );
+    try {
+      await page
+        .getByRole('button', { name: 'Refresh inbox', exact: true })
+        .click();
+      const refreshing = page.getByRole('button', {
+        name: 'Refreshing inbox',
+        exact: true,
+      });
+      await expect(refreshing).toBeDisabled();
+      await expect.poll(() => inventoryReads).toBe(1);
+      for (let i = 0; i < 5; i++) await page.keyboard.press('Enter');
+      expect(inventoryReads).toBe(1);
+      releaseInventory();
+      await expect(
+        page.getByText("Couldn't refresh. Showing the last known list."),
+      ).toBeHidden();
+      await expect(
+        page.getByRole('button', { name: 'Refresh inbox', exact: true }),
+      ).toBeEnabled();
+      expect(inventoryReads).toBe(1);
+    } finally {
+      releaseInventory();
+      await removeInventory();
+    }
+  }
+  console.log('RECOVERY_REQUEST_COUNTS', {
+    width,
+    openReads,
+    pendingActivations: 6,
+  });
 }
 
 type GalleryProjectFixture = {
@@ -3241,6 +3365,12 @@ test('build gallery — capture key screens', async ({ page }) => {
                   element.getAttribute('aria-disabled') === 'true',
               })),
           );
+        if (
+          screen.name === 'desktop-conversation-resync' ||
+          screen.name === 'mobile-conversation-resync'
+        ) {
+          await verifyConversationRecovery(page);
+        }
         shots.push({
           screen,
           file,

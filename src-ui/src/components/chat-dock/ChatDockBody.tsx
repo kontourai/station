@@ -545,14 +545,29 @@ export function ChatDockBody({
     );
   const transcriptReadFailed = Boolean(transcript.enabled && transcript.error);
   const reloadTranscript = transcript.reload;
-  // The explicit resync: reconnect the stream (a fresh connect replays or
-  // snapshots this Station's sessions) and re-run whichever read failed.
-  const resyncConversation = useCallback(() => {
-    resyncOrchestrationEventStream(apiBase);
-    if (transcriptReadFailed) void reloadTranscript();
-    if (unverifiedOpen) void onRetryConversationOpen?.();
+  const pendingResyncs = useRef(new Set<string>());
+  const [resyncs, setResyncs] = useState<ReadonlySet<string>>(new Set());
+  const resyncKey = JSON.stringify([apiBase, activeSession.id]);
+  const resyncPending = resyncs.has(resyncKey);
+  // One replacement per conversation, including same-tick activations and
+  // switching away and back while its reads are still pending.
+  const resyncConversation = useCallback(async () => {
+    if (pendingResyncs.current.has(resyncKey)) return;
+    pendingResyncs.current.add(resyncKey);
+    setResyncs(new Set(pendingResyncs.current));
+    try {
+      resyncOrchestrationEventStream(apiBase);
+      await Promise.allSettled([
+        ...(transcriptReadFailed ? [reloadTranscript()] : []),
+        ...(unverifiedOpen ? [onRetryConversationOpen?.()] : []),
+      ]);
+    } finally {
+      pendingResyncs.current.delete(resyncKey);
+      setResyncs(new Set(pendingResyncs.current));
+    }
   }, [
     apiBase,
+    resyncKey,
     transcriptReadFailed,
     reloadTranscript,
     unverifiedOpen,
@@ -565,7 +580,8 @@ export function ChatDockBody({
     turnLive: isTurnStreamLive(activeSession),
     enabled: !activeSession.replay,
     windowRequests,
-    observationUnavailable,
+    observationUnavailable: observationUnavailable || resyncPending,
+    resyncPending,
     onResync: resyncConversation,
   });
   /*
