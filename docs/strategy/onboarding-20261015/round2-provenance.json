@@ -43,10 +43,11 @@
     },
     {
       "path": "round2-coding-before.png",
-      "source": "/Users/brian/.t3/userdata/browser-artifacts/browser-screenshot-localhost-mv9qq6sa-43fe0b66.png",
+      "source": "Pre-fix collaborative browser capture, retained byte-for-byte as round2-coding-before.png",
       "width": 1280,
       "height": 800,
-      "sha256": "e69cb1dd70fdc77eb5a4fffd213f34c2ceafc03d7ac496338aa769ceabff3abe"
+      "sha256": "e69cb1dd70fdc77eb5a4fffd213f34c2ceafc03d7ac496338aa769ceabff3abe",
+      "originalCaptureId": "mv9qq6sa-43fe0b66"
     },
     {
       "path": "round2-coding-after.jpg",
