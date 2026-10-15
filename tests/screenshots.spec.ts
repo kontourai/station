@@ -124,6 +124,7 @@ function fulfillGalleryStationHandshake(
       environmentId: GALLERY_ENVIRONMENT_ID,
       authentication: { scheme: 'bearer', protocolVersion: 1 },
       transports: { http: 1, sse: 1, websocket: 1 },
+      ...(boundedHistory ? { capabilities: { sessionEventWindow: true } } : {}),
       compatibility: {
         serverVersion: '0.0.0-screenshot-gallery',
         protocolVersion: 1,
@@ -132,10 +133,9 @@ function fulfillGalleryStationHandshake(
           remoteAuth: 1,
           devicePairing: 1,
           environmentProof: 1,
-          ...(boundedHistory ? { sessionEventWindow: 1 } : {}),
         },
       },
-    },
+    } satisfies PublicStationHandshake,
   });
 }
 
