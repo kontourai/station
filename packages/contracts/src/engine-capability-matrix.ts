@@ -389,7 +389,7 @@ export const ACP_ENGINE_DURABILITY: ProviderDurabilityProfile = {
   steerPlacement: {
     state: 'emulated',
     detail:
-      'Steering depends on the connection: a live extension or an interrupted turn followed by new input.',
+      'Orchestration commands can steer through a live extension or cancel and reprompt. The chat composer does not offer ACP steering.',
   },
 };
 

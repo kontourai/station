@@ -890,7 +890,8 @@ rejects omitted cells.
 
 The engine description's **Recovery and delivery** disclosure reads these cells.
 Claude and Codex declare their live steering channels as native. ACP discloses a
-connection-dependent fallback that may interrupt and reprompt. Live steering does
+connection-dependent orchestration-command fallback that may interrupt and
+reprompt; the ordinary chat composer does not offer ACP steering. Live steering does
 not imply restart safety: no current profile promises mid-turn crash continuation,
 automatic tool replay or durable approval waits. Context supplied by Station has
 no accepted-through acknowledgement, and usage remains engine-reported where
