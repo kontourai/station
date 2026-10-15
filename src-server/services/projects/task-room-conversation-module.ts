@@ -36,16 +36,42 @@ interface Dependencies {
 
 /** Room conversation effects compose TaskGraph, the request journal, and canonical Sessions. */
 export class TaskRoomConversationModule {
+  private readonly publications = new Map<
+    string,
+    { again: boolean; done: Promise<void> }
+  >();
   constructor(private readonly deps: Dependencies) {}
 
+  async waitForPublication(taskId: string): Promise<void> {
+    await this.publications.get(taskId)?.done;
+  }
+
+  reconcile(taskId: string): Promise<void> {
+    const current = this.publications.get(taskId);
+    if (current) {
+      current.again = true;
+      return current.done;
+    }
+    const pending = { again: true, done: Promise.resolve() };
+    pending.done = Promise.resolve().then(async () => {
+      try {
+        while (pending.again) {
+          pending.again = false;
+          await this.deps.room()?.reconcileAgentLifecycles([taskId]);
+        }
+      } finally {
+        if (this.publications.get(taskId) === pending)
+          this.publications.delete(taskId);
+      }
+    });
+    this.publications.set(taskId, pending);
+    return pending.done;
+  }
+
   async observe(event: CanonicalRuntimeEvent): Promise<void> {
-    if (
-      !['turn.started', 'turn.completed', 'turn.aborted'].includes(event.method)
-    )
-      return;
+    if (!['turn.completed', 'turn.aborted'].includes(event.method)) return;
     const binding = this.deps.readBinding(event.threadId);
-    if (binding)
-      await this.deps.room()?.reconcileAgentLifecycles([binding.taskId]);
+    if (binding) await this.reconcile(binding.taskId);
   }
 
   async recorded(
@@ -53,6 +79,7 @@ export class TaskRoomConversationModule {
     request: Request,
     principal: PrincipalRef,
   ): Promise<void> {
+    await this.waitForPublication(record.taskId);
     const scope = await this.deps.authorize(record.taskId, request, principal);
     const room = this.deps.room();
     if (!scope || scope.taskCreatedAt !== record.taskCreatedAt || !room) return;
@@ -90,7 +117,7 @@ export class TaskRoomConversationModule {
         correlationId: 'room-status',
         text: 'Status → In progress',
       });
-    await room.reconcileAgentLifecycles([record.taskId]);
+    await this.reconcile(record.taskId);
   }
 
   async reply(
@@ -104,6 +131,7 @@ export class TaskRoomConversationModule {
     request: Request,
     principal: PrincipalRef,
   ): Promise<boolean> {
+    await this.waitForPublication(input.taskId);
     const authorize = () =>
       this.deps.authorize(input.taskId, request, principal);
     const scope = await authorize();
@@ -143,6 +171,7 @@ export class TaskRoomConversationModule {
     request: Request,
     principal: PrincipalRef,
   ): Promise<TaskRoomInvocationAdmission | undefined> {
+    await this.waitForPublication(input.taskId);
     const admitted = await this.deps.authorize(
       input.taskId,
       request,

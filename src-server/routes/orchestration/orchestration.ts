@@ -1746,6 +1746,8 @@ export function createOrchestrationRoutes(
     stationControlDispatchScope?: StationControlDispatchScope;
     delegateTask?: (input: DelegateTaskRequest) => Promise<unknown>;
     taskRoomWork?: {
+      beforeInvocation?(taskId: string): Promise<void>;
+      continued?(taskId: string): Promise<void>;
       admitReply?(
         input: { taskId: string; taskCreatedAt: string; sessionId: string },
         request: Request,
@@ -3193,13 +3195,15 @@ export function createOrchestrationRoutes(
       const delegation = resolvedDelegation?.context;
       const delegate = deps.delegateTask;
       const roomRequest = body.taskRoomRequest;
-      const dispatch = (
+      const dispatch = async (
         sessionId?: string,
         recheck?: () => Promise<void>,
         roomBinding?: TaskRoomInvocationAdmission['roomBinding'],
         contextSnapshot?: TaskRoomContextSnapshot,
-      ) =>
-        delegate({
+      ) => {
+        if (roomRequest)
+          await deps.taskRoomWork?.beforeInvocation?.(roomRequest.taskId);
+        return delegate({
           ...request,
           ...(contextSnapshot
             ? {
@@ -3266,6 +3270,7 @@ export function createOrchestrationRoutes(
               }
             : {}),
         });
+      };
       if (roomRequest) {
         const work = deps.taskRoomWork;
         if (
@@ -3857,6 +3862,7 @@ export function createOrchestrationRoutes(
           isRequestAuthorityCurrent: () =>
             deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
         });
+        if (roomReply) await deps.taskRoomWork?.continued?.(roomReply.taskId);
         return c.json({ success: true, data });
       } catch (error) {
         // #484 phase A: a portable continuation refused for lack of a

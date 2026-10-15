@@ -83,6 +83,7 @@ function Consumer() {
   return (
     <div>
       <span>{room?.stream}</span>
+      {room?.presenceError && <p role="alert">{room.presenceError}</p>}
       <span>{room?.ownActorId}</span>
       <span>{room?.live?.participants[0]?.actor.label ?? 'no-live'}</span>
       <button
@@ -120,7 +121,13 @@ function ThrowingDocumentConsumer() {
 beforeEach(() => {
   mocks.command
     .mockReset()
-    .mockResolvedValue({ kind: 'available', snapshot: snapshot('Alice') });
+    .mockImplementation(async (command) => ({
+      kind: 'available',
+      snapshot: {
+        ...snapshot('Alice'),
+        result: { outcome: command.command === 'join' ? 'joined' : 'updated' },
+      },
+    }));
   mocks.restart.mockReset();
   mocks.stream = undefined;
   mocks.streamGeneration = 0;
@@ -364,4 +371,23 @@ test('opening the Task joins and publishes presence; pagehide and unmount depart
   expect(mocks.command).toHaveBeenLastCalledWith({ command: 'depart' });
   view.unmount();
   expect(mocks.command).toHaveBeenLastCalledWith({ command: 'depart' });
+});
+
+test('a refused implicit join remains visible and cannot announce membership it did not obtain', async () => {
+  mocks.command.mockResolvedValueOnce({
+    kind: 'available',
+    snapshot: { ...snapshot('Alice'), result: { outcome: 'forbidden' } },
+  });
+  render(
+    <ProjectTaskRoomProvider taskId="task-1">
+      <Consumer />
+    </ProjectTaskRoomProvider>,
+  );
+  await act(async () => {});
+  expect(screen.getByRole('alert').textContent).toContain(
+    'Presence could not join',
+  );
+  expect(mocks.command.mock.calls.map(([command]) => command.command)).toEqual([
+    'join',
+  ]);
 });

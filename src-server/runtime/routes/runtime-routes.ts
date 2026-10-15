@@ -4210,7 +4210,7 @@ export function configureRuntimeRoutes(
           };
           const result = await taskRoomWork.list(taskId, authorize);
           if (result.kind !== 'available') return result;
-          await roomRuntime.reconcileAgentLifecycles([taskId]);
+          await roomConversation.reconcile(taskId);
           const contextSnapshot = principal
             ? await resolveTaskRoomContext(taskId, request, principal)
             : undefined;
@@ -4559,6 +4559,9 @@ export function configureRuntimeRoutes(
         ),
       ),
       taskRoomWork: {
+        beforeInvocation: (taskId) =>
+          roomConversation.waitForPublication(taskId),
+        continued: (taskId) => roomConversation.reconcile(taskId),
         module: taskRoomWork,
         onRecorded: (record, request, principal) =>
           roomConversation.recorded(record, request, principal),

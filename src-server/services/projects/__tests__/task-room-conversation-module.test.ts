@@ -7,6 +7,7 @@ import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
+import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import type { TaskRoomWorkOutcome } from '@kontourai/station-contracts/task-room-work';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -32,6 +33,7 @@ import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { OrchestrationService } from '../../orchestration/orchestration-service.js';
 import { ProjectTaskRoomRuntime } from '../../orchestration/project-task-room-runtime.js';
+import { projectSessionLifecycle } from '../../orchestration/session-lifecycle-service.js';
 import { TaskGraphService } from '../task-graph-service.js';
 import { createTaskRoomContext } from '../task-room-context.js';
 import { TaskRoomConversationModule } from '../task-room-conversation-module.js';
@@ -247,6 +249,12 @@ async function fixture() {
         ? {
             provider: detail.session.provider,
             createdAt: detail.session.createdAt,
+            outcome: sessionLifecycleOutcome(
+              projectSessionLifecycle({
+                session: detail.session,
+                events: detail.events,
+              }).lifecycleState,
+            ),
           }
         : undefined;
     },
@@ -279,6 +287,8 @@ async function fixture() {
     },
     continueDelegatedTask: (input) => continueDelegatedTask(input, sessions),
     taskRoomWork: {
+      beforeInvocation: (taskId) => conversation.waitForPublication(taskId),
+      continued: (taskId) => conversation.reconcile(taskId),
       module: work,
       authorize,
       resolveContext: async () => brief,

@@ -2302,7 +2302,10 @@ reconcile the existing agent-publish text append path; no new history body or
 storage worker is needed. Browser records add optional timestamps, opaque actor
 identity and execution/thread correlation. Older records remain readable;
 older closed DTO readers reject the additive fields. Full runs open in the dock.
-The request journal uses room SSE invalidations instead of five-second polling.
+The request journal refreshes before fresh submissions and after acknowledgements.
+Live presence and history use room SSE. Publication reconciliation is coalesced
+and awaited before this lane enters provider invocation; duplicate lifecycle
+publication cannot cause an SSE/request-list feedback loop.
 Shared Task projection continues to publish human messages and the document;
 it excludes agent answers and private execution metadata. Invited/public agent
 results and actual-provider acceptance remain separate qualification scopes.

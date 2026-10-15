@@ -173,7 +173,8 @@ The server also checks the expected Task incarnation.
 The captured scope requires `apiBase`, `authorityKey` and `isCurrent()`; absent
 or stale scope never falls back to the ambient connection. Request caches
 include connection authority, Task identity and incarnation. Request cards
-refresh before fresh submission and on room SSE invalidation. Mutation retries
+refresh before fresh submission and after request acknowledgement. Live presence
+and history use room SSE rather than polling request cards. Mutation retries
 are disabled. The composer uses the latest saved brief by default; uncertain
 retries retain their original context. Briefs over 16,000 characters include an
 explicit shortening notice in the snapshot markdown.

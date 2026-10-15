@@ -478,11 +478,6 @@ export function useProjectTaskRoomStream(
               void client.invalidateQueries({
                 queryKey: ['task-graph', taskId],
               });
-              void client.invalidateQueries({
-                predicate: (query) =>
-                  query.queryKey[0] === 'task-room-agent-requests' &&
-                  query.queryKey[3] === taskId,
-              });
             }
           } else if (event.kind === 'snapshot') {
             const live = parseProjectTaskRoomBrowserLiveSnapshot(event.value);

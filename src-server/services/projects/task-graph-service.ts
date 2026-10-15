@@ -1804,6 +1804,8 @@ export class TaskGraphService {
       const task = data.tasks.find((item) => item.id === taskId);
       if (!task || task.createdAt !== expectedCreatedAt)
         throw new Error(`Task not found: ${taskId}`);
+      if (task.dispatchReservation)
+        throw new Error('Task dispatch is being established; status is locked');
       if (task.status !== 'todo' && task.status !== 'ready')
         return { data, result: { task, changed: false } };
       const next: TaskRecord = {

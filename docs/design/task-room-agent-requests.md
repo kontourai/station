@@ -28,8 +28,10 @@ client: an older server can strip unknown delegation fields, so a client
 must not assume durable request support without this versioned response.
 This path is mounted in the personal runtime. GET retains the existing
 orchestration read grant and POST the existing operate/admission gates. The
-composer refreshes the journal before a fresh request. Room SSE invalidations
-refresh the request view and Task status; there is no five-second polling card.
+composer refreshes the journal before a fresh request and after its
+acknowledgement. Room SSE refreshes history and Task status; there is no
+five-second polling card. Reconciliation is coalesced and awaited before
+provider invocation, avoiding duplicate publication during Session writes.
 Existing document/history updates continue using SSE and HTTP.
 
 ## Independent room contributions

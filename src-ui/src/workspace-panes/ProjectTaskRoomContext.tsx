@@ -245,8 +245,13 @@ export function ProjectTaskRoomProvider({
         await command({ command: 'depart' });
         return;
       }
-      if (joined.kind !== 'available') {
-        setPresenceError('Presence is unavailable on this connection.');
+      if (
+        joined.kind !== 'available' ||
+        !['joined', 'refreshed'].includes(joined.snapshot.result?.outcome ?? '')
+      ) {
+        setPresenceError(
+          'Presence could not join this Task. Reopen the Task to retry.',
+        );
         return;
       }
       // Announcing publishes the otherwise private join in the room projection.

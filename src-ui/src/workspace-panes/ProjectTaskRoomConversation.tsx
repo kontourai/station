@@ -281,6 +281,7 @@ export function ProjectTaskRoomConversation({
       className="project-task-room-conversation"
       aria-label="Task room conversation"
     >
+      {shared?.presenceError && <p role="alert">{shared.presenceError}</p>}
       <div className="task-room-messages">
         {history.isError && (
           <p role="alert">
