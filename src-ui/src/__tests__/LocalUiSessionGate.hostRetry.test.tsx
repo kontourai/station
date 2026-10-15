@@ -331,6 +331,47 @@ describe('LocalUiSessionGate bounded host retry (#1639)', () => {
     },
   );
 
+  test('pairing success supersedes a pending launcher refusal and remains coalesced', async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(new Response('{}', { status: 401 })),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    renderGate(<div>Protected application mounted</div>);
+    await screen.findByRole('button', { name: 'Complete pairing' });
+
+    let finishLauncher: (response: Response) => void = () => {};
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishLauncher = resolve;
+        }),
+    );
+    window.history.replaceState(
+      null,
+      '',
+      `/#station-ui-bootstrap=${'P'.repeat(43)}`,
+    );
+    act(() => window.dispatchEvent(new Event('hashchange')));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+
+    let finishIdentity: (response: Response) => void = () => {};
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishIdentity = resolve;
+        }),
+    );
+    const complete = screen.getByRole('button', { name: 'Complete pairing' });
+    fireEvent.click(complete);
+    fireEvent.click(complete);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(String(fetchMock.mock.calls[2]?.[0])).toBe(IDENTITY_URL);
+    await act(async () => finishIdentity(new Response('{}')));
+    await screen.findByText('Protected application mounted');
+    await act(async () => finishLauncher(new Response('{}', { status: 403 })));
+    expect(screen.getByText('Protected application mounted')).toBeTruthy();
+  });
+
   test('the degraded window explains the wait and names the retry running under it', async () => {
     // The one pending treatment no other test in this file reaches: every other
     // resolution here settles inside ~1.75 s and the degraded window is 8 s, so

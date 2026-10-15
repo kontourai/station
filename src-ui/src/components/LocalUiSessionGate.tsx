@@ -98,9 +98,10 @@ export function LocalUiSessionGate({
     authenticated: boolean;
   } | null>(null);
   const [relayOnboardingOpen, setRelayOnboardingOpen] = useState(false);
-  const sessionCheck = useRef<Promise<
-    Awaited<ReturnType<typeof resolveLocalUiSession>>
-  > | null>(null);
+  const sessionCheck = useRef<{
+    promise: Promise<Awaited<ReturnType<typeof resolveLocalUiSession>>>;
+    reason: 'launcher' | 'pairing' | 'recovery';
+  } | null>(null);
   const [sampleOpen, setSampleOpen] = useState(false);
   const [checkingRecovery, setCheckingRecovery] = useState(false);
   const resolutionRequest = useRef(0);
@@ -122,7 +123,7 @@ export function LocalUiSessionGate({
     const resolve = () => {
       const current = ++resolutionRequest.current;
       const pending = resolveLocalUiSession(apiBase);
-      sessionCheck.current = pending;
+      sessionCheck.current = { promise: pending, reason: 'launcher' };
       setCheckingRecovery(true);
       void pending
         .then((next) => {
@@ -130,7 +131,7 @@ export function LocalUiSessionGate({
             setResolution(next);
         })
         .finally(() => {
-          if (active && sessionCheck.current === pending) {
+          if (active && sessionCheck.current?.promise === pending) {
             sessionCheck.current = null;
             setCheckingRecovery(false);
           }
@@ -231,27 +232,33 @@ export function LocalUiSessionGate({
       : ({ kind: 'access-required' } as const)
     : resolution;
 
-  const recheckSession = useCallback(() => {
-    if (!sessionCheck.current) {
-      const current = ++resolutionRequest.current;
-      const pending = recheckLocalUiSession(apiBase);
-      sessionCheck.current = pending;
-      setCheckingRecovery(true);
-      void pending
-        .then((next) => {
-          if (current === resolutionRequest.current) setResolution(next);
-        })
-        .finally(() => {
-          if (sessionCheck.current === pending) {
-            sessionCheck.current = null;
-            setCheckingRecovery(false);
-          }
-        });
-    }
-  }, [apiBase]);
+  const recheckSession = useCallback(
+    (reason: 'pairing' | 'recovery' = 'recovery') => {
+      if (
+        !sessionCheck.current ||
+        (reason === 'pairing' && sessionCheck.current.reason !== 'pairing')
+      ) {
+        const current = ++resolutionRequest.current;
+        const pending = recheckLocalUiSession(apiBase);
+        sessionCheck.current = { promise: pending, reason };
+        setCheckingRecovery(true);
+        void pending
+          .then((next) => {
+            if (current === resolutionRequest.current) setResolution(next);
+          })
+          .finally(() => {
+            if (sessionCheck.current?.promise === pending) {
+              sessionCheck.current = null;
+              setCheckingRecovery(false);
+            }
+          });
+      }
+    },
+    [apiBase],
+  );
 
   const handleSessionEstablished = useCallback(() => {
-    recheckSession();
+    recheckSession('pairing');
     // First usable session in this browser: the moment the boot-time prime
     // skips on a fresh device (see PlatformProfileContext). Idempotent, so a
     // boot prime makes this a no-op.
@@ -351,7 +358,7 @@ export function LocalUiSessionGate({
       <main className="local-ui-session-recovery" aria-live="polite">
         <h1>Reconnecting to this Station</h1>
         <p role="alert">Keep Station running on your computer, then retry.</p>
-        <Button onClick={recheckSession} disabled={checkingRecovery}>
+        <Button onClick={() => recheckSession()} disabled={checkingRecovery}>
           Try again
         </Button>
       </main>
