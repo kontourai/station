@@ -194,7 +194,11 @@
 
     "package.json#/packageManager",
 
-    "scripts/lib/vitest-error-reporter.mjs"
+    "scripts/lib/vitest-error-reporter.mjs",
+
+    "scripts/gallery-review-evidence.mjs",
+
+    "scripts/__tests__/gallery-review-evidence.test.ts"
   ],
 
   "checks": [
