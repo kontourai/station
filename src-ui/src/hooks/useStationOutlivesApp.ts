@@ -19,6 +19,9 @@ export function useStationOutlivesApp(): boolean | undefined {
   // Web and mobile reach a Station that runs elsewhere.
   if (!profile.supervisesBundledServer) return true;
   if (!bundled) return undefined;
-  if (!bundled.apiBase || !sameBase(bundled.apiBase, apiBase)) return true;
+  // A supervised Station that is starting, restarting or has crashed reports
+  // no address, so nothing proves this app talks to another Station.
+  if (!bundled.apiBase) return undefined;
+  if (!sameBase(bundled.apiBase, apiBase)) return true;
   return bundled.canRunInBackground;
 }

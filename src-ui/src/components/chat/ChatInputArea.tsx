@@ -61,6 +61,10 @@ import {
   draggedConversationReference,
   endConversationReferenceDrag,
 } from './conversationReferenceDrag';
+import {
+  UnconfirmedDiscardConfirm,
+  useUnconfirmedDiscardDisclosure,
+} from './UnconfirmedDiscardConfirm';
 import './chat.css';
 import { SkeletonBlock, SkeletonList } from '../state';
 
@@ -269,7 +273,12 @@ interface ChatInputAreaProps {
    * the notice's words are its description. A queued send is not a failure, so
    * this is not the send-failure line.
    */
-  queuedRetryNotice?: { text: string; onDiscard: () => void };
+  queuedRetryNotice?: {
+    text: string;
+    onDiscard: () => void;
+    /** Ask first with the shared unconfirmed-message discard. */
+    confirm?: boolean;
+  };
   onRetryAttachmentStage?: (id: string) => void | Promise<void>;
   onCancelAttachmentStage?: (id: string) => void | Promise<void>;
   onReplaceAttachmentFile?: (id: string, files: File[]) => void | Promise<void>;
@@ -679,6 +688,10 @@ export function ChatInputArea({
   );
 
   const queuedRetryText = queuedRetryNotice?.text;
+  // The queued notice's Discard opens the shared confirmation first; it
+  // closes again whenever the notice goes.
+  const queuedDiscard = useUnconfirmedDiscardDisclosure();
+  if (!queuedRetryText && queuedDiscard.open) queuedDiscard.close();
   const queuedRetryDescriptionId = React.useId();
   const composerRootRef = useRef<HTMLDivElement | null>(null);
   // The draft's two-line floor, written by the per-keystroke sizing below and
@@ -1554,13 +1567,23 @@ export function ChatInputArea({
           )}
           {queuedRetryNotice && (
             <span className="chat-input__queued-retry-actions">
-              <button
-                type="button"
-                aria-describedby={queuedRetryDescriptionId}
-                onClick={queuedRetryNotice.onDiscard}
-              >
-                Discard
-              </button>
+              {queuedRetryNotice.confirm ? (
+                <button
+                  type="button"
+                  aria-describedby={queuedRetryDescriptionId}
+                  {...queuedDiscard.triggerProps}
+                >
+                  Discard…
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  aria-describedby={queuedRetryDescriptionId}
+                  onClick={queuedRetryNotice.onDiscard}
+                >
+                  Discard
+                </button>
+              )}
               <span id={queuedRetryDescriptionId} className="sr-only">
                 {queuedRetryNotice.text}
               </span>
@@ -1728,6 +1751,30 @@ export function ChatInputArea({
             </ResponsiveDialogSurface>
           )}
         </div>
+        {/* The composer clips what overflows it in a short dock, which is
+            the only dock that shows this Discard…. Its question opens as the
+            composer's own popover (a sheet on a phone): above everything,
+            after the button in reading order, Escape or a tap outside keeps
+            the message. */}
+        {queuedRetryNotice?.confirm && queuedDiscard.open && (
+          <ResponsiveDialogSurface
+            layer="popover"
+            role="alertdialog"
+            ariaLabel="Discard this message?"
+            onClose={queuedDiscard.confirmProps.onKeep}
+            anchorRef={queuedDiscard.triggerProps.ref}
+            overlayClassName="composer-popover-overlay composer-popover-overlay--start"
+            panelClassName="composer-popover-panel chat-input__queued-retry-confirm"
+          >
+            <UnconfirmedDiscardConfirm
+              {...queuedDiscard.confirmProps}
+              onConfirm={() => {
+                queuedDiscard.close();
+                queuedRetryNotice.onDiscard();
+              }}
+            />
+          </ResponsiveDialogSurface>
+        )}
         {sessionReferencesOpen && (
           <React.Suspense
             fallback={<SkeletonBlock label="Conversation reference picker" />}

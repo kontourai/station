@@ -1,0 +1,7 @@
+{
+  "revision": "55553e45bf90748d03743bd6d63bbd2200975e9d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Fix round 7 of the delivery-state change: the flush hook's 'chat gained a waiting row' trigger counts an invoking row as waiting and a chat as sendable only with no turn running (isTurnInFlight), so a claim and its deferred release no longer start the next send; a pass does not claim rows of a chat with a turn running; backstop: releaseDeferred stamps deferredAt, claimNext skips a row deferred less than OUTBOUND_DEFER_RETRY_MS (1.5s) ago, and the hook schedules one pass when the earliest wait ends; the lease comment no longer claims a delay. Added to the Behavior paragraph: busy chats are blocked from a pass, the writable-with-waiting trigger's rule (writable, no turn running, a pending or invoking row), and the deferredAt backstop with its scheduled retry. Checked against writableWithWaiting, blockedSessionIds and the deferred retry timer in useOutboundQueueFlush.ts, releaseDeferred and claimNext in outboundQueue.ts, and their tests in useOutboundQueueFlush.test.ts and outboundQueue.test.ts.","inputs":["docs/architecture/module-map.md","src-ui/src/hooks/useOutboundQueueFlush.ts","src-ui/src/lib/outboundQueue.ts","src-ui/src/lib/outboundQueueLease.ts"]}
+  ]
+}

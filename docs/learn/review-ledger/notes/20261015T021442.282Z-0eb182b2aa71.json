@@ -1,0 +1,7 @@
+{
+  "revision": "e0bcba2bae6cf3e6782f412187fa9a6d6c139f63",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Re-checked after the browser check's formatting-only change (tests/mobile-chat-composer.spec.ts); it asserts the phone sheet's in-place actions and the outbox summary's 'with no answer yet'; the matrix row's coverage claim is unchanged. No prose change.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts"]}
+  ]
+}
