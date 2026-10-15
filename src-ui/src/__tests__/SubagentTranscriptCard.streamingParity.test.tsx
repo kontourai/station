@@ -63,6 +63,7 @@ function events(): { sequence: number; event: CanonicalRuntimeEvent }[] {
       sequence: 0,
       event: {
         eventId: 'tool-start',
+        itemId: TOOL_CALL,
         provider: 'claude',
         threadId: THREAD,
         createdAt: child.startedAt!,

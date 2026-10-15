@@ -199,25 +199,48 @@ test.describe('subagent transcript cards', () => {
             {
               provider: 'codex',
               threadId: SESSION_ID,
-              createdAt: STARTED_AT,
+              createdAt: captured[0].createdAt,
               eventId: 'standalone-start',
               method: 'turn.started',
               turnId: '00000000-0000-7000-8000-000000000002',
               prompt: 'Run the child without prose',
             },
-            ...captured.filter(
-              (event) => event.method !== 'content.text-delta',
-            ),
+            ...captured
+              .filter((event) => event.method !== 'content.text-delta')
+              .map((event) =>
+                event.method === 'turn.completed'
+                  ? { ...event, outputText: undefined }
+                  : event,
+              ),
           ]
         : captured;
       for (const event of events) await emit(page, event);
       const card = page.getByTestId('subagent-card');
       await expect(card).toHaveCount(1);
-      if (standalone)
+      if (standalone) {
         await expect(card.locator('xpath=..')).toHaveAttribute(
           'data-chat-message-key',
           /^subagent:/,
         );
+        await expect(
+          page.getByText('The subagent finished and replied done.', {
+            exact: true,
+          }),
+        ).toHaveCount(0);
+        const prompt = page.getByText('Run the child without prose', {
+          exact: true,
+        });
+        await expect(prompt).toBeVisible();
+        expect(
+          await prompt.evaluate((element) =>
+            Boolean(
+              element.compareDocumentPosition(
+                document.querySelector('[data-testid="subagent-card"]')!,
+              ) & Node.DOCUMENT_POSITION_FOLLOWING,
+            ),
+          ),
+        ).toBe(true);
+      }
       await expect(card.getByText('Completed')).toBeVisible();
       await expect(card.getByText('gpt-5.5')).toBeVisible();
       await expect(card.getByText('done', { exact: true })).toBeVisible();

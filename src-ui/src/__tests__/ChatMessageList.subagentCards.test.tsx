@@ -119,7 +119,7 @@ function chatSession(): ChatSession {
 }
 
 let sequence = 0;
-function runtimeEvent<T extends Record<string, unknown>>(
+function runtimeEvent<const T extends Record<string, unknown>>(
   createdAt: string,
   fields: T,
 ) {
@@ -265,6 +265,70 @@ function settles(summary: string, item = runningChild) {
       identity: { ...identity, endedAt: '2026-10-14T14:42:05.000Z' },
     }),
   ];
+}
+
+function history65() {
+  const entries: Array<{ sequence: number; event: CanonicalRuntimeEvent }> =
+    Array.from({ length: 65 }, (_, index) => {
+      const call = `toolu_agent_${index}`;
+      const childId = `child-${index}`;
+      const turnId = 'turn-1';
+      const item: ChildWorkItem = {
+        ...runningChild,
+        childId,
+        parent: { toolCallId: call, turnId },
+        title: `Review ${index}`,
+        transcript: {
+          kind: 'claude-subagent',
+          sessionId: SESSION_ID,
+          agentId: childId,
+        },
+      };
+      return [
+        runtimeEvent(STARTED_AT, {
+          method: 'tool.started',
+          turnId,
+          itemId: call,
+          toolCallId: call,
+          toolName: 'Agent',
+          arguments: {},
+        }),
+        childWork(STARTED_AT, {
+          kind: 'snapshot',
+          producer: 'engine-subagent',
+          reporterThreadId: THREAD,
+          running: [item],
+        }),
+        runtimeEvent(STARTED_AT, {
+          method: 'tool.completed',
+          turnId,
+          itemId: call,
+          toolCallId: call,
+          toolName: 'Agent',
+          status: 'success',
+          output: 'Async agent launched successfully.',
+        }),
+        ...settles(`Result ${index}`, item),
+      ];
+    }).flat();
+  entries.unshift(
+    runtimeEvent(STARTED_AT, {
+      method: 'turn.started',
+      turnId: 'turn-1',
+      prompt: 'Review all 65 children',
+    }),
+  );
+  entries.push(
+    runtimeEvent(ENDED_AT, {
+      method: 'turn.completed',
+      turnId: 'turn-1',
+      finishReason: 'stop',
+    }),
+  );
+  return entries.map((entry, index) => ({
+    ...entry,
+    sequence: index + 1,
+  }));
 }
 
 function TranscriptHarness({ session }: { session: ChatSession }) {
@@ -493,24 +557,7 @@ describe('subagent transcript cards', () => {
     },
     {
       name: '65-child history',
-      events: [
-        ...spawningTurn()
-          .slice(0, 3)
-          .map((entry) => entry.event),
-        ...Array.from({ length: 65 }, (_, index) => {
-          const item: ChildWorkItem = {
-            ...runningChild,
-            childId: `history-${index}`,
-            title: `History child ${index}`,
-          };
-          return [
-            childWork(STARTED_AT, { kind: 'upsert', item }).event,
-            ...settles(`History result ${index}`, item).map(
-              (entry) => entry.event,
-            ),
-          ];
-        }).flat(),
-      ],
+      events: history65().map((entry) => entry.event),
     },
   ])(
     'each child renders exactly once live and on replay: $name',
@@ -1030,66 +1077,7 @@ describe('subagent transcript cards', () => {
   });
 
   test('all 65 completed children whose spawns are loaded keep their cards and results', async () => {
-    windowEvents.current = Array.from({ length: 65 }, (_, index) => {
-      const call = `toolu_agent_${index}`;
-      const childId = `child-${index}`;
-      const turnId = 'turn-1';
-      const item: ChildWorkItem = {
-        ...runningChild,
-        childId,
-        parent: { toolCallId: call, turnId },
-        title: `Review ${index}`,
-        transcript: {
-          kind: 'claude-subagent',
-          sessionId: SESSION_ID,
-          agentId: childId,
-        },
-      };
-      return [
-        runtimeEvent(STARTED_AT, {
-          method: 'tool.started',
-          turnId,
-          itemId: call,
-          toolCallId: call,
-          toolName: 'Agent',
-          arguments: {},
-        }),
-        childWork(STARTED_AT, {
-          kind: 'snapshot',
-          producer: 'engine-subagent',
-          reporterThreadId: THREAD,
-          running: [item],
-        }),
-        runtimeEvent(STARTED_AT, {
-          method: 'tool.completed',
-          turnId,
-          itemId: call,
-          toolCallId: call,
-          toolName: 'Agent',
-          status: 'success',
-          output: 'Async agent launched successfully.',
-        }),
-        ...settles(`Result ${index}`, item),
-      ];
-    }).flat();
-    windowEvents.current.unshift(
-      runtimeEvent(STARTED_AT, {
-        method: 'turn.started',
-        turnId: 'turn-1',
-        prompt: 'Review all 65 children',
-      }),
-    );
-    windowEvents.current.push(
-      runtimeEvent(ENDED_AT, {
-        method: 'turn.completed',
-        turnId: 'turn-1',
-        finishReason: 'stop',
-      }),
-    );
-    windowEvents.current = windowEvents.current.map((entry, index) => ({
-      ...entry,
-      sequence: index + 1,
-    }));
+    windowEvents.current = history65();
     renderTranscript();
     await screen.findByText('Result 0');
     expect(screen.getAllByTestId('subagent-card')).toHaveLength(65);
