@@ -700,10 +700,9 @@ import {
 } from '../bootstrap/personal-home-authority-database.js';
 import {
   configureRuntimeHttp,
+  deviceSessionCookieName,
   installStationEnvelopeMarker,
-  LOOPBACK_DEVICE_SESSION_COOKIE,
   parseDeviceSessionCookie,
-  SECURE_DEVICE_SESSION_COOKIE,
 } from '../bootstrap/runtime-http.js';
 import {
   createHostedTenantMiddleware,
@@ -8054,7 +8053,10 @@ export function configureDevicePairingPublicRoutes(
     // in a browser, and the holder loses nothing they still needed. Leaving it
     // live was the common outcome of the tray's docs launch (#1259), since the
     // default browser usually already holds a session.
-    const existingCredential = parseDeviceSessionCookie(c.req.header('cookie'));
+    const existingCredential = parseDeviceSessionCookie(
+      c.req.header('cookie'),
+      (candidate) => pairing.identifyDevice(candidate) !== null,
+    );
     const existingDevice = existingCredential
       ? pairing.identifyDevice(existingCredential)
       : null;
@@ -8125,9 +8127,10 @@ export function configureDevicePairingPublicRoutes(
       const origin = new URL(c.req.header('origin')!);
       setCookie(
         c,
-        origin.protocol === 'https:'
-          ? SECURE_DEVICE_SESSION_COOKIE
-          : LOOPBACK_DEVICE_SESSION_COOKIE,
+        deviceSessionCookieName(
+          origin.protocol === 'https:',
+          pairing.environmentId(),
+        ),
         result.credential,
         {
           httpOnly: true,
@@ -8585,9 +8588,10 @@ export function configureDevicePairingPublicRoutes(
       const origin = new URL(c.req.header('origin')!);
       setCookie(
         c,
-        origin.protocol === 'https:'
-          ? SECURE_DEVICE_SESSION_COOKIE
-          : LOOPBACK_DEVICE_SESSION_COOKIE,
+        deviceSessionCookieName(
+          origin.protocol === 'https:',
+          pairing.environmentId(),
+        ),
         result.credential,
         {
           httpOnly: true,
