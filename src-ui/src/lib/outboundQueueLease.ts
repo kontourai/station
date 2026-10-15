@@ -34,6 +34,41 @@ export async function withOutboundQueueLock<T>(
 const RENDERER_LOCK_PREFIX = 'station-outbound-renderer:';
 let rendererLockHeld: Promise<void> | undefined;
 
+/**
+ * Boot ids of renderers whose lock request failed. Such a renderer still
+ * sends (and writes its boot id on its claims), but holds no lock, so the
+ * held set cannot tell it from one that is gone: other windows read it as
+ * unknown, never as gone. Shared through localStorage, newest last, bounded.
+ */
+const UNLOCKED_RENDERERS_KEY = 'station-outbound-unlocked-renderers';
+const UNLOCKED_RENDERERS_MAX = 32;
+
+function unlockedRenderers(): string[] {
+  try {
+    const raw = globalThis.localStorage?.getItem(UNLOCKED_RENDERERS_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((id): id is string => typeof id === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function recordUnlockedRenderer(bootId: string): void {
+  try {
+    const ids = unlockedRenderers().filter((id) => id !== bootId);
+    ids.push(bootId);
+    globalThis.localStorage?.setItem(
+      UNLOCKED_RENDERERS_KEY,
+      JSON.stringify(ids.slice(-UNLOCKED_RENDERERS_MAX)),
+    );
+  } catch {
+    // Unrecorded: other windows read this renderer as gone (its lock is not
+    // held), as they did before this record existed.
+  }
+}
+
 export function ensureRendererLiveness(): Promise<void> {
   if (rendererLockHeld) return rendererLockHeld;
   const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
@@ -46,6 +81,9 @@ export function ensureRendererLiveness(): Promise<void> {
         return new Promise<never>(() => {});
       })
       .catch(() => {
+        // Recorded before any claim of this renderer's is written (callers
+        // wait for this promise first).
+        recordUnlockedRenderer(rendererBootId);
         rendererLockHeld = undefined;
         granted();
       });
@@ -62,9 +100,14 @@ export async function rendererLiveness(
   if (!locks?.query) return undefined;
   try {
     const snapshot = await locks.query();
-    return (snapshot.held ?? []).some(
-      (lock) => lock.name === `${RENDERER_LOCK_PREFIX}${bootId}`,
-    );
+    if (
+      (snapshot.held ?? []).some(
+        (lock) => lock.name === `${RENDERER_LOCK_PREFIX}${bootId}`,
+      )
+    )
+      return true;
+    // No lock held: gone, unless it never could hold one.
+    return unlockedRenderers().includes(bootId) ? undefined : false;
   } catch {
     return undefined;
   }

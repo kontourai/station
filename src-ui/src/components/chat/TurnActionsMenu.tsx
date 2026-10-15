@@ -327,6 +327,16 @@ export interface UserMessageActionsMenuProps {
   forkSource?: ForkTurnSource | null;
   onForkFromTurn?: (source: ForkTurnSource) => void;
   onNewChatFromMessage?: () => void;
+  /**
+   * The message was not sent: its Discard lives here, beside the bubble's
+   * other actions, rather than in a second overflow on the bubble.
+   */
+  onDiscardUnsent?: () => void;
+  /**
+   * Already inside a surface of its own (the phone's message sheet): the rows
+   * render in place, with no second ⋯ to open.
+   */
+  inline?: boolean;
 }
 
 /** Overflow for a user bubble: fork or a new-chat seed (#2216). Copy is the
@@ -335,13 +345,16 @@ export function UserMessageActionsMenu({
   forkSource,
   onForkFromTurn,
   onNewChatFromMessage,
+  onDiscardUnsent,
+  inline = false,
 }: UserMessageActionsMenuProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const close = () => setOpen(false);
   const menuRef = useMenuFocus<HTMLDivElement>(open, close);
   const canFork = Boolean(forkSource && onForkFromTurn);
-  const rowCount = canFork ? 1 : onNewChatFromMessage ? 1 : 0;
+  const rowCount =
+    (canFork ? 1 : onNewChatFromMessage ? 1 : 0) + (onDiscardUnsent ? 1 : 0);
   const { position, place } = useFixedMenuPlacement(triggerRef, open, rowCount);
   const triggerProps = useMenuTriggerToggle(
     open,
@@ -352,6 +365,56 @@ export function UserMessageActionsMenu({
     close,
   );
 
+  // In the ⋯ popup the rows are menu items (with the menu's arrow-key
+  // focus); inline in the phone's sheet they are plain buttons in a group,
+  // since nothing there gives them menu keyboard behaviour.
+  const rows = (close: () => void, itemRole?: 'menuitem') => (
+    <>
+      {canFork && forkSource && onForkFromTurn && (
+        <button
+          type="button"
+          role={itemRole}
+          onClick={() => {
+            close();
+            onForkFromTurn(forkSource);
+          }}
+        >
+          Fork from here…
+        </button>
+      )}
+      {!canFork && onNewChatFromMessage && (
+        <button
+          type="button"
+          role={itemRole}
+          onClick={() => {
+            close();
+            onNewChatFromMessage();
+          }}
+        >
+          New chat from this message
+        </button>
+      )}
+      {onDiscardUnsent && (
+        <button
+          type="button"
+          role={itemRole}
+          className="turn-footer__overflow-item--danger"
+          onClick={() => {
+            close();
+            onDiscardUnsent();
+          }}
+        >
+          Discard unsent message
+        </button>
+      )}
+    </>
+  );
+  if (inline)
+    return (
+      <fieldset className="message-details__menu" aria-label="Message actions">
+        {rows(() => {})}
+      </fieldset>
+    );
   return (
     <span className="turn-footer__actions-menu">
       <button
@@ -382,30 +445,7 @@ export function UserMessageActionsMenu({
               }
             }}
           >
-            {canFork && forkSource && onForkFromTurn && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  close();
-                  onForkFromTurn(forkSource);
-                }}
-              >
-                Fork from here…
-              </button>
-            )}
-            {!canFork && onNewChatFromMessage && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  close();
-                  onNewChatFromMessage();
-                }}
-              >
-                New chat from this message
-              </button>
-            )}
+            {rows(close, 'menuitem')}
           </div>,
           document.body,
         )}

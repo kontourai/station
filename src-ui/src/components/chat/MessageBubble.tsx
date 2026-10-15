@@ -1,9 +1,10 @@
 import { isSupportedTurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
-import { Fragment, memo, type ReactNode, useCallback } from 'react';
+import { Fragment, memo, type ReactNode, useCallback, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { isReplayThread } from '../../hooks/orchestration/replay/replay-registry';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { useMessageDeliveryState } from '../../hooks/useMessageDeliveryState';
 import type { ChatMessage } from '../../types';
 import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
@@ -21,6 +22,10 @@ import { type ForkTurnSource, forkTurnSource } from './fork-turn-source';
 import { MessageDetails } from './MessageDetails';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
 import { MessageContent } from './message-bubble/MessageContent';
+import {
+  type DeliveryNotice,
+  MessageDeliveryNote,
+} from './message-bubble/MessageDeliveryNote';
 import { MessageRating } from './message-bubble/MessageRating';
 import {
   resolveTurnEngine,
@@ -180,6 +185,42 @@ function MessageBubbleComponent({
   const { developerToolsEnabled } = useDeviceSettings();
   const isMobile = useIsMobile();
   const textContent = typeof msg.content === 'string' ? msg.content : '';
+  // The user's own message until the agent has it (`messageDeliveryState`).
+  // Hoisted above the early returns below: hooks run unconditionally.
+  const deliveryState = useMessageDeliveryState(activeSession.id, msg);
+  const undelivered =
+    msg.role === 'user' &&
+    msg.clientId !== undefined &&
+    deliveryState !== undefined &&
+    deliveryState !== 'delivered'
+      ? deliveryState
+      : undefined;
+  // Discard of a not-sent message runs from the bubble's ⋯ menu; its result
+  // is reported on the bubble's delivery line.
+  const [deliveryNotice, setDeliveryNotice] = useState<DeliveryNotice | null>(
+    null,
+  );
+  const discardUnsent =
+    undelivered === 'not-sent' && msg.clientId
+      ? () => {
+          const key = msg.clientId!;
+          setDeliveryNotice(null);
+          void import('../../lib/messageDeliveryActions')
+            .then(async ({ discardMessage, ALREADY_DELIVERED }) => {
+              if (
+                (await discardMessage(activeSession.id, key, 'not-sent')) ===
+                'delivered'
+              )
+                setDeliveryNotice({ text: ALREADY_DELIVERED, error: false });
+            })
+            .catch((error: unknown) =>
+              setDeliveryNotice({
+                text: `That didn't work: ${error instanceof Error ? error.message : String(error)}`,
+                error: true,
+              }),
+            );
+        }
+      : undefined;
 
   // Hoisted above the flowPart early-return (hooks can't be called
   // conditionally) and stabilized so the memoized MessageContent below
@@ -420,7 +461,9 @@ function MessageBubbleComponent({
   const userMessageMenu =
     msg.role === 'user' &&
     textContent &&
-    ((userForkSource && onForkFromTurn) || onNewChatFromMessage) ? (
+    ((userForkSource && onForkFromTurn) ||
+      onNewChatFromMessage ||
+      discardUnsent) ? (
       <LazyBoundary
         load={loadUserMessageActionsMenu}
         componentProps={{
@@ -429,6 +472,10 @@ function MessageBubbleComponent({
           onNewChatFromMessage: onNewChatFromMessage
             ? () => onNewChatFromMessage(textContent)
             : undefined,
+          onDiscardUnsent: discardUnsent,
+          // The phone already opens a sheet for the row: its actions are
+          // listed there, not behind a second ⋯ inside it.
+          inline: isMobile,
         }}
         pending={null}
         // In the phone sheet a failed load must not leave an empty sheet
@@ -863,7 +910,12 @@ function MessageBubbleComponent({
               : undefined
             : '70%',
         }}
-        className={`message ${msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}`}
+        className={`message ${msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}${
+          // Outlined, not filled, until the agent has the message.
+          undelivered
+            ? ` message--undelivered message--delivery-${undelivered}`
+            : ''
+        }`}
       >
         {!isMobile && metadataControls}
         {!isMobile && metadataIdentity}
@@ -896,6 +948,15 @@ function MessageBubbleComponent({
             Sent by stopping the step that was running
           </div>
         )}
+        {undelivered && msg.clientId ? (
+          <MessageDeliveryNote
+            chatKey={activeSession.id}
+            clientTurnId={msg.clientId}
+            state={undelivered}
+            text={textContent}
+            notice={deliveryNotice}
+          />
+        ) : null}
 
         {!isMobile && metadataAfter}
         {msg.role === 'assistant' && isLastMessage && (
