@@ -617,7 +617,10 @@ operator-only; these scoped routes do not enable member execution.
 
 Agent drafts accept `name`, optional `description`, `prompt`, `engineId`, and
 `tools` (`mcpServers`, `available`, `autoApprove`, `askBeforeUse`). Unknown fields
-are refused. The server generates identity, binds the exact Project, selects Ask
+are refused. `engineId: "station"` selects managed Station and is persisted
+without `execution.agentConnectionId`; other choices name an available engine
+connection. The catalog includes Station separately from connection inventory.
+The server generates identity, binds the exact Project, selects Ask
 posture and replaces harness MCP configuration. Request states are `pending`,
 `setting-up`, `available`, `declined`, and `failed`; installed alone is not
 available. Approving installation cannot widen the Owner's policy or sign in to

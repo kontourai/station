@@ -104,7 +104,10 @@ Project policy is a source ceiling, separate from per-action approval.
 [Tool library state](../../src-server/services/plugins/tool-library-service.ts)
 checks exact Project bindings for Project-authored agents and source selections
 for all agents used in a Project. Session resolution validates inherited defaults;
-managed native loading validates added Project tools. The staged pre-tool policy
+managed native loading validates added Project tools. Dormant-session recovery
+uses the same authored-definition gate as new sessions. Permission refusals and
+unreadable Project defaults or policy stop startup; they cannot fall back to an
+engine without the Agent definition. The staged pre-tool policy
 rechecks current permission on each intercepted call. Legacy operator-authored
 agents retain their Station Control capability; Project-authored agents cannot
 select it. Personal account credentials remain separately owned. The managed Station
