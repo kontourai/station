@@ -362,6 +362,7 @@ test('keeps concurrent background appends in Session order and idempotent while 
 test('retries a scheduled search import from its durable watermark after yielding budget exhaustion', async () => {
   events.appendEvent({
     eventId: 'search-owner',
+    sessionId: threadId,
     threadId,
     provider: 'claude',
     method: 'session.started',
