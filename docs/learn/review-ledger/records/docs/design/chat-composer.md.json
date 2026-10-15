@@ -140,7 +140,13 @@
 
     "src-ui/src/hooks/useSTT.ts",
 
-    "src-ui/src/components/chat-start/useStartDictation.ts"
+    "src-ui/src/components/chat-start/useStartDictation.ts",
+
+    "src-ui/src/lib/task-shaping.ts",
+
+    "src-ui/src/components/chat/TaskShapingComposer.tsx",
+
+    "src-ui/src/components/chat/TaskProposalCard.tsx"
   ],
 
   "checks": [
