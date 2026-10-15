@@ -11906,7 +11906,7 @@ async fn startup_window_admitted(window: tauri::WebviewWindow, app: AppHandle) -
     #[cfg(target_os = "macos")]
     {
         use objc2_app_kit::{NSUserInterfaceItemIdentification, NSView};
-        use objc2_foundation::{ns_string, NSObjectProtocol};
+        use objc2_foundation::ns_string;
 
         // Ready can precede the dispatcher applying cover removal. Observe
         // the actual main-thread hierarchy instead of spending intro time
