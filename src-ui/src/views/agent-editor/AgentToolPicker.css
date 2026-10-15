@@ -206,6 +206,7 @@
 }
 button.agent-tool-library__origin {
   min-height: 44px;
+  min-width: 44px;
   border: 0;
   padding: 0;
   background: none;
