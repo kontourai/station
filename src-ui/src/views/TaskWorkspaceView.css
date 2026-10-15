@@ -1038,6 +1038,7 @@
   border-bottom: 2px solid transparent;
   padding: var(--k-space-3);
   min-height: 44px;
+  min-width: 44px;
   font-size: var(--k-text-sm);
 }
 .task-room-tabs [aria-selected="true"] {
@@ -1494,4 +1495,10 @@
 .task-room-brief-rendered .task-list-item,
 .account-entry__shared-document .task-list-item {
   margin-block: var(--k-space-2);
+}
+
+.task-room-answer ul,
+.task-room-answer ol {
+  padding-inline-start: var(--k-space-5);
+  margin-block: var(--k-space-3);
 }

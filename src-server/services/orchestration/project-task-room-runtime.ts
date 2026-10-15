@@ -664,7 +664,6 @@ export class ProjectTaskRoomRuntime {
         },
       });
       if (result.kind === 'committed' || result.kind === 'duplicate') {
-        this.#removeAgentPresence(current.scope, current.agentId, sessionId);
         await this.#publishHistory({
           ...current.scope,
           documentId: documentIdFor(current.scope),
@@ -738,7 +737,7 @@ export class ProjectTaskRoomRuntime {
           ),
         };
         await this.#publishAgentLifecycle(started);
-        if (durable.outcome)
+        if (durable.outcome) {
           await this.publishAgentFinished({
             taskId,
             sessionId: request.sessionId,
@@ -746,6 +745,19 @@ export class ProjectTaskRoomRuntime {
             outcome: durable.outcome,
             occurredAt: durable.updatedAt,
           });
+          // The session-level finish receipt may already describe an older turn.
+          // Current canonical lifecycle still ends this turn's live presence.
+          const terminal = await this.#lifecycleAssociation(
+            taskId,
+            request.sessionId,
+          );
+          if (terminal)
+            this.#removeAgentPresence(
+              terminal.scope,
+              terminal.agentId,
+              request.sessionId,
+            );
+        }
       }
       // Task association is the durable source of a started publication. It
       // closes the crash window before an outbox insert (or when that insert

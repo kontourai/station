@@ -249,6 +249,7 @@ async function fixture() {
         ? {
             provider: detail.session.provider,
             createdAt: detail.session.createdAt,
+            updatedAt: detail.session.updatedAt,
             outcome: sessionLifecycleOutcome(
               projectSessionLifecycle({
                 session: detail.session,
@@ -316,6 +317,14 @@ async function fixture() {
     post,
     history,
     failures,
+    agentCount: async () => {
+      const result = await room.liveActivity({ request });
+      if (result.kind !== 'available')
+        throw new Error('Live activity unavailable');
+      return result.projection.participants.filter(
+        (p) => p.actor.kind === 'agent',
+      ).length;
+    },
     browserHistory: async () =>
       parseProjectTaskRoomBrowserHistory(
         await room.history({ taskId: task.id, request, project: true }),
@@ -425,6 +434,7 @@ test('room requests start the Task and publish canonical answers and continued t
     expect(f.adapter.turns[1].threadId).toBe(sessionId);
     expect(f.adapter.turns[1].input).toContain('Please refine it');
     expect(f.adapter.turns[1].input).toContain('# Task brief: Make the room');
+    expect(await f.agentCount()).toBe(1);
     f.adapter.answer(sessionId, 'turn-2', 'Refined answer.');
     await vi.waitFor(async () =>
       expect(
@@ -445,6 +455,7 @@ test('room requests start the Task and publish canonical answers and continued t
         (record) => record.correlationId === `room-answer:${sessionId}`,
       ),
     ).toHaveLength(2);
+    await vi.waitFor(async () => expect(await f.agentCount()).toBe(0));
     f.revokeDuringResolution();
     const duringResolution = await f.post(
       `/delegations/${sessionId}/continue`,
