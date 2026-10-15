@@ -126,6 +126,8 @@ interface ChatDockHeaderProps {
   projectContext?: React.ReactNode;
   /** Active conversation title + engine/Flow identity, sharing this row. */
   chatIdentity?: React.ReactNode;
+  /** Imported chats keep their origin visible when no composer owns that context. */
+  retainIdentityInNamedPane?: boolean;
   /** Full-screen layout placement: no region bar, so this renders its own. */
   fullscreen?: boolean;
   /** #3309: tab-strip controls folded into this bar. Absent while collapsed. */
@@ -148,6 +150,7 @@ interface ChatDockHeaderProps {
 
 export function ChatDockHeader({
   chatIdentity,
+  retainIdentityInNamedPane = false,
   projectContext,
   chatControls,
   fullscreen = false,
@@ -285,7 +288,7 @@ export function ChatDockHeader({
           componentProps={{ sessionInventory: inventory }}
         />
       ) : null}
-      {chatIdentity ? (
+      {chatIdentity && (!slots?.namesPane || retainIdentityInNamedPane) ? (
         <div
           className={`chat-dock__header-identity${slots?.namesPane ? ' chat-dock__header-identity--pane' : ''}`}
         >
@@ -295,7 +298,7 @@ export function ChatDockHeader({
       {contextMeter ? (
         <div className="chat-dock__header-meter">{contextMeter}</div>
       ) : null}
-      {projectContext ? (
+      {projectContext && !slots?.namesPane ? (
         <div className="chat-dock__header-context">{projectContext}</div>
       ) : null}
     </>

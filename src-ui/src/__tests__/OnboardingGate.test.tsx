@@ -1062,7 +1062,7 @@ describe('OnboardingGate', () => {
     expect(screen.queryByTestId('setup-launcher')).toBeNull();
   });
 
-  test("routes an engine attention action to that engine's Agent Apps configuration", () => {
+  test('does not interrupt work with a global coding-engine sign-in reminder', () => {
     currentStatus = createStatus({
       externalEngines: [
         {
@@ -1082,8 +1082,8 @@ describe('OnboardingGate', () => {
       </OnboardingGate>,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in to Codex' }));
-    expect(navigate).toHaveBeenCalledWith('/connections/engines/codex');
+    expect(screen.queryByTestId('setup-launcher')).toBeNull();
+    expect(screen.getByText('App')).toBeTruthy();
   });
 
   test('a chat-ready status renders the app shell without a setup launcher', () => {
@@ -1116,7 +1116,7 @@ describe('OnboardingGate', () => {
       /Request access to reconnect to Tailnet Station/i,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
-    expect(screen.getByText('Connection manager: list')).toBeTruthy();
+    expect(screen.getByText('Connection manager: request-access')).toBeTruthy();
   });
 
   test('keeps the connected shell mounted while a newly selected connection needs credentials', async () => {
@@ -1524,7 +1524,7 @@ describe('OnboardingGate', () => {
       /Request access to reconnect to Tailnet Station/,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
-    expect(screen.getByText('Connection manager: list')).toBeTruthy();
+    expect(screen.getByText('Connection manager: request-access')).toBeTruthy();
   });
 
   test('keeps the mobile shell available and launches connection management before a real host is saved', async () => {

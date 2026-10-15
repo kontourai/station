@@ -2428,6 +2428,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
             />
           ) : (
             <ChatDockHeader
+              retainIdentityInNamedPane={Boolean(importedSessionId)}
               chatIdentity={
                 importedSessionId ? (
                   <ChatDockActiveIdentity
