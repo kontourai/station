@@ -73,9 +73,6 @@ const LABELS: Record<
   },
 };
 
-/** Loaded on demand: the actions write the outbox, which a plain bubble never needs. */
-const loadActions = () => import('../../../lib/messageDeliveryActions');
-
 /**
  * The delivery line inside the user's own bubble until the agent has the
  * message. One status region stays mounted while the note is, and only its
@@ -164,7 +161,11 @@ export function MessageDeliveryNote({
               disabled={busy}
               onClick={() =>
                 void run(async () => {
-                  const { retryNotSentMessage } = await loadActions();
+                  const { retryNotSentMessage } = await import(
+                    // Loaded on demand: the actions write the outbox, which a
+                    // plain bubble never needs.
+                    '../../../lib/messageDeliveryActions'
+                  );
                   await retryNotSentMessage(clientTurnId);
                   return null;
                 })
@@ -179,7 +180,7 @@ export function MessageDeliveryNote({
               onClick={() =>
                 void run(async () => {
                   const { editMessageInComposer, ALREADY_DELIVERED } =
-                    await loadActions();
+                    await import('../../../lib/messageDeliveryActions');
                   return (await editMessageInComposer(
                     chatKey,
                     clientTurnId,
@@ -235,7 +236,9 @@ export function MessageDeliveryNote({
           {...discardDisclosure.confirmProps}
           onConfirm={() =>
             void run(async () => {
-              const { discardMessage, ALREADY_DELIVERED } = await loadActions();
+              const { discardMessage, ALREADY_DELIVERED } = await import(
+                '../../../lib/messageDeliveryActions'
+              );
               return (await discardMessage(
                 chatKey,
                 clientTurnId,
