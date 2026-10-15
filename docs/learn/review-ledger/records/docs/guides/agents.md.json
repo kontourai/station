@@ -208,8 +208,6 @@
 
     "src-ui/src/views/agent-editor/AgentToolApproval.tsx",
 
-    "src-ui/src/views/agent-editor/AgentToolDetails.tsx",
-
     "src-ui/src/views/agent-editor/AgentToolDiscovery.tsx",
 
     "src-ui/src/views/agent-editor/AgentToolCatalog.tsx",
