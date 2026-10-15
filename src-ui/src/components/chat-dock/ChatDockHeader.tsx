@@ -1,4 +1,5 @@
 import type React from 'react';
+import { useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { toastStore } from '../../contexts/ToastContext';
@@ -155,6 +156,9 @@ export function ChatDockHeader({
   regionVisible,
   moreActions,
 }: ChatDockHeaderProps) {
+  const [activityOpen, setActivityOpen] = useState(false);
+  const activityId = useId();
+  const activityButton = useRef<HTMLButtonElement>(null);
   const isDockOpen = regionVisible;
   const slots = useRegionChromeSlots();
   // One hook for a variable number of per-session rows: `useShortcutDisplay`
@@ -164,6 +168,7 @@ export function ChatDockHeader({
   const activeSessions = (chatControls?.sessions ?? []).filter((s) =>
     isSessionWorkActive(s),
   );
+  const activityLabel = `${activeSessions.length} ${activeSessions.length === 1 ? 'chat' : 'chats'} working`;
   const inventory = workspaceControls?.sessionInventory;
   const inventoryOccurrence = useSessionInventoryOccurrence(
     inventory?.hostId ?? '',
@@ -349,16 +354,42 @@ export function ChatDockHeader({
         />
       ) : null}
       {activeSessions.length > 0 && (
-        <div className="chat-dock__activity">
-          <button type="button" className="chat-dock__activity-btn">
-            <span className="loading-dots">
+        <div
+          role="group"
+          aria-label="Working chats"
+          className="chat-dock__activity"
+          data-open={activityOpen}
+          onMouseEnter={() => setActivityOpen(true)}
+          onMouseLeave={() => setActivityOpen(false)}
+          onBlur={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget))
+              setActivityOpen(false);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              setActivityOpen(false);
+              activityButton.current?.focus();
+            }
+          }}
+        >
+          <button
+            ref={activityButton}
+            type="button"
+            className="chat-dock__activity-btn"
+            aria-label={activityLabel}
+            title={activityLabel}
+            aria-expanded={activityOpen}
+            aria-controls={activityId}
+            onClick={() => setActivityOpen(true)}
+          >
+            <span className="loading-dots" aria-hidden="true">
               <span>●</span>
               <span>●</span>
               <span>●</span>
             </span>
             {activeSessions.length}
           </button>
-          <div className="chat-dock__activity-dropdown">
+          <div id={activityId} className="chat-dock__activity-dropdown">
             {activeSessions.map((session) => {
               const idx = (chatControls?.sessions ?? []).findIndex(
                 (s) => s.id === session.id,
@@ -368,7 +399,10 @@ export function ChatDockHeader({
                   type="button"
                   key={session.id}
                   className="chat-dock__activity-item"
-                  onClick={() => chatControls?.focusSession(session.id)}
+                  onClick={() => {
+                    chatControls?.focusSession(session.id);
+                    setActivityOpen(false);
+                  }}
                 >
                   <span className="chat-dock__activity-label">
                     {session.title}

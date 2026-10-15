@@ -351,8 +351,6 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
       'read-only Connections UI against the runner-owned temporary Station; trust refusal occurs before server enrollment, with only this browser context’s request observation and local page state',
     'tests/buffered-answer-delivery.spec.ts':
       'browser-local orchestration SSE and API fixtures installed before navigation; the only write is this browser context’s device-local Answer delivery preference',
-    'tests/chat-settings-and-task-notices.spec.ts':
-      'browser-local orchestration SSE and API fixtures installed before navigation; the only write is this browser context’s device-local developer-tools preference',
   },
   parallelSafe: [
     'tests/branding-theme-boot.spec.ts',

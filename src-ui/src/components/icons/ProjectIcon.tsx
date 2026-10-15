@@ -101,6 +101,7 @@ export function ProjectIcon({
         className,
         swatchClassName,
       )}
+      title={project.name}
       data-project-icon={fallback}
       style={{ ...swatch, backgroundColor: accent }}
       {...a11y}

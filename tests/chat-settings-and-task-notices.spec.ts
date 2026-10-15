@@ -117,6 +117,9 @@ async function openChat(page: Page, viewport: { width: number }) {
     await openChatRegion(page);
   }
   await waitForMockOrchestrationSse(page);
+  await expect(
+    page.getByRole('log', { name: 'Conversation transcript' }),
+  ).toContainText('Started the captures in the background.');
 }
 
 async function openChatSettings(page: Page): Promise<Locator> {
@@ -312,3 +315,98 @@ for (const [label, viewport] of [
     });
   });
 }
+
+for (const theme of ['light', 'dark'] as const) {
+  test(`Done hover keeps readable contrast (${theme})`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize(DESKTOP);
+    await seedChat(page);
+    await page.addInitScript((theme) => {
+      localStorage.setItem(
+        'station-device-settings-v1',
+        JSON.stringify({
+          version: 2,
+          values: { developerToolsEnabled: true, theme },
+        }),
+      );
+    }, theme);
+    await openChat(page, DESKTOP);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+    const dialog = await openChatSettings(page);
+    const done = dialog.getByRole('button', { name: 'Done', exact: true });
+    await done.hover();
+    const contrast = await done.evaluate((element) => {
+      const style = getComputedStyle(element);
+      const luminance = (color: string) => {
+        const channels = color
+          .match(/[\d.]+/g)!
+          .slice(0, 3)
+          .map(Number)
+          .map((value) => {
+            const channel = value / 255;
+            return channel <= 0.04045
+              ? channel / 12.92
+              : ((channel + 0.055) / 1.055) ** 2.4;
+          });
+        return (
+          channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
+        );
+      };
+      const foreground = luminance(style.color);
+      const background = luminance(style.backgroundColor);
+      return (
+        (Math.max(foreground, background) + 0.05) /
+        (Math.min(foreground, background) + 0.05)
+      );
+    });
+    expect(contrast).toBeGreaterThanOrEqual(4.5);
+    await evidence(page, `chat-settings-${theme}-hover.png`, testInfo);
+    await done.click();
+    await expect(dialog).toBeHidden();
+  });
+}
+
+test('working chat indicator explains its count and opens with the keyboard', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize(DESKTOP);
+  await seedChat(page);
+  await page.goto('/?dock=open&maximize=true&chat=conv-1');
+  await dismissSetupLauncher(page);
+  await waitForMockOrchestrationSse(page);
+  await expect(
+    page.getByRole('log', { name: 'Conversation transcript' }),
+  ).toContainText('Started the captures in the background.');
+  await emitMockOrchestrationEvent(page, 'orchestration:event', {
+    event: {
+      provider: 'codex',
+      threadId: SESSION_ID,
+      method: 'turn.started',
+      turnId: 'keyboard-active',
+      createdAt: new Date().toISOString(),
+      prompt: 'Working chat',
+    },
+  });
+  const activity = page.getByRole('button', {
+    name: '1 chat working',
+    exact: true,
+  });
+  await expect(activity).toHaveAttribute('title', '1 chat working');
+  await activity.focus();
+  await expect(activity).toHaveAttribute('aria-expanded', 'false');
+  await page.keyboard.press('Enter');
+  await expect(activity).toHaveAttribute('aria-expanded', 'true');
+  const chats = page.locator('.chat-dock__activity-dropdown');
+  await expect(chats).toBeVisible();
+  await page.keyboard.press('Tab');
+  await expect(chats.getByRole('button').first()).toBeFocused();
+  await evidence(page, 'working-chat-keyboard.png', testInfo);
+  await page.keyboard.press('Escape');
+  await expect(chats).toBeHidden();
+  await expect(activity).toBeFocused();
+  await page.keyboard.press('Space');
+  await expect(chats).toBeVisible();
+  await chats.getByRole('button').first().click();
+  await expect(chats).toBeHidden();
+});

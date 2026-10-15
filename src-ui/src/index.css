@@ -3472,7 +3472,7 @@ button:hover {
   height: 8px;
 }
 
-.chat-dock__activity:hover .chat-dock__activity-dropdown {
+.chat-dock__activity[data-open="true"] .chat-dock__activity-dropdown {
   display: block;
 }
 
@@ -3848,6 +3848,11 @@ button:hover {
   font-size: var(--text-base);
   cursor: pointer;
   font-weight: 500;
+}
+
+.chat-settings-modal__done:hover {
+  background: var(--accent-hover-fill);
+  color: var(--text-on-accent);
 }
 
 .chat-messages--empty {
