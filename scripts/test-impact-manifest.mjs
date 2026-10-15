@@ -887,6 +887,12 @@ export const SPAWNED_SCRIPT_EDGES = Object.freeze([
     reason: EXECUTED_SCRIPT_EDGE_REASON,
   }),
   Object.freeze({
+    pattern: 'scripts/monument-pack-smoke.mjs',
+    related: true,
+    tests: Object.freeze(['scripts/__tests__/monument-pack-smoke.test.ts']),
+    reason: EXECUTED_SCRIPT_EDGE_REASON,
+  }),
+  Object.freeze({
     pattern: 'scripts/test-realtime-wait-gate.mjs',
     related: true,
     tests: Object.freeze(['scripts/__tests__/test-realtime-wait-gate.test.ts']),

@@ -334,6 +334,24 @@ jobs:
       - name: Build Connect
         run: cd packages/connect && npm run build
 
+      # @kontourai/monument's top-level `exports` point at src/*.ts for
+      # Station; the entry points a consumer gets live in its `publishConfig`
+      # and name dist/. Only pnpm applies that override (npm ignores
+      # publishConfig.exports), and `changeset publish` runs `pnpm publish`
+      # here because the workspace is pnpm. Nothing builds dist/ implicitly:
+      # the root .npmrc sets ignore-scripts=true, so a `prepack` hook would not
+      # run. While the package is `private: true`, `changeset publish` skips it
+      # and this costs only the compile. The smoke installs the packed tarball
+      # in a scratch consumer under plain node and fails the dispatch before
+      # `changeset publish` can burn a version with `.ts` entry points; it
+      # skips itself while the package is private.
+      - name: Build Monument
+        run: cd packages/monument && npm run build
+
+      - name: Smoke the Monument tarball
+        if: env.PUBLISH_RUN == 'true'
+        run: node scripts/monument-pack-smoke.mjs --if-publishable --no-build
+
       # STATION_CLI_BUILD_CHANNEL=stable, read by build-metadata.mjs's
       # deriveCliBundleMetadata and baked into the bundle's
       # globalThis.__STATION_CLI_BUNDLE__ (what `station --version` reports).
@@ -375,8 +393,10 @@ jobs:
       #   workflow: publish-packages.yml
       #   allowed actions: must include `npm publish`. Per npm's trusted-publishers
       #     doc, configurations created after 2026-05-20 require selecting at least
-      #     one action explicitly. `changeset publish` shells out to plain
-      #     `npm publish` (@changesets/cli 2.31.1), so a stage-only publisher would
+      #     one action explicitly. `changeset publish` publishes with the
+      #     workspace's package manager (@changesets/cli 3.x picks `pnpm
+      #     publish` for this pnpm workspace; getPublishTool), so a
+      #     stage-only publisher would
       #     exchange a token — the preflight would go green — and then refuse the
       #     publish. The preflight cannot see this; only the label on npmjs.com can.
       #

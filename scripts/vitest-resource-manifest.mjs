@@ -31,6 +31,10 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
   // independently resolved npm-tarball consumer. It owns packages/cli/dist.
   'packages/cli/src/__tests__/bundle.test.ts',
   'scripts/__tests__/publish-surface.test.ts',
+  // #3565: builds packages/monument/dist (it removes the directory first),
+  // packs it and installs the tarballs into scratch consumers. It owns
+  // packages/monument/dist.
+  'scripts/__tests__/monument-pack-smoke.test.ts',
   // Reads exact generated-policy documentation while other corpus members may
   // regenerate it; one serial lane makes that read a stable input.
   'scripts/__tests__/verification-policy-gate.test.ts',
