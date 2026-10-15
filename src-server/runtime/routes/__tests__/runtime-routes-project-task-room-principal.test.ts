@@ -111,6 +111,34 @@ const task: TaskRecord = {
   updatedAt: '2026-08-24T00:00:00.000Z',
 } as unknown as TaskRecord;
 
+const shapingProposal = {
+  title: 'Accepted idea',
+  goal: 'Show progress.',
+  doneWhen: ['Steps have counts.'],
+  firstStep: 'Find the installer.',
+};
+const shapingBrief =
+  '## Goal\n\nShow progress.\n\n## Done when\n\n- [ ] Steps have counts.\n\n## Suggested first step\n\nFind the installer.';
+const shapingAnswer = {
+  status: 'found',
+  projectSlug: 'project-1',
+  sessionId: 'shaping-session',
+  turnId: 'shaping-turn',
+  message: {
+    id: 'answer',
+    role: 'assistant',
+    parts: [
+      {
+        type: 'text',
+        text:
+          '```station-task-proposal\n' +
+          JSON.stringify(shapingProposal) +
+          '\n```',
+      },
+    ],
+  },
+};
+
 describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', () => {
   const directories: string[] = [];
   afterEach(() => {
@@ -263,7 +291,15 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
       source: 'bearer',
       locality: 'home-possession',
     });
-    const create = vi.fn();
+    Reflect.set(
+      context,
+      'orchestrationService',
+      deepStub({
+        canUserReadSession: () => true,
+        sessionQueries: { readAssistantTurn: async () => shapingAnswer },
+      }),
+    );
+    const create = vi.fn(async () => task);
     Reflect.set(context.taskGraphService, 'createTask', create);
     try {
       const response = await app.request('/api/tasks', {
@@ -273,8 +309,11 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
           projectId: 'project-1',
           title: 'Accepted idea',
           description: 'Show progress.',
-          proposalBrief: 'brief',
-          shapingSource: { sessionId: 's', turnId: 't' },
+          proposalBrief: shapingBrief,
+          shapingSource: {
+            sessionId: 'shaping-session',
+            turnId: 'shaping-turn',
+          },
         }),
       });
       expect(response.status).toBe(503);
