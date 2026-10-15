@@ -66,7 +66,7 @@ export function buildGalleryReviewEvidence({
       const file = realpathSync(resolve(root, screen.file));
       if (!file.startsWith(`${root}${sep}`))
         throw new Error('capture image escapes gallery');
-      const bytes = readFileSync(file);
+      const bytes = readObserved(file);
       const png = PNG.sync.read(bytes);
       const { sha256: claimedHash, ...metadata } = screen;
       const pngSha256 = hash(bytes);
