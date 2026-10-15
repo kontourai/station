@@ -2658,6 +2658,17 @@ describe('device pairing panels', () => {
       );
 
       expect((await screen.findByRole('alert')).textContent).toBe(expected);
+      if (
+        'error' in body &&
+        typeof body.error === 'object' &&
+        body.error.code === 'insufficient_scope'
+      ) {
+        expect(
+          screen.getByRole('region', {
+            name: 'Create an invitation on your computer',
+          }),
+        ).toBeTruthy();
+      }
       expect(screen.getByText(/then approve access here/i)).toBeTruthy();
     },
   );

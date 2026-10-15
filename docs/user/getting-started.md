@@ -15,11 +15,12 @@ without adding a model API key:
 2. Open **Customize** (the sparkle icon at the bottom of the sidebar) →
    **Connections** → **Engines** → **Codex**. Confirm the account is signed in.
    **Check connection** sends a short message using your model allowance.
-3. On Home, choose **Open local project** and select your repository folder.
-   Station recommends and selects **Coding** after detecting Git. Choose
-   **Create** to open the selected Coding workspace directly.
-4. Choose **Codex** in the Agent picker, write a request, and choose **Start**.
-   A detected engine's default Agent is enough; creating another Agent is optional.
+3. On Home, choose **Codex** in the Agent picker, write a request, and choose
+   **Start**. You can start without a Project. The detected Codex Agent is
+   enough; creating a custom Agent is optional.
+4. When you want to work with files, choose **Open local project** on Home and
+   select the folder. Station recommends **Coding** for a Git repository.
+   Choose **Create** to open it directly.
 5. To talk to the built-in **Station** assistant using the same Codex account,
    open **Settings → General → Built-in agent engine → Change…**, choose
    **Codex**, choose **Use this engine**, then **Save**. Select **Station** in
@@ -40,6 +41,12 @@ and its inbox remain available alongside them. A successful answer to a file
 question and a successful Station tool call establish different capabilities;
 check both before relying on the Agent for work.
 
+If Terminal loses its connection, it keeps its output visible and offers
+**Reconnect terminal**. Commands typed while disconnected are not sent or
+replayed. Reconnecting can reattach a retained shell; restarting Station may
+end that process and open a new shell with the same tab identity. On a phone,
+the terminal also offers **Ctrl+C**, **Tab**, and command-history arrows.
+
 New installations start without importing conversations outside your Projects.
 To include those later, turn on **Conversations outside projects** in Settings.
 Existing installations retain their choice and previously imported history.
@@ -50,8 +57,9 @@ Your computer runs Station and the agents. Your phone connects to it to read
 replies, continue chats, and review work. Start on your computer:
 
 1. Install and launch Station there using the options below.
-2. Open **Customize → Connections → Computers → Add computer** and choose
-   **Control this Station from another device**. This opens the pairing screen.
+2. Open the Station name at the top of the computer’s window and choose
+   **Pair phone**. Check the address before creating the invitation.
+   **Settings → Pairing → Pair device** opens the same screen.
 3. On your phone, open Station, choose **Pair with a code**, and use the
    invitation from the computer. Keep the computer running.
 

@@ -1256,6 +1256,7 @@ export function HostDevicePairingPanel({
   );
   const [now, setNow] = useState(Date.now());
   const refreshGeneration = useRef(0);
+  const pollingPaused = useRef(false);
   const requestActionIdsRef = useRef(new Set<string>());
   const deviceActionIdsRef = useRef(new Set<string>());
   const payload = useMemo(
@@ -1305,6 +1306,7 @@ export function HostDevicePairingPanel({
   );
 
   const refresh = useCallback(async () => {
+    if (pollingPaused.current) return;
     const generation = ++refreshGeneration.current;
     try {
       const [requestResponse, deviceResponse] = await Promise.all([
@@ -1316,6 +1318,18 @@ export function HostDevicePairingPanel({
         deviceResponse.ok ? deviceResponse.json() : undefined,
       ]);
       if (generation !== refreshGeneration.current) return;
+      if (
+        [requestResponse.status, deviceResponse.status].some(
+          (status) => status === 401 || status === 403,
+        )
+      ) {
+        pollingPaused.current = true;
+        setRequests([]);
+        setDevices([]);
+        if (requestResponse.status === 403 || deviceResponse.status === 403)
+          setOperatorHandoff(true);
+        return;
+      }
       if (requestBody) setRequests(requestBody.requests ?? []);
       if (deviceBody) setDevices(deviceBody.devices ?? []);
     } catch {
@@ -1325,6 +1339,7 @@ export function HostDevicePairingPanel({
   }, [authenticatedFetch]);
 
   useEffect(() => {
+    pollingPaused.current = false;
     void refresh();
     const timer = setInterval(() => {
       setNow(Date.now());
@@ -1587,6 +1602,7 @@ export function HostDevicePairingPanel({
   };
 
   const createOffer = async () => {
+    pollingPaused.current = false;
     setError(null);
     setAuthBlocked(false);
     setOperatorHandoff(false);
@@ -1619,6 +1635,7 @@ export function HostDevicePairingPanel({
 
   const reconnect = async () => {
     if (!onReconnect || reconnecting) return;
+    pollingPaused.current = false;
     setError(null);
     setAuthBlocked(false);
     setReconnecting(true);

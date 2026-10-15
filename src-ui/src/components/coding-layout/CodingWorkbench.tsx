@@ -1170,24 +1170,26 @@ export function CodingWorkbench({
                   Inbox
                 </button>
               </li>
-              <li className="coding-workbench__crumb">
-                {page === 'drill-in' ? (
-                  <button
-                    type="button"
-                    className="coding-workbench__crumb-link"
-                    onClick={returnToChatPage}
-                  >
-                    {chatTitle}
-                  </button>
-                ) : (
-                  <span
-                    className="coding-workbench__crumb-current"
-                    aria-current="page"
-                  >
-                    {chatTitle}
-                  </span>
-                )}
-              </li>
+              {(!isMobile || page === 'drill-in') && (
+                <li className="coding-workbench__crumb">
+                  {page === 'drill-in' ? (
+                    <button
+                      type="button"
+                      className="coding-workbench__crumb-link"
+                      onClick={returnToChatPage}
+                    >
+                      {chatTitle}
+                    </button>
+                  ) : (
+                    <span
+                      className="coding-workbench__crumb-current"
+                      aria-current="page"
+                    >
+                      {chatTitle}
+                    </span>
+                  )}
+                </li>
+              )}
               {page === 'drill-in' ? (
                 <li className="coding-workbench__crumb">
                   <span

@@ -264,6 +264,7 @@ test('central phone chat preserves the ambient dock state while mounting and lea
   harness.isMobile = true;
   navigationStore.setDockState(false, false);
   const view = renderStack({ centerChat: true });
+  expect(crumbs()).toEqual(['Inbox']);
   expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
   view.unmount();
   expect(navigationStore.getSnapshot().isDockOpen).toBe(false);
