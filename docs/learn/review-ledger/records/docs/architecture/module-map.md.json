@@ -992,7 +992,11 @@
 
     "src-server/routes/orchestration/__tests__/adopted-continuation-dock.routes.test.ts",
 
-    "src-server/services/orchestration/__tests__/turn-dedup-crash.process.test.ts"
+    "src-server/services/orchestration/__tests__/turn-dedup-crash.process.test.ts",
+
+    "src-server/services/execution-target/__tests__/execution-target-execution.test.ts",
+
+    "src-server/routes/orchestration/__tests__/conversation-handoff.qualification.test.ts"
   ],
 
   "checks": [
