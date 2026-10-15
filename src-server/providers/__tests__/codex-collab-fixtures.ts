@@ -179,6 +179,7 @@ export const CODEX_COLLAB_V1_PARENT_STOP_CASCADES_CHILDREN = lines(
 export const CODEX_COLLAB_STATION_THREAD = 'thread-codex';
 
 interface CaptureLine {
+  t?: number;
   dir: string;
   msg: Record<string, unknown>;
 }
@@ -266,7 +267,7 @@ export interface CodexCaptureReplay {
  */
 export function replayCodexCapture(
   capture: readonly string[],
-  options: { limit?: number; frameIntervalMs?: number } = {},
+  options: { limit?: number; useCapturedTimestamps?: boolean } = {},
 ): CodexCaptureReplay {
   let frameTime = Date.parse('2026-09-23T00:00:00.000Z');
   const nowIso = () => new Date(frameTime).toISOString();
@@ -291,9 +292,13 @@ export function replayCodexCapture(
   transport.setCodexThreadId(record, parentThreadId);
   record.activeTurnId = parentTurnId;
   for (const line of capture.slice(0, options.limit ?? capture.length)) {
-    const { dir, msg } = parse(line);
+    const { t, dir, msg } = parse(line);
     if (dir !== 'server->client') continue;
-    frameTime += options.frameIntervalMs ?? 0;
+    if (options.useCapturedTimestamps) {
+      if (typeof t !== 'number')
+        throw new Error('Capture frame has no timestamp');
+      frameTime = t;
+    }
     transport.handleStdoutLine(record, JSON.stringify(msg));
   }
   return {

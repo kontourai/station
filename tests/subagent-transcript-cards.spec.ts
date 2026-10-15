@@ -199,7 +199,7 @@ test.describe('subagent transcript cards', () => {
     await expect(card.getByText('Completed')).toBeVisible();
     await expect(card.getByText('gpt-5.5')).toBeVisible();
     await expect(card.getByText('done', { exact: true })).toBeVisible();
-    await expect(card.locator('.subagent-card__elapsed')).toHaveText('0:33');
+    await expect(card.locator('.subagent-card__elapsed')).toHaveText('0:05');
     await card.scrollIntoViewIfNeeded();
     await expectDockFits(page);
     const desktopBox = await card.boundingBox();

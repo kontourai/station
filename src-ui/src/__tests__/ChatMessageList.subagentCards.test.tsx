@@ -354,7 +354,7 @@ describe('subagent transcript cards', () => {
       expect(within(card).getByText('Completed')).toBeTruthy();
       expect(within(card).getByText('done')).toBeTruthy();
       expect(
-        within(card).getByText(index === 0 ? '0:33' : '0:14'),
+        within(card).getByText(index === 0 ? '0:05' : '0:04'),
       ).toBeTruthy();
       const spawnAt = events.findIndex(
         (event) => event.method === 'child-work.updated',
