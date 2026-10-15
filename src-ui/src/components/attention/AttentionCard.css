@@ -251,7 +251,7 @@
 }
 .attention-item__footer .attention-open-link,
 .attention-item__footer .attention-dismiss-link {
-  margin-top: 0;
+  margin: 0;
 }
 .attention-item__footer > .tool-requests-panel,
 .attention-item__footer > .attention-answer,
