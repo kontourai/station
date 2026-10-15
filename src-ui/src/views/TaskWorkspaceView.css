@@ -1351,9 +1351,11 @@
   .task-room-messages {
     padding: var(--k-space-3);
   }
-  .task-workspace .button,
-  .task-room-message-actions button {
+  .task-workspace button,
+  .task-workspace summary,
+  .task-workspace select {
     min-height: 44px;
+    min-width: 44px;
   }
   .task-room-message {
     gap: var(--k-space-2);
@@ -1501,4 +1503,22 @@
 .task-room-answer ol {
   padding-inline-start: var(--k-space-5);
   margin-block: var(--k-space-3);
+}
+
+.task-room-result-content {
+  flex: 0 0 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.task-room-result-content p {
+  margin-block: var(--k-space-3);
+}
+.task-room-result-content ul,
+.task-room-result-content ol {
+  padding-inline-start: var(--k-space-5);
+  margin-block: var(--k-space-3);
+}
+.task-room-result-content pre {
+  max-width: 100%;
+  overflow-x: auto;
 }

@@ -282,7 +282,9 @@ export function TaskRoomResults({ task }: { task: TaskRecord }) {
                 Open full run
               </Button>
               {selected === answer.id && (
-                <LazyMarkdown>{answer.answer.content}</LazyMarkdown>
+                <div className="task-room-result-content">
+                  <LazyMarkdown>{answer.answer.content}</LazyMarkdown>
+                </div>
               )}
             </li>
           ) : (
