@@ -390,7 +390,7 @@ describe('OutboundQueuedMessages (station#2522)', () => {
     await waitFor(() => expect(onDiscarded).toHaveBeenCalledWith(1));
   });
 
-  it('a send with no answer says it waits for Station to confirm, and offers the explicit discard', () => {
+  it('a send with no answer says so, and offers Check and the explicit discard', () => {
     render(
       <OutboundQueuedMessages
         sessionId="session-1"
