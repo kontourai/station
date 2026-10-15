@@ -99,7 +99,7 @@ test.each([
           },
     resolveToolServer: async () => null,
     resolveSkillDir: async () => null,
-    validateProjectTools: (slug, spec) =>
+    validateProjectTools: async (slug, spec) =>
       policy.assertAgent(slug, spec, 'design-id'),
   });
   const session: ProviderSession = {
