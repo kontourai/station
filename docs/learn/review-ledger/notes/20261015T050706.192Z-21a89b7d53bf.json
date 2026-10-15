@@ -1,0 +1,7 @@
+{
+  "revision": "3b6fa63b5f0746d1cd93c291fb8244a3755b5c93",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Fix round 5 of the delivery-state change: a claim whose renderer is proven gone (its Web Lock released) is public awaitingLookup and dismissUnconfirmed withdraws it, rechecking that liveness under the queue lock (unknown liveness never counts as gone); another window's change notice starts a flush pass without syncHeld when the refreshed projection shows a row this window may send now; this renderer's own claim is sendUnderWay only while one of its flush passes holds it (drainInFlight); the sendUnderWay comment now says exactly that; composer popover Escape and outside-tap unit tests. Rewrote the Behavior paragraph's round-4 sentences to match: sendUnderWay for another renderer proven running or this renderer's own claim while a flush pass holds it; a gone renderer's claim is public awaitingLookup and dismissable with a liveness recheck under the queue lock; the remote-change pass runs only for a row this window may send now and skips syncHeld. Checked against publicTurns, dismissUnconfirmed/dismissal and flush in outboundQueue.ts and the remote handler and hasSendableRow in useOutboundQueueFlush.ts, and their tests in outboundQueueLiveReconcile.test.ts and useOutboundQueueFlush.test.ts.","inputs":["docs/architecture/module-map.md","src-ui/src/hooks/useOutboundQueueFlush.ts","src-ui/src/lib/outboundQueue.ts"]}
+  ]
+}

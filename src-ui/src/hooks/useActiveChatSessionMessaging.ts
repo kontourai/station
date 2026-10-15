@@ -313,13 +313,42 @@ function withDeliveryCheck(
   chat: ChatUIState | undefined,
   clientTurnId: string,
   outcome: TurnDeliveryOutcome,
-): Pick<ChatUIState, 'deliveryChecks'> {
+): Pick<ChatUIState, 'deliveryChecks' | 'localSendKeys'> {
   const kept = Object.entries(chat?.deliveryChecks ?? {})
     .filter(([key]) => key !== clientTurnId)
     .slice(-(DELIVERY_CHECKS_MAX - 1));
   return {
     deliveryChecks: Object.fromEntries([...kept, [clientTurnId, outcome]]),
+    // Started: delivered for good, so the bubble never falls back to
+    // "Not confirmed" once this answer ages out of the bounded record.
+    ...(outcome === 'started'
+      ? {
+          localSendKeys: withoutLocalSendKey(chat?.localSendKeys, clientTurnId),
+        }
+      : {}),
   };
+}
+
+/** Bound on the keys a chat remembers sending in this session. */
+const LOCAL_SEND_KEYS_MAX = 32;
+
+function withLocalSendKey(
+  keys: ChatUIState['localSendKeys'],
+  clientTurnId: string,
+): ChatUIState['localSendKeys'] {
+  return [
+    ...(keys ?? []).filter((key) => key !== clientTurnId),
+    clientTurnId,
+  ].slice(-LOCAL_SEND_KEYS_MAX);
+}
+
+function withoutLocalSendKey(
+  keys: ChatUIState['localSendKeys'],
+  clientTurnId: string,
+): ChatUIState['localSendKeys'] {
+  return keys?.includes(clientTurnId)
+    ? keys.filter((key) => key !== clientTurnId)
+    : keys;
 }
 
 function withoutDeliveryCheck(
@@ -499,9 +528,13 @@ export function useSendMessage(
           return false;
         }
         if (options?.skipInMemoryQueueOnBusy) {
+          // A turn still running is a temporary gate, not a refusal: the
+          // message waits without spending one of its attempts, so a queue
+          // replayed during a long turn never wears out to failed.
           return options?.dispatch
             ? ({
-                kind: 'not-invoked',
+                kind: 'deferred',
+                reason: 'A turn is still running in this conversation.',
               } satisfies OutboundDispatchTransportResult)
             : undefined;
         }
@@ -721,6 +754,20 @@ export function useSendMessage(
         pendingClientTurnId: resolvedTurnId,
         attachments: [],
         attachmentStages: [],
+        // A new attempt for this key: a lookup answer about an earlier one
+        // (a `received` whose refusal was lost in transit, before the
+        // lookup-driven resend) describes nothing in flight now.
+        deliveryChecks: withoutDeliveryCheck(
+          activeChatsStore.getSnapshot()[sessionId]?.deliveryChecks,
+          resolvedTurnId,
+        ),
+        // This window's own message: without any later fact it reads "Not
+        // confirmed", never delivered.
+        localSendKeys: withLocalSendKey(
+          activeChatsStore.getSnapshot()[sessionId]?.localSendKeys,
+          resolvedTurnId,
+        ),
+        durableClientTurnId: undefined,
       });
 
       // Durable BEFORE the request: from here until Station answers, the
@@ -839,6 +886,7 @@ export function useSendMessage(
           live = undefined;
         }
         if (live) {
+          updateChat(sessionId, { durableClientTurnId: resolvedTurnId });
           try {
             options?.onDurable?.();
           } catch {
@@ -1210,15 +1258,14 @@ export function useSendMessage(
           };
         const latestState = activeChatsStore.getSnapshot()[sessionId];
 
-        // archive#1224 (offline): a genuinely offline send (the
-        // browser already knows it has no network) or a network-level fetch
-        // failure (the request never reached the server at all — a real
-        // HTTP error response, which DOES reach the server, is deliberately
-        // excluded; see `isNetworkLevelSendError`'s doc comment) is queued
-        // for automatic replay instead of surfacing as a dead-end error.
-        // The optimistic user message (already rendered above) is kept
-        // as-is — never rolled back — so it visibly sits in the
-        // conversation with a pending affordance until it sends for real.
+        // archive#1224 (offline), as #3652 refined it: a send that produced
+        // no answer from Station (a thrown fetch, a proxy's or tunnel's
+        // response, or a browser that reports no network) is not a refusal.
+        // `classifyUndeliverableSend` names which; none proves the request
+        // never arrived. A live send's row is released for Station's
+        // delivery lookup (sent once only if Station never received it); any
+        // other send is queued under its key. The optimistic bubble is kept,
+        // never rolled back, and reads as waiting for Station until it goes.
         // A queue chunk outage is itself an unavailable durable path. Keep
         // the foreground error total rather than stranding the composer in
         // `sending` because its error classifier could not load.
@@ -1230,7 +1277,9 @@ export function useSendMessage(
         if (undeliverableCause && !options?.dispatch) {
           try {
             const { outboundDispatch } = await import('../lib/outboundQueue');
-            // A live send's own row already went back to pending above.
+            // A live send already has its outbox row, settled by the outcome
+            // branch above (with no answer, `live.unanswered()` released it
+            // for Station's delivery lookup), so it is not queued again.
             if (!live)
               await outboundDispatch.enqueue(
                 {
@@ -1334,13 +1383,23 @@ export function useSendMessage(
                 ? 'Your browser reports no network — queued to retry automatically'
                 : "Send wasn't confirmed — queued to retry automatically",
             action: {
-              label: 'Discard',
+              // No answer came back, so the message may already have
+              // reached Station: Discard asks first, with the risk stated
+              // (`UnconfirmedDiscardConfirm`).
+              label: 'Discard…',
+              confirm: 'unconfirmed-discard',
               handler: async () => {
                 try {
-                  const { outboundDispatch } = await import(
-                    '../lib/outboundQueue'
+                  const { discardMessage } = await import(
+                    '../lib/messageDeliveryActions'
                   );
-                  await outboundDispatch.discard(resolvedTurnId);
+                  // A live send's row awaits the lookup and is only ever
+                  // withdrawn explicitly; a queued one is a plain discard.
+                  await discardMessage(
+                    sessionId,
+                    resolvedTurnId,
+                    live ? 'unconfirmed' : 'not-sent',
+                  );
                   updateChat(sessionId, { status: 'idle' });
                 } catch (discardError) {
                   updateChat(sessionId, {

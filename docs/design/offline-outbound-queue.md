@@ -27,11 +27,36 @@ a refusal removes it and hands the text back to the composer; Station's
 longer holds back later messages in the chat); anything else, including a
 proxy's or tunnel's 502/503/504 or no answer at all, releases the row for
 Station's [delivery lookup](../reference/session-api.md#find-out-what-became-of-a-send).
+While it waits, the message reads "No answer yet · sends once Station confirms
+it never arrived" on its bubble and in the outbox list, and its chat notice's and
+the list's Discard… withdraw it only after the shared confirmation, which says
+that a message which already arrived cannot be taken back. Every open window
+re-reads the queue's finished keys on the cross-window change channel and when it
+comes back into view, so a discard in one window removes the bubble in all.
+That channel refreshes what a window shows. It starts a send there only when a
+message the window could not send before, because an earlier message of its chat
+went first, now can (for example, the other window's send that held it back has
+settled, even if that window then closed). A message that could not be sent for
+another reason, such as a turn still running, is not retried on every notice. That
+send only sends: it asks Station about nothing and never re-holds the window's
+queued follow-ups (which would take back a follow-up a duplicated tab also holds,
+and that tab would do the same in turn). A queued message is not sent while a turn is
+running in its chat; it goes when the turn ends. If one is tried anyway, it waits
+without using up an attempt and is not tried again for a moment and a half,
+whatever asks; it is retried once that wait ends. A send another window has claimed reads "Sending", with no Check,
+only while that window is proven running (it holds its renderer lock); a claim
+left by a window that closed or crashed reads "No answer yet" like its bubble,
+with Check and Discard…, and the discard checks again that the window is gone.
+A window's own claim reads "Sending" only while its own send is in progress.
+While any send reads "Sending" this way the list looks again every few seconds,
+since a window that closes says nothing.
 The lookup settles released rows, and rows whose app was closed, at the next
 launch or reconnect: never received → sent again with the same key; started →
 done; received → asked again later; possibly started, or the conversation runs
 on another Station → kept as unconfirmed, with a Check that asks Station again
-and never resends. Each row records the Station it was written for and is
+and never resends, and a Discard… that removes it only after the user confirms
+"I checked, discard it" with the risk stated (its key is retired, so it is never
+sent again). Each row records the Station it was written for and is
 only ever sent to, or settled by, that Station; for another it waits, listed.
 
 Station can also hold a follow-up itself, in the conversation's durable inbox

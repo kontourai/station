@@ -1,6 +1,10 @@
 import { copyFileSync, mkdirSync } from 'node:fs';
 import { copyFile, mkdir } from 'node:fs/promises';
 import { basename, join } from 'node:path';
+import {
+  STATION_ENVELOPE_HEADER,
+  STATION_ENVELOPE_HEADER_VALUE,
+} from '@kontourai/station-contracts/http';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { expect, type Locator, type Page } from '@playwright/test';
 import { PNG } from 'pngjs';
@@ -1923,10 +1927,20 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   expect(await contrastRatio(inputTask)).toBeGreaterThanOrEqual(4.5);
   const userSheet = page.getByRole('dialog', { name: 'Your message actions' });
   await expect(userSheet.getByRole('button', { name: /^Copy/ })).toHaveCount(0);
-  // The Task pin and the ⋯ menu are one row: pin at the start, ⋯ at the end.
+  // The Task pin and the message's actions are one row: pin at the start,
+  // the actions at the end, listed in the sheet itself (no second ⋯), as a
+  // group of plain buttons (a menu role would promise arrow-key handling the
+  // sheet does not have).
+  const userActions = userSheet.getByRole('group', { name: 'Message actions' });
+  await expect(userActions.getByRole('button').first()).toBeVisible();
+  await expect(userSheet.getByRole('menuitem')).toHaveCount(0);
   await expect(
     userSheet.getByRole('button', { name: 'More message actions' }),
-  ).toBeVisible();
+  ).toHaveCount(0);
+  for (const item of await userActions.getByRole('button').all()) {
+    const box = await item.boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+  }
   const userSheetRow = await userSheet.evaluate((sheet) => {
     const rect = (node: Element) => node.getBoundingClientRect();
     const pin = rect(
@@ -1935,9 +1949,7 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
           (button) => button.textContent?.trim() === 'Add input to Task',
         )!,
     );
-    const menu = rect(
-      sheet.querySelector('button[aria-label="More message actions"]')!,
-    );
+    const menu = rect(sheet.querySelector('.message-details__menu')!);
     const summary = rect(sheet.querySelector('.message-details__summary')!);
     return {
       pinCentre: pin.top + pin.height / 2,
@@ -4307,6 +4319,9 @@ test('a refused send keeps a two-line draft clear of every row in a 375x667 half
   await page.route('**/api/orchestration/chat', (route) =>
     route.fulfill({
       status: 400,
+      // Station marks every JSON body it writes; an unmarked one from an
+      // origin that has marked others is a proxy's, not Station's refusal.
+      headers: { [STATION_ENVELOPE_HEADER]: STATION_ENVELOPE_HEADER_VALUE },
       contentType: 'application/json',
       body: JSON.stringify({
         success: false,
@@ -4748,9 +4763,12 @@ async function queueSendForRetry(
       .locator('.chat-messages')
       .getByText("Send wasn't confirmed — queued to retry automatically"),
   ).toHaveCount(1);
-  // Measure the settled state: the queue has listed the waiting message and
-  // the send's "Working" pill has left.
-  await expect(page.getByText(/waiting to send/i)).toBeVisible();
+  // Measure the settled state: the queue has listed the message (a send with
+  // no answer waits for Station to confirm it never arrived before it is
+  // sent again, #3652) and the send's "Working" pill has left.
+  await expect(
+    page.locator('.queued-messages').getByText(/with no answer yet/i),
+  ).toBeVisible();
   await expect(page.locator('.chat-status-pill')).toHaveCount(0);
   return { textarea };
 }
@@ -4761,38 +4779,43 @@ async function queueSendForRetry(
  * button merely existing says nothing; one counts when it is wholly on screen,
  * at least 44px each way and the topmost element at its own centre.
  */
-async function discardButtonReport(page: Page) {
+/** The queued notice's Discard…, in the transcript notice and the composer. */
+function noticeDiscards(page: Page) {
   return page
-    .getByRole('button', { name: 'Discard', exact: true })
-    .evaluateAll((buttons) =>
-      buttons.map((button, index) => {
-        const rect = button.getBoundingClientRect();
-        const hit = document.elementFromPoint(
-          rect.x + rect.width / 2,
-          rect.y + rect.height / 2,
-        );
-        const onScreen =
-          rect.width > 0 &&
-          rect.height > 0 &&
-          rect.left >= 0 &&
-          rect.top >= 0 &&
-          rect.right <= innerWidth &&
-          rect.bottom <= innerHeight;
-        return {
-          index,
-          inComposer: button.closest('.chat-input') !== null,
-          box: [rect.left, rect.top, rect.width, rect.height].map(Math.round),
-          viewport: [innerWidth, innerHeight],
-          onScreen,
-          touchTarget: rect.width >= 43.99 && rect.height >= 43.99,
-          topmost: Boolean(hit && button.contains(hit)),
-          coveredBy:
-            hit && !button.contains(hit)
-              ? `${hit.tagName.toLowerCase()}.${String(hit.className).slice(0, 60)}`
-              : null,
-        };
-      }),
-    );
+    .locator('.chat-input, .ephemeral-message')
+    .getByRole('button', { name: 'Discard…', exact: true });
+}
+
+async function discardButtonReport(page: Page) {
+  return noticeDiscards(page).evaluateAll((buttons) =>
+    buttons.map((button, index) => {
+      const rect = button.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        rect.x + rect.width / 2,
+        rect.y + rect.height / 2,
+      );
+      const onScreen =
+        rect.width > 0 &&
+        rect.height > 0 &&
+        rect.left >= 0 &&
+        rect.top >= 0 &&
+        rect.right <= innerWidth &&
+        rect.bottom <= innerHeight;
+      return {
+        index,
+        inComposer: button.closest('.chat-input') !== null,
+        box: [rect.left, rect.top, rect.width, rect.height].map(Math.round),
+        viewport: [innerWidth, innerHeight],
+        onScreen,
+        touchTarget: rect.width >= 43.99 && rect.height >= 43.99,
+        topmost: Boolean(hit && button.contains(hit)),
+        coveredBy:
+          hit && !button.contains(hit)
+            ? `${hit.tagName.toLowerCase()}.${String(hit.className).slice(0, 60)}`
+            : null,
+      };
+    }),
+  );
 }
 
 for (const [name, viewport, maximize] of [
@@ -4915,24 +4938,234 @@ for (const [name, viewport, maximize] of [
     const reachable = (await discardButtonReport(page)).find(
       (report) => report.onScreen && report.touchTarget && report.topmost,
     );
-    const discard = page
-      .getByRole('button', { name: 'Discard', exact: true })
-      .nth(reachable!.index);
+    const discard = noticeDiscards(page).nth(reachable!.index);
     await discard.focus();
     await expect(discard).toBeFocused();
     await page.keyboard.press('Enter');
-    await expect(
-      page.getByRole('button', { name: 'Discard', exact: true }),
-    ).toHaveCount(0);
+    // The message may already have reached Station: Discard asks first.
+    const confirm = page.getByRole('button', { name: 'I checked, discard it' });
+    await confirm.focus();
+    await page.keyboard.press('Enter');
+    await expect(noticeDiscards(page)).toHaveCount(0);
     await expect(
       page.getByText("Send wasn't confirmed — queued to retry automatically"),
     ).toHaveCount(0);
   });
 }
 
-// The queue panel's "x" ("Delete message") discards the same queued turn as the
-// notice's Discard. It must leave the same state: no stale "queued to retry"
-// notice, and no Discard for a turn that is gone.
+/**
+ * Adds rows to this browser's outbox beside the one a queued send wrote (same
+ * chat and Station), then tells the app the queue changed, as another window
+ * would. A window still running holds its renderer lock; a closed one does not.
+ */
+async function seedOutboxRows(page: Page, longText: string) {
+  await page.evaluate(async (pendingText) => {
+    await new Promise<void>((granted) => {
+      void navigator.locks.request(
+        'station-outbound-renderer:e2e-running-window',
+        () =>
+          new Promise<void>((release) => {
+            (
+              window as { e2eCloseRunningWindow?: () => void }
+            ).e2eCloseRunningWindow = release;
+            granted();
+          }),
+      );
+    });
+    const database = await new Promise<IDBDatabase>((resolve, reject) => {
+      const open = indexedDB.open('station-outbound-queue');
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => resolve(open.result);
+    });
+    await new Promise<void>((resolve, reject) => {
+      const store = database
+        .transaction('queue', 'readwrite')
+        .objectStore('queue');
+      const read = store.get('station-outbound-queue-v1');
+      read.onerror = () => reject(read.error);
+      read.onsuccess = () => {
+        const record = read.result as {
+          turns: Array<Record<string, unknown>>;
+        };
+        const written = record.turns[0]!;
+        const now = Date.now();
+        const base = {
+          sessionId: written.sessionId,
+          conversationId: written.conversationId,
+          agentSlug: written.agentSlug,
+          ...(written.projectSlug ? { projectSlug: written.projectSlug } : {}),
+          ...(written.station ? { station: written.station } : {}),
+          createdAt: now,
+        };
+        const write = store.put(
+          {
+            ...record,
+            turns: [
+              ...record.turns,
+              {
+                ...base,
+                clientTurnId: 'e2e-pending',
+                content: pendingText,
+                attempts: 0,
+                status: 'pending',
+              },
+              {
+                ...base,
+                clientTurnId: 'e2e-accepted',
+                content: 'Accepted message the agent is working on',
+                attempts: 1,
+                status: 'accepted',
+                providerTurnId: 'e2e-provider-turn',
+              },
+              {
+                ...base,
+                clientTurnId: 'e2e-running',
+                content: 'Sent from a window that is still open',
+                attempts: 1,
+                status: 'invoking',
+                dispatchBootId: 'e2e-running-window',
+                claimedAt: now,
+                lastAttemptAt: now,
+              },
+              {
+                ...base,
+                clientTurnId: 'e2e-closed',
+                content: 'Sent from a window that has closed',
+                attempts: 1,
+                status: 'invoking',
+                dispatchBootId: 'e2e-closed-window',
+                claimedAt: now,
+                lastAttemptAt: now,
+              },
+            ],
+          },
+          'station-outbound-queue-v1',
+        );
+        write.onerror = () => reject(write.error);
+        write.onsuccess = () => resolve();
+      };
+    });
+    database.close();
+    const channel = new BroadcastChannel('station-outbound-queue');
+    channel.postMessage('station-outbound-queue');
+    channel.close();
+  }, longText);
+}
+
+for (const viewport of [
+  { width: 390, height: 844 },
+  { width: 1280, height: 900 },
+]) {
+  test(`outbox rows at ${viewport.width}px: text keeps its own two lines, accepted reads in sentence case, and Sending holds only while its window runs`, async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+    // A full-height dock, so the list shows every row rather than the
+    // three-row window a composer-priority dock keeps.
+    const phone = viewport.width < 768;
+    await queueSendForRetry(page, viewport, { maximize: phone });
+    if (!phone)
+      await page
+        .getByRole('button', { name: 'Expand dock region to workspace' })
+        .click();
+    const longText = `A long follow-up kept on this device ${'that keeps on going '.repeat(30)}until the end`;
+    await seedOutboxRows(page, longText);
+    const list = page.locator('.queued-messages--outbox');
+    const row = (text: string) =>
+      list.locator('.queued-message', { hasText: text });
+
+    // Another window still running: its send is under way, with no Check.
+    const running = row('Sent from a window that is still open');
+    await expect(running.getByText('Sending', { exact: true })).toBeVisible();
+    await expect(running.getByRole('button', { name: 'Check' })).toHaveCount(0);
+    // A closed window's claim reads as its bubble does, with Check.
+    const closed = row('Sent from a window that has closed');
+    await expect(
+      closed.getByText(
+        'No answer yet · sends once Station confirms it never arrived',
+      ),
+    ).toBeVisible();
+    await expect(closed.getByRole('button', { name: 'Check' })).toBeVisible();
+    // Its window is gone, so it can be withdrawn like an unanswered send;
+    // the open window's send cannot.
+    await expect(
+      closed.getByRole('button', { name: 'Discard…' }),
+    ).toBeVisible();
+    await expect(running.getByRole('button', { name: 'Discard…' })).toHaveCount(
+      0,
+    );
+    await expect(list.getByText(/1 sending/)).toBeVisible();
+
+    // The accepted note: sentence case, whole, under the message's own line.
+    const accepted = row('Accepted message the agent is working on');
+    const acceptedNote = accepted.getByText(
+      'Accepted · waiting for the agent to finish',
+    );
+    await expect(acceptedNote).toBeVisible();
+    const acceptedLayout = await accepted.evaluate((element) => {
+      const text = element.querySelector('.queued-message__text')!;
+      const note = element.querySelector('.queued-messages__label')!;
+      return {
+        rowWidth: element.getBoundingClientRect().width,
+        textWidth: text.getBoundingClientRect().width,
+        transform: getComputedStyle(note).textTransform,
+        noteClipped: note.scrollWidth > note.clientWidth + 1,
+        noteBelowText:
+          note.getBoundingClientRect().top >=
+          text.getBoundingClientRect().bottom - 1,
+      };
+    });
+    expect(acceptedLayout.transform).toBe('none');
+    expect(acceptedLayout.noteClipped).toBe(false);
+    expect(acceptedLayout.noteBelowText).toBe(true);
+    expect(acceptedLayout.textWidth).toBeGreaterThan(
+      acceptedLayout.rowWidth * 0.8,
+    );
+
+    // A long pending message: wraps across the row, at most two lines.
+    const pending = row('A long follow-up kept on this device');
+    const pendingLayout = await pending.evaluate((element) => {
+      const text = element.querySelector('.queued-message__text')!;
+      const body = element.querySelector('.queued-message__body')!;
+      // One line of the same text box, measured beside it.
+      const oneLine = body.cloneNode() as HTMLElement;
+      oneLine.textContent = 'x';
+      text.appendChild(oneLine);
+      const lineHeight = oneLine.getBoundingClientRect().height;
+      oneLine.remove();
+      return {
+        rowWidth: element.getBoundingClientRect().width,
+        textWidth: text.getBoundingClientRect().width,
+        lines: Math.round(body.getBoundingClientRect().height / lineHeight),
+        title: text.getAttribute('title'),
+      };
+    });
+    expect(pendingLayout.lines).toBe(2);
+    expect(pendingLayout.title).toBe(longText);
+    if (phone)
+      expect(pendingLayout.textWidth).toBeGreaterThan(
+        pendingLayout.rowWidth * 0.8,
+      );
+
+    // That window closes. Nothing announces it, yet its send stops reading
+    // as under way.
+    await page.evaluate(() =>
+      (
+        window as { e2eCloseRunningWindow?: () => void }
+      ).e2eCloseRunningWindow?.(),
+    );
+    await expect(
+      running.getByText(
+        'No answer yet · sends once Station confirms it never arrived',
+      ),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(running.getByText('Sending', { exact: true })).toHaveCount(0);
+  });
+}
+
+// The queue panel's Discard… (confirmed with "I checked, discard it") discards
+// the same turn as the notice's Discard. It must leave the same state: no stale
+// "queued to retry" notice, and no Discard for a turn that is gone.
 test('deleting the queued message from the queue panel clears its queued-retry notice', async ({
   page,
 }) => {
@@ -4942,10 +5175,16 @@ test('deleting the queued message from the queue panel clears its queued-retry n
     .locator('.chat-messages')
     .getByText("Send wasn't confirmed — queued to retry automatically");
   await expect(notice).toHaveCount(1);
-  await page.getByRole('button', { name: 'Delete message' }).click();
-  await expect(page.getByText(/waiting to send/i)).toHaveCount(0);
-  await expect(notice).toHaveCount(0);
+  // The message may already have reached Station (no answer came back), so
+  // the panel withdraws it only through the explicit, risk-stated discard.
+  await page
+    .locator('.queued-messages')
+    .getByRole('button', { name: 'Discard…' })
+    .click();
+  await page.getByRole('button', { name: 'I checked, discard it' }).click();
   await expect(
-    page.getByRole('button', { name: 'Discard', exact: true }),
+    page.locator('.queued-messages').getByText(/with no answer yet/i),
   ).toHaveCount(0);
+  await expect(notice).toHaveCount(0);
+  await expect(noticeDiscards(page)).toHaveCount(0);
 });
