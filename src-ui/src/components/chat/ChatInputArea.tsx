@@ -1067,6 +1067,7 @@ export function ChatInputArea({
         <fieldset
           className="chat-input__textarea-wrapper"
           aria-label="Message composer"
+          tabIndex={-1}
         >
           {(attachments.length > 0 || attachmentStages.length > 0) && (
             <React.Suspense

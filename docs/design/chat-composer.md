@@ -195,8 +195,25 @@ Show inbox directly, as an icon button whose pressed state is available to assis
 Pending tool requests from the loaded event window also feed Needs approval,
 whose action opens the conversation's approval sheet. Failed history or
 continuation observation shows Status unavailable and withholds the cached
-working clock; the remote turn may still be running. History Retry refreshes
-the capability observation before reloading.
+working clock; the remote turn may still be running. Its Resync action
+reconnects the Station's orchestration stream and re-runs the failed history or
+conversation-open read. Resync is disabled and announces “Resyncing conversation”
+until those reads settle. History reads abort after 120 seconds and show a
+retryable error; the JSON reader exposes no progress signal. This bound allows
+slow remote reads beyond 30 seconds. Successful recovery announces “Conversation
+resynced” once, including after reconnecting or catching up. It moves focus to
+the composer (textarea when writable, otherwise its labelled composer group)
+only while this conversation is active, no dialog is open, and focus is still
+on Resync or was orphaned on the document body. Focus moved elsewhere stays there.
+Connection recovery and failed-read recovery outrank retained approvals, whose
+current state has not been verified. Check connection, Reconnecting, and Catching up take
+priority while the transport needs recovery; explicit stream resync respects
+the 30-second auth-refusal retry floor. Background work the session record last reported
+reads as "Last known: …" without animated dots until a read succeeds. History
+Retry refreshes the capability observation before reloading. The desktop
+inbox footer offers Refresh, which reconnects the same stream and re-reads the
+session list and conversation inventory; when the last read failed, the footer
+says the rows are the last known list.
 
 The pill uses compact state labels such as Sending, Working, Thinking, and
 Reconnecting; it does not expand to display tool names. **Sending** covers the

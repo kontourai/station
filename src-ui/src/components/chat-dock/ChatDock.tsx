@@ -46,7 +46,10 @@ import { useProjects } from '../../contexts/ProjectsContext';
 import { useToast } from '../../contexts/ToastContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { registerFullscreenChatSurface } from '../../hooks/orchestration/chatForeground';
-import { ensureOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
+import {
+  ensureOrchestrationEventStream,
+  resyncOrchestrationEventStream,
+} from '../../hooks/orchestration/ensureOrchestrationEventStream';
 import { useConversationActivityFeed } from '../../hooks/orchestration/useConversationActivityFeed';
 import { useRehydrateSessions } from '../../hooks/useActiveChatSessions';
 import { useActiveProject } from '../../hooks/useActiveProject';
@@ -627,6 +630,29 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
     inventory.isPending ||
     !agentsLoaded;
   const taskItemsFailed = orchestrationSessionsFailed || inventory.isError;
+  const refetchInventory = inventory.refetch;
+  // Only the user's own resync shows as "Refreshing": the background reads a
+  // busy Station triggers every second must not flicker the control.
+  const [inboxResyncPending, setInboxResyncPending] = useState(false);
+  // The inbox's explicit resync: reconnect the stream (its snapshot or replay
+  // re-derives every chat this Station holds, including one started on
+  // another device) and re-read both lists the rows come from.
+  const resyncInbox = useCallback(() => {
+    resyncOrchestrationEventStream(apiBase);
+    setInboxResyncPending(true);
+    void Promise.allSettled([
+      refetchOrchestrationSessions(),
+      refetchInventory(),
+    ]).then(() => setInboxResyncPending(false));
+  }, [apiBase, refetchOrchestrationSessions, refetchInventory]);
+  const inboxSync = useMemo(
+    () => ({
+      failed: taskItemsFailed,
+      refreshing: inboxResyncPending,
+      onRefresh: resyncInbox,
+    }),
+    [taskItemsFailed, inboxResyncPending, resyncInbox],
+  );
   const acknowledgeConversation = useAcknowledgeConversationMutation();
   const inventoryById = useMemo(
     () =>
@@ -2619,6 +2645,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         onAcknowledgeConversation: acknowledgeTaskConversation,
                         onOpenHistory: openInboxHistory,
                         onNewChat: openNewChatDirect,
+                        sync: inboxSync,
                         agentsLoaded,
                         onOpenFailed: showInboxOpenFailure,
                       }}

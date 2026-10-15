@@ -1,0 +1,7 @@
+{
+  "revision": "942391b5b7c770a7433f75f0be24e94f471ecc3c",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed ChatInputArea delta: adds tabIndex=-1 to the existing labelled Message composer fieldset so recovery can focus the composer when its textarea is disabled. This does not enter the ordinary Tab sequence, enable writing, change controls, or alter the getting-started steps. No prose change is needed.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}
