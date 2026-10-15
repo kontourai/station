@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { PublicStationHandshake } from '@kontourai/station-contracts/environment-security';
 import { expect, type Page, type Route } from '@playwright/test';
+import { buildLongSessionTurns } from './fixtures/long-session';
 import { contrastRatio } from './helpers/color-contrast';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import { openChooserFromToggle } from './helpers/region-placement';
@@ -113,7 +114,10 @@ async function seedGalleryConnectionProfile(page: Page): Promise<void> {
   );
 }
 
-function fulfillGalleryStationHandshake(route: Route): Promise<void> {
+function fulfillGalleryStationHandshake(
+  route: Route,
+  boundedHistory = false,
+): Promise<void> {
   return route.fulfill({
     json: {
       schemaVersion: 1,
@@ -128,6 +132,7 @@ function fulfillGalleryStationHandshake(route: Route): Promise<void> {
           remoteAuth: 1,
           devicePairing: 1,
           environmentProof: 1,
+          ...(boundedHistory ? { sessionEventWindow: 1 } : {}),
         },
       },
     },
@@ -1098,8 +1103,46 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
     model: 'test-model',
     projectSlug: 'project-b',
     canContinue: true,
-    turns: () => [],
+    turns: () =>
+      buildLongSessionTurns({
+        threadId: 'gallery-mismatch-conversation',
+        provider: 'claude',
+        turnCount: 1,
+        replyText: () => 'Recovered conversation transcript',
+      }),
   });
+  const removeHandshake = await withRoute(
+    page,
+    '**/.well-known/station/v1',
+    (route) => fulfillGalleryStationHandshake(route, true),
+  );
+  let historyFailed = true;
+  let historyReads = 0;
+  let releaseHistory!: () => void;
+  const historyPending = new Promise<void>((resolve) => {
+    releaseHistory = resolve;
+  });
+  const removeHistory = await withRoute(
+    page,
+    '**/api/orchestration/conversations/gallery-mismatch-conversation/event-window**',
+    async (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      historyReads++;
+      if (historyFailed) {
+        await route.fulfill({
+          status: 503,
+          json: {
+            success: false,
+            error: 'Recovery fixture history unavailable',
+          },
+        });
+        return;
+      }
+      await historyPending;
+      await route.fallback();
+    },
+  );
   let releaseOpen!: () => void;
   const openPending = new Promise<void>((resolve) => {
     releaseOpen = resolve;
@@ -1141,11 +1184,38 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
       ),
     ).toBeHidden();
     await expect(pending).toBeHidden();
-    await expect(resync).toBeHidden();
     expect(openReads).toBe(1);
+    await expect(
+      page.getByText('Recovery fixture history unavailable', { exact: false }),
+    ).toBeVisible({ timeout: 15_000 });
+    const failedHistoryReads = historyReads;
+    expect(failedHistoryReads).toBeGreaterThan(0);
+    historyFailed = false;
+    await resync.click();
+    await expect(pending).toBeDisabled();
+    await expect.poll(() => historyReads - failedHistoryReads).toBe(1);
+    for (let i = 0; i < 5; i++) await page.keyboard.press('Enter');
+    expect(historyReads - failedHistoryReads).toBe(1);
+    releaseHistory();
+    await expect(
+      page.getByText('Recovered conversation transcript', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText('Recovery fixture history unavailable', { exact: false }),
+    ).toBeHidden();
+    await expect(resync).toBeHidden();
+    expect(historyReads - failedHistoryReads).toBe(1);
+    console.log('HISTORY_RECOVERY_REQUEST_COUNTS', {
+      width,
+      failedHistoryReads,
+      replacementReads: historyReads - failedHistoryReads,
+    });
   } finally {
     releaseOpen();
+    releaseHistory();
     await removeOpen();
+    await removeHistory();
+    await removeHandshake();
   }
   if (width > 600) {
     let releaseInventory!: () => void;
@@ -1188,6 +1258,10 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
         page.getByRole('button', { name: 'Refresh inbox', exact: true }),
       ).toBeEnabled();
       expect(inventoryReads).toBe(1);
+      console.log('INBOX_RECOVERY_REQUEST_COUNTS', {
+        inventoryReads,
+        pendingActivations: 6,
+      });
     } finally {
       releaseInventory();
       await removeInventory();
@@ -3058,7 +3132,9 @@ test('build gallery — capture key screens', async ({ page }) => {
     if (typeof indexedDB !== 'undefined')
       indexedDB.deleteDatabase('station-query-cache');
   });
-  await page.route('**/.well-known/station/v1', fulfillGalleryStationHandshake);
+  await page.route('**/.well-known/station/v1', (route) =>
+    fulfillGalleryStationHandshake(route),
+  );
   await page.route('**/api/system/identity', fulfillGalleryStationIdentity);
   await page.route('**/api/system/status', fulfillGallerySystemStatus);
 
