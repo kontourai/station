@@ -12,12 +12,11 @@
  * `vectordb/`/`projects/*\/knowledge/` trees (matching the real home's actual current shape).
  * Case (b) (data-carrying) synthesizes a pre-index fixture matching `lancedb-provider.ts:24-40`'s
  * exact flat-JSON shape plus `knowledge-storage.ts`'s `metadata.json`/`files/` tree, and proves
- * vector reuse (not re-embedding) directly: `SqliteVecIndexProvider.search()` takes a raw query
- * vector (not text), so querying with one of the ORIGINAL pre-index vectors and getting the
- * migrated record back as a near-exact hit (score ~1) is direct evidence the stored vector *is*
- * the reused pre-index vector, not a re-embedding of the text (the stub embedder's own `embed()` of
- * that same text is asserted to produce a DIFFERENT vector, so a false-positive "reuse" reading
- * via re-embedding coincidence is ruled out).
+ * the pre-index vectors are NOT reused (#2727: `vectors.json` records no model, so equal width
+ * cannot prove the current embedder made them): `SqliteVecIndexProvider.search()` takes a raw
+ * query vector, so the current embedder's vector for each body is a near-exact hit under the
+ * embedder's generation while the seeded pre-index vector, which the stub embedder is asserted
+ * never to produce, is not.
  *
  * Every pre-index-file assertion in this suite checks BOTH content hash and mtime — per the plan's
  * Stop-short risk, a migration that "runs without throwing" but silently opens pre-index files in a
@@ -42,6 +41,7 @@ import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import { knowledgeMigrationOps } from '../../telemetry/metrics.js';
+import { knowledgeEmbeddingIdentity } from '../embedding-identity.js';
 import { migratePreIndexKnowledge } from '../migrate-pre-index-knowledge.js';
 import { SqliteVecIndexProvider } from '../sqlite-vec-index-provider.js';
 
@@ -336,15 +336,14 @@ describe('migratePreIndexKnowledge', () => {
 
   // ── (b) Data-carrying ────────────────────────────────────────────────────────────────────
 
-  test('data-carrying: pre-index files stay untouched, the K2 store gets matching raw records, and the index proves vector reuse (not re-embedding)', async () => {
+  test('data-carrying: pre-index files stay untouched, the K2 store gets matching raw records, and the index re-embeds instead of reusing unidentified pre-index vectors', async () => {
     const dim = 4;
     const embedder = new StubEmbedder(dim);
     const fixture = seedPreIndexFixture(homeDir, { vectorDim: dim });
 
-    // Sanity precondition for the reuse assertion below: the stub embedder's real embed()
-    // output for each doc's body must NOT equal the pre-index vector we seeded. If it did, a
-    // "the index returns this doc for its pre-index vector" assertion could pass even if the
-    // implementation silently re-embedded instead of reusing — this rules that out.
+    // Precondition for the no-reuse assertion below: the stub embedder's embed() output for
+    // each doc's body must NOT equal the pre-index vector we seeded, or the two would be
+    // indistinguishable in the index.
     for (const doc of fixture.docs) {
       const [embedded] = await embedder.embed([doc.body]);
       const preIndex = fixture.preIndexVectorDocs.find(
@@ -402,23 +401,34 @@ describe('migratePreIndexKnowledge', () => {
       );
     }
 
-    // (iii) Vector reuse, not re-embedding. `SqliteVecIndexProvider.search()` takes a raw
-    // query VECTOR (not text) — so querying with one of the ORIGINAL pre-index vectors and
-    // getting that doc's migrated record back as a near-exact hit (score ~1, i.e. cosine
-    // distance ~0) is direct evidence the index stored the reused pre-index vector verbatim,
-    // not a fresh embedding of the text (which the precondition above proved would differ).
+    // (iii) Re-embedded, not reused. Under the embedder's own generation, its vector for
+    // each body is a near-exact hit (cosine distance ~0) and the seeded pre-index vector is
+    // not, so the index holds fresh embeddings rather than the unidentified source vectors.
+    const embeddingIdentity = knowledgeEmbeddingIdentity(embedder);
     for (const doc of fixture.docs) {
+      const [currentVector] = await embedder.embed([doc.body]);
+      const fresh = await indexProvider.search(currentVector, {
+        topK: 1,
+        rootIds: [root.id],
+        embeddingIdentity,
+      });
+      expect(fresh).toHaveLength(1);
+      expect(fresh[0].recordId).toBe(doc.id);
+      expect(fresh[0].score).toBeCloseTo(1, 5);
+
       const preIndexVector = fixture.preIndexVectorDocs.find(
         (v) => v.metadata.docId === doc.id,
       )?.vector as number[];
-      const hits = await indexProvider.search(preIndexVector, {
-        topK: 1,
+      const reused = await indexProvider.search(preIndexVector, {
+        topK: 2,
         rootIds: [root.id],
+        embeddingIdentity,
       });
-      expect(hits).toHaveLength(1);
-      expect(hits[0].recordId).toBe(doc.id);
-      expect(hits[0].score).toBeCloseTo(1, 5);
+      expect(reused.every((hit) => hit.score < 0.999)).toBe(true);
     }
+    expect(await indexProvider.generations([root.id])).toEqual([
+      { rootId: root.id, embeddingIdentity, chunks: 2 },
+    ]);
   });
 
   // ── (c) Idempotent re-run ────────────────────────────────────────────────────────────────
@@ -541,8 +551,8 @@ describe('migratePreIndexKnowledge', () => {
     const dim = 4;
     const embedder = new StubEmbedder(dim);
     const fixture = seedPreIndexFixture(homeDir, { vectorDim: dim });
-    const upsert = vi
-      .spyOn(indexProvider, 'upsert')
+    const rebuildRoot = vi
+      .spyOn(indexProvider, 'rebuildRoot')
       .mockRejectedValueOnce(
         new Error(`/private/${fixture.projectSlug}/secret`),
       );
@@ -568,7 +578,7 @@ describe('migratePreIndexKnowledge', () => {
     );
     expect(second.documentsMigrated).toBe(0);
     expect(second.chunksIndexed).toBe(2);
-    expect(upsert).toHaveBeenCalledTimes(2);
+    expect(rebuildRoot).toHaveBeenCalledTimes(2);
   });
 
   test('metric observer failures cannot strand record creation before indexing', async () => {
