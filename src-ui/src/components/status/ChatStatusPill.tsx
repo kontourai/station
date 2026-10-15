@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { useElapsedClock } from '../../hooks/useElapsedClock';
 import { formatDuration } from '../../utils/relativeTime';
 import type { ChatStatus } from './chatStatus';
@@ -287,63 +288,71 @@ export function ChatStatusPill({
   } as const;
 
   return (
-    <section
-      className="chat-status-pill-host"
-      ref={hostRef}
-      tabIndex={-1}
-      aria-label="Conversation status"
-    >
-      <span className="sr-only" role="status" aria-live="polite">
-        {recovered
-          ? `Conversation resynced.${announcement ? ` ${announcement}` : ''}`
-          : announcement}
-      </span>
-      {current &&
-        (actionable ? (
-          <button
-            type="button"
-            {...common}
-            aria-label={
-              current.action === 'reveal-approval'
-                ? current.count !== undefined
-                  ? `Needs approval (${current.count}) — show the requests`
-                  : `${current.label} — show the request`
-                : current.action === 'repair'
-                  ? `${current.label} — repair the connection`
-                  : current.action === 'resync'
-                    ? `${current.label} — resync this conversation`
-                    : current.label
-            }
-            aria-expanded={current.action === 'details' ? expanded : undefined}
-            aria-controls={
-              current.action === 'details' && expanded ? detailsId : undefined
-            }
-            disabled={current.action === 'resync' && current.pending}
-            aria-busy={
-              current.action === 'resync' ? current.pending : undefined
-            }
-            onFocus={() => {
-              resyncFocused.current = current.action === 'resync';
-            }}
-            onBlur={(event) => {
-              if (
-                event.relatedTarget instanceof HTMLElement &&
-                event.relatedTarget !== document.body
-              )
-                resyncFocused.current = false;
-            }}
-            onClick={activate}
-          >
-            {body}
-          </button>
-        ) : (
-          <div {...common} aria-hidden="true">
-            {body}
-          </div>
-        ))}
-      {current && expanded && !leaving && current.details.length > 0 && (
-        <PillDetails id={detailsId} lines={current.details} />
+    <>
+      {/* The narrow composer hides an empty status rail, including its descendants. */}
+      {createPortal(
+        <span className="sr-only" role="status" aria-live="polite">
+          {recovered
+            ? `Conversation resynced.${announcement ? ` ${announcement}` : ''}`
+            : announcement}
+        </span>,
+        document.body,
       )}
-    </section>
+      <section
+        className="chat-status-pill-host"
+        ref={hostRef}
+        tabIndex={-1}
+        aria-label="Conversation status"
+      >
+        {current &&
+          (actionable ? (
+            <button
+              type="button"
+              {...common}
+              aria-label={
+                current.action === 'reveal-approval'
+                  ? current.count !== undefined
+                    ? `Needs approval (${current.count}) — show the requests`
+                    : `${current.label} — show the request`
+                  : current.action === 'repair'
+                    ? `${current.label} — repair the connection`
+                    : current.action === 'resync'
+                      ? `${current.label} — resync this conversation`
+                      : current.label
+              }
+              aria-expanded={
+                current.action === 'details' ? expanded : undefined
+              }
+              aria-controls={
+                current.action === 'details' && expanded ? detailsId : undefined
+              }
+              disabled={current.action === 'resync' && current.pending}
+              aria-busy={
+                current.action === 'resync' ? current.pending : undefined
+              }
+              onFocus={() => {
+                resyncFocused.current = current.action === 'resync';
+              }}
+              onBlur={(event) => {
+                if (
+                  event.relatedTarget instanceof HTMLElement &&
+                  event.relatedTarget !== document.body
+                )
+                  resyncFocused.current = false;
+              }}
+              onClick={activate}
+            >
+              {body}
+            </button>
+          ) : (
+            <div {...common} aria-hidden="true">
+              {body}
+            </div>
+          ))}
+        {current && expanded && !leaving && current.details.length > 0 && (
+          <PillDetails id={detailsId} lines={current.details} />
+        )}
+      </section>
+    </>
   );
 }
