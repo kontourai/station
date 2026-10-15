@@ -369,6 +369,44 @@ describe('subagent transcript cards', () => {
     },
   );
 
+  test('a Codex spawn follows the native tool row before it, even when no text separates them', async () => {
+    const captured = capturedCodexEvents[0];
+    const spawnAt = captured.findIndex(
+      (event) => event.method === 'child-work.updated',
+    );
+    const tool = {
+      provider: 'codex',
+      threadId: 'thread-codex',
+      turnId: '00000000-0000-7000-8000-000000000002',
+      itemId: 'cmd-1',
+      toolCallId: 'cmd-1',
+      toolName: 'shell_exec',
+    };
+    windowEvents.current = [
+      ...captured.slice(0, spawnAt).map((event) => ({ sequence: 0, event })),
+      runtimeEvent(captured[0].createdAt, {
+        ...tool,
+        method: 'tool.started',
+        arguments: { command: 'pwd', cwd: '/tmp/project' },
+      }),
+      runtimeEvent(captured[0].createdAt, {
+        ...tool,
+        method: 'tool.completed',
+        status: 'success',
+        output: { output: '/tmp/project', exitCode: 0, durationMs: 12 },
+      }),
+      ...captured.slice(spawnAt).map((event) => ({ sequence: 0, event })),
+    ].map((entry, index) => ({ ...entry, sequence: index + 1 }));
+    renderTranscript({ ...chatSession(), currentSessionId: 'thread-codex' });
+    const card = await findCard();
+    expect(screen.getAllByTestId('subagent-card')).toHaveLength(1);
+    const text = document.body.textContent ?? '';
+    expect(text.indexOf('pwd')).toBeGreaterThanOrEqual(0);
+    expect(text.indexOf(card.textContent ?? '')).toBeGreaterThan(
+      text.indexOf('pwd'),
+    );
+  });
+
   test('all 65 completed children whose spawns are loaded keep their cards and results', async () => {
     windowEvents.current = Array.from({ length: 65 }, (_, index) => {
       const call = `toolu_agent_${index}`;

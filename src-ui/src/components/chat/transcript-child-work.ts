@@ -16,7 +16,7 @@ import type { RunBlock, ToolCallLike } from './tool-call-runs';
  */
 export interface TranscriptChild {
   item: ChildWorkItem;
-  spawn?: { turnId: string; textOffset: number };
+  spawn?: { turnId: string; textOffset: number; afterToolCallId?: string };
   toolAnchor: boolean;
   /** The engine of the session that reported the child (its event envelope). */
   provider?: string;
@@ -56,9 +56,17 @@ export function foldTranscriptChildren(
   const providers = new Map<string, string>();
   const textOffsets = new Map<string, number>();
   const tools = new Set<string>();
+  const lastToolByTurn = new Map<string, string>();
   for (const { event } of events) {
-    if (event.method === 'tool.started' || event.method === 'tool.completed')
-      tools.add(JSON.stringify([event.threadId, event.toolCallId]));
+    if (event.method === 'tool.started' || event.method === 'tool.completed') {
+      const call = JSON.stringify([event.threadId, event.toolCallId]);
+      if (event.turnId && !tools.has(call))
+        lastToolByTurn.set(
+          JSON.stringify([event.threadId, event.turnId]),
+          event.toolCallId,
+        );
+      tools.add(call);
+    }
     if (event.method === 'content.text-delta') {
       const turn = JSON.stringify([event.threadId, event.turnId]);
       textOffsets.set(turn, (textOffsets.get(turn) ?? 0) + event.delta.length);
@@ -98,6 +106,9 @@ export function foldTranscriptChildren(
       if (!spawns.has(key) && item.parent?.turnId)
         spawns.set(key, {
           turnId: item.parent.turnId,
+          afterToolCallId: lastToolByTurn.get(
+            JSON.stringify([event.threadId, item.parent.turnId]),
+          ),
           textOffset:
             textOffsets.get(
               JSON.stringify([event.threadId, item.parent.turnId]),
@@ -173,9 +184,19 @@ export function useTranscriptChildBlocks<P extends ToolCallLike>(
 ): (RunBlock<P> | ChildBlock)[] {
   const children = useContext(TranscriptChildrenContext);
   const turn = useContext(TranscriptTurnContext);
+  const renderedCalls = new Set(
+    blocks.flatMap((block) =>
+      block.type === 'tool-call-run'
+        ? block.calls
+            .map((call) => call.part.toolCallId)
+            .filter((id) => id !== undefined)
+        : [],
+    ),
+  );
   const pending = [...children.entries()].filter(
     ([, child]) =>
       !child.toolAnchor &&
+      !renderedCalls.has(child.item.parent?.toolCallId) &&
       child.spawn &&
       child.spawn.turnId === turn?.turnId &&
       child.item.reporterThreadId === turn?.threadId,
@@ -183,7 +204,10 @@ export function useTranscriptChildBlocks<P extends ToolCallLike>(
   if (!pending.length) return blocks;
   const result: (RunBlock<P> | ChildBlock)[] = [];
   let offset = 0;
+  const seenCalls = new Set<string | undefined>();
   for (const block of blocks) {
+    if (block.type === 'tool-call-run')
+      for (const call of block.calls) seenCalls.add(call.part.toolCallId);
     if (
       block.type !== 'content-part' ||
       block.part.type !== 'text' ||
@@ -196,7 +220,9 @@ export function useTranscriptChildBlocks<P extends ToolCallLike>(
     let start = 0;
     while (
       pending.length &&
-      pending[0][1].spawn!.textOffset <= offset + text.length
+      pending[0][1].spawn!.textOffset <= offset + text.length &&
+      (!pending[0][1].spawn!.afterToolCallId ||
+        seenCalls.has(pending[0][1].spawn!.afterToolCallId))
     ) {
       const [key, child] = pending.shift()!;
       const end = Math.max(start, child.spawn!.textOffset - offset);
