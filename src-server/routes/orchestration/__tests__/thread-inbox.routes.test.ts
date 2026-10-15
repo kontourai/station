@@ -1073,27 +1073,35 @@ describe('POST /chat whenBusy queue (#3568)', () => {
         // The composer's continue route.
         await world.continueSend('owner-key', 'then summarize'),
       ];
-      for (const refused of refusals) {
-        expect(refused.status, await refused.clone().text()).toBe(409);
-        expect(await refused.json()).toMatchObject({
-          code: 'client_turn_in_flight',
-          retryable: true,
-        });
-      }
-      expect(world.continuations).toEqual([]);
-      // The cold start completes: the follow-up reaches the engine once.
+      const answers = await Promise.all(
+        refusals.map(async (refused) => ({
+          status: refused.status,
+          body: (await refused.json()) as Record<string, unknown>,
+        })),
+      );
+      // The cold start completes. Whatever the live sends did, the run is
+      // let finish before anything is asserted, so a second send is counted.
       release();
       await eventually(() =>
-        expect(world.inbox.list(CONVERSATION)).toMatchObject([
-          { clientTurnId: 'owner-key', state: 'sent' },
-        ]),
+        expect(world.inbox.list(CONVERSATION)[0]?.state).toMatch(
+          /^(sent|unconfirmed|refused)$/,
+        ),
       );
-      expect(world.inbox.inFlight(CONVERSATION, 'owner-key')).toBe(false);
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await new Promise((resolve) => setTimeout(resolve, 500));
       // A start into a successor carries the transcript before the message.
       expect(
         world.prompts().filter((prompt) => prompt.endsWith('then summarize')),
       ).toHaveLength(1);
+      expect(world.continuations).toEqual([]);
+      for (const answer of answers)
+        expect(answer, JSON.stringify(answer)).toMatchObject({
+          status: 409,
+          body: { code: 'client_turn_in_flight', retryable: true },
+        });
+      expect(world.inbox.list(CONVERSATION)).toMatchObject([
+        { clientTurnId: 'owner-key', state: 'sent' },
+      ]);
+      expect(world.inbox.inFlight(CONVERSATION, 'owner-key')).toBe(false);
     },
   );
 
