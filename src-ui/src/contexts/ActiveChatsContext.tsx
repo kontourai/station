@@ -30,7 +30,12 @@ type ActiveChatsContextType = {
       role: 'user' | 'assistant' | 'system';
       content: string;
       attachments?: any[];
-      action?: { label: string; handler: () => void };
+      action?: {
+        label: string;
+        handler: () => void;
+        /** Ask first with the shared unconfirmed-message discard. */
+        confirm?: 'unconfirmed-discard';
+      };
       fullAccessRefusal?: FullAccessRefusalNotice;
       sendFailure?: boolean;
       queuedRetry?: boolean;
@@ -101,7 +106,12 @@ export function ActiveChatsProvider({ children }: { children: ReactNode }) {
         role: 'user' | 'assistant' | 'system';
         content: string;
         attachments?: any[];
-        action?: { label: string; handler: () => void };
+        action?: {
+          label: string;
+          handler: () => void;
+          /** Ask first with the shared unconfirmed-message discard. */
+          confirm?: 'unconfirmed-discard';
+        };
         sendFailure?: boolean;
         queuedRetry?: boolean;
       },
