@@ -5,7 +5,7 @@ import {
 } from '@kontourai/station-sdk';
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal } from '@xterm/xterm';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import '@xterm/xterm/css/xterm.css';
 import {
   activeChatsStore,
@@ -44,7 +44,20 @@ export function TerminalPanel({
    * externally-injected input (e.g. "Send to terminal" from the file tree). */
   isActive?: boolean;
 }) {
-  const { apiBase, connectionId, credentialProvider } = useApiBase();
+  const {
+    apiBase,
+    connectionId,
+    credentialProvider: liveCredentials,
+  } = useApiBase();
+  const credential = liveCredentials.getCredential();
+  const protocolVersion = liveCredentials.getProtocolVersion();
+  const credentialProvider = useMemo(
+    () => ({
+      getCredential: () => credential,
+      getProtocolVersion: () => protocolVersion,
+    }),
+    [credential, protocolVersion],
+  );
   const activeChat = useNavigation((state) => state.activeChat);
   const { getDraft, setDraft, updateChat } = useActiveChatActions();
   const containerRef = useRef<HTMLDivElement>(null);

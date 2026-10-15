@@ -751,8 +751,10 @@ describe('a session no project claims is followed under No project (#3386)', () 
     await expect(
       attachedSessionsOutsideProjectsEnabled(() => fresh.loadAppConfig()),
     ).resolves.toBe(false);
+    const legacyConfig = { ...(await fresh.loadAppConfig()) };
+    delete legacyConfig.attachedSessionsOutsideProjects;
     await expect(
-      attachedSessionsOutsideProjectsEnabled(async () => ({})),
+      attachedSessionsOutsideProjectsEnabled(async () => legacyConfig),
     ).resolves.toBe(true);
     await expect(
       attachedSessionsOutsideProjectsEnabled(() =>

@@ -40,7 +40,7 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({
     apiBase: station.apiBase,
     connectionId: 'direct-1',
-    credentialProvider,
+    credentialProvider: { ...credentialProvider },
   }),
 }));
 vi.mock('../../../hooks/useIsMobile', () => ({ useIsMobile: () => false }));
@@ -212,6 +212,20 @@ test('renderer unmount detaches its WebSocket without sending a terminal close c
       sessionId: 'project-a:terminal-one',
     }),
   );
+});
+
+test('routine context updates keep the connected shell while a changed credential reconnects it', async () => {
+  renderTerminal();
+  const { socket, terminal } = await connectTerminal();
+  act(() => navigationStore.setActiveChat('chat-a'));
+  expect(socket.close).not.toHaveBeenCalled();
+  expect(terminal.dispose).not.toHaveBeenCalled();
+  expect(FakeWebSocket.instances).toHaveLength(1);
+
+  credentialProvider.getCredential = () => 'changed-current-credential';
+  act(() => navigationStore.setActiveChat(null));
+  await waitFor(() => expect(FakeWebSocket.instances).toHaveLength(2));
+  expect(socket.close).toHaveBeenCalledTimes(1);
 });
 
 test('retains terminal output after a lost connection and reconnects its identity without replaying typed commands', async () => {
