@@ -85,7 +85,8 @@ vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { alias: 'operator' } }),
 }));
 
-vi.mock('../contexts/ActiveChatsContext', () => ({
+vi.mock('../contexts/ActiveChatsContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ActiveChatsContext')>()),
   useActiveChatActions: () => ({
     updateChat: vi.fn(),
     clearEphemeralMessages: vi.fn(),
@@ -127,20 +128,8 @@ vi.mock('../hooks/orchestration/useActiveChatTranscript', () => ({
   useActiveChatTranscript: vi.fn(),
 }));
 
-vi.mock('../components/chat/ChatInputArea', () => ({
-  // The composer rail hosts the chat's status pill (its `activity` slot).
-  ChatInputArea: ({
-    activity,
-    textareaRef,
-  }: {
-    activity?: React.ReactNode;
-    textareaRef: React.Ref<HTMLTextAreaElement>;
-  }) => (
-    <div data-testid="chat-input-area">
-      {activity}
-      <textarea ref={textareaRef} aria-label="Message composer" />
-    </div>
-  ),
+vi.mock('../components/chat/FileAttachmentInput', () => ({
+  FileAttachmentInput: () => null,
 }));
 
 vi.mock('../components/chat/QueuedMessages', () => ({
@@ -232,10 +221,10 @@ function renderDock(session: ChatSession = buildSession()) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  return render(
+  const ui = (activeSession: ChatSession) => (
     <QueryClientProvider client={queryClient}>
       <ChatDockBody
-        activeSession={session}
+        activeSession={activeSession}
         activeOrchestrationSession={buildOrchestrationSession()}
         chatFontSize={14}
         dockHeight={400}
@@ -248,8 +237,13 @@ function renderDock(session: ChatSession = buildSession()) {
         chatInput={buildChatInput() as any}
         setShowStatsPanel={vi.fn()}
       />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const view = render(ui(session));
+  return {
+    ...view,
+    rerenderSession: (next: ChatSession) => view.rerender(ui(next)),
+  };
 }
 
 describe('ChatDockBody history-failure notice (station#3427)', () => {
@@ -490,66 +484,147 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
     expect(notice.textContent).not.toContain('should not print');
   });
 
-  test('Resync coalesces pending history retries and announces recovery until the replacement settles', async () => {
-    resyncStream.mockClear();
-    let release!: () => void;
-    transcriptStateMock.current.enabled = true;
-    transcriptStateMock.current.error = new Error(
-      'Native request queue is full',
-    );
-    transcriptStateMock.current.messages = [
-      { role: 'user', content: 'hi', timestamp: 1 },
-    ];
-    transcriptStateMock.current.reload.mockImplementation(
-      () =>
-        new Promise<void>((resolve) => {
-          release = resolve;
-        }),
-    );
-    renderDock();
-    await screen.findByTestId('chat-input-area');
-    const pill = await screen.findByRole('button', {
-      name: 'Status unavailable — resync this conversation',
-    });
-    try {
-      pill.focus();
-      expect(document.activeElement).toBe(pill);
-      // Same-tick activations exercise the owner guard before disabled paints.
-      act(() => {
-        for (let i = 0; i < 5; i++) fireEvent.click(pill);
-      });
-      const pending = await screen.findByRole('button', {
-        name: 'Resyncing conversation — resync this conversation',
-      });
-      expect(pending).toHaveProperty('disabled', true);
-      expect(pending.getAttribute('aria-busy')).toBe('true');
-      expect(
-        screen
-          .getAllByRole('status')
-          .some((status) => status.textContent === 'Resyncing conversation'),
-      ).toBe(true);
-      expect(transcriptStateMock.current.reload).toHaveBeenCalledTimes(1);
-      expect(resyncStream).toHaveBeenCalledTimes(1);
-      await act(async () => {
-        transcriptStateMock.current.error = null;
-        release();
-      });
-      await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
-      expect(document.activeElement).toBe(
-        screen.getByRole('textbox', { name: 'Message composer' }),
+  test.each([
+    'orphaned',
+    'elsewhere',
+    'reconnecting',
+    'later-status',
+    'dialog',
+    'approval-focus',
+  ])(
+    'Resync coalesces retries and completes recovery with %s focus/status',
+    async (scenario) => {
+      resyncStream.mockClear();
+      let release!: () => void;
+      transcriptStateMock.current.enabled = true;
+      transcriptStateMock.current.error = new Error(
+        'Native request queue is full',
       );
-      expect(
-        screen
-          .getAllByRole('status')
-          .some((status) => status.textContent === 'Conversation resynced.'),
-      ).toBe(true);
-      expect(
-        screen.queryByRole('button', { name: /resync this conversation/ }),
-      ).toBeNull();
-    } finally {
-      release?.();
-    }
-  });
+      transcriptStateMock.current.messages = [
+        { role: 'user', content: 'hi', timestamp: 1 },
+      ];
+      transcriptStateMock.current.reload.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            release = resolve;
+          }),
+      );
+      const view = renderDock();
+      const composer = await screen.findByRole('textbox');
+      const pill = await screen.findByRole('button', {
+        name: 'Status unavailable — resync this conversation',
+      });
+      try {
+        act(() => pill.focus());
+        expect(document.activeElement).toBe(pill);
+        // Same-tick activations exercise the owner guard before disabled paints.
+        act(() => {
+          for (let i = 0; i < 5; i++) fireEvent.click(pill);
+        });
+        const pending = await screen.findByRole('button', {
+          name: 'Resyncing conversation — resync this conversation',
+        });
+        expect(pending).toHaveProperty('disabled', true);
+        expect(pending.getAttribute('aria-busy')).toBe('true');
+        expect(
+          screen
+            .getAllByRole('status')
+            .some((status) => status.textContent === 'Resyncing conversation'),
+        ).toBe(true);
+        expect(transcriptStateMock.current.reload).toHaveBeenCalledTimes(1);
+        expect(resyncStream).toHaveBeenCalledTimes(1);
+        // Model the browser's blur-to-body when a focused control is disabled;
+        // jsdom keeps disabled buttons focused and their blur() is a no-op.
+        document.body.tabIndex = -1;
+        act(() => document.body.focus());
+        document.body.removeAttribute('tabindex');
+        expect(document.activeElement).toBe(document.body);
+        let elsewhere: HTMLElement | undefined;
+        if (scenario === 'elsewhere') {
+          render(<input aria-label="Another input" />);
+          elsewhere = screen.getByRole('textbox', { name: 'Another input' });
+          act(() => elsewhere?.focus());
+        }
+        if (scenario === 'dialog')
+          render(<div role="dialog" aria-label="Open dialog" />);
+        if (scenario === 'reconnecting' || scenario === 'approval-focus') {
+          act(() =>
+            setStreamConnectionState(
+              'http://localhost:3242',
+              'interrupted',
+              Date.now() - 3_000,
+            ),
+          );
+          const reconnecting = await screen.findByRole('button', {
+            name: 'Reconnecting',
+          });
+          if (scenario === 'approval-focus') {
+            act(() => reconnecting.focus());
+            elsewhere = reconnecting;
+            view.rerenderSession(
+              buildSession({
+                pendingApprovals: ['retained-approval'],
+                orchestrationStatus: 'awaiting-approval',
+              }),
+            );
+          }
+        }
+        await act(async () => {
+          transcriptStateMock.current.error = null;
+          release();
+        });
+        if (scenario === 'reconnecting' || scenario === 'approval-focus') {
+          act(() =>
+            setStreamConnectionState('http://localhost:3242', 'receiving'),
+          );
+          await screen.findByRole('button', {
+            name: 'Catching up',
+          });
+          act(() =>
+            setStreamConnectionState('http://localhost:3242', 'caught-up'),
+          );
+          if (scenario === 'approval-focus')
+            await screen.findByRole('button', { name: /Needs approval/ });
+          else await screen.findByText('Connected');
+        }
+        await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+        expect(document.activeElement).toBe(
+          scenario === 'elsewhere' || scenario === 'approval-focus'
+            ? elsewhere
+            : scenario === 'dialog'
+              ? document.body
+              : composer,
+        );
+        expect(
+          screen
+            .getAllByRole('status')
+            .some((status) =>
+              status.textContent?.startsWith('Conversation resynced.'),
+            ),
+        ).toBe(true);
+        expect(
+          screen.queryByRole('button', { name: /resync this conversation/ }),
+        ).toBeNull();
+        if (scenario === 'later-status') {
+          view.rerenderSession(
+            buildSession({
+              orchestrationSessionStarted: true,
+              orchestrationTurnOpen: true,
+              status: 'sending',
+            }),
+          );
+          await screen.findAllByText('Working', { exact: true });
+          expect(
+            screen
+              .getAllByRole('status')
+              .some((status) => status.textContent?.includes('resynced')),
+          ).toBe(false);
+        }
+      } finally {
+        release?.();
+      }
+    },
+  );
 
   test('background work the record last reported is shown as last known, not as current, while history is unavailable', async () => {
     transcriptStateMock.current.enabled = true;

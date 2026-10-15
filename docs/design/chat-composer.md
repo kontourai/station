@@ -199,8 +199,10 @@ conversation-open read. Resync is disabled and announces “Resyncing conversati
 until those reads settle. History reads abort after 120 seconds and show a
 retryable error; the JSON reader exposes no progress signal. This bound allows
 slow remote reads beyond 30 seconds. Successful recovery announces “Conversation
-resynced” and moves focus from the retiring Resync button to the composer
-(textarea when writable, otherwise its labelled composer group).
+resynced” once, including after reconnecting or catching up. It moves focus to
+the composer (textarea when writable, otherwise its labelled composer group)
+only while this conversation is active, no dialog is open, and focus is still
+on Resync or was orphaned on the document body. Focus moved elsewhere stays there.
 Connection recovery and failed-read recovery outrank retained approvals, whose
 current state has not been verified. Check connection, Reconnecting, and Catching up take
 priority while the transport needs recovery; explicit stream resync respects
