@@ -11,6 +11,7 @@ import {
   isApiRequestScope,
   StationRequestAuthorityError,
 } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 export type { UsageExportPage, UsageExportRequest };
 
@@ -161,6 +162,7 @@ export async function fetchUsageExport(
   try {
     body = await response.json();
   } catch (error) {
+    rethrowDeadline(error);
     if (error instanceof SyntaxError && !response.ok)
       throw envelopeError(response, undefined, 'Usage export unavailable');
     throw error;

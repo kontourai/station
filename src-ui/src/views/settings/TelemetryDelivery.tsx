@@ -94,6 +94,7 @@ function DeliveryForAuthority({
 }) {
   const query = useTelemetryDeliveryStatusQuery(authority.apiBase, {
     requestScope: authority,
+    keepPreviousData: false,
   });
   const productCheck = useCheckTelemetryConnectionMutation(
     authority.apiBase,
