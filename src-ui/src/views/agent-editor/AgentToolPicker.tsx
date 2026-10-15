@@ -596,18 +596,19 @@ export function AgentToolPicker({
                                   disabled={disabled || tool.enabled === false}
                                 />
                               )}
+                              <details className="agent-tool-picker__details">
+                                <summary>Details</summary>
+                                <p>
+                                  {tool.description ||
+                                    'No description supplied.'}
+                                </p>
+                                <code>{tool.toolName || tool.name}</code>
+                                <p>
+                                  {tool.group || 'Other'}
+                                  {tool.enabled === false ? ' · Disabled' : ''}
+                                </p>
+                              </details>
                             </div>
-                            <details className="agent-tool-picker__details">
-                              <summary>Details</summary>
-                              <p>
-                                {tool.description || 'No description supplied.'}
-                              </p>
-                              <code>{tool.toolName || tool.name}</code>
-                              <p>
-                                {tool.group || 'Other'}
-                                {tool.enabled === false ? ' · Disabled' : ''}
-                              </p>
-                            </details>
                           </div>
                         );
                       })}

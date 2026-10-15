@@ -141,3 +141,10 @@
 .agent-tool-catalog__item .agent-tool-picker__source-heading > .button {
   flex: 0 0 auto;
 }
+
+.agent-tool-picker__tool-heading > .agent-tool-picker__details[open] {
+  flex-basis: 100%;
+}
+.agent-tool-picker__tool-heading > .agent-tool-picker__category {
+  padding-inline-start: 0;
+}

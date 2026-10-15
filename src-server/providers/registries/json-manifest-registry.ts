@@ -996,7 +996,7 @@ export class JsonManifestRegistryProvider
   integrationRegistry(): IIntegrationRegistryProvider {
     return {
       registryKey: this.registryKey,
-      displayName: this.registryKey,
+      displayName: this.displayName,
       listAvailable: async (): Promise<RegistryItem[]> => {
         const manifest = await this.fetchManifest();
         return (manifest.tools ?? []).map((tool) => ({

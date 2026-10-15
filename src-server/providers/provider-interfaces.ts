@@ -44,9 +44,7 @@ export interface IAgentRegistryProvider {
 export interface IIntegrationRegistryProvider {
   readonly registryKey?: string;
   readonly displayName?: string;
-  installWithDefinition?(
-    id: string,
-  ): Promise<{
+  installWithDefinition?(id: string): Promise<{
     result: InstallResult;
     definition?: ToolDef;
     origin?: import('@kontourai/station-contracts/tool').ToolOrigin;

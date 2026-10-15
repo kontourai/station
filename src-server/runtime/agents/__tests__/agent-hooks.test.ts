@@ -1197,9 +1197,12 @@ describe('createAgentHooks — attended autoApprove vs unattended opt-in (#2613)
     expect(requester).not.toHaveBeenCalled();
   });
 
-  test('unattendedAutoApprove, written against the original MCP name, runs the tool unattended', async () => {
+  test.each([
+    'station-control_delete_agent',
+    'mcp/station-control/delete_agent',
+  ])('unattendedAutoApprove %s runs the tool unattended', async (pattern) => {
     const { hooks } = hooksFor({
-      unattendedAutoApprove: ['station-control_delete_agent'],
+      unattendedAutoApprove: [pattern],
     });
 
     await expect(

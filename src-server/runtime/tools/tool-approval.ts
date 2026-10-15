@@ -1,5 +1,8 @@
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
-import { externalMcpToolApprovalIdentity } from '@kontourai/station-shared/mcp-tool-selection';
+import {
+  externalMcpToolApprovalIdentity,
+  mcpToolApprovalKey,
+} from '@kontourai/station-shared/mcp-tool-selection';
 import {
   classifyStationBrowserTool,
   STATION_BROWSER_MCP_SERVER_ID,
@@ -35,10 +38,23 @@ export function isAuthoredToolPatternMatch(
   toolNameMapping: ReadonlyMap<string, MCPToolNameMappingEntry>,
 ): boolean {
   if (!patterns || patterns.length === 0) return false;
-  const list = [...patterns];
-  if (isAutoApproved(runtimeToolName, list)) return true;
-  const original = toolNameMapping.get(runtimeToolName)?.original;
-  return original !== undefined && isAutoApproved(original, list);
+  const entry = toolNameMapping.get(runtimeToolName);
+  const legacyPatterns = patterns.filter(
+    (pattern) => !pattern.startsWith('mcp/'),
+  );
+  if (isAutoApproved(runtimeToolName, legacyPatterns)) return true;
+  if (entry?.original && isAutoApproved(entry.original, legacyPatterns))
+    return true;
+  return (
+    entry?.provenance !== undefined &&
+    isAutoApproved(
+      mcpToolApprovalKey(
+        entry.provenance.integrationId,
+        entry.provenance.originalToolName,
+      ),
+      [...patterns],
+    )
+  );
 }
 
 /**

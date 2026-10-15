@@ -14,16 +14,14 @@ afterEach(() => vi.unstubAllGlobals());
 
 test('remote sign-in keeps project scope and removes callback variables after its observer leaves', async () => {
   _setApiBase('http://station.test');
-  const fetch = vi
-    .fn()
-    .mockImplementation(async (url: string) =>
-      Response.json({
-        success: true,
-        data: url.includes('/account')
-          ? { connectedAs: 'you-in-project' }
-          : { authorizationUrl: 'https://signin.example.test/authorize' },
-      }),
-    );
+  const fetch = vi.fn().mockImplementation(async (url: string) =>
+    Response.json({
+      success: true,
+      data: url.includes('/account')
+        ? { connectedAs: 'you-in-project' }
+        : { authorizationUrl: 'https://signin.example.test/authorize' },
+    }),
+  );
   vi.stubGlobal('fetch', fetch);
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
