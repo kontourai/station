@@ -91,7 +91,7 @@ is sent with the verified project folder; if that Station answers
 `working-directory-not-granted`, the caller gets a fixed message naming a Project
 or the grant.
 
-## Personal Task room agent requests
+## Create a Task from a chat proposal
 
 `POST /api/tasks` accepts an optional `shapingSource: { sessionId, turnId }`
 when a person accepts a chat proposal. The normal `title` and `description`
@@ -100,6 +100,8 @@ assistant turn in the same Project (or a conversation without a Project),
 then commits the Task and its `spawned_session` link together. Reaccepting the
 same source returns the existing Task; changing its destination Project is
 refused. This is Station proposal acceptance, not a Builder Kit gate receipt.
+
+## Personal Task room agent requests
 
 `GET /api/tasks/:taskId/room/agent-requests` returns the authorized, versioned
 request projection. A client must verify `station.task-room-work/v1` before
