@@ -347,9 +347,9 @@ function TabScenario() {
   return <><button id="trigger" onClick={() => setOpen(true)}>Open</button>{open && (
     window.__scenario === 'approval' ? <QueryClientProvider client={new QueryClient()}><RequestInspectionDialog reference={{threadId:'thread',requestId:'request',requestEventId:'event'}} authority={scope} onClose={() => setOpen(false)} /></QueryClientProvider> :
     window.__scenario === 'add-connection' ? <ACPAddConnectionModal initialProviderId="custom" onAdd={() => {}} onCancel={() => setOpen(false)} /> :
-    <ResponsiveDialogSurface ariaLabel="Outer tab dialog" historyMode="none" onClose={() => setOpen(false)}>
+    <ResponsiveDialogSurface layer="dialog" ariaLabel="Outer tab dialog" historyMode="none" onClose={() => setOpen(false)}>
       <button>Outer first</button>
-      {window.__scenario === 'portal-surface' ? <ResponsiveDialogSurface ariaLabel="Inner tab dialog" historyMode="none" onClose={() => {}}>{inputs}</ResponsiveDialogSurface> :
+      {window.__scenario === 'portal-surface' ? <ResponsiveDialogSurface layer="dialog" ariaLabel="Inner tab dialog" historyMode="none" onClose={() => {}}>{inputs}</ResponsiveDialogSurface> :
        window.__scenario === 'portal-menu' ? createPortal(inputs, document.body) :
        <><details open><summary>Native summary</summary><input aria-label="After summary" /></details><div contentEditable role="textbox" aria-label="Editable" /><input aria-label="After editable" /><div ref={node => {if(node && !node.shadowRoot) { const shadow = node.attachShadow({mode:'open'}); const input = document.createElement('input');input.setAttribute('aria-label','Shadow input'); shadow.append(input); }}} /><input aria-label="After shadow" /></>}
       <button>Outer last</button>

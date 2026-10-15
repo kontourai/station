@@ -228,7 +228,7 @@ describe('ResponsiveDialogSurface', () => {
   );
 
   test.each([true, false])(
-    'leaves portaled intermediate Tab to its owner (nested surface=$nested)',
+    'leaves portaled intermediate Tab to its owner (nested surface=%s)',
     (nested) => {
       setMobileViewport(false);
       const inputs = (
@@ -239,10 +239,18 @@ describe('ResponsiveDialogSurface', () => {
         </>
       );
       render(
-        <ResponsiveDialogSurface ariaLabel="Outer" onClose={vi.fn()}>
+        <ResponsiveDialogSurface
+          layer="dialog"
+          ariaLabel="Outer"
+          onClose={vi.fn()}
+        >
           <button type="button">Outer first</button>
           {nested ? (
-            <ResponsiveDialogSurface ariaLabel="Inner" onClose={vi.fn()}>
+            <ResponsiveDialogSurface
+              layer="dialog"
+              ariaLabel="Inner"
+              onClose={vi.fn()}
+            >
               {inputs}
             </ResponsiveDialogSurface>
           ) : (
@@ -263,12 +271,16 @@ describe('ResponsiveDialogSurface', () => {
     (kind) => {
       setMobileViewport(false);
       render(
-        <ResponsiveDialogSurface ariaLabel="Native focus" onClose={vi.fn()}>
+        <ResponsiveDialogSurface
+          layer="dialog"
+          ariaLabel="Native focus"
+          onClose={vi.fn()}
+        >
           <button type="button">First</button>
           <details open>
             <summary>Advanced</summary>
           </details>
-          <div contentEditable role="textbox" aria-label="Editable" />
+          <div contentEditable data-testid="editable" />
           <div data-testid="shadow-host" />
           <button type="button">Last</button>
         </ResponsiveDialogSurface>,
@@ -276,7 +288,7 @@ describe('ResponsiveDialogSurface', () => {
       let target =
         kind === 'summary'
           ? screen.getByText('Advanced')
-          : screen.getByLabelText('Editable');
+          : screen.getByTestId('editable');
       if (kind === 'shadow input') {
         const shadow = screen
           .getByTestId('shadow-host')
