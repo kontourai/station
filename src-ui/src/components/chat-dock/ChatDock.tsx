@@ -1335,22 +1335,26 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
    * never shown session-specific facts and navigating out of it is not this
    * row's business. Dropping either one silently changes what the row opens.
    */
+  const turnIntoTask =
+    activeSession && !activeSession.replay && !importedSessionId
+      ? () =>
+          requestTaskShaping({
+            projectSlug: activeSession.projectSlug,
+            source: {
+              sessionId: activeSession.currentSessionId ?? activeSession.id,
+              conversationId: activeSession.conversationId,
+              agentSlug: activeSession.agentSlug,
+              agentName: activeSession.agentName,
+            },
+          })
+      : undefined;
   const dockMoreActions: DockMoreAction[] = [
-    ...(activeSession && !activeSession.replay
+    ...(turnIntoTask
       ? [
           {
             key: 'turn-into-task',
             label: 'Turn into Task',
-            onSelect: () =>
-              requestTaskShaping({
-                projectSlug: activeSession.projectSlug,
-                source: {
-                  sessionId: activeSession.currentSessionId ?? activeSession.id,
-                  conversationId: activeSession.conversationId,
-                  agentSlug: activeSession.agentSlug,
-                  agentName: activeSession.agentName,
-                },
-              }),
+            onSelect: turnIntoTask,
           },
         ]
       : []),
@@ -2387,6 +2391,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               // Shared creation action opens a draft without starting an engine.
               onNewChat={openNewChatDirect}
               overflow={{
+                onTurnIntoTask: turnIntoTask,
                 onOpenConversation: () => setShowSessionPicker(true),
                 onToggleHistory: toggleHistory,
                 onOpenChatSettings: openChatSettings,

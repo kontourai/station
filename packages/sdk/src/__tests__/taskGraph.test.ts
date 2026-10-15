@@ -170,6 +170,8 @@ describe('taskGraph SDK domain', () => {
         projectId: 'project-alpha',
         title: 'Create SDK task',
         priority: 'normal',
+        description: 'Approved chat brief',
+        shapingSource: { sessionId: 'shaping-session', turnId: 'shaping-turn' },
       }),
     ).resolves.toEqual({ id: 'task-2' });
     const [createUrl, createInit] = vi.mocked(fetch).mock.calls[0] as [
@@ -183,6 +185,8 @@ describe('taskGraph SDK domain', () => {
         projectId: 'project-alpha',
         title: 'Create SDK task',
         priority: 'normal',
+        description: 'Approved chat brief',
+        shapingSource: { sessionId: 'shaping-session', turnId: 'shaping-turn' },
       }),
     );
     expect(new Headers(createInit.headers).get('Content-Type')).toBe(
