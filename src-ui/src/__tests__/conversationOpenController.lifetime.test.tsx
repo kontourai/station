@@ -194,12 +194,15 @@ it.each(['picker', 'retry'] as const)(
   async (command) => {
     const h = mountOpen(`old-${command}`);
     let finish!: (response: Response) => void;
-    const fetch = vi.fn(
-      () =>
-        new Promise<Response>((resolve) => {
+    const fetch = vi.fn(async (url: unknown) => {
+      if (String(url).endsWith('/open'))
+        return new Promise<Response>((resolve) => {
           finish = resolve;
-        }),
-    );
+        });
+      if (String(url).endsWith('/messages'))
+        return Response.json({ success: true, data: [] });
+      throw new Error(`Unexpected request ${url}`);
+    });
     vi.stubGlobal('fetch', fetch);
     try {
       const opening =
