@@ -1,3 +1,5 @@
+import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import { expect, type Page, type TestInfo } from '@playwright/test';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
@@ -350,6 +352,11 @@ async function attachThroughPicker(
 
 async function evidence(page: Page, testInfo: TestInfo, name: string) {
   await page.screenshot({ path: testInfo.outputPath(name) });
+  const directory = process.env.STATION_COMPOSER_EVIDENCE_DIR;
+  if (directory) {
+    await mkdir(directory, { recursive: true });
+    await page.screenshot({ path: join(directory, name) });
+  }
 }
 
 for (const [label, viewport] of [
