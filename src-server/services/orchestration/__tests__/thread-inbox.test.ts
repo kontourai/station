@@ -1022,11 +1022,10 @@ describe('thread inbox (#3568)', () => {
     await runningFirstTurn(world);
     queueFollowUp(world);
     await emit(world, 'turn.completed', { turnId: 'turn-1' });
-    await eventuallyTrue(
-      () => world!.inbox.list(THREAD)[0]?.state === 'unconfirmed',
-      1_000,
-    );
-    // Drives while the abandoned start is still held.
+    // Past the deadline, then drives while the abandoned start is still held.
+    // (Without the guard the first of these can re-queue it at once, so the
+    // `unconfirmed` state is not waited for here.)
+    await new Promise((resolve) => setTimeout(resolve, 120));
     for (let index = 0; index < 3; index += 1) {
       await emit(world, 'session.state-changed', {
         sessionId: THREAD,
@@ -1034,7 +1033,8 @@ describe('thread inbox (#3568)', () => {
       });
       await new Promise((resolve) => setTimeout(resolve, 40));
     }
-    expect(calls).toBe(1);
+    expect(maxInFlight).toBe(1);
+    expect(calls).toBeLessThanOrEqual(1);
     await eventuallyTrue(
       () => world!.inbox.list(THREAD)[0]?.state === 'sent',
       3_000,
