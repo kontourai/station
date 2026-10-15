@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   authenticatedFetch,
   setClientCredentialResolver,
@@ -143,4 +143,178 @@ it('caps a continuously progressing response at five minutes and cancels its rea
     if (!sentSignal?.aborted) bodyController.close();
     await result;
   }
+});
+
+describe('iOS 16.4 signal composition without AbortSignal.any', () => {
+  const descriptor = Object.getOwnPropertyDescriptor(AbortSignal, 'any')!;
+  beforeEach(() => {
+    Reflect.deleteProperty(AbortSignal, 'any');
+  });
+  afterEach(() => {
+    Object.defineProperty(AbortSignal, 'any', descriptor);
+    vi.restoreAllMocks();
+  });
+
+  describe.each([
+    { name: 'progress timeout', options: { progressTimeoutMs: 20 } },
+    { name: 'total deadline', options: { timeoutMs: 20 } },
+  ])('$name', ({ options }) => {
+    it('dispatches and enforces the deadline without caller signals', async () => {
+      let sentSignal: AbortSignal | null | undefined;
+      const fetchMock = vi.fn(
+        async (_input: RequestInfo | URL, init?: RequestInit) => {
+          sentSignal = init?.signal;
+          return new Response(new ReadableStream<Uint8Array>());
+        },
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      const response = await authenticatedFetch(URL_UNDER_TEST, options);
+      expect(fetchMock).toHaveBeenCalledOnce();
+      await expect(response.text()).rejects.toMatchObject({
+        name: 'StationRequestTimeoutError',
+      });
+      expect(sentSignal?.aborted).toBe(true);
+    });
+
+    it.each(['request', 'init'] as const)(
+      'cancels pending headers from the %s signal',
+      async (source) => {
+        const caller = new AbortController();
+        const explicit = new AbortController();
+        const reason = new Error('cancel headers');
+        const fetchMock = vi.fn(
+          (_input: RequestInfo | URL, init?: RequestInit) =>
+            new Promise<Response>((_resolve, reject) => {
+              init?.signal?.addEventListener(
+                'abort',
+                () => reject(init.signal?.reason),
+                { once: true },
+              );
+            }),
+        );
+        vi.stubGlobal('fetch', fetchMock);
+        const pending = authenticatedFetch(
+          new Request(URL_UNDER_TEST, { signal: caller.signal }),
+          {
+            ...options,
+            signal: explicit.signal,
+          },
+        );
+        const result = pending.catch((error: unknown) => error);
+        await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce(), {
+          interval: 1,
+        });
+        (source === 'request' ? caller : explicit).abort(reason);
+        expect(await result).toBe(reason);
+      },
+    );
+
+    it.each([
+      'success',
+      'body error',
+      'cancel',
+      'request abort',
+      'init abort',
+      'headers error',
+      'null body',
+      'deadline',
+    ] as const)(
+      'dispatches and removes caller listeners after %s',
+      async (outcome) => {
+        const caller = new AbortController();
+        const explicit = new AbortController();
+        const input = new Request(URL_UNDER_TEST, { signal: caller.signal });
+        const active = new Set<EventListenerOrEventListenerObject>();
+        for (const signal of [input.signal, explicit.signal]) {
+          const add = signal.addEventListener.bind(signal);
+          const remove = signal.removeEventListener.bind(signal);
+          vi.spyOn(signal, 'addEventListener').mockImplementation(
+            (type, listener, opts) => {
+              if (type === 'abort' && listener) active.add(listener);
+              add(type, listener, opts);
+            },
+          );
+          vi.spyOn(signal, 'removeEventListener').mockImplementation(
+            (type, listener, opts) => {
+              if (type === 'abort' && listener) active.delete(listener);
+              remove(type, listener, opts);
+            },
+          );
+        }
+        const reason = new Error(outcome);
+        let bodyController!: ReadableStreamDefaultController<Uint8Array>;
+        let sentSignal: AbortSignal | null | undefined;
+        const fetchMock = vi.fn(
+          async (_input: RequestInfo | URL, init?: RequestInit) => {
+            sentSignal = init?.signal;
+            if (outcome === 'headers error') throw reason;
+            if (outcome === 'null body')
+              return new Response(null, { status: 204 });
+            return new Response(
+              new ReadableStream<Uint8Array>({
+                start(controller) {
+                  bodyController = controller;
+                },
+              }),
+            );
+          },
+        );
+        vi.stubGlobal('fetch', fetchMock);
+        const pending = authenticatedFetch(input, {
+          ...options,
+          signal: explicit.signal,
+        });
+        if (outcome === 'headers error') {
+          await expect(pending).rejects.toBe(reason);
+        } else {
+          const response = await pending;
+          if (outcome === 'null body') {
+            expect(response.body).toBeNull();
+          } else if (outcome === 'cancel') {
+            await response.body!.cancel(reason);
+          } else {
+            expect(active.size).toBe(2);
+            const result = response.text();
+            if (outcome === 'success') bodyController.close();
+            else if (outcome === 'body error') bodyController.error(reason);
+            else if (outcome !== 'deadline') {
+              (outcome === 'request abort' ? caller : explicit).abort(reason);
+              // The first abort reason survives a later abort from the other source.
+              (outcome === 'request abort' ? explicit : caller).abort(
+                new Error('later'),
+              );
+              expect(sentSignal?.reason).toBe(reason);
+            }
+            if (outcome === 'success') await expect(result).resolves.toBe('');
+            else if (outcome === 'deadline')
+              await expect(result).rejects.toMatchObject({
+                name: 'StationRequestTimeoutError',
+              });
+            else await expect(result).rejects.toBe(reason);
+          }
+        }
+        expect(fetchMock).toHaveBeenCalledOnce();
+        expect(active.size).toBe(0);
+      },
+    );
+
+    it('keeps the first already-aborted input reason and removes earlier listeners', async () => {
+      const caller = new AbortController();
+      const explicit = new AbortController();
+      const reason = new Error('already cancelled');
+      explicit.abort(reason);
+      const input = new Request(URL_UNDER_TEST, { signal: caller.signal });
+      const add = vi.spyOn(input.signal, 'addEventListener');
+      const remove = vi.spyOn(input.signal, 'removeEventListener');
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(
+        authenticatedFetch(input, { ...options, signal: explicit.signal }),
+      ).rejects.toBe(reason);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(remove.mock.calls).toEqual(
+        add.mock.calls.map(([type, listener]) => [type, listener]),
+      );
+    });
+  });
 });
