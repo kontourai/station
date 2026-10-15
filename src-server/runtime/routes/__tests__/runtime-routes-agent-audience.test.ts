@@ -336,6 +336,7 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       approvalInboxProvider: approvalInbox,
     };
     const app = new Hono();
+    const mcpProbe = vi.fn();
     const context = deepStub({
       approvalRegistry,
       projectMembership: membership.service,
@@ -352,7 +353,9 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       eventBus,
       configLoader,
       mcpService: deepStub({
-        listIntegrations: async () => [],
+        listIntegrations: () => configLoader.listIntegrations(),
+        getIntegration: (id: string) => configLoader.loadIntegration(id),
+        probeIntegration: mcpProbe,
         getMCPToolCatalog: () => [],
       }),
       logger: { debug() {}, info() {}, warn() {}, error() {} },
@@ -431,6 +434,8 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       approvalRegistry,
       bProject,
       notificationService,
+      configLoader,
+      mcpProbe,
     };
   }
 
@@ -503,7 +508,8 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
   };
 
   test('Project admins author only scoped agents and My access reflects current standing without promoting Station authority', async () => {
-    const { base, bProject, revokeB, home } = await setup('admin');
+    const { base, bProject, revokeB, home, configLoader, mcpProbe } =
+      await setup('admin');
     const access = await asAccount(base, '/api/tool-library/access');
     expect(access.status).toBe(200);
     expect(access.body.data.station.operator).toBe(false);
@@ -562,6 +568,28 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
       (await asAccount(base, '/api/tool-library/projects/a-project/agents'))
         .status,
     ).toBe(403);
+    await configLoader.saveIntegration('disabled-reports', {
+      id: 'disabled-reports',
+      kind: 'mcp',
+      transport: 'stdio',
+      command: 'node',
+      enabled: false,
+    });
+    const discovery = await asAccount(
+      base,
+      '/api/tool-library/sources/disabled-reports/discover',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          project: 'b-project',
+          projectId: bProject.id,
+          expectedActor: B_REF.id,
+        }),
+      },
+    );
+    expect(discovery.status).toBe(403);
+    expect(mcpProbe).not.toHaveBeenCalled();
     await revokeB();
     expect(
       (await asAccount(base, '/api/tool-library/projects/b-project/agents'))

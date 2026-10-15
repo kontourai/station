@@ -263,8 +263,11 @@ tell them apart. Only the operator sees the `unshared` review state, and sharing
 and unsharing stay operator-only. Protected reads set
 `Cache-Control: no-store` and bind response delivery to the exact local and
 portable Project incarnation. Membership is rechecked before delivery and each
-streamed chunk. The audited administration endpoints below are the only
-additional Project mutations admitted here. Unrelated personal configuration,
+streamed chunk. The audited administration endpoints below and the scoped
+[Project agent and tool-library routes](../reference/api.md#project-tool-library)
+are the additional Project mutations admitted here. Admins and Owners may author
+constrained agents and request permitted tool sources; only Owners change
+Project tool policy. Member agent execution remains refused. Unrelated personal configuration,
 plugin, terminal, coding, secret and orchestration surfaces remain denied even
 if the Device scope is broader. Existing unbound local/operator Devices retain
 their prior behavior. Existing Tailnet person bindings remain a separate

@@ -210,6 +210,38 @@ describe('createSessionAgentResolver', () => {
     },
   );
 
+  test.each(['claude', 'codex', 'acp'])(
+    'does not export a personal-account endpoint to %s without principal credential delivery',
+    async (provider) => {
+      const resolver = createSessionAgentResolver({
+        loadAgentSpec: async () =>
+          agentSpec({ tools: { mcpServers: ['personal-reports'] } }),
+        resolveToolServer: async () => ({
+          id: 'personal-reports',
+          kind: 'mcp',
+          transport: 'streamable-http',
+          endpoint: 'https://reports.example/mcp',
+          credentialOwnership: { owner: 'principal' },
+        }),
+        resolveSkillDir: async () => null,
+      });
+      const result = await resolver(baseInput({ provider }));
+      expect(result.agent?.toolServers).toEqual([]);
+      expect(
+        result.metadata?.[SESSION_CAPABILITY_DELIVERY_METADATA_KEY],
+      ).toMatchObject({
+        toolServers: {
+          undelivered: [
+            {
+              capability: 'toolServers',
+              id: 'personal-reports',
+              reason: 'engine-unsupported',
+            },
+          ],
+        },
+      });
+    },
+  );
   test('the session resolver excludes a disabled tool server from external-engine delivery', async () => {
     const resolver = createSessionAgentResolver({
       loadAgentSpec: async () =>
