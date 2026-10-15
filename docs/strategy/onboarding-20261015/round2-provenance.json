@@ -1,6 +1,6 @@
 {
   "date": "2026-10-15",
-  "implementationSource": "c1462875d0f",
+  "implementationSource": "Per-capture revision; most earlier captures c1462875d0f, final connected and keyboard 7dfd9fa0cf7",
   "environment": "macOS arm64 Node24.19.0, isolated production server4242 UI5474; iOS26.5 Safari simulator 402x874 CSS px",
   "baseline": "Real captures before each named change. Initial build SHA was not separately recorded; baseline desktop state and geometry retained in first-round report and original images. Mobile keyboard before was captured after first header fixes but before central phone Coding.",
   "after": "Actual running application, not mockups. Source-only later documentation commits do not change these pixels. Each capture records its stage in round-two.html. Crops/comparisons only position original captures side by side; no UI content replaced.",
@@ -29,17 +29,21 @@
     },
     {
       "path": "round2-mobile-keyboard-after.png",
-      "source": "/tmp/station-mobile-central-keyboard-after.png",
+      "source": "/tmp/station-mobile-final-keyboard.png",
       "width": 402,
       "height": 874,
-      "sha256": "bafa1716a1f9433c7a8846f39700fee90206337418f8e71035ae7f1aba0d4442"
+      "sha256": "1c37e1fdcc463a43a25e94dd21119e77f2ee447e53c72f58c3f8ce601116f7c8",
+      "implementationSource": "7dfd9fa0cf7",
+      "scope": "Final direct Project restoration, after Safari process relaunch recovered from recorded restart failure. Existing successful tool transcript retained; no new provider turn in this capture."
     },
     {
       "path": "round2-mobile-chat-after.png",
-      "source": "/tmp/station-mobile-central-after.png",
+      "source": "/tmp/station-mobile-final-connected.png",
       "width": 402,
       "height": 874,
-      "sha256": "d05e6aeb6c956baee66f1f8ea88ef5eb27ef8832c79ecc6e1dbcd24cfa88e995"
+      "sha256": "e7f0a223b66edb15925c75f98b2e97216d687fb81d518953e57b401bbc27bc63",
+      "implementationSource": "7dfd9fa0cf7",
+      "scope": "Final direct Project restoration, after Safari process relaunch recovered from recorded restart failure. Existing successful tool transcript retained; no new provider turn in this capture."
     },
     {
       "path": "round2-coding-before.png",
