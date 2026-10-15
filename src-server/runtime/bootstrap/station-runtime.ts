@@ -199,6 +199,7 @@ import {
   orchestrationStreamPresenceRosterOps,
 } from '../../telemetry/metrics.js';
 import { configuredTelemetryShutdownTask } from '../../telemetry.js';
+import { reconfigureOtelTelemetryDelivery } from '../../telemetry-delivery-state.js';
 import { setRuntimeControlApiBase } from '../../tools/station-control-shared.js';
 import {
   applyConfiguredLogLevel,
@@ -2594,6 +2595,7 @@ export class StationRuntime {
       },
       loadAppConfig: async () => {
         stagedAppConfig = await this.configLoader.loadAppConfig();
+        this.applyPersistedTelemetryConfiguration(stagedAppConfig);
         return stagedAppConfig;
       },
     });
@@ -2601,7 +2603,6 @@ export class StationRuntime {
     this.rebuildGlobalToolRegistry();
     this.assertAgentConfigurationRevisions(configurationBefore, composition);
     this.appConfig = appConfig;
-    this.usageTelemetry?.reconfigure(appConfig);
     applyConfiguredLogLevel(appConfig.logLevel, this.logger);
     if (registryPolicyApplication)
       await this.registryTrustPolicyAuthority!.publishApplied(
@@ -3159,6 +3160,7 @@ export class StationRuntime {
   async reloadDefaultAgent(): Promise<void> {
     await this.mutateAgentConfiguration(async () => {
       const appConfig = await this.configLoader.loadAppConfig();
+      this.applyPersistedTelemetryConfiguration(appConfig);
       const configurationBefore = this.captureAgentConfigurationRevisions();
       this.loadedProviderLaunchabilityRevision = null;
       this.loadedAppConfigLaunchabilityRevision = null;
@@ -3166,9 +3168,39 @@ export class StationRuntime {
       this.rebuildGlobalToolRegistry();
       this.assertAgentConfigurationRevisions(configurationBefore);
       this.appConfig = appConfig;
-      this.usageTelemetry?.reconfigure(appConfig);
       this.recordLoadedConfigurationRevisions(configurationBefore);
     });
+  }
+
+  private applyPersistedTelemetryConfiguration(config: AppConfig): void {
+    this.usageTelemetry?.reconfigure(config);
+    reconfigureOtelTelemetryDelivery(config);
+  }
+
+  private async initializeUsageTelemetry(): Promise<void> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const snapshot =
+        await this.configLoader.captureAppConfigLaunchabilitySnapshot();
+      if (this.configLoader.getLaunchabilityRevision() !== snapshot.revision)
+        continue;
+      // HTTP is already listening: a saved withdrawal must survive late construction.
+      const telemetry = new UsageTelemetryService({
+        homeDir: this.configLoader.getProjectHomeDir(),
+        appConfig: snapshot.config,
+        version: packageJson.version,
+        buildProvenance: this.buildProvenanceSnapshot ?? null,
+        logger: this.logger,
+        telemetrySecretResolver: this.secretBindingAdministration,
+      });
+      this.usageTelemetry = telemetry;
+      // Assignment precedes this await so subsequent PUTs reach the live owner.
+      await telemetry.loadDisclosureReceipt();
+      this.orchestrationService.setUsageTelemetry(telemetry);
+      return;
+    }
+    throw new Error(
+      'App configuration changed before product telemetry initialization.',
+    );
   }
 
   private async reloadDefaultAgentFromConfig(
@@ -3862,18 +3894,7 @@ export class StationRuntime {
     await this.startConsentListenerOrReport();
     await this.startTaskRoomAcceptanceControlIfConfigured();
     this.discordGatewayService.start();
-    this.usageTelemetry = new UsageTelemetryService({
-      homeDir: this.configLoader.getProjectHomeDir(),
-      appConfig: this.appConfig,
-      version: packageJson.version,
-      buildProvenance: this.buildProvenanceSnapshot ?? null,
-      logger: this.logger,
-    });
-    // A saved, current receipt remains consent after a restart. This read is
-    // fail-closed: loadDisclosureReceipt logs malformed receipts and leaves
-    // telemetry inactive, while a missing receipt stays silent and inactive.
-    await this.usageTelemetry.loadDisclosureReceipt();
-    this.orchestrationService.setUsageTelemetry(this.usageTelemetry);
+    await this.initializeUsageTelemetry();
     this.observeRuntimeConfigurationSources();
     // This is the last awaited startup step. Failed listeners/services above
     // cannot leave an accepted policy decision from an incomplete startup.

@@ -234,9 +234,11 @@ implicitly reactivate sessions, scheduled jobs, grants, or account selection.
 | `@kontourai/monument` | `packages/monument/` | Tier 1 package (ADR 0005), shaped for publication but `private: true` until its first, owner-gated publish (see its README); imports nothing of Station's | Engine-neutral durability kernel: turn dedup, turn boundaries, request keys, conformance suite. Station runs its turn dedup and session-control request keys on it, over its own tables; turn boundaries are still Station's |
 | `@kontourai/station-cli` | `packages/cli/` | Published (npm, Apache-2.0) | Client CLI package; checkout-only host commands remain behind `./station` |
 
-The contracts, SDK, shared, and Monument packages ship raw TypeScript source, so their
+The contracts, SDK, and shared packages ship raw TypeScript source, so their
 consumers need a bundler or a TS-aware loader; each README documents that
-constraint. The CLI ships a bundled executable. Connect is marked `private: true` in this checkout; that does not imply it was
+constraint. Monument publishes compiled `dist/` (build it with
+`npm run build:monument`, smoke the packed tarball with `npm run monument-pack:smoke`),
+and its README says why only pnpm packs it correctly. The CLI ships a bundled executable. Connect is marked `private: true` in this checkout; that does not imply it was
 never published historically. The repo-root `./station` launcher
 remains the checkout entry point for host and contributor commands.
 

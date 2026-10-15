@@ -6,6 +6,7 @@ Station product telemetry is server-side only and sends no prompts, paths, repos
 
 Usage telemetry is enabled by default and has a visible Station Settings toggle.
 The saved `telemetryEnabled` setting takes precedence over
+`STATION_PRODUCT_TELEMETRY_ENABLED`, its legacy alias
 `STATION_TELEMETRY_ENABLED`, then the default. **Without an ingestion endpoint,
 this service sends nothing:** it starts no telemetry timer, buffers no events
 and makes no ingestion request. The repository configures no default endpoint.
@@ -15,7 +16,91 @@ the stored acknowledgement records acceptance, not proof the user read it.
 
 The acknowledgement POST must include acknowledgementProtocol:2 and the inventoryRevision the UI displayed. Missing/unsupported acknowledgement versions return 426 with update guidance; a missing revision returns 400 and a stale revision returns 409; an older UI cannot acknowledge metadata it does not display. The service also refuses a mismatched revision before writing. The handshake and disclosure publish this feature version; client/server protocol2 retains core protocol1 admission. An older installed UI only shows its existing generic acknowledgement failure until updated. New metadata stays inactive; no legacy sender fallback runs on this host. A receipt records its acknowledgement timestamp and the SHA-256 revision of this inventory under `STATION_HOME/config/usage-telemetry-disclosure.json`. A changed inventory invalidates an older receipt and stops emission until it is shown and acknowledged again: new data must not leave before the user has seen it.
 
-When an operator configures `STATION_TELEMETRY_ENDPOINT`, Station POSTs batches directly to that endpoint. `STATION_USAGE_TELEMETRY_KEY`, when set, is sent only as that endpoint's `x-api-key` request header. `STATION_TELEMETRY_API_KEY` remains exclusive to OTLP exports and is never sent to the product endpoint. The payload carries a SHA-256 hash of a random UUID persisted at `STATION_HOME/config/usage-telemetry-id`; the raw UUID never leaves the process.
+When an operator configures `STATION_PRODUCT_TELEMETRY_ENDPOINT`, Station POSTs
+batches directly to that full address. It does not append an ingestion path.
+`STATION_PRODUCT_TELEMETRY_KEY`, when set, is sent only as that endpoint's
+`x-api-key` header. `STATION_OTEL_API_KEY` remains exclusive to OTLP exports.
+The legacy product aliases are `STATION_TELEMETRY_ENDPOINT` and
+`STATION_USAGE_TELEMETRY_KEY`; the legacy OTLP key is
+`STATION_TELEMETRY_API_KEY`. A valid nonempty canonical value wins over its
+same-destination alias. Blank values are absent; invalid boolean values are
+ignored before trying the alias and default. Bootstrap notices name invalid,
+legacy or conflicting variables without printing their values. Aliases remain
+supported until a separate release decision removes them; neither destination
+ever falls back to the other destination's key.
+
+The payload carries a SHA-256 hash of a random UUID persisted at
+`STATION_HOME/config/usage-telemetry-id`; the raw UUID never leaves the process.
+
+## Delivery status and connection checks
+
+Settings → Telemetry shows the connected Station's current-process queue,
+acknowledged observations, failed attempts and discarded observations. These
+are process counters, not lifetime accounting or a durable spool. A product
+batch leaves the queue only after a matching `station-product-commit/v1`
+receipt covers its exact event IDs and counts. Generic 2xx responses, malformed
+receipts, refused redirects and bounded-response failures retain the batch for
+retry with the same IDs. The latest failed attempt remains visible alongside
+historical success. Refreshing or unavailable status hides cached success.
+
+An operator's **Check connection** calls a separate
+`station-product-probe/v1` source-key endpoint when the configured address has
+the supported `/v1/product/events` shape. The probe verifies source authority
+and compatible PostgreSQL schema/query readiness without inserting a source,
+observation or commit receipt. It does not create an installation identifier or
+acknowledge disclosure. Other address shapes report unsupported instead of
+guessing a credential-bearing request path. Revoked keys and incompatible
+storage fail. Probe readiness is distinct from an acknowledged usage event.
+
+Status reads require `orchestration:read`; connection checks require
+`access:manage`, including paired callers. Status responses contain presence
+and counters, not addresses, credentials, source IDs or receipt IDs. Requests
+and caches remain bound to the selected Station authority.
+
+OTLP exporter callback acceptance and empty OTLP connection probes have their
+own status. They do not establish downstream persistence or querying. Supported
+deployment and full acceptance remain [#3458](https://github.com/kontourai/station/issues/3458)
+and [#3464](https://github.com/kontourai/station/issues/3464).
+
+The operator can save a full product address and an instance SecretBinding ID
+in Settings. A saved address wins over the environment address and does not
+inherit the environment key. A saved key reference requires an exact
+`instance-telemetry-destination` product grant for that address. Missing,
+revoked, person-owned or ungranted bindings fail without environment fallback.
+Create the reference under Integrations → Advanced: Secret bindings, then use
+Telemetry destination grants to choose an instance reference, a product receiver
+or OTel collector, and the exact address. Existing grants can be removed there;
+each change requires the reference's current revision and operator authority.
+Selecting a reference or saving an address never grants it implicitly. A revoked
+or person-owned reference cannot receive an instance destination grant.
+Changing a destination or key reference withdraws queued observations bound to
+the old destination, aborts/fences its attempts and clears its current health.
+The config PUT applies this change from the validated persisted configuration
+before awaiting Agent/provider activation. Disabling product telemetry also
+withdraws queued observations at that boundary. A pending Agent activation
+response does not defer telemetry withdrawal. Unchanged telemetry settings
+preserve requests, queues and delivery health. External reconciliation applies
+telemetry after its validated config read, before preparing Agents.
+The HTTP listener can accept settings before the product service is constructed.
+Late construction uses a validated, revisioned config snapshot and rechecks its
+revision immediately before assigning the service. Three changed snapshots
+refuse initialization; an older Agent boot snapshot cannot restore withdrawn
+product sending. Later PUTs reach the assigned service before disclosure loading
+finishes. This does not publish a new Agent generation.
+External secret backend reads run through a deadline-owned Datum child; raw
+keys never persist in AppConfig or appear in status.
+
+Saved collector addresses and key references activate after Station restarts.
+The bootstrap observes the saved address before synchronously registering OTel
+providers; exporters wait for installation identity and exact OTLP credential
+authority. Changing saved collector settings fences the old process's exports
+and clears its current health; Settings reports restart required. A saved
+collector address never inherits the environment key. Clear standard
+`OTEL_EXPORTER_OTLP_HEADERS` and signal-specific header variables when using a
+saved collector or key reference: the pinned SDK merges them, so Station
+refuses that combination rather than forwarding them to a newly selected
+destination. Legacy environment-only collector configuration retains those
+standard headers. Product disclosure remains independent.
 
 ## What `distinct_id` is, and when it is not stable
 

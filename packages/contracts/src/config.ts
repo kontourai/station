@@ -67,6 +67,13 @@ export interface AppConfig {
   logLevel?: 'trace' | 'debug' | 'info' | 'warn' | 'error';
   /** Default on, but nothing is sent unless an endpoint is configured. */
   telemetryEnabled?: boolean;
+  /** Saved full product POST destination; takes precedence over environment fallback. */
+  productTelemetryEndpoint?: string;
+  /** Instance-owned, exact-destination SecretBinding reference; never inline key material. */
+  productTelemetryKeyRef?: string;
+  /** Collector base address and an exact instance secret reference, activated at process start. */
+  otelTelemetryEndpoint?: string;
+  otelTelemetryKeyRef?: string;
   registryUrl?: string;
   registryTrust?: RegistryTrustConfiguration;
   gitRemote?: string;

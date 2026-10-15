@@ -26,6 +26,10 @@
 
     "src-ui/src/hooks/usePushNotifications.ts",
 
+    "src-server/domain/telemetry-configuration.ts",
+
+    "src-server/domain/telemetry-bootstrap-config.ts",
+
     "pnpm-lock.yaml#/packages",
 
     "pnpm-lock.yaml#/snapshots"

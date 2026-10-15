@@ -10,7 +10,10 @@ import {
   PRODUCT_TELEMETRY_ENVELOPE,
   type ProductTelemetryBatch,
   type ProductTelemetryBuild,
+  type ProductTelemetryCommitReceipt,
   type ProductTelemetryObservation,
+  type ProductTelemetryProbeReceipt,
+  type ProductTelemetryProbeRequest,
   type ProductTelemetryPropertyDefinition as PropertyDefinition,
   USAGE_TELEMETRY_EVENTS,
   type UsageTelemetryEvent,
@@ -112,6 +115,109 @@ const utcTime = (value: unknown): value is string =>
   new Date(value).toISOString() === value;
 const onlyKeys = (value: Record<string, unknown>, keys: readonly string[]) =>
   Object.keys(value).every((key) => keys.includes(key));
+const productUuid = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+
+export function parseProductTelemetryCommitReceipt(
+  value: unknown,
+  expectedEventIds: readonly string[],
+): ProductTelemetryCommitReceipt {
+  if (
+    !record(value) ||
+    !onlyKeys(value, [
+      'protocol',
+      'receiptId',
+      'sourceId',
+      'eventIds',
+      'inserted',
+      'alreadyPresent',
+      'storedAt',
+    ]) ||
+    value.protocol !== 'station-product-commit/v1' ||
+    !productUuid(value.receiptId) ||
+    !productUuid(value.sourceId) ||
+    !utcTime(value.storedAt) ||
+    !Array.isArray(value.eventIds) ||
+    value.eventIds.length < 1 ||
+    value.eventIds.length > 20 ||
+    typeof value.inserted !== 'number' ||
+    !Number.isInteger(value.inserted) ||
+    value.inserted < 0 ||
+    typeof value.alreadyPresent !== 'number' ||
+    !Number.isInteger(value.alreadyPresent) ||
+    value.alreadyPresent < 0
+  )
+    throw new Error('Invalid product telemetry commit receipt');
+  const eventIds: string[] = [];
+  for (const id of value.eventIds) {
+    if (!productUuid(id)) throw new Error('Invalid product receipt event ID');
+    eventIds.push(id.toLowerCase());
+  }
+  const expected = new Set(expectedEventIds.map((id) => id.toLowerCase()));
+  if (
+    new Set(eventIds).size !== eventIds.length ||
+    expected.size !== eventIds.length ||
+    eventIds.some((id) => !expected.has(id)) ||
+    value.inserted + value.alreadyPresent !== eventIds.length
+  )
+    throw new Error('Product telemetry receipt does not cover its batch');
+  return {
+    protocol: 'station-product-commit/v1',
+    receiptId: value.receiptId.toLowerCase(),
+    sourceId: value.sourceId.toLowerCase(),
+    eventIds,
+    inserted: value.inserted,
+    alreadyPresent: value.alreadyPresent,
+    storedAt: value.storedAt,
+  };
+}
+
+export function parseProductTelemetryProbeRequest(
+  value: unknown,
+): ProductTelemetryProbeRequest {
+  if (
+    !record(value) ||
+    !onlyKeys(value, ['protocol', 'inventoryRevision']) ||
+    value.protocol !== 'station-product-probe/v1' ||
+    value.inventoryRevision !== USAGE_TELEMETRY_INVENTORY_REVISION
+  )
+    throw new Error('Invalid product telemetry probe');
+  return {
+    protocol: 'station-product-probe/v1',
+    inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+  };
+}
+
+export function parseProductTelemetryProbeReceipt(
+  value: unknown,
+): ProductTelemetryProbeReceipt {
+  if (
+    !record(value) ||
+    !onlyKeys(value, [
+      'protocol',
+      'sourceId',
+      'inventoryRevision',
+      'checkedAt',
+      'storage',
+    ]) ||
+    value.protocol !== 'station-product-probe/v1' ||
+    !productUuid(value.sourceId) ||
+    value.inventoryRevision !== USAGE_TELEMETRY_INVENTORY_REVISION ||
+    !utcTime(value.checkedAt) ||
+    value.storage !== 'postgres-schema-v1'
+  )
+    throw new Error('Invalid product telemetry probe receipt');
+  return {
+    protocol: 'station-product-probe/v1',
+    sourceId: value.sourceId.toLowerCase(),
+    inventoryRevision: USAGE_TELEMETRY_INVENTORY_REVISION,
+    checkedAt: value.checkedAt,
+    storage: 'postgres-schema-v1',
+  };
+}
 
 /** Strict v1 receiver boundary. Legacy batches require a separate explicit ingestion profile. */
 export function parseProductTelemetryBatch(

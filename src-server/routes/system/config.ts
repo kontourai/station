@@ -5,6 +5,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { parseEngineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import {
+  type AppConfig,
   describeFirstRunTransitionViolation,
   type FirstRunTransitionRequest,
   firstRunStateForTransition,
@@ -35,7 +36,10 @@ import {
   projectPublicCredentialProfiles,
 } from '../../providers/app-home/credential-profile-registry.js';
 import type { AgentConfigurationMutationRunner } from '../../runtime/types.js';
-import { mayGrantFullAccess } from '../../security/coding-authority.js';
+import {
+  isOperatorInPersonNotAgent,
+  mayGrantFullAccess,
+} from '../../security/coding-authority.js';
 import {
   grantedPairingScope,
   type PairingScopeContextStore,
@@ -249,6 +253,7 @@ export function createConfigRoutes(
   // that never ask about a project see no behavior change.
   readProject?: (slug: string) => ProjectConfig | undefined,
   authorizeContributionMutation?: (request: Request) => boolean,
+  onAppConfigPersisted?: (config: AppConfig) => void,
 ) {
   const app = new Hono();
   const logLevelEdits = new LogLevelEditService(configLoader);
@@ -514,6 +519,66 @@ export function createConfigRoutes(
       const presentedScope = grantedPairingScope(
         c as unknown as PairingScopeContextStore,
       );
+      if (
+        [
+          'productTelemetryEndpoint',
+          'productTelemetryKeyRef',
+          'otelTelemetryEndpoint',
+          'otelTelemetryKeyRef',
+        ].some((key) => Object.hasOwn(body as object, key))
+      ) {
+        if (requestMayBeAnAgent(c.req.raw))
+          return c.json(
+            {
+              success: false,
+              error:
+                'An agent cannot change telemetry destinations or key references. The operator can, in Settings.',
+            },
+            403,
+          );
+        if (
+          !isOperatorInPersonNotAgent(c.req.raw) &&
+          (presentedScope === undefined ||
+            !pairingScopeIncludes(presentedScope, 'access:manage'))
+        )
+          return c.json(
+            {
+              success: false,
+              error:
+                'An operator must configure telemetry destinations and key references.',
+            },
+            403,
+          );
+        for (const name of [
+          'productTelemetryEndpoint',
+          'otelTelemetryEndpoint',
+        ]) {
+          const endpoint = (body as Record<string, unknown>)[name];
+          if (endpoint !== undefined && endpoint !== null && endpoint !== '') {
+            try {
+              if (typeof endpoint !== 'string') throw new Error();
+              const address = new URL(endpoint);
+              if (
+                !['http:', 'https:'].includes(address.protocol) ||
+                address.username ||
+                address.password ||
+                address.search ||
+                address.hash
+              )
+                throw new Error();
+            } catch {
+              return c.json(
+                {
+                  success: false,
+                  error:
+                    'Use a full HTTP(S) telemetry destination without embedded credentials, a query or a fragment.',
+                },
+                400,
+              );
+            }
+          }
+        }
+      }
       //
       // archive#1500 extends the SAME guard to the scoped
       // `contribution` map, before any consumer of it exists. That map's
@@ -647,9 +712,9 @@ export function createConfigRoutes(
       const priorBuiltinEngineConnectionId =
         priorConfig.builtinAgentEngineConnectionId;
       const contributionRequested = Object.hasOwn(accepted, 'contribution');
-      const update = (beginMutation: () => void) => {
+      const update = async (beginMutation: () => void) => {
         beginMutation();
-        return configLoader.mutateAppConfig((current) => {
+        const updated = await configLoader.mutateAppConfig((current) => {
           // A semantic contribution change needs the BOUND-OPERATOR verdict,
           // whatever scope the presenting credential claims — an absent
           // presented scope is NOT an operator, it is an unscoped caller, so
@@ -679,6 +744,9 @@ export function createConfigRoutes(
           }
           return accepted;
         });
+        // Telemetry withdrawal must not wait for unrelated Agent activation.
+        onAppConfigPersisted?.(updated);
+        return updated;
       };
       const mutation = await captureConfigurationMutation(
         applyConfigurationMutation,

@@ -25,6 +25,7 @@ const CLEAN = {
   [`${ROOT}/README.md`]: '# Monument\n',
   [`${ROOT}/LICENSE`]: 'Apache-2.0\n',
   [`${ROOT}/tsconfig.json`]: '{}\n',
+  [`${ROOT}/tsconfig.build.json`]: '{}\n',
   [`${ROOT}/src/index.ts`]:
     "import { DatabaseSync } from 'node:sqlite';\nexport { local } from './local.js';\nexport type Db = DatabaseSync;\n",
   [`${ROOT}/src/local.ts`]: 'export const local = 1;\n',
