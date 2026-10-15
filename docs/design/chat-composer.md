@@ -219,17 +219,16 @@ settle later, so completion order cannot change current status. Reader generatio
 tokens stop released or replaced readers from publishing. A stream epoch change
 resets the authority client’s sequence fences and invalidates old-epoch read
 tokens while retaining unresolved failures until a new-epoch observation.
-Response publishers use the read token's `current()` check before applying
-history activity or an open-resolution chat patch (option B). This covers
-initial history, older pages, picker opens, retries, and binding revalidation,
-including an epoch replacement while an open is awaiting focus. Imperative
-picker opens and active retries retain the observation until settlement or
-epoch/cache invalidation, so an unrelated inventory refresh cannot retire an
-in-flight read. Open resolution uses an explicit 30-second SDK timeout; the
-imperative command also has a 30-second total bound covering awaited hydration
-and focus. A timeout aborts the request and shows the existing recovery/error
-state. Epoch invalidation releases the pin and aborts immediately, without
-waiting for transport settlement; retired commands cannot publish or focus.
+History and binding-revalidation response publishers use the read token's
+`current()` check before applying activity or chat patches (option B).
+Picker opens and active retries capture the stream epoch generation separately:
+an epoch change before resolution settles discards the result, without opening,
+patching the chat, or publishing activity. Within the same epoch, inventory
+pruning may retire the observation token but cannot discard an imperative open
+or its chat update. Only a current observation token publishes read success or
+failure; mounting the opened chat re-establishes observation. Picker validity
+also gates focus and the final patch after awaited hydration. These commands
+add no deadline or abort signal to resolution or transcript hydration.
 Mounted revalidators and history readers retain it through their subscription. The same
 boundary resets and cancels cached inventory and sessions queries; their
 activity feed accepts only rows still held by the current query cache. Stream

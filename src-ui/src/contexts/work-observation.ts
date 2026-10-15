@@ -55,6 +55,8 @@ class WorkObservation {
     };
   };
   snapshot = () => this.revision;
+  // Imperative opens survive record pruning, but never a stream epoch replacement.
+  streamEpochGeneration = () => this.epochGeneration;
   begin = () => {
     this.ensureLifecycle();
     return ++this.clock;

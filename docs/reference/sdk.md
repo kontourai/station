@@ -1310,8 +1310,8 @@ carry a current Session identity and a server-derived
 `canContinue` decision. Transport, rejection, and invalid wire failures throw a
 typed `ConversationOpenResolutionFailure` rather than degrading to an empty
 chat. Optional `options.signal` cancels the request and `options.timeoutMs`
-sets its deadline, including JSON body consumption. The UI authoritative-open
-reader explicitly sets 30 seconds; this does not enable a global SDK deadline.
+sets its deadline, including JSON body consumption. Picker opens and active retries use the default request behavior without
+per-call options; they add no command deadline.
 
 Import this exceptional-path API from
 `@kontourai/station-sdk/conversation-open`. Keeping it on a dedicated subpath
