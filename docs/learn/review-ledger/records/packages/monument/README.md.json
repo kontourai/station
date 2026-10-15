@@ -24,7 +24,15 @@
 
     "packages/monument/src/commands.ts",
 
-    "packages/monument/src/records.ts"
+    "packages/monument/src/records.ts",
+
+    "packages/monument/src/testing/host-boundary-conformance.ts",
+
+    "packages/monument/src/testing/index.ts",
+
+    "src-server/services/orchestration/__tests__/monument-boundary-host.test.ts",
+
+    "src-server/services/orchestration/__tests__/fixtures/monument-boundary.ts"
   ],
 
   "checks": []
