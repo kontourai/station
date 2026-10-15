@@ -381,10 +381,16 @@ export function ResponsiveDialogSurface({
     }
     const first = controls[0];
     const last = controls.at(-1)!;
-    if (event.shiftKey && document.activeElement === first) {
+    const activeControl = controls.find(
+      (control) => control === document.activeElement,
+    );
+    if (!activeControl) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    } else if (event.shiftKey && activeControl === first) {
       event.preventDefault();
       last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
+    } else if (!event.shiftKey && activeControl === last) {
       event.preventDefault();
       first.focus();
     }

@@ -423,6 +423,38 @@ for (const [label, viewport] of [
     await evidence(page, testInfo, `start-composer-sent-${label}.png`);
   });
 
+  test(`${label}: the unavailable microphone dialog contains reverse Tab from its panel`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport);
+    await page.addInitScript(() => {
+      Object.defineProperty(window, 'SpeechRecognition', { value: undefined });
+      Object.defineProperty(window, 'webkitSpeechRecognition', {
+        value: undefined,
+      });
+    });
+    const executionRequests: Array<Record<string, unknown>> = [];
+    await installMockOrchestrationSse(page);
+    await seedRoutes(page, executionRequests);
+    const { composer } = await openStartComposer(page, label);
+    const mic = composer.getByRole('button', {
+      name: 'Microphone unavailable',
+    });
+    await mic.focus();
+    await mic.press('Enter');
+    const dialog = page.getByRole('dialog', {
+      name: 'Microphone unavailable',
+    });
+    await expect(dialog).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(
+      dialog.getByRole('button', { name: 'Close microphone explanation' }),
+    ).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toBeHidden();
+    await expect(mic).toBeFocused();
+  });
+
   test(`${label}: a running turn keeps attach usable and says why files wait`, async ({
     page,
   }, testInfo) => {

@@ -185,6 +185,47 @@ describe('ResponsiveDialogSurface', () => {
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
+  test.each([
+    { mobile: false, shiftKey: true },
+    { mobile: false, shiftKey: false },
+    { mobile: true, shiftKey: true },
+    { mobile: true, shiftKey: false },
+  ])(
+    'contains Tab from panel and non-control focus (mobile=$mobile, shift=$shiftKey)',
+    ({ mobile, shiftKey }) => {
+      setMobileViewport(mobile);
+      render(
+        <ResponsiveDialogSurface
+          layer="dialog"
+          ariaLabel="Panel-focused dialog"
+          onClose={vi.fn()}
+        >
+          <h2 tabIndex={-1}>Details</h2>
+          <button type="button">First action</button>
+          <button type="button">Last action</button>
+        </ResponsiveDialogSurface>,
+      );
+
+      const dialog = screen.getByRole('dialog', {
+        name: 'Panel-focused dialog',
+      });
+      const first = screen.getByRole('button', { name: 'First action' });
+      const last = screen.getByRole('button', { name: 'Last action' });
+      expect(document.activeElement).toBe(dialog);
+      expect(fireEvent.keyDown(dialog, { key: 'Tab', shiftKey })).toBe(false);
+      expect(document.activeElement).toBe(shiftKey ? last : first);
+
+      const heading = screen.getByRole('heading', { name: 'Details' });
+      heading.focus();
+      expect(fireEvent.keyDown(heading, { key: 'Tab', shiftKey })).toBe(false);
+      expect(document.activeElement).toBe(shiftKey ? last : first);
+
+      (shiftKey ? first : last).focus();
+      fireEvent.keyDown(document.activeElement!, { key: 'Tab', shiftKey });
+      expect(document.activeElement).toBe(shiftKey ? last : first);
+    },
+  );
+
   test('renders an alert dialog with the same modal keyboard and close contract', () => {
     setMobileViewport(false);
     const onClose = vi.fn();
