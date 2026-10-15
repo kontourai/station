@@ -871,3 +871,31 @@ Room records accept legacy `station.project-task-room/v2` and new
 principal. Existing records retain their exact bytes and integrity digests.
 See the [API review contract](api.md#review-an-immutable-task-output) for the
 per-room old-writer fence and permanent duplicate identity behavior.
+
+## Engine durability declarations
+
+`ProviderDurabilityProfile` in the provider contract declares nine required cells:
+steering placement, crash continuation, tool replay, pending approvals, context
+carriage, fork, compaction, partial output and usage. Each cell identifies current
+fidelity (`native`, `emulated` or `none`) and its user-facing limit. These are
+delivery declarations, not permission to replay an effect with an unknown outcome.
+
+Built-in adapters expose the profile in their metadata. The engine capability
+matrix carries the same profile for clients that describe an engine before a
+Session exists. Legacy third-party adapter metadata may omit it; omission is
+unreported capability, never inferred support. Built-in adapter conformance
+rejects omitted cells.
+
+The engine description's **Recovery and delivery** disclosure reads these cells.
+Claude and Codex declare their live steering channels as native. ACP discloses a
+connection-dependent fallback that may interrupt and reprompt. Live steering does
+not imply restart safety: no current profile promises mid-turn crash continuation,
+automatic tool replay or durable approval waits. Context supplied by Station has
+no accepted-through acknowledgement, and usage remains engine-reported where
+available. The unknown-engine profile does not infer context, output or usage
+support.
+
+This profile does not replace existing continuity capabilities or migrate existing
+provider-specific execution paths. Durable inbox placement, accepted-through
+context delivery and crash-durable model/tool steps have separate implementation
+owners. Profile claims must change with their adapter behavior and proof.

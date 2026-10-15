@@ -4,7 +4,7 @@ import {
   ENGINE_CAPABILITY_MATRICES,
   UNKNOWN_EXTERNAL_ENGINE_MATRIX,
 } from '@kontourai/station-contracts/engine-capability-matrix';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import {
   deriveCapabilityChips,
@@ -181,7 +181,6 @@ describe('EngineCapabilitySummary derivations', () => {
   });
 });
 
-
 describe('engine recovery disclosure', () => {
   it('discloses unsupported crash continuation even when live steering exists', () => {
     render(
@@ -190,8 +189,39 @@ describe('engine recovery disclosure', () => {
         connectionName="Claude Code"
       />,
     );
-    expect(screen.getByText('Recovery and delivery')).toBeTruthy();
-    expect(screen.getByText('A running turn cannot continue after a Station restart.')).toBeTruthy();
-    expect(screen.getByText('Pending approvals do not survive an engine restart.')).toBeTruthy();
+    fireEvent.click(screen.getByText('Recovery and delivery'));
+    expect(
+      screen.getByText('Recovery and delivery').closest('details')?.open,
+    ).toBe(true);
+    expect(
+      screen.getByText(
+        'A running turn cannot continue after a Station restart.',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('Pending approvals do not survive an engine restart.'),
+    ).toBeTruthy();
   });
+});
+
+it('the rendered steering claim follows the profile when the legacy flag disagrees', () => {
+  const matrix = {
+    ...ENGINE_CAPABILITY_MATRICES.claude,
+    durability: {
+      ...ENGINE_CAPABILITY_MATRICES.claude.durability,
+      steerPlacement: {
+        state: 'none' as const,
+        detail: 'This connection cannot steer.',
+      },
+    },
+  };
+  const { container } = render(
+    <EngineCapabilitySummary matrix={matrix} connectionName="Custom" />,
+  );
+  expect(screen.queryByText('Mid-turn steering')).toBeNull();
+  expect(screen.getByText('This connection cannot steer.')).toBeTruthy();
+  expect(
+    container.querySelector('.engine-capability-summary__recovery')
+      ?.textContent,
+  ).toContain('Steering — Unavailable:');
 });

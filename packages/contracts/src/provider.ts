@@ -33,6 +33,26 @@ export interface ProviderContinuityCapabilities {
   nativeReturn?: 'same-binding';
 }
 
+/** Current delivery fidelity, not a promise that an interrupted effect is replayable. */
+export interface DurabilityCapability {
+  state: 'native' | 'emulated' | 'none';
+  /** User-facing limit owned by the declaring adapter. */
+  detail: string;
+}
+
+/** Every capability is explicit; an omitted cell is an invalid declaration. */
+export interface ProviderDurabilityProfile {
+  steerPlacement: DurabilityCapability;
+  crashContinuation: DurabilityCapability;
+  toolReplay: DurabilityCapability;
+  pendingApprovals: DurabilityCapability;
+  contextCarriage: DurabilityCapability;
+  fork: DurabilityCapability;
+  compaction: DurabilityCapability;
+  partialOutput: DurabilityCapability;
+  usage: DurabilityCapability;
+}
+
 export const NATIVE_RESUME_IDENTITY_METADATA_KEY = 'nativeResumeIdentity';
 export const NATIVE_RESUME_BINDING_METADATA_KEY = 'nativeResumeBindingKey';
 export type NativeResumeIdentityStatus = 'matched' | 'mismatch';
