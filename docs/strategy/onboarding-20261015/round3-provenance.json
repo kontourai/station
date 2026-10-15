@@ -43,7 +43,7 @@
       "path": "round3-phone-after.png",
       "original": "/tmp/station-r3-phone-final2.png",
       "source": "6622ab4f153",
-      "note": "Inspect visual before final report acceptance.",
+      "note": "Negative evidence: health timeout and unrelated first-run engine reminder after authored server restart. This is not a successful final phone capture.",
       "sha256": "f74720cbc1a602e71d0d15398130e8a8c8d7047224fcb0bb0c4a1592ad8eb871"
     },
     {
@@ -59,6 +59,14 @@
       "source": "6622ab4f153",
       "note": "Plain pending layout with existing Back button. Unrelated first-run engine notice also visible.",
       "sha256": "e374f0885ad4355f349501468c4aba7999dd149fd439e1c301226a2a88c3a7f3"
+    },
+    {
+      "path": "round3-terminal-live.png",
+      "original": "/Users/brian/.t3/userdata/browser-artifacts/browser-screenshot-localhost-mv9yxzg9-e2c0af2c.png",
+      "source": "6622ab4f153",
+      "note": "Actual rebuilt terminal after echo/pwd, viewport resize, sleep30 and Ctrl+C followed by R3_INTERRUPT_OK. Prompt reflow retains visual artifacts; full Terminal epic remains open.",
+      "sha256": "02d44a90cbe5bce9983ddfe6f3677797d19fa5be5ffe48c392275725f4ebd180"
     }
-  ]
+  ],
+  "crops": "Header crops frame x240..1280, y40..240 from the original1280x800 captures; no UI pixels changed."
 }
