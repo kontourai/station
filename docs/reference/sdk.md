@@ -471,6 +471,22 @@ Returns a query whose data is the current inbound paired-device registry from
 copy them into session or event records. An authorization or response failure
 is a query error, not an empty device list.
 
+#### `useStationPeopleQuery(apiBase?)` and personal access tokens
+
+`useStationPeopleQuery` reads `GET /api/pairing/people` (#3557);
+`useSetStationPersonGroupMutation`, `useMintStationPersonTokenMutation` and
+`useRevokeStationPersonTokenMutation` make the operator's changes. A person's
+own tokens use `useOwnAccessTokensQuery`, `useMintOwnAccessTokenMutation` and
+`useRevokeOwnAccessTokenMutation` on `/api/access/tokens`. Refusals throw
+`StationAccessError` with the HTTP `status` and the server's `code`:
+`isOperatorCredentialRequired` is the 401 a change without the operator
+credential gets, and `isStationAccessUnavailable` is a read refused as not for
+this caller (401, 403 or 404), which a surface hides rather than shows. A mint
+answers the secret once. The mint mutation holds that answer while observed, so
+call its `reset()` once the secret is captured; the settled mutation is then
+evicted at once. `setStationPersonGroup` resolves `{ person, revocations }`,
+where `revocations` is keyed by each device whose full access was reset.
+
 #### `useConnectionsQuery()`
 
 Returns the merged Connections list used by the Connections hub. The result includes both model and runtime rows from `GET /api/connections`.
@@ -1826,7 +1842,8 @@ apart. Member pages read history and document only after that publication
 matches the listed item.
 
 These reads require the current account-bound Device, account session and active
-Project membership. Station rechecks the exact Project, publication and Task
+Project membership; an account-tied personal access token (#3586) stands in
+for the Device and session while its account is current. Station rechecks the exact Project, publication and Task
 incarnation during admission and before response delivery, so membership,
 Device or publication revocation closes an in-flight read. A Project membership
 does not publish every Task. Project owner/admin publication remains pending;
@@ -1946,7 +1963,7 @@ providers return a guidance projection instead of local account controls.
 answer to "what authority is this request acting as": the current public home
 identity, the server-resolved effective principal (kind+id only, no contacts),
 and the verified grant tier (operator, or paired Device with its public Device
-id and granted scopes). The read is authorization-neutral — it describes
+id and the scopes it may use: its grant, capped by its person's Station group). The read is authorization-neutral — it describes
 authority and grants nothing — and fails closed on absent, conflicting, or
 revoked authority, never a guessed identity. Pass the SAME `ClientRequestOptions`
 (request scope, credential, headers) as the caller's other protected requests;
@@ -3369,6 +3386,19 @@ does not yet pass the header to the renderer, so requests it carries stay on
 the fallback.
 `ForegroundMessageIndeterminateError` keeps its `detail` and fixed `code`.
 Both classes retain their positional constructors.
+The direct chat stream (`streamConversationTurn`) rejects a retried
+`clientTurnId` that may already have reached the agent, or whose result
+Station no longer keeps, with a `ChatHttpError` whose `code` is
+`foreground_message_indeterminate` and whose `outcome` is `'indeterminate'`.
+Do not resend that turn automatically; open the conversation instead. Other
+refusals leave `outcome` unset.
+`getTurnDelivery(apiBase, conversationId, clientTurnId, { projectSlug? })`
+asks Station what became of one send by its `clientTurnId`, for example after
+the connection dropped before the answer arrived. It is read-only and returns a
+`TurnDeliveryInspection`; only `not-received` means the same key may be sent
+again. A Station without the lookup answers `404`, which throws a refusal
+rather than reading as `not-received`. The
+[Session API](session-api.md) defines each outcome.
 
 `ProjectTaskRoomProtocolError` remains a plain `Error` subclass. Its
 HTTP/envelope failure form carries `status`, `code`, `details` and

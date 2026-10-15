@@ -508,6 +508,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'scripts/__tests__/dialog-surface-class-guard.test.ts',
   'scripts/__tests__/dependency-advisory-policy.test.ts',
   'scripts/__tests__/dependency-patch-binding.test.ts',
+  // Installed YAML CLI children protect the parser migration's public behavior.
+  'scripts/__tests__/js-yaml3-argparse2-compatibility.test.ts',
   // Bounded Bash children test Linux bootstrap recovery with inert swap commands.
   'scripts/__tests__/gcp-bootstrap.test.ts',
   // Offline Git children validate encrypted workspace transport against real repositories.
@@ -545,6 +547,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Bounded Git fixtures run the freshness check and review-record CLIs (#3036).
   'scripts/__tests__/review-ledger-guards.test.ts',
   'scripts/__tests__/documentation-review-notes.test.ts',
+  'scripts/__tests__/documentation-value-bindings.test.ts',
   'scripts/__tests__/learning-media.test.ts',
   'scripts/__tests__/repo-docs-hygiene.test.ts',
   'scripts/__tests__/e2e-coverage.test.ts',
@@ -986,6 +989,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#2238: starts real Station children against one SQLite claims
   // store to prove construction preserves live ownership.
   'src-server/routes/chat/__tests__/chat-turn-dedup.test.ts',
+  // #3581: runs the real `/chat` stream as an owner process over SQLite,
+  // SIGKILLs it before or after its agent call, and retries the same client
+  // turn from a reopened store. Single-shot children; no wall-clock bound.
+  'src-server/routes/chat/__tests__/chat-turn-dedup-crash.process.test.ts',
   // #3559: runs a real OrchestrationService owner process over SQLite,
   // SIGKILLs it before or after its engine call, and retries the same client
   // turn from a restarted store. Single-shot children; no wall-clock bound.
@@ -1002,6 +1009,13 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // that starts a grandchild in its group, then sweeps and terminates it.
   // Same process-tree shape as owned-process-reaping.test.ts.
   'src-server/providers/__tests__/codex-app-server-owned-process.test.ts',
+  // #561: runs a real Flow shell command (a stub script that leaves a
+  // grandchild in its group) to prove the spawn is registered and released
+  // only once the whole group exits. Same shape as the Codex test above.
+  'src-server/services/flow/__tests__/flow-run-service.owned-process.test.ts',
+  // #561: wraps the birth-probe primitives pass-through and registers two
+  // real detached sleepers to count probes of this process.
+  'src-server/services/infra/__tests__/owned-process-owner-birth.test.ts',
   // station#1895: spawns a real node child process (through `tsx`) to prove
   // the durable log sink survives an actual uncaught exception, the same
   // resource shape as `agent-registry.test.ts`'s schema-gate child probe.

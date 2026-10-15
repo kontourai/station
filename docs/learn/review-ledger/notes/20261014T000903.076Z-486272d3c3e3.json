@@ -1,0 +1,7 @@
+{
+  "revision": "66eb652d26cccf96fd669a3d3dbb51bdfa99fef1",
+
+  "notes": [
+    {"path":"docs/acp-chat-architecture.md","note":"Reviewed for claims touched by this change: ACP session/load history replay is no longer published (acp-adapter.ts loadingHistory guard) and turn-less projected rows now carry their opening event time (runtime-event-projection.ts). The document makes no claim about replay publication or turn-less row timestamps; its resume/projection statements remain accurate.","inputs":["docs/acp-chat-architecture.md","docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

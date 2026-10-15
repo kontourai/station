@@ -1,0 +1,7 @@
+{
+  "revision": "e75042970b706d7835d6eed04c48f048f4603118",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"Looked at the capture: the notifications Inspect request dialog for a pending tool approval. The change only narrows which same-key resend is refused as indeterminate; nothing shown here changes.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

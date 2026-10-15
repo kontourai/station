@@ -44,6 +44,13 @@ export interface OrchestrationSendTurnInput
   ambientContext?: string;
   /** Read-only constraint checked again at actual adapter invocation. */
   expectedInputRequest?: AttentionRequestReference;
+  /**
+   * The key the CLIENT named this send by, when Station deduplicates it under
+   * a key of its own (a handoff's `handoff:<digest>` `clientTurnId`). Station
+   * stamps this one on the turn's `turn.started`, so the client matches its
+   * message exactly. Server-composed only; never forwarded to an adapter.
+   */
+  clientKey?: string;
 }
 
 /**
@@ -253,7 +260,55 @@ export interface ApprovalFullAccessRefusalDetails {
     readonly uiSteps: readonly string[];
     /** The operator command, run on the Station's own host. */
     readonly cli?: string;
+    /**
+     * #3557: the device is tied to a person whose Station group does not
+     * allow full access. The operator must make them Admin first (the
+     * `uiSteps`); `groupLimited.cli`, when present, is still needed AFTER
+     * that: both, not either.
+     *
+     * The command travels HERE, never as the top-level `cli`, so a client
+     * that predates this field (and renders `cli` as an alternative to
+     * `uiSteps`) cannot offer the two steps as options. For that client the
+     * last `uiSteps` entry is the command as a step
+     * ({@link groupLimitedCommandStep}); a client that reads this field
+     * shows that entry as the command instead ({@link groupLimitedPeopleSteps}).
+     */
+    readonly groupLimited?: {
+      readonly group: 'member';
+      readonly cli?: string;
+    };
   } | null;
+}
+
+/**
+ * #3557: the step a group-limited refusal appends to `uiSteps` for its host
+ * command, so a client that does not read `groupLimited` still lists the
+ * command after the People steps.
+ */
+export function groupLimitedCommandStep(cli: string): string {
+  return `Then, on the Station's host, run: ${cli}`;
+}
+
+/**
+ * The longest `groupLimited.cli` kept: its appended step must also fit the
+ * 256-character step bound, or the whole refusal would fail to parse.
+ */
+export const GROUP_LIMITED_CLI_MAX_LENGTH =
+  256 - groupLimitedCommandStep('').length;
+
+/**
+ * #3557: a group-limited refusal's People steps, without the appended
+ * command step (a client that reads `groupLimited.cli` shows that itself).
+ */
+export function groupLimitedPeopleSteps(
+  grant: NonNullable<ApprovalFullAccessRefusalDetails['grant']>,
+): readonly string[] {
+  const cli = grant.groupLimited?.cli;
+  // Indexed, not `.at()`: the contracts compile for older library targets.
+  const last = grant.uiSteps[grant.uiSteps.length - 1];
+  return cli !== undefined && last === groupLimitedCommandStep(cli)
+    ? grant.uiSteps.slice(0, -1)
+    : grant.uiSteps;
 }
 
 /** The longest device name a refusal carries, after sanitizing. */
@@ -292,6 +347,22 @@ export function sanitizeRefusalDeviceName(name: string): string {
 
 const isBoundedString = (value: unknown, max: number): value is string =>
   typeof value === 'string' && value.length > 0 && value.length <= max;
+
+/** Only the one known group; anything else is dropped, not trusted. */
+function parseGroupLimited(value: unknown): {
+  groupLimited?: { group: 'member'; cli?: string };
+} {
+  const raw = value as { group?: unknown; cli?: unknown } | undefined | null;
+  if (!raw || typeof raw !== 'object' || raw.group !== 'member') return {};
+  return {
+    groupLimited: {
+      group: 'member',
+      ...(isBoundedString(raw.cli, GROUP_LIMITED_CLI_MAX_LENGTH)
+        ? { cli: raw.cli }
+        : {}),
+    },
+  };
+}
 
 /**
  * Reads a refusal's `details` from an untrusted envelope, or `undefined` when
@@ -352,6 +423,7 @@ export function parseApprovalFullAccessRefusalDetails(
       scope: 'approval:full-access',
       uiSteps: [...(rawGrant.uiSteps as string[])],
       ...(typeof rawGrant.cli === 'string' ? { cli: rawGrant.cli } : {}),
+      ...parseGroupLimited(rawGrant.groupLimited),
     },
   };
 }
@@ -1435,6 +1507,52 @@ export interface ConversationHandoffStatusProjection {
   providerTurnId?: string;
   nativeResumeIdentity?: import('./provider.js').NativeResumeIdentityStatus;
 }
+
+/**
+ * What Station knows about one foreground send, looked up by the idempotency
+ * key the sender minted (`clientTurnId`) inside the conversation it named.
+ * Read-only: the lookup never claims, releases or dispatches anything.
+ *
+ * - `not-received`: nothing on this Station holds the key for this caller —
+ *   no request carrying it is being handled, and no turn claim exists in any
+ *   Session of the conversation (or only one whose owner died before it began
+ *   invoking, which the next send of the same key reclaims). Sending again
+ *   with the SAME key is safe. Also the answer for a conversation the caller
+ *   may not read: the two are deliberately indistinguishable.
+ * - `received`: a request carrying the key is being handled now (the session
+ *   may still be starting), or a live owner holds its claim. Wait; do not send
+ *   again.
+ * - `started`: the engine accepted the turn. `turnId` is the provider turn and
+ *   `sessionId` the execution Session that holds it.
+ * - `indeterminate`: the owner died after it may have handed the turn to the
+ *   engine. Never send again; inspect the conversation.
+ * - `expired`: the turn was sent, and retention evicted its record. Never send
+ *   again.
+ * - `unknown`: this Station cannot see where the conversation's turns are
+ *   recorded (it forwards them to another Station or Environment), so it can
+ *   prove nothing either way. Never send again on this answer; treat it like
+ *   `indeterminate`.
+ */
+export type TurnDeliveryInspection =
+  | {
+      outcome:
+        | 'not-received'
+        | 'received'
+        | 'indeterminate'
+        | 'expired'
+        | 'unknown';
+      conversationId: string;
+      clientTurnId: string;
+    }
+  | {
+      outcome: 'started';
+      conversationId: string;
+      clientTurnId: string;
+      sessionId: string;
+      turnId: string;
+    };
+
+export type TurnDeliveryOutcome = TurnDeliveryInspection['outcome'];
 
 /** Bounded agent-facing transcript rows; missing attribution stays unknown. */
 export interface ConversationReadMessage {

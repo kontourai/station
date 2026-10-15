@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - README.md
-      - docs-kit.json
+      - corpus.json
       - docs/**
       - scripts/build-github-pages.mjs
       - package.json
@@ -41,17 +41,17 @@ jobs:
 
       # The org hub and the shared docs MCP read
       # https://kontourai.github.io/station/docs-bundle.json. docs-kit renders
-      # its own site from docs-kit.json; only the bundle is published, beside
+      # its own site from corpus.json; only the bundle is published, beside
       # Station's own pages, whose docs/<path>.html URLs the bundle points at.
       # The bundle is an add-on, so it fails open: if this step fails, the
       # Station site still publishes, and keep_files leaves the previous
       # docs-bundle.json on gh-pages (stale, shown as behind on the hub).
-      # docs-kit v0.4.0; docs-kit.yml runs its gate at the same commit.
+      # Same Corpus pin as docs-kit.yml (v1 manifests refused, decisions gate).
       - name: Build docs-kit bundle
         continue-on-error: true
         run: >-
-          npx -y github:kontourai/docs-kit#6945efbe0309bc46ce4efafe0fccaff9b3302603
-          docs-kit build
+          npx -y github:kontourai/corpus#08c62ccd72880ff4bd4c378ae252ad437b4b4fb5
+          corpus build
           --out "$RUNNER_TEMP/docs-kit-site"
           --base-url https://kontourai.github.io/station/
 

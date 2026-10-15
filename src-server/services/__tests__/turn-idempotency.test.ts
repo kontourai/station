@@ -1,30 +1,58 @@
-import { describe, expect, test } from 'vitest';
+import { DatabaseSync } from 'node:sqlite';
+import type { KernelCommand, OwnerLiveness } from '@kontourai/monument';
+import { afterEach, describe, expect, test } from 'vitest';
+import { ORCHESTRATION_EVENT_STORE_MIGRATION } from '../../domain/migrations/003-orchestration-events.js';
+import { createSqliteTurnDedupPersistence } from '../orchestration/sqlite-turn-dedup-persistence.js';
 import {
   awaitTurnResolution,
   type TurnIdempotencyPersistence,
-  type TurnIdempotencyRecord,
   TurnIdempotencyStore,
 } from '../turn-idempotency.js';
 
-/** Trivial in-memory persistence — proves the ALGORITHM independent of any storage medium. */
-class InMemoryTurnIdempotencyPersistence implements TurnIdempotencyPersistence {
-  private readonly data = new Map<string, TurnIdempotencyRecord>();
+const databases: DatabaseSync[] = [];
+afterEach(() => {
+  for (const database of databases.splice(0)) database.close();
+});
 
-  read(key: string): TurnIdempotencyRecord | undefined {
-    return this.data.get(key);
+/**
+ * Station's own dedup tables on an in-memory connection, behind Monument's
+ * adapter: the algorithm independent of any file. The algorithm itself is
+ * Monument's, so this proves Station's use of it (the owner it records, the
+ * tracking it asks for, how it maps each answer); the rules have their own
+ * conformance suite.
+ */
+class InMemoryTurnIdempotencyPersistence implements TurnIdempotencyPersistence {
+  private readonly database = new DatabaseSync(':memory:');
+  private readonly persistence: TurnIdempotencyPersistence;
+
+  constructor() {
+    databases.push(this.database);
+    this.database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
+    this.persistence = createSqliteTurnDedupPersistence({
+      db: this.database,
+    });
   }
 
-  update<T>(
-    key: string,
-    updater: (current: TurnIdempotencyRecord | undefined) => {
-      record?: TurnIdempotencyRecord;
-      result: T;
-    },
-  ): T {
-    const decision = updater(this.data.get(key));
-    if (decision.record) this.data.set(key, decision.record);
-    else this.data.delete(key);
-    return decision.result;
+  execute<C extends KernelCommand>(command: C, liveness: OwnerLiveness) {
+    return this.persistence.execute(command, liveness);
+  }
+
+  /** The stored record, as Monument decodes it. */
+  read(key: string) {
+    const read = this.persistence.execute(
+      { type: 'turnDedup.read', key },
+      () => 'unknown',
+    );
+    return read.kind === 'found' ? read.record : undefined;
+  }
+
+  /** A row written by something that is not this store, in Station's encoding. */
+  seed(key: string, owner: object): void {
+    this.database
+      .prepare(
+        'INSERT INTO orchestration_turn_dedup (dedup_key, value, created_at, owner_json) VALUES (?, NULL, 0, ?)',
+      )
+      .run(key, JSON.stringify(owner));
   }
 }
 
@@ -200,19 +228,12 @@ describe('TurnIdempotencyStore (station#1224 offline slice 2 — shared idempote
 
     test('a dead owner row with no invocation record is indeterminate', () => {
       const persistence = new InMemoryTurnIdempotencyPersistence();
-      persistence.update('k', () => ({
-        record: {
-          value: null,
-          createdAt: 0,
-          owner: {
-            pid: 999_999_999,
-            birth: 'b',
-            token: 't',
-            identityKind: 'exact',
-          },
-        },
-        result: undefined,
-      }));
+      persistence.seed('k', {
+        pid: 999_999_999,
+        birth: 'b',
+        token: 't',
+        identityKind: 'exact',
+      });
       expect(
         new TurnIdempotencyStore(persistence, dead).claim('k', 1, 'tracked'),
       ).toEqual({ claimed: false, indeterminate: true });

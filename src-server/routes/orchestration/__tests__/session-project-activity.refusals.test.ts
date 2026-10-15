@@ -81,6 +81,7 @@ function appWith(readTurnDigestFacts: () => unknown) {
         remote: false,
       }),
       conversationExists: () => true,
+      ownProjectSlug: () => undefined,
     },
     resolvePrincipal: () =>
       ({ id: LOCAL_OPERATOR_PRINCIPAL_ID, kind: 'human' }) as never,

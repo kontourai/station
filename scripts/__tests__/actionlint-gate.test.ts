@@ -4632,7 +4632,7 @@ describe('the org docs gate runs on pull requests through one exact reviewed cal
   // Literals pinned independently of the gate's constants, so the gate and
   // this suite cannot drift together.
   const REVIEWED_CALLEE =
-    'kontourai/.github/.github/workflows/docs-gate.yml@246be3494a5cfde4b76fb2e3dc0a84db44218893';
+    'kontourai/.github/.github/workflows/docs-gate.yml@ac67c2a7484cc79cc51f81fa8b68c855c3879f94';
   const HEAD_REPOSITORY =
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
     "${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}";

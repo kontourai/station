@@ -1,0 +1,7 @@
+{
+  "revision": "fcead677c6ea2ffe9601b9f72f4fd678faf8d183",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.webm","note":"Capture re-reviewed against the final fix round's orchestration-service change (start-failure and same-key retry refusal codes). The captured request-inspection flow sends no such turn, so the capture still matches the product.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

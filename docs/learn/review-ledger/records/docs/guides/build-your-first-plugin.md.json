@@ -26,10 +26,6 @@
 
     "packages/cli/src/dev/watchers.ts",
 
-    "packages/sdk/package.json",
-
-    "packages/shared/package.json",
-
     "packages/shared/src/agent-plugin-manifest.ts",
 
     "packages/shared/src/build.ts",
@@ -50,7 +46,31 @@
 
     "src-ui/src/views/plugin-management/plugin-scaffold-client.ts",
 
-    "src-ui/src/views/plugin-management/useNewPluginFlow.ts"
+    "src-ui/src/views/plugin-management/useNewPluginFlow.ts",
+
+    "packages/sdk/package.json#/name",
+
+    "packages/sdk/package.json#/exports",
+
+    "packages/sdk/package.json#/files",
+
+    "packages/sdk/package.json#/main",
+
+    "packages/sdk/package.json#/types",
+
+    "packages/sdk/package.json#/peerDependencies",
+
+    "packages/shared/package.json#/name",
+
+    "packages/shared/package.json#/exports",
+
+    "packages/shared/package.json#/files",
+
+    "packages/shared/package.json#/main",
+
+    "packages/shared/package.json#/types",
+
+    "packages/shared/package.json#/engines"
   ],
 
   "checks": [

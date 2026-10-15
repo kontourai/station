@@ -50,7 +50,8 @@ disable sign-in, revoke account sessions or create a password-recovery link.
 Confirm the person's identity before sharing that recovery link privately. The
 link expires after 20 minutes and can reset the password once; reset revokes old
 account sessions. These controls do not delete Project membership or device
-grants. A Project administrator does not inherit Station operator authority.
+grants. Disabling an account, or revoking its sessions, also stops every
+personal access token made for it before then (#3586). A Project administrator does not inherit Station operator authority.
 
 The authentication secret and account store live in private SQLite files beneath
 this Station home's `authentication` directory. Restart preserves existing
@@ -228,12 +229,27 @@ An existing unbound personal Device is not silently converted by login. The
 operator must explicitly approve and exchange the account-bound replacement,
 then revoke any older broad grant retained for that client.
 
+A personal access token tied to an account is the one credential that acts
+without an account session (#3586), and only with Station's own local
+accounts. The account-bound Device mints it from `/api/access/tokens` while
+its session is current, or the operator mints it on People. The token is then checked against the account's
+standing instead: it stops when the account is disabled, deleted or signed
+out everywhere after the token was made, and re-enabling the account does
+not revive it. It must be presented alone (an account
+cookie, session continuation or ingress identity beside it is `401
+account_identity_conflict`), and it reaches only the collaborator profile
+below, without the account controls, token management or any Project access
+route. With any other deployment provider, account-tied people cannot hold a
+token (`400 account_bound_person`).
+
 The direct request-access endpoint also accepts `requireAccountBinding: true`
 after sign-in. Station attaches the verified account candidate and makes this
 intent immutable: approval and exchange cannot issue a personal or Tailnet-bound
 Device for that request. Existing ordinary pairing requests remain available.
 
-The collaborator profile admits account controls, membership-filtered Project
+The collaborator profile admits account controls, the person's own personal
+access tokens (`GET`/`POST /api/access/tokens`, `DELETE
+/api/access/tokens/:tokenId`), membership-filtered Project
 catalogue/detail reads, and bounded reads of explicitly published shared Tasks:
 the shared-work list, history, document and publication receipt. Shared work is read-only in this
 entry. The [account-bound Device gate](../../src-server/runtime/bootstrap/account-bound-device-gate.ts)

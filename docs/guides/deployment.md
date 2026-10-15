@@ -147,7 +147,8 @@ the reusable environment credential:
 On successful completion the browser receives a revocable HttpOnly Device
 session and can reconnect. A paired browser is not automatically an approver:
 approval requires the route's current operator/local-home authority or an
-explicitly promoted `access:approve` Device. Use the connection manager's
+explicitly promoted `access:approve` Device (one tied to a person only while
+that person's Station group is Admin). Use the connection manager's
 **Paired devices** view to revoke access. Registration, successful enrollment
 and an authenticated subsequent request are separate observations.
 
@@ -570,6 +571,22 @@ The example port is the Nightly default, not discovery. The
 [command implementation](../../packages/cli/src/commands/environment.ts) resolves
 saved Station targets and verifies local identity/proof before sending the host
 credential.
+
+Device administration can also use an explicitly promoted paired principal.
+On the host, grant `access:devices` to an already-paired CLI/device through
+`environment access scope <device> --add=access:devices` with the correct home
+and loopback endpoint. A person-bound device must also be in the Admin group;
+that group alone never grants administration. The paired CLI can then run
+`environment access devices|scope|revoke|remove --station=<name>` remotely using
+its own credential. Its holder cannot delegate `access:devices`, manage people
+or provision peers. Legacy `access:manage` and `approval:full-access` do not
+confer administration. Update the host and client before using the new scope;
+see the [CLI reference](../reference/cli.md#environment).
+
+Account-bound guest principals remain restricted by their separate route
+allowlist: it excludes device administration even with an Admin group and an
+`access:devices` grant. Use an operator-approved personal Device or the host
+operator channel. The CLI reports this policy refusal distinctly.
 
 When exposing a lifecycle-managed instance over the tailnet, map its configured
 UI proxy port, not an inferred API-plus-offset port. The dogfood installer below

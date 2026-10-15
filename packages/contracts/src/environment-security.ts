@@ -114,6 +114,14 @@ export const PAIRING_SCOPE_TERMINAL_OPERATE = 'terminal:operate' as const;
 /** Pairing/device management (creating offers, confirming/denying requests, revoking devices). */
 export const PAIRING_SCOPE_ACCESS_MANAGE = 'access:manage' as const;
 /**
+ * Administer already-paired devices: list, change scopes, revoke, and remove
+ * revoked records. Only the operator may grant or remove this permission;
+ * its holder cannot delegate it. No preset or historical default grants it.
+ * This permits granting other device permissions, including full access,
+ * without granting operator identity, account administration, or peer access.
+ */
+export const PAIRING_SCOPE_ACCESS_DEVICES = 'access:devices' as const;
+/**
  * Fleet inference (archive#1398, `docs/design/inference-fleet.md` §3.3):
  * invoke a *model completion* on this Station's contributed connections, and
  * read which models it contributes. Deliberately NOT `orchestration:operate`:
@@ -286,6 +294,7 @@ export const PAIRING_SCOPES = [
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_TERMINAL_OPERATE,
   PAIRING_SCOPE_ACCESS_MANAGE,
+  PAIRING_SCOPE_ACCESS_DEVICES,
   PAIRING_SCOPE_INFERENCE_INVOKE,
   PAIRING_SCOPE_ACCESS_APPROVE,
   PAIRING_SCOPE_RELAY_MANAGE,
@@ -341,7 +350,8 @@ export const DEFAULT_GRANT_PAIRING_SCOPE: string = [
  * The pairing-UI presets: "Read-only" pairs a device that can only
  * read/stream state, "Standard" additionally grants control (mutate + open a
  * terminal) but withholds `access:manage` — a paired device, however
- * broadly scoped, can never manage other devices or pairing offers itself.
+ * broadly scoped, needs a separate access:devices grant to manage existing
+ * devices. Pairing offers remain operator-only.
  *
  * `delegation` (archive#1123, `docs/design/station-peer-pairing.md`
  * §2) is a THIRD preset, not a reuse of `standard`: every call
@@ -450,6 +460,7 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   // preset, and deliberately never added to one — elevation at pairing time
   // grants the most to the least-known device. See archive#1883.
   [PAIRING_SCOPE_ACCESS_MANAGE]: ['default-grant'],
+  [PAIRING_SCOPE_ACCESS_DEVICES]: ['operator-promotion'],
   [PAIRING_SCOPE_INFERENCE_INVOKE]: ['preset'],
   // archive#1887: the only token whose sole path is an operator promoting an
   // already-paired device. In no preset (elevation at pairing time grants the
@@ -510,6 +521,11 @@ export const PAIRING_SCOPE_DESCRIPTIONS: Record<
     label: 'Manage access',
     summary:
       'Can manage pairing offers and devices. Held only by older default grants; never granted to a device here.',
+  },
+  [PAIRING_SCOPE_ACCESS_DEVICES]: {
+    label: 'Manage device access',
+    summary:
+      'Can list devices, change their permissions (including full access), revoke access and remove revoked records. Only the Station operator can grant or remove this administrative permission.',
   },
   [PAIRING_SCOPE_INFERENCE_INVOKE]: {
     label: 'Fleet inference',
@@ -935,7 +951,7 @@ export type PairedDeviceRevocation =
   | { state: 'unobserved-before-revocation-provenance' }
   | {
       state: 'recorded';
-      actor: 'operator-credential';
+      actor: 'operator-credential' | 'device-access';
       reason: 'owner-request';
     }
   | {
@@ -994,6 +1010,11 @@ export interface PairedDevice {
    * migrates it in place the same way `scope` itself was migrated
    * (archive#1098 R4). Never absent on a value read out of the service.
    */
+  /**
+   * #3557: present only on a personal access token resolved as a headless
+   * device of its owner; never persisted in the device registry.
+   */
+  readonly credentialKind?: 'personal-token';
   kind: PairedDeviceKind;
   createdAt: number;
   /**
@@ -1051,6 +1072,11 @@ export interface PairedDevice {
    * device paired before this field existed has no such key at all.
    */
   requester?: TailscaleServeRequester;
+  /**
+   * #3557: device lists only. What a live device may use now: `scope`
+   * capped by its person's Station group (equal to `scope` when untied).
+   */
+  effectiveScope?: string;
   /**
    * Ephemeral connection state, added only by the access-management listing.
    * It is not persisted with a paired device and never includes session ids.

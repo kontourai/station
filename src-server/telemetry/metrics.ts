@@ -1997,7 +1997,7 @@ export const acpResumeSessions = meter.createCounter(
   'station.acp.resume_sessions',
   {
     description:
-      "ACP sessions resumed via session/load with Station tool servers re-delivered (#895; attrs: connectionId, outcome: 'loaded'|'load-unsupported')",
+      "ACP sessions reattached via session/resume or session/load with Station tool servers re-delivered (#895; attrs: connectionId, outcome: 'resumed'|'loaded'|'load-unsupported')",
   },
 );
 
@@ -2561,6 +2561,14 @@ export const consentListenerState = meter.createCounter(
   {
     description:
       'Consent listener availability transitions (listening|unavailable)',
+  },
+);
+
+export const transcriptTailRecoveries = meter.createCounter(
+  'station.memory.transcript_tail_recoveries',
+  {
+    description:
+      'Reads that observe an unterminated station-agent transcript tail (kind observed), and appends that repair one (completed|quarantined) (station#3564). Counts reads, not distinct tears: every read of a still-torn transcript counts. Never a path or message content',
   },
 );
 

@@ -124,6 +124,16 @@ describe('ProfilePage', () => {
     ).toHaveLength(14);
   });
 
+  test('mounts diagnostic reads only while the disclosure is open', async () => {
+    render(<ProfilePage />);
+    expect(screen.queryByText('Insights')).toBeNull();
+    const summary = screen.getByText('Diagnostics').closest('summary')!;
+    fireEvent.click(summary);
+    await waitFor(() => expect(screen.getByText('Insights')).toBeTruthy());
+    fireEvent.click(summary);
+    await waitFor(() => expect(screen.queryByText('Insights')).toBeNull());
+  });
+
   test('renders the empty hero graph state when no recent usage exists', () => {
     analyticsState.usageStats = {
       lifetime: {

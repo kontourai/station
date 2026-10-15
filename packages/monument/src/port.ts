@@ -11,13 +11,33 @@ import type {
   TurnDedupRecord,
 } from './records.js';
 
+/**
+ * How long a dedup tombstone answers `expired`. Retention evicts a resolved
+ * row and leaves its key behind, so a late retry is refused instead of being
+ * claimed afresh. A tombstone no rule covers lasts until `forgetPrefix`.
+ */
+export interface TurnDedupTombstoneRule {
+  /** Exact string prefix; the first rule that matches decides. */
+  readonly keyPrefix: string;
+  /** Forgotten on the next dedup write after it is this old. */
+  readonly maxAgeMs: number;
+}
+
 /** Retention and capacity policy the decisions apply. */
 export interface KernelLimits {
-  /** Soft cap on dedup rows; only resolved rows are ever evicted. */
+  /**
+   * Soft cap on dedup rows; only resolved rows are ever evicted, and each
+   * eviction leaves a tombstone, which does not count toward the cap.
+   */
   readonly turnDedupMaxEntries: number;
+  readonly turnDedupTombstoneRetention: readonly TurnDedupTombstoneRule[];
   /** Most boundary rows one thread may hold before new turns are refused. */
   readonly turnBoundaryAcceptedCapacity: number;
-  /** Request keys older than this are forgotten on the next claim. */
+  /**
+   * A completed request key older than this is forgotten on the next claim.
+   * An unresolved one is kept, however old: its attempt may have had its
+   * effect. Past this age it stops counting toward the caps below.
+   */
   readonly requestKeyTtlMs: number;
   readonly requestKeyMaxRowsPerCaller: number;
   readonly requestKeyMaxRows: number;
@@ -26,6 +46,7 @@ export interface KernelLimits {
 /** The values Station uses today. */
 export const DEFAULT_KERNEL_LIMITS: KernelLimits = Object.freeze({
   turnDedupMaxEntries: 2000,
+  turnDedupTombstoneRetention: Object.freeze([]),
   turnBoundaryAcceptedCapacity: 64,
   requestKeyTtlMs: 7 * 24 * 60 * 60 * 1000,
   requestKeyMaxRowsPerCaller: 300,
@@ -99,14 +120,25 @@ export interface KernelTransaction {
     get(key: string): TurnDedupRecord | undefined;
     put(record: TurnDedupRecord): void;
     delete(key: string): void;
-    /** Delete every row whose key starts with `prefix`; return the count. */
+    /**
+     * Delete every row and tombstone whose key starts with `prefix`; return
+     * how many keys were forgotten.
+     */
     deletePrefix(prefix: string): number;
     /**
      * While more than `maxEntries` rows exist, delete the oldest resolved row
-     * (`createdAt` ascending, then key in code-point order). Unresolved rows
-     * are never deleted, so the cap is soft.
+     * (`createdAt` ascending, then key in code-point order) and leave a
+     * tombstone for its key, stamped `now`. Unresolved rows are never
+     * deleted, so the cap is soft. Tombstones do not count toward it.
      */
-    pruneResolved(maxEntries: number): void;
+    pruneResolved(maxEntries: number, now: number): void;
+    /** When the key's resolved row was evicted; undefined if it was not. */
+    expiredAt(key: string): number | undefined;
+    /**
+     * Delete the tombstones whose key starts with `keyPrefix` and whose
+     * `expiredAt` is before `cutoff`.
+     */
+    deleteTombstonesBefore(keyPrefix: string, cutoff: number): void;
   };
   readonly turnBoundary: {
     get(boundaryId: string): TurnBoundaryRecord | undefined;
@@ -125,11 +157,17 @@ export interface KernelTransaction {
     /** Insert, or update in place keeping the row's insertion position. */
     put(record: RequestKeyRecord): void;
     delete(id: RequestKeyId): void;
-    deleteCreatedBefore(cutoff: number): void;
-    countCaller(callerSessionId: string): number;
+    /** Delete the rows that have a result and were created before `cutoff`. */
+    deleteCompletedCreatedBefore(cutoff: number): void;
+    /**
+     * The caller's rows that hold a quota slot: every row with a result, and
+     * every unresolved row created at or after `countedSince`.
+     */
+    countCaller(callerSessionId: string, countedSince: number): number;
     /** The caller's rows that have a result. */
     countCallerCompleted(callerSessionId: string): number;
-    countAll(): number;
+    /** Every row that holds a quota slot, as for `countCaller`. */
+    countAll(countedSince: number): number;
     /**
      * Delete up to `count` of the caller's rows that have a result, oldest
      * first (`createdAt` ascending, then insertion order).

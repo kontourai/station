@@ -698,6 +698,18 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           'queuedRequests',
         ]),
       );
+      // The handoff turn's start names the key the client sent it with
+      // (the dialog keys its bubble `handoff:<idempotencyKey>`), not the
+      // conversation-derived key Station deduplicates it under.
+      await eventually(() => {
+        const handoffStart = store
+          .listEvents(handoffReceipt.data.sessionId)
+          .map((row) => row.payload)
+          .find((event) => event.method === 'turn.started');
+        expect(handoffStart).toMatchObject({
+          clientTurnId: `handoff:${idempotencyKey}`,
+        });
+      });
 
       const replay = await post(
         `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoff`,

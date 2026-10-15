@@ -301,6 +301,10 @@ function deriveSession(
     openTurnShellSuperseded: chatState.openTurnShellSuperseded,
     conversationActivity: chatState.conversationActivity,
     sendAwaitingTurnStart: chatState.sendAwaitingTurnStart,
+    pendingSendStationHasIt:
+      chatState.sendAwaitingTurnStart === true &&
+      chatState.pendingClientTurnId !== undefined &&
+      chatState.deliveryChecks?.[chatState.pendingClientTurnId] === 'received',
     stopSettledTurnId: chatState.stopSettledTurnId,
     queueDrainSettling: chatState.queueDrainSettling,
     queuedMessageMetadata: chatState.queuedMessageMetadata,

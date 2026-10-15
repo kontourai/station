@@ -23,6 +23,17 @@ export type SessionSendMode = 'auto' | 'start' | 'steer';
 /** The branch that has an effect. */
 export type SessionDeliveryBranch = 'start' | 'steer';
 
+/** `start:<threadId>` / `steer:<threadId>`: the branch an attempt pinned. */
+export function parseSessionDeliveryDecision(
+  decision: string | undefined,
+): { branch: SessionDeliveryBranch; threadId: string } | undefined {
+  if (!decision) return undefined;
+  const split = decision.indexOf(':');
+  const branch = decision.slice(0, split);
+  if (split < 1 || (branch !== 'start' && branch !== 'steer')) return undefined;
+  return { branch, threadId: decision.slice(split + 1) };
+}
+
 export type SessionDeliveryDecision =
   | { readonly kind: 'deliver'; readonly branch: SessionDeliveryBranch }
   | {

@@ -833,10 +833,16 @@ if (
 const orchestrationService = readRequiredSource(
   '../src-server/services/orchestration/orchestration-service.ts',
 );
+// #3561: the live publish path projects the read model in three steps owned
+// by orchestration-session-state.ts — a pure derivation before the append,
+// the durable session row as a co-commit participant of the append, and the
+// in-memory read model after it commits — instead of one call that wrote
+// both before the append.
 for (const requiredHelper of [
   './orchestration-session-state.js',
   'resolveOrchestrationAdapterForThread({',
-  'projectOrchestrationEventToReadModel({',
+  'deriveReadModelSession({',
+  'persistReadModelSession(',
   'recoverOrchestrationSessions({',
   'trackOrchestrationSession({',
 ]) {
@@ -863,6 +869,8 @@ for (const requiredHelper of [
   'export function trackOrchestrationSession',
   'export async function resolveOrchestrationAdapterForThread',
   'export function projectOrchestrationEventToReadModel',
+  'export function deriveReadModelSession',
+  'export function persistReadModelSession',
   'export async function recoverOrchestrationSessions',
 ]) {
   if (!orchestrationSessionState.includes(requiredHelper)) {
@@ -6017,11 +6025,10 @@ const usageStatsUtils = readRequiredSource(
   '../src-ui/src/components/usage-stats/utils.ts',
 );
 for (const requiredHelper of [
-  'export function getAverageCostPerMessage',
+  'export function formatRecordedCost',
   'export function getTotalUsageConversations',
   'export function getTopUsageEntries',
   'export function getUsageModelDisplayName',
-  'export function getUsageAgentsForModel',
   'export function getAgentModelBreakdown',
 ]) {
   if (!usageStatsUtils.includes(requiredHelper)) {
