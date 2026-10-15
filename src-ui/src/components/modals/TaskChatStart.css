@@ -17,3 +17,6 @@
 .task-chat-start .new-chat-modal__title-row {
   margin-bottom: 0;
 }
+.chat-dock:has(.task-chat-start) {
+  max-height: 100dvh;
+}
