@@ -159,7 +159,7 @@ export function TerminalPanel({
         port = await fetchTerminalPort(apiBase);
       } catch {
         if (!disposed)
-          setWsError('Could not connect to the terminal on this Station.');
+          setWsError('Terminal unavailable.');
         return;
       }
       if (disposed) return;
@@ -251,7 +251,7 @@ export function TerminalPanel({
       ws.onerror = () => {
         if (!disposed) {
           setConnected(false);
-          setWsError('Terminal connection lost. Reconnect to continue.');
+          setWsError('Terminal disconnected.');
         }
       };
       ws.onclose = (event) => {
@@ -450,7 +450,7 @@ export function TerminalPanel({
     <div className="coding-terminal-shell">
       {wsError ? (
         <div className="coding-terminal-connection" role="alert">
-          <span>{wsError} Commands are not sent while disconnected.</span>
+          <span>{wsError}</span>
           <button
             type="button"
             onClick={() => setConnectionAttempt((attempt) => attempt + 1)}

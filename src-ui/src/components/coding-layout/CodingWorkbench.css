@@ -631,7 +631,6 @@
 
 .coding-workbench__bar-leading {
   flex: 0 1 auto;
-  overflow: hidden;
 }
 
 .coding-workbench__bar-trailing {
@@ -647,7 +646,23 @@
 }
 
 .coding-workbench__bar .git-tooltip-anchor {
-  flex: none;
+  flex: 0 1 auto;
+  max-inline-size: 14ch;
+}
+
+.coding-workbench__bar .git-badge,
+.coding-workbench__bar .chat-dock__project-badge-name {
+  max-width: 100%;
+}
+
+.coding-workbench__bar .chat-dock__header-context,
+.coding-workbench__bar .chat-dock__project-context {
+  overflow: visible;
+}
+
+.coding-workbench__bar .git-tooltip {
+  top: calc(100% + var(--k-space-2));
+  bottom: auto;
 }
 
 /* The slots inherit the bar's quiet: the dock header's own bar chrome does
