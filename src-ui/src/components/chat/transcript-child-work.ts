@@ -115,8 +115,10 @@ export function foldTranscriptChildren(
             ) ?? 0,
         });
     }
+    // Terminal identity can recover a loaded call's child when its running
+    // listing is outside the window. It supplies no fallback spawn position.
     if (delta.kind === 'settle' && !registries.has(childWorkKey(delta)))
-      continue;
+      registries.set(childWorkKey(delta), createEmptyChildWorkRegistry());
     for (const [key, registry] of registries) {
       if (
         delta.kind !== 'snapshot' &&

@@ -636,6 +636,22 @@ describe('subagent transcript cards', () => {
     expect(unexpectedRequests).toEqual([]);
   });
 
+  test('a loaded Claude spawning call reconstructs its completed child from terminal identity without a running snapshot', async () => {
+    windowEvents.current = [
+      ...spawningTurn().filter(
+        (entry) => entry.event.method !== 'child-work.updated',
+      ),
+      ...settles('Result retained in terminal history'),
+    ];
+    renderTranscript();
+    const card = await findCard();
+    expect(screen.getAllByTestId('subagent-card')).toHaveLength(1);
+    expect(within(card).getByText('Completed')).toBeTruthy();
+    expect(
+      within(card).getByText('Result retained in terminal history'),
+    ).toBeTruthy();
+  });
+
   test('a session that ends without settling its child reads No result, never Completed', async () => {
     windowEvents.current = [
       ...spawningTurn(),
