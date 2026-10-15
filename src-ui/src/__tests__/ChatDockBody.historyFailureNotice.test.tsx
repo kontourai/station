@@ -358,6 +358,7 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
         orchestrationSessionStarted: true,
       }),
     );
+    await screen.findByRole('textbox');
     const resync = await screen.findByRole('button', {
       name: 'Status unavailable — resync this conversation',
     });
