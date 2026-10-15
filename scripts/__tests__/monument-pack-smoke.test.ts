@@ -131,7 +131,7 @@ describe('monument pack smoke: checks', () => {
     expect(
       checkConsumerManifest(
         GOOD_MANIFEST,
-        (path) => path !== './dist/sqlite.js',
+        (path: string) => path !== './dist/sqlite.js',
       ),
     ).toEqual([
       'exports[./sqlite].default names a missing file: ./dist/sqlite.js',
