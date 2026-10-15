@@ -1278,3 +1278,147 @@ it('pending history and partial stream produce the same current status in both c
   for (const finalState of finalStates)
     expect(finalState).toEqual(finalStates[0]);
 });
+
+describe('stream epoch changes', () => {
+  function sendSnapshot(epoch: string, sequence: number, withActivity = true) {
+    streams.get('http://test.local')!({
+      event: 'orchestration:snapshot',
+      id: String(sequence),
+      data: JSON.stringify({
+        epoch,
+        sessions: [
+          {
+            ...SESSIONS[0]!,
+            conversationId: 'T',
+            conversationActivity: withActivity
+              ? {
+                  ...SESSIONS[0]!.conversationActivity!,
+                  asOfSequence: sequence,
+                }
+              : undefined,
+          },
+        ],
+      }),
+    });
+  }
+  function sendActivity(sequence: number) {
+    streams.get('http://test.local')!({
+      event: 'orchestration:activity',
+      data: JSON.stringify({
+        conversation: {
+          conversationId: 'T',
+          currentSessionId: 'T',
+          activity: {
+            ...SESSIONS[0]!.conversationActivity!,
+            asOfSequence: sequence,
+          },
+        },
+      }),
+    });
+  }
+
+  it('new-epoch stream activity supersedes a new-epoch history failure at a lower sequence', async () => {
+    const client = new QueryClient();
+    const dock = renderWithProviders(<DockInbox />, client);
+    const release = ensureOrchestrationEventStream('http://test.local', client);
+    let history: ReturnType<typeof renderWithProviders> | undefined;
+    try {
+      act(() => sendSnapshot('recovery-old', 100));
+      act(() => sendSnapshot('recovery-new', 1));
+      expect(
+        activeChatsStore.getSnapshot()[CHAT_TAB]?.conversationActivity
+          ?.asOfSequence,
+      ).toBe(1);
+      historyRead.mockRejectedValueOnce(new Error('new epoch history offline'));
+      history = renderWithProviders(<HistoryReader />, client);
+      await screen.findByText('Last known: Needs approval');
+      act(() => sendActivity(2));
+      expect(
+        activeChatsStore.getSnapshot()[CHAT_TAB]?.conversationActivity
+          ?.asOfSequence,
+      ).toBe(2);
+      expect(screen.queryByText('Last known: Needs approval')).toBeNull();
+      expect(screen.getByText('Needs approval')).toBeTruthy();
+      expect(screen.getByRole('alert').textContent).toBe(
+        'new epoch history offline',
+      );
+    } finally {
+      history?.unmount();
+      release();
+      dock.unmount();
+      act(() => client.clear());
+    }
+  });
+
+  it.each(['success', 'failure'] as const)(
+    'an old-epoch history %s cannot publish after replacement',
+    async (outcome) => {
+      const client = new QueryClient();
+      const dock = renderWithProviders(<DockInbox />, client);
+      const release = ensureOrchestrationEventStream(
+        'http://test.local',
+        client,
+      );
+      let oldHistory: ReturnType<typeof renderWithProviders> | undefined;
+      let newHistory: ReturnType<typeof renderWithProviders> | undefined;
+      try {
+        act(() => sendSnapshot(`pending-${outcome}-old`, 100));
+        let resolveOld!: (page: OrchestrationConversationEventWindow) => void;
+        let rejectOld!: (error: Error) => void;
+        historyRead.mockImplementationOnce(
+          () =>
+            new Promise((resolve, reject) => {
+              resolveOld = resolve;
+              rejectOld = reject;
+            }),
+        );
+        oldHistory = renderWithProviders(<HistoryReader />, client);
+        await waitFor(() => expect(historyRead).toHaveBeenCalledOnce());
+        act(() => sendSnapshot(`pending-${outcome}-new`, 1));
+        if (outcome === 'success') {
+          historyRead.mockRejectedValueOnce(new Error('new epoch failure'));
+          newHistory = renderWithProviders(<HistoryReader />, client);
+          await screen.findByText('Last known: Needs approval');
+          await act(async () => resolveOld({ ...historyPage, watermark: 100 }));
+          expect(screen.getByText('Last known: Needs approval')).toBeTruthy();
+        } else {
+          expect(screen.queryByText('Last known: Needs approval')).toBeNull();
+          await act(async () => rejectOld(new Error('old epoch failure')));
+          expect(screen.queryByText('Last known: Needs approval')).toBeNull();
+          expect(screen.getByText('Needs approval')).toBeTruthy();
+        }
+      } finally {
+        oldHistory?.unmount();
+        newHistory?.unmount();
+        release();
+        dock.unmount();
+        act(() => client.clear());
+      }
+    },
+  );
+
+  it('retains an unrecovered visible failure across replacement until a new-epoch observation arrives', async () => {
+    const client = new QueryClient();
+    const dock = renderWithProviders(<DockInbox />, client);
+    const release = ensureOrchestrationEventStream('http://test.local', client);
+    let history: ReturnType<typeof renderWithProviders> | undefined;
+    try {
+      act(() => sendSnapshot('retained-old', 100));
+      historyRead.mockRejectedValueOnce(new Error('unrecovered history'));
+      history = renderWithProviders(<HistoryReader />, client);
+      await screen.findByText('Last known: Needs approval');
+      // The replacement snapshot carries no activity for this conversation.
+      act(() => sendSnapshot('retained-new', 1, false));
+      expect(screen.getByText('Last known: Needs approval')).toBeTruthy();
+      act(() => sendActivity(2));
+      expect(screen.queryByText('Last known: Needs approval')).toBeNull();
+      expect(screen.getByText('Needs approval')).toBeTruthy();
+      expect(screen.getByRole('alert').textContent).toBe('unrecovered history');
+    } finally {
+      history?.unmount();
+      release();
+      dock.unmount();
+      act(() => client.clear());
+    }
+  });
+});

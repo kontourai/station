@@ -212,11 +212,13 @@ unverified. The inbox, sidebar, Home, and mobile picker share this freshness:
 a failed conversation read marks only that conversation; a failed inbox read
 marks the retained list. Rows prefix the computed status with "Last known:"
 and suppress pulsing and elapsed clocks. Each observation source clears only its own failed read. A newer stream
-activity supersedes each failed source whose watermark it exceeds, even when
+activity within the same stream epoch supersedes each failed source whose watermark it exceeds, even when
 another source has a higher watermark. Each read captures its watermark when it
 starts. The highest stream sequence also supersedes older pending failures that
 settle later, so completion order cannot change current status. Reader generation
-tokens stop released or replaced readers from publishing; cache clear invalidates
+tokens stop released or replaced readers from publishing. A stream epoch change
+resets the authority client’s sequence fences and invalidates old-epoch read
+tokens while retaining unresolved failures until a new-epoch observation; cache clear invalidates
 outstanding publishers too. This proves current status, not history
 reader recovery; the history pane retains its own error UI. Unmounting a row
 preserves failures and sequence fences. Pruning requires absence from the loaded

@@ -22,6 +22,7 @@ type Source =
 class WorkObservation {
   private revision = 0;
   private clock = 0;
+  private epochGeneration = 0;
   private records = new Map<string, object>();
   private streamWatermarks = new Map<string, number>();
   private streamSuccesses = new Map<string, number>();
@@ -71,8 +72,11 @@ class WorkObservation {
       this.sequences.get(conversationId) ?? -1,
     );
     const record = this.record(conversationId);
+    const epochGeneration = this.epochGeneration;
     const current = () =>
-      this.records.get(conversationId) === record && isCurrent();
+      this.epochGeneration === epochGeneration &&
+      this.records.get(conversationId) === record &&
+      isCurrent();
     return {
       current,
       failed: () => {
@@ -82,6 +86,17 @@ class WorkObservation {
         if (current()) this.observed(conversationId, resultSequence, source);
       },
     };
+  }
+  resetStreamEpoch() {
+    this.epochGeneration += 1;
+    this.streamWatermarks.clear();
+    this.streamSuccesses.clear();
+    this.sequences.clear();
+    // Sequence fences belong to one stream epoch. Retain unresolved failures,
+    // but let new-epoch observations supersede them without the old fences.
+    for (const failures of this.failures.values())
+      for (const failure of failures.values()) failure.sequence = -1;
+    this.notify();
   }
   private record(conversationId: string) {
     let record = this.records.get(conversationId);
@@ -109,7 +124,7 @@ class WorkObservation {
   // Every read captures its watermark at START, for either settlement. Stream
   // watermarks are retained even below another source's fence: a failure started
   // below the highest stream sequence is obsolete regardless of completion order.
-  // Equality is replay, not supersession. Successes and newer failures apply normally.
+  // Within one stream epoch, equality is replay, not supersession. Successes and newer failures apply normally.
   // Readers supply a generation/token predicate invalidated on release/unmount;
   // record tokens also retire outstanding publishers on pruning or cache clear. Imperative
   // opens may create observations, but retired readers may never recreate them.

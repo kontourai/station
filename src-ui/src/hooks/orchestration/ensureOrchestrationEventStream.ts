@@ -454,6 +454,8 @@ export function ensureOrchestrationEventStream(
         if (payload.epoch && previousEpoch && payload.epoch !== previousEpoch) {
           activeChatsStore.clearConversationActivity();
           clearSequencedLiveEvents(apiBase);
+          const client = currentStreamQueryClient(apiBase);
+          if (client) workObservation(client).resetStreamEpoch();
         }
         if (payload.epoch) streamEpochs.set(apiBase, payload.epoch);
         cursor.adopt(raw.id);
