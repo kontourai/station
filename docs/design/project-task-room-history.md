@@ -129,12 +129,13 @@ until restart and logs a warning with the error, database path and recovery
 action.
 
 Background follower and search-backfill writes yield between contention
-attempts instead of busy-waiting on the main thread. Other main-thread writers
-remain synchronous: constructor migrations, foreground/provider event and
+attempts instead of busy-waiting on the main thread. Every other main-thread
+writer remains synchronous, including constructor migrations, foreground/provider event and
 Session updates, command/turn/delivery receipts and checkpoints, adoption and
 recovery/credential ledgers, native/voice run transitions, attachment quota and
-reference writes, operational-event journals, and source-seal/provider-admission
-transactions. These writers can still collide with room workers and block the
+reference writes, operational-event journals, conversation history and lineage,
+steer inputs, native session bindings, declared outputs, Session work-item
+associations, and source-seal/provider-admission transactions. These writers can still collide with room workers and block the
 event loop; [#3701](https://github.com/kontourai/station/issues/3701) remains open.
 This change does not establish universal deadlock freedom or worker recovery
 after another writer blocks the event loop.
