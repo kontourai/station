@@ -338,7 +338,7 @@ function humanHistory(value: unknown): ProjectSharedTaskHistory | undefined {
   return {
     kind: 'available',
     records: parsed.records.flatMap((record) =>
-      record?.body?.kind === 'human-message'
+      record?.body?.kind === 'human-message' && record.actor.kind === 'human'
         ? [
             {
               actor: { kind: record.actor.kind, label: record.actor.label },

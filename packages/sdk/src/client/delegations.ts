@@ -620,6 +620,12 @@ export async function observeDelegatedTaskEvents(
 
 export interface ContinueDelegatedTaskInput
   extends DelegatedTaskReferenceInput {
+  taskRoomReply?: {
+    taskId: string;
+    taskCreatedAt: string;
+    operationId: string;
+    attachBrief?: boolean;
+  };
   message: string;
   /**
    * Deliver `message` only as the answer to this exact open input request

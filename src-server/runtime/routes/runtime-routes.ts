@@ -116,6 +116,7 @@ import { guardProjectResponse } from '../../services/projects/project-response-g
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
+import { TaskRoomConversationModule } from '../../services/projects/task-room-conversation-module.js';
 import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
 import {
   currentRequestReadAuthority,
@@ -1299,6 +1300,18 @@ export function configureRuntimeRoutes(
         }
       : undefined;
   };
+  const roomConversation = new TaskRoomConversationModule({
+    graph: context.taskGraphService,
+    work: taskRoomWork,
+    room: () => projectTaskRoomRuntime,
+    authorize: (...args) => authorizeTaskRoomWork(...args),
+    sessions: context.orchestrationService,
+    readBinding: (sessionId) =>
+      context.orchestrationEventStore?.readProjectTaskRoomExecutionBinding(
+        sessionId,
+      ),
+    authorityForOwner: (id) => readAuthorityForExecution(id),
+  });
   const resolveTaskRoomContext = async (
     taskId: string,
     request: Request,
@@ -3791,9 +3804,36 @@ export function configureRuntimeRoutes(
       resolveProjectWorkspace: resolveWorkspacePath,
     }),
   );
+  const primeRoomRequestPrincipal = async (
+    c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
+    next: () => Promise<void>,
+  ) => {
+    try {
+      roomRequestPrincipals.set(
+        c.req.raw,
+        resolveOrchestrationRequestPrincipal(c),
+      );
+    } catch {
+      // Unresolved: no cache entry, so `requestAuthority.resolve` above
+      // revokes rather than reading a stale or default principal.
+    }
+    await next();
+  };
+  context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
   context.app.route(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
+      onStatusChanged: async (task, request) => {
+        await projectTaskRoomRuntime?.message({
+          taskId: task.id,
+          request,
+          expectedTaskCreatedAt: task.createdAt,
+          proposalId: `room-status:${task.id}:${task.updatedAt}`,
+          occurredAt: task.updatedAt,
+          correlationId: 'room-status',
+          text: `Status → ${task.status.replaceAll('_', ' ')}`,
+        });
+      },
       taskDispatcher: context.taskDispatcher,
       readAuthorityForRequest: conversationReadAuthorityForRequest,
       dispatchOwnerForRequest: (request) =>
@@ -3985,6 +4025,7 @@ export function configureRuntimeRoutes(
             return {
               kind: 'granted' as const,
               operatorId: principal.id,
+              displayName: principal.display,
               deviceId: device.id,
               policyRevision: device.scope,
             };
@@ -3994,6 +4035,7 @@ export function configureRuntimeRoutes(
             ? {
                 kind: 'granted' as const,
                 operatorId: principal.id,
+                displayName: principal.display,
                 deviceId: `operator:${principal.id}`,
                 policyRevision: 'operator',
               }
@@ -4055,6 +4097,14 @@ export function configureRuntimeRoutes(
           createdAt: record.createdAt,
         }));
       },
+      readAgentLabel: async (agentId) => {
+        try {
+          return (await context.agentService.getAgent(agentId)).name;
+        } catch {
+          return undefined;
+        }
+      },
+      readAgentAnswers: (input) => roomConversation.answers(input),
       readAgentLifecycle: async ({ sessionId }) => {
         const detail = await context.orchestrationService.readSession(
           sessionId,
@@ -4075,6 +4125,19 @@ export function configureRuntimeRoutes(
       },
     });
     projectTaskRoomRuntime = roomRuntime;
+    context.eventBus.subscribe((frame) => {
+      if (frame.event !== SERVER_EVENTS.ORCHESTRATION_EVENT) return;
+      const event = frame.data?.event as
+        | import('@kontourai/station-contracts/runtime-events').CanonicalRuntimeEvent
+        | undefined;
+      if (event)
+        void roomConversation.observe(event).catch((error) =>
+          context.logger.warn('Task room answer publication failed', {
+            sessionId: event.threadId,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+    });
     // A provider start is never retried from this rail. Only the idempotent
     // room-publication receipt is replayed after a prior process died between
     // Task association and history append.
@@ -4121,22 +4184,6 @@ export function configureRuntimeRoutes(
     // undefined, and `liveActivity()` silently returned an empty
     // participants projection for every caller instead of revoking or
     // granting honestly.
-    const primeRoomRequestPrincipal = async (
-      c: Parameters<typeof resolveOrchestrationRequestPrincipal>[0],
-      next: () => Promise<void>,
-    ) => {
-      try {
-        roomRequestPrincipals.set(
-          c.req.raw,
-          resolveOrchestrationRequestPrincipal(c),
-        );
-      } catch {
-        // Unresolved: no cache entry, so `requestAuthority.resolve` above
-        // revokes rather than reading a stale or default principal.
-      }
-      await next();
-    };
-    context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
     context.app.use('/api/live-activity', primeRoomRequestPrincipal);
     context.app.use('/api/home-authority/rooms/*', primeRoomRequestPrincipal);
     context.app.route(
@@ -4513,6 +4560,12 @@ export function configureRuntimeRoutes(
       ),
       taskRoomWork: {
         module: taskRoomWork,
+        onRecorded: (record, request, principal) =>
+          roomConversation.recorded(record, request, principal),
+        admitReply: (input, request, principal) =>
+          roomConversation.admission(input, request, principal),
+        onReply: (input, request, principal) =>
+          roomConversation.reply(input, request, principal),
         authorize: authorizeTaskRoomWork,
         resolveContext: resolveTaskRoomContext,
       },

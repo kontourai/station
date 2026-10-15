@@ -156,6 +156,7 @@ import {
 } from '../../services/projects/project-contribution-service.js';
 import { ProjectWorktreeDirectoryError } from '../../services/projects/project-service.js';
 import { composeAuthorizedSessionAnswerBasis } from '../../services/projects/task-basis-module.js';
+import { formatTaskRoomPrompt } from '../../services/projects/task-room-context.js';
 import {
   type TaskRoomInvocationAdmission,
   TaskRoomWorkAuthorityChangedError,
@@ -985,6 +986,15 @@ const delegatedTaskEventsQuerySchema = z.object({
 });
 
 export const continueDelegatedTaskBodySchema = z.object({
+  taskRoomReply: z
+    .object({
+      taskId: z.string().min(1).max(256),
+      taskCreatedAt: z.string().datetime(),
+      operationId: z.string().min(1).max(128),
+      attachBrief: z.boolean().optional(),
+    })
+    .strict()
+    .optional(),
   message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
   // `delegatedInputAnswers`: deliver `message` only as the answer to this
   // exact open input request on the task's current Session.
@@ -1222,6 +1232,7 @@ type DelegatedTaskEventsRequest = z.infer<
 type ContinueDelegatedTaskRequest = z.infer<
   typeof continueDelegatedTaskBodySchema
 > & {
+  taskRoomInvocationAdmission?: TaskRoomInvocationAdmission;
   taskId: string;
   userId: string;
   principal?: PrincipalRef;
@@ -1735,7 +1746,28 @@ export function createOrchestrationRoutes(
     stationControlDispatchScope?: StationControlDispatchScope;
     delegateTask?: (input: DelegateTaskRequest) => Promise<unknown>;
     taskRoomWork?: {
+      admitReply?(
+        input: { taskId: string; taskCreatedAt: string; sessionId: string },
+        request: Request,
+        principal: PrincipalRef,
+      ): Promise<TaskRoomInvocationAdmission | undefined>;
       module: TaskRoomWorkModule;
+      onRecorded?(
+        record: import('@kontourai/station-contracts/task-room-work').TaskRoomWorkRecord,
+        request: Request,
+        principal: PrincipalRef,
+      ): Promise<void>;
+      onReply?(
+        input: {
+          taskId: string;
+          sessionId: string;
+          taskCreatedAt: string;
+          operationId: string;
+          message: string;
+        },
+        request: Request,
+        principal: PrincipalRef,
+      ): Promise<boolean>;
       resolveContext?(
         taskId: string,
         request: Request,
@@ -3171,7 +3203,7 @@ export function createOrchestrationRoutes(
           ...request,
           ...(contextSnapshot
             ? {
-                prompt: `${body.prompt}\n\nSelected Task brief snapshot:\n${JSON.stringify(contextSnapshot)}`,
+                prompt: formatTaskRoomPrompt(body.prompt, contextSnapshot),
               }
             : {}),
           ...(delegation ? { delegation } : {}),
@@ -3310,6 +3342,8 @@ export function createOrchestrationRoutes(
             work.resolveContext?.(roomRequest.taskId, c.req.raw, principal) ??
             Promise.resolve(undefined),
         );
+        if (outcome.kind === 'recorded' && outcome.record.state !== 'refused')
+          await work.onRecorded?.(outcome.record, c.req.raw, principal);
         return c.json(
           { success: outcome.kind === 'recorded', data: outcome },
           outcome.kind === 'recorded'
@@ -3674,6 +3708,18 @@ export function createOrchestrationRoutes(
         );
       }
       try {
+        const replyBody = getBody(c);
+        if (
+          replyBody.taskRoomReply &&
+          (replyBody.environmentId || replyBody.model || replyBody.modelOptions)
+        )
+          return c.json(
+            {
+              success: false,
+              error: 'A room thread uses its existing agent Session and model.',
+            },
+            400,
+          );
         // #2377 slice C3b: an agent's follow-up carries no approval posture.
         const postureRefused = refuseCarriedPosture(c, [
           {
@@ -3722,8 +3768,79 @@ export function createOrchestrationRoutes(
                 () => deps.isRequestPrincipalCurrent?.(c.req.raw) ?? false,
               )
           : undefined;
+        const roomReply = getBody(c).taskRoomReply;
+        let continuationMessage = getBody(c).message;
+        if (roomReply && roomReply.attachBrief !== false && principal) {
+          const context = await deps.taskRoomWork?.resolveContext?.(
+            roomReply.taskId,
+            c.req.raw,
+            principal,
+          );
+          if (!context)
+            return c.json(
+              {
+                success: false,
+                code: 'task_room_context_unavailable',
+                error:
+                  'The latest saved brief is unavailable. Retry or turn off the brief attachment.',
+              },
+              409,
+            );
+          continuationMessage = formatTaskRoomPrompt(
+            continuationMessage,
+            context,
+          );
+        }
+        if (roomReply) {
+          if (
+            !principal ||
+            !deps.taskRoomWork?.onReply ||
+            !(await deps.taskRoomWork.onReply(
+              {
+                ...roomReply,
+                sessionId: param(c, 'taskId'),
+                message: getBody(c).message,
+              },
+              c.req.raw,
+              principal,
+            ))
+          )
+            return c.json(
+              {
+                success: false,
+                error: 'This agent thread is no longer available in this Task.',
+              },
+              403,
+            );
+        }
+        const roomAdmission =
+          roomReply && principal
+            ? await deps.taskRoomWork?.admitReply?.(
+                {
+                  taskId: roomReply.taskId,
+                  taskCreatedAt: roomReply.taskCreatedAt,
+                  sessionId: param(c, 'taskId'),
+                },
+                c.req.raw,
+                principal,
+              )
+            : undefined;
+        if (roomReply && !roomAdmission)
+          return c.json(
+            {
+              success: false,
+              code: 'task_room_reply_refused',
+              error:
+                'This agent thread can no longer continue in the same Session.',
+            },
+            403,
+          );
         const data = await deps.continueDelegatedTask({
+          ...(roomAdmission
+            ? { taskRoomInvocationAdmission: roomAdmission }
+            : {}),
           ...getBody(c),
+          message: continuationMessage,
           taskId: param(c, 'taskId'),
           userId,
           principal,

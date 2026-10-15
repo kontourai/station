@@ -480,6 +480,7 @@ export interface DelegateTaskInput {
 }
 
 type AuthorityBearingForegroundMessageInput = ForegroundMessageInput & {
+  taskRoomInvocationAdmission?: TaskRoomInvocationAdmission;
   /** Trusted request authority supplied only by runtime composition. */
   readAuthority?: SessionReadAuthority;
   /**
@@ -702,6 +703,7 @@ export interface DelegatedTaskEventsInput extends DelegatedTaskReferenceInput {
 
 export interface ContinueDelegatedTaskInput
   extends DelegatedTaskReferenceInput {
+  taskRoomInvocationAdmission?: TaskRoomInvocationAdmission;
   message: string;
   /**
    * `delegatedInputAnswers`: deliver `message` only as the answer to this
@@ -4700,6 +4702,11 @@ export async function continueDelegatedTask(
     readAuthority,
     orchestrationService,
   );
+  if (input.taskRoomInvocationAdmission && selectedTarget.kind !== 'current')
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_authority_changed',
+      'A Task room thread must continue on its original Station.',
+    );
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
     // No-onward-hop + current sender authority, BEFORE any outbound
     // fetch — mirroring the create path. A delegation peer (an enrolled
@@ -4766,6 +4773,15 @@ export async function continueDelegatedTask(
     input,
   );
   const snapshot = snapshotFor(loaded);
+  if (
+    input.taskRoomInvocationAdmission &&
+    snapshot.currentSessionId !==
+      input.taskRoomInvocationAdmission.expectedSessionId
+  )
+    throw new ReceiverExecutionRefusal(
+      'receiver_execution_authority_changed',
+      'The room reply Session changed.',
+    );
   if (input.expectedInputRequest)
     assertInputRequestOpenOnTask(
       input.expectedInputRequest,
@@ -4781,6 +4797,9 @@ export async function continueDelegatedTask(
     {
       conversationId: snapshot.conversationId,
       message: input.message,
+      ...(input.taskRoomInvocationAdmission
+        ? { taskRoomInvocationAdmission: input.taskRoomInvocationAdmission }
+        : {}),
       // Re-checked by the orchestration service at engine invocation.
       ...(input.expectedInputRequest
         ? { expectedInputRequest: input.expectedInputRequest }
@@ -6659,6 +6678,15 @@ export async function executeExecutionTargetMessage(
       // coordinate the same way `getPortableProject` does on the create
       // path — and the effect path rechecks + verifies it adjacent to the
       // adapter start. Ordinary starts are byte-identical.
+      if (
+        input.taskRoomInvocationAdmission?.expectedSessionId &&
+        startInput.threadId !==
+          input.taskRoomInvocationAdmission.expectedSessionId
+      )
+        throw new ReceiverExecutionRefusal(
+          'receiver_execution_authority_changed',
+          'A room reply cannot replace its agent Session.',
+        );
       const followUpEffectAdmission = input.receiverAdmission
         ? receiverEffectAdmissionFor(
             startInput.threadId,
@@ -6680,6 +6708,13 @@ export async function executeExecutionTargetMessage(
           input.dispatchCwdAdmission,
         ),
         {
+          ...(input.taskRoomInvocationAdmission
+            ? {
+                receiverExecutionAdmission: input.taskRoomInvocationAdmission,
+                roomExecutionBinding:
+                  input.taskRoomInvocationAdmission.roomBinding,
+              }
+            : {}),
           ...(executionWorkspace ? { executionWorkspace } : {}),
           ...(ephemeral ? { ephemeralSessionVisibility: true } : {}),
           ...(admission ? { foregroundInvocationAdmission: admission } : {}),
@@ -6762,6 +6797,15 @@ export async function executeExecutionTargetMessage(
     approvalPickReachesFullAccess: (_access: EnvironmentAccess, input) =>
       orchestrationService.approvalPickReachesFullAccess(input),
     sendTurn: async (_access: EnvironmentAccess, turnInput, context) => {
+      if (
+        input.taskRoomInvocationAdmission?.expectedSessionId &&
+        turnInput.threadId !==
+          input.taskRoomInvocationAdmission.expectedSessionId
+      )
+        throw new ReceiverExecutionRefusal(
+          'receiver_execution_authority_changed',
+          'The room reply Session changed.',
+        );
       const command = { type: 'sendTurn' as const, input: turnInput };
       const dispatchContext = dispatchContextForAuthority(
         readAuthority,
@@ -6778,6 +6822,12 @@ export async function executeExecutionTargetMessage(
             {
               foregroundInvocationAdmission: admission,
               nativeMemoryReadAuthority: readAuthority,
+              ...(input.taskRoomInvocationAdmission
+                ? {
+                    receiverExecutionAdmission:
+                      input.taskRoomInvocationAdmission,
+                  }
+                : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
                 : {}),
@@ -6796,6 +6846,12 @@ export async function executeExecutionTargetMessage(
             dispatchContext,
             {
               nativeMemoryReadAuthority: readAuthority,
+              ...(input.taskRoomInvocationAdmission
+                ? {
+                    receiverExecutionAdmission:
+                      input.taskRoomInvocationAdmission,
+                  }
+                : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
                 : {}),

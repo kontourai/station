@@ -117,6 +117,7 @@ interface RequestPrincipal {
   readonly operatorId: string;
   readonly deviceId: string;
   readonly policyRevision: string;
+  readonly displayName?: string;
 }
 export interface ProjectTaskRoomRequestAuthority {
   resolve(
@@ -161,6 +162,13 @@ interface ProjectTaskRoomRuntimeDeps {
         readonly outcome?: 'completed' | 'failed' | 'cancelled';
       }
     | undefined
+  >;
+  readonly readAgentLabel?: (agentId: string) => Promise<string | undefined>;
+  readonly readAgentAnswers?: (input: {
+    sessionId: string;
+    ownerOperatorId: string;
+  }) => Promise<
+    readonly { turnId: string; text: string; occurredAt: string }[]
   >;
   /** Hosted tenancy has no task-room ownership model yet: never expose it. */
   readonly hosted?: () => boolean;
@@ -332,6 +340,9 @@ export class ProjectTaskRoomRuntime {
   readonly #documentNotificationChains = new Map<string, Promise<void>>();
   readonly #notificationChains = new Map<string, Promise<void>>();
   #unwatchWorking: (() => void) | undefined;
+  readonly #sessionRuns = new Map<string, string>();
+  readonly #agentNames = new Map<string, string>();
+  readonly #displayNames = new Map<string, string>();
   #closed = false;
 
   constructor(deps: ProjectTaskRoomRuntimeDeps) {
@@ -603,6 +614,65 @@ export class ProjectTaskRoomRuntime {
     };
   }
 
+  /** Publish only completed answers read from the bound Session's canonical projection. */
+  async publishAgentAnswers(taskId: string, sessionId: string): Promise<void> {
+    const association = await this.#lifecycleAssociation(taskId, sessionId);
+    if (!association || !this.#deps.readAgentAnswers) return;
+    const answers = await this.#deps.readAgentAnswers({
+      sessionId,
+      ownerOperatorId: association.ownerOperatorId,
+    });
+    const current = await this.#lifecycleAssociation(taskId, sessionId);
+    if (
+      !current ||
+      current.task.createdAt !== association.task.createdAt ||
+      !sameScope(current.scope, association.scope) ||
+      current.agentId !== association.agentId ||
+      current.ownerOperatorId !== association.ownerOperatorId
+    )
+      return;
+    for (const answer of answers) {
+      const principal: Extract<ProjectTaskRoomPrincipal, { kind: 'agent' }> = {
+        kind: 'agent',
+        agentId: current.agentId,
+        ownerOperatorId: current.ownerOperatorId,
+        deviceId: `agent-session:${sessionId}`,
+        authorizationReceiptId: agentLifecycleReceiptId(
+          taskId,
+          sessionId,
+          'completed',
+        ),
+      };
+      const opened = await this.#history.open({
+        grant: this.#issueAgent(current.scope, principal, 'discover'),
+      });
+      if (opened.kind !== 'opened' && opened.kind !== 'existing') return;
+      // The existing text body accepts agent-publish authority. Envelope correlation
+      // retains exact Session/turn identity without a new history storage format.
+      const text =
+        Buffer.byteLength(answer.text, 'utf8') <= 16 * 1024
+          ? answer.text
+          : `${Buffer.from(answer.text).subarray(0, 15000).toString('utf8')}\n\n_Answer shortened for the room. Open full run for the complete answer._`;
+      const result = await this.#history.append({
+        grant: this.#issueAgent(current.scope, principal, 'agent-publish'),
+        intent: {
+          proposalId: `room-answer:${sessionId}:${answer.turnId}`,
+          occurredAt: answer.occurredAt,
+          correlationId: `room-answer:${sessionId}`,
+          causationId: answer.turnId,
+          body: { kind: 'human-message', text },
+        },
+      });
+      if (result.kind === 'committed' || result.kind === 'duplicate') {
+        this.#removeAgentPresence(current.scope, current.agentId, sessionId);
+        await this.#publishHistory({
+          ...current.scope,
+          documentId: documentIdFor(current.scope),
+        });
+      }
+    }
+  }
+
   /** Server-only ingress from canonical session.exited. */
   async publishAgentFinished(input: {
     taskId: string;
@@ -653,6 +723,7 @@ export class ProjectTaskRoomRuntime {
           sessionId: request.sessionId,
         });
         if (!durable) continue;
+        await this.publishAgentAnswers(taskId, request.sessionId);
         const started: PendingAgentLifecycle = {
           taskId,
           sessionId: request.sessionId,
@@ -921,6 +992,9 @@ export class ProjectTaskRoomRuntime {
     return input.project
       ? (projectHistory(
           result,
+          (id: string) => this.#displayNames.get(id),
+          (id: string) => this.#agentNames.get(id),
+          (id: string) => this.#sessionRuns.get(id),
         ) as ProjectTaskRoomRuntimeOutcome<ProjectTaskRoomReadOutcome>)
       : result;
   }
@@ -942,6 +1016,9 @@ export class ProjectTaskRoomRuntime {
     if (result.kind === 'denied') return { kind: 'not-found' } as const;
     return projectHistory(
       result,
+      (id: string) => this.#displayNames.get(id),
+      (id: string) => this.#agentNames.get(id),
+      (id: string) => this.#sessionRuns.get(id),
     ) as ProjectTaskRoomRuntimeOutcome<ProjectTaskRoomReadOutcome>;
   }
   async sharedDocument(input: {
@@ -963,6 +1040,8 @@ export class ProjectTaskRoomRuntime {
     text: string;
     occurredAt?: string;
     expectedTaskCreatedAt?: string;
+    correlationId?: string;
+    causationId?: string;
   }): Promise<ProjectTaskRoomRuntimeOutcome<ProjectTaskRoomAppendOutcome>> {
     const grant = await this.#issue(
       input.taskId,
@@ -977,6 +1056,8 @@ export class ProjectTaskRoomRuntime {
       intent: {
         proposalId: input.proposalId,
         occurredAt: input.occurredAt ?? new Date().toISOString(),
+        ...(input.correlationId ? { correlationId: input.correlationId } : {}),
+        ...(input.causationId ? { causationId: input.causationId } : {}),
         body: { kind: 'human-message', text: input.text },
       },
     });
@@ -2091,6 +2172,13 @@ export class ProjectTaskRoomRuntime {
     );
     if (!association) return;
     const { task, scope, agentId, ownerOperatorId } = association;
+    if (lifecycle.provider)
+      this.#sessionRuns.set(
+        lifecycle.sessionId,
+        createOrchestrationRunId(lifecycle.provider, lifecycle.sessionId),
+      );
+    const label = await this.#deps.readAgentLabel?.(agentId);
+    if (label) this.#agentNames.set(agentId, label);
     const principal: Extract<ProjectTaskRoomPrincipal, { kind: 'agent' }> = {
       kind: 'agent',
       agentId,
@@ -2238,7 +2326,11 @@ export class ProjectTaskRoomRuntime {
       ? createOrchestrationRunId(input.provider, input.sessionId)
       : existingRunId;
     entry.agentParticipants.set(actorId, {
-      actor: { actorId, kind: 'agent', label: input.agentId },
+      actor: {
+        actorId,
+        kind: 'agent',
+        label: this.#agentNames.get(input.agentId) ?? input.agentId,
+      },
       work: {
         sessionId: input.sessionId,
         ...(runId ? { runId } : {}),
@@ -2646,7 +2738,7 @@ export class ProjectTaskRoomRuntime {
                   // paired-device identifier is private authority material.
                   // Derive a stable opaque display label from the actor ID so
                   // every SSE projection remains safe to persist or share.
-                  label: participantDisplayLabel(authority.principal),
+                  label: authority.principal.displayName ?? 'Teammate',
                 },
                 occurrenceId: `${scope.sessionId}:${actorId}`,
                 sessionId: scope.sessionId,
@@ -2913,6 +3005,9 @@ export class ProjectTaskRoomRuntime {
       return undefined;
     const recovery = parsePersistedRecovery(stored.value);
     if (!recovery) return undefined;
+    for (const { principal } of recovery.authorities.values())
+      if (principal.displayName)
+        this.#displayNames.set(principal.operatorId, principal.displayName);
     let reconciled = false;
     const authorization: LiveWorkRecoveryAuthorization = {
       kind: 'system',
@@ -3181,7 +3276,10 @@ export class ProjectTaskRoomRuntime {
   async #principal(request: Request): Promise<RequestPrincipal | undefined> {
     try {
       const result = await this.#deps.requestAuthority.resolve(request);
-      return result.kind === 'granted' ? result : undefined;
+      if (result.kind !== 'granted') return undefined;
+      if (result.displayName)
+        this.#displayNames.set(result.operatorId, result.displayName);
+      return result;
     } catch {
       return undefined;
     }
@@ -3411,11 +3509,16 @@ function parsePersistedRecovery(value: unknown):
         'operatorId',
         'deviceId',
         'policyRevision',
+        ...(Object.hasOwn(item.principal, 'displayName')
+          ? ['displayName']
+          : []),
       ]) ||
       item.principal.kind !== 'granted' ||
       !boundedId(item.principal.operatorId) ||
       !boundedId(item.principal.deviceId) ||
       !boundedId(item.principal.policyRevision) ||
+      (item.principal.displayName !== undefined &&
+        !boundedId(item.principal.displayName)) ||
       authorities.has(item.token)
     )
       return undefined;
@@ -3425,6 +3528,9 @@ function parsePersistedRecovery(value: unknown):
         operatorId: item.principal.operatorId,
         deviceId: item.principal.deviceId,
         policyRevision: item.principal.policyRevision,
+        ...(typeof item.principal.displayName === 'string'
+          ? { displayName: item.principal.displayName }
+          : {}),
       },
     });
   }
@@ -3518,33 +3624,66 @@ function requestReceiptId(
     .digest('hex')}`;
 }
 
-function participantDisplayLabel(principal: RequestPrincipal) {
-  return `Participant ${actorIdFor(principal).slice(-12)}`;
-}
-
 /**
  * Browser history is a deliberately smaller DTO than the durable record.
  * Grant receipts, device/operator identities, policy revisions, and scope
  * only exist inside the history worker's verified record.
  */
-function projectHistory(value: any): unknown {
+function projectHistory(
+  value: any,
+  displayName: (id: string) => string | undefined,
+  agentName: (id: string) => string | undefined,
+  runId: (id: string) => string | undefined,
+): unknown {
   if (value?.kind === 'available') {
     return {
       kind: 'available',
       records: value.records.map((record: any) => ({
         actor: {
           kind: record.principal.kind === 'agent' ? 'agent' : 'human',
+          id:
+            record.principal.kind === 'agent'
+              ? agentActorId(
+                  record.scope.taskId,
+                  record.principal.agentId,
+                  agentSessionId(record.principal) ?? '',
+                )
+              : actorIdFor(record.principal),
           label:
             record.principal.kind === 'agent'
-              ? `Agent ${record.principal.agentId}`
-              : `Participant ${createHash('sha256')
-                  .update(
-                    `${record.principal.operatorId}\u0000${record.principal.deviceId}`,
-                  )
-                  .digest('hex')
-                  .slice(-12)}`,
+              ? (agentName(record.principal.agentId) ??
+                record.principal.agentId)
+              : (displayName(record.principal.operatorId) ?? 'Teammate'),
         },
         sequence: record.envelope.seq,
+        occurredAt: record.envelope.proposal.happenedAt,
+        ...(record.principal.kind === 'agent' &&
+        record.body.kind === 'human-message' &&
+        record.correlationId ===
+          `room-answer:${agentSessionId(record.principal)}` &&
+        record.causationId
+          ? {
+              execution: {
+                sessionId: agentSessionId(record.principal),
+                turnId: record.causationId,
+                ...(runId(agentSessionId(record.principal)!)
+                  ? { runId: runId(agentSessionId(record.principal)!) }
+                  : {}),
+              },
+            }
+          : {}),
+        ...(record.principal.kind === 'operator' &&
+        record.correlationId?.startsWith('room-thread:')
+          ? {
+              threadSessionId: record.correlationId.slice(
+                'room-thread:'.length,
+              ),
+            }
+          : {}),
+        ...(record.principal.kind === 'operator' &&
+        record.correlationId === 'room-status'
+          ? { system: true }
+          : {}),
         body: projectBody(record.body),
         digests: {
           proposal: record.envelope.proposalDigest,

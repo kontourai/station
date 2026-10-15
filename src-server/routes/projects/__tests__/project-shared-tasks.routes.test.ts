@@ -68,9 +68,17 @@ function fixture() {
           digests: { proposal: 'c'.repeat(64), checkpoint: 'd'.repeat(64) },
           integrity: 'L0',
         },
+        {
+          actor: { kind: 'agent', label: 'Researcher' },
+          sequence: 3,
+          body: { kind: 'human-message', text: 'Private agent answer' },
+          execution: { sessionId: 'private-session', turnId: 'private-turn' },
+          digests: { proposal: 'f'.repeat(64), checkpoint: '1'.repeat(64) },
+          integrity: 'L0',
+        },
       ],
       checkpoint: {
-        throughSeq: 2,
+        throughSeq: 3,
         checkpointDigest: 'b'.repeat(64),
         retainedAnchorSeq: 0,
         retainedAnchorDigest: 'e'.repeat(64),

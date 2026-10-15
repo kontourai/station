@@ -341,6 +341,7 @@ const taskBasisAppRevokeSchema = z
 export function createTaskRoutes(
   taskGraphService: TaskGraphService,
   options: {
+    onStatusChanged?: (task: TaskRecord, request: Request) => Promise<void>;
     taskDispatcher: TaskDispatcher;
     /**
      * Central orchestration predicate. Keeping it as a per-request call is
@@ -1932,6 +1933,47 @@ export function createTaskRoutes(
     return c.json({ success: true, data });
   });
 
+  app.get('/:taskId/kept-pull-requests', async (c) => {
+    const service = serviceForRequest(c.req.raw);
+    if (!service?.readTaskView(param(c, 'taskId'))) return hostedNotFound(c);
+    const authority = options.readAuthorityForRequest?.(c.req.raw);
+    const data = service
+      .listKeptDeclaredPullRequests(param(c, 'taskId'))
+      .filter(
+        (keep) =>
+          authority &&
+          options.canReadSession?.(keep.provenance.sessionId, authority),
+      );
+    return c.json({ success: true, data });
+  });
+
+  app.patch(
+    '/:taskId/title',
+    validate(
+      z
+        .object({
+          title: z.string().trim().min(1).max(512),
+          expectedCreatedAt: z.string().datetime(),
+        })
+        .strict(),
+    ),
+    async (c) => {
+      try {
+        const service = serviceForRequest(c.req.raw);
+        if (!service) return hostedNotFound(c);
+        const data = await service.updateTaskTitle(
+          param(c, 'taskId'),
+          getBody(c).title,
+          getBody(c).expectedCreatedAt,
+          resolveClientOriginForRequest(c.req.raw),
+        );
+        return c.json({ success: true, data });
+      } catch (error) {
+        return c.json({ success: false, error: errorMessage(error) }, 400);
+      }
+    },
+  );
+
   app.patch('/:taskId/status', validate(taskStatusSchema), async (c) => {
     try {
       const service = serviceForRequest(c.req.raw);
@@ -1941,6 +1983,7 @@ export function createTaskRoutes(
         getBody(c).status,
         resolveClientOriginForRequest(c.req.raw),
       );
+      await options.onStatusChanged?.(data, c.req.raw);
       return c.json({ success: true, data });
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
