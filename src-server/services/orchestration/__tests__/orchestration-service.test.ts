@@ -16873,7 +16873,7 @@ describe('OrchestrationService', () => {
           threadId: 'thread-dedup-retry',
           clientTurnId: 'client-turn-ambiguous',
         }),
-      ).toEqual({ kind: 'contended', turnId: undefined });
+      ).toEqual({ kind: 'indeterminate' });
 
       claude.sendTurn.mockImplementation(async (input) => ({
         threadId: input.threadId,
@@ -16891,6 +16891,246 @@ describe('OrchestrationService', () => {
       ).rejects.toThrow(/already being processed|turn start in progress/);
 
       expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    });
+
+    test('a same-key resend of a claim retained after a possible effect is refused as may-have-started at once, never waited on', async () => {
+      const ledger = eventStore.createTurnDeduplicator();
+      const awaitResolution = vi.fn(ledger.awaitResolution);
+      const retainedService = new OrchestrationService({
+        adapterRegistry: createRegistry([claude]),
+        eventBus: new EventBus(),
+        eventStore,
+        turnDeduplicator: { ...ledger, awaitResolution },
+        listProjects: () => [],
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      await retainedService.dispatch({
+        type: 'startSession',
+        input: { threadId: 'thread-retained', provider: 'claude' },
+      });
+      claude.sendTurn.mockClear();
+      // The engine call fails after invocation began: a possible effect, so
+      // the send retains its claim of the key rather than releasing it.
+      claude.sendTurn.mockRejectedValueOnce(new Error('response lost'));
+      const send = () =>
+        retainedService
+          .dispatch({
+            type: 'sendTurn',
+            input: {
+              threadId: 'thread-retained',
+              input: 'hello',
+              clientTurnId: 'client-retained',
+            },
+          })
+          .then(
+            () => undefined,
+            (error: unknown) => error,
+          );
+      expect(await send()).toMatchObject({
+        code: 'foreground_message_indeterminate',
+        outcome: 'indeterminate',
+      });
+      expect(
+        ledger.inspect({
+          threadId: 'thread-retained',
+          clientTurnId: 'client-retained',
+        }),
+      ).toEqual({ state: 'indeterminate' });
+
+      // The user presses Retry: the same key is sent again.
+      const retry = send();
+      const settled = await Promise.race([
+        retry.then(() => 'settled' as const),
+        new Promise<'pending'>((resolve) =>
+          setTimeout(() => resolve('pending'), 2_000),
+        ),
+      ]);
+      expect(settled).toBe('settled');
+      const refusal = (await retry) as OrchestrationCommandDispatchError;
+      expect(refusal).toBeInstanceOf(OrchestrationCommandDispatchError);
+      // The same answer the delivery lookup gives, not a retryable
+      // `client_turn_in_flight` after a five-minute wait.
+      expect(refusal.code).toBe('foreground_message_indeterminate');
+      expect(refusal.outcome).toBe('indeterminate');
+      expect(refusal.retryable).not.toBe(true);
+      expect(awaitResolution).not.toHaveBeenCalled();
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+      await retainedService.shutdown();
+    });
+
+    test('a same-key resend already waiting when the first attempt retains its claim is refused as may-have-started at once', async () => {
+      const ledger = eventStore.createTurnDeduplicator();
+      const awaitResolution = vi.fn(ledger.awaitResolution);
+      const waitingService = new OrchestrationService({
+        adapterRegistry: createRegistry([claude]),
+        eventBus: new EventBus(),
+        eventStore,
+        turnDeduplicator: { ...ledger, awaitResolution },
+        listProjects: () => [],
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      await waitingService.dispatch({
+        type: 'startSession',
+        input: { threadId: 'thread-retained-waiter', provider: 'claude' },
+      });
+      claude.sendTurn.mockClear();
+      const engineFails = deferred<void>();
+      const providerEntered = deferred<void>();
+      claude.sendTurn.mockImplementationOnce(async () => {
+        providerEntered.resolve();
+        await engineFails.promise;
+        throw new Error('response lost');
+      });
+      const send = () =>
+        waitingService
+          .dispatch({
+            type: 'sendTurn',
+            input: {
+              threadId: 'thread-retained-waiter',
+              input: 'hello',
+              clientTurnId: 'client-retained-waiter',
+            },
+          })
+          .then(
+            () => undefined,
+            (error: unknown) => error,
+          );
+      const first = send();
+      await providerEntered.promise;
+      // The resend arrives while the engine call is pending, and waits.
+      const resend = send();
+      await vi.waitFor(() => expect(awaitResolution).toHaveBeenCalledTimes(1));
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      // Only now does the engine call fail after invocation: the first
+      // attempt retains its claim of the key.
+      engineFails.resolve();
+      expect(await first).toMatchObject({
+        code: 'foreground_message_indeterminate',
+      });
+      const settled = await Promise.race([
+        resend.then(() => 'settled' as const),
+        new Promise<'pending'>((resolve) =>
+          setTimeout(() => resolve('pending'), 2_000),
+        ),
+      ]);
+      expect(settled).toBe('settled');
+      const refusal = (await resend) as OrchestrationCommandDispatchError;
+      expect(refusal).toBeInstanceOf(OrchestrationCommandDispatchError);
+      expect(refusal.code).toBe('foreground_message_indeterminate');
+      expect(refusal.outcome).toBe('indeterminate');
+      expect(refusal.retryable).not.toBe(true);
+      expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+      await waitingService.shutdown();
+    });
+
+    test('a resend that outwaits a live owner\'s claim older than 15 minutes stays retryable, never indeterminate', async () => {
+      const ledger = eventStore.createTurnDeduplicator();
+      const slowService = new OrchestrationService({
+        adapterRegistry: createRegistry([claude]),
+        eventBus: new EventBus(),
+        eventStore,
+        // The real wait, shortened: the claim stays unresolved throughout.
+        turnDeduplicator: {
+          ...ledger,
+          awaitResolution: (input) =>
+            ledger.awaitResolution({ ...input, timeoutMs: 50, intervalMs: 10 }),
+        },
+        listProjects: () => [],
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      await slowService.dispatch({
+        type: 'startSession',
+        input: { threadId: 'thread-slow-owner', provider: 'claude' },
+      });
+      claude.sendTurn.mockClear();
+      const realNow = Date.now.bind(Date);
+      const clock = vi.spyOn(Date, 'now');
+      try {
+        // A live owner (this process) holds the key and never retained it.
+        const owner = ledger.claim({
+          threadId: 'thread-slow-owner',
+          clientTurnId: 'client-slow-owner',
+        });
+        if (owner.kind !== 'owner') throw new Error('expected owner');
+        owner.claim.beginInvocation();
+        // Sixteen minutes on, with the clock still running for the wait.
+        clock.mockImplementation(() => realNow() + 16 * 60_000);
+        // The lookup calls a claim this old indeterminate; the send must not.
+        expect(
+          ledger.inspect({
+            threadId: 'thread-slow-owner',
+            clientTurnId: 'client-slow-owner',
+          }),
+        ).toEqual({ state: 'indeterminate' });
+        const refusal = await slowService
+          .dispatch({
+            type: 'sendTurn',
+            input: {
+              threadId: 'thread-slow-owner',
+              input: 'hello',
+              clientTurnId: 'client-slow-owner',
+            },
+          })
+          .then(
+            () => undefined,
+            (error: unknown) => error as OrchestrationCommandDispatchError,
+          );
+        expect(refusal).toBeInstanceOf(OrchestrationCommandDispatchError);
+        expect(refusal?.code).toBe('client_turn_in_flight');
+        expect(refusal?.retryable).toBe(true);
+        expect(claude.sendTurn).not.toHaveBeenCalled();
+      } finally {
+        clock.mockRestore();
+        await slowService.shutdown();
+      }
+    });
+
+    test('a resend whose given-up check cannot be read stays retryable and sends nothing', async () => {
+      const ledger = eventStore.createTurnDeduplicator();
+      const faultyService = new OrchestrationService({
+        adapterRegistry: createRegistry([claude]),
+        eventBus: new EventBus(),
+        eventStore,
+        turnDeduplicator: {
+          ...ledger,
+          awaitResolution: (input) =>
+            ledger.awaitResolution({ ...input, timeoutMs: 50, intervalMs: 10 }),
+          givenUp: () => {
+            throw new Error('injected read fault');
+          },
+        },
+        listProjects: () => [],
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      await faultyService.dispatch({
+        type: 'startSession',
+        input: { threadId: 'thread-givenup-fault', provider: 'claude' },
+      });
+      claude.sendTurn.mockClear();
+      // A live owner holds the key, so the resend waits and stays unresolved.
+      const owner = ledger.claim({
+        threadId: 'thread-givenup-fault',
+        clientTurnId: 'client-givenup-fault',
+      });
+      if (owner.kind !== 'owner') throw new Error('expected owner');
+      const refusal = await faultyService
+        .dispatch({
+          type: 'sendTurn',
+          input: {
+            threadId: 'thread-givenup-fault',
+            input: 'hello',
+            clientTurnId: 'client-givenup-fault',
+          },
+        })
+        .then(
+          () => undefined,
+          (error: unknown) => error as OrchestrationCommandDispatchError,
+        );
+      expect(refusal).toBeInstanceOf(OrchestrationCommandDispatchError);
+      expect(refusal?.code).toBe('client_turn_in_flight');
+      expect(refusal?.retryable).toBe(true);
+      expect(claude.sendTurn).not.toHaveBeenCalled();
+      await faultyService.shutdown();
     });
 
     test('station#1224 CRITICAL fix — the missing test: a still-running turn resolves AFTER a concurrent replay has already started polling, and the adapter executes EXACTLY ONCE', async () => {
