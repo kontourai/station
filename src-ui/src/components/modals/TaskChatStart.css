@@ -9,4 +9,9 @@
   background: var(--k-panel);
   overflow: auto;
 }
-.task-chat-start__chip { margin-bottom: var(--k-space-2); }
+.task-chat-start .new-chat-modal__header {
+  padding: var(--k-space-3);
+}
+.task-chat-start .new-chat-modal__title-row {
+  margin-bottom: 0;
+}

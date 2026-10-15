@@ -1491,6 +1491,16 @@ export function NewChatModal({
           <h3 className="new-chat-modal__title">
             {mode?.kind === 'fork' ? 'Fork from here' : 'New chat'}
           </h3>
+          {shaping && (
+            <Button
+              className="task-chat-start__chip"
+              size="sm"
+              onClick={() => setShaping(false)}
+              aria-label="Remove New Task mode"
+            >
+              New Task ×
+            </Button>
+          )}
           <ResponsiveDialogCloseButton
             label={mode?.kind === 'fork' ? 'Cancel fork' : 'Close new chat'}
             onClick={closeChatRequest}
@@ -1743,16 +1753,6 @@ export function NewChatModal({
               Your previous Agent is no longer available in this workspace.
               Choose an Agent to continue.
             </p>
-          )}
-          {shaping && (
-            <Button
-              className="task-chat-start__chip"
-              size="sm"
-              onClick={() => setShaping(false)}
-              aria-label="Remove New Task mode"
-            >
-              New Task ×
-            </Button>
           )}
           <StartComposer
             compact={taskShaping}
